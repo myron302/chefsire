@@ -6,21 +6,15 @@ import {
   clubs,
   clubMemberships,
   clubPosts,
-  clubJoinRequests,
   clubPostLikes,
+  clubJoinRequests,
   challenges,
   challengeProgress,
   badges,
   userBadges,
-  users,
+  users
 } from "../../shared/schema.js";
-import { requireAuth } from "../middleware/index";
-import {
-  sendClubJoinRequestNotification,
-  sendClubJoinApprovedNotification,
-  sendClubMemberJoinedNotification,
-  sendClubPostLikeNotification,
-} from "../services/notification-service";
+import { requireAuth, optionalAuth } from "../middleware/index";
 
 const router = express.Router();
 
@@ -28,9 +22,55 @@ const router = express.Router();
 // CLUBS MANAGEMENT
 // ============================================================
 
-// IMPORTANT: keep static routes ABOVE "/:id" so Express doesn't treat "my-clubs", "challenges", "badges", etc as a club id.
+// Browse clubs
+router.get("/", async (req: Request, res: Response) => {
+  try {
+    const { category, search, sort } = req.query;
 
-// Get user's clubs (membership list)
+    const allClubs = await db
+      .select({
+        club: clubs,
+        memberCount: sql`count(distinct ${clubMemberships.id})`,
+        postCount: sql`count(distinct ${clubPosts.id})`,
+      })
+      .from(clubs)
+      .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
+      .leftJoin(clubPosts, eq(clubs.id, clubPosts.clubId))
+      .where(eq(clubs.isPublic, true))
+      .groupBy(clubs.id)
+      .$dynamic();
+
+    let filtered = await allClubs;
+
+    if (category && category !== "all") {
+      filtered = filtered.filter(c => c.club.category === category);
+    }
+
+    if (search) {
+      const searchLower = (search as string).toLowerCase();
+      filtered = filtered.filter(c =>
+        c.club.name.toLowerCase().includes(searchLower) ||
+        c.club.description?.toLowerCase().includes(searchLower)
+      );
+    }
+
+    if (sort === "members") {
+      filtered.sort((a, b) => b.memberCount - a.memberCount);
+    } else if (sort === "activity") {
+      filtered.sort((a, b) => b.postCount - a.postCount);
+    } else {
+      filtered.sort((a, b) => new Date(b.club.createdAt).getTime() - new Date(a.club.createdAt).getTime());
+    }
+
+    res.json({ clubs: filtered });
+  } catch (error) {
+    console.error("Error browsing clubs:", error);
+    res.status(500).json({ message: "Failed to browse clubs" });
+  }
+});
+
+
+// Get user's clubs (must be before /:id route)
 router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -55,50 +95,44 @@ router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// Browse public clubs
-router.get("/", async (req: Request, res: Response) => {
+// Get club details
+router.get("/:id", async (req: Request, res: Response) => {
   try {
-    const { category, search, sort } = req.query;
+    const clubId = req.params.id;
 
-    const allClubs = await db
+    const [club] = await db
       .select({
         club: clubs,
+        creator: {
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+        },
+      })
+      .from(clubs)
+      .innerJoin(users, eq(clubs.creatorId, users.id))
+      .where(eq(clubs.id, clubId))
+      .limit(1);
+
+    if (!club) {
+      return res.status(404).json({ message: "Club not found" });
+    }
+
+    const [stats] = await db
+      .select({
         memberCount: sql`count(distinct ${clubMemberships.id})`,
         postCount: sql`count(distinct ${clubPosts.id})`,
       })
       .from(clubs)
       .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
       .leftJoin(clubPosts, eq(clubs.id, clubPosts.clubId))
-      .where(eq(clubs.isPublic, true))
-      .groupBy(clubs.id)
-      .$dynamic();
+      .where(eq(clubs.id, clubId))
+      .groupBy(clubs.id);
 
-    let filtered = await allClubs;
-
-    if (category && category !== "all") {
-      filtered = filtered.filter((c: any) => c.club.category === category);
-    }
-
-    if (search) {
-      const searchLower = String(search).toLowerCase();
-      filtered = filtered.filter((c: any) =>
-        c.club.name.toLowerCase().includes(searchLower) ||
-        c.club.description?.toLowerCase().includes(searchLower)
-      );
-    }
-
-    if (sort === "members") {
-      filtered.sort((a: any, b: any) => Number(b.memberCount) - Number(a.memberCount));
-    } else if (sort === "activity") {
-      filtered.sort((a: any, b: any) => Number(b.postCount) - Number(a.postCount));
-    } else {
-      filtered.sort((a: any, b: any) => new Date(b.club.createdAt).getTime() - new Date(a.club.createdAt).getTime());
-    }
-
-    res.json({ clubs: filtered });
+    res.json({ club, stats });
   } catch (error) {
-    console.error("Error browsing clubs:", error);
-    res.status(500).json({ message: "Failed to browse clubs" });
+    console.error("Error fetching club details:", error);
+    res.status(500).json({ message: "Failed to fetch club details" });
   }
 });
 
@@ -108,7 +142,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const { name, description, category, rules, isPublic } = req.body;
 
-    if (!name || !String(name).trim()) {
+    if (!name || !name.trim()) {
       return res.status(400).json({ message: "Club name is required" });
     }
 
@@ -116,7 +150,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       .insert(clubs)
       .values({
         creatorId: userId,
-        name: String(name).trim(),
+        name: name.trim(),
         description: description || null,
         category: category || "general",
         rules: rules || null,
@@ -137,7 +171,31 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// Join club (public = instant join; private = create join request)
+// Delete club (owner only)
+router.delete("/:id", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+    const userId = req.user!.id;
+
+    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
+    if (!club) return res.status(404).json({ message: "Club not found" });
+
+    if (club.creatorId !== userId) {
+      return res.status(403).json({ message: "Only the club owner can delete this club" });
+    }
+
+    await db.delete(clubs).where(eq(clubs.id, clubId));
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error deleting club:", error);
+    res.status(500).json({ message: "Failed to delete club" });
+  }
+});
+
+
+
+// Join club (public = immediate join, private = join request)
 router.post("/:id/join", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -156,81 +214,236 @@ router.post("/:id/join", requireAuth, async (req: Request, res: Response) => {
       return res.status(400).json({ message: "You are already a member" });
     }
 
-    // Private club → create join request
+    // Private clubs: create a join request instead of joining immediately
     if (!club.isPublic) {
-      const [existingReq] = await db
+      const [existingRequest] = await db
         .select()
         .from(clubJoinRequests)
-        .where(and(eq(clubJoinRequests.clubId, clubId), eq(clubJoinRequests.userId, userId)))
+        .where(and(eq(clubJoinRequests.clubId, clubId), eq(clubJoinRequests.userId, userId), eq(clubJoinRequests.status, "pending")))
         .limit(1);
 
-      if (existingReq && existingReq.status === "pending") {
-        return res.status(400).json({ message: "Join request already pending" });
+      if (existingRequest) {
+        return res.json({ status: "pending", request: existingRequest });
       }
 
-      // Upsert behavior: if declined/approved previously, create a new request row
+      const [request] = await db
+        .insert(clubJoinRequests)
+        .values({ clubId, userId, status: "pending" })
+        .returning();
+
+      // Notify owner about join request
       const [requester] = await db
-        .select({
-          username: users.username,
-          displayName: users.displayName,
-          avatar: users.avatar,
-        })
+        .select({ displayName: users.displayName, username: users.username, avatarUrl: users.avatarUrl })
         .from(users)
         .where(eq(users.id, userId))
         .limit(1);
 
-      const requesterName = requester?.displayName || requester?.username || "Someone";
-
-      const [joinRequest] = await db
-        .insert(clubJoinRequests)
-        .values({
-          clubId,
-          userId,
-          status: "pending",
-        })
-        .returning();
-
       await sendClubJoinRequestNotification(
         club.creatorId,
-        userId,
-        requesterName,
-        requester?.avatar || null,
+        requester?.displayName || requester?.username || "Someone",
+        requester?.avatarUrl || null,
         clubId,
         club.name
       );
 
-      return res.json({ status: "pending", joinRequest });
+      return res.json({ status: "pending", request });
     }
 
-    // Public club → join immediately
+    // Public clubs: join immediately
     const [membership] = await db
       .insert(clubMemberships)
-      .values({
-        clubId,
-        userId,
-        role: "member",
-      })
+      .values({ clubId, userId, role: "member" })
       .returning();
 
-    const [member] = await db
-      .select({
-        username: users.username,
-        displayName: users.displayName,
-        avatar: users.avatar,
-      })
+    const [memberUser] = await db
+      .select({ displayName: users.displayName, username: users.username, avatarUrl: users.avatarUrl })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
 
-    const memberName = member?.displayName || member?.username || "Someone";
-    await sendClubMemberJoinedNotification(club.creatorId, userId, memberName, member?.avatar || null, clubId, club.name);
+    await sendClubNewMemberNotification(
+      club.creatorId,
+      memberUser?.displayName || memberUser?.username || "Someone",
+      memberUser?.avatarUrl || null,
+      clubId,
+      club.name
+    );
 
-    return res.json({ membership, status: "joined" });
+    res.json({ status: "joined", membership });
   } catch (error) {
     console.error("Error joining club:", error);
     res.status(500).json({ message: "Failed to join club" });
   }
 });
+
+
+
+
+
+// Membership/join status for current user (member | pending | none)
+router.get("/:id/join-status", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+    const userId = req.user!.id;
+
+    const [membership] = await db
+      .select()
+      .from(clubMemberships)
+      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
+      .limit(1);
+
+    if (membership) {
+      return res.json({ status: "member" });
+    }
+
+    const [pending] = await db
+      .select()
+      .from(clubJoinRequests)
+      .where(and(eq(clubJoinRequests.clubId, clubId), eq(clubJoinRequests.userId, userId), eq(clubJoinRequests.status, "pending")))
+      .limit(1);
+
+    if (pending) {
+      return res.json({ status: "pending" });
+    }
+
+    return res.json({ status: "none" });
+  } catch (error) {
+    console.error("Error fetching join status:", error);
+    res.status(500).json({ message: "Failed to fetch join status" });
+  }
+});
+
+
+// Owner: list join requests
+router.get("/:id/join-requests", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+    const userId = req.user!.id;
+
+    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
+    if (!club) return res.status(404).json({ message: "Club not found" });
+    if (club.creatorId !== userId) return res.status(403).json({ message: "Only the club owner can view join requests" });
+
+    const requests = await db
+      .select({
+        request: clubJoinRequests,
+        user: {
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+          avatarUrl: users.avatarUrl,
+        },
+      })
+      .from(clubJoinRequests)
+      .innerJoin(users, eq(clubJoinRequests.userId, users.id))
+      .where(and(eq(clubJoinRequests.clubId, clubId), eq(clubJoinRequests.status, "pending")))
+      .orderBy(desc(clubJoinRequests.createdAt));
+
+    res.json({ requests });
+  } catch (error) {
+    console.error("Error fetching join requests:", error);
+    res.status(500).json({ message: "Failed to fetch join requests" });
+  }
+});
+
+// Owner: approve join request
+router.post("/:id/join-requests/:requestId/approve", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+    const requestId = req.params.requestId;
+    const ownerId = req.user!.id;
+
+    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
+    if (!club) return res.status(404).json({ message: "Club not found" });
+    if (club.creatorId !== ownerId) return res.status(403).json({ message: "Only the club owner can approve requests" });
+
+    const [request] = await db
+      .select()
+      .from(clubJoinRequests)
+      .where(and(eq(clubJoinRequests.id, requestId), eq(clubJoinRequests.clubId, clubId)))
+      .limit(1);
+
+    if (!request || request.status !== "pending") {
+      return res.status(404).json({ message: "Join request not found" });
+    }
+
+    // Create membership if it doesn't already exist
+    const [existingMembership] = await db
+      .select()
+      .from(clubMemberships)
+      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, request.userId)))
+      .limit(1);
+
+    const membership = existingMembership
+      ? existingMembership
+      : (
+          await db
+            .insert(clubMemberships)
+            .values({ clubId, userId: request.userId, role: "member" })
+            .returning()
+        )[0];
+
+    await db
+      .update(clubJoinRequests)
+      .set({ status: "approved", decidedAt: new Date(), decidedBy: ownerId })
+      .where(eq(clubJoinRequests.id, requestId));
+
+    await sendClubJoinApprovedNotification(request.userId, clubId, club.name);
+
+    const [memberUser] = await db
+      .select({ displayName: users.displayName, username: users.username, avatarUrl: users.avatarUrl })
+      .from(users)
+      .where(eq(users.id, request.userId))
+      .limit(1);
+
+    await sendClubNewMemberNotification(
+      club.creatorId,
+      memberUser?.displayName || memberUser?.username || "Someone",
+      memberUser?.avatarUrl || null,
+      clubId,
+      club.name
+    );
+
+    res.json({ membership });
+  } catch (error) {
+    console.error("Error approving join request:", error);
+    res.status(500).json({ message: "Failed to approve request" });
+  }
+});
+
+// Owner: decline join request
+router.post("/:id/join-requests/:requestId/decline", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+    const requestId = req.params.requestId;
+    const ownerId = req.user!.id;
+
+    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
+    if (!club) return res.status(404).json({ message: "Club not found" });
+    if (club.creatorId !== ownerId) return res.status(403).json({ message: "Only the club owner can decline requests" });
+
+    const [request] = await db
+      .select()
+      .from(clubJoinRequests)
+      .where(and(eq(clubJoinRequests.id, requestId), eq(clubJoinRequests.clubId, clubId)))
+      .limit(1);
+
+    if (!request || request.status !== "pending") {
+      return res.status(404).json({ message: "Join request not found" });
+    }
+
+    await db
+      .update(clubJoinRequests)
+      .set({ status: "declined", decidedAt: new Date(), decidedBy: ownerId })
+      .where(eq(clubJoinRequests.id, requestId));
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error declining join request:", error);
+    res.status(500).json({ message: "Failed to decline request" });
+  }
+});
+
 
 // Leave club
 router.post("/:id/leave", requireAuth, async (req: Request, res: Response) => {
@@ -252,7 +465,9 @@ router.post("/:id/leave", requireAuth, async (req: Request, res: Response) => {
       return res.status(400).json({ message: "Club owner cannot leave. Transfer ownership or delete the club." });
     }
 
-    await db.delete(clubMemberships).where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)));
+    await db
+      .delete(clubMemberships)
+      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)));
 
     res.json({ message: "Left club successfully" });
   } catch (error) {
@@ -261,159 +476,10 @@ router.post("/:id/leave", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// Current user's join request status (for private clubs)
-router.get("/:id/my-join-request", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const clubId = req.params.id;
-
-    const [reqRow] = await db
-      .select()
-      .from(clubJoinRequests)
-      .where(and(eq(clubJoinRequests.clubId, clubId), eq(clubJoinRequests.userId, userId)))
-      .orderBy(desc(clubJoinRequests.createdAt))
-      .limit(1);
-
-    res.json({ request: reqRow || null });
-  } catch (error) {
-    console.error("Error fetching join request:", error);
-    res.status(500).json({ message: "Failed to fetch join request" });
-  }
-});
-
-// Owner: list pending join requests
-router.get("/:id/join-requests", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const clubId = req.params.id;
-
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
-
-    if (club.creatorId !== userId) {
-      return res.status(403).json({ message: "Only the club owner can view join requests" });
-    }
-
-    const requests = await db
-      .select({
-        request: clubJoinRequests,
-        requester: {
-          id: users.id,
-          username: users.username,
-          displayName: users.displayName,
-          avatar: users.avatar,
-        },
-      })
-      .from(clubJoinRequests)
-      .innerJoin(users, eq(clubJoinRequests.userId, users.id))
-      .where(and(eq(clubJoinRequests.clubId, clubId), eq(clubJoinRequests.status, "pending")))
-      .orderBy(desc(clubJoinRequests.createdAt));
-
-    res.json({ requests });
-  } catch (error) {
-    console.error("Error fetching join requests:", error);
-    res.status(500).json({ message: "Failed to fetch join requests" });
-  }
-});
-
-// Owner: approve join request
-router.post("/:id/join-requests/:requestId/approve", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const ownerId = req.user!.id;
-    const clubId = req.params.id;
-    const requestId = req.params.requestId;
-
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
-    if (club.creatorId !== ownerId) return res.status(403).json({ message: "Only the club owner can approve requests" });
-
-    const [jr] = await db
-      .select()
-      .from(clubJoinRequests)
-      .where(and(eq(clubJoinRequests.id, requestId), eq(clubJoinRequests.clubId, clubId)))
-      .limit(1);
-
-    if (!jr) return res.status(404).json({ message: "Join request not found" });
-    if (jr.status !== "pending") return res.status(400).json({ message: "This request is not pending" });
-
-    // Create membership if missing
-    const [existingMembership] = await db
-      .select()
-      .from(clubMemberships)
-      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, jr.userId)))
-      .limit(1);
-
-    if (!existingMembership) {
-      await db.insert(clubMemberships).values({
-        clubId,
-        userId: jr.userId,
-        role: "member",
-      });
-    }
-
-    const [updated] = await db
-      .update(clubJoinRequests)
-      .set({ status: "approved" })
-      .where(eq(clubJoinRequests.id, requestId))
-      .returning();
-
-    const [member] = await db
-      .select({
-        username: users.username,
-        displayName: users.displayName,
-        avatar: users.avatar,
-      })
-      .from(users)
-      .where(eq(users.id, jr.userId))
-      .limit(1);
-
-    const memberName = member?.displayName || member?.username || "Someone";
-
-    await sendClubJoinApprovedNotification(jr.userId, clubId, club.name);
-    await sendClubMemberJoinedNotification(ownerId, jr.userId, memberName, member?.avatar || null, clubId, club.name);
-
-    res.json({ request: updated });
-  } catch (error) {
-    console.error("Error approving join request:", error);
-    res.status(500).json({ message: "Failed to approve join request" });
-  }
-});
-
-// Owner: decline join request
-router.post("/:id/join-requests/:requestId/decline", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const ownerId = req.user!.id;
-    const clubId = req.params.id;
-    const requestId = req.params.requestId;
-
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
-    if (club.creatorId !== ownerId) return res.status(403).json({ message: "Only the club owner can decline requests" });
-
-    const [jr] = await db
-      .select()
-      .from(clubJoinRequests)
-      .where(and(eq(clubJoinRequests.id, requestId), eq(clubJoinRequests.clubId, clubId)))
-      .limit(1);
-
-    if (!jr) return res.status(404).json({ message: "Join request not found" });
-    if (jr.status !== "pending") return res.status(400).json({ message: "This request is not pending" });
-
-    const [updated] = await db
-      .update(clubJoinRequests)
-      .set({ status: "declined" })
-      .where(eq(clubJoinRequests.id, requestId))
-      .returning();
-
-    res.json({ request: updated });
-  } catch (error) {
-    console.error("Error declining join request:", error);
-    res.status(500).json({ message: "Failed to decline join request" });
-  }
-});
+// Get user's clubs
 
 // Get club posts
-router.get("/:id/posts", async (req: Request, res: Response) => {
+router.get("/:id/posts", optionalAuth, async (req: Request, res: Response) => {
   try {
     const clubId = req.params.id;
     const { limit = 20, offset = 0 } = req.query;
@@ -425,35 +491,41 @@ router.get("/:id/posts", async (req: Request, res: Response) => {
           id: users.id,
           username: users.username,
           displayName: users.displayName,
+          avatarUrl: users.avatarUrl,
         },
       })
       .from(clubPosts)
       .innerJoin(users, eq(clubPosts.userId, users.id))
       .where(eq(clubPosts.clubId, clubId))
       .orderBy(desc(clubPosts.createdAt))
-      .limit(parseInt(limit as string))
-      .offset(parseInt(offset as string));
+      .limit(parseInt(limit as string, 10))
+      .offset(parseInt(offset as string, 10));
 
-    // If requester is authenticated, add likedByMe flags
-    const userId = (req as any).user?.id as string | undefined;
-    if (userId && posts.length) {
-      const postIds = posts.map((p: any) => p.post.id);
-      const likedRows = await db
-        .select({ postId: clubPostLikes.postId })
-        .from(clubPostLikes)
-        .where(and(eq(clubPostLikes.userId, userId), inArray(clubPostLikes.postId, postIds)));
-
-      const likedSet = new Set(likedRows.map((r: any) => r.postId));
-      const enriched = posts.map((p: any) => ({ ...p, likedByMe: likedSet.has(p.post.id) }));
-      return res.json({ posts: enriched });
+    const me = req.user?.id;
+    if (!me || posts.length === 0) {
+      return res.json({
+        posts: posts.map((p) => ({ ...p, likedByMe: false })),
+      });
     }
 
-    res.json({ posts });
+    const postIds = posts.map((p) => p.post.id);
+    const liked = await db
+      .select({ clubPostId: clubPostLikes.clubPostId })
+      .from(clubPostLikes)
+      .where(and(eq(clubPostLikes.userId, me), inArray(clubPostLikes.clubPostId, postIds)));
+
+    const likedSet = new Set(liked.map((l) => l.clubPostId));
+
+    res.json({
+      posts: posts.map((p) => ({ ...p, likedByMe: likedSet.has(p.post.id) })),
+    });
   } catch (error) {
     console.error("Error fetching club posts:", error);
     res.status(500).json({ message: "Failed to fetch posts" });
   }
 });
+
+
 
 // Create club post
 router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
@@ -462,7 +534,7 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
     const clubId = req.params.id;
     const { content, recipeId } = req.body;
 
-    if (!content || !String(content).trim()) {
+    if (!content || !content.trim()) {
       return res.status(400).json({ message: "Post content is required" });
     }
 
@@ -481,7 +553,7 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
       .values({
         clubId,
         userId,
-        content: String(content).trim(),
+        content: content.trim(),
         recipeId: recipeId || null,
       })
       .returning();
@@ -493,7 +565,126 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// Update club post (author only)
+// Edit club post (author or owner)
+router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+    const postId = req.params.postId;
+    const userId = req.user!.id;
+    const { content } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: "Post content is required" });
+    }
+
+    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
+    if (!club) return res.status(404).json({ message: "Club not found" });
+
+    const [post] = await db.select().from(clubPosts).where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId))).limit(1);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    // Author OR club owner can edit
+    if (post.userId !== userId && club.creatorId !== userId) {
+      return res.status(403).json({ message: "Not allowed to edit this post" });
+    }
+
+    const [updated] = await db
+      .update(clubPosts)
+      .set({ content: content.trim() })
+      .where(eq(clubPosts.id, postId))
+      .returning();
+
+    res.json({ post: updated });
+  } catch (error) {
+    console.error("Error editing club post:", error);
+    res.status(500).json({ message: "Failed to edit post" });
+  }
+});
+
+// Delete club post (author or owner)
+router.delete("/:id/posts/:postId", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+    const postId = req.params.postId;
+    const userId = req.user!.id;
+
+    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
+    if (!club) return res.status(404).json({ message: "Club not found" });
+
+    const [post] = await db.select().from(clubPosts).where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId))).limit(1);
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    // Author OR club owner can delete
+    if (post.userId !== userId && club.creatorId !== userId) {
+      return res.status(403).json({ message: "Not allowed to delete this post" });
+    }
+
+    await db.delete(clubPosts).where(eq(clubPosts.id, postId));
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error deleting club post:", error);
+    res.status(500).json({ message: "Failed to delete post" });
+  }
+});
+
+// Like/unlike a club post (toggle)
+router.post("/:id/posts/:postId/like", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+    const postId = req.params.postId;
+    const userId = req.user!.id;
+
+    const [post] = await db
+      .select()
+      .from(clubPosts)
+      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
+      .limit(1);
+
+    if (!post) return res.status(404).json({ message: "Post not found" });
+
+    const [existing] = await db
+      .select()
+      .from(clubPostLikes)
+      .where(and(eq(clubPostLikes.clubPostId, postId), eq(clubPostLikes.userId, userId)))
+      .limit(1);
+
+    if (existing) {
+      await db.delete(clubPostLikes).where(eq(clubPostLikes.id, existing.id));
+      await db.update(clubPosts).set({ likesCount: sql`${clubPosts.likesCount} - 1` }).where(eq(clubPosts.id, postId));
+      return res.json({ liked: false });
+    }
+
+    await db.insert(clubPostLikes).values({ clubPostId: postId, userId });
+    await db.update(clubPosts).set({ likesCount: sql`${clubPosts.likesCount} + 1` }).where(eq(clubPosts.id, postId));
+
+    const [liker] = await db
+      .select({ displayName: users.displayName, username: users.username, avatarUrl: users.avatarUrl })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    await sendClubPostLikeNotification(
+      post.userId,
+      userId,
+      liker?.displayName || liker?.username || "Someone",
+      liker?.avatarUrl || null,
+      clubId,
+      postId
+    );
+
+    res.json({ liked: true });
+  } catch (error) {
+    console.error("Error toggling like:", error);
+    res.status(500).json({ message: "Failed to like post" });
+  }
+});
+
+
+
+
+
+// Update club post
 router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -501,7 +692,7 @@ router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Respon
     const postId = req.params.postId;
     const { content } = req.body;
 
-    if (!content || !String(content).trim()) {
+    if (!content || !content.trim()) {
       return res.status(400).json({ message: "Post content is required" });
     }
 
@@ -521,7 +712,7 @@ router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Respon
 
     const [post] = await db
       .update(clubPosts)
-      .set({ content: String(content).trim() })
+      .set({ content: content.trim() })
       .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
       .returning();
 
@@ -529,108 +720,6 @@ router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Respon
   } catch (error) {
     console.error("Error updating post:", error);
     return res.status(500).json({ message: "Failed to update post" });
-  }
-});
-
-// Delete club post (author OR club owner)
-router.delete("/:id/posts/:postId", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const clubId = req.params.id;
-    const postId = req.params.postId;
-
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
-
-    const [existingPost] = await db
-      .select()
-      .from(clubPosts)
-      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
-      .limit(1);
-
-    if (!existingPost) return res.status(404).json({ message: "Post not found" });
-
-    const isOwner = club.creatorId === userId;
-    const isAuthor = existingPost.userId === userId;
-
-    if (!isOwner && !isAuthor) {
-      return res.status(403).json({ message: "You don't have permission to delete this post" });
-    }
-
-    await db.delete(clubPosts).where(eq(clubPosts.id, postId));
-    // Clean up likes
-    await db.delete(clubPostLikes).where(eq(clubPostLikes.postId, postId));
-    res.json({ message: "Post deleted" });
-  } catch (error) {
-    console.error("Error deleting post:", error);
-    res.status(500).json({ message: "Failed to delete post" });
-  }
-});
-
-// Like/unlike club post (member only; toggles)
-router.post("/:id/posts/:postId/like", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const clubId = req.params.id;
-    const postId = req.params.postId;
-
-    const [membership] = await db
-      .select()
-      .from(clubMemberships)
-      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
-      .limit(1);
-
-    if (!membership) {
-      return res.status(403).json({ message: "You must be a member to like posts" });
-    }
-
-    const [postRow] = await db
-      .select()
-      .from(clubPosts)
-      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
-      .limit(1);
-
-    if (!postRow) return res.status(404).json({ message: "Post not found" });
-
-    const [existing] = await db
-      .select()
-      .from(clubPostLikes)
-      .where(and(eq(clubPostLikes.postId, postId), eq(clubPostLikes.userId, userId)))
-      .limit(1);
-
-    if (existing) {
-      await db.delete(clubPostLikes).where(eq(clubPostLikes.id, existing.id));
-      const newCount = Math.max(0, Number(postRow.likesCount || 0) - 1);
-      await db.update(clubPosts).set({ likesCount: newCount }).where(eq(clubPosts.id, postId));
-      return res.json({ liked: false, likesCount: newCount });
-    }
-
-    await db.insert(clubPostLikes).values({
-      clubId,
-      postId,
-      userId,
-    });
-
-    const newCount = Number(postRow.likesCount || 0) + 1;
-    await db.update(clubPosts).set({ likesCount: newCount }).where(eq(clubPosts.id, postId));
-
-    const [liker] = await db
-      .select({
-        username: users.username,
-        displayName: users.displayName,
-        avatar: users.avatar,
-      })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
-
-    const likerName = liker?.displayName || liker?.username || "Someone";
-    await sendClubPostLikeNotification(postRow.userId, userId, likerName, liker?.avatar || null, clubId, postId);
-
-    return res.json({ liked: true, likesCount: newCount });
-  } catch (error) {
-    console.error("Error liking club post:", error);
-    res.status(500).json({ message: "Failed to like post" });
   }
 });
 
@@ -872,47 +961,5 @@ router.get("/my-badges", requireAuth, async (req: Request, res: Response) => {
     res.status(500).json({ message: "Failed to fetch badges" });
   }
 });
-
-// Get club details
-router.get("/:id", async (req: Request, res: Response) => {
-  try {
-    const clubId = req.params.id;
-
-    const [club] = await db
-      .select({
-        club: clubs,
-        creator: {
-          id: users.id,
-          username: users.username,
-          displayName: users.displayName,
-        },
-      })
-      .from(clubs)
-      .innerJoin(users, eq(clubs.creatorId, users.id))
-      .where(eq(clubs.id, clubId))
-      .limit(1);
-
-    if (!club) {
-      return res.status(404).json({ message: "Club not found" });
-    }
-
-    const [stats] = await db
-      .select({
-        memberCount: sql`count(distinct ${clubMemberships.id})`,
-        postCount: sql`count(distinct ${clubPosts.id})`,
-      })
-      .from(clubs)
-      .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
-      .leftJoin(clubPosts, eq(clubs.id, clubPosts.clubId))
-      .where(eq(clubs.id, clubId))
-      .groupBy(clubs.id);
-
-    res.json({ club, stats });
-  } catch (error) {
-    console.error("Error fetching club details:", error);
-    res.status(500).json({ message: "Failed to fetch club details" });
-  }
-});
-
 
 export default router;
