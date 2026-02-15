@@ -1,19 +1,55 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams, Link } from "wouter";
+import { useLocation, useParams, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
-import { Users, MessageSquare, ArrowLeft, Send, Calendar, Crown, Pencil, Save, X, Heart, Trash2, UserPlus, Check, XCircle, Shield } from "lucide-react";
+import {
+  Users,
+  MessageSquare,
+  ArrowLeft,
+  Send,
+  Calendar,
+  Crown,
+  Pencil,
+  Save,
+  X,
+  Trash2,
+  Lock,
+  Unlock,
+  UserPlus,
+  Check,
+  Ban,
+} from "lucide-react";
 
 // Server /api/clubs/:id returns: { club: { club: ClubRow, creator: Creator }, stats: Stats }
 type ClubRow = {
   id: string;
-  creatorId: string;
   name: string;
   description: string | null;
   category: string;
@@ -21,6 +57,7 @@ type ClubRow = {
   isPublic: boolean;
   rules: string | null;
   createdAt: string;
+  creatorId?: string; // some endpoints return raw club row
 };
 
 type Creator = {
@@ -42,6 +79,20 @@ type ClubDetailResponse = {
   stats: Stats;
 };
 
+type MembershipRow = {
+  id: string;
+  clubId: string;
+  userId: string;
+  role: string;
+  joinedAt: string;
+};
+
+type MembershipResponse = {
+  membership: MembershipRow | null;
+  isOwner: boolean;
+  isPublic: boolean;
+};
+
 type Post = {
   post: {
     id: string;
@@ -58,12 +109,21 @@ type Post = {
     username: string;
     displayName: string | null;
   };
-  likedByMe?: boolean;
+};
+
+type JoinRequest = {
+  membership: MembershipRow;
+  user: {
+    id: string;
+    username: string;
+    displayName: string | null;
+  };
 };
 
 export default function ClubDetailPage() {
   const { id } = useParams();
   const clubId = String(id || "");
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useUser();
@@ -71,6 +131,13 @@ export default function ClubDetailPage() {
   const [newPostContent, setNewPostContent] = useState("");
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostContent, setEditPostContent] = useState("");
+
+  // Club edit modal state (owner only)
+  const [editClubOpen, setEditClubOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editRules, setEditRules] = useState("");
+  const [editIsPublic, setEditIsPublic] = useState(true);
 
   // Fetch club details
   const { data: clubData, isLoading: clubLoading } = useQuery<ClubDetailResponse>({
@@ -84,47 +151,36 @@ export default function ClubDetailPage() {
     enabled: !!clubId,
   });
 
-  // Check membership status
-  const { data: myClubsData } = useQuery<{ clubs: any[] }>({
-    queryKey: ["/api/clubs/my-clubs"],
-    enabled: !!user,
+  // Membership status (fixes the "no post box" issue even if /my-clubs is broken)
+  const { data: membershipData } = useQuery<MembershipResponse>({
+    queryKey: [`/api/clubs/${clubId}/membership`],
+    enabled: !!clubId && !!user,
   });
 
-  const myMembership = useMemo(() => {
-    const list = myClubsData?.clubs;
-    if (!Array.isArray(list) || !clubId) return null;
-
-    // /api/clubs/my-clubs returns rows like: { club: ClubRow, membership: {...}, memberCount: ... }
-    return (
-      list.find((c: any) => c?.club?.id === clubId || c?.clubId === clubId || c?.id === clubId) || null
-    );
-  }, [myClubsData?.clubs, clubId]);
-
-  const isMember = !!myMembership;
-
+  const membershipRole = membershipData?.membership?.role || null;
+  const isPending = membershipRole === "pending";
+  const isMember = membershipRole === "member" || membershipRole === "owner";
   const isOwner = useMemo(() => {
-    const role = (myMembership as any)?.membership?.role;
-    if (role === "owner") return true;
-    // extra safety: if clubData loaded, creator can always manage
-    const creatorId = clubData?.club?.club?.creatorId;
-    return !!creatorId && creatorId === user?.id;
-  }, [myMembership, clubData?.club?.club?.creatorId, user?.id]);
+    const creatorId = clubData?.club?.creator?.id;
+    if (!user?.id) return false;
+    return membershipData?.isOwner === true || creatorId === user.id || membershipRole === "owner";
+  }, [clubData?.club?.creator?.id, membershipData?.isOwner, membershipRole, user?.id]);
 
+  const club = clubData?.club?.club;
+  const creator = clubData?.club?.creator;
+  const stats = clubData?.stats;
 
-  // If club is private, check if you already have a pending join request
-  const { data: myJoinRequestData } = useQuery<{ request: any | null }>({
-    queryKey: [`/api/clubs/${clubId}/my-join-request`],
-    enabled: !!user && !!clubId,
-  });
+  // Seed edit dialog when opening
+  const openEditDialog = () => {
+    if (!club) return;
+    setEditName(club.name || "");
+    setEditDescription(club.description || "");
+    setEditRules(club.rules || "");
+    setEditIsPublic(!!club.isPublic);
+    setEditClubOpen(true);
+  };
 
-  // Owner-only: pending join requests
-  const { data: joinRequestsData } = useQuery<{ requests: any[] }>({
-    queryKey: [`/api/clubs/${clubId}/join-requests`],
-    enabled: !!user && !!clubId && !!clubData && isOwner,
-  });
-
-
-  // Join club mutation
+  // Join club mutation (public joins immediately; private creates a pending request)
   const joinClubMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/clubs/${clubId}/join`, {
@@ -137,19 +193,19 @@ export default function ClubDetailPage() {
       }
       return res.json();
     },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/membership`] });
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/my-join-request`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
 
-      if (data?.status === "pending") {
-        toast({ title: "Request sent", description: "The club owner will review your request shortly." });
-      } else {
+      if (club?.isPublic) {
         toast({ title: "✓ Joined club", description: "Welcome to the club!" });
+      } else {
+        toast({ title: "Request sent", description: "The club owner will review your request." });
       }
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to join club", description: error.message, variant: "destructive" });
+      toast({ title: "Failed", description: error.message, variant: "destructive" });
     },
   });
 
@@ -160,53 +216,94 @@ export default function ClubDetailPage() {
         method: "POST",
         credentials: "include",
       });
-
-
-  // Owner: approve/decline join requests
-  const approveJoinRequestMutation = useMutation({
-    mutationFn: async (requestId: string) => {
-      const res = await fetch(`/api/clubs/${clubId}/join-requests/${requestId}/approve`, {
-        method: "POST",
-        credentials: "include",
-      });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to approve request");
+        throw new Error(error.message || "Failed to leave club");
       }
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/join-requests`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/membership`] });
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      toast({ title: "Approved", description: "User has been added to the club." });
+      toast({ title: "Left club", description: "You have left the club." });
     },
     onError: (error: Error) => {
-      toast({ title: "Approval failed", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to leave club", description: error.message, variant: "destructive" });
     },
   });
 
-  const declineJoinRequestMutation = useMutation({
-    mutationFn: async (requestId: string) => {
-      const res = await fetch(`/api/clubs/${clubId}/join-requests/${requestId}/decline`, {
+  // Create post mutation
+  const createPostMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/clubs/${clubId}/posts`, {
         method: "POST",
         credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: newPostContent }),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to decline request");
+        throw new Error(error.message || "Failed to create post");
       }
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/join-requests`] });
-      toast({ title: "Declined", description: "Request declined." });
+      setNewPostContent("");
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
+      toast({ title: "Posted", description: "Your post is live." });
     },
     onError: (error: Error) => {
-      toast({ title: "Decline failed", description: error.message, variant: "destructive" });
+      toast({ title: "Post failed", description: error.message, variant: "destructive" });
     },
   });
 
-  // Delete post (author or owner)
+  const handleCreatePost = () => {
+    if (!newPostContent.trim()) return;
+    createPostMutation.mutate();
+  };
+
+  // Update post mutation
+  const updatePostMutation = useMutation({
+    mutationFn: async ({ postId, content }: { postId: string; content: string }) => {
+      const res = await fetch(`/api/clubs/${clubId}/posts/${postId}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to update post");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      setEditingPostId(null);
+      setEditPostContent("");
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
+      toast({ title: "Saved", description: "Your changes were saved." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Save failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const startEditingPost = (p: Post) => {
+    setEditingPostId(p.post.id);
+    setEditPostContent(p.post.content);
+  };
+
+  const cancelEditingPost = () => {
+    setEditingPostId(null);
+    setEditPostContent("");
+  };
+
+  const saveEditedPost = () => {
+    if (!editingPostId) return;
+    updatePostMutation.mutate({ postId: editingPostId, content: editPostContent });
+  };
+
+  // Delete post (owner or author)
   const deletePostMutation = useMutation({
     mutationFn: async (postId: string) => {
       const res = await fetch(`/api/clubs/${clubId}/posts/${postId}`, {
@@ -221,432 +318,418 @@ export default function ClubDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      toast({ title: "Post deleted" });
+      toast({ title: "Deleted", description: "Post removed." });
     },
     onError: (error: Error) => {
       toast({ title: "Delete failed", description: error.message, variant: "destructive" });
     },
   });
 
-  // Like/unlike post
-  const toggleLikeMutation = useMutation({
-    mutationFn: async (postId: string) => {
-      const res = await fetch(`/api/clubs/${clubId}/posts/${postId}/like`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to like post");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Like failed", description: error.message, variant: "destructive" });
-    },
-  });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to leave club");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      toast({ title: "✓ Left club" });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to leave club", description: error.message, variant: "destructive" });
-    },
-  });
-
-  // Create post mutation
-  const createPostMutation = useMutation({
-    mutationFn: async (content: string) => {
-      const res = await fetch(`/api/clubs/${clubId}/posts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ content }),
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to create post");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      toast({ title: "✓ Post created" });
-      setNewPostContent("");
-    },
-    onError: (error: Error) => {
-      toast({ title: "Failed to create post", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const handleCreatePost = () => {
-    if (!newPostContent.trim()) {
-      toast({ title: "Content required", description: "Please enter post content", variant: "destructive" });
-      return;
-    }
-    createPostMutation.mutate(newPostContent);
-  };
-
-
-  const updatePostMutation = useMutation({
-    mutationFn: async ({ postId, content }: { postId: string; content: string }) => {
-      const res = await fetch(`/api/clubs/${clubId}/posts/${postId}`, {
+  // Edit club mutation (owner)
+  const updateClubMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/clubs/${clubId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ content }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: editName,
+          description: editDescription,
+          rules: editRules,
+          isPublic: editIsPublic,
+        }),
       });
-
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to update post");
+        throw new Error(error.message || "Failed to update club");
       }
-
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
-      toast({ title: "✓ Post saved" });
-      setEditingPostId(null);
-      setEditPostContent("");
+      setEditClubOpen(false);
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/membership`] });
+      toast({ title: "Updated", description: "Club updated successfully." });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to save post", description: error.message, variant: "destructive" });
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
     },
   });
 
-  const startEditingPost = (post: Post) => {
-    setEditingPostId(post.post.id);
-    setEditPostContent(post.post.content);
-  };
+  // Delete club mutation (owner)
+  const deleteClubMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/clubs/${clubId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to delete club");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Club deleted", description: "Your club has been deleted." });
+      queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
+      setLocation("/clubs");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+    },
+  });
 
-  const cancelEditingPost = () => {
-    setEditingPostId(null);
-    setEditPostContent("");
-  };
+  // Join requests (owner only; private club)
+  const { data: joinRequestsData } = useQuery<{ requests: JoinRequest[] }>({
+    queryKey: [`/api/clubs/${clubId}/join-requests`],
+    enabled: !!clubId && !!user && !!isOwner && club?.isPublic === false,
+  });
 
-  const saveEditedPost = () => {
-    if (!editingPostId) return;
+  const approveJoinMutation = useMutation({
+    mutationFn: async (membershipId: string) => {
+      const res = await fetch(`/api/clubs/${clubId}/join-requests/${membershipId}/approve`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to approve request");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/join-requests`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
+      toast({ title: "Approved", description: "Member approved." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Approve failed", description: error.message, variant: "destructive" });
+    },
+  });
 
-    if (!editPostContent.trim()) {
-      toast({ title: "Content required", description: "Please enter post content", variant: "destructive" });
-      return;
-    }
+  const denyJoinMutation = useMutation({
+    mutationFn: async (membershipId: string) => {
+      const res = await fetch(`/api/clubs/${clubId}/join-requests/${membershipId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to deny request");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/join-requests`] });
+      toast({ title: "Denied", description: "Request denied." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Deny failed", description: error.message, variant: "destructive" });
+    },
+  });
 
-    updatePostMutation.mutate({ postId: editingPostId, content: editPostContent.trim() });
-  };
+  const pageTitle = club?.name || "Club";
+
+  const canPost = !!user && isMember && !isPending;
 
   if (clubLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
-          </div>
-        </div>
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <p className="text-muted-foreground">Loading club...</p>
       </div>
     );
   }
-
-  // Normalize data shape (defensive)
-  const club = clubData?.club?.club;
-  const creator = clubData?.club?.creator;
-  const stats = clubData?.stats;
 
   if (!club || !creator || !stats) {
     return (
-      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
-        <div className="max-w-4xl mx-auto">
-          <Card>
-            <CardContent className="py-12 text-center">
-              <p className="text-slate-600">Club not found</p>
-              <Link href="/clubs">
-                <Button className="mt-4">
-                  <ArrowLeft className="h-4 w-4 mr-2" />
-                  Back to Clubs
-                </Button>
-              </Link>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    );
-  }
-
-  const posts = postsData?.posts || [];
-
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
-      <div className="max-w-4xl mx-auto space-y-6">
-        {/* Back Button */}
+      <div className="max-w-3xl mx-auto px-4 py-8">
+        <p className="text-muted-foreground">Club not found.</p>
         <Link href="/clubs">
-          <Button variant="ghost" className="mb-4">
+          <Button variant="outline" className="mt-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Clubs
           </Button>
         </Link>
+      </div>
+    );
+  }
 
-        {/* Club Header */}
-        <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
-          <CardHeader className="space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-2">
-                  <Crown className="h-5 w-5 text-purple-600" />
-                  <CardTitle className="text-2xl font-bold">{club.name}</CardTitle>
-                </div>
+  return (
+    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <Link href="/clubs">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Back
+            </Button>
+          </Link>
 
-                {club.description ? (
-                  <CardDescription className="text-base">{club.description}</CardDescription>
-                ) : (
-                  <CardDescription className="text-base text-slate-500">No description</CardDescription>
-                )}
-
-                <div className="flex items-center gap-2 mt-3">
-                  <Badge variant="secondary" className="capitalize">
-                    {club.category}
-                  </Badge>
-                  {club.isPublic ? (
-                    <Badge variant="outline">Public</Badge>
-                  ) : (
-                    <Badge variant="outline">Private</Badge>
-                  )}
-                </div>
-              </div>
-
-              <div className="text-right">
-                <div className="flex items-center justify-end gap-4 text-sm text-slate-600">
-                  <div className="flex items-center gap-1">
-                    <Users className="h-4 w-4" />
-                    {stats.memberCount}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <MessageSquare className="h-4 w-4" />
-                    {stats.postCount}
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-end gap-1 text-xs text-slate-500 mt-2">
-                  <Calendar className="h-3 w-3" />
-                  {new Date(club.createdAt).toLocaleDateString()}
-                </div>
-              </div>
-            </div>
-
-            {/* Creator & Join/Leave */}
-            <div className="flex items-center justify-between gap-4 pt-2 border-t">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-9 w-9">
-                  <AvatarFallback>
-                    {(creator.displayName || creator.username || "U").slice(0, 1).toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="leading-tight">
-                  <div className="text-sm font-medium">
-                    {creator.displayName || creator.username}
-                  </div>
-                  <div className="text-xs text-slate-500">@{creator.username}</div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {!user ? (
-                  <Link href="/login">
-                    <Button>Log in to Join</Button>
-                  </Link>
-                ) : isMember ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => leaveClubMutation.mutate()}
-                    disabled={leaveClubMutation.isPending}
-                  >
-                    {leaveClubMutation.isPending ? "Leaving..." : "Leave Club"}
-                  </Button>
-                ) : (
-                  <Button onClick={() => joinClubMutation.mutate()} disabled={joinClubMutation.isPending}>
-                    {joinClubMutation.isPending ? "Joining..." : "Join Club"}
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-        </Card>
-
-        {/* Rules */}
-        {club.rules ? (
-          <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">Club Rules</CardTitle>
-              <CardDescription className="whitespace-pre-wrap">{club.rules}</CardDescription>
-            </CardHeader>
-          </Card>
-        ) : null}
-
-        
-        {/* Owner Panel: Join Requests */}
-        {user && isOwner && club && !club.isPublic && (
-          <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Shield className="h-5 w-5 text-purple-600" />
-                Owner Controls
-              </CardTitle>
-              <CardDescription>Approve or decline requests to join your private club.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {joinRequestsData?.requests?.length ? (
-                <div className="space-y-3">
-                  {joinRequestsData.requests.map((r: any) => (
-                    <div key={r.request.id} className="flex items-center justify-between rounded-lg border bg-white p-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback>{(r.requester?.displayName || r.requester?.username || "?").slice(0, 1).toUpperCase()}</AvatarFallback>
-                        </Avatar>
-                        <div className="leading-tight">
-                          <div className="font-medium text-slate-900">
-                            {r.requester?.displayName || r.requester?.username || "Unknown"}
-                          </div>
-                          <div className="text-xs text-slate-500">Requested {new Date(r.request.createdAt).toLocaleString()}</div>
-                        </div>
-                      </div>
-
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          onClick={() => approveJoinRequestMutation.mutate(r.request.id)}
-                          disabled={approveJoinRequestMutation.isPending}
-                        >
-                          <Check className="h-4 w-4 mr-1" />
-                          Approve
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => declineJoinRequestMutation.mutate(r.request.id)}
-                          disabled={declineJoinRequestMutation.isPending}
-                        >
-                          <XCircle className="h-4 w-4 mr-1" />
-                          Decline
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold">{pageTitle}</h1>
+              <Badge variant="secondary" className="capitalize">
+                {club.category}
+              </Badge>
+              {club.isPublic ? (
+                <Badge variant="outline" className="gap-1">
+                  <Unlock className="h-3.5 w-3.5" />
+                  Public
+                </Badge>
               ) : (
-                <div className="text-sm text-slate-600">No pending join requests.</div>
+                <Badge variant="outline" className="gap-1">
+                  <Lock className="h-3.5 w-3.5" />
+                  Private
+                </Badge>
               )}
-            </CardContent>
-          </Card>
-        )}
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Created by {creator.displayName || creator.username}
+            </p>
+          </div>
+        </div>
 
-{/* New Post */}
-        {user && isMember ? (
-          <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">Create a Post</CardTitle>
-              <CardDescription>Share something with the club</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <Textarea
-                value={newPostContent}
-                onChange={(e) => setNewPostContent(e.target.value)}
-                placeholder="Write your post..."
-                rows={4}
-              />
-              <div className="flex justify-end">
-                <Button onClick={handleCreatePost} disabled={createPostMutation.isPending}>
-                  <Send className="h-4 w-4 mr-2" />
-                  {createPostMutation.isPending ? "Posting..." : "Post"}
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {user ? (
+            <>
+              {isMember ? (
+                <Button variant="outline" onClick={() => leaveClubMutation.mutate()} disabled={leaveClubMutation.isPending}>
+                  Leave
                 </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ) : null}
+              ) : isPending ? (
+                <Button variant="outline" disabled>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Request Pending
+                </Button>
+              ) : (
+                <Button onClick={() => joinClubMutation.mutate()} disabled={joinClubMutation.isPending}>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  {club.isPublic ? "Join" : "Request to Join"}
+                </Button>
+              )}
 
-        {/* Posts */}
+              {isOwner ? (
+                <>
+                  <Button variant="outline" onClick={openEditDialog}>
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Edit Club
+                  </Button>
+
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive">
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete Club
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete this club?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This will permanently delete the club, posts, and memberships. This cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => deleteClubMutation.mutate()} className="bg-red-600 hover:bg-red-700">
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </>
+              ) : null}
+            </>
+          ) : (
+            <Badge variant="outline">Log in to join</Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
+              <Users className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Members</p>
+              <p className="text-xl font-semibold">{stats.memberCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+          <CardContent className="p-4 flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-pink-600 to-rose-500 flex items-center justify-center">
+              <MessageSquare className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">Posts</p>
+              <p className="text-xl font-semibold">{stats.postCount}</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Rules */}
+      {club.rules ? (
         <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Club Posts</CardTitle>
-            <CardDescription>
-              {postsLoading ? "Loading posts..." : `${posts.length} post${posts.length === 1 ? "" : "s"}`}
-            </CardDescription>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Calendar className="h-5 w-5 text-purple-600" />
+              Club Rules
+            </CardTitle>
+            <CardDescription>{club.rules}</CardDescription>
           </CardHeader>
+        </Card>
+      ) : null}
 
-          <CardContent className="space-y-4">
-            {!postsLoading && posts.length === 0 ? (
-              <div className="text-center text-slate-500 py-10">No posts yet.</div>
+      {/* Private club pending notice */}
+      {user && isPending ? (
+        <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+          <CardContent className="p-4 flex items-start gap-3">
+            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
+              <Lock className="h-5 w-5 text-white" />
+            </div>
+            <div>
+              <p className="font-medium">Request pending</p>
+              <p className="text-sm text-muted-foreground">
+                You can’t post until the club owner approves your join request.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Owner: Pending join requests (private only) */}
+      {isOwner && club.isPublic === false ? (
+        <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-lg flex items-center gap-2">
+              <Crown className="h-5 w-5 text-amber-500" />
+              Join Requests
+            </CardTitle>
+            <CardDescription>Approve or deny membership requests for this private club.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {joinRequestsData?.requests?.length ? (
+              joinRequestsData.requests.map((r) => (
+                <div key={r.membership.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border bg-white/70">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{r.user.displayName || r.user.username}</p>
+                    <p className="text-xs text-muted-foreground truncate">@{r.user.username}</p>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => approveJoinMutation.mutate(r.membership.id)} disabled={approveJoinMutation.isPending}>
+                      <Check className="h-4 w-4 mr-1" />
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => denyJoinMutation.mutate(r.membership.id)}
+                      disabled={denyJoinMutation.isPending}
+                    >
+                      <Ban className="h-4 w-4 mr-1" />
+                      Deny
+                    </Button>
+                  </div>
+                </div>
+              ))
             ) : (
-              posts.map((p) => (
-                <Card key={p.post.id} className="border border-slate-200">
+              <p className="text-sm text-muted-foreground">No pending requests.</p>
+            )}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* New Post */}
+      {user && isMember ? (
+        <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+          <CardHeader>
+            <CardTitle className="text-lg">Create a Post</CardTitle>
+            <CardDescription>Share something with the club</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Textarea
+              value={newPostContent}
+              onChange={(e) => setNewPostContent(e.target.value)}
+              placeholder={isPending ? "Awaiting approval..." : "Write your post..."}
+              rows={4}
+              disabled={!canPost}
+            />
+            <div className="flex justify-end">
+              <Button onClick={handleCreatePost} disabled={!canPost || createPostMutation.isPending}>
+                <Send className="h-4 w-4 mr-2" />
+                {createPostMutation.isPending ? "Posting..." : "Post"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {/* Posts */}
+      <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+        <CardHeader>
+          <CardTitle className="text-lg">Posts</CardTitle>
+          <CardDescription>Latest updates from members</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {postsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading posts...</p>
+          ) : !postsData?.posts?.length ? (
+            <p className="text-sm text-muted-foreground">No posts yet.</p>
+          ) : (
+            postsData.posts.map((p) => {
+              const isCreatorPost = p.author.id === creator.id;
+              const canEdit = user?.id === p.post.userId;
+              const canDelete = user?.id === p.post.userId || isOwner;
+
+              return (
+                <Card key={p.post.id} className="border bg-white/70">
                   <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <Avatar className="h-9 w-9">
                           <AvatarFallback>
-                            {(p.author.displayName || p.author.username || "U").slice(0, 1).toUpperCase()}
+                            {(p.author.displayName || p.author.username || "?").slice(0, 1).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
-                        <div className="leading-tight">
-                          <div className="text-sm font-medium flex flex-wrap items-center gap-2">
-                            <span>{p.author.displayName || p.author.username}</span>
-                            {clubData?.club?.club?.creatorId === p.author.id ? (
-                              <Badge className="bg-gradient-to-r from-amber-500 to-yellow-400 text-black border-0">
-                                <Crown className="h-3 w-3 mr-1" />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-medium truncate">{p.author.displayName || p.author.username}</p>
+                            {isCreatorPost ? (
+                              <Badge className="gap-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
+                                <Crown className="h-3.5 w-3.5" />
                                 Creator
                               </Badge>
                             ) : null}
                           </div>
-                          <div className="text-xs text-slate-500">{new Date(p.post.createdAt).toLocaleString()}</div>
+                          <p className="text-xs text-muted-foreground truncate">@{p.author.username}</p>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => toggleLikeMutation.mutate(p.post.id)}
-                          disabled={!user || !isMember || toggleLikeMutation.isPending}
-                          className="rounded-full"
-                        >
-                          <Heart className={`h-4 w-4 mr-1 ${p.likedByMe ? "text-pink-600" : "text-slate-600"}`} />
-                          <span className="text-sm">{p.post.likesCount ?? 0}</span>
-                        </Button>
-
-                        {(isOwner || user?.id === p.post.userId) && (
+                        {canDelete ? (
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => deletePostMutation.mutate(p.post.id)}
                             disabled={deletePostMutation.isPending}
-                            className="rounded-full"
+                            title={isOwner && user?.id !== p.post.userId ? "Remove post (owner)" : "Delete post"}
                           >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Delete
+                            <Trash2 className="h-4 w-4 text-red-600" />
                           </Button>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="pt-0 space-y-3">
+
+                  <CardContent className="space-y-3">
                     {editingPostId === p.post.id ? (
                       <>
-                        <Textarea
-                          value={editPostContent}
-                          onChange={(e) => setEditPostContent(e.target.value)}
-                          rows={3}
-                        />
+                        <Textarea value={editPostContent} onChange={(e) => setEditPostContent(e.target.value)} rows={3} />
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" onClick={cancelEditingPost}>
                             <X className="h-4 w-4 mr-1" />
@@ -661,23 +744,80 @@ export default function ClubDetailPage() {
                     ) : (
                       <>
                         <p className="whitespace-pre-wrap text-slate-800">{p.post.content}</p>
-                        {user?.id === p.post.userId && (
+                        {canEdit ? (
                           <div className="flex justify-end">
                             <Button variant="outline" size="sm" onClick={() => startEditingPost(p)}>
                               <Pencil className="h-4 w-4 mr-1" />
                               Edit
                             </Button>
                           </div>
-                        )}
+                        ) : null}
                       </>
                     )}
                   </CardContent>
                 </Card>
-              ))
-            )}
-          </CardContent>
-        </Card>
-      </div>
+              );
+            })
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Edit Club Dialog */}
+      <Dialog open={editClubOpen} onOpenChange={setEditClubOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Club</DialogTitle>
+            <DialogDescription>Update your club details.</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="club-name">Name</Label>
+              <Input id="club-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="club-desc">Description</Label>
+              <Textarea id="club-desc" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={3} />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="club-rules">Rules</Label>
+              <Textarea id="club-rules" value={editRules} onChange={(e) => setEditRules(e.target.value)} rows={3} />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant={editIsPublic ? "default" : "outline"}
+                onClick={() => setEditIsPublic(true)}
+                className="gap-2"
+              >
+                <Unlock className="h-4 w-4" />
+                Public
+              </Button>
+              <Button
+                type="button"
+                variant={!editIsPublic ? "default" : "outline"}
+                onClick={() => setEditIsPublic(false)}
+                className="gap-2"
+              >
+                <Lock className="h-4 w-4" />
+                Private
+              </Button>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <Button variant="outline" onClick={() => setEditClubOpen(false)}>
+                Cancel
+              </Button>
+              <Button onClick={() => updateClubMutation.mutate()} disabled={updateClubMutation.isPending}>
+                {updateClubMutation.isPending ? "Saving..." : "Save"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
