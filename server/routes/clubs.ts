@@ -11,7 +11,7 @@ import {
   badges,
   userBadges,
   users,
-  notifications,
+  recipes
 } from "../../shared/schema.js";
 import { requireAuth } from "../middleware/index";
 
@@ -21,7 +21,7 @@ const router = express.Router();
 // CLUBS MANAGEMENT
 // ============================================================
 
-// Browse clubs (public only)
+// Browse clubs
 router.get("/", async (req: Request, res: Response) => {
   try {
     const { category, search, sort } = req.query;
@@ -42,27 +42,23 @@ router.get("/", async (req: Request, res: Response) => {
     let filtered = await allClubs;
 
     if (category && category !== "all") {
-      filtered = filtered.filter((c) => c.club.category === category);
+      filtered = filtered.filter(c => c.club.category === category);
     }
 
     if (search) {
-      const searchLower = String(search).toLowerCase();
-      filtered = filtered.filter(
-        (c) =>
-          c.club.name.toLowerCase().includes(searchLower) ||
-          c.club.description?.toLowerCase().includes(searchLower)
+      const searchLower = (search as string).toLowerCase();
+      filtered = filtered.filter(c =>
+        c.club.name.toLowerCase().includes(searchLower) ||
+        c.club.description?.toLowerCase().includes(searchLower)
       );
     }
 
     if (sort === "members") {
-      filtered.sort((a, b) => Number(b.memberCount) - Number(a.memberCount));
+      filtered.sort((a, b) => b.memberCount - a.memberCount);
     } else if (sort === "activity") {
-      filtered.sort((a, b) => Number(b.postCount) - Number(a.postCount));
+      filtered.sort((a, b) => b.postCount - a.postCount);
     } else {
-      filtered.sort(
-        (a, b) =>
-          new Date(String(b.club.createdAt)).getTime() - new Date(String(a.club.createdAt)).getTime()
-      );
+      filtered.sort((a, b) => new Date(b.club.createdAt).getTime() - new Date(a.club.createdAt).getTime());
     }
 
     res.json({ clubs: filtered });
@@ -72,209 +68,7 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-// User clubs (MUST come before /:id to avoid route collisions like /my-clubs being treated as an id)
-router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-
-    const userClubs = await db
-      .select({
-        club: clubs,
-        membership: clubMemberships,
-        memberCount: sql`count(distinct m.id)`,
-      })
-      .from(clubMemberships)
-      .innerJoin(clubs, eq(clubMemberships.clubId, clubs.id))
-      .leftJoin(clubMemberships.as("m"), eq(clubs.id, sql`m.club_id`))
-      .where(eq(clubMemberships.userId, userId))
-      .groupBy(clubs.id, clubMemberships.id)
-      .orderBy(desc(clubMemberships.joinedAt));
-
-    res.json({ clubs: userClubs });
-  } catch (error) {
-    console.error("Error fetching user clubs:", error);
-    res.status(500).json({ message: "Failed to fetch clubs" });
-  }
-});
-
-// Create club
-router.post("/", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const { name, description, category, rules, isPublic } = req.body;
-
-    if (!name || !String(name).trim()) {
-      return res.status(400).json({ message: "Club name is required" });
-    }
-
-    const [club] = await db
-      .insert(clubs)
-      .values({
-        creatorId: userId,
-        name: String(name).trim(),
-        description: description || null,
-        category: category || "general",
-        rules: rules || null,
-        isPublic: isPublic !== false,
-      })
-      .returning();
-
-    await db.insert(clubMemberships).values({
-      clubId: club.id,
-      userId,
-      role: "owner",
-    });
-
-    res.json({ club });
-  } catch (error) {
-    console.error("Error creating club:", error);
-    res.status(500).json({ message: "Failed to create club" });
-  }
-});
-
-// ============================================================
-// CHALLENGES & BADGES (these are mounted under /api/clubs/* so they must also be before /:id)
-// ============================================================
-
-router.get("/challenges", async (_req: Request, res: Response) => {
-  try {
-    const list = await db.select().from(challenges).orderBy(desc(challenges.createdAt));
-    res.json({ challenges: list });
-  } catch (error) {
-    console.error("Error fetching challenges:", error);
-    res.status(500).json({ message: "Failed to fetch challenges" });
-  }
-});
-
-router.get("/challenges/:id", async (req: Request, res: Response) => {
-  try {
-    const challengeId = req.params.id;
-
-    const [challenge] = await db.select().from(challenges).where(eq(challenges.id, challengeId)).limit(1);
-
-    if (!challenge) return res.status(404).json({ message: "Challenge not found" });
-
-    const participants = await db
-      .select({
-        progress: challengeProgress,
-        user: { id: users.id, username: users.username, displayName: users.displayName },
-      })
-      .from(challengeProgress)
-      .innerJoin(users, eq(challengeProgress.userId, users.id))
-      .where(eq(challengeProgress.challengeId, challengeId))
-      .orderBy(desc(challengeProgress.progress));
-
-    res.json({ challenge, participants });
-  } catch (error) {
-    console.error("Error fetching challenge:", error);
-    res.status(500).json({ message: "Failed to fetch challenge" });
-  }
-});
-
-router.post("/challenges/:id/join", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const challengeId = req.params.id;
-
-    const [existing] = await db
-      .select()
-      .from(challengeProgress)
-      .where(and(eq(challengeProgress.userId, userId), eq(challengeProgress.challengeId, challengeId)))
-      .limit(1);
-
-    if (existing) {
-      return res.status(400).json({ message: "Already joined" });
-    }
-
-    const [progress] = await db
-      .insert(challengeProgress)
-      .values({ userId, challengeId, progress: 0 })
-      .returning();
-
-    res.json({ progress });
-  } catch (error) {
-    console.error("Error joining challenge:", error);
-    res.status(500).json({ message: "Failed to join challenge" });
-  }
-});
-
-router.post("/challenges/:id/progress", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const challengeId = req.params.id;
-    const { progress } = req.body;
-
-    const [updated] = await db
-      .update(challengeProgress)
-      .set({ progress: Number(progress) || 0 })
-      .where(and(eq(challengeProgress.userId, userId), eq(challengeProgress.challengeId, challengeId)))
-      .returning();
-
-    res.json({ progress: updated });
-  } catch (error) {
-    console.error("Error updating challenge progress:", error);
-    res.status(500).json({ message: "Failed to update progress" });
-  }
-});
-
-router.get("/my-challenges", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-
-    const mine = await db
-      .select()
-      .from(challengeProgress)
-      .where(eq(challengeProgress.userId, userId))
-      .orderBy(desc(challengeProgress.createdAt));
-
-    const challengeIds = mine.map((m) => m.challengeId).filter(Boolean) as string[];
-    const challengeList = challengeIds.length
-      ? await db.select().from(challenges).where(inArray(challenges.id, challengeIds))
-      : [];
-
-    res.json({ progress: mine, challenges: challengeList });
-  } catch (error) {
-    console.error("Error fetching user challenges:", error);
-    res.status(500).json({ message: "Failed to fetch challenges" });
-  }
-});
-
-router.get("/badges", async (_req: Request, res: Response) => {
-  try {
-    const list = await db.select().from(badges).orderBy(desc(badges.createdAt));
-    res.json({ badges: list });
-  } catch (error) {
-    console.error("Error fetching badges:", error);
-    res.status(500).json({ message: "Failed to fetch badges" });
-  }
-});
-
-router.get("/my-badges", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-
-    const userBadgesList = await db
-      .select({
-        userBadge: userBadges,
-        badge: badges,
-      })
-      .from(userBadges)
-      .innerJoin(badges, eq(userBadges.badgeId, badges.id))
-      .where(eq(userBadges.userId, userId))
-      .orderBy(desc(userBadges.earnedAt));
-
-    res.json({ badges: userBadgesList });
-  } catch (error) {
-    console.error("Error fetching user badges:", error);
-    res.status(500).json({ message: "Failed to fetch badges" });
-  }
-});
-
-// ============================================================
-// CLUB DETAIL & MEMBER ACTIONS
-// ============================================================
-
-// Club detail (public or private; private still visible, but actions restricted)
+// Get club details
 router.get("/:id", async (req: Request, res: Response) => {
   try {
     const clubId = req.params.id;
@@ -315,84 +109,56 @@ router.get("/:id", async (req: Request, res: Response) => {
   }
 });
 
-// Membership status for current user (prevents client relying on /my-clubs and fixes "no post box" issues)
-router.get("/:id/membership", requireAuth, async (req: Request, res: Response) => {
+// Create club
+router.post("/", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const clubId = req.params.id;
+    const { name, description, category, rules, isPublic } = req.body;
 
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
+    if (!name || !name.trim()) {
+      return res.status(400).json({ message: "Club name is required" });
+    }
 
-    const [membership] = await db
-      .select()
-      .from(clubMemberships)
-      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
-      .limit(1);
+    const [club] = await db
+      .insert(clubs)
+      .values({
+        creatorId: userId,
+        name: name.trim(),
+        description: description || null,
+        category: category || "general",
+        rules: rules || null,
+        isPublic: isPublic !== false,
+      })
+      .returning();
 
-    res.json({
-      membership: membership || null,
-      isOwner: club.creatorId === userId || membership?.role === "owner",
-      isPublic: !!club.isPublic,
+    await db.insert(clubMemberships).values({
+      clubId: club.id,
+      userId,
+      role: "owner",
     });
+
+    res.json({ club });
   } catch (error) {
-    console.error("Error fetching membership:", error);
-    res.status(500).json({ message: "Failed to fetch membership" });
+    console.error("Error creating club:", error);
+    res.status(500).json({ message: "Failed to create club" });
   }
 });
 
-// Edit club (owner only)
-router.patch("/:id", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const clubId = req.params.id;
-    const { name, description, rules, isPublic, category } = req.body;
-
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
-    if (club.creatorId !== userId) return res.status(403).json({ message: "Only the creator can edit this club" });
-
-    const updates: any = {};
-    if (typeof name === "string") updates.name = name.trim();
-    if (typeof description === "string") updates.description = description || null;
-    if (typeof rules === "string") updates.rules = rules || null;
-    if (typeof category === "string") updates.category = category || "general";
-    if (typeof isPublic === "boolean") updates.isPublic = isPublic;
-
-    const [updated] = await db.update(clubs).set(updates).where(eq(clubs.id, clubId)).returning();
-    res.json({ club: updated });
-  } catch (error) {
-    console.error("Error updating club:", error);
-    res.status(500).json({ message: "Failed to update club" });
-  }
-});
-
-// Delete club (owner only)
-router.delete("/:id", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const clubId = req.params.id;
-
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
-    if (club.creatorId !== userId) return res.status(403).json({ message: "Only the creator can delete this club" });
-
-    await db.delete(clubs).where(eq(clubs.id, clubId));
-    res.json({ ok: true });
-  } catch (error) {
-    console.error("Error deleting club:", error);
-    res.status(500).json({ message: "Failed to delete club" });
-  }
-});
-
-// Join club (public => immediate; private => request stored as membership.role='pending')
+// Join club
 router.post("/:id/join", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const clubId = req.params.id;
 
     const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
+
+    if (!club) {
+      return res.status(404).json({ message: "Club not found" });
+    }
+
+    if (!club.isPublic) {
+      return res.status(403).json({ message: "This club is private" });
+    }
 
     const [existingMembership] = await db
       .select()
@@ -401,41 +167,17 @@ router.post("/:id/join", requireAuth, async (req: Request, res: Response) => {
       .limit(1);
 
     if (existingMembership) {
-      return res.json({ membership: existingMembership });
+      return res.status(400).json({ message: "You are already a member" });
     }
-
-    const roleToSet = club.isPublic ? "member" : "pending";
 
     const [membership] = await db
       .insert(clubMemberships)
-      .values({ clubId, userId, role: roleToSet })
+      .values({
+        clubId,
+        userId,
+        role: "member",
+      })
       .returning();
-
-    // Notifications
-    const displayName = req.user?.displayName || req.user?.username || "Someone";
-    if (club.creatorId && club.creatorId !== userId) {
-      if (club.isPublic) {
-        await db.insert(notifications).values({
-          userId: club.creatorId,
-          type: "club_member_joined",
-          title: "New Club Member",
-          message: `${displayName} joined your club “${club.name}”.`,
-          linkUrl: `/clubs/${clubId}`,
-          metadata: { clubId, memberId: userId },
-          priority: "normal",
-        });
-      } else {
-        await db.insert(notifications).values({
-          userId: club.creatorId,
-          type: "club_join_request",
-          title: "Join Request",
-          message: `${displayName} requested to join your private club “${club.name}”.`,
-          linkUrl: `/clubs/${clubId}`,
-          metadata: { clubId, requesterId: userId, membershipId: membership.id },
-          priority: "high",
-        });
-      }
-    }
 
     res.json({ membership });
   } catch (error) {
@@ -450,118 +192,57 @@ router.post("/:id/leave", requireAuth, async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const clubId = req.params.id;
 
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
+    const [membership] = await db
+      .select()
+      .from(clubMemberships)
+      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
+      .limit(1);
 
-    if (club.creatorId === userId) {
-      return res.status(400).json({ message: "Club creator cannot leave. Delete the club instead." });
+    if (!membership) {
+      return res.status(404).json({ message: "You are not a member of this club" });
+    }
+
+    if (membership.role === "owner") {
+      return res.status(400).json({ message: "Club owner cannot leave. Transfer ownership or delete the club." });
     }
 
     await db
       .delete(clubMemberships)
       .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)));
 
-    res.json({ ok: true });
+    res.json({ message: "Left club successfully" });
   } catch (error) {
     console.error("Error leaving club:", error);
     res.status(500).json({ message: "Failed to leave club" });
   }
 });
 
-// Pending join requests (owner only)
-router.get("/:id/join-requests", requireAuth, async (req: Request, res: Response) => {
+// Get user's clubs
+router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
   try {
-    const clubId = req.params.id;
     const userId = req.user!.id;
 
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
-    if (club.creatorId !== userId) return res.status(403).json({ message: "Not allowed" });
-
-    const pending = await db
+    const userClubs = await db
       .select({
+        club: clubs,
         membership: clubMemberships,
-        user: { id: users.id, username: users.username, displayName: users.displayName },
+        memberCount: sql`count(distinct m.id)`,
       })
       .from(clubMemberships)
-      .innerJoin(users, eq(clubMemberships.userId, users.id))
-      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.role, "pending" as any)))
+      .innerJoin(clubs, eq(clubMemberships.clubId, clubs.id))
+      .leftJoin(clubMemberships.as("m"), eq(clubs.id, sql`m.club_id`))
+      .where(eq(clubMemberships.userId, userId))
+      .groupBy(clubs.id, clubMemberships.id)
       .orderBy(desc(clubMemberships.joinedAt));
 
-    res.json({ requests: pending });
+    res.json({ clubs: userClubs });
   } catch (error) {
-    console.error("Error fetching join requests:", error);
-    res.status(500).json({ message: "Failed to fetch requests" });
+    console.error("Error fetching user clubs:", error);
+    res.status(500).json({ message: "Failed to fetch clubs" });
   }
 });
 
-router.post("/:id/join-requests/:membershipId/approve", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const clubId = req.params.id;
-    const membershipId = req.params.membershipId;
-    const ownerId = req.user!.id;
-
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
-    if (club.creatorId !== ownerId) return res.status(403).json({ message: "Not allowed" });
-
-    const [membership] = await db
-      .select()
-      .from(clubMemberships)
-      .where(and(eq(clubMemberships.id, membershipId), eq(clubMemberships.clubId, clubId)))
-      .limit(1);
-
-    if (!membership) return res.status(404).json({ message: "Request not found" });
-
-    const [updated] = await db
-      .update(clubMemberships)
-      .set({ role: "member" })
-      .where(eq(clubMemberships.id, membershipId))
-      .returning();
-
-    // Notify requester
-    if (membership.userId && membership.userId !== ownerId) {
-      await db.insert(notifications).values({
-        userId: membership.userId,
-        type: "club_join_approved",
-        title: "Request Approved",
-        message: `You’ve been approved to join “${club.name}”.`,
-        linkUrl: `/clubs/${clubId}`,
-        metadata: { clubId },
-        priority: "high",
-      });
-    }
-
-    res.json({ membership: updated });
-  } catch (error) {
-    console.error("Error approving join request:", error);
-    res.status(500).json({ message: "Failed to approve request" });
-  }
-});
-
-router.delete("/:id/join-requests/:membershipId", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const clubId = req.params.id;
-    const membershipId = req.params.membershipId;
-    const ownerId = req.user!.id;
-
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
-    if (club.creatorId !== ownerId) return res.status(403).json({ message: "Not allowed" });
-
-    await db.delete(clubMemberships).where(and(eq(clubMemberships.id, membershipId), eq(clubMemberships.clubId, clubId)));
-    res.json({ ok: true });
-  } catch (error) {
-    console.error("Error denying join request:", error);
-    res.status(500).json({ message: "Failed to deny request" });
-  }
-});
-
-// ============================================================
-// POSTS
-// ============================================================
-
-// Fetch club posts
+// Get club posts
 router.get("/:id/posts", async (req: Request, res: Response) => {
   try {
     const clubId = req.params.id;
@@ -575,29 +256,43 @@ router.get("/:id/posts", async (req: Request, res: Response) => {
           username: users.username,
           displayName: users.displayName,
         },
+        recipe: recipes,
       })
       .from(clubPosts)
       .innerJoin(users, eq(clubPosts.userId, users.id))
+      .leftJoin(recipes, eq(clubPosts.recipeId, recipes.id))
       .where(eq(clubPosts.clubId, clubId))
       .orderBy(desc(clubPosts.createdAt))
       .limit(parseInt(limit as string))
       .offset(parseInt(offset as string));
 
-    res.json({ posts });
-  } catch (error) {
-    console.error("Error fetching club posts:", error);
-    res.status(500).json({ message: "Failed to fetch posts" });
-  }
-});
+    const normalized = posts.map((row: any) => ({
+      ...row,
+      recipe: row.recipe && row.recipe.id ? row.recipe : null,
+    }));
 
-// Create post (must be member, not pending)
+    res.json({ posts: normalized });
+  } catch (error) {
+    console.error("Error fetching club post// Create club post
 router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const clubId = req.params.id;
-    const { content, recipeId } = req.body;
+    const { content, recipeId, recipe } = req.body as {
+      content?: string;
+      recipeId?: string | null;
+      recipe?: {
+        title: string;
+        imageUrl?: string;
+        ingredients: string[];
+        instructions: string[];
+        cookTime?: number;
+        servings?: number;
+        difficulty?: string;
+      };
+    };
 
-    if (!content || !String(content).trim()) {
+    if (!content || !content.trim()) {
       return res.status(400).json({ message: "Post content is required" });
     }
 
@@ -607,16 +302,37 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
       .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
       .limit(1);
 
-    if (!membership) return res.status(403).json({ message: "You must be a member to post" });
-    if (membership.role === "pending") return res.status(403).json({ message: "Your join request is pending approval" });
+    if (!membership) {
+      return res.status(403).json({ message: "You must be a member to post" });
+    }
+
+    // If this is a recipe template post, create a recipe record and link it.
+    let linkedRecipeId: string | null = recipeId || null;
+    if (!linkedRecipeId && recipe && recipe.title && Array.isArray(recipe.ingredients) && Array.isArray(recipe.instructions)) {
+      const [createdRecipe] = await db
+        .insert(recipes)
+        .values({
+          postId: null,
+          title: recipe.title,
+          imageUrl: recipe.imageUrl || null,
+          ingredients: recipe.ingredients,
+          instructions: recipe.instructions,
+          cookTime: recipe.cookTime ?? null,
+          servings: recipe.servings ?? null,
+          difficulty: recipe.difficulty ?? null,
+        } as any)
+        .returning();
+
+      linkedRecipeId = createdRecipe?.id ?? null;
+    }
 
     const [post] = await db
       .insert(clubPosts)
       .values({
         clubId,
         userId,
-        content: String(content).trim(),
-        recipeId: recipeId || null,
+        content: content.trim(),
+        recipeId: linkedRecipeId,
       })
       .returning();
 
@@ -627,7 +343,16 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// Update post (author OR club owner)
+
+
+", error);
+    res.status(500).json({ message: "Failed to create post" });
+  }
+});
+
+
+
+// Update club post
 router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -635,57 +360,273 @@ router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Respon
     const postId = req.params.postId;
     const { content } = req.body;
 
-    if (!content || !String(content).trim()) {
-      return res.status(400).json({ message: "Content is required" });
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: "Post content is required" });
     }
 
-    const [post] = await db.select().from(clubPosts).where(eq(clubPosts.id, postId)).limit(1);
-    if (!post || post.clubId !== clubId) return res.status(404).json({ message: "Post not found" });
+    const [existingPost] = await db
+      .select()
+      .from(clubPosts)
+      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
+      .limit(1);
 
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
+    if (!existingPost) {
+      return res.status(404).json({ message: "Post not found" });
+    }
 
-    const isOwner = club.creatorId === userId;
-    const isAuthor = post.userId === userId;
+    if (existingPost.userId !== userId) {
+      return res.status(403).json({ message: "You can only edit your own posts" });
+    }
 
-    if (!isOwner && !isAuthor) return res.status(403).json({ message: "Not allowed" });
-
-    const [updated] = await db
+    const [post] = await db
       .update(clubPosts)
-      .set({ content: String(content).trim() })
-      .where(eq(clubPosts.id, postId))
+      .set({ content: content.trim() })
+      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
       .returning();
 
-    res.json({ post: updated });
+    return res.json({ post });
   } catch (error) {
     console.error("Error updating post:", error);
-    res.status(500).json({ message: "Failed to update post" });
+    return res.status(500).json({ message: "Failed to update post" });
   }
 });
 
-// Delete post (author OR club owner)
-router.delete("/:id/posts/:postId", requireAuth, async (req: Request, res: Response) => {
+// ============================================================
+// CHALLENGES
+// ============================================================
+
+// Browse challenges
+router.get("/challenges", async (req: Request, res: Response) => {
+  try {
+    const { status, category } = req.query;
+
+    const allChallenges = await db
+      .select({
+        challenge: challenges,
+        participantCount: sql`count(distinct ${challengeProgress.userId})`,
+      })
+      .from(challenges)
+      .leftJoin(challengeProgress, eq(challenges.id, challengeProgress.challengeId))
+      .groupBy(challenges.id)
+      .orderBy(desc(challenges.startDate))
+      .$dynamic();
+
+    let filtered = await allChallenges;
+
+    if (status) {
+      const now = new Date();
+      filtered = filtered.filter(c => {
+        const start = new Date(c.challenge.startDate);
+        const end = new Date(c.challenge.endDate);
+        if (status === "active") return start <= now && end >= now;
+        if (status === "upcoming") return start > now;
+        if (status === "completed") return end < now;
+        return true;
+      });
+    }
+
+    res.json({ challenges: filtered });
+  } catch (error) {
+    console.error("Error browsing challenges:", error);
+    res.status(500).json({ message: "Failed to browse challenges" });
+  }
+});
+
+// Get challenge details
+router.get("/challenges/:id", async (req: Request, res: Response) => {
+  try {
+    const challengeId = req.params.id;
+
+    const [challenge] = await db
+      .select()
+      .from(challenges)
+      .where(eq(challenges.id, challengeId))
+      .limit(1);
+
+    if (!challenge) {
+      return res.status(404).json({ message: "Challenge not found" });
+    }
+
+    const [stats] = await db
+      .select({
+        participantCount: sql`count(distinct ${challengeProgress.userId})`,
+        completedCount: sql`count(*) filter (where ${challengeProgress.isCompleted} = true)`,
+      })
+      .from(challengeProgress)
+      .where(eq(challengeProgress.challengeId, challengeId));
+
+    res.json({ challenge, stats });
+  } catch (error) {
+    console.error("Error fetching challenge details:", error);
+    res.status(500).json({ message: "Failed to fetch challenge details" });
+  }
+});
+
+// Join challenge
+router.post("/challenges/:id/join", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const clubId = req.params.id;
-    const postId = req.params.postId;
+    const challengeId = req.params.id;
 
-    const [post] = await db.select().from(clubPosts).where(eq(clubPosts.id, postId)).limit(1);
-    if (!post || post.clubId !== clubId) return res.status(404).json({ message: "Post not found" });
+    const [challenge] = await db
+      .select()
+      .from(challenges)
+      .where(eq(challenges.id, challengeId))
+      .limit(1);
 
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
-    if (!club) return res.status(404).json({ message: "Club not found" });
+    if (!challenge) {
+      return res.status(404).json({ message: "Challenge not found" });
+    }
 
-    const isOwner = club.creatorId === userId;
-    const isAuthor = post.userId === userId;
+    const [existingProgress] = await db
+      .select()
+      .from(challengeProgress)
+      .where(and(eq(challengeProgress.challengeId, challengeId), eq(challengeProgress.userId, userId)))
+      .limit(1);
 
-    if (!isOwner && !isAuthor) return res.status(403).json({ message: "Not allowed" });
+    if (existingProgress) {
+      return res.status(400).json({ message: "You are already participating in this challenge" });
+    }
 
-    await db.delete(clubPosts).where(eq(clubPosts.id, postId));
-    res.json({ ok: true });
+    const [progress] = await db
+      .insert(challengeProgress)
+      .values({
+        challengeId,
+        userId,
+        currentProgress: 0,
+        currentStreak: 0,
+        completedSteps: [],
+        isCompleted: false,
+      })
+      .returning();
+
+    res.json({ progress });
   } catch (error) {
-    console.error("Error deleting post:", error);
-    res.status(500).json({ message: "Failed to delete post" });
+    console.error("Error joining challenge:", error);
+    res.status(500).json({ message: "Failed to join challenge" });
+  }
+});
+
+// Update challenge progress
+router.post("/challenges/:id/progress", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const challengeId = req.params.id;
+    const { step, recipeId } = req.body;
+
+    const [progress] = await db
+      .select()
+      .from(challengeProgress)
+      .where(and(eq(challengeProgress.challengeId, challengeId), eq(challengeProgress.userId, userId)))
+      .limit(1);
+
+    if (!progress) {
+      return res.status(404).json({ message: "You are not participating in this challenge" });
+    }
+
+    const completedSteps = progress.completedSteps || [];
+    completedSteps.push({
+      step,
+      completedAt: new Date().toISOString(),
+      recipeId: recipeId || null,
+    });
+
+    const newProgress = progress.currentProgress + 1;
+
+    const [challenge] = await db.select().from(challenges).where(eq(challenges.id, challengeId)).limit(1);
+    const requirements = challenge?.requirements || [];
+    const totalRequired = requirements.reduce((sum, req: any) => sum + (req.target || 1), 0);
+    const isCompleted = newProgress >= totalRequired;
+
+    const [updated] = await db
+      .update(challengeProgress)
+      .set({
+        currentProgress: newProgress,
+        completedSteps,
+        isCompleted,
+        completedAt: isCompleted ? new Date().toISOString() : null,
+      })
+      .where(eq(challengeProgress.id, progress.id))
+      .returning();
+
+    if (isCompleted && challenge?.rewards) {
+      for (const reward of challenge.rewards as any[]) {
+        if (reward.type === "badge") {
+          await db.insert(userBadges).values({
+            userId,
+            badgeId: reward.value,
+          }).onConflictDoNothing();
+        }
+      }
+    }
+
+    res.json({ progress: updated });
+  } catch (error) {
+    console.error("Error updating challenge progress:", error);
+    res.status(500).json({ message: "Failed to update progress" });
+  }
+});
+
+// Get user's challenge progress
+router.get("/my-challenges", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const userChallenges = await db
+      .select({
+        challenge: challenges,
+        progress: challengeProgress,
+      })
+      .from(challengeProgress)
+      .innerJoin(challenges, eq(challengeProgress.challengeId, challenges.id))
+      .where(eq(challengeProgress.userId, userId))
+      .orderBy(desc(challengeProgress.startedAt));
+
+    res.json({ challenges: userChallenges });
+  } catch (error) {
+    console.error("Error fetching user challenges:", error);
+    res.status(500).json({ message: "Failed to fetch challenges" });
+  }
+});
+
+// ============================================================
+// BADGES
+// ============================================================
+
+// Get all badges
+router.get("/badges", async (_req: Request, res: Response) => {
+  try {
+    const allBadges = await db
+      .select()
+      .from(badges)
+      .orderBy(badges.tier, badges.name);
+
+    res.json({ badges: allBadges });
+  } catch (error) {
+    console.error("Error fetching badges:", error);
+    res.status(500).json({ message: "Failed to fetch badges" });
+  }
+});
+
+// Get user's badges
+router.get("/my-badges", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+
+    const userBadgesList = await db
+      .select({
+        userBadge: userBadges,
+        badge: badges,
+      })
+      .from(userBadges)
+      .innerJoin(badges, eq(userBadges.badgeId, badges.id))
+      .where(eq(userBadges.userId, userId))
+      .orderBy(desc(userBadges.earnedAt));
+
+    res.json({ badges: userBadgesList });
+  } catch (error) {
+    console.error("Error fetching user badges:", error);
+    res.status(500).json({ message: "Failed to fetch badges" });
   }
 });
 
