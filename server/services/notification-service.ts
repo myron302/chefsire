@@ -607,3 +607,102 @@ export async function sendCateringRequestNotification(
     console.error("Failed to send catering request notification:", error);
   }
 }
+
+
+// ============================================================
+// CLUBS
+// ============================================================
+
+export async function sendClubJoinRequestNotification(
+  clubOwnerId: string,
+  requesterId: string,
+  requesterName: string,
+  requesterAvatar: string | null,
+  clubId: string,
+  clubName: string
+) {
+  try {
+    if (clubOwnerId === requesterId) return;
+
+    await db.insert(notifications).values({
+      userId: clubOwnerId,
+      type: "club_join_request",
+      title: "New Join Request",
+      message: `${requesterName} requested to join "${clubName}"`,
+      imageUrl: requesterAvatar,
+      linkUrl: `/clubs/${clubId}`,
+      priority: "normal",
+    });
+  } catch (error) {
+    console.error("Failed to send club join request notification:", error);
+  }
+}
+
+export async function sendClubJoinApprovedNotification(
+  requesterId: string,
+  clubId: string,
+  clubName: string
+) {
+  try {
+    await db.insert(notifications).values({
+      userId: requesterId,
+      type: "club_join_approved",
+      title: "Join Request Approved",
+      message: `You're now a member of "${clubName}"`,
+      linkUrl: `/clubs/${clubId}`,
+      priority: "normal",
+    });
+  } catch (error) {
+    console.error("Failed to send club join approved notification:", error);
+  }
+}
+
+export async function sendClubMemberJoinedNotification(
+  clubOwnerId: string,
+  memberId: string,
+  memberName: string,
+  memberAvatar: string | null,
+  clubId: string,
+  clubName: string
+) {
+  try {
+    if (clubOwnerId === memberId) return;
+
+    await db.insert(notifications).values({
+      userId: clubOwnerId,
+      type: "club_member_joined",
+      title: "New Club Member",
+      message: `${memberName} joined "${clubName}"`,
+      imageUrl: memberAvatar,
+      linkUrl: `/clubs/${clubId}`,
+      priority: "normal",
+    });
+  } catch (error) {
+    console.error("Failed to send club member joined notification:", error);
+  }
+}
+
+export async function sendClubPostLikeNotification(
+  postAuthorId: string,
+  likerId: string,
+  likerName: string,
+  likerAvatar: string | null,
+  clubId: string,
+  postId: string
+) {
+  try {
+    if (postAuthorId === likerId) return;
+
+    await db.insert(notifications).values({
+      userId: postAuthorId,
+      type: "club_like",
+      title: "New Like",
+      message: `${likerName} liked your club post`,
+      imageUrl: likerAvatar,
+      linkUrl: `/clubs/${clubId}`,
+      priority: "normal",
+    });
+  } catch (error) {
+    console.error("Failed to send club post like notification:", error);
+  }
+}
