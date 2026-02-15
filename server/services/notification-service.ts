@@ -610,28 +610,26 @@ export async function sendCateringRequestNotification(
 
 
 // ============================================================
-// CLUBS
+// CLUB NOTIFICATIONS
 // ============================================================
 
 export async function sendClubJoinRequestNotification(
-  clubOwnerId: string,
-  requesterId: string,
+  ownerId: string,
   requesterName: string,
   requesterAvatar: string | null,
   clubId: string,
   clubName: string
 ) {
   try {
-    if (clubOwnerId === requesterId) return;
-
     await db.insert(notifications).values({
-      userId: clubOwnerId,
+      userId: ownerId,
       type: "club_join_request",
       title: "New Join Request",
       message: `${requesterName} requested to join "${clubName}"`,
       imageUrl: requesterAvatar,
       linkUrl: `/clubs/${clubId}`,
-      priority: "normal",
+      priority: "high",
+      metadata: { clubId },
     });
   } catch (error) {
     console.error("Failed to send club join request notification:", error);
@@ -647,38 +645,37 @@ export async function sendClubJoinApprovedNotification(
     await db.insert(notifications).values({
       userId: requesterId,
       type: "club_join_approved",
-      title: "Join Request Approved",
-      message: `You're now a member of "${clubName}"`,
+      title: "Request Approved",
+      message: `You were approved to join "${clubName}"`,
       linkUrl: `/clubs/${clubId}`,
       priority: "normal",
+      metadata: { clubId },
     });
   } catch (error) {
     console.error("Failed to send club join approved notification:", error);
   }
 }
 
-export async function sendClubMemberJoinedNotification(
-  clubOwnerId: string,
-  memberId: string,
+export async function sendClubNewMemberNotification(
+  ownerId: string,
   memberName: string,
   memberAvatar: string | null,
   clubId: string,
   clubName: string
 ) {
   try {
-    if (clubOwnerId === memberId) return;
-
     await db.insert(notifications).values({
-      userId: clubOwnerId,
-      type: "club_member_joined",
-      title: "New Club Member",
+      userId: ownerId,
+      type: "club_new_member",
+      title: "New Member",
       message: `${memberName} joined "${clubName}"`,
       imageUrl: memberAvatar,
       linkUrl: `/clubs/${clubId}`,
       priority: "normal",
+      metadata: { clubId },
     });
   } catch (error) {
-    console.error("Failed to send club member joined notification:", error);
+    console.error("Failed to send club new member notification:", error);
   }
 }
 
@@ -688,19 +685,20 @@ export async function sendClubPostLikeNotification(
   likerName: string,
   likerAvatar: string | null,
   clubId: string,
-  postId: string
+  clubPostId: string
 ) {
   try {
     if (postAuthorId === likerId) return;
 
     await db.insert(notifications).values({
       userId: postAuthorId,
-      type: "club_like",
+      type: "club_post_like",
       title: "New Like",
       message: `${likerName} liked your club post`,
       imageUrl: likerAvatar,
       linkUrl: `/clubs/${clubId}`,
       priority: "normal",
+      metadata: { clubId, clubPostId },
     });
   } catch (error) {
     console.error("Failed to send club post like notification:", error);
