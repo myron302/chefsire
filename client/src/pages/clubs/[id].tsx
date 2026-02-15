@@ -1,51 +1,17 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation, useParams, Link } from "wouter";
+import { useParams, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
-import {
-  Users,
-  MessageSquare,
-  ArrowLeft,
-  Send,
-  Calendar,
-  Crown,
-  Pencil,
-  Save,
-  X,
-  Trash2,
-  Lock,
-  Unlock,
-  UserPlus,
-  Check,
-  Ban,
-} from "lucide-react";
+import { Users, MessageSquare, ArrowLeft, Send, Calendar, Crown, Pencil, Save, X, ChefHat, Star } from "lucide-react";
 
 // Server /api/clubs/:id returns: { club: { club: ClubRow, creator: Creator }, stats: Stats }
 type ClubRow = {
@@ -57,7 +23,6 @@ type ClubRow = {
   isPublic: boolean;
   rules: string | null;
   createdAt: string;
-  creatorId?: string; // some endpoints return raw club row
 };
 
 type Creator = {
@@ -79,20 +44,6 @@ type ClubDetailResponse = {
   stats: Stats;
 };
 
-type MembershipRow = {
-  id: string;
-  clubId: string;
-  userId: string;
-  role: string;
-  joinedAt: string;
-};
-
-type MembershipResponse = {
-  membership: MembershipRow | null;
-  isOwner: boolean;
-  isPublic: boolean;
-};
-
 type Post = {
   post: {
     id: string;
@@ -100,6 +51,7 @@ type Post = {
     userId: string;
     content: string;
     imageUrl: string | null;
+    recipeId?: string | null;
     likesCount: number;
     commentsCount: number;
     createdAt: string;
@@ -111,33 +63,73 @@ type Post = {
   };
 };
 
-type JoinRequest = {
-  membership: MembershipRow;
-  user: {
-    id: string;
-    username: string;
-    displayName: string | null;
-  };
-};
+type PostKind = "post" | "recipe" | "review";
+type IngredientRow = { amount: string; unit: string; item: string };
+
+const UNIT_OPTIONS = [
+  { value: "tsp", label: "tsp" },
+  { value: "tbsp", label: "tbsp" },
+  { value: "cup", label: "cup" },
+  { value: "oz", label: "oz" },
+  { value: "lb", label: "lb" },
+  { value: "g", label: "g" },
+  { value: "kg", label: "kg" },
+  { value: "ml", label: "ml" },
+  { value: "l", label: "l" },
+  { value: "pinch", label: "pinch" },
+  { value: "dash", label: "dash" },
+  { value: "clove", label: "clove" },
+  { value: "slice", label: "slice" },
+  { value: "piece", label: "piece" },
+  { value: "to taste", label: "to taste" },
+];
+
+function buildIngredientLine(row: IngredientRow) {
+  const amt = row.amount?.trim();
+  const unit = row.unit?.trim();
+  const item = row.item?.trim();
+  if (!item) return "";
+  const left = [amt, unit && unit !== "to taste" ? unit : ""].filter(Boolean).join(" ").trim();
+  const right = unit === "to taste" ? `${item} (to taste)` : item;
+  return `${left ? left + " " : ""}${right}`.trim();
+}
+
+function detectClubPostKind(p: Post): PostKind {
+  const recipeId = (p.post as any)?.recipeId;
+  if (recipeId) return "recipe";
+  const c = (p.post?.content || "").trim();
+  if (/^review:/i.test(c)) return "review";
+  return "post";
+}
 
 export default function ClubDetailPage() {
   const { id } = useParams();
   const clubId = String(id || "");
-  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useUser();
 
   const [newPostContent, setNewPostContent] = useState("");
+
+const [postKind, setPostKind] = useState<PostKind>("post");
+
+// Recipe template fields (club posts)
+const [recipeTitle, setRecipeTitle] = useState("");
+const [recipeCookTime, setRecipeCookTime] = useState<string>("");
+const [recipeServings, setRecipeServings] = useState<string>("");
+const [recipeDifficulty, setRecipeDifficulty] = useState<string>("easy");
+const [ingredients, setIngredients] = useState<IngredientRow[]>([{ amount: "", unit: "cup", item: "" }]);
+const [instructions, setInstructions] = useState<string[]>([""]);
+
+// Review template fields (club posts)
+const [reviewSubject, setReviewSubject] = useState("");
+const [reviewRating, setReviewRating] = useState<number>(5);
+const [reviewPros, setReviewPros] = useState("");
+const [reviewCons, setReviewCons] = useState("");
+const [reviewVerdict, setReviewVerdict] = useState("");
+
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostContent, setEditPostContent] = useState("");
-
-  // Club edit modal state (owner only)
-  const [editClubOpen, setEditClubOpen] = useState(false);
-  const [editName, setEditName] = useState("");
-  const [editDescription, setEditDescription] = useState("");
-  const [editRules, setEditRules] = useState("");
-  const [editIsPublic, setEditIsPublic] = useState(true);
 
   // Fetch club details
   const { data: clubData, isLoading: clubLoading } = useQuery<ClubDetailResponse>({
@@ -151,36 +143,22 @@ export default function ClubDetailPage() {
     enabled: !!clubId,
   });
 
-  // Membership status (fixes the "no post box" issue even if /my-clubs is broken)
-  const { data: membershipData } = useQuery<MembershipResponse>({
-    queryKey: [`/api/clubs/${clubId}/membership`],
-    enabled: !!clubId && !!user,
+  // Check membership status
+  const { data: myClubsData } = useQuery<{ clubs: any[] }>({
+    queryKey: ["/api/clubs/my-clubs"],
+    enabled: !!user,
   });
 
-  const membershipRole = membershipData?.membership?.role || null;
-  const isPending = membershipRole === "pending";
-  const isMember = membershipRole === "member" || membershipRole === "owner";
-  const isOwner = useMemo(() => {
-    const creatorId = clubData?.club?.creator?.id;
-    if (!user?.id) return false;
-    return membershipData?.isOwner === true || creatorId === user.id || membershipRole === "owner";
-  }, [clubData?.club?.creator?.id, membershipData?.isOwner, membershipRole, user?.id]);
+  const isMember = useMemo(() => {
+    const list = myClubsData?.clubs;
+    if (!Array.isArray(list) || !clubId) return false;
 
-  const club = clubData?.club?.club;
-  const creator = clubData?.club?.creator;
-  const stats = clubData?.stats;
+    // /api/clubs/my-clubs returns rows like: { club: ClubRow, membership: ..., memberCount: ... }
+    // Be defensive in case of partial/legacy data.
+    return list.some((c: any) => c?.club?.id === clubId || c?.clubId === clubId || c?.id === clubId);
+  }, [myClubsData?.clubs, clubId]);
 
-  // Seed edit dialog when opening
-  const openEditDialog = () => {
-    if (!club) return;
-    setEditName(club.name || "");
-    setEditDescription(club.description || "");
-    setEditRules(club.rules || "");
-    setEditIsPublic(!!club.isPublic);
-    setEditClubOpen(true);
-  };
-
-  // Join club mutation (public joins immediately; private creates a pending request)
+  // Join club mutation
   const joinClubMutation = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/clubs/${clubId}/join`, {
@@ -194,18 +172,12 @@ export default function ClubDetailPage() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/membership`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
-
-      if (club?.isPublic) {
-        toast({ title: "✓ Joined club", description: "Welcome to the club!" });
-      } else {
-        toast({ title: "Request sent", description: "The club owner will review your request." });
-      }
+      toast({ title: "✓ Joined club", description: "Welcome to the club!" });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to join club", description: error.message, variant: "destructive" });
     },
   });
 
@@ -223,9 +195,9 @@ export default function ClubDetailPage() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/membership`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      toast({ title: "Left club", description: "You have left the club." });
+      toast({ title: "✓ Left club" });
     },
     onError: (error: Error) => {
       toast({ title: "Failed to leave club", description: error.message, variant: "destructive" });
@@ -234,12 +206,12 @@ export default function ClubDetailPage() {
 
   // Create post mutation
   const createPostMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (payload: { content: string; postType: PostKind; recipe?: any }) => {
       const res = await fetch(`/api/clubs/${clubId}/posts`, {
         method: "POST",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: newPostContent }),
+        credentials: "include",
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
@@ -248,49 +220,167 @@ export default function ClubDetailPage() {
       return res.json();
     },
     onSuccess: () => {
-      setNewPostContent("");
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
-      toast({ title: "Posted", description: "Your post is live." });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
+      toast({ title: "✓ Post created" });
+
+setNewPostContent("");
+setPostKind("post");
+
+// reset templates
+setRecipeTitle("");
+setRecipeCookTime("");
+setRecipeServings("");
+setRecipeDifficulty("easy");
+setIngredients([{ amount: "", unit: "cup", item: "" }]);
+setInstructions([""]);
+setReviewSubject("");
+setReviewRating(5);
+setReviewPros("");
+setReviewCons("");
+setReviewVerdict("");
     },
     onError: (error: Error) => {
-      toast({ title: "Post failed", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to create post", description: error.message, variant: "destructive" });
     },
   });
 
   const handleCreatePost = () => {
-    if (!newPostContent.trim()) return;
-    createPostMutation.mutate();
+    if (!user) {
+      toast({ title: "Login required", description: "Please log in to post", variant: "destructive" });
+      return;
+    }
+
+    // Base content (caption / intro). For templates we ensure server-required content is present.
+    const base = newPostContent.trim();
+
+    if (postKind === "post") {
+      if (!base) {
+        toast({ title: "Content required", description: "Please enter post content", variant: "destructive" });
+        return;
+      }
+      createPostMutation.mutate({ content: base, postType: "post" });
+      return;
+    }
+
+    if (postKind === "recipe") {
+      if (!recipeTitle.trim()) {
+        toast({ title: "Missing title", description: "Please add a recipe title", variant: "destructive" });
+        return;
+      }
+
+      const ingLines = ingredients.map(buildIngredientLine).filter(Boolean);
+      const steps = instructions.map(s => s.trim()).filter(Boolean);
+
+      if (ingLines.length === 0) {
+        toast({ title: "Missing ingredients", description: "Add at least one ingredient", variant: "destructive" });
+        return;
+      }
+      if (steps.length === 0) {
+        toast({ title: "Missing instructions", description: "Add at least one instruction step", variant: "destructive" });
+        return;
+      }
+
+      const content = base || `🍽️ Recipe: ${recipeTitle.trim()}`;
+
+      createPostMutation.mutate({
+        content,
+        postType: "recipe",
+        recipe: {
+          title: recipeTitle.trim(),
+          ingredients: ingLines,
+          instructions: steps,
+          cookTime: recipeCookTime ? Number(recipeCookTime) : undefined,
+          servings: recipeServings ? Number(recipeServings) : undefined,
+          difficulty: recipeDifficulty || undefined,
+        },
+      });
+      return;
+    }
+
+    // review
+    if (!reviewSubject.trim()) {
+      toast({ title: "Missing subject", description: "What are you reviewing?", variant: "destructive" });
+      return;
+    }
+
+    const rating = Math.max(1, Math.min(5, Number(reviewRating) || 5));
+    const stars = "★".repeat(rating) + "☆".repeat(5 - rating);
+
+    const prosLines = reviewPros
+      .split("
+")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => (l.startsWith("-") ? l : `- ${l}`))
+      .join("
+");
+
+    const consLines = reviewCons
+      .split("
+")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => (l.startsWith("-") ? l : `- ${l}`))
+      .join("
+");
+
+    const extra = base ? `
+
+Notes:
+${base}` : "";
+    const content =
+      `Review: ${reviewSubject.trim()}
+` +
+      `Rating: ${rating}/5 ${stars}
+
+` +
+      `Pros:
+${prosLines || "-"}
+
+` +
+      `Cons:
+${consLines || "-"}
+
+` +
+      `Verdict:
+${reviewVerdict.trim() || "-"}` +
+      extra;
+
+    createPostMutation.mutate({ content, postType: "review" });
   };
 
-  // Update post mutation
+
   const updatePostMutation = useMutation({
     mutationFn: async ({ postId, content }: { postId: string; content: string }) => {
       const res = await fetch(`/api/clubs/${clubId}/posts/${postId}`, {
         method: "PATCH",
-        credentials: "include",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({ content }),
       });
+
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
         throw new Error(error.message || "Failed to update post");
       }
+
       return res.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
+      toast({ title: "✓ Post saved" });
       setEditingPostId(null);
       setEditPostContent("");
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
-      toast({ title: "Saved", description: "Your changes were saved." });
     },
     onError: (error: Error) => {
-      toast({ title: "Save failed", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to save post", description: error.message, variant: "destructive" });
     },
   });
 
-  const startEditingPost = (p: Post) => {
-    setEditingPostId(p.post.id);
-    setEditPostContent(p.post.content);
+  const startEditingPost = (post: Post) => {
+    setEditingPostId(post.post.id);
+    setEditPostContent(post.post.content);
   };
 
   const cancelEditingPost = () => {
@@ -300,436 +390,246 @@ export default function ClubDetailPage() {
 
   const saveEditedPost = () => {
     if (!editingPostId) return;
-    updatePostMutation.mutate({ postId: editingPostId, content: editPostContent });
+
+    if (!editPostContent.trim()) {
+      toast({ title: "Content required", description: "Please enter post content", variant: "destructive" });
+      return;
+    }
+
+    updatePostMutation.mutate({ postId: editingPostId, content: editPostContent.trim() });
   };
-
-  // Delete post (owner or author)
-  const deletePostMutation = useMutation({
-    mutationFn: async (postId: string) => {
-      const res = await fetch(`/api/clubs/${clubId}/posts/${postId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to delete post");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
-      toast({ title: "Deleted", description: "Post removed." });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
-    },
-  });
-
-  // Edit club mutation (owner)
-  const updateClubMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/clubs/${clubId}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: editName,
-          description: editDescription,
-          rules: editRules,
-          isPublic: editIsPublic,
-        }),
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to update club");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      setEditClubOpen(false);
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/membership`] });
-      toast({ title: "Updated", description: "Club updated successfully." });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Update failed", description: error.message, variant: "destructive" });
-    },
-  });
-
-  // Delete club mutation (owner)
-  const deleteClubMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch(`/api/clubs/${clubId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to delete club");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      toast({ title: "Club deleted", description: "Your club has been deleted." });
-      queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
-      setLocation("/clubs");
-    },
-    onError: (error: Error) => {
-      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
-    },
-  });
-
-  // Join requests (owner only; private club)
-  const { data: joinRequestsData } = useQuery<{ requests: JoinRequest[] }>({
-    queryKey: [`/api/clubs/${clubId}/join-requests`],
-    enabled: !!clubId && !!user && !!isOwner && club?.isPublic === false,
-  });
-
-  const approveJoinMutation = useMutation({
-    mutationFn: async (membershipId: string) => {
-      const res = await fetch(`/api/clubs/${clubId}/join-requests/${membershipId}/approve`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to approve request");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/join-requests`] });
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      toast({ title: "Approved", description: "Member approved." });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Approve failed", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const denyJoinMutation = useMutation({
-    mutationFn: async (membershipId: string) => {
-      const res = await fetch(`/api/clubs/${clubId}/join-requests/${membershipId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({}));
-        throw new Error(error.message || "Failed to deny request");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/join-requests`] });
-      toast({ title: "Denied", description: "Request denied." });
-    },
-    onError: (error: Error) => {
-      toast({ title: "Deny failed", description: error.message, variant: "destructive" });
-    },
-  });
-
-  const pageTitle = club?.name || "Club";
-
-  const canPost = !!user && isMember && !isPending;
 
   if (clubLoading) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        <p className="text-muted-foreground">Loading club...</p>
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center py-12">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+          </div>
+        </div>
       </div>
     );
   }
 
+  // Normalize data shape (defensive)
+  const club = clubData?.club?.club;
+  const creator = clubData?.club?.creator;
+  const stats = clubData?.stats;
+
   if (!club || !creator || !stats) {
     return (
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        <p className="text-muted-foreground">Club not found.</p>
+      <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
+        <div className="max-w-4xl mx-auto">
+          <Card>
+            <CardContent className="py-12 text-center">
+              <p className="text-slate-600">Club not found</p>
+              <Link href="/clubs">
+                <Button className="mt-4">
+                  <ArrowLeft className="h-4 w-4 mr-2" />
+                  Back to Clubs
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  const posts = postsData?.posts || [];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
+      <div className="max-w-4xl mx-auto space-y-6">
+        {/* Back Button */}
         <Link href="/clubs">
-          <Button variant="outline" className="mt-4">
+          <Button variant="ghost" className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Clubs
           </Button>
         </Link>
-      </div>
-    );
-  }
 
-  return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Link href="/clubs">
-            <Button variant="ghost" size="sm">
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Back
-            </Button>
-          </Link>
+        {/* Club Header */}
+        <Card className="border-0 shadow-lg bg-white/80 backdrop-blur-sm">
+          <CardHeader className="space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-2">
+                  <Crown className="h-5 w-5 text-purple-600" />
+                  <CardTitle className="text-2xl font-bold">{club.name}</CardTitle>
+                </div>
 
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl font-bold">{pageTitle}</h1>
-              <Badge variant="secondary" className="capitalize">
-                {club.category}
-              </Badge>
-              {club.isPublic ? (
-                <Badge variant="outline" className="gap-1">
-                  <Unlock className="h-3.5 w-3.5" />
-                  Public
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="gap-1">
-                  <Lock className="h-3.5 w-3.5" />
-                  Private
-                </Badge>
-              )}
-            </div>
-            <p className="text-sm text-muted-foreground">
-              Created by {creator.displayName || creator.username}
-            </p>
-          </div>
-        </div>
+                {club.description ? (
+                  <CardDescription className="text-base">{club.description}</CardDescription>
+                ) : (
+                  <CardDescription className="text-base text-slate-500">No description</CardDescription>
+                )}
 
-        <div className="flex items-center gap-2 flex-wrap justify-end">
-          {user ? (
-            <>
-              {isMember ? (
-                <Button variant="outline" onClick={() => leaveClubMutation.mutate()} disabled={leaveClubMutation.isPending}>
-                  Leave
-                </Button>
-              ) : isPending ? (
-                <Button variant="outline" disabled>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Request Pending
-                </Button>
-              ) : (
-                <Button onClick={() => joinClubMutation.mutate()} disabled={joinClubMutation.isPending}>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  {club.isPublic ? "Join" : "Request to Join"}
-                </Button>
-              )}
+                <div className="flex items-center gap-2 mt-3">
+                  <Badge variant="secondary" className="capitalize">
+                    {club.category}
+                  </Badge>
+                  {club.isPublic ? (
+                    <Badge variant="outline">Public</Badge>
+                  ) : (
+                    <Badge variant="outline">Private</Badge>
+                  )}
+                </div>
+              </div>
 
-              {isOwner ? (
-                <>
-                  <Button variant="outline" onClick={openEditDialog}>
-                    <Pencil className="h-4 w-4 mr-2" />
-                    Edit Club
-                  </Button>
-
-                  <AlertDialog>
-                    <AlertDialogTrigger asChild>
-                      <Button variant="destructive">
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete Club
-                      </Button>
-                    </AlertDialogTrigger>
-                    <AlertDialogContent>
-                      <AlertDialogHeader>
-                        <AlertDialogTitle>Delete this club?</AlertDialogTitle>
-                        <AlertDialogDescription>
-                          This will permanently delete the club, posts, and memberships. This cannot be undone.
-                        </AlertDialogDescription>
-                      </AlertDialogHeader>
-                      <AlertDialogFooter>
-                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={() => deleteClubMutation.mutate()} className="bg-red-600 hover:bg-red-700">
-                          Delete
-                        </AlertDialogAction>
-                      </AlertDialogFooter>
-                    </AlertDialogContent>
-                  </AlertDialog>
-                </>
-              ) : null}
-            </>
-          ) : (
-            <Badge variant="outline">Log in to join</Badge>
-          )}
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center">
-              <Users className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Members</p>
-              <p className="text-xl font-semibold">{stats.memberCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-pink-600 to-rose-500 flex items-center justify-center">
-              <MessageSquare className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Posts</p>
-              <p className="text-xl font-semibold">{stats.postCount}</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Rules */}
-      {club.rules ? (
-        <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-purple-600" />
-              Club Rules
-            </CardTitle>
-            <CardDescription>{club.rules}</CardDescription>
-          </CardHeader>
-        </Card>
-      ) : null}
-
-      {/* Private club pending notice */}
-      {user && isPending ? (
-        <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
-          <CardContent className="p-4 flex items-start gap-3">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center">
-              <Lock className="h-5 w-5 text-white" />
-            </div>
-            <div>
-              <p className="font-medium">Request pending</p>
-              <p className="text-sm text-muted-foreground">
-                You can’t post until the club owner approves your join request.
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
-
-      {/* Owner: Pending join requests (private only) */}
-      {isOwner && club.isPublic === false ? (
-        <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Crown className="h-5 w-5 text-amber-500" />
-              Join Requests
-            </CardTitle>
-            <CardDescription>Approve or deny membership requests for this private club.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {joinRequestsData?.requests?.length ? (
-              joinRequestsData.requests.map((r) => (
-                <div key={r.membership.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border bg-white/70">
-                  <div className="min-w-0">
-                    <p className="font-medium truncate">{r.user.displayName || r.user.username}</p>
-                    <p className="text-xs text-muted-foreground truncate">@{r.user.username}</p>
+              <div className="text-right">
+                <div className="flex items-center justify-end gap-4 text-sm text-slate-600">
+                  <div className="flex items-center gap-1">
+                    <Users className="h-4 w-4" />
+                    {stats.memberCount}
                   </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => approveJoinMutation.mutate(r.membership.id)} disabled={approveJoinMutation.isPending}>
-                      <Check className="h-4 w-4 mr-1" />
-                      Approve
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => denyJoinMutation.mutate(r.membership.id)}
-                      disabled={denyJoinMutation.isPending}
-                    >
-                      <Ban className="h-4 w-4 mr-1" />
-                      Deny
-                    </Button>
+                  <div className="flex items-center gap-1">
+                    <MessageSquare className="h-4 w-4" />
+                    {stats.postCount}
                   </div>
                 </div>
-              ))
-            ) : (
-              <p className="text-sm text-muted-foreground">No pending requests.</p>
-            )}
-          </CardContent>
-        </Card>
-      ) : null}
 
-      {/* New Post */}
-      {user && isMember ? (
+                <div className="flex items-center justify-end gap-1 text-xs text-slate-500 mt-2">
+                  <Calendar className="h-3 w-3" />
+                  {new Date(club.createdAt).toLocaleDateString()}
+                </div>
+              </div>
+            </div>
+
+            {/* Creator & Join/Leave */}
+            <div className="flex items-center justify-between gap-4 pt-2 border-t">
+              <div className="flex items-center gap-3">
+                <Avatar className="h-9 w-9">
+                  <AvatarFallback>
+                    {(creator.displayName || creator.username || "U").slice(0, 1).toUpperCase()}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="leading-tight">
+                  <div className="text-sm font-medium">
+                    {creator.displayName || creator.username}
+                  </div>
+                  <div className="text-xs text-slate-500">@{creator.username}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {!user ? (
+                  <Link href="/login">
+                    <Button>Log in to Join</Button>
+                  </Link>
+                ) : isMember ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => leaveClubMutation.mutate()}
+                    disabled={leaveClubMutation.isPending}
+                  >
+                    {leaveClubMutation.isPending ? "Leaving..." : "Leave Club"}
+                  </Button>
+                ) : (
+                  <Button onClick={() => joinClubMutation.mutate()} disabled={joinClubMutation.isPending}>
+                    {joinClubMutation.isPending ? "Joining..." : "Join Club"}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* Rules */}
+        {club.rules ? (
+          <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Club Rules</CardTitle>
+              <CardDescription className="whitespace-pre-wrap">{club.rules}</CardDescription>
+            </CardHeader>
+          </Card>
+        ) : null}
+
+        {/* New Post */}
+        {user && isMember ? (
+          <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="text-lg">Create a Post</CardTitle>
+              <CardDescription>Share something with the club</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Textarea
+                value={newPostContent}
+                onChange={(e) => setNewPostContent(e.target.value)}
+                placeholder="Write your post..."
+                rows={4}
+              />
+              <div className="flex justify-end">
+                <Button onClick={handleCreatePost} disabled={createPostMutation.isPending}>
+                  <Send className="h-4 w-4 mr-2" />
+                  {createPostMutation.isPending ? "Posting..." : "Post"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {/* Posts */}
         <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle className="text-lg">Create a Post</CardTitle>
-            <CardDescription>Share something with the club</CardDescription>
+            <CardTitle className="text-lg">Club Posts</CardTitle>
+            <CardDescription>
+              {postsLoading ? "Loading posts..." : `${posts.length} post${posts.length === 1 ? "" : "s"}`}
+            </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-3">
-            <Textarea
-              value={newPostContent}
-              onChange={(e) => setNewPostContent(e.target.value)}
-              placeholder={isPending ? "Awaiting approval..." : "Write your post..."}
-              rows={4}
-              disabled={!canPost}
-            />
-            <div className="flex justify-end">
-              <Button onClick={handleCreatePost} disabled={!canPost || createPostMutation.isPending}>
-                <Send className="h-4 w-4 mr-2" />
-                {createPostMutation.isPending ? "Posting..." : "Post"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
 
-      {/* Posts */}
-      <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
-        <CardHeader>
-          <CardTitle className="text-lg">Posts</CardTitle>
-          <CardDescription>Latest updates from members</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {postsLoading ? (
-            <p className="text-sm text-muted-foreground">Loading posts...</p>
-          ) : !postsData?.posts?.length ? (
-            <p className="text-sm text-muted-foreground">No posts yet.</p>
-          ) : (
-            postsData.posts.map((p) => {
-              const isCreatorPost = p.author.id === creator.id;
-              const canEdit = user?.id === p.post.userId;
-              const canDelete = user?.id === p.post.userId || isOwner;
-
-              return (
-                <Card key={p.post.id} className="border bg-white/70">
+          <CardContent className="space-y-4">
+            {!postsLoading && posts.length === 0 ? (
+              <div className="text-center text-slate-500 py-10">No posts yet.</div>
+            ) : (
+              posts.map((p) => (
+                <Card key={p.post.id} className="border border-slate-200">
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback>
-                            {(p.author.displayName || p.author.username || "?").slice(0, 1).toUpperCase()}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-medium truncate">{p.author.displayName || p.author.username}</p>
-                            {isCreatorPost ? (
-                              <Badge className="gap-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
-                                <Crown className="h-3.5 w-3.5" />
-                                Creator
-                              </Badge>
-                            ) : null}
-                          </div>
-                          <p className="text-xs text-muted-foreground truncate">@{p.author.username}</p>
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8">
+                        <AvatarFallback>
+                          {(p.author.displayName || p.author.username || "U").slice(0, 1).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="leading-tight">
+                        <div className="text-sm font-medium">
+                          {p.author.displayName || p.author.username}
                         </div>
-                      </div>
+<div className="flex items-center gap-2 mt-1">
+  {clubData?.club?.creator?.id === p.author.id && (
+    <Badge variant="secondary" className="bg-purple-100 text-purple-700">
+      <Crown className="h-3 w-3 mr-1" />
+      Creator
+    </Badge>
+  )}
+  {detectClubPostKind(p) === "recipe" && (
+    <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
+      <ChefHat className="h-3 w-3 mr-1" />
+      Recipe
+    </Badge>
+  )}
+  {detectClubPostKind(p) === "review" && (
+    <Badge variant="secondary" className="bg-amber-100 text-amber-700">
+      <Star className="h-3 w-3 mr-1" />
+      Review
+    </Badge>
+  )}
+</div>
 
-                      <div className="flex items-center gap-2">
-                        {canDelete ? (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => deletePostMutation.mutate(p.post.id)}
-                            disabled={deletePostMutation.isPending}
-                            title={isOwner && user?.id !== p.post.userId ? "Remove post (owner)" : "Delete post"}
-                          >
-                            <Trash2 className="h-4 w-4 text-red-600" />
-                          </Button>
-                        ) : null}
+                        <div className="text-xs text-slate-500">
+                          {new Date(p.post.createdAt).toLocaleString()}
+                        </div>
                       </div>
                     </div>
                   </CardHeader>
-
-                  <CardContent className="space-y-3">
+                  <CardContent className="pt-0 space-y-3">
                     {editingPostId === p.post.id ? (
                       <>
-                        <Textarea value={editPostContent} onChange={(e) => setEditPostContent(e.target.value)} rows={3} />
+                        <Textarea
+                          value={editPostContent}
+                          onChange={(e) => setEditPostContent(e.target.value)}
+                          rows={3}
+                        />
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" onClick={cancelEditingPost}>
                             <X className="h-4 w-4 mr-1" />
@@ -744,80 +644,23 @@ export default function ClubDetailPage() {
                     ) : (
                       <>
                         <p className="whitespace-pre-wrap text-slate-800">{p.post.content}</p>
-                        {canEdit ? (
+                        {user?.id === p.post.userId && (
                           <div className="flex justify-end">
                             <Button variant="outline" size="sm" onClick={() => startEditingPost(p)}>
                               <Pencil className="h-4 w-4 mr-1" />
                               Edit
                             </Button>
                           </div>
-                        ) : null}
+                        )}
                       </>
                     )}
                   </CardContent>
                 </Card>
-              );
-            })
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Edit Club Dialog */}
-      <Dialog open={editClubOpen} onOpenChange={setEditClubOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Club</DialogTitle>
-            <DialogDescription>Update your club details.</DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="club-name">Name</Label>
-              <Input id="club-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="club-desc">Description</Label>
-              <Textarea id="club-desc" value={editDescription} onChange={(e) => setEditDescription(e.target.value)} rows={3} />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="club-rules">Rules</Label>
-              <Textarea id="club-rules" value={editRules} onChange={(e) => setEditRules(e.target.value)} rows={3} />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant={editIsPublic ? "default" : "outline"}
-                onClick={() => setEditIsPublic(true)}
-                className="gap-2"
-              >
-                <Unlock className="h-4 w-4" />
-                Public
-              </Button>
-              <Button
-                type="button"
-                variant={!editIsPublic ? "default" : "outline"}
-                onClick={() => setEditIsPublic(false)}
-                className="gap-2"
-              >
-                <Lock className="h-4 w-4" />
-                Private
-              </Button>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <Button variant="outline" onClick={() => setEditClubOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={() => updateClubMutation.mutate()} disabled={updateClubMutation.isPending}>
-                {updateClubMutation.isPending ? "Saving..." : "Save"}
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
