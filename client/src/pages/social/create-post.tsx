@@ -14,13 +14,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Upload, Plus, Minus, X, MapPin } from "lucide-react";
+import { Camera, Upload, Plus, Minus, X, Star, MapPin } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import { useGoogleMaps } from "@/hooks/useGoogleMaps";
-
-const SELECT_NONE = "__none__"; // ✅ Radix SelectItem cannot have value=""
 
 const AMOUNT_OPTIONS = [
   "1/8",
@@ -57,6 +55,8 @@ const UNIT_OPTIONS = [
   "piece",
 ];
 
+const SELECT_NONE = "__none__"; // ✅ Radix SelectItem cannot have value=""
+
 type PostType = "post" | "recipe" | "review";
 type IngredientRow = { amount: string; unit: string; name: string };
 
@@ -82,8 +82,8 @@ export default function CreatePost() {
   const [, setLocation] = useLocation();
   const { user } = useUser();
 
-  // Google Maps / Places (same pattern as wedding-planning.tsx)
-  const mapsLoaded = useGoogleMaps();
+  // Google Places Autocomplete (same pattern as wedding-planning.tsx)
+  const isGoogleMapsLoaded = useGoogleMaps();
   const reviewBusinessRef = useRef<HTMLInputElement>(null);
   const reviewLocationRef = useRef<HTMLInputElement>(null);
   const reviewBusinessAutocompleteRef = useRef<any>(null);
@@ -105,22 +105,25 @@ export default function CreatePost() {
     servings: "",
     difficulty: "Easy",
 
-    // Review fields (NEW)
-    reviewBusinessName: "",
+    // ✅ Review fields (zip already had these)
+    reviewTitle: "",
     reviewLocation: "",
+    reviewRating: "5",
+    reviewPros: "",
+    reviewCons: "",
+    reviewVerdict: "",
   });
 
   const handleChange = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // Initialize Google Places Autocomplete for review fields (business + location)
+  // Initialize Google Places Autocomplete for review fields
   useEffect(() => {
     if (formData.postType !== "review") return;
-    if (!mapsLoaded) return;
-    if (!window.google?.maps?.places) return;
+    if (!isGoogleMapsLoaded || !window.google?.maps?.places) return;
 
-    // Business name (establishment)
+    // Business (establishment)
     if (reviewBusinessRef.current && !reviewBusinessAutocompleteRef.current) {
       const businessOptions: any = {
         types: ["establishment"],
@@ -138,28 +141,26 @@ export default function CreatePost() {
         reviewBusinessAutocompleteRef.current.addListener(
           "place_changed",
           () => {
-            const place =
-              reviewBusinessAutocompleteRef.current?.getPlace?.() || null;
+            const place = reviewBusinessAutocompleteRef.current?.getPlace?.();
             const name = place?.name;
-            const addr = place?.formatted_address;
-
-            // Prefer "Name, Address" if both exist
+            const fullAddress = place?.formatted_address;
             const display =
-              name && addr && !String(addr).startsWith(String(name))
-                ? `${name}, ${addr}`
-                : name || addr || "";
+              name && fullAddress && !String(fullAddress).startsWith(String(name))
+                ? `${name}, ${fullAddress}`
+                : name || fullAddress || "";
 
-            if (display) {
-              handleChange("reviewBusinessName", display);
-            }
+            if (display) handleChange("reviewTitle", display);
           }
         );
-      } catch (e) {
-        console.error("[CreatePost] Business autocomplete init failed:", e);
+      } catch (error) {
+        console.error(
+          "[CreatePost] Business autocomplete init failed:",
+          error
+        );
       }
     }
 
-    // Location (regions) – same as vendor location input in wedding-planning.tsx
+    // Location (regions)
     if (reviewLocationRef.current && !reviewLocationAutocompleteRef.current) {
       const locationOptions: any = {
         types: ["(regions)"],
@@ -174,26 +175,28 @@ export default function CreatePost() {
             locationOptions
           );
 
-        reviewLocationAutocompleteRef.current.addListener("place_changed", () => {
-          const place =
-            reviewLocationAutocompleteRef.current?.getPlace?.() || null;
-          const name = place?.name;
-          const addr = place?.formatted_address;
+        reviewLocationAutocompleteRef.current.addListener(
+          "place_changed",
+          () => {
+            const place = reviewLocationAutocompleteRef.current?.getPlace?.();
+            const name = place?.name;
+            const fullAddress = place?.formatted_address;
+            const display =
+              name && fullAddress && !String(fullAddress).startsWith(String(name))
+                ? `${name}, ${fullAddress}`
+                : fullAddress || name || "";
 
-          const display =
-            name && addr && !String(addr).startsWith(String(name))
-              ? `${name}, ${addr}`
-              : addr || name || "";
-
-          if (display) {
-            handleChange("reviewLocation", display);
+            if (display) handleChange("reviewLocation", display);
           }
-        });
-      } catch (e) {
-        console.error("[CreatePost] Location autocomplete init failed:", e);
+        );
+      } catch (error) {
+        console.error(
+          "[CreatePost] Location autocomplete init failed:",
+          error
+        );
       }
     }
-  }, [mapsLoaded, formData.postType]);
+  }, [isGoogleMapsLoaded, formData.postType]);
 
   const createPostMutation = useMutation({
     mutationFn: async () => {
@@ -203,6 +206,24 @@ export default function CreatePost() {
 
       const isRecipe = formData.postType === "recipe";
 
+      // Build review caption (existing pattern, now includes location)
+      const reviewContent =
+        `📝 Review: ${formData.reviewTitle.trim()}\n` +
+        (formData.reviewLocation.trim()
+          ? `📍 Location: ${formData.reviewLocation.trim()}\n`
+          : "") +
+        `⭐ Rating: ${formData.reviewRating}/5\n\n` +
+        (formData.reviewPros.trim()
+          ? `✅ Pros: ${formData.reviewPros.trim()}\n\n`
+          : "") +
+        (formData.reviewCons.trim()
+          ? `⚠️ Cons: ${formData.reviewCons.trim()}\n\n`
+          : "") +
+        (formData.reviewVerdict.trim()
+          ? `💡 Verdict: ${formData.reviewVerdict.trim()}\n\n`
+          : "") +
+        (formData.caption.trim() ? `Notes: ${formData.caption.trim()}` : "");
+
       // Tags
       const baseTags = formData.tags.map((t) => t.trim()).filter(Boolean);
       const tags =
@@ -210,24 +231,46 @@ export default function CreatePost() {
           ? Array.from(new Set([...baseTags, "review"]))
           : baseTags;
 
-      // Caption normalization
-      let caption = formData.caption;
+      // Caption to store
+      const captionToStore =
+        formData.postType === "review" ? reviewContent : formData.caption;
 
-      if (formData.postType === "review") {
-        const biz = (formData.reviewBusinessName || "").trim();
-        const loc = (formData.reviewLocation || "").trim();
-        const body = (formData.caption || "").trim();
-
-        // Put review metadata into the caption in a consistent template
-        caption =
-          `📝 Review: ${biz}\n` +
-          `📍 Location: ${loc}\n\n` +
-          (body ? body : "");
+      // Validate basics
+      if (!formData.imageUrl.trim()) {
+        throw new Error("Please add an image (upload or URL)");
       }
 
+      if (formData.postType === "post" && !captionToStore.trim()) {
+        throw new Error("Please write a caption for your post");
+      }
+
+      if (formData.postType === "review") {
+        if (!formData.reviewTitle.trim()) {
+          throw new Error("Please add the business name");
+        }
+        if (!formData.reviewLocation.trim()) {
+          throw new Error("Please add the business location");
+        }
+      }
+
+      if (isRecipe) {
+        if (!formData.recipeTitle.trim()) {
+          throw new Error("Please add a recipe title");
+        }
+
+        const ingredients = ingredientRowsToStrings(formData.ingredients);
+        const instructions = normalizeSteps(formData.instructions);
+
+        if (ingredients.length === 0)
+          throw new Error("Please add at least one ingredient");
+        if (instructions.length === 0)
+          throw new Error("Please add at least one instruction step");
+      }
+
+      // Create the post
       const postData = {
         userId: user.id,
-        caption,
+        caption: captionToStore,
         imageUrl: formData.imageUrl,
         tags,
         isRecipe,
@@ -240,7 +283,7 @@ export default function CreatePost() {
       }
       const post = await postResponse.json();
 
-      // If it's a recipe, create recipe row linked to post.id
+      // If it's a recipe, create the recipe data (linked to post.id)
       if (isRecipe && formData.recipeTitle) {
         const ingredients = ingredientRowsToStrings(formData.ingredients);
         const instructions = normalizeSteps(formData.instructions);
@@ -297,17 +340,17 @@ export default function CreatePost() {
     }
 
     if (formData.postType === "review") {
-      if (!formData.reviewBusinessName.trim()) {
+      if (!formData.reviewTitle.trim()) {
         toast({
           variant: "destructive",
-          description: "Please select a business name",
+          description: "Please add the business name",
         });
         return;
       }
       if (!formData.reviewLocation.trim()) {
         toast({
           variant: "destructive",
-          description: "Please select a location",
+          description: "Please add the business location",
         });
         return;
       }
@@ -353,6 +396,7 @@ export default function CreatePost() {
       reader.onloadend = () => {
         const result = reader.result as string;
         setImagePreview(result);
+        // Store as data URL (same pattern used elsewhere in your app)
         handleChange("imageUrl", result);
       };
       reader.readAsDataURL(file);
@@ -461,52 +505,6 @@ export default function CreatePost() {
               </Select>
             </div>
 
-            {/* Review Fields (NEW) */}
-            {formData.postType === "review" && (
-              <>
-                <Separator />
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <MapPin className="h-4 w-4" />
-                    <span>
-                      Start typing and pick from suggestions (Google Places)
-                    </span>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Business name *</Label>
-                    <Input
-                      ref={reviewBusinessRef}
-                      value={formData.reviewBusinessName}
-                      onChange={(e) =>
-                        handleChange("reviewBusinessName", e.target.value)
-                      }
-                      placeholder="e.g., Joe’s Pizza"
-                      autoComplete="off"
-                    />
-                    {!mapsLoaded && (
-                      <p className="text-xs text-muted-foreground">
-                        Loading Google Places…
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Location *</Label>
-                    <Input
-                      ref={reviewLocationRef}
-                      value={formData.reviewLocation}
-                      onChange={(e) =>
-                        handleChange("reviewLocation", e.target.value)
-                      }
-                      placeholder="e.g., Brooklyn, NY"
-                      autoComplete="off"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
-
             {/* Image Upload */}
             <div className="space-y-2">
               <Label htmlFor="imageUrl">Image *</Label>
@@ -604,14 +602,20 @@ export default function CreatePost() {
             {/* Caption */}
             <div className="space-y-2">
               <Label htmlFor="caption">
-                {formData.postType === "review" ? "Review text" : "Caption"}
+                {formData.postType === "post"
+                  ? "Caption"
+                  : formData.postType === "recipe"
+                  ? "Caption / Notes (optional)"
+                  : "Notes (optional)"}
               </Label>
               <Textarea
                 id="caption"
                 placeholder={
-                  formData.postType === "review"
-                    ? "Write your review… (food, service, vibes, price, etc.)"
-                    : "Write a caption for your post..."
+                  formData.postType === "post"
+                    ? "Write a caption for your post..."
+                    : formData.postType === "recipe"
+                    ? "Add a short intro, story, or extra details..."
+                    : "Optional extra thoughts to add to your review..."
                 }
                 value={formData.caption}
                 onChange={(e) => handleChange("caption", e.target.value)}
@@ -620,6 +624,108 @@ export default function CreatePost() {
                 data-testid="textarea-caption"
               />
             </div>
+
+            {/* ✅ Review Template UI */}
+            {formData.postType === "review" && (
+              <>
+                <Separator />
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Star className="h-4 w-4" />
+                    Review Template
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Business name *</Label>
+                    <Input
+                      ref={reviewBusinessRef}
+                      value={formData.reviewTitle}
+                      onChange={(e) =>
+                        handleChange("reviewTitle", e.target.value)
+                      }
+                      placeholder="Start typing and pick a place…"
+                      autoComplete="off"
+                    />
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <MapPin className="h-3 w-3" />
+                      <span>
+                        {isGoogleMapsLoaded
+                          ? "Powered by Google Places"
+                          : "Loading Google Places…"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Location *</Label>
+                    <Input
+                      ref={reviewLocationRef}
+                      value={formData.reviewLocation}
+                      onChange={(e) =>
+                        handleChange("reviewLocation", e.target.value)
+                      }
+                      placeholder="City / region…"
+                      autoComplete="off"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Rating</Label>
+                    <Select
+                      value={formData.reviewRating}
+                      onValueChange={(v) => handleChange("reviewRating", v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Rating" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 - Amazing</SelectItem>
+                        <SelectItem value="4">4 - Great</SelectItem>
+                        <SelectItem value="3">3 - Good</SelectItem>
+                        <SelectItem value="2">2 - Meh</SelectItem>
+                        <SelectItem value="1">1 - Bad</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Pros</Label>
+                    <Textarea
+                      value={formData.reviewPros}
+                      onChange={(e) =>
+                        handleChange("reviewPros", e.target.value)
+                      }
+                      rows={2}
+                      placeholder="What did you like?"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Cons</Label>
+                    <Textarea
+                      value={formData.reviewCons}
+                      onChange={(e) =>
+                        handleChange("reviewCons", e.target.value)
+                      }
+                      rows={2}
+                      placeholder="What didn’t you like?"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Verdict</Label>
+                    <Textarea
+                      value={formData.reviewVerdict}
+                      onChange={(e) =>
+                        handleChange("reviewVerdict", e.target.value)
+                      }
+                      rows={2}
+                      placeholder="Would you recommend it?"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Tags */}
             <div className="space-y-2">
