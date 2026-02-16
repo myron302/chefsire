@@ -1,22 +1,12 @@
-import React, { useEffect, useRef, useState } from "react";
-import { formatDistanceToNow } from "date-fns";
-import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
-import { useUser } from "@/contexts/UserContext";
-import type { PostWithUser, Recipe } from "@shared/schema";
-import { MoreHorizontal, Plus, Minus } from "lucide-react";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
-import { shareContent, getPostShareUrl } from "@/lib/share";
-import { Link } from "wouter";
-
-// Import UI primitives from their individual modules (do not import the directory)
-import { Card } from "@/components/ui/card";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+// client/src/pages/social/create-post.tsx
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -24,9 +14,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { Camera, Upload, Plus, Minus, X, Video } from "lucide-react";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/contexts/UserContext";
+import { useGoogleMaps } from "@/hooks/useGoogleMaps";
+
+const EMPTY_SELECT = "__empty__";
 
 const AMOUNT_OPTIONS = [
-  "",
   "1/8",
   "1/4",
   "1/3",
@@ -42,7 +39,6 @@ const AMOUNT_OPTIONS = [
 ];
 
 const UNIT_OPTIONS = [
-  "",
   "tsp",
   "tbsp",
   "cup",
@@ -62,60 +58,19 @@ const UNIT_OPTIONS = [
   "piece",
 ];
 
-type IngredientInputRow = { amount: string; unit: string; name: string };
+type PostType = "post" | "recipe" | "review";
+type IngredientRow = { amount: string; unit: string; name: string };
+type MediaKind = "image" | "video" | "";
 
-function parseIngredientRow(raw: string): IngredientInputRow {
-  const s = (raw ?? "").trim();
-  if (!s) return { amount: "", unit: "", name: "" };
-
-  const parts = s.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return { amount: "", unit: "", name: s };
-
-  // Heuristic: first token (or first two if "1 1/2") is amount
-  let amount = "";
-  let unit = "";
-  let nameStartIdx = 0;
-
-  const first = parts[0];
-  const second = parts[1] ?? "";
-
-  const looksLikeFraction = (t: string) => /^\d+\/\d+$/.test(t);
-  const looksLikeNumber = (t: string) => /^\d+(\.\d+)?$/.test(t);
-
-  if (looksLikeNumber(first) || looksLikeFraction(first)) {
-    // If next token is also fraction, treat both as amount (e.g., "1 1/2")
-    if (looksLikeFraction(second)) {
-      amount = `${first} ${second}`;
-      nameStartIdx = 2;
-    } else {
-      amount = first;
-      nameStartIdx = 1;
-    }
-  } else if (AMOUNT_OPTIONS.includes(first)) {
-    amount = first;
-    nameStartIdx = 1;
-  }
-
-  // Unit token
-  const candidateUnit = parts[nameStartIdx] ?? "";
-  if (UNIT_OPTIONS.includes(candidateUnit)) {
-    unit = candidateUnit;
-    nameStartIdx += 1;
-  }
-
-  const name = parts.slice(nameStartIdx).join(" ").trim();
-  return { amount, unit, name: name || s };
-}
-
-function ingredientRowsToStrings(rows: IngredientInputRow[]): string[] {
+function ingredientRowsToStrings(rows: IngredientRow[]): string[] {
   return rows
-    .map((r) => {
-      const joined = [r.amount, r.unit, r.name]
+    .map((r) =>
+      [r.amount, r.unit, r.name]
         .map((x) => String(x ?? "").trim())
         .filter(Boolean)
-        .join(" ");
-      return joined.trim();
-    })
+        .join(" ")
+        .trim()
+    )
     .filter(Boolean);
 }
 
@@ -123,1050 +78,961 @@ function normalizeSteps(steps: string[]): string[] {
   return steps.map((s) => (s ?? "").trim()).filter(Boolean);
 }
 
-type ParsedReview = {
+function isVideoUrl(url: string) {
+  const u = (url || "").toLowerCase().trim();
+  return (
+    u.includes("video") ||
+    u.endsWith(".mp4") ||
+    u.endsWith(".mov") ||
+    u.endsWith(".webm") ||
+    u.endsWith(".m4v") ||
+    u.endsWith(".ogg")
+  );
+}
+
+function getCityStateLabelFromPlace(place: google.maps.places.PlaceResult) {
+  const comps = place.address_components || [];
+  const find = (type: string) =>
+    comps.find((c) => c.types?.includes(type))?.long_name || "";
+  const city =
+    find("locality") ||
+    find("sublocality") ||
+    find("administrative_area_level_2");
+  const state = find("administrative_area_level_1");
+  const country = find("country");
+  const parts = [city, state, country].filter(Boolean);
+  return parts.join(", ");
+}
+
+function buildReviewCaption(input: {
   businessName: string;
   fullAddress?: string;
   locationLabel?: string;
-  rating?: number;
+  rating?: string;
   pros?: string;
   cons?: string;
   verdict?: string;
   notes?: string;
-};
+  extra?: string; // hashtags / extra lines
+}) {
+  const business = (input.businessName || "").trim();
+  const address = (input.fullAddress || "").trim();
+  const loc = (input.locationLabel || "").trim();
+  const rating = (input.rating || "").trim();
+  const pros = (input.pros || "").trim();
+  const cons = (input.cons || "").trim();
+  const verdict = (input.verdict || "").trim();
+  const notes = (input.notes || "").trim();
+  const extra = (input.extra || "").trim();
 
-/**
- * Review template caption format (from Create Post):
- * 📝 Review: <business name>, <full address...>
- * 📍 Location: <short location label>
- * ⭐ Rating: <n>/5
- * ✅ Pros: ...
- * ⚠️ Cons: ...
- * 💡 Verdict: ...
- * Notes: ...
- */
-function parseReviewCaption(caption: string): ParsedReview | null {
-  const raw = (caption || "").trim();
-  if (!raw.startsWith("📝 Review:")) return null;
+  const lines: string[] = [];
 
-  // Split lines, but also handle single-line captions.
-  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+  // First line (keeps your “📝 Review: Name, Address…” format)
+  lines.push(`📝 Review: ${business}${address ? `, ${address}` : ""}`);
 
-  const first = lines[0] || "";
-  const firstValue = first.replace(/^📝\s*Review:\s*/i, "").trim();
+  if (loc) lines.push(`📍 Location: ${loc}`);
+  if (rating) lines.push(`⭐ Rating: ${rating}/5`);
+  if (pros) lines.push(`✅ Pros: ${pros}`);
+  if (cons) lines.push(`⚠️ Cons: ${cons}`);
+  if (verdict) lines.push(`💡 Verdict: ${verdict}`);
+  if (notes) lines.push(`Notes: ${notes}`);
 
-  // Business name is text up to first comma; the rest is address
-  const [namePart, ...rest] = firstValue.split(",").map((s) => s.trim()).filter(Boolean);
-  const businessName = namePart || firstValue;
-  const fullAddress = rest.length ? rest.join(", ") : undefined;
+  // Allow hashtags / extra lines appended (won’t break parsing)
+  if (extra) lines.push(extra);
 
-  const takeAfter = (prefix: string) => {
-    const line = lines.find((l) => l.startsWith(prefix));
-    if (!line) return undefined;
-    return line.slice(prefix.length).trim();
-  };
-
-  const ratingRaw = takeAfter("⭐ Rating:") || takeAfter("⭐️ Rating:");
-  let rating: number | undefined;
-  if (ratingRaw) {
-    const m = ratingRaw.match(/(\d+(?:\.\d+)?)/);
-    if (m) rating = Math.max(0, Math.min(5, Number(m[1])));
-  }
-
-  const notesLine = lines.find((l) => /^Notes:/i.test(l));
-  const notes = notesLine ? notesLine.replace(/^Notes:\s*/i, "").trim() : undefined;
-
-  return {
-    businessName,
-    fullAddress,
-    locationLabel: takeAfter("📍 Location:"),
-    rating,
-    pros: takeAfter("✅ Pros:"),
-    cons: takeAfter("⚠️ Cons:"),
-    verdict: takeAfter("💡 Verdict:"),
-    notes,
-  };
+  return lines.join("\n").trim();
 }
 
-function stars(n?: number) {
-  const v = typeof n === "number" ? Math.round(n) : 0;
-  return "★★★★★".slice(0, v) + "☆☆☆☆☆".slice(0, Math.max(0, 5 - v));
-}
-
-function buildMapsUrl(review: ParsedReview) {
-  const q = [review.businessName, review.fullAddress || review.locationLabel || ""]
-    .filter(Boolean)
-    .join(" ")
-    .trim();
-  if (!q) return null;
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
-}
-
-interface PostCardProps {
-  post: PostWithUser;
-  currentUserId?: string;
-  onCardClick?: (post: PostWithUser) => void;
-  onDelete?: () => void;
-}
-
-export default function PostCard({
-  post,
-  currentUserId,
-  onCardClick,
-  onDelete,
-}: PostCardProps) {
+export default function CreatePost() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
   const { user } = useUser();
-  const effectiveUserId = currentUserId ?? user?.id;
 
-  const [isLiked, setIsLiked] = useState(post.isLiked || false);
-  const [isSaved, setIsSaved] = useState(post.isSaved || false);
-  // NEW STATE for the Edit Modal
-  const [isEditing, setIsEditing] = useState(false);
+  // Google Maps API (same hook used in wedding-planning page)
+  const isGoogleMapsLoaded = useGoogleMaps();
 
-  const [editCaption, setEditCaption] = useState(post.caption ?? "");
+  // Media
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string>("");
+  const [mediaKind, setMediaKind] = useState<MediaKind>("");
 
-  // Recipe edit state (used when post.isRecipe is true)
-  const [recipeTitle, setRecipeTitle] = useState(post.recipe?.title ?? "");
-  const [cookTime, setCookTime] = useState<string>(
-    post.recipe?.cookTime ? String(post.recipe.cookTime) : ""
-  );
-  const [servings, setServings] = useState<string>(
-    post.recipe?.servings ? String(post.recipe.servings) : ""
-  );
-  const [difficulty, setDifficulty] = useState<string>(
-    post.recipe?.difficulty ?? "Easy"
-  );
-  const [ingredientRows, setIngredientRows] = useState<IngredientInputRow[]>(
-    (post.recipe?.ingredients ?? []).map(parseIngredientRow).length
-      ? (post.recipe?.ingredients ?? []).map(parseIngredientRow)
-      : [{ amount: "", unit: "", name: "" }]
-  );
-  const [instructionSteps, setInstructionSteps] = useState<string[]>(
-    (post.recipe?.instructions ?? []).length
-      ? post.recipe?.instructions ?? []
-      : [""]
-  );
+  // Review autocomplete refs
+  const businessInputRef = useRef<HTMLInputElement | null>(null);
+  const locationInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Menu state for the More button
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [formData, setFormData] = useState({
+    postType: "post" as PostType,
+    caption: "", // used for: post caption OR extra hashtags/extra lines on reviews
+    imageUrl: "",
+    tags: [""],
 
-  useEffect(() => {
-    const onDocClick = (e: MouseEvent) => {
-      if (!menuRef.current) return;
-      if (!menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    if (menuOpen) document.addEventListener("click", onDocClick);
-    return () => document.removeEventListener("click", onDocClick);
-  }, [menuOpen]);
+    // Recipe fields
+    recipeTitle: "",
+    ingredients: [{ amount: "", unit: "", name: "" }] as IngredientRow[],
+    instructions: [""],
+    cookTime: "",
+    servings: "",
+    difficulty: "Easy",
 
-  const editMutation = useMutation({
-    mutationFn: async (updatedData: { caption: string }) => {
-      const res = await apiRequest("PATCH", `/api/posts/${post.id}`, updatedData);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to edit post");
-      }
-      return res.json();
-    },
+    // Review fields
+    reviewBusinessName: "",
+    reviewFullAddress: "",
+    reviewLocationLabel: "",
+    reviewRating: "5",
+    reviewPros: "",
+    reviewCons: "",
+    reviewVerdict: "",
+    reviewNotes: "",
   });
 
-  // Load the recipe from the API when editing (keeps edit state accurate)
-  const { data: recipeData, isLoading: recipeLoading } = useQuery<Recipe | null>({
-    queryKey: ["/api/recipes/by-post", post.id],
-    queryFn: async () => {
-      const res = await fetch(`/api/recipes/by-post/${post.id}`, {
-        credentials: "include",
-      });
-      if (res.status === 404) return null;
-      if (!res.ok) return null;
-      return res.json();
-    },
-    enabled: isEditing && !!effectiveUserId && !!post.isRecipe,
-  });
-
-  useEffect(() => {
-    if (!isEditing) return;
-
-    // Always reset caption when opening
-    setEditCaption(post.caption ?? "");
-
-    if (!post.isRecipe) return;
-
-    const base = recipeData ?? post.recipe ?? null;
-
-    setRecipeTitle(base?.title ?? "");
-    setCookTime(base?.cookTime ? String(base.cookTime) : "");
-    setServings(base?.servings ? String(base.servings) : "");
-    setDifficulty(base?.difficulty ?? "Easy");
-
-    const parsedIngredients = (base?.ingredients ?? [])
-      .map(parseIngredientRow)
-      .filter((r) => r.amount || r.unit || r.name);
-    setIngredientRows(
-      parsedIngredients.length
-        ? parsedIngredients
-        : [{ amount: "", unit: "", name: "" }]
-    );
-
-    const steps = (base?.instructions ?? []).filter(Boolean);
-    setInstructionSteps(steps.length ? steps : [""]);
-  }, [isEditing, post.caption, post.isRecipe, post.recipe, recipeData]);
-
-  const recipeUpdateMutation = useMutation({
-    mutationFn: async ({ recipeId, payload }: { recipeId: string; payload: any }) => {
-      const res = await apiRequest("PATCH", `/api/recipes/${recipeId}`, payload);
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to update recipe");
-      }
-      return res.json();
-    },
-  });
-
-  const recipeCreateMutation = useMutation({
-    mutationFn: async ({ postId, payload }: { postId: string; payload: any }) => {
-      const res = await apiRequest("POST", `/api/recipes`, { postId, ...payload });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || "Failed to create recipe");
-      }
-      return res.json();
-    },
-  });
-
-  // Delete post mutation (owner-only)
-  const deleteMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("DELETE", `/api/posts/${post.id}`);
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Failed to delete post");
-      }
-      return res.json();
-    },
-    onSuccess: () => {
-      // IMPORTANT: These invalidation calls ensure the profile page refreshes
-      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/users", effectiveUserId, "posts"],
-      });
-      // Also refresh explore and user-specific lists used in feed/profile
-      queryClient.invalidateQueries({ queryKey: ["/api/posts/explore"] });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/posts/explore", effectiveUserId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/posts/user", effectiveUserId],
-      });
-      toast({ description: "Post deleted" });
-      // Close modal if open
-      onDelete?.();
-    },
-    onError: () => {
-      toast({ variant: "destructive", description: "Failed to delete post" });
-    },
-  });
-
-  // Like/unlike post mutation
-  const likeMutation = useMutation({
-    mutationFn: async (shouldLike: boolean) => {
-      if (!effectiveUserId) {
-        throw new Error("User ID missing");
-      }
-
-      if (shouldLike) {
-        const res = await apiRequest("POST", `/api/posts/likes`, {
-          userId: effectiveUserId,
-          postId: post.id,
-        });
-        if (!res.ok) throw new Error("Failed to like post");
-        return res.json();
-      } else {
-        const res = await apiRequest(
-          "DELETE",
-          `/api/posts/likes/${effectiveUserId}/${post.id}`
-        );
-        if (!res.ok) throw new Error("Failed to unlike post");
-        return res.json();
-      }
-    },
-    onMutate: async (shouldLike: boolean) => {
-      // Optimistically update UI
-      setIsLiked(shouldLike);
-    },
-    onSuccess: () => {
-      // Invalidate queries to refresh like counts
-      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/users", effectiveUserId, "posts"],
-      });
-      // Also invalidate the explore and user-specific posts so other views update
-      queryClient.invalidateQueries({ queryKey: ["/api/posts/explore"] });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/posts/explore", effectiveUserId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["/api/posts/user", effectiveUserId],
-      });
-      // Refresh the list of users who liked this post
-      queryClient.invalidateQueries({ queryKey: ["/api/posts", post.id, "likes"] });
-    },
-    onError: (_error, shouldLike) => {
-      // Revert on error
-      setIsLiked(!shouldLike);
-      toast({ variant: "destructive", description: "Failed to update like status" });
-    },
-  });
-
-  // Save/unsave recipe mutation
-  const saveRecipeMutation = useMutation({
-    mutationFn: async (shouldSave: boolean) => {
-      if (!post.recipe?.id || !effectiveUserId) {
-        throw new Error("Recipe ID or User ID missing");
-      }
-
-      if (shouldSave) {
-        const res = await apiRequest("POST", `/api/recipes/${post.recipe.id}/save`, {
-          userId: effectiveUserId,
-        });
-        if (!res.ok) throw new Error("Failed to save recipe");
-        return res.json();
-      } else {
-        const res = await apiRequest(
-          "DELETE",
-          `/api/recipes/${post.recipe.id}/save?userId=${effectiveUserId}`
-        );
-        if (!res.ok) throw new Error("Failed to unsave recipe");
-        return res.json();
-      }
-    },
-    onMutate: async (shouldSave: boolean) => {
-      // Optimistically update UI
-      setIsSaved(shouldSave);
-    },
-    onSuccess: (_data, shouldSave) => {
-      toast({ description: shouldSave ? "Recipe saved!" : "Recipe unsaved" });
-    },
-    onError: (_error, shouldSave) => {
-      // Revert on error
-      setIsSaved(!shouldSave);
-      toast({ variant: "destructive", description: "Failed to update save status" });
-    },
-  });
-
-  // Fetch the list of users who liked this post.
-  const { data: likeUsers = [] } = useQuery<
-    { id: string; displayName: string; avatar?: string }[]
-  >({
-    queryKey: ["/api/posts", post.id, "likes"],
-    queryFn: async () => {
-      const response = await fetch(`/api/posts/${post.id}/likes`);
-      if (!response.ok) return [];
-      return response.json();
-    },
-  });
-
-  const handleLikeClick = () => {
-    if (!effectiveUserId) {
-      toast({ description: "Please log in to like posts" });
-      return;
-    }
-    likeMutation.mutate(!isLiked);
-  };
-
-  const handleSaveClick = () => {
-    if (!post.recipe?.id) {
-      toast({ description: "This post doesn't have a recipe to save" });
-      return;
-    }
-    if (!effectiveUserId) {
-      toast({ description: "Please log in to save recipes" });
-      return;
-    }
-    saveRecipeMutation.mutate(!isSaved);
-  };
-
-  const handleShare = async () => {
-    const shareUrl = getPostShareUrl(post.id);
-    const result = await shareContent({
-      title: post.caption || "Check out this post!",
-      text: `${post.user.displayName} shared: ${post.caption || ""}`,
-      url: shareUrl,
+  const reviewCaptionPreview = useMemo(() => {
+    if (formData.postType !== "review") return "";
+    const business = formData.reviewBusinessName.trim();
+    if (!business) return "";
+    return buildReviewCaption({
+      businessName: formData.reviewBusinessName,
+      fullAddress: formData.reviewFullAddress,
+      locationLabel: formData.reviewLocationLabel,
+      rating: formData.reviewRating,
+      pros: formData.reviewPros,
+      cons: formData.reviewCons,
+      verdict: formData.reviewVerdict,
+      notes: formData.reviewNotes,
+      extra: formData.caption,
     });
+  }, [formData]);
 
-    if (result.success) {
-      if (result.method === "share") {
-        toast({ description: "Post shared successfully!" });
-      } else if (result.method === "clipboard") {
-        toast({ description: "Link copied to clipboard!" });
-      }
-    } else if (result.method !== "cancelled") {
-      toast({ variant: "destructive", description: "Failed to share" });
+  // Wire up Google Places Autocomplete (business + location)
+  useEffect(() => {
+    if (!isGoogleMapsLoaded) return;
+    if (!window.google?.maps?.places) return;
+
+    // Business autocomplete (establishments)
+    if (businessInputRef.current) {
+      const ac = new google.maps.places.Autocomplete(businessInputRef.current, {
+        types: ["establishment"],
+        fields: ["name", "formatted_address", "address_components", "geometry"],
+      });
+
+      ac.addListener("place_changed", () => {
+        const place = ac.getPlace();
+        const name = place?.name || "";
+        const addr = place?.formatted_address || "";
+        const locLabel = place ? getCityStateLabelFromPlace(place) : "";
+
+        setFormData((prev) => ({
+          ...prev,
+          reviewBusinessName: name || prev.reviewBusinessName,
+          reviewFullAddress: addr || prev.reviewFullAddress,
+          reviewLocationLabel: locLabel || prev.reviewLocationLabel,
+        }));
+      });
     }
-    setMenuOpen(false);
+
+    // Location autocomplete (cities / regions)
+    if (locationInputRef.current) {
+      const lac = new google.maps.places.Autocomplete(locationInputRef.current, {
+        types: ["(cities)"],
+        fields: ["name", "formatted_address", "address_components", "geometry"],
+      });
+
+      lac.addListener("place_changed", () => {
+        const place = lac.getPlace();
+        const locLabel = place ? getCityStateLabelFromPlace(place) : "";
+        const name = place?.name || place?.formatted_address || "";
+
+        setFormData((prev) => ({
+          ...prev,
+          reviewLocationLabel: locLabel || name || prev.reviewLocationLabel,
+        }));
+      });
+    }
+  }, [isGoogleMapsLoaded]);
+
+  const createPostMutation = useMutation({
+    mutationFn: async () => {
+      if (!user?.id) throw new Error("You must be logged in to create a post");
+
+      const isRecipe = formData.postType === "recipe";
+
+      // Tags
+      const baseTags = formData.tags.map((t) => t.trim()).filter(Boolean);
+      const tags =
+        formData.postType === "review"
+          ? Array.from(new Set([...baseTags, "review"]))
+          : baseTags;
+
+      // Caption (review gets generated template)
+      const captionToSend =
+        formData.postType === "review"
+          ? buildReviewCaption({
+              businessName: formData.reviewBusinessName,
+              fullAddress: formData.reviewFullAddress,
+              locationLabel: formData.reviewLocationLabel,
+              rating: formData.reviewRating,
+              pros: formData.reviewPros,
+              cons: formData.reviewCons,
+              verdict: formData.reviewVerdict,
+              notes: formData.reviewNotes,
+              extra: formData.caption,
+            })
+          : formData.caption;
+
+      const postData = {
+        userId: user.id,
+        caption: captionToSend,
+        imageUrl: formData.imageUrl,
+        tags,
+        isRecipe,
+      };
+
+      const postResponse = await apiRequest("POST", "/api/posts", postData);
+      if (!postResponse.ok) {
+        const err = await postResponse.json().catch(() => ({}));
+        throw new Error(err?.message || "Failed to create post");
+      }
+      const post = await postResponse.json();
+
+      // Recipe row (linked to post.id)
+      if (isRecipe && formData.recipeTitle) {
+        const ingredients = ingredientRowsToStrings(formData.ingredients);
+        const instructions = normalizeSteps(formData.instructions);
+
+        const recipeData = {
+          postId: post.id,
+          title: formData.recipeTitle,
+          ingredients,
+          instructions,
+          cookTime: formData.cookTime ? parseInt(formData.cookTime) : null,
+          servings: formData.servings ? parseInt(formData.servings) : null,
+          difficulty: formData.difficulty,
+          imageUrl: formData.imageUrl || null,
+        };
+
+        const recipeRes = await apiRequest("POST", "/api/recipes", recipeData);
+        if (!recipeRes.ok) {
+          const err = await recipeRes.json().catch(() => ({}));
+          throw new Error(err?.message || "Failed to create recipe");
+        }
+      }
+
+      return post;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
+      toast({
+        description:
+          formData.postType === "recipe"
+            ? "Recipe shared successfully!"
+            : formData.postType === "review"
+            ? "Review posted successfully!"
+            : "Post created successfully!",
+      });
+      setLocation("/feed");
+    },
+    onError: (error: Error) => {
+      toast({
+        variant: "destructive",
+        description: `Failed to create post: ${error.message}`,
+      });
+    },
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!formData.imageUrl.trim()) {
+      toast({
+        variant: "destructive",
+        description: "Please add a photo/video (upload or URL)",
+      });
+      return;
+    }
+
+    if (formData.postType === "recipe") {
+      if (!formData.recipeTitle.trim()) {
+        toast({ variant: "destructive", description: "Please add a recipe title" });
+        return;
+      }
+
+      const ingredients = ingredientRowsToStrings(formData.ingredients);
+      const instructions = normalizeSteps(formData.instructions);
+
+      if (ingredients.length === 0) {
+        toast({ variant: "destructive", description: "Please add at least one ingredient" });
+        return;
+      }
+      if (instructions.length === 0) {
+        toast({ variant: "destructive", description: "Please add at least one instruction step" });
+        return;
+      }
+    }
+
+    if (formData.postType === "review") {
+      if (!formData.reviewBusinessName.trim()) {
+        toast({ variant: "destructive", description: "Please choose a business" });
+        return;
+      }
+      if (!formData.reviewRating.trim()) {
+        toast({ variant: "destructive", description: "Please select a rating" });
+        return;
+      }
+    }
+
+    createPostMutation.mutate();
   };
 
-  const handleEdit = () => {
-    setIsEditing(true);
+  const handleChange = (field: string, value: any) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleDelete = () => {
-    if (!confirm("Delete this post? This action cannot be undone.")) return;
-    deleteMutation.mutate();
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setMediaFile(file);
+
+    const kind: MediaKind = file.type.startsWith("video/")
+      ? "video"
+      : file.type.startsWith("image/")
+      ? "image"
+      : "";
+
+    if (!kind) {
+      toast({ variant: "destructive", description: "Please select an image or video file" });
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      const result = reader.result as string;
+      setMediaPreview(result);
+      setMediaKind(kind);
+      // Store as data URL (same pattern used elsewhere in your app)
+      handleChange("imageUrl", result);
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleMoreClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setMenuOpen((s) => !s);
+  const clearMedia = () => {
+    setMediaFile(null);
+    setMediaPreview("");
+    setMediaKind("");
+    handleChange("imageUrl", "");
   };
 
-  const isVideo =
-    post.imageUrl?.includes("video") || post.imageUrl?.includes(".mp4");
+  const addTag = () => setFormData((prev) => ({ ...prev, tags: [...prev.tags, ""] }));
 
-  const parsedReview = parseReviewCaption(post.caption || "");
-  const isReview = !!parsedReview || (post.tags || []).includes("review");
+  const removeTag = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      tags: prev.tags.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateTag = (index: number, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      tags: prev.tags.map((tag, i) => (i === index ? value : tag)),
+    }));
+  };
+
+  const addIngredient = () => {
+    setFormData((prev) => ({
+      ...prev,
+      ingredients: [...prev.ingredients, { amount: "", unit: "", name: "" }],
+    }));
+  };
+
+  const removeIngredient = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      ingredients:
+        prev.ingredients.length <= 1
+          ? prev.ingredients
+          : prev.ingredients.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateIngredient = (index: number, patch: Partial<IngredientRow>) => {
+    setFormData((prev) => ({
+      ...prev,
+      ingredients: prev.ingredients.map((row, i) =>
+        i === index ? { ...row, ...patch } : row
+      ),
+    }));
+  };
+
+  const addInstruction = () => {
+    setFormData((prev) => ({ ...prev, instructions: [...prev.instructions, ""] }));
+  };
+
+  const removeInstruction = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      instructions:
+        prev.instructions.length <= 1
+          ? prev.instructions
+          : prev.instructions.filter((_, i) => i !== index),
+    }));
+  };
+
+  const updateInstruction = (index: number, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      instructions: prev.instructions.map((instruction, i) =>
+        i === index ? value : instruction
+      ),
+    }));
+  };
 
   return (
-    <Card className="w-full bg-card border border-border shadow-sm">
-      {/* Post Header */}
-      <div className="flex items-center justify-between p-4">
-        <div className="flex items-center space-x-3">
-          <Link href={`/profile/${post.user.id}`}>
-            <a>
-              <Avatar className="w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity">
-                <AvatarImage
-                  src={post.user.avatar || ""}
-                  alt={post.user.displayName}
-                />
-                <AvatarFallback>
-                  {(post.user.displayName || "U")[0]}
-                </AvatarFallback>
-              </Avatar>
-            </a>
-          </Link>
-          <div>
-            <Link href={`/profile/${post.user.id}`}>
-              <a>
-                <h3
-                  className="font-semibold text-sm cursor-pointer hover:underline"
-                  data-testid={`text-username-${post.id}`}
-                >
-                  {post.user.displayName}
-                </h3>
-              </a>
-            </Link>
-            <p className="text-xs text-muted-foreground">
-              {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
-            </p>
-          </div>
-        </div>
+    <div className="max-w-2xl mx-auto px-4 py-6">
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle className="text-2xl font-bold">Create New Post</CardTitle>
+        </CardHeader>
 
-        {/* More menu */}
-        <div className="relative" ref={menuRef}>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleMoreClick}
-            className="p-2"
-          >
-            <MoreHorizontal className="h-5 w-5" />
-          </Button>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Post Type */}
+            <div className="space-y-2">
+              <Label>Post type</Label>
+              <Select
+                value={formData.postType}
+                onValueChange={(v) => handleChange("postType", v as PostType)}
+              >
+                <SelectTrigger data-testid="select-post-type">
+                  <SelectValue placeholder="Choose type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="post">Post</SelectItem>
+                  <SelectItem value="recipe">Recipe</SelectItem>
+                  <SelectItem value="review">Review</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-          {menuOpen && (
-            <div className="absolute right-0 top-10 bg-white border border-slate-200 rounded-md shadow-lg z-50 w-44">
-              <ul className="py-1 text-sm">
-                <li>
-                  <button
-                    className="w-full text-left px-3 py-2 hover:bg-slate-100"
-                    onClick={() => {
-                      handleShare();
-                      setMenuOpen(false);
-                    }}
-                  >
-                    Share
-                  </button>
-                </li>
-
-                {effectiveUserId === post.user.id && (
+            {/* Media Upload */}
+            <div className="space-y-2">
+              <Label htmlFor="imageUrl">Photo/Video *</Label>
+              <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+                {mediaPreview ? (
+                  <div className="space-y-4">
+                    {mediaKind === "video" ? (
+                      <video
+                        src={mediaPreview}
+                        controls
+                        className="w-full max-w-md mx-auto h-64 object-cover rounded-lg"
+                      />
+                    ) : (
+                      <img
+                        src={mediaPreview}
+                        alt="Preview"
+                        className="w-full max-w-md mx-auto h-64 object-cover rounded-lg"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = "none";
+                        }}
+                      />
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={clearMedia}
+                    >
+                      <X className="h-4 w-4 mr-2" />
+                      Remove Media
+                    </Button>
+                  </div>
+                ) : (
                   <>
-                    <li>
-                      <button
-                        className="w-full text-left px-3 py-2 hover:bg-slate-100"
-                        onClick={() => {
-                          handleEdit();
-                          setMenuOpen(false);
-                        }}
-                        data-testid={`menu-edit-${post.id}`}
+                    <div className="flex items-center justify-center gap-3 mb-4">
+                      <Camera className="h-10 w-10 text-muted-foreground" />
+                      <Video className="h-10 w-10 text-muted-foreground" />
+                    </div>
+
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Take a photo/video or choose from your device
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-2 mb-4">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => document.getElementById("camera-input")?.click()}
+                        className="flex-1"
                       >
-                        Edit Post
-                      </button>
-                    </li>
-                    <li>
-                      <button
-                        className="w-full text-left px-3 py-2 hover:bg-slate-100 text-red-600"
-                        onClick={() => {
-                          handleDelete();
-                          setMenuOpen(false);
-                        }}
-                        data-testid={`menu-delete-${post.id}`}
+                        <Camera className="h-4 w-4 mr-2" />
+                        Camera
+                      </Button>
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => document.getElementById("file-input")?.click()}
+                        className="flex-1"
                       >
-                        Delete Post
-                      </button>
-                    </li>
+                        <Upload className="h-4 w-4 mr-2" />
+                        Upload Media
+                      </Button>
+                    </div>
+
+                    <input
+                      id="camera-input"
+                      type="file"
+                      accept="image/*,video/*"
+                      capture="environment"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      data-testid="input-camera"
+                    />
+                    <input
+                      id="file-input"
+                      type="file"
+                      accept="image/*,video/*"
+                      onChange={handleFileSelect}
+                      className="hidden"
+                      data-testid="input-file"
+                    />
+
+                    <p className="text-xs text-muted-foreground mb-2">
+                      or paste a media URL
+                    </p>
+                    <Input
+                      id="imageUrl"
+                      type="url"
+                      placeholder="https://example.com/image.jpg or .mp4"
+                      value={formData.imageUrl}
+                      onChange={(e) => {
+                        const url = e.target.value;
+                        handleChange("imageUrl", url);
+                        if (!url) {
+                          setMediaPreview("");
+                          setMediaKind("");
+                          return;
+                        }
+                        setMediaPreview(url);
+                        setMediaKind(isVideoUrl(url) ? "video" : "image");
+                      }}
+                      data-testid="input-image-url"
+                    />
                   </>
                 )}
-              </ul>
+              </div>
             </div>
-          )}
-        </div>
-      </div>
 
-      {/* Post Image/Video */}
-      <div className="relative cursor-pointer" onClick={() => onCardClick?.(post)}>
-        {isVideo ? (
-          <video
-            src={post.imageUrl || ""}
-            controls
-            className="w-full h-96 object-cover"
-          />
-        ) : (
-          <img
-            src={post.imageUrl || ""}
-            alt="Post content"
-            className="w-full h-96 object-cover"
-            data-testid={`img-post-${post.id}`}
-          />
-        )}
-      </div>
-
-      {/* Post body / caption */}
-      <div className="px-4 pt-3 pb-2">
-        <div className="text-sm">
-          <Link href={`/profile/${post.user.id}`}>
-            <a className="font-semibold hover:underline cursor-pointer">
-              {post.user.displayName}
-            </a>
-          </Link>{" "}
-          {(() => {
-            const parsed = parseReviewCaption(post.caption || "");
-            if (!parsed) return <span>{post.caption}</span>;
-
-            const mapsUrl = buildMapsUrl(parsed);
-
-            return (
-              <div className="space-y-1">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="font-semibold leading-tight truncate">
-                      {parsed.businessName}
-                    </div>
-                    {(parsed.fullAddress || parsed.locationLabel) && (
-                      <div className="text-xs text-muted-foreground truncate">
-                        {parsed.fullAddress || parsed.locationLabel}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="shrink-0 text-right">
-                    {typeof parsed.rating === "number" && (
-                      <div className="text-sm font-semibold leading-none">
-                        {parsed.rating.toFixed(0)}/5
-                      </div>
-                    )}
-                    {typeof parsed.rating === "number" && (
-                      <div className="text-xs text-muted-foreground leading-none">
-                        {stars(parsed.rating)}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {(parsed.pros || parsed.cons) && (
-                  <div className="text-xs text-muted-foreground">
-                    {parsed.pros ? (
-                      <span className="mr-3">
-                        <span className="font-medium text-foreground">Pros:</span>{" "}
-                        {parsed.pros}
-                      </span>
-                    ) : null}
-                    {parsed.cons ? (
-                      <span>
-                        <span className="font-medium text-foreground">Cons:</span>{" "}
-                        {parsed.cons}
-                      </span>
-                    ) : null}
-                  </div>
-                )}
-
-                {parsed.verdict && (
-                  <div className="text-xs">
-                    <span className="font-medium">Verdict:</span>{" "}
-                    <span className="text-muted-foreground">{parsed.verdict}</span>
-                  </div>
-                )}
-
-                {parsed.notes && (
-                  <div className="text-xs">
-                    <span className="font-medium">Notes:</span>{" "}
-                    <span className="text-muted-foreground">{parsed.notes}</span>
-                  </div>
-                )}
-
-                {mapsUrl && (
-                  <a
-                    href={mapsUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-block text-xs font-medium text-blue-600 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    View on Google Maps
-                  </a>
-                )}
-              </div>
-            );
-          })()}
-        </div>
-
-        {/* Small badges */}
-        <div className="mt-2 flex flex-wrap gap-2">
-          {post.isRecipe && <Badge variant="secondary">Recipe</Badge>}
-          {isReview && <Badge variant="secondary">Review</Badge>}
-          {(post.tags || []).filter((t) => t !== "review").slice(0, 3).map((t) => (
-            <Badge key={t} variant="outline">
-              {t}
-            </Badge>
-          ))}
-        </div>
-      </div>
-
-      {/* Action buttons - Instagram-inspired layout */}
-      <div className="px-4 pb-2">
-        <div className="flex items-center justify-between">
-          {/* Left side: Like, Comment, Share icons with counts */}
-          <div className="flex items-center space-x-4">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleLikeClick}
-              data-testid={`button-like-${post.id}`}
-              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity flex items-center gap-1"
-            >
-              <span className="text-2xl">{isLiked ? "❤️" : "🤍"}</span>
-              <span className="text-sm font-semibold">{post.likesCount || 0}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onCardClick?.(post)}
-              data-testid={`button-comment-${post.id}`}
-              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity flex items-center gap-1"
-            >
-              <span className="text-2xl">💬</span>
-              <span className="text-sm font-semibold">{post.commentsCount || 0}</span>
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleShare}
-              className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity flex items-center gap-1"
-            >
-              <span className="text-2xl">📤</span>
-              <span className="text-sm font-semibold">0</span>
-            </Button>
-          </div>
-
-          {/* Right side: Save/Bookmark icon - always visible */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSaveClick}
-            data-testid={`button-save-${post.id}`}
-            className="p-0 h-auto hover:bg-transparent hover:opacity-70 transition-opacity"
-          >
-            <span className="text-2xl">{isSaved ? "🔖" : "📑"}</span>
-          </Button>
-        </div>
-      </div>
-
-      {/* Comment preview - single line */}
-      <CommentPreview
-        postId={post.id}
-        totalComments={post.commentsCount || 0}
-        onViewAll={() => onCardClick?.(post)}
-      />
-
-      {/* EDIT MODAL */}
-      {isEditing && (
-        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
-          <Card className="w-full max-w-2xl">
-            <div className="p-6">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-bold">Edit Post</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Update your caption{post.isRecipe ? " and recipe details" : ""}.
-                  </p>
-                </div>
-                <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
-                  Close
-                </Button>
-              </div>
-
-              <Separator className="my-4" />
-
-              <form
-                onSubmit={async (e) => {
-                  e.preventDefault();
-
-                  try {
-                    // Update caption if changed
-                    const originalCaption = post.caption ?? "";
-                    if (editCaption.trim() !== originalCaption.trim()) {
-                      await editMutation.mutateAsync({ caption: editCaption });
-                    }
-
-                    // Update recipe (if this is a recipe post)
-                    if (post.isRecipe) {
-                      const title = recipeTitle.trim();
-                      const ingredients = ingredientRowsToStrings(ingredientRows);
-                      const instructions = normalizeSteps(instructionSteps);
-
-                      if (!title) {
-                        toast({ variant: "destructive", description: "Recipe title is required" });
-                        return;
-                      }
-                      if (ingredients.length === 0) {
-                        toast({ variant: "destructive", description: "Add at least one ingredient" });
-                        return;
-                      }
-                      if (instructions.length === 0) {
-                        toast({ variant: "destructive", description: "Add at least one instruction step" });
-                        return;
-                      }
-
-                      const payload: any = {
-                        title,
-                        ingredients,
-                        instructions,
-                        cookTime: cookTime ? Number(cookTime) : null,
-                        servings: servings ? Number(servings) : null,
-                        difficulty: difficulty || "Easy",
-                      };
-
-                      if (recipeData?.id) {
-                        await recipeUpdateMutation.mutateAsync({ recipeId: recipeData.id, payload });
-                      } else {
-                        // Fallback: recipe row missing but post is marked recipe — create it
-                        await recipeCreateMutation.mutateAsync({ postId: post.id, payload });
-                      }
-                    }
-
-                    // Refresh feed and close
-                    queryClient.invalidateQueries({ queryKey: ["/api/posts"] });
-                    queryClient.invalidateQueries({ queryKey: ["/api/users", effectiveUserId, "posts"] });
-                    toast({ description: "Saved changes" });
-                    setIsEditing(false);
-                  } catch (err: any) {
-                    toast({ variant: "destructive", description: err?.message || "Failed to save changes" });
-                  }
-                }}
-              >
+            {/* Review Fields */}
+            {formData.postType === "review" && (
+              <>
+                <Separator />
                 <div className="space-y-4">
-                  <div>
-                    <label className="text-sm font-medium">Caption</label>
-                    <Textarea
-                      value={editCaption}
-                      onChange={(e) => setEditCaption(e.target.value)}
-                      rows={4}
-                      className="mt-2"
+                  <h3 className="text-lg font-semibold">Review Details</h3>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="reviewBusinessName">Business *</Label>
+                    <Input
+                      id="reviewBusinessName"
+                      ref={businessInputRef}
+                      placeholder="Search a business (Google Places)…"
+                      value={formData.reviewBusinessName}
+                      onChange={(e) => handleChange("reviewBusinessName", e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Start typing to use Google Places suggestions.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="reviewFullAddress">Full address</Label>
+                      <Input
+                        id="reviewFullAddress"
+                        placeholder="Auto-filled from selection"
+                        value={formData.reviewFullAddress}
+                        onChange={(e) => handleChange("reviewFullAddress", e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="reviewLocationLabel">Location (City/State)</Label>
+                      <Input
+                        id="reviewLocationLabel"
+                        ref={locationInputRef}
+                        placeholder="City, State (Google Places)…"
+                        value={formData.reviewLocationLabel}
+                        onChange={(e) => handleChange("reviewLocationLabel", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Rating *</Label>
+                      <Select
+                        value={formData.reviewRating}
+                        onValueChange={(v) => handleChange("reviewRating", v)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select rating" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5/5</SelectItem>
+                          <SelectItem value="4">4/5</SelectItem>
+                          <SelectItem value="3">3/5</SelectItem>
+                          <SelectItem value="2">2/5</SelectItem>
+                          <SelectItem value="1">1/5</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="reviewVerdict">Verdict</Label>
+                      <Input
+                        id="reviewVerdict"
+                        placeholder="e.g., Def recommend"
+                        value={formData.reviewVerdict}
+                        onChange={(e) => handleChange("reviewVerdict", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="reviewPros">Pros</Label>
+                      <Input
+                        id="reviewPros"
+                        placeholder="e.g., Flavor"
+                        value={formData.reviewPros}
+                        onChange={(e) => handleChange("reviewPros", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="reviewCons">Cons</Label>
+                      <Input
+                        id="reviewCons"
+                        placeholder="e.g., Price"
+                        value={formData.reviewCons}
+                        onChange={(e) => handleChange("reviewCons", e.target.value)}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="reviewNotes">Notes</Label>
+                    <Input
+                      id="reviewNotes"
+                      placeholder="e.g., Stewed Chicken"
+                      value={formData.reviewNotes}
+                      onChange={(e) => handleChange("reviewNotes", e.target.value)}
                     />
                   </div>
 
-                  {post.isRecipe && (
-                    <div className="space-y-4 rounded-lg border p-4 bg-muted/20">
-                      <div className="flex items-center justify-between gap-3">
-                        <h3 className="font-semibold">Recipe Details</h3>
-                        {recipeLoading && <span className="text-xs text-muted-foreground">Loading…</span>}
+                  <div className="space-y-2">
+                    <Label htmlFor="caption">
+                      Hashtags / extra lines (optional)
+                    </Label>
+                    <Textarea
+                      id="caption"
+                      placeholder={"#jamaican\n#hartford\n..."}
+                      value={formData.caption}
+                      onChange={(e) => handleChange("caption", e.target.value)}
+                      rows={3}
+                      className="resize-none"
+                    />
+                  </div>
+
+                  {reviewCaptionPreview && (
+                    <div className="rounded-md border p-3 bg-muted/20">
+                      <div className="text-xs font-medium mb-2 text-muted-foreground">
+                        Preview
                       </div>
+                      <pre className="whitespace-pre-wrap text-sm leading-relaxed">
+                        {reviewCaptionPreview}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div>
-                          <label className="text-sm font-medium">Recipe title</label>
-                          <Input
-                            value={recipeTitle}
-                            onChange={(e) => setRecipeTitle(e.target.value)}
-                            placeholder="e.g., Grandma’s Mac & Cheese"
-                            className="mt-2"
-                          />
-                        </div>
+            {/* Caption (Post/Recipe only) */}
+            {formData.postType !== "review" && (
+              <div className="space-y-2">
+                <Label htmlFor="caption">Caption</Label>
+                <Textarea
+                  id="caption"
+                  placeholder="Write a caption for your post..."
+                  value={formData.caption}
+                  onChange={(e) => handleChange("caption", e.target.value)}
+                  rows={4}
+                  className="resize-none"
+                  data-testid="textarea-caption"
+                />
+              </div>
+            )}
 
-                        <div>
-                          <label className="text-sm font-medium">Difficulty</label>
-                          <div className="mt-2">
-                            <Select value={difficulty} onValueChange={(v) => setDifficulty(v)}>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select difficulty" />
+            {/* Tags */}
+            <div className="space-y-2">
+              <Label>Tags</Label>
+              <div className="space-y-2">
+                {formData.tags.map((tag, index) => (
+                  <div key={index} className="flex items-center space-x-2">
+                    <Input
+                      placeholder="Enter a tag (e.g., italian, pasta)"
+                      value={tag}
+                      onChange={(e) => updateTag(index, e.target.value)}
+                      data-testid={`input-tag-${index}`}
+                    />
+                    {formData.tags.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => removeTag(index)}
+                        data-testid={`button-remove-tag-${index}`}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                ))}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addTag}
+                  className="w-full"
+                  data-testid="button-add-tag"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Tag
+                </Button>
+              </div>
+            </div>
+
+            {formData.postType === "recipe" && (
+              <>
+                <Separator />
+
+                {/* Recipe Details */}
+                <div className="space-y-4">
+                  <h3 className="text-lg font-semibold">Recipe Details</h3>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="recipeTitle">Recipe Title *</Label>
+                    <Input
+                      id="recipeTitle"
+                      placeholder="Enter the recipe name"
+                      value={formData.recipeTitle}
+                      onChange={(e) => handleChange("recipeTitle", e.target.value)}
+                      data-testid="input-recipe-title"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="cookTime">Cook Time (minutes)</Label>
+                      <Input
+                        id="cookTime"
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="30"
+                        value={formData.cookTime}
+                        onChange={(e) => handleChange("cookTime", e.target.value)}
+                        data-testid="input-cook-time"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="servings">Servings</Label>
+                      <Input
+                        id="servings"
+                        type="number"
+                        inputMode="numeric"
+                        placeholder="4"
+                        value={formData.servings}
+                        onChange={(e) => handleChange("servings", e.target.value)}
+                        data-testid="input-servings"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="difficulty">Difficulty</Label>
+                      <Select
+                        value={formData.difficulty}
+                        onValueChange={(value) => handleChange("difficulty", value)}
+                      >
+                        <SelectTrigger data-testid="select-difficulty">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Easy">Easy</SelectItem>
+                          <SelectItem value="Medium">Medium</SelectItem>
+                          <SelectItem value="Hard">Hard</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  {/* Ingredients */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Ingredients *</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addIngredient}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {formData.ingredients.map((row, index) => (
+                        <div
+                          key={index}
+                          className="grid grid-cols-12 gap-2 items-center"
+                        >
+                          <div className="col-span-4 sm:col-span-3">
+                            <Select
+                              value={row.amount || EMPTY_SELECT}
+                              onValueChange={(v) =>
+                                updateIngredient(index, {
+                                  amount: v === EMPTY_SELECT ? "" : v,
+                                })
+                              }
+                            >
+                              <SelectTrigger
+                                className="h-9"
+                                data-testid={`select-ingredient-amount-${index}`}
+                              >
+                                <SelectValue placeholder="Amt" />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="Easy">Easy</SelectItem>
-                                <SelectItem value="Medium">Medium</SelectItem>
-                                <SelectItem value="Hard">Hard</SelectItem>
+                                <SelectItem value={EMPTY_SELECT}>—</SelectItem>
+                                {AMOUNT_OPTIONS.map((opt) => (
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
+                                  </SelectItem>
+                                ))}
                               </SelectContent>
                             </Select>
                           </div>
-                        </div>
 
-                        <div>
-                          <label className="text-sm font-medium">Cook time (minutes)</label>
-                          <Input
-                            value={cookTime}
-                            onChange={(e) => setCookTime(e.target.value)}
-                            type="number"
-                            inputMode="numeric"
-                            placeholder="e.g., 30"
-                            className="mt-2"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-sm font-medium">Servings</label>
-                          <Input
-                            value={servings}
-                            onChange={(e) => setServings(e.target.value)}
-                            type="number"
-                            inputMode="numeric"
-                            placeholder="e.g., 4"
-                            className="mt-2"
-                          />
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-medium">Ingredients</h4>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setIngredientRows((prev) => [...prev, { amount: "", unit: "", name: "" }])}
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add
-                          </Button>
-                        </div>
-
-                        <div className="space-y-2">
-                          {ingredientRows.map((row, idx) => (
-                            <div key={idx} className="grid grid-cols-12 gap-2 items-center">
-                              <div className="col-span-4 sm:col-span-3">
-                                <Select
-                                  value={row.amount}
-                                  onValueChange={(v) =>
-                                    setIngredientRows((prev) =>
-                                      prev.map((r, i) => (i === idx ? { ...r, amount: v } : r))
-                                    )
-                                  }
-                                >
-                                  <SelectTrigger className="h-9">
-                                    <SelectValue placeholder="Amt" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {AMOUNT_OPTIONS.map((opt) => (
-                                      <SelectItem key={opt || "__blank"} value={opt}>
-                                        {opt || "—"}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                              <div className="col-span-4 sm:col-span-3">
-                                <Select
-                                  value={row.unit}
-                                  onValueChange={(v) =>
-                                    setIngredientRows((prev) =>
-                                      prev.map((r, i) => (i === idx ? { ...r, unit: v } : r))
-                                    )
-                                  }
-                                >
-                                  <SelectTrigger className="h-9">
-                                    <SelectValue placeholder="Unit" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {UNIT_OPTIONS.map((opt) => (
-                                      <SelectItem key={opt || "__blank"} value={opt}>
-                                        {opt || "—"}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
-                              <div className="col-span-4 sm:col-span-5">
-                                <Input
-                                  value={row.name}
-                                  onChange={(e) =>
-                                    setIngredientRows((prev) =>
-                                      prev.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r))
-                                    )
-                                  }
-                                  placeholder="Ingredient"
-                                  className="h-9"
-                                />
-                              </div>
-
-                              <div className="col-span-12 sm:col-span-1 flex justify-end">
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  variant="ghost"
-                                  onClick={() => setIngredientRows((prev) => prev.filter((_, i) => i !== idx))}
-                                  disabled={ingredientRows.length === 1}
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-
-                      <Separator />
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <h4 className="font-medium">Instructions</h4>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setInstructionSteps((prev) => [...prev, ""])}
-                          >
-                            <Plus className="h-4 w-4 mr-2" />
-                            Add step
-                          </Button>
-                        </div>
-
-                        <div className="space-y-2">
-                          {instructionSteps.map((step, idx) => (
-                            <div key={idx} className="flex items-center gap-2">
-                              <Input
-                                value={step}
-                                onChange={(e) =>
-                                  setInstructionSteps((prev) =>
-                                    prev.map((s, i) => (i === idx ? e.target.value : s))
-                                  )
-                                }
-                                placeholder={`Step ${idx + 1}`}
+                          <div className="col-span-4 sm:col-span-3">
+                            <Select
+                              value={row.unit || EMPTY_SELECT}
+                              onValueChange={(v) =>
+                                updateIngredient(index, {
+                                  unit: v === EMPTY_SELECT ? "" : v,
+                                })
+                              }
+                            >
+                              <SelectTrigger
                                 className="h-9"
-                              />
-                              <Button
-                                type="button"
-                                size="icon"
-                                variant="ghost"
-                                onClick={() => setInstructionSteps((prev) => prev.filter((_, i) => i !== idx))}
-                                disabled={instructionSteps.length === 1}
+                                data-testid={`select-ingredient-unit-${index}`}
                               >
-                                <Minus className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                                <SelectValue placeholder="Unit" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value={EMPTY_SELECT}>—</SelectItem>
+                                {UNIT_OPTIONS.map((opt) => (
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
 
-                  <div className="flex justify-end gap-2 pt-2">
-                    <Button type="button" variant="outline" onClick={() => setIsEditing(false)}>
-                      Cancel
-                    </Button>
-                    <Button
-                      type="submit"
-                      disabled={editMutation.isPending || recipeUpdateMutation.isPending || recipeCreateMutation.isPending}
-                    >
-                      {editMutation.isPending || recipeUpdateMutation.isPending || recipeCreateMutation.isPending
-                        ? "Saving..."
-                        : "Save Changes"}
-                    </Button>
+                          <div className="col-span-4 sm:col-span-5">
+                            <Input
+                              placeholder="Ingredient"
+                              value={row.name}
+                              onChange={(e) =>
+                                updateIngredient(index, { name: e.target.value })
+                              }
+                              className="h-9"
+                              data-testid={`input-ingredient-name-${index}`}
+                            />
+                          </div>
+
+                          <div className="col-span-12 sm:col-span-1 flex justify-end">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeIngredient(index)}
+                              disabled={formData.ingredients.length <= 1}
+                              data-testid={`button-remove-ingredient-${index}`}
+                            >
+                              <Minus className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Instructions */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Instructions *</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addInstruction}
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add step
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {formData.instructions.map((instruction, index) => (
+                        <div key={index} className="flex items-center space-x-2">
+                          <Input
+                            placeholder={`Step ${index + 1}`}
+                            value={instruction}
+                            onChange={(e) =>
+                              updateInstruction(index, e.target.value)
+                            }
+                            data-testid={`input-instruction-${index}`}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeInstruction(index)}
+                            disabled={formData.instructions.length <= 1}
+                            data-testid={`button-remove-instruction-${index}`}
+                          >
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 </div>
-              </form>
-            </div>
-          </Card>
-        </div>
-      )}
-    </Card>
-  );
-}
+              </>
+            )}
 
-// Comment Preview Component
-interface CommentPreviewProps {
-  postId: string;
-  totalComments: number;
-  onViewAll?: () => void;
-}
-
-interface Comment {
-  id: string;
-  userId: string;
-  postId: string;
-  content: string;
-  createdAt: string;
-  user: {
-    id: string;
-    displayName: string;
-    avatar?: string;
-  };
-}
-
-function CommentPreview({ postId, totalComments, onViewAll }: CommentPreviewProps) {
-  // Fetch first comment for preview
-  const { data: comments = [] } = useQuery<Comment[]>({
-    queryKey: ["/api/posts", postId, "comments", "preview"],
-    queryFn: async () => {
-      const response = await fetch(`/api/posts/${postId}/comments`, {
-        credentials: "include",
-      });
-      if (!response.ok) return [];
-      const allComments = await response.json();
-      // Return only first comment for Instagram-style preview
-      return allComments.slice(0, 1);
-    },
-    enabled: totalComments > 0,
-  });
-
-  if (totalComments === 0) return null;
-
-  return (
-    <div className="px-4 pb-4 space-y-1">
-      {/* Show "View all" link first if there are multiple comments */}
-      {totalComments > 1 && (
-        <button
-          onClick={onViewAll}
-          className="text-sm text-muted-foreground hover:text-foreground transition-colors block"
-        >
-          View all {totalComments} comments
-        </button>
-      )}
-
-      {/* Show first comment preview on single line */}
-      {comments.length > 0 && comments[0] && (
-        <div className="text-sm truncate">
-          <Link href={`/profile/${comments[0].user.id}`}>
-            <a className="font-semibold hover:underline cursor-pointer">
-              {comments[0].user.displayName}
-            </a>
-          </Link>{" "}
-          <span className="text-muted-foreground">{comments[0].content}</span>
-        </div>
-      )}
+            {/* Submit */}
+            <Button
+              type="submit"
+              className="w-full"
+              disabled={createPostMutation.isPending}
+              data-testid="button-submit-post"
+            >
+              {createPostMutation.isPending ? "Posting..." : "Post"}
+            </Button>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
