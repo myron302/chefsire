@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Upload, Plus, Minus, X } from "lucide-react";
+import { Camera, Upload, Plus, Minus, X, Star } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
@@ -89,6 +89,7 @@ export default function CreatePost() {
     caption: "",
     imageUrl: "",
     tags: [""],
+
     // Recipe fields
     recipeTitle: "",
     ingredients: [{ amount: "", unit: "", name: "" }] as IngredientRow[],
@@ -96,6 +97,13 @@ export default function CreatePost() {
     cookTime: "",
     servings: "",
     difficulty: "Easy",
+
+    // ✅ Review fields (NEW)
+    reviewTitle: "",
+    reviewRating: "5",
+    reviewPros: "",
+    reviewCons: "",
+    reviewVerdict: "",
   });
 
   const createPostMutation = useMutation({
@@ -106,17 +114,61 @@ export default function CreatePost() {
 
       const isRecipe = formData.postType === "recipe";
 
-      // Treat review as normal post, but tag it so you can badge it in UI
+      // Validate basics
+      if (!formData.imageUrl.trim()) {
+        throw new Error("Please add an image (upload or URL)");
+      }
+
+      // Review template content
+      const reviewContent =
+        `📝 Review: ${formData.reviewTitle.trim()}\n` +
+        `⭐ Rating: ${formData.reviewRating}/5\n\n` +
+        (formData.reviewPros.trim()
+          ? `✅ Pros: ${formData.reviewPros.trim()}\n\n`
+          : "") +
+        (formData.reviewCons.trim()
+          ? `⚠️ Cons: ${formData.reviewCons.trim()}\n\n`
+          : "") +
+        (formData.reviewVerdict.trim()
+          ? `💡 Verdict: ${formData.reviewVerdict.trim()}\n\n`
+          : "") +
+        (formData.caption.trim() ? `Notes: ${formData.caption.trim()}` : "");
+
+      // Tags
       const baseTags = formData.tags.map((t) => t.trim()).filter(Boolean);
       const tags =
         formData.postType === "review"
           ? Array.from(new Set([...baseTags, "review"]))
           : baseTags;
 
+      // Caption to store
+      const captionToStore =
+        formData.postType === "review" ? reviewContent : formData.caption;
+
+      if (formData.postType === "post" && !captionToStore.trim()) {
+        throw new Error("Please write a caption for your post");
+      }
+
+      if (formData.postType === "review" && !formData.reviewTitle.trim()) {
+        throw new Error("Please add what you’re reviewing");
+      }
+
+      if (isRecipe) {
+        if (!formData.recipeTitle.trim()) {
+          throw new Error("Please add a recipe title");
+        }
+
+        const ingredients = ingredientRowsToStrings(formData.ingredients);
+        const instructions = normalizeSteps(formData.instructions);
+
+        if (ingredients.length === 0) throw new Error("Please add at least one ingredient");
+        if (instructions.length === 0) throw new Error("Please add at least one instruction step");
+      }
+
       // Create the post
       const postData = {
         userId: user.id,
-        caption: formData.caption,
+        caption: captionToStore,
         imageUrl: formData.imageUrl,
         tags,
         isRecipe,
@@ -130,7 +182,7 @@ export default function CreatePost() {
       const post = await postResponse.json();
 
       // If it's a recipe, create the recipe data (linked to post.id)
-      if (isRecipe && formData.recipeTitle) {
+      if (isRecipe) {
         const ingredients = ingredientRowsToStrings(formData.ingredients);
         const instructions = normalizeSteps(formData.instructions);
 
@@ -183,6 +235,24 @@ export default function CreatePost() {
         description: "Please add an image (upload or URL)",
       });
       return;
+    }
+
+    if (formData.postType === "post" && !formData.caption.trim()) {
+      toast({
+        variant: "destructive",
+        description: "Please write a caption for your post",
+      });
+      return;
+    }
+
+    if (formData.postType === "review") {
+      if (!formData.reviewTitle.trim()) {
+        toast({
+          variant: "destructive",
+          description: "Please add what you’re reviewing",
+        });
+        return;
+      }
     }
 
     if (formData.postType === "recipe") {
@@ -370,9 +440,7 @@ export default function CreatePost() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() =>
-                          document.getElementById("camera-input")?.click()
-                        }
+                        onClick={() => document.getElementById("camera-input")?.click()}
                         className="flex-1"
                       >
                         <Camera className="h-4 w-4 mr-2" />
@@ -381,9 +449,7 @@ export default function CreatePost() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() =>
-                          document.getElementById("file-input")?.click()
-                        }
+                        onClick={() => document.getElementById("file-input")?.click()}
                         className="flex-1"
                       >
                         <Upload className="h-4 w-4 mr-2" />
@@ -409,9 +475,7 @@ export default function CreatePost() {
                       data-testid="input-file"
                     />
 
-                    <p className="text-xs text-muted-foreground mb-2">
-                      or paste an image URL
-                    </p>
+                    <p className="text-xs text-muted-foreground mb-2">or paste an image URL</p>
                     <Input
                       id="imageUrl"
                       type="url"
@@ -432,14 +496,20 @@ export default function CreatePost() {
             {/* Caption */}
             <div className="space-y-2">
               <Label htmlFor="caption">
-                {formData.postType === "review" ? "Review" : "Caption"}
+                {formData.postType === "post"
+                  ? "Caption"
+                  : formData.postType === "recipe"
+                  ? "Caption / Notes (optional)"
+                  : "Notes (optional)"}
               </Label>
               <Textarea
                 id="caption"
                 placeholder={
-                  formData.postType === "review"
-                    ? "Write your review..."
-                    : "Write a caption for your post..."
+                  formData.postType === "post"
+                    ? "Write a caption for your post..."
+                    : formData.postType === "recipe"
+                    ? "Add a short intro, story, or extra details..."
+                    : "Optional extra thoughts to add to your review..."
                 }
                 value={formData.caption}
                 onChange={(e) => handleChange("caption", e.target.value)}
@@ -448,6 +518,77 @@ export default function CreatePost() {
                 data-testid="textarea-caption"
               />
             </div>
+
+            {/* ✅ Review Template UI */}
+            {formData.postType === "review" && (
+              <>
+                <Separator />
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Star className="h-4 w-4" />
+                    Review Template
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>What are you reviewing? *</Label>
+                    <Input
+                      value={formData.reviewTitle}
+                      onChange={(e) => handleChange("reviewTitle", e.target.value)}
+                      placeholder="e.g., 'Stainless Steel Pan'"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Rating</Label>
+                    <Select
+                      value={formData.reviewRating}
+                      onValueChange={(v) => handleChange("reviewRating", v)}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Rating" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 - Amazing</SelectItem>
+                        <SelectItem value="4">4 - Great</SelectItem>
+                        <SelectItem value="3">3 - Good</SelectItem>
+                        <SelectItem value="2">2 - Meh</SelectItem>
+                        <SelectItem value="1">1 - Bad</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Pros</Label>
+                    <Textarea
+                      value={formData.reviewPros}
+                      onChange={(e) => handleChange("reviewPros", e.target.value)}
+                      rows={2}
+                      placeholder="What did you like?"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Cons</Label>
+                    <Textarea
+                      value={formData.reviewCons}
+                      onChange={(e) => handleChange("reviewCons", e.target.value)}
+                      rows={2}
+                      placeholder="What didn’t you like?"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Verdict</Label>
+                    <Textarea
+                      value={formData.reviewVerdict}
+                      onChange={(e) => handleChange("reviewVerdict", e.target.value)}
+                      rows={2}
+                      placeholder="Would you recommend it?"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Tags */}
             <div className="space-y-2">
