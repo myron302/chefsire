@@ -36,9 +36,6 @@ import storesRouter from "./stores-crud";
 // Square (subscriptions / checkout links)
 import squareRouter from "./stores";
 
-// Auth middleware
-import { requireAuth } from "../middleware/auth";
-
 // ⚡ Phase 1: Daily Addiction Features
 import notificationsRouter from "./notifications";
 import questsRouter from "./quests";
