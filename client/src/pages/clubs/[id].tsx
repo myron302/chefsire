@@ -1,24 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -35,9 +23,9 @@ import {
   Save,
   X,
   Camera,
-  Upload,
   Plus,
   Minus,
+  Star,
 } from "lucide-react";
 
 // Server /api/clubs/:id returns: { club: { club: ClubRow, creator: Creator }, stats: Stats }
@@ -78,24 +66,16 @@ type Post = {
     userId: string;
     content: string;
     imageUrl: string | null;
+    recipeId: string | null; // ✅ FIX: you use this but it wasn't typed
     likesCount: number;
     commentsCount: number;
     createdAt: string;
-    recipeId?: string | null;
   };
   author: {
     id: string;
     username: string;
     displayName: string | null;
   };
-};
-
-type PostType = "post" | "recipe" | "review";
-
-type IngredientRow = {
-  qty: string; // NEW: qty separate
-  unit: string;
-  item: string;
 };
 
 export default function ClubDetailPage() {
@@ -106,14 +86,12 @@ export default function ClubDetailPage() {
   const { user } = useUser();
 
   const [newPostContent, setNewPostContent] = useState("");
-  const [newPostType, setNewPostType] = useState<PostType>("post");
+  const [newPostType, setNewPostType] = useState<"post" | "recipe" | "review">("post");
 
   const [newPostImageFile, setNewPostImageFile] = useState<File | null>(null);
   const [newPostImagePreview, setNewPostImagePreview] = useState<string>("");
 
-  // ✅ NEW: quantity (number/fraction) dropdown options
-  const QTY_OPTIONS = [
-    "",
+  const AMOUNT_OPTIONS = [
     "1/8",
     "1/4",
     "1/3",
@@ -125,7 +103,6 @@ export default function ClubDetailPage() {
     "2",
     "3",
     "4",
-    "5",
   ];
 
   const UNIT_OPTIONS = [
@@ -145,20 +122,15 @@ export default function ClubDetailPage() {
     "slice",
     "can",
     "package",
-    "bunch",
-    "piece",
   ];
 
   const [recipeTitle, setRecipeTitle] = useState("");
   const [recipeCookTime, setRecipeCookTime] = useState("");
   const [recipeServings, setRecipeServings] = useState("");
   const [recipeDifficulty, setRecipeDifficulty] = useState("Easy");
-
-  // ✅ ingredient rows now qty + unit + item
-  const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([
-    { qty: "1", unit: "cup", item: "" },
+  const [ingredientRows, setIngredientRows] = useState<{ amount: string; unit: string; item: string }[]>([
+    { amount: "1", unit: "cup", item: "" },
   ]);
-
   const [instructionRows, setInstructionRows] = useState<string[]>([""]);
 
   const [reviewTitle, setReviewTitle] = useState("");
@@ -191,6 +163,9 @@ export default function ClubDetailPage() {
   const isMember = useMemo(() => {
     const list = myClubsData?.clubs;
     if (!Array.isArray(list) || !clubId) return false;
+
+    // /api/clubs/my-clubs returns rows like: { club: ClubRow, membership: ..., memberCount: ... }
+    // Be defensive in case of partial/legacy data.
     return list.some((c: any) => c?.club?.id === clubId || c?.clubId === clubId || c?.id === clubId);
   }, [myClubsData?.clubs, clubId]);
 
@@ -240,7 +215,7 @@ export default function ClubDetailPage() {
     },
   });
 
-  // Image handling
+  // Create post mutation
   const handleNewPostImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -255,20 +230,13 @@ export default function ClubDetailPage() {
     setNewPostImagePreview("");
   };
 
-  // Ingredient helpers
-  const addIngredientRow = () =>
-    setIngredientRows((prev) => [...prev, { qty: "1", unit: "", item: "" }]);
-
-  const removeIngredientRow = (index: number) =>
-    setIngredientRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
-
-  const updateIngredientRow = (index: number, patch: Partial<IngredientRow>) =>
+  const addIngredientRow = () => setIngredientRows((prev) => [...prev, { amount: "1", unit: "", item: "" }]);
+  const removeIngredientRow = (index: number) => setIngredientRows((prev) => prev.filter((_, i) => i !== index));
+  const updateIngredientRow = (index: number, patch: Partial<{ amount: string; unit: string; item: string }>) =>
     setIngredientRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
-  // Instruction helpers
   const addInstructionRow = () => setInstructionRows((prev) => [...prev, ""]);
-  const removeInstructionRow = (index: number) =>
-    setInstructionRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+  const removeInstructionRow = (index: number) => setInstructionRows((prev) => prev.filter((_, i) => i !== index));
   const updateInstructionRow = (index: number, value: string) =>
     setInstructionRows((prev) => prev.map((row, i) => (i === index ? value : row)));
 
@@ -281,7 +249,7 @@ export default function ClubDetailPage() {
     setRecipeCookTime("");
     setRecipeServings("");
     setRecipeDifficulty("Easy");
-    setIngredientRows([{ qty: "1", unit: "cup", item: "" }]);
+    setIngredientRows([{ amount: "1", unit: "cup", item: "" }]);
     setInstructionRows([""]);
 
     setReviewTitle("");
@@ -333,24 +301,15 @@ export default function ClubDetailPage() {
 
       const ingredientLines = ingredientRows
         .map((row) => {
-          const qty = String(row.qty || "").trim();
+          const amt = String(row.amount || "").trim();
           const unit = String(row.unit || "").trim();
           const item = String(row.item || "").trim();
-          const left = [qty, unit].filter(Boolean).join(" ");
+          const left = [amt, unit].filter(Boolean).join(" ");
           return [left, item].filter(Boolean).join(" ").trim();
         })
         .filter(Boolean);
 
       const instructionLines = instructionRows.map((s) => String(s || "").trim()).filter(Boolean);
-
-      if (ingredientLines.length === 0) {
-        toast({ title: "Ingredients required", description: "Add at least one ingredient", variant: "destructive" });
-        return;
-      }
-      if (instructionLines.length === 0) {
-        toast({ title: "Instructions required", description: "Add at least one step", variant: "destructive" });
-        return;
-      }
 
       const notes = newPostContent.trim();
       const content = `🍽️ Recipe: ${recipeTitle.trim()}` + (notes ? `\n\n${notes}` : "");
@@ -469,7 +428,6 @@ export default function ClubDetailPage() {
     );
   }
 
-  // Normalize data shape (defensive)
   const club = clubData?.club?.club;
   const creator = clubData?.club?.creator;
   const stats = clubData?.stats;
@@ -499,7 +457,6 @@ export default function ClubDetailPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
       <div className="max-w-4xl mx-auto space-y-6">
-        {/* Back Button */}
         <Link href="/clubs">
           <Button variant="ghost" className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -660,31 +617,17 @@ export default function ClubDetailPage() {
                   <div className="grid gap-3 md:grid-cols-12">
                     <div className="md:col-span-12">
                       <Label>Recipe Title</Label>
-                      <Input
-                        value={recipeTitle}
-                        onChange={(e) => setRecipeTitle(e.target.value)}
-                        placeholder="e.g., Honey Garlic Chicken"
-                      />
+                      <Input value={recipeTitle} onChange={(e) => setRecipeTitle(e.target.value)} placeholder="e.g., Honey Garlic Chicken" />
                     </div>
 
                     <div className="md:col-span-4">
                       <Label>Cook Time (minutes)</Label>
-                      <Input
-                        value={recipeCookTime}
-                        onChange={(e) => setRecipeCookTime(e.target.value)}
-                        placeholder="e.g., 35"
-                        inputMode="numeric"
-                      />
+                      <Input value={recipeCookTime} onChange={(e) => setRecipeCookTime(e.target.value)} placeholder="e.g., 35" />
                     </div>
 
                     <div className="md:col-span-4">
                       <Label>Servings</Label>
-                      <Input
-                        value={recipeServings}
-                        onChange={(e) => setRecipeServings(e.target.value)}
-                        placeholder="e.g., 4"
-                        inputMode="numeric"
-                      />
+                      <Input value={recipeServings} onChange={(e) => setRecipeServings(e.target.value)} placeholder="e.g., 4" />
                     </div>
 
                     <div className="md:col-span-4">
@@ -702,22 +645,20 @@ export default function ClubDetailPage() {
                     </div>
                   </div>
 
-                  {/* ✅ UPDATED INGREDIENTS UI: qty dropdown + unit dropdown + ingredient */}
                   <div className="space-y-2">
                     <Label>Ingredients</Label>
-
                     <div className="space-y-2">
                       {ingredientRows.map((row, index) => (
                         <div key={index} className="grid grid-cols-12 gap-2 items-center">
                           <div className="col-span-4 sm:col-span-2">
-                            <Select value={row.qty} onValueChange={(v) => updateIngredientRow(index, { qty: v })}>
+                            <Select value={row.amount} onValueChange={(v) => updateIngredientRow(index, { amount: v })}>
                               <SelectTrigger>
                                 <SelectValue placeholder="Qty" />
                               </SelectTrigger>
                               <SelectContent>
-                                {QTY_OPTIONS.map((opt) => (
-                                  <SelectItem key={opt || "__blank"} value={opt}>
-                                    {opt || "—"}
+                                {AMOUNT_OPTIONS.map((opt) => (
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -825,6 +766,11 @@ export default function ClubDetailPage() {
                     <Label>Verdict</Label>
                     <Textarea value={reviewVerdict} onChange={(e) => setReviewVerdict(e.target.value)} rows={2} placeholder="Would you recommend it?" />
                   </div>
+
+                  <div className="text-sm text-muted-foreground flex items-center gap-2">
+                    <Star className="h-4 w-4" />
+                    Reviews are posted in a template format (badged in the feed).
+                  </div>
                 </div>
               ) : null}
 
@@ -884,6 +830,7 @@ export default function ClubDetailPage() {
                       </div>
                     </div>
                   </CardHeader>
+
                   <CardContent className="pt-0 space-y-3">
                     {editingPostId === p.post.id ? (
                       <>
