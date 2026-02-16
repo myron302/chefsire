@@ -1,7 +1,7 @@
 // server/routes/clubs.ts
 import express, { type Request, type Response } from "express";
 import { db } from "../db/index.js";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import {
   clubs,
   clubMemberships,
@@ -11,7 +11,7 @@ import {
   badges,
   userBadges,
   users,
-  recipes
+  recipes,
 } from "../../shared/schema.js";
 import { requireAuth } from "../middleware/index";
 
@@ -42,14 +42,15 @@ router.get("/", async (req: Request, res: Response) => {
     let filtered = await allClubs;
 
     if (category && category !== "all") {
-      filtered = filtered.filter(c => c.club.category === category);
+      filtered = filtered.filter((c) => c.club.category === category);
     }
 
     if (search) {
       const searchLower = (search as string).toLowerCase();
-      filtered = filtered.filter(c =>
-        c.club.name.toLowerCase().includes(searchLower) ||
-        c.club.description?.toLowerCase().includes(searchLower)
+      filtered = filtered.filter(
+        (c) =>
+          c.club.name.toLowerCase().includes(searchLower) ||
+          c.club.description?.toLowerCase().includes(searchLower)
       );
     }
 
@@ -58,7 +59,10 @@ router.get("/", async (req: Request, res: Response) => {
     } else if (sort === "activity") {
       filtered.sort((a, b) => b.postCount - a.postCount);
     } else {
-      filtered.sort((a, b) => new Date(b.club.createdAt).getTime() - new Date(a.club.createdAt).getTime());
+      filtered.sort(
+        (a, b) =>
+          new Date(b.club.createdAt).getTime() - new Date(a.club.createdAt).getTime()
+      );
     }
 
     res.json({ clubs: filtered });
@@ -203,7 +207,9 @@ router.post("/:id/leave", requireAuth, async (req: Request, res: Response) => {
     }
 
     if (membership.role === "owner") {
-      return res.status(400).json({ message: "Club owner cannot leave. Transfer ownership or delete the club." });
+      return res.status(400).json({
+        message: "Club owner cannot leave. Transfer ownership or delete the club.",
+      });
     }
 
     await db
@@ -273,29 +279,34 @@ router.get("/:id/posts", async (req: Request, res: Response) => {
 
     res.json({ posts: normalized });
   } catch (error) {
-    console.error("Error fetching club post// Create club post
+    console.error("Error fetching club posts:", error);
+    res.status(500).json({ message: "Failed to fetch club posts" });
+  }
+});
+
+// Create club post (supports recipe template)
 router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const clubId = req.params.id;
-    const { content, recipeId, recipe } = req.body as {
+
+    const { content, imageUrl, recipeId, recipe, postType } = req.body as {
       content?: string;
+      imageUrl?: string | null;
       recipeId?: string | null;
+      postType?: "post" | "recipe" | "review" | string;
       recipe?: {
         title: string;
-        imageUrl?: string;
+        imageUrl?: string | null;
         ingredients: string[];
         instructions: string[];
-        cookTime?: number;
-        servings?: number;
-        difficulty?: string;
+        cookTime?: number | null;
+        servings?: number | null;
+        difficulty?: string | null;
       };
     };
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: "Post content is required" });
-    }
-
+    // Must be a club member to post
     const [membership] = await db
       .select()
       .from(clubMemberships)
@@ -306,15 +317,29 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
       return res.status(403).json({ message: "You must be a member to post" });
     }
 
-    // If this is a recipe template post, create a recipe record and link it.
+    const trimmedContent = (content ?? "").trim();
+    const wantsRecipe = postType === "recipe" || (!!recipe && typeof recipe === "object");
+
+    if (!wantsRecipe && !trimmedContent) {
+      return res.status(400).json({ message: "Post content is required" });
+    }
+
     let linkedRecipeId: string | null = recipeId || null;
-    if (!linkedRecipeId && recipe && recipe.title && Array.isArray(recipe.ingredients) && Array.isArray(recipe.instructions)) {
+
+    // Create a recipe row if needed (club recipe: postId = null)
+    if (
+      !linkedRecipeId &&
+      recipe &&
+      recipe.title &&
+      Array.isArray(recipe.ingredients) &&
+      Array.isArray(recipe.instructions)
+    ) {
       const [createdRecipe] = await db
         .insert(recipes)
         .values({
           postId: null,
-          title: recipe.title,
-          imageUrl: recipe.imageUrl || null,
+          title: recipe.title.trim(),
+          imageUrl: (recipe.imageUrl ?? imageUrl ?? null) as any,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
           cookTime: recipe.cookTime ?? null,
@@ -331,26 +356,18 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
       .values({
         clubId,
         userId,
-        content: content.trim(),
+        content: trimmedContent || "",
+        imageUrl: (imageUrl ?? null) as any,
         recipeId: linkedRecipeId,
       })
       .returning();
 
     res.json({ post });
   } catch (error) {
-    console.error("Error creating post:", error);
+    console.error("Error creating club post:", error);
     res.status(500).json({ message: "Failed to create post" });
   }
 });
-
-
-
-", error);
-    res.status(500).json({ message: "Failed to create post" });
-  }
-});
-
-
 
 // Update club post
 router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Response) => {
@@ -398,7 +415,7 @@ router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Respon
 // Browse challenges
 router.get("/challenges", async (req: Request, res: Response) => {
   try {
-    const { status, category } = req.query;
+    const { status } = req.query;
 
     const allChallenges = await db
       .select({
@@ -415,7 +432,7 @@ router.get("/challenges", async (req: Request, res: Response) => {
 
     if (status) {
       const now = new Date();
-      filtered = filtered.filter(c => {
+      filtered = filtered.filter((c) => {
         const start = new Date(c.challenge.startDate);
         const end = new Date(c.challenge.endDate);
         if (status === "active") return start <= now && end >= now;
@@ -534,7 +551,7 @@ router.post("/challenges/:id/progress", requireAuth, async (req: Request, res: R
     const newProgress = progress.currentProgress + 1;
 
     const [challenge] = await db.select().from(challenges).where(eq(challenges.id, challengeId)).limit(1);
-    const requirements = challenge?.requirements || [];
+    const requirements = (challenge?.requirements || []) as any[];
     const totalRequired = requirements.reduce((sum, req: any) => sum + (req.target || 1), 0);
     const isCompleted = newProgress >= totalRequired;
 
@@ -549,13 +566,16 @@ router.post("/challenges/:id/progress", requireAuth, async (req: Request, res: R
       .where(eq(challengeProgress.id, progress.id))
       .returning();
 
-    if (isCompleted && challenge?.rewards) {
-      for (const reward of challenge.rewards as any[]) {
+    if (isCompleted && (challenge as any)?.rewards) {
+      for (const reward of (challenge as any).rewards as any[]) {
         if (reward.type === "badge") {
-          await db.insert(userBadges).values({
-            userId,
-            badgeId: reward.value,
-          }).onConflictDoNothing();
+          await db
+            .insert(userBadges)
+            .values({
+              userId,
+              badgeId: reward.value,
+            })
+            .onConflictDoNothing();
         }
       }
     }
@@ -596,11 +616,7 @@ router.get("/my-challenges", requireAuth, async (req: Request, res: Response) =>
 // Get all badges
 router.get("/badges", async (_req: Request, res: Response) => {
   try {
-    const allBadges = await db
-      .select()
-      .from(badges)
-      .orderBy(badges.tier, badges.name);
-
+    const allBadges = await db.select().from(badges).orderBy(badges.tier, badges.name);
     res.json({ badges: allBadges });
   } catch (error) {
     console.error("Error fetching badges:", error);
