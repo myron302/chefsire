@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { Compass, Plus, User, Activity, BookOpen, GlassWater } from "lucide-react";
+import { Compass, Plus, User, Activity, BookOpen, GlassWater, Star } from "lucide-react";
 
 interface MobileNavProps {
   onCreatePost?: () => void;
@@ -12,13 +12,16 @@ type NavLink =
 
 export default function MobileNav({ onCreatePost }: MobileNavProps) {
   const [location] = useLocation();
-  const handleCreate = onCreatePost ?? (() => {});
+
+  const handleCreate = () => {
+    onCreatePost?.();
+  };
 
   const nav: NavLink[] = [
     { name: "Explore", href: "/explore", icon: Compass },
-    { name: "Drinks", href: "/drinks", icon: GlassWater }, // Changed from Recipes
-    { name: "Create", action: handleCreate, icon: Plus },   // center FAB
-    { name: "Recipes", href: "/recipes", icon: BookOpen }, // Moved to right side
+    { name: "Reviews", href: "/reviews", icon: Star },
+    { name: "Create", action: handleCreate, icon: Plus }, // center FAB
+    { name: "Recipes", href: "/recipes", icon: BookOpen },
     { name: "Profile", href: "/profile", icon: User },
   ];
 
@@ -27,7 +30,6 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
       <div className="relative flex items-center justify-around py-2">
         {nav.map((item) => {
           if ("action" in item) {
-            // Center FAB — hover/press feedback only
             return (
               <div
                 key={item.name}
@@ -50,21 +52,21 @@ export default function MobileNav({ onCreatePost }: MobileNavProps) {
             );
           }
 
-          const isActive = location === item.href || location.startsWith(item.href + "/");
+          const isActive =
+            location === item.href || location.startsWith(item.href + "/");
 
           return (
             <Link key={item.name} href={item.href}>
               <Button
                 variant="ghost"
                 className={[
-                  "flex flex-col items-center p-2 h-auto min-w-0",
-                  isActive ? "text-primary" : "text-muted-foreground",
+                  "flex flex-col items-center gap-1 h-auto py-2 px-3",
+                  isActive ? "text-foreground" : "text-muted-foreground",
                 ].join(" ")}
-                aria-current={isActive ? "page" : undefined}
-                data-testid={`mobile-nav-${item.name.toLowerCase().replace(/\s+/g, "-")}`}
+                data-testid={`mobile-nav-${item.name.toLowerCase()}`}
               >
-                <item.icon className="h-6 w-6 mb-1" />
-                <span className="text-[11px] leading-none">{item.name}</span>
+                <item.icon className="h-5 w-5" />
+                <span className="text-[11px]">{item.name}</span>
               </Button>
             </Link>
           );
