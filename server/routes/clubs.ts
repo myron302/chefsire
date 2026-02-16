@@ -55,12 +55,13 @@ router.get("/", async (req: Request, res: Response) => {
     }
 
     if (sort === "members") {
-      filtered.sort((a, b) => b.memberCount - a.memberCount);
+      // drizzle sql count returns number-like; keep as-is like your current file
+      filtered.sort((a: any, b: any) => b.memberCount - a.memberCount);
     } else if (sort === "activity") {
-      filtered.sort((a, b) => b.postCount - a.postCount);
+      filtered.sort((a: any, b: any) => b.postCount - a.postCount);
     } else {
       filtered.sort(
-        (a, b) =>
+        (a: any, b: any) =>
           new Date(b.club.createdAt).getTime() -
           new Date(a.club.createdAt).getTime()
       );
@@ -225,7 +226,8 @@ router.post("/:id/leave", requireAuth, async (req: Request, res: Response) => {
 
     if (membership.role === "owner") {
       return res.status(400).json({
-        message: "Club owner cannot leave. Transfer ownership or delete the club.",
+        message:
+          "Club owner cannot leave. Transfer ownership or delete the club.",
       });
     }
 
@@ -361,15 +363,40 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
         Array.isArray(recipe.ingredients) &&
         Array.isArray(recipe.instructions));
 
+    // ✅ PATCH: validate + trim + fallback imageUrl
     if (!linkedRecipeId && isRecipeTemplate && recipe) {
+      const title = String(recipe.title ?? "").trim();
+
+      const cleanIngredients = Array.isArray(recipe.ingredients)
+        ? recipe.ingredients.map((s) => String(s ?? "").trim()).filter(Boolean)
+        : [];
+
+      const cleanInstructions = Array.isArray(recipe.instructions)
+        ? recipe.instructions.map((s) => String(s ?? "").trim()).filter(Boolean)
+        : [];
+
+      if (!title) {
+        return res.status(400).json({ message: "Recipe title is required" });
+      }
+      if (!cleanIngredients.length) {
+        return res
+          .status(400)
+          .json({ message: "At least one ingredient is required" });
+      }
+      if (!cleanInstructions.length) {
+        return res
+          .status(400)
+          .json({ message: "At least one instruction step is required" });
+      }
+
       const [createdRecipe] = await db
         .insert(recipes)
         .values({
           postId: null, // club recipes are not linked to a social post row
-          title: recipe.title,
-          imageUrl: recipe.imageUrl ?? null,
-          ingredients: recipe.ingredients,
-          instructions: recipe.instructions,
+          title,
+          imageUrl: (recipe.imageUrl ?? imageUrl) ?? null,
+          ingredients: cleanIngredients,
+          instructions: cleanInstructions,
           cookTime: recipe.cookTime ?? null,
           servings: recipe.servings ?? null,
           difficulty: recipe.difficulty ?? null,
@@ -398,43 +425,49 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
 });
 
 // Update club post
-router.patch("/:id/posts/:postId", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const clubId = req.params.id;
-    const postId = req.params.postId;
-    const { content } = req.body;
+router.patch(
+  "/:id/posts/:postId",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const clubId = req.params.id;
+      const postId = req.params.postId;
+      const { content } = req.body;
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: "Post content is required" });
+      if (!content || !content.trim()) {
+        return res.status(400).json({ message: "Post content is required" });
+      }
+
+      const [existingPost] = await db
+        .select()
+        .from(clubPosts)
+        .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
+        .limit(1);
+
+      if (!existingPost) {
+        return res.status(404).json({ message: "Post not found" });
+      }
+
+      if (existingPost.userId !== userId) {
+        return res
+          .status(403)
+          .json({ message: "You can only edit your own posts" });
+      }
+
+      const [post] = await db
+        .update(clubPosts)
+        .set({ content: content.trim() })
+        .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
+        .returning();
+
+      return res.json({ post });
+    } catch (error) {
+      console.error("Error updating post:", error);
+      return res.status(500).json({ message: "Failed to update post" });
     }
-
-    const [existingPost] = await db
-      .select()
-      .from(clubPosts)
-      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
-      .limit(1);
-
-    if (!existingPost) {
-      return res.status(404).json({ message: "Post not found" });
-    }
-
-    if (existingPost.userId !== userId) {
-      return res.status(403).json({ message: "You can only edit your own posts" });
-    }
-
-    const [post] = await db
-      .update(clubPosts)
-      .set({ content: content.trim() })
-      .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
-      .returning();
-
-    return res.json({ post });
-  } catch (error) {
-    console.error("Error updating post:", error);
-    return res.status(500).json({ message: "Failed to update post" });
   }
-});
+);
 
 // ============================================================
 // CHALLENGES
@@ -451,7 +484,10 @@ router.get("/challenges", async (req: Request, res: Response) => {
         participantCount: sql`count(distinct ${challengeProgress.userId})`,
       })
       .from(challenges)
-      .leftJoin(challengeProgress, eq(challenges.id, challengeProgress.challengeId))
+      .leftJoin(
+        challengeProgress,
+        eq(challenges.id, challengeProgress.challengeId)
+      )
       .groupBy(challenges.id)
       .orderBy(desc(challenges.startDate))
       .$dynamic();
@@ -460,7 +496,7 @@ router.get("/challenges", async (req: Request, res: Response) => {
 
     if (status) {
       const now = new Date();
-      filtered = filtered.filter((c) => {
+      filtered = filtered.filter((c: any) => {
         const start = new Date(c.challenge.startDate);
         const end = new Date(c.challenge.endDate);
         if (status === "active") return start <= now && end >= now;
@@ -508,116 +544,141 @@ router.get("/challenges/:id", async (req: Request, res: Response) => {
 });
 
 // Join challenge
-router.post("/challenges/:id/join", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const challengeId = req.params.id;
+router.post(
+  "/challenges/:id/join",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const challengeId = req.params.id;
 
-    const [challenge] = await db
-      .select()
-      .from(challenges)
-      .where(eq(challenges.id, challengeId))
-      .limit(1);
+      const [challenge] = await db
+        .select()
+        .from(challenges)
+        .where(eq(challenges.id, challengeId))
+        .limit(1);
 
-    if (!challenge) {
-      return res.status(404).json({ message: "Challenge not found" });
+      if (!challenge) {
+        return res.status(404).json({ message: "Challenge not found" });
+      }
+
+      const [existingProgress] = await db
+        .select()
+        .from(challengeProgress)
+        .where(
+          and(
+            eq(challengeProgress.challengeId, challengeId),
+            eq(challengeProgress.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (existingProgress) {
+        return res.status(400).json({
+          message: "You are already participating in this challenge",
+        });
+      }
+
+      const [progress] = await db
+        .insert(challengeProgress)
+        .values({
+          challengeId,
+          userId,
+          currentProgress: 0,
+          currentStreak: 0,
+          completedSteps: [],
+          isCompleted: false,
+        })
+        .returning();
+
+      res.json({ progress });
+    } catch (error) {
+      console.error("Error joining challenge:", error);
+      res.status(500).json({ message: "Failed to join challenge" });
     }
-
-    const [existingProgress] = await db
-      .select()
-      .from(challengeProgress)
-      .where(and(eq(challengeProgress.challengeId, challengeId), eq(challengeProgress.userId, userId)))
-      .limit(1);
-
-    if (existingProgress) {
-      return res.status(400).json({ message: "You are already participating in this challenge" });
-    }
-
-    const [progress] = await db
-      .insert(challengeProgress)
-      .values({
-        challengeId,
-        userId,
-        currentProgress: 0,
-        currentStreak: 0,
-        completedSteps: [],
-        isCompleted: false,
-      })
-      .returning();
-
-    res.json({ progress });
-  } catch (error) {
-    console.error("Error joining challenge:", error);
-    res.status(500).json({ message: "Failed to join challenge" });
   }
-});
+);
 
 // Update challenge progress
-router.post("/challenges/:id/progress", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const challengeId = req.params.id;
-    const { step, recipeId } = req.body;
+router.post(
+  "/challenges/:id/progress",
+  requireAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const userId = req.user!.id;
+      const challengeId = req.params.id;
+      const { step, recipeId } = req.body;
 
-    const [progress] = await db
-      .select()
-      .from(challengeProgress)
-      .where(and(eq(challengeProgress.challengeId, challengeId), eq(challengeProgress.userId, userId)))
-      .limit(1);
+      const [progress] = await db
+        .select()
+        .from(challengeProgress)
+        .where(
+          and(
+            eq(challengeProgress.challengeId, challengeId),
+            eq(challengeProgress.userId, userId)
+          )
+        )
+        .limit(1);
 
-    if (!progress) {
-      return res.status(404).json({ message: "You are not participating in this challenge" });
-    }
+      if (!progress) {
+        return res
+          .status(404)
+          .json({ message: "You are not participating in this challenge" });
+      }
 
-    const completedSteps = progress.completedSteps || [];
-    completedSteps.push({
-      step,
-      completedAt: new Date().toISOString(),
-      recipeId: recipeId || null,
-    });
+      const completedSteps = progress.completedSteps || [];
+      completedSteps.push({
+        step,
+        completedAt: new Date().toISOString(),
+        recipeId: recipeId || null,
+      });
 
-    const newProgress = progress.currentProgress + 1;
+      const newProgress = progress.currentProgress + 1;
 
-    const [challenge] = await db
-      .select()
-      .from(challenges)
-      .where(eq(challenges.id, challengeId))
-      .limit(1);
+      const [challenge] = await db
+        .select()
+        .from(challenges)
+        .where(eq(challenges.id, challengeId))
+        .limit(1);
 
-    const requirements = challenge?.requirements || [];
-    const totalRequired = requirements.reduce((sum: number, req: any) => sum + (req.target || 1), 0);
-    const isCompleted = newProgress >= totalRequired;
+      const requirements = (challenge as any)?.requirements || [];
+      const totalRequired = requirements.reduce(
+        (sum: number, req: any) => sum + (req.target || 1),
+        0
+      );
+      const isCompleted = newProgress >= totalRequired;
 
-    const [updated] = await db
-      .update(challengeProgress)
-      .set({
-        currentProgress: newProgress,
-        completedSteps,
-        isCompleted,
-        completedAt: isCompleted ? new Date().toISOString() : null,
-      })
-      .where(eq(challengeProgress.id, progress.id))
-      .returning();
+      const [updated] = await db
+        .update(challengeProgress)
+        .set({
+          currentProgress: newProgress,
+          completedSteps,
+          isCompleted,
+          completedAt: isCompleted ? new Date().toISOString() : null,
+        })
+        .where(eq(challengeProgress.id, (progress as any).id))
+        .returning();
 
-    if (isCompleted && challenge?.rewards) {
-      for (const reward of challenge.rewards as any[]) {
-        if (reward.type === "badge") {
-          await db
-            .insert(userBadges)
-            .values({
-              userId,
-              badgeId: reward.value,
-            })
-            .onConflictDoNothing();
+      if (isCompleted && (challenge as any)?.rewards) {
+        for (const reward of (challenge as any).rewards as any[]) {
+          if (reward.type === "badge") {
+            await db
+              .insert(userBadges)
+              .values({
+                userId,
+                badgeId: reward.value,
+              })
+              .onConflictDoNothing();
+          }
         }
       }
-    }
 
-    res.json({ progress: updated, isCompleted });
-  } catch (error) {
-    console.error("Error updating challenge progress:", error);
-    res.status(500).json({ message: "Failed to update progress" });
+      res.json({ progress: updated, isCompleted });
+    } catch (error) {
+      console.error("Error updating challenge progress:", error);
+      res.status(500).json({ message: "Failed to update progress" });
+    }
   }
-});
+);
 
 export default router;
