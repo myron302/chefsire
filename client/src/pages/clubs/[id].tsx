@@ -1,17 +1,53 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Input } from "@/components/ui/input";
+import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
-import { Users, MessageSquare, ArrowLeft, Send, Calendar, Crown, Pencil, Save, X, ChefHat, Star } from "lucide-react";
+import {
+  Users,
+  MessageSquare,
+  ArrowLeft,
+  Send,
+  Calendar,
+  Crown,
+  Pencil,
+  Save,
+  X,
+  Image as ImageIcon,
+  Trash2,
+  Plus,
+  Minus,
+  Lock,
+  CheckCircle2,
+  AlertCircle,
+} from "lucide-react";
 
 // Server /api/clubs/:id returns: { club: { club: ClubRow, creator: Creator }, stats: Stats }
 type ClubRow = {
@@ -44,62 +80,191 @@ type ClubDetailResponse = {
   stats: Stats;
 };
 
-type Post = {
-  post: {
-    id: string;
-    clubId: string;
-    userId: string;
-    content: string;
-    imageUrl: string | null;
-    recipeId?: string | null;
-    likesCount: number;
-    commentsCount: number;
-    createdAt: string;
-  };
-  author: {
-    id: string;
-    username: string;
-    displayName: string | null;
-  };
+type ClubPostRow = {
+  id: string;
+  clubId: string;
+  userId: string;
+  content: string;
+  imageUrl: string | null;
+  recipeId: string | null;
+  likesCount: number;
+  commentsCount: number;
+  createdAt: string;
 };
 
-type PostKind = "post" | "recipe" | "review";
-type IngredientRow = { amount: string; unit: string; item: string };
+type ClubAuthor = {
+  id: string;
+  username: string;
+  displayName: string | null;
+};
 
-const UNIT_OPTIONS = [
-  { value: "tsp", label: "tsp" },
-  { value: "tbsp", label: "tbsp" },
-  { value: "cup", label: "cup" },
-  { value: "oz", label: "oz" },
-  { value: "lb", label: "lb" },
-  { value: "g", label: "g" },
-  { value: "kg", label: "kg" },
-  { value: "ml", label: "ml" },
-  { value: "l", label: "l" },
-  { value: "pinch", label: "pinch" },
-  { value: "dash", label: "dash" },
-  { value: "clove", label: "clove" },
-  { value: "slice", label: "slice" },
-  { value: "piece", label: "piece" },
-  { value: "to taste", label: "to taste" },
-];
+type ClubRecipe = {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  ingredients: string[];
+  instructions: string[];
+  cookTime: number | null;
+  servings: number | null;
+  difficulty: string | null;
+};
 
-function buildIngredientLine(row: IngredientRow) {
-  const amt = row.amount?.trim();
-  const unit = row.unit?.trim();
-  const item = row.item?.trim();
-  if (!item) return "";
-  const left = [amt, unit && unit !== "to taste" ? unit : ""].filter(Boolean).join(" ").trim();
-  const right = unit === "to taste" ? `${item} (to taste)` : item;
-  return `${left ? left + " " : ""}${right}`.trim();
+type ClubPost = {
+  post: ClubPostRow;
+  author: ClubAuthor;
+  // Optional enrichment (only if your server includes it)
+  recipe?: ClubRecipe | null;
+};
+
+type MembershipResponse =
+  | {
+      isMember: boolean;
+      role?: "owner" | "member" | "pending";
+    }
+  | undefined;
+
+type ParsedContent =
+  | {
+      type: "post";
+      caption: string;
+    }
+  | {
+      type: "review";
+      caption: string;
+      review: {
+        subject: string;
+        rating: number;
+        pros: string;
+        cons: string;
+        verdict: string;
+      };
+    };
+
+function safeParseContent(raw: string): ParsedContent {
+  const s = String(raw ?? "");
+  if (!s.trim()) return { type: "post", caption: "" };
+  if (s.trim().startsWith("{")) {
+    try {
+      const obj = JSON.parse(s);
+      if (obj && obj.type === "review") {
+        const rating = Number(obj?.review?.rating ?? 0);
+        return {
+          type: "review",
+          caption: String(obj?.caption ?? ""),
+          review: {
+            subject: String(obj?.review?.subject ?? ""),
+            rating: Number.isFinite(rating) ? rating : 0,
+            pros: String(obj?.review?.pros ?? ""),
+            cons: String(obj?.review?.cons ?? ""),
+            verdict: String(obj?.review?.verdict ?? ""),
+          },
+        };
+      }
+    } catch {
+      // fallthrough
+    }
+  }
+  return { type: "post", caption: s };
 }
 
-function detectClubPostKind(p: Post): PostKind {
-  const recipeId = (p.post as any)?.recipeId;
-  if (recipeId) return "recipe";
-  const c = (p.post?.content || "").trim();
-  if (/^review:/i.test(c)) return "review";
-  return "post";
+type IngredientRow = { amount: string; unit: string; name: string };
+
+const AMOUNT_OPTIONS = [
+  "",
+  "1/8",
+  "1/4",
+  "1/3",
+  "1/2",
+  "2/3",
+  "3/4",
+  "1",
+  "1 1/2",
+  "2",
+  "3",
+  "4",
+];
+
+const UNIT_OPTIONS = [
+  "",
+  "tsp",
+  "tbsp",
+  "cup",
+  "oz",
+  "lb",
+  "g",
+  "kg",
+  "ml",
+  "l",
+  "pinch",
+  "dash",
+  "clove",
+  "slice",
+  "can",
+  "package",
+  "bunch",
+  "piece",
+];
+
+function ingredientRowsToStrings(rows: IngredientRow[]): string[] {
+  return rows
+    .map((r) =>
+      [r.amount, r.unit, r.name]
+        .map((x) => String(x ?? "").trim())
+        .filter(Boolean)
+        .join(" ")
+        .trim()
+    )
+    .filter(Boolean);
+}
+
+function parseIngredientString(raw: string): IngredientRow {
+  const s = (raw ?? "").trim();
+  if (!s) return { amount: "", unit: "", name: "" };
+
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) return { amount: "", unit: "", name: s };
+
+  const looksLikeFraction = (t: string) => /^\d+\/\d+$/.test(t);
+  const looksLikeNumber = (t: string) => /^\d+(\.\d+)?$/.test(t);
+
+  let amount = "";
+  let unit = "";
+  let nameStart = 0;
+
+  const first = parts[0];
+  const second = parts[1] ?? "";
+
+  if (looksLikeNumber(first) || looksLikeFraction(first)) {
+    if (looksLikeFraction(second)) {
+      amount = `${first} ${second}`;
+      nameStart = 2;
+    } else {
+      amount = first;
+      nameStart = 1;
+    }
+  }
+
+  const maybeUnit = parts[nameStart] ?? "";
+  if (UNIT_OPTIONS.includes(maybeUnit)) {
+    unit = maybeUnit;
+    nameStart += 1;
+  }
+
+  const name = parts.slice(nameStart).join(" ").trim();
+  return { amount, unit, name: name || s };
+}
+
+function normalizeSteps(steps: string[]): string[] {
+  return steps.map((s) => (s ?? "").trim()).filter(Boolean);
+}
+
+async function fileToDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read file"));
+    reader.readAsDataURL(file);
+  });
 }
 
 export default function ClubDetailPage() {
@@ -109,27 +274,63 @@ export default function ClubDetailPage() {
   const queryClient = useQueryClient();
   const { user } = useUser();
 
-  const [newPostContent, setNewPostContent] = useState("");
+  // Composer state
+  const [postType, setPostType] = useState<"post" | "recipe" | "review">("post");
+  const [caption, setCaption] = useState("");
+  const [imagePreview, setImagePreview] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-const [postKind, setPostKind] = useState<PostKind>("post");
+  // Recipe draft
+  const [recipeOpen, setRecipeOpen] = useState(false);
+  const [recipeTitle, setRecipeTitle] = useState("");
+  const [recipeDifficulty, setRecipeDifficulty] = useState("Easy");
+  const [recipeCookTime, setRecipeCookTime] = useState<string>("");
+  const [recipeServings, setRecipeServings] = useState<string>("");
+  const [recipeIngredients, setRecipeIngredients] = useState<IngredientRow[]>([
+    { amount: "", unit: "", name: "" },
+  ]);
+  const [recipeSteps, setRecipeSteps] = useState<string[]>([""]);
 
-// Recipe template fields (club posts)
-const [recipeTitle, setRecipeTitle] = useState("");
-const [recipeCookTime, setRecipeCookTime] = useState<string>("");
-const [recipeServings, setRecipeServings] = useState<string>("");
-const [recipeDifficulty, setRecipeDifficulty] = useState<string>("easy");
-const [ingredients, setIngredients] = useState<IngredientRow[]>([{ amount: "", unit: "cup", item: "" }]);
-const [instructions, setInstructions] = useState<string[]>([""]);
+  // Review draft
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewSubject, setReviewSubject] = useState("");
+  const [reviewRating, setReviewRating] = useState("5");
+  const [reviewPros, setReviewPros] = useState("");
+  const [reviewCons, setReviewCons] = useState("");
+  const [reviewVerdict, setReviewVerdict] = useState("");
 
-// Review template fields (club posts)
-const [reviewSubject, setReviewSubject] = useState("");
-const [reviewRating, setReviewRating] = useState<number>(5);
-const [reviewPros, setReviewPros] = useState("");
-const [reviewCons, setReviewCons] = useState("");
-const [reviewVerdict, setReviewVerdict] = useState("");
+  // Edit state
+  const [editing, setEditing] = useState<null | {
+    postId: string;
+    type: "post" | "recipe" | "review";
+    caption: string;
+    imageUrl: string;
+    recipeId?: string | null;
+  }>(null);
 
-  const [editingPostId, setEditingPostId] = useState<string | null>(null);
-  const [editPostContent, setEditPostContent] = useState("");
+  const [editCaption, setEditCaption] = useState("");
+  const [editImagePreview, setEditImagePreview] = useState("");
+  const editFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Edit recipe state
+  const [editRecipeOpen, setEditRecipeOpen] = useState(false);
+  const [editRecipeId, setEditRecipeId] = useState<string | null>(null);
+  const [editRecipeTitle, setEditRecipeTitle] = useState("");
+  const [editRecipeDifficulty, setEditRecipeDifficulty] = useState("Easy");
+  const [editRecipeCookTime, setEditRecipeCookTime] = useState<string>("");
+  const [editRecipeServings, setEditRecipeServings] = useState<string>("");
+  const [editRecipeIngredients, setEditRecipeIngredients] = useState<IngredientRow[]>([
+    { amount: "", unit: "", name: "" },
+  ]);
+  const [editRecipeSteps, setEditRecipeSteps] = useState<string[]>([""]);
+
+  // Edit review state
+  const [editReviewOpen, setEditReviewOpen] = useState(false);
+  const [editReviewSubject, setEditReviewSubject] = useState("");
+  const [editReviewRating, setEditReviewRating] = useState("5");
+  const [editReviewPros, setEditReviewPros] = useState("");
+  const [editReviewCons, setEditReviewCons] = useState("");
+  const [editReviewVerdict, setEditReviewVerdict] = useState("");
 
   // Fetch club details
   const { data: clubData, isLoading: clubLoading } = useQuery<ClubDetailResponse>({
@@ -138,30 +339,53 @@ const [reviewVerdict, setReviewVerdict] = useState("");
   });
 
   // Fetch club posts
-  const { data: postsData, isLoading: postsLoading } = useQuery<{ posts: Post[] }>({
+  const { data: postsData, isLoading: postsLoading } = useQuery<{ posts: ClubPost[] }>({
     queryKey: [`/api/clubs/${clubId}/posts`],
     enabled: !!clubId,
   });
 
-  // Check membership status
-  const { data: myClubsData } = useQuery<{ clubs: any[] }>({
-    queryKey: ["/api/clubs/my-clubs"],
-    enabled: !!user,
+  // Membership (prefer dedicated endpoint if present, else fallback to my-clubs)
+  const { data: membershipData } = useQuery<MembershipResponse>({
+    queryKey: [`/api/clubs/${clubId}/membership`],
+    enabled: !!clubId && !!user,
+    queryFn: async () => {
+      const res = await fetch(`/api/clubs/${clubId}/membership`, { credentials: "include" });
+      if (res.status === 404) return undefined;
+      if (!res.ok) return undefined;
+      return res.json();
+    },
   });
 
+  const { data: myClubsData } = useQuery<{ clubs: any[] }>({
+    queryKey: ["/api/clubs/my-clubs"],
+    enabled: !!user && !membershipData,
+  });
+
+  // Normalize data shape (defensive)
+  const club = clubData?.club?.club;
+  const creator = clubData?.club?.creator;
+  const stats = clubData?.stats;
+
+  const isOwner = !!user?.id && !!creator?.id && user.id === creator.id;
+
   const isMember = useMemo(() => {
+    if (!user?.id) return false;
+    if (membershipData?.isMember) return true;
+    if (membershipData?.role === "owner" || membershipData?.role === "member") return true;
+    if (isOwner) return true;
+
     const list = myClubsData?.clubs;
     if (!Array.isArray(list) || !clubId) return false;
-
-    // /api/clubs/my-clubs returns rows like: { club: ClubRow, membership: ..., memberCount: ... }
-    // Be defensive in case of partial/legacy data.
     return list.some((c: any) => c?.club?.id === clubId || c?.clubId === clubId || c?.id === clubId);
-  }, [myClubsData?.clubs, clubId]);
+  }, [user?.id, membershipData, myClubsData?.clubs, clubId, isOwner]);
+
+  const membershipRole = membershipData?.role ?? (isOwner ? "owner" : isMember ? "member" : undefined);
 
   // Join club mutation
   const joinClubMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/clubs/${clubId}/join`, {
+      const endpoint = club?.isPublic ? `/api/clubs/${clubId}/join` : `/api/clubs/${clubId}/join`;
+      const res = await fetch(endpoint, {
         method: "POST",
         credentials: "include",
       });
@@ -174,6 +398,7 @@ const [reviewVerdict, setReviewVerdict] = useState("");
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/membership`] });
       toast({ title: "✓ Joined club", description: "Welcome to the club!" });
     },
     onError: (error: Error) => {
@@ -197,6 +422,7 @@ const [reviewVerdict, setReviewVerdict] = useState("");
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clubs/my-clubs"] });
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/membership`] });
       toast({ title: "✓ Left club" });
     },
     onError: (error: Error) => {
@@ -204,15 +430,89 @@ const [reviewVerdict, setReviewVerdict] = useState("");
     },
   });
 
-  // Create post mutation
+  const resetComposer = () => {
+    setPostType("post");
+    setCaption("");
+    setImagePreview("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+
+    setRecipeTitle("");
+    setRecipeDifficulty("Easy");
+    setRecipeCookTime("");
+    setRecipeServings("");
+    setRecipeIngredients([{ amount: "", unit: "", name: "" }]);
+    setRecipeSteps([""]);
+
+    setReviewSubject("");
+    setReviewRating("5");
+    setReviewPros("");
+    setReviewCons("");
+    setReviewVerdict("");
+  };
+
+  const serializeContentForSubmit = (): { content: string; kind: "post" | "recipe" | "review" } => {
+    if (postType === "review") {
+      const payload = {
+        type: "review",
+        caption: caption.trim(),
+        review: {
+          subject: reviewSubject.trim(),
+          rating: Number(reviewRating || "0"),
+          pros: reviewPros.trim(),
+          cons: reviewCons.trim(),
+          verdict: reviewVerdict.trim(),
+        },
+      };
+      return { content: JSON.stringify(payload), kind: "review" };
+    }
+
+    // For recipe posts, caption is optional—fallback to the recipe title so the server's "content required" rule is satisfied.
+    if (postType === "recipe") {
+      const fallback = recipeTitle.trim() ? `Shared a recipe: ${recipeTitle.trim()}` : "Shared a recipe";
+      return { content: caption.trim() || fallback, kind: "recipe" };
+    }
+
+    return { content: caption.trim(), kind: "post" };
+  };
+
+  // Create club post mutation
   const createPostMutation = useMutation({
-    mutationFn: async (payload: { content: string; postType: PostKind; recipe?: any }) => {
+    mutationFn: async () => {
+      const { content, kind } = serializeContentForSubmit();
+
+      if (!content || !content.trim()) {
+        throw new Error("Please write something before posting");
+      }
+
+      const body: any = { content };
+
+      if (imagePreview) body.imageUrl = imagePreview;
+
+      if (kind === "recipe") {
+        const ingredients = ingredientRowsToStrings(recipeIngredients);
+        const instructions = normalizeSteps(recipeSteps);
+
+        if (!recipeTitle.trim()) throw new Error("Recipe title is required");
+        if (ingredients.length === 0) throw new Error("Add at least one ingredient");
+        if (instructions.length === 0) throw new Error("Add at least one instruction step");
+
+        body.recipe = {
+          title: recipeTitle.trim(),
+          ingredients,
+          instructions,
+          cookTime: recipeCookTime ? Number(recipeCookTime) : null,
+          servings: recipeServings ? Number(recipeServings) : null,
+          difficulty: recipeDifficulty || "Easy",
+        };
+      }
+
       const res = await fetch(`/api/clubs/${clubId}/posts`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
+
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
         throw new Error(error.message || "Failed to create post");
@@ -222,142 +522,22 @@ const [reviewVerdict, setReviewVerdict] = useState("");
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
-      toast({ title: "✓ Post created" });
-
-setNewPostContent("");
-setPostKind("post");
-
-// reset templates
-setRecipeTitle("");
-setRecipeCookTime("");
-setRecipeServings("");
-setRecipeDifficulty("easy");
-setIngredients([{ amount: "", unit: "cup", item: "" }]);
-setInstructions([""]);
-setReviewSubject("");
-setReviewRating(5);
-setReviewPros("");
-setReviewCons("");
-setReviewVerdict("");
+      toast({ title: "✓ Posted" });
+      resetComposer();
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to create post", description: error.message, variant: "destructive" });
+      toast({ title: "Post failed", description: error.message, variant: "destructive" });
     },
   });
 
-  const handleCreatePost = () => {
-    if (!user) {
-      toast({ title: "Login required", description: "Please log in to post", variant: "destructive" });
-      return;
-    }
-
-    // Base content (caption / intro). For templates we ensure server-required content is present.
-    const base = newPostContent.trim();
-
-    if (postKind === "post") {
-      if (!base) {
-        toast({ title: "Content required", description: "Please enter post content", variant: "destructive" });
-        return;
-      }
-      createPostMutation.mutate({ content: base, postType: "post" });
-      return;
-    }
-
-    if (postKind === "recipe") {
-      if (!recipeTitle.trim()) {
-        toast({ title: "Missing title", description: "Please add a recipe title", variant: "destructive" });
-        return;
-      }
-
-      const ingLines = ingredients.map(buildIngredientLine).filter(Boolean);
-      const steps = instructions.map(s => s.trim()).filter(Boolean);
-
-      if (ingLines.length === 0) {
-        toast({ title: "Missing ingredients", description: "Add at least one ingredient", variant: "destructive" });
-        return;
-      }
-      if (steps.length === 0) {
-        toast({ title: "Missing instructions", description: "Add at least one instruction step", variant: "destructive" });
-        return;
-      }
-
-      const content = base || `🍽️ Recipe: ${recipeTitle.trim()}`;
-
-      createPostMutation.mutate({
-        content,
-        postType: "recipe",
-        recipe: {
-          title: recipeTitle.trim(),
-          ingredients: ingLines,
-          instructions: steps,
-          cookTime: recipeCookTime ? Number(recipeCookTime) : undefined,
-          servings: recipeServings ? Number(recipeServings) : undefined,
-          difficulty: recipeDifficulty || undefined,
-        },
-      });
-      return;
-    }
-
-    // review
-    if (!reviewSubject.trim()) {
-      toast({ title: "Missing subject", description: "What are you reviewing?", variant: "destructive" });
-      return;
-    }
-
-    const rating = Math.max(1, Math.min(5, Number(reviewRating) || 5));
-    const stars = "★".repeat(rating) + "☆".repeat(5 - rating);
-
-    const prosLines = reviewPros
-      .split("
-")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => (l.startsWith("-") ? l : `- ${l}`))
-      .join("
-");
-
-    const consLines = reviewCons
-      .split("
-")
-      .map((l) => l.trim())
-      .filter(Boolean)
-      .map((l) => (l.startsWith("-") ? l : `- ${l}`))
-      .join("
-");
-
-    const extra = base ? `
-
-Notes:
-${base}` : "";
-    const content =
-      `Review: ${reviewSubject.trim()}
-` +
-      `Rating: ${rating}/5 ${stars}
-
-` +
-      `Pros:
-${prosLines || "-"}
-
-` +
-      `Cons:
-${consLines || "-"}
-
-` +
-      `Verdict:
-${reviewVerdict.trim() || "-"}` +
-      extra;
-
-    createPostMutation.mutate({ content, postType: "review" });
-  };
-
-
+  // Update club post mutation (caption + image + (optional) recipe/review payload)
   const updatePostMutation = useMutation({
-    mutationFn: async ({ postId, content }: { postId: string; content: string }) => {
-      const res = await fetch(`/api/clubs/${clubId}/posts/${postId}`, {
+    mutationFn: async (payload: any) => {
+      const res = await fetch(`/api/clubs/${clubId}/posts/${payload.postId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ content }),
+        body: JSON.stringify(payload.body),
       });
 
       if (!res.ok) {
@@ -369,52 +549,204 @@ ${reviewVerdict.trim() || "-"}` +
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
-      toast({ title: "✓ Post saved" });
-      setEditingPostId(null);
-      setEditPostContent("");
+      toast({ title: "✓ Saved" });
+      setEditing(null);
+      setEditCaption("");
+      setEditImagePreview("");
+      setEditRecipeId(null);
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to save post", description: error.message, variant: "destructive" });
+      toast({ title: "Save failed", description: error.message, variant: "destructive" });
     },
   });
 
-  const startEditingPost = (post: Post) => {
-    setEditingPostId(post.post.id);
-    setEditPostContent(post.post.content);
+  // Delete post mutation (owner can delete any; author can delete theirs)
+  const deletePostMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const res = await fetch(`/api/clubs/${clubId}/posts/${postId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to delete post");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
+      toast({ title: "Deleted" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Delete club (owner only)
+  const deleteClubMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/clubs/${clubId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || "Failed to delete club");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Club deleted" });
+      window.location.href = "/clubs";
+    },
+    onError: (error: Error) => {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const openEdit = async (p: ClubPost) => {
+    const parsed = safeParseContent(p.post.content);
+    const kind: "post" | "recipe" | "review" =
+      p.post.recipeId ? "recipe" : parsed.type === "review" ? "review" : "post";
+
+    setEditing({
+      postId: p.post.id,
+      type: kind,
+      caption: parsed.caption,
+      imageUrl: p.post.imageUrl || "",
+      recipeId: p.post.recipeId,
+    });
+
+    setEditCaption(parsed.caption);
+    setEditImagePreview(p.post.imageUrl || "");
+
+    // Review prefill
+    if (parsed.type === "review") {
+      setEditReviewSubject(parsed.review.subject);
+      setEditReviewRating(String(parsed.review.rating || 0));
+      setEditReviewPros(parsed.review.pros);
+      setEditReviewCons(parsed.review.cons);
+      setEditReviewVerdict(parsed.review.verdict);
+    }
+
+    // Recipe prefill (from server enrichment if present; else fetch)
+    if (p.post.recipeId) {
+      setEditRecipeId(p.post.recipeId);
+
+      const base = p.recipe ?? null;
+      if (base) {
+        setEditRecipeTitle(base.title || "");
+        setEditRecipeDifficulty(base.difficulty || "Easy");
+        setEditRecipeCookTime(base.cookTime ? String(base.cookTime) : "");
+        setEditRecipeServings(base.servings ? String(base.servings) : "");
+        const ing = (base.ingredients || []).map(parseIngredientString);
+        setEditRecipeIngredients(ing.length ? ing : [{ amount: "", unit: "", name: "" }]);
+        const steps = (base.instructions || []).filter(Boolean);
+        setEditRecipeSteps(steps.length ? steps : [""]);
+        return;
+      }
+
+      // Fallback fetch if your server supports it:
+      try {
+        const res = await fetch(`/api/clubs/${clubId}/recipes/${p.post.recipeId}`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const r: ClubRecipe = await res.json();
+          setEditRecipeTitle(r.title || "");
+          setEditRecipeDifficulty(r.difficulty || "Easy");
+          setEditRecipeCookTime(r.cookTime ? String(r.cookTime) : "");
+          setEditRecipeServings(r.servings ? String(r.servings) : "");
+          const ing = (r.ingredients || []).map(parseIngredientString);
+          setEditRecipeIngredients(ing.length ? ing : [{ amount: "", unit: "", name: "" }]);
+          const steps = (r.instructions || []).filter(Boolean);
+          setEditRecipeSteps(steps.length ? steps : [""]);
+        }
+      } catch {
+        // ignore
+      }
+    }
   };
 
-  const cancelEditingPost = () => {
-    setEditingPostId(null);
-    setEditPostContent("");
-  };
+  const saveEdit = async () => {
+    if (!editing) return;
 
-  const saveEditedPost = () => {
-    if (!editingPostId) return;
+    const body: any = {};
+    const trimmedCaption = editCaption.trim();
 
-    if (!editPostContent.trim()) {
+    if (editing.type === "review") {
+      const payload = {
+        type: "review",
+        caption: trimmedCaption,
+        review: {
+          subject: editReviewSubject.trim(),
+          rating: Number(editReviewRating || "0"),
+          pros: editReviewPros.trim(),
+          cons: editReviewCons.trim(),
+          verdict: editReviewVerdict.trim(),
+        },
+      };
+      body.content = JSON.stringify(payload);
+    } else if (editing.type === "recipe") {
+      const fallback = editRecipeTitle.trim() ? `Shared a recipe: ${editRecipeTitle.trim()}` : "Shared a recipe";
+      body.content = trimmedCaption || fallback;
+    } else {
+      body.content = trimmedCaption;
+    }
+
+    body.imageUrl = editImagePreview || null;
+
+    if (!body.content || !String(body.content).trim()) {
       toast({ title: "Content required", description: "Please enter post content", variant: "destructive" });
       return;
     }
 
-    updatePostMutation.mutate({ postId: editingPostId, content: editPostContent.trim() });
+    // Attach recipe updates (server must support: it should update the recipe row linked to recipeId)
+    if (editing.type === "recipe" && editRecipeId) {
+      const ingredients = ingredientRowsToStrings(editRecipeIngredients);
+      const instructions = normalizeSteps(editRecipeSteps);
+
+      if (!editRecipeTitle.trim()) {
+        toast({ title: "Recipe title required", variant: "destructive" });
+        return;
+      }
+      if (ingredients.length === 0) {
+        toast({ title: "Add at least one ingredient", variant: "destructive" });
+        return;
+      }
+      if (instructions.length === 0) {
+        toast({ title: "Add at least one instruction step", variant: "destructive" });
+        return;
+      }
+
+      body.recipe = {
+        id: editRecipeId,
+        title: editRecipeTitle.trim(),
+        ingredients,
+        instructions,
+        cookTime: editRecipeCookTime ? Number(editRecipeCookTime) : null,
+        servings: editRecipeServings ? Number(editRecipeServings) : null,
+        difficulty: editRecipeDifficulty || "Easy",
+      };
+    }
+
+    updatePostMutation.mutate({ postId: editing.postId, body });
   };
+
+  const posts = postsData?.posts || [];
 
   if (clubLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
         <div className="max-w-4xl mx-auto">
           <div className="text-center py-12">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600"></div>
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-purple-600" />
           </div>
         </div>
       </div>
     );
   }
-
-  // Normalize data shape (defensive)
-  const club = clubData?.club?.club;
-  const creator = clubData?.club?.creator;
-  const stats = clubData?.stats;
 
   if (!club || !creator || !stats) {
     return (
@@ -436,7 +768,7 @@ ${reviewVerdict.trim() || "-"}` +
     );
   }
 
-  const posts = postsData?.posts || [];
+  const showCreateComposer = !!user && isMember && membershipRole !== "pending";
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
@@ -472,8 +804,16 @@ ${reviewVerdict.trim() || "-"}` +
                   {club.isPublic ? (
                     <Badge variant="outline">Public</Badge>
                   ) : (
-                    <Badge variant="outline">Private</Badge>
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <Lock className="h-3 w-3" />
+                      Private
+                    </Badge>
                   )}
+                  {isOwner ? (
+                    <Badge className="bg-gradient-to-r from-purple-600 to-pink-600 text-white border-0">
+                      Owner
+                    </Badge>
+                  ) : null}
                 </div>
               </div>
 
@@ -505,9 +845,7 @@ ${reviewVerdict.trim() || "-"}` +
                   </AvatarFallback>
                 </Avatar>
                 <div className="leading-tight">
-                  <div className="text-sm font-medium">
-                    {creator.displayName || creator.username}
-                  </div>
+                  <div className="text-sm font-medium">{creator.displayName || creator.username}</div>
                   <div className="text-xs text-slate-500">@{creator.username}</div>
                 </div>
               </div>
@@ -527,11 +865,33 @@ ${reviewVerdict.trim() || "-"}` +
                   </Button>
                 ) : (
                   <Button onClick={() => joinClubMutation.mutate()} disabled={joinClubMutation.isPending}>
-                    {joinClubMutation.isPending ? "Joining..." : "Join Club"}
+                    {joinClubMutation.isPending ? "Joining..." : club.isPublic ? "Join Club" : "Request to Join"}
                   </Button>
                 )}
+
+                {isOwner ? (
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      if (!confirm("Delete this club? This cannot be undone.")) return;
+                      deleteClubMutation.mutate();
+                    }}
+                    disabled={deleteClubMutation.isPending}
+                    title="Delete club"
+                  >
+                    <Trash2 className="h-4 w-4 mr-2" />
+                    {deleteClubMutation.isPending ? "Deleting..." : "Delete Club"}
+                  </Button>
+                ) : null}
               </div>
             </div>
+
+            {membershipRole === "pending" ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 flex items-start gap-2">
+                <AlertCircle className="h-4 w-4 mt-0.5" />
+                Your join request is pending approval.
+              </div>
+            ) : null}
           </CardHeader>
         </Card>
 
@@ -545,22 +905,112 @@ ${reviewVerdict.trim() || "-"}` +
           </Card>
         ) : null}
 
-        {/* New Post */}
-        {user && isMember ? (
+        {/* Create Post Composer */}
+        {showCreateComposer ? (
           <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
             <CardHeader>
               <CardTitle className="text-lg">Create a Post</CardTitle>
-              <CardDescription>Share something with the club</CardDescription>
+              <CardDescription>Choose a post type, add an image, or attach a recipe/review.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-3">
+
+            <CardContent className="space-y-4">
+              <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                <div className="w-full sm:w-56">
+                  <Select value={postType} onValueChange={(v) => setPostType(v as any)}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="post">Post</SelectItem>
+                      <SelectItem value="recipe">Recipe</SelectItem>
+                      <SelectItem value="review">Review</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const dataUrl = await fileToDataUrl(file);
+                        setImagePreview(dataUrl);
+                        toast({ title: "Image added" });
+                      } catch {
+                        toast({ title: "Failed to load image", variant: "destructive" });
+                      }
+                    }}
+                  />
+                  <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()}>
+                    <ImageIcon className="h-4 w-4 mr-2" />
+                    Add Photo
+                  </Button>
+
+                  {postType === "recipe" ? (
+                    <Button type="button" variant="outline" onClick={() => setRecipeOpen(true)}>
+                      <Crown className="h-4 w-4 mr-2 text-purple-600" />
+                      Recipe Builder
+                    </Button>
+                  ) : null}
+
+                  {postType === "review" ? (
+                    <Button type="button" variant="outline" onClick={() => setReviewOpen(true)}>
+                      <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />
+                      Review Details
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              {imagePreview ? (
+                <div className="rounded-xl border bg-white p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="text-sm font-medium">Attached photo</div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setImagePreview("");
+                        if (fileInputRef.current) fileInputRef.current.value = "";
+                      }}
+                    >
+                      <X className="h-4 w-4 mr-1" />
+                      Remove
+                    </Button>
+                  </div>
+                  <img
+                    src={imagePreview}
+                    alt="Preview"
+                    className="mt-3 w-full max-h-[360px] object-cover rounded-lg"
+                  />
+                </div>
+              ) : null}
+
               <Textarea
-                value={newPostContent}
-                onChange={(e) => setNewPostContent(e.target.value)}
-                placeholder="Write your post..."
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                placeholder={
+                  postType === "review"
+                    ? "Write your review summary..."
+                    : postType === "recipe"
+                    ? "Add a short intro/caption for your recipe..."
+                    : "Write your post..."
+                }
                 rows={4}
               />
-              <div className="flex justify-end">
-                <Button onClick={handleCreatePost} disabled={createPostMutation.isPending}>
+
+              <div className="flex items-center justify-between">
+                <Button type="button" variant="ghost" onClick={resetComposer}>
+                  Reset
+                </Button>
+
+                <Button onClick={() => createPostMutation.mutate()} disabled={createPostMutation.isPending}>
                   <Send className="h-4 w-4 mr-2" />
                   {createPostMutation.isPending ? "Posting..." : "Post"}
                 </Button>
@@ -568,6 +1018,288 @@ ${reviewVerdict.trim() || "-"}` +
             </CardContent>
           </Card>
         ) : null}
+
+        {/* Recipe Builder Dialog (new post) */}
+        <Dialog open={recipeOpen} onOpenChange={setRecipeOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Recipe Builder</DialogTitle>
+              <DialogDescription>
+                Add ingredients with amount + unit dropdowns, then add instruction steps.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Recipe title</label>
+                  <Input
+                    value={recipeTitle}
+                    onChange={(e) => setRecipeTitle(e.target.value)}
+                    placeholder="e.g., Lemon Garlic Pasta"
+                    className="mt-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium">Difficulty</label>
+                  <div className="mt-2">
+                    <Select value={recipeDifficulty} onValueChange={setRecipeDifficulty}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Easy">Easy</SelectItem>
+                        <SelectItem value="Medium">Medium</SelectItem>
+                        <SelectItem value="Hard">Hard</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium">Cook time (minutes)</label>
+                  <Input
+                    value={recipeCookTime}
+                    onChange={(e) => setRecipeCookTime(e.target.value)}
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="30"
+                    className="mt-2"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-medium">Servings</label>
+                  <Input
+                    value={recipeServings}
+                    onChange={(e) => setRecipeServings(e.target.value)}
+                    type="number"
+                    inputMode="numeric"
+                    placeholder="4"
+                    className="mt-2"
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold">Ingredients</h4>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setRecipeIngredients((prev) => [...prev, { amount: "", unit: "", name: "" }])}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add ingredient
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {recipeIngredients.map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-4 sm:col-span-3">
+                        <Select
+                          value={row.amount}
+                          onValueChange={(v) =>
+                            setRecipeIngredients((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, amount: v } : r))
+                            )
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Amt" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AMOUNT_OPTIONS.map((opt) => (
+                              <SelectItem key={opt || "__blank"} value={opt}>
+                                {opt || "—"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="col-span-4 sm:col-span-3">
+                        <Select
+                          value={row.unit}
+                          onValueChange={(v) =>
+                            setRecipeIngredients((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, unit: v } : r))
+                            )
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Unit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {UNIT_OPTIONS.map((opt) => (
+                              <SelectItem key={opt || "__blank"} value={opt}>
+                                {opt || "—"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="col-span-4 sm:col-span-5">
+                        <Input
+                          value={row.name}
+                          onChange={(e) =>
+                            setRecipeIngredients((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r))
+                            )
+                          }
+                          placeholder="Ingredient"
+                          className="h-9"
+                        />
+                      </div>
+
+                      <div className="col-span-12 sm:col-span-1 flex justify-end">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setRecipeIngredients((prev) => prev.filter((_, i) => i !== idx))}
+                          disabled={recipeIngredients.length === 1}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold">Instructions</h4>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setRecipeSteps((prev) => [...prev, ""])}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add step
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {recipeSteps.map((step, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        value={step}
+                        onChange={(e) =>
+                          setRecipeSteps((prev) => prev.map((s, i) => (i === idx ? e.target.value : s)))
+                        }
+                        placeholder={`Step ${idx + 1}`}
+                        className="h-9"
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setRecipeSteps((prev) => prev.filter((_, i) => i !== idx))}
+                        disabled={recipeSteps.length === 1}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setRecipeOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Review Details Dialog (new post) */}
+        <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Review Details</DialogTitle>
+              <DialogDescription>Add a subject, rating, and optional pros/cons.</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">What are you reviewing?</label>
+                <Input
+                  value={reviewSubject}
+                  onChange={(e) => setReviewSubject(e.target.value)}
+                  placeholder="e.g., The Royal Club Brunch"
+                  className="mt-2"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Rating</label>
+                  <div className="mt-2">
+                    <Select value={reviewRating} onValueChange={setReviewRating}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 ⭐</SelectItem>
+                        <SelectItem value="4">4 ⭐</SelectItem>
+                        <SelectItem value="3">3 ⭐</SelectItem>
+                        <SelectItem value="2">2 ⭐</SelectItem>
+                        <SelectItem value="1">1 ⭐</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Pros</label>
+                  <Textarea
+                    value={reviewPros}
+                    onChange={(e) => setReviewPros(e.target.value)}
+                    rows={4}
+                    className="mt-2"
+                    placeholder="What was great?"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Cons</label>
+                  <Textarea
+                    value={reviewCons}
+                    onChange={(e) => setReviewCons(e.target.value)}
+                    rows={4}
+                    className="mt-2"
+                    placeholder="What could be better?"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Verdict</label>
+                <Textarea
+                  value={reviewVerdict}
+                  onChange={(e) => setReviewVerdict(e.target.value)}
+                  rows={3}
+                  className="mt-2"
+                  placeholder="Your final take..."
+                />
+              </div>
+
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={() => setReviewOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Posts */}
         <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
@@ -582,84 +1314,445 @@ ${reviewVerdict.trim() || "-"}` +
             {!postsLoading && posts.length === 0 ? (
               <div className="text-center text-slate-500 py-10">No posts yet.</div>
             ) : (
-              posts.map((p) => (
-                <Card key={p.post.id} className="border border-slate-200">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center gap-3">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback>
-                          {(p.author.displayName || p.author.username || "U").slice(0, 1).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="leading-tight">
-                        <div className="text-sm font-medium">
-                          {p.author.displayName || p.author.username}
-                        </div>
-<div className="flex items-center gap-2 mt-1">
-  {clubData?.club?.creator?.id === p.author.id && (
-    <Badge variant="secondary" className="bg-purple-100 text-purple-700">
-      <Crown className="h-3 w-3 mr-1" />
-      Creator
-    </Badge>
-  )}
-  {detectClubPostKind(p) === "recipe" && (
-    <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
-      <ChefHat className="h-3 w-3 mr-1" />
-      Recipe
-    </Badge>
-  )}
-  {detectClubPostKind(p) === "review" && (
-    <Badge variant="secondary" className="bg-amber-100 text-amber-700">
-      <Star className="h-3 w-3 mr-1" />
-      Review
-    </Badge>
-  )}
-</div>
+              posts.map((p) => {
+                const parsed = safeParseContent(p.post.content);
+                const isCreatorPost = p.post.userId === creator.id;
 
-                        <div className="text-xs text-slate-500">
-                          {new Date(p.post.createdAt).toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0 space-y-3">
-                    {editingPostId === p.post.id ? (
-                      <>
-                        <Textarea
-                          value={editPostContent}
-                          onChange={(e) => setEditPostContent(e.target.value)}
-                          rows={3}
-                        />
-                        <div className="flex justify-end gap-2">
-                          <Button variant="outline" size="sm" onClick={cancelEditingPost}>
-                            <X className="h-4 w-4 mr-1" />
-                            Cancel
-                          </Button>
-                          <Button size="sm" onClick={saveEditedPost} disabled={updatePostMutation.isPending}>
-                            <Save className="h-4 w-4 mr-1" />
-                            {updatePostMutation.isPending ? "Saving..." : "Save"}
-                          </Button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <p className="whitespace-pre-wrap text-slate-800">{p.post.content}</p>
-                        {user?.id === p.post.userId && (
-                          <div className="flex justify-end">
-                            <Button variant="outline" size="sm" onClick={() => startEditingPost(p)}>
-                              <Pencil className="h-4 w-4 mr-1" />
-                              Edit
-                            </Button>
+                return (
+                  <Card key={p.post.id} className="border border-slate-200">
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarFallback>
+                              {(p.author.displayName || p.author.username || "U").slice(0, 1).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="leading-tight">
+                            <div className="text-sm font-medium flex items-center gap-2">
+                              {p.author.displayName || p.author.username}
+                              {isCreatorPost ? (
+                                <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0">
+                                  Creator
+                                </Badge>
+                              ) : null}
+                              {p.post.recipeId ? <Badge variant="secondary">Recipe</Badge> : null}
+                              {parsed.type === "review" ? <Badge variant="secondary">Review</Badge> : null}
+                            </div>
+                            <div className="text-xs text-slate-500">{new Date(p.post.createdAt).toLocaleString()}</div>
                           </div>
-                        )}
-                      </>
-                    )}
-                  </CardContent>
-                </Card>
-              ))
+                        </div>
+
+                        {/* Actions */}
+                        {user?.id ? (
+                          <div className="flex items-center gap-2">
+                            {user.id === p.post.userId || isOwner ? (
+                              <>
+                                <Button variant="outline" size="sm" onClick={() => openEdit(p)}>
+                                  <Pencil className="h-4 w-4 mr-1" />
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => {
+                                    if (!confirm("Delete this post?")) return;
+                                    deletePostMutation.mutate(p.post.id);
+                                  }}
+                                  disabled={deletePostMutation.isPending}
+                                >
+                                  <Trash2 className="h-4 w-4 mr-1" />
+                                  Delete
+                                </Button>
+                              </>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="pt-0 space-y-3">
+                      {parsed.type === "review" ? (
+                        <div className="rounded-xl border bg-white p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="font-semibold">{parsed.review.subject || "Review"}</div>
+                            <Badge variant="outline">{`${parsed.review.rating || 0}/5`}</Badge>
+                          </div>
+                          {parsed.caption ? (
+                            <p className="mt-2 whitespace-pre-wrap text-slate-800">{parsed.caption}</p>
+                          ) : null}
+                          {parsed.review.pros || parsed.review.cons || parsed.review.verdict ? (
+                            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                              {parsed.review.pros ? (
+                                <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2">
+                                  <div className="font-medium text-emerald-900">Pros</div>
+                                  <div className="text-emerald-800 whitespace-pre-wrap">{parsed.review.pros}</div>
+                                </div>
+                              ) : null}
+                              {parsed.review.cons ? (
+                                <div className="rounded-lg bg-rose-50 border border-rose-100 p-2">
+                                  <div className="font-medium text-rose-900">Cons</div>
+                                  <div className="text-rose-800 whitespace-pre-wrap">{parsed.review.cons}</div>
+                                </div>
+                              ) : null}
+                              {parsed.review.verdict ? (
+                                <div className="sm:col-span-2 rounded-lg bg-slate-50 border border-slate-200 p-2">
+                                  <div className="font-medium text-slate-900">Verdict</div>
+                                  <div className="text-slate-700 whitespace-pre-wrap">{parsed.review.verdict}</div>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : (
+                        <p className="whitespace-pre-wrap text-slate-800">{parsed.caption}</p>
+                      )}
+
+                      {p.post.imageUrl ? (
+                        <img
+                          src={p.post.imageUrl}
+                          alt="Post"
+                          className="w-full max-h-[520px] object-cover rounded-lg border"
+                        />
+                      ) : null}
+                    </CardContent>
+                  </Card>
+                );
+              })
             )}
           </CardContent>
         </Card>
+
+        {/* Edit Dialog */}
+        <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Edit Post</DialogTitle>
+              <DialogDescription>
+                Update your content{editing?.type === "recipe" ? " and recipe details" : ""}.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              {/* Image */}
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={editFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    try {
+                      const dataUrl = await fileToDataUrl(file);
+                      setEditImagePreview(dataUrl);
+                      toast({ title: "Image updated" });
+                    } catch {
+                      toast({ title: "Failed to load image", variant: "destructive" });
+                    }
+                  }}
+                />
+                <Button type="button" variant="outline" onClick={() => editFileInputRef.current?.click()}>
+                  <ImageIcon className="h-4 w-4 mr-2" />
+                  {editImagePreview ? "Replace Photo" : "Add Photo"}
+                </Button>
+                {editImagePreview ? (
+                  <Button type="button" variant="ghost" onClick={() => setEditImagePreview("")}>
+                    <X className="h-4 w-4 mr-1" />
+                    Remove
+                  </Button>
+                ) : null}
+
+                {editing?.type === "recipe" ? (
+                  <Button type="button" variant="outline" onClick={() => setEditRecipeOpen(true)}>
+                    <Crown className="h-4 w-4 mr-2 text-purple-600" />
+                    Edit Recipe
+                  </Button>
+                ) : null}
+
+                {editing?.type === "review" ? (
+                  <Button type="button" variant="outline" onClick={() => setEditReviewOpen(true)}>
+                    <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-600" />
+                    Edit Review
+                  </Button>
+                ) : null}
+              </div>
+
+              {editImagePreview ? (
+                <img
+                  src={editImagePreview}
+                  alt="Preview"
+                  className="w-full max-h-[360px] object-cover rounded-lg border"
+                />
+              ) : null}
+
+              <div>
+                <label className="text-sm font-medium">
+                  {editing?.type === "review" ? "Review Summary" : editing?.type === "recipe" ? "Recipe Caption" : "Post"}
+                </label>
+                <Textarea value={editCaption} onChange={(e) => setEditCaption(e.target.value)} rows={4} className="mt-2" />
+              </div>
+
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setEditing(null)}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={saveEdit} disabled={updatePostMutation.isPending}>
+                  <Save className="h-4 w-4 mr-2" />
+                  {updatePostMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Recipe Dialog */}
+        <Dialog open={editRecipeOpen} onOpenChange={setEditRecipeOpen}>
+          <DialogContent className="max-w-3xl">
+            <DialogHeader>
+              <DialogTitle>Edit Recipe</DialogTitle>
+              <DialogDescription>Update ingredients and steps. This saves with the post.</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Recipe title</label>
+                  <Input value={editRecipeTitle} onChange={(e) => setEditRecipeTitle(e.target.value)} className="mt-2" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Difficulty</label>
+                  <div className="mt-2">
+                    <Select value={editRecipeDifficulty} onValueChange={setEditRecipeDifficulty}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Easy">Easy</SelectItem>
+                        <SelectItem value="Medium">Medium</SelectItem>
+                        <SelectItem value="Hard">Hard</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Cook time (minutes)</label>
+                  <Input
+                    value={editRecipeCookTime}
+                    onChange={(e) => setEditRecipeCookTime(e.target.value)}
+                    type="number"
+                    inputMode="numeric"
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Servings</label>
+                  <Input
+                    value={editRecipeServings}
+                    onChange={(e) => setEditRecipeServings(e.target.value)}
+                    type="number"
+                    inputMode="numeric"
+                    className="mt-2"
+                  />
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold">Ingredients</h4>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setEditRecipeIngredients((prev) => [...prev, { amount: "", unit: "", name: "" }])}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {editRecipeIngredients.map((row, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+                      <div className="col-span-4 sm:col-span-3">
+                        <Select
+                          value={row.amount}
+                          onValueChange={(v) =>
+                            setEditRecipeIngredients((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, amount: v } : r))
+                            )
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Amt" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {AMOUNT_OPTIONS.map((opt) => (
+                              <SelectItem key={opt || "__blank"} value={opt}>
+                                {opt || "—"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="col-span-4 sm:col-span-3">
+                        <Select
+                          value={row.unit}
+                          onValueChange={(v) =>
+                            setEditRecipeIngredients((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, unit: v } : r))
+                            )
+                          }
+                        >
+                          <SelectTrigger className="h-9">
+                            <SelectValue placeholder="Unit" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {UNIT_OPTIONS.map((opt) => (
+                              <SelectItem key={opt || "__blank"} value={opt}>
+                                {opt || "—"}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="col-span-4 sm:col-span-5">
+                        <Input
+                          value={row.name}
+                          onChange={(e) =>
+                            setEditRecipeIngredients((prev) =>
+                              prev.map((r, i) => (i === idx ? { ...r, name: e.target.value } : r))
+                            )
+                          }
+                          placeholder="Ingredient"
+                          className="h-9"
+                        />
+                      </div>
+
+                      <div className="col-span-12 sm:col-span-1 flex justify-end">
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => setEditRecipeIngredients((prev) => prev.filter((_, i) => i !== idx))}
+                          disabled={editRecipeIngredients.length === 1}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-semibold">Instructions</h4>
+                  <Button type="button" size="sm" variant="outline" onClick={() => setEditRecipeSteps((prev) => [...prev, ""])}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add step
+                  </Button>
+                </div>
+
+                <div className="space-y-2">
+                  {editRecipeSteps.map((step, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <Input
+                        value={step}
+                        onChange={(e) =>
+                          setEditRecipeSteps((prev) => prev.map((s, i) => (i === idx ? e.target.value : s)))
+                        }
+                        placeholder={`Step ${idx + 1}`}
+                        className="h-9"
+                      />
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="ghost"
+                        onClick={() => setEditRecipeSteps((prev) => prev.filter((_, i) => i !== idx))}
+                        disabled={editRecipeSteps.length === 1}
+                      >
+                        <Minus className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setEditRecipeOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Review Dialog */}
+        <Dialog open={editReviewOpen} onOpenChange={setEditReviewOpen}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Edit Review</DialogTitle>
+              <DialogDescription>Update subject, rating, pros/cons, and verdict.</DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium">Subject</label>
+                <Input value={editReviewSubject} onChange={(e) => setEditReviewSubject(e.target.value)} className="mt-2" />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Rating</label>
+                  <div className="mt-2">
+                    <Select value={editReviewRating} onValueChange={setEditReviewRating}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="5">5 ⭐</SelectItem>
+                        <SelectItem value="4">4 ⭐</SelectItem>
+                        <SelectItem value="3">3 ⭐</SelectItem>
+                        <SelectItem value="2">2 ⭐</SelectItem>
+                        <SelectItem value="1">1 ⭐</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-sm font-medium">Pros</label>
+                  <Textarea value={editReviewPros} onChange={(e) => setEditReviewPros(e.target.value)} rows={4} className="mt-2" />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Cons</label>
+                  <Textarea value={editReviewCons} onChange={(e) => setEditReviewCons(e.target.value)} rows={4} className="mt-2" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-sm font-medium">Verdict</label>
+                <Textarea value={editReviewVerdict} onChange={(e) => setEditReviewVerdict(e.target.value)} rows={3} className="mt-2" />
+              </div>
+
+              <div className="flex justify-end">
+                <Button type="button" variant="outline" onClick={() => setEditReviewOpen(false)}>
+                  Done
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
