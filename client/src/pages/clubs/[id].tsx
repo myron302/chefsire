@@ -12,21 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
-import {
-  Users,
-  MessageSquare,
-  ArrowLeft,
-  Send,
-  Calendar,
-  Crown,
-  Pencil,
-  Save,
-  X,
-  Camera,
-  Plus,
-  Minus,
-  Star,
-} from "lucide-react";
+import { Users, MessageSquare, ArrowLeft, Send, Calendar, Crown, Pencil, Save, X, Camera, Plus, Minus, Star } from "lucide-react";
 
 // Server /api/clubs/:id returns: { club: { club: ClubRow, creator: Creator }, stats: Stats }
 type ClubRow = {
@@ -59,6 +45,17 @@ type ClubDetailResponse = {
   stats: Stats;
 };
 
+type RecipeRow = {
+  id: string;
+  title: string;
+  imageUrl: string | null;
+  ingredients: string[];
+  instructions: string[];
+  cookTime: number | null;
+  servings: number | null;
+  difficulty: string | null;
+};
+
 type Post = {
   post: {
     id: string;
@@ -66,7 +63,7 @@ type Post = {
     userId: string;
     content: string;
     imageUrl: string | null;
-    recipeId: string | null; // ✅ FIX: you use this but it wasn't typed
+    recipeId: string | null;
     likesCount: number;
     commentsCount: number;
     createdAt: string;
@@ -76,7 +73,10 @@ type Post = {
     username: string;
     displayName: string | null;
   };
+  recipe?: RecipeRow | null;
 };
+
+const SELECT_NONE = "__none__"; // ✅ Radix SelectItem value can NOT be ""
 
 export default function ClubDetailPage() {
   const { id } = useParams();
@@ -105,8 +105,8 @@ export default function ClubDetailPage() {
     "4",
   ];
 
+  // ✅ remove "" from actual SelectItem values; use SELECT_NONE for the placeholder option
   const UNIT_OPTIONS = [
-    "",
     "tsp",
     "tbsp",
     "cup",
@@ -129,7 +129,7 @@ export default function ClubDetailPage() {
   const [recipeServings, setRecipeServings] = useState("");
   const [recipeDifficulty, setRecipeDifficulty] = useState("Easy");
   const [ingredientRows, setIngredientRows] = useState<{ amount: string; unit: string; item: string }[]>([
-    { amount: "1", unit: "cup", item: "" },
+    { amount: "1", unit: "", item: "" },
   ]);
   const [instructionRows, setInstructionRows] = useState<string[]>([""]);
 
@@ -163,9 +163,6 @@ export default function ClubDetailPage() {
   const isMember = useMemo(() => {
     const list = myClubsData?.clubs;
     if (!Array.isArray(list) || !clubId) return false;
-
-    // /api/clubs/my-clubs returns rows like: { club: ClubRow, membership: ..., memberCount: ... }
-    // Be defensive in case of partial/legacy data.
     return list.some((c: any) => c?.club?.id === clubId || c?.clubId === clubId || c?.id === clubId);
   }, [myClubsData?.clubs, clubId]);
 
@@ -215,7 +212,7 @@ export default function ClubDetailPage() {
     },
   });
 
-  // Create post mutation
+  // Image select
   const handleNewPostImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -249,7 +246,7 @@ export default function ClubDetailPage() {
     setRecipeCookTime("");
     setRecipeServings("");
     setRecipeDifficulty("Easy");
-    setIngredientRows([{ amount: "1", unit: "cup", item: "" }]);
+    setIngredientRows([{ amount: "1", unit: "", item: "" }]);
     setInstructionRows([""]);
 
     setReviewTitle("");
@@ -310,6 +307,15 @@ export default function ClubDetailPage() {
         .filter(Boolean);
 
       const instructionLines = instructionRows.map((s) => String(s || "").trim()).filter(Boolean);
+
+      if (ingredientLines.length === 0) {
+        toast({ title: "Ingredients required", description: "Add at least one ingredient", variant: "destructive" });
+        return;
+      }
+      if (instructionLines.length === 0) {
+        toast({ title: "Instructions required", description: "Add at least one instruction step", variant: "destructive" });
+        return;
+      }
 
       const notes = newPostContent.trim();
       const content = `🍽️ Recipe: ${recipeTitle.trim()}` + (notes ? `\n\n${notes}` : "");
@@ -457,6 +463,7 @@ export default function ClubDetailPage() {
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white p-6">
       <div className="max-w-4xl mx-auto space-y-6">
+        {/* Back Button */}
         <Link href="/clubs">
           <Button variant="ghost" className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
@@ -575,13 +582,7 @@ export default function ClubDetailPage() {
                 </div>
 
                 <div className="md:col-span-8 flex justify-end gap-2">
-                  <input
-                    id="club-post-image"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleNewPostImageChange}
-                  />
+                  <input id="club-post-image" type="file" accept="image/*" className="hidden" onChange={handleNewPostImageChange} />
                   <Button type="button" variant="outline" onClick={() => document.getElementById("club-post-image")?.click()}>
                     <Camera className="h-4 w-4 mr-2" />
                     Add Photo
@@ -666,14 +667,18 @@ export default function ClubDetailPage() {
                           </div>
 
                           <div className="col-span-4 sm:col-span-2">
-                            <Select value={row.unit} onValueChange={(v) => updateIngredientRow(index, { unit: v })}>
+                            <Select
+                              value={row.unit ? row.unit : SELECT_NONE}
+                              onValueChange={(v) => updateIngredientRow(index, { unit: v === SELECT_NONE ? "" : v })}
+                            >
                               <SelectTrigger>
                                 <SelectValue placeholder="Unit" />
                               </SelectTrigger>
                               <SelectContent>
+                                <SelectItem value={SELECT_NONE}>—</SelectItem>
                                 {UNIT_OPTIONS.map((opt) => (
-                                  <SelectItem key={opt || "none"} value={opt}>
-                                    {opt || "—"}
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -816,14 +821,10 @@ export default function ClubDetailPage() {
                             </Badge>
                           ) : null}
                           {p.post.recipeId ? (
-                            <Badge variant="secondary" className="bg-emerald-100 text-emerald-800">
-                              🍽️ Recipe
-                            </Badge>
+                            <Badge variant="secondary" className="bg-emerald-100 text-emerald-800">🍽️ Recipe</Badge>
                           ) : null}
                           {typeof p.post.content === "string" && p.post.content.startsWith("📝 Review:") ? (
-                            <Badge variant="secondary" className="bg-indigo-100 text-indigo-800">
-                              ⭐ Review
-                            </Badge>
+                            <Badge variant="secondary" className="bg-indigo-100 text-indigo-800">⭐ Review</Badge>
                           ) : null}
                         </div>
                         <div className="text-xs text-slate-500">{new Date(p.post.createdAt).toLocaleString()}</div>
@@ -849,11 +850,52 @@ export default function ClubDetailPage() {
                     ) : (
                       <>
                         <p className="whitespace-pre-wrap text-slate-800">{p.post.content}</p>
+
                         {p.post.imageUrl ? (
                           <div className="overflow-hidden rounded-lg border bg-slate-50">
                             <img src={p.post.imageUrl} alt="Club post" className="w-full max-h-96 object-cover" />
                           </div>
                         ) : null}
+
+                        {/* Option A (part 1): show recipe details if joined recipe exists */}
+                        {p.post.recipeId && p.recipe ? (
+                          <div className="rounded-lg border bg-white p-4 space-y-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-semibold text-slate-900">{p.recipe.title}</div>
+                                <div className="text-xs text-slate-500 flex flex-wrap gap-2 mt-1">
+                                  {p.recipe.difficulty ? <span>• {p.recipe.difficulty}</span> : null}
+                                  {typeof p.recipe.cookTime === "number" ? <span>• {p.recipe.cookTime} min</span> : null}
+                                  {typeof p.recipe.servings === "number" ? <span>• Serves {p.recipe.servings}</span> : null}
+                                </div>
+                              </div>
+                              <Badge variant="secondary" className="bg-emerald-100 text-emerald-800">Recipe Card</Badge>
+                            </div>
+
+                            {p.recipe.ingredients?.length ? (
+                              <div>
+                                <div className="text-sm font-medium mb-1">Ingredients</div>
+                                <ul className="list-disc pl-5 text-sm text-slate-700 space-y-1">
+                                  {p.recipe.ingredients.map((ing, idx) => (
+                                    <li key={idx}>{ing}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            ) : null}
+
+                            {p.recipe.instructions?.length ? (
+                              <div>
+                                <div className="text-sm font-medium mb-1">Instructions</div>
+                                <ol className="list-decimal pl-5 text-sm text-slate-700 space-y-1">
+                                  {p.recipe.instructions.map((step, idx) => (
+                                    <li key={idx}>{step}</li>
+                                  ))}
+                                </ol>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
+
                         {user?.id === p.post.userId && (
                           <div className="flex justify-end">
                             <Button variant="outline" size="sm" onClick={() => startEditingPost(p)}>
