@@ -1,3 +1,4 @@
+// client/src/pages/social/create-post.tsx
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -55,7 +56,8 @@ const UNIT_OPTIONS = [
   "piece",
 ];
 
-const SELECT_NONE = "__none__"; // ✅ Radix SelectItem cannot have value=""
+// ✅ Radix SelectItem cannot have value=""
+const SELECT_NONE = "__none__";
 
 type PostType = "post" | "recipe" | "review";
 type IngredientRow = { amount: string; unit: string; name: string };
@@ -86,7 +88,7 @@ function isVideoUrl(url: string): boolean {
   // common extensions
   if (/\.(mp4|webm|mov|m4v|ogg)(\?.*)?$/.test(u)) return true;
 
-  // fallback heuristic if your backend stores something like "...video..."
+  // fallback heuristic
   if (u.includes("video")) return true;
 
   return false;
@@ -111,8 +113,11 @@ export default function CreatePost() {
   const [formData, setFormData] = useState({
     postType: "post" as PostType,
     caption: "",
-    imageUrl: "", // NOTE: kept as imageUrl to match your existing backend schema; can store video URL/dataURL too
+    // NOTE: kept as imageUrl to match your existing backend schema.
+    // It can store an image OR video URL/dataURL.
+    imageUrl: "",
     tags: [""],
+
     // Recipe fields
     recipeTitle: "",
     ingredients: [{ amount: "", unit: "", name: "" }] as IngredientRow[],
@@ -121,9 +126,9 @@ export default function CreatePost() {
     servings: "",
     difficulty: "Easy",
 
-    // Review fields (zip already had these)
-    reviewTitle: "",
-    reviewLocation: "",
+    // Review fields
+    reviewTitle: "", // business name
+    reviewLocation: "", // location string
     reviewRating: "5",
     reviewPros: "",
     reviewCons: "",
@@ -154,20 +159,18 @@ export default function CreatePost() {
             businessOptions
           );
 
-        reviewBusinessAutocompleteRef.current.addListener(
-          "place_changed",
-          () => {
-            const place = reviewBusinessAutocompleteRef.current?.getPlace?.();
-            const name = place?.name;
-            const fullAddress = place?.formatted_address;
-            const display =
-              name && fullAddress && !String(fullAddress).startsWith(String(name))
-                ? `${name}, ${fullAddress}`
-                : name || fullAddress || "";
+        reviewBusinessAutocompleteRef.current.addListener("place_changed", () => {
+          const place = reviewBusinessAutocompleteRef.current?.getPlace?.();
+          const name = place?.name;
+          const fullAddress = place?.formatted_address;
 
-            if (display) handleChange("reviewTitle", display);
-          }
-        );
+          const display =
+            name && fullAddress && !String(fullAddress).startsWith(String(name))
+              ? `${name}, ${fullAddress}`
+              : name || fullAddress || "";
+
+          if (display) handleChange("reviewTitle", display);
+        });
       } catch (error) {
         console.error("[CreatePost] Business autocomplete init failed:", error);
       }
@@ -192,6 +195,7 @@ export default function CreatePost() {
           const place = reviewLocationAutocompleteRef.current?.getPlace?.();
           const name = place?.name;
           const fullAddress = place?.formatted_address;
+
           const display =
             name && fullAddress && !String(fullAddress).startsWith(String(name))
               ? `${name}, ${fullAddress}`
@@ -213,7 +217,7 @@ export default function CreatePost() {
 
       const isRecipe = formData.postType === "recipe";
 
-      // Build review caption (existing pattern, includes location)
+      // Review caption (template)
       const reviewContent =
         `📝 Review: ${formData.reviewTitle.trim()}\n` +
         (formData.reviewLocation.trim()
@@ -238,7 +242,7 @@ export default function CreatePost() {
           ? Array.from(new Set([...baseTags, "review"]))
           : baseTags;
 
-      // Caption to store
+      // Caption stored on post
       const captionToStore =
         formData.postType === "review" ? reviewContent : formData.caption;
 
@@ -268,17 +272,19 @@ export default function CreatePost() {
         const ingredients = ingredientRowsToStrings(formData.ingredients);
         const instructions = normalizeSteps(formData.instructions);
 
-        if (ingredients.length === 0)
+        if (ingredients.length === 0) {
           throw new Error("Please add at least one ingredient");
-        if (instructions.length === 0)
+        }
+        if (instructions.length === 0) {
           throw new Error("Please add at least one instruction step");
+        }
       }
 
       // Create the post
       const postData = {
         userId: user.id,
         caption: captionToStore,
-        imageUrl: formData.imageUrl, // may contain image OR video data URL / URL
+        imageUrl: formData.imageUrl, // can be image OR video
         tags,
         isRecipe,
       };
@@ -303,7 +309,7 @@ export default function CreatePost() {
           cookTime: formData.cookTime ? parseInt(formData.cookTime) : null,
           servings: formData.servings ? parseInt(formData.servings) : null,
           difficulty: formData.difficulty,
-          imageUrl: formData.imageUrl || null, // can be video too; if you want recipe image-only later, we can enforce
+          imageUrl: formData.imageUrl || null, // could be video too; fine unless you want to restrict later
         };
 
         const recipeRes = await apiRequest("POST", "/api/recipes", recipeData);
@@ -403,7 +409,6 @@ export default function CreatePost() {
       reader.onloadend = () => {
         const result = reader.result as string;
         setMediaPreview(result);
-        // Store as data URL
         handleChange("imageUrl", result);
       };
       reader.readAsDataURL(file);
@@ -555,6 +560,7 @@ export default function CreatePost() {
                       <Camera className="h-10 w-10 text-muted-foreground" />
                       <Video className="h-10 w-10 text-muted-foreground" />
                     </div>
+
                     <p className="text-sm text-muted-foreground mb-4">
                       Upload a photo or video from your device
                     </p>
@@ -622,7 +628,7 @@ export default function CreatePost() {
               </div>
             </div>
 
-            {/* Caption */}
+            {/* Caption / Notes */}
             <div className="space-y-2">
               <Label htmlFor="caption">
                 {formData.postType === "post"
@@ -682,7 +688,9 @@ export default function CreatePost() {
                     <Input
                       ref={reviewLocationRef}
                       value={formData.reviewLocation}
-                      onChange={(e) => handleChange("reviewLocation", e.target.value)}
+                      onChange={(e) =>
+                        handleChange("reviewLocation", e.target.value)
+                      }
                       placeholder="City / region…"
                       autoComplete="off"
                     />
@@ -731,7 +739,9 @@ export default function CreatePost() {
                     <Label>Verdict</Label>
                     <Textarea
                       value={formData.reviewVerdict}
-                      onChange={(e) => handleChange("reviewVerdict", e.target.value)}
+                      onChange={(e) =>
+                        handleChange("reviewVerdict", e.target.value)
+                      }
                       rows={2}
                       placeholder="Would you recommend it?"
                     />
@@ -793,7 +803,9 @@ export default function CreatePost() {
                       id="recipeTitle"
                       placeholder="Enter the recipe name"
                       value={formData.recipeTitle}
-                      onChange={(e) => handleChange("recipeTitle", e.target.value)}
+                      onChange={(e) =>
+                        handleChange("recipeTitle", e.target.value)
+                      }
                       data-testid="input-recipe-title"
                     />
                   </div>
@@ -845,7 +857,12 @@ export default function CreatePost() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label>Ingredients *</Label>
-                      <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addIngredient}
+                      >
                         <Plus className="h-4 w-4 mr-2" />
                         Add
                       </Button>
@@ -853,15 +870,23 @@ export default function CreatePost() {
 
                     <div className="space-y-2">
                       {formData.ingredients.map((row, index) => (
-                        <div key={index} className="grid grid-cols-12 gap-2 items-center">
+                        <div
+                          key={index}
+                          className="grid grid-cols-12 gap-2 items-center"
+                        >
                           <div className="col-span-4 sm:col-span-3">
                             <Select
                               value={row.amount ? row.amount : SELECT_NONE}
                               onValueChange={(v) =>
-                                updateIngredient(index, { amount: v === SELECT_NONE ? "" : v })
+                                updateIngredient(index, {
+                                  amount: v === SELECT_NONE ? "" : v,
+                                })
                               }
                             >
-                              <SelectTrigger className="h-9" data-testid={`select-ingredient-amount-${index}`}>
+                              <SelectTrigger
+                                className="h-9"
+                                data-testid={`select-ingredient-amount-${index}`}
+                              >
                                 <SelectValue placeholder="Amt" />
                               </SelectTrigger>
                               <SelectContent>
@@ -879,10 +904,15 @@ export default function CreatePost() {
                             <Select
                               value={row.unit ? row.unit : SELECT_NONE}
                               onValueChange={(v) =>
-                                updateIngredient(index, { unit: v === SELECT_NONE ? "" : v })
+                                updateIngredient(index, {
+                                  unit: v === SELECT_NONE ? "" : v,
+                                })
                               }
                             >
-                              <SelectTrigger className="h-9" data-testid={`select-ingredient-unit-${index}`}>
+                              <SelectTrigger
+                                className="h-9"
+                                data-testid={`select-ingredient-unit-${index}`}
+                              >
                                 <SelectValue placeholder="Unit" />
                               </SelectTrigger>
                               <SelectContent>
@@ -900,7 +930,9 @@ export default function CreatePost() {
                             <Input
                               placeholder="Ingredient"
                               value={row.name}
-                              onChange={(e) => updateIngredient(index, { name: e.target.value })}
+                              onChange={(e) =>
+                                updateIngredient(index, { name: e.target.value })
+                              }
                               className="h-9"
                               data-testid={`input-ingredient-name-${index}`}
                             />
@@ -927,7 +959,12 @@ export default function CreatePost() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label>Instructions *</Label>
-                      <Button type="button" variant="outline" size="sm" onClick={addInstruction}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addInstruction}
+                      >
                         <Plus className="h-4 w-4 mr-2" />
                         Add step
                       </Button>
@@ -939,7 +976,9 @@ export default function CreatePost() {
                           <Input
                             placeholder={`Step ${index + 1}`}
                             value={instruction}
-                            onChange={(e) => updateInstruction(index, e.target.value)}
+                            onChange={(e) =>
+                              updateInstruction(index, e.target.value)
+                            }
                             data-testid={`input-instruction-${index}`}
                           />
                           <Button
@@ -974,12 +1013,4 @@ export default function CreatePost() {
       </Card>
     </div>
   );
-
-  // Tag helpers (kept at bottom for minimal diff from your original layout)
-  function updateTag(index: number, value: string) {
-    setFormData((prev) => ({
-      ...prev,
-      tags: prev.tags.map((tag, i) => (i === index ? value : tag)),
-    }));
-  }
 }
