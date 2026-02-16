@@ -1,18 +1,44 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, Link } from "wouter";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
-import { Users, MessageSquare, ArrowLeft, Send, Calendar, Crown, Pencil, Save, X, Camera, Upload, Plus, Minus, Star } from "lucide-react";
+import {
+  Users,
+  MessageSquare,
+  ArrowLeft,
+  Send,
+  Calendar,
+  Crown,
+  Pencil,
+  Save,
+  X,
+  Camera,
+  Upload,
+  Plus,
+  Minus,
+} from "lucide-react";
 
 // Server /api/clubs/:id returns: { club: { club: ClubRow, creator: Creator }, stats: Stats }
 type ClubRow = {
@@ -55,12 +81,21 @@ type Post = {
     likesCount: number;
     commentsCount: number;
     createdAt: string;
+    recipeId?: string | null;
   };
   author: {
     id: string;
     username: string;
     displayName: string | null;
   };
+};
+
+type PostType = "post" | "recipe" | "review";
+
+type IngredientRow = {
+  qty: string; // NEW: qty separate
+  unit: string;
+  item: string;
 };
 
 export default function ClubDetailPage() {
@@ -71,13 +106,14 @@ export default function ClubDetailPage() {
   const { user } = useUser();
 
   const [newPostContent, setNewPostContent] = useState("");
-
-  const [newPostType, setNewPostType] = useState<"post" | "recipe" | "review">("post");
+  const [newPostType, setNewPostType] = useState<PostType>("post");
 
   const [newPostImageFile, setNewPostImageFile] = useState<File | null>(null);
   const [newPostImagePreview, setNewPostImagePreview] = useState<string>("");
 
-  const AMOUNT_OPTIONS = [
+  // ✅ NEW: quantity (number/fraction) dropdown options
+  const QTY_OPTIONS = [
+    "",
     "1/8",
     "1/4",
     "1/3",
@@ -89,6 +125,7 @@ export default function ClubDetailPage() {
     "2",
     "3",
     "4",
+    "5",
   ];
 
   const UNIT_OPTIONS = [
@@ -108,15 +145,20 @@ export default function ClubDetailPage() {
     "slice",
     "can",
     "package",
+    "bunch",
+    "piece",
   ];
 
   const [recipeTitle, setRecipeTitle] = useState("");
   const [recipeCookTime, setRecipeCookTime] = useState("");
   const [recipeServings, setRecipeServings] = useState("");
   const [recipeDifficulty, setRecipeDifficulty] = useState("Easy");
-  const [ingredientRows, setIngredientRows] = useState<{ amount: string; unit: string; item: string }[]>([
-    { amount: "1", unit: "cup", item: "" },
+
+  // ✅ ingredient rows now qty + unit + item
+  const [ingredientRows, setIngredientRows] = useState<IngredientRow[]>([
+    { qty: "1", unit: "cup", item: "" },
   ]);
+
   const [instructionRows, setInstructionRows] = useState<string[]>([""]);
 
   const [reviewTitle, setReviewTitle] = useState("");
@@ -124,7 +166,6 @@ export default function ClubDetailPage() {
   const [reviewPros, setReviewPros] = useState("");
   const [reviewCons, setReviewCons] = useState("");
   const [reviewVerdict, setReviewVerdict] = useState("");
-
 
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editPostContent, setEditPostContent] = useState("");
@@ -150,9 +191,6 @@ export default function ClubDetailPage() {
   const isMember = useMemo(() => {
     const list = myClubsData?.clubs;
     if (!Array.isArray(list) || !clubId) return false;
-
-    // /api/clubs/my-clubs returns rows like: { club: ClubRow, membership: ..., memberCount: ... }
-    // Be defensive in case of partial/legacy data.
     return list.some((c: any) => c?.club?.id === clubId || c?.clubId === clubId || c?.id === clubId);
   }, [myClubsData?.clubs, clubId]);
 
@@ -202,7 +240,7 @@ export default function ClubDetailPage() {
     },
   });
 
-  // Create post mutation
+  // Image handling
   const handleNewPostImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -217,15 +255,20 @@ export default function ClubDetailPage() {
     setNewPostImagePreview("");
   };
 
-  const addIngredientRow = () => setIngredientRows((prev) => [...prev, { amount: "1", unit: "", item: "" }]);
+  // Ingredient helpers
+  const addIngredientRow = () =>
+    setIngredientRows((prev) => [...prev, { qty: "1", unit: "", item: "" }]);
+
   const removeIngredientRow = (index: number) =>
-    setIngredientRows((prev) => prev.filter((_, i) => i !== index));
-  const updateIngredientRow = (index: number, patch: Partial<{ amount: string; unit: string; item: string }>) =>
+    setIngredientRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
+
+  const updateIngredientRow = (index: number, patch: Partial<IngredientRow>) =>
     setIngredientRows((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
+  // Instruction helpers
   const addInstructionRow = () => setInstructionRows((prev) => [...prev, ""]);
   const removeInstructionRow = (index: number) =>
-    setInstructionRows((prev) => prev.filter((_, i) => i !== index));
+    setInstructionRows((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   const updateInstructionRow = (index: number, value: string) =>
     setInstructionRows((prev) => prev.map((row, i) => (i === index ? value : row)));
 
@@ -238,7 +281,7 @@ export default function ClubDetailPage() {
     setRecipeCookTime("");
     setRecipeServings("");
     setRecipeDifficulty("Easy");
-    setIngredientRows([{ amount: "1", unit: "cup", item: "" }]);
+    setIngredientRows([{ qty: "1", unit: "cup", item: "" }]);
     setInstructionRows([""]);
 
     setReviewTitle("");
@@ -279,7 +322,6 @@ export default function ClubDetailPage() {
       return;
     }
 
-    // Build payload by type
     const type = newPostType;
 
     // Recipe
@@ -291,15 +333,24 @@ export default function ClubDetailPage() {
 
       const ingredientLines = ingredientRows
         .map((row) => {
-          const amt = String(row.amount || "").trim();
+          const qty = String(row.qty || "").trim();
           const unit = String(row.unit || "").trim();
           const item = String(row.item || "").trim();
-          const left = [amt, unit].filter(Boolean).join(" ");
+          const left = [qty, unit].filter(Boolean).join(" ");
           return [left, item].filter(Boolean).join(" ").trim();
         })
         .filter(Boolean);
 
       const instructionLines = instructionRows.map((s) => String(s || "").trim()).filter(Boolean);
+
+      if (ingredientLines.length === 0) {
+        toast({ title: "Ingredients required", description: "Add at least one ingredient", variant: "destructive" });
+        return;
+      }
+      if (instructionLines.length === 0) {
+        toast({ title: "Instructions required", description: "Add at least one step", variant: "destructive" });
+        return;
+      }
 
       const notes = newPostContent.trim();
       const content = `🍽️ Recipe: ${recipeTitle.trim()}` + (notes ? `\n\n${notes}` : "");
@@ -357,9 +408,6 @@ export default function ClubDetailPage() {
       imageUrl: newPostImagePreview || null,
     });
   };
-
-
-
 
   const updatePostMutation = useMutation({
     mutationFn: async ({ postId, content }: { postId: string; content: string }) => {
@@ -479,11 +527,7 @@ export default function ClubDetailPage() {
                   <Badge variant="secondary" className="capitalize">
                     {club.category}
                   </Badge>
-                  {club.isPublic ? (
-                    <Badge variant="outline">Public</Badge>
-                  ) : (
-                    <Badge variant="outline">Private</Badge>
-                  )}
+                  {club.isPublic ? <Badge variant="outline">Public</Badge> : <Badge variant="outline">Private</Badge>}
                 </div>
               </div>
 
@@ -515,9 +559,7 @@ export default function ClubDetailPage() {
                   </AvatarFallback>
                 </Avatar>
                 <div className="leading-tight">
-                  <div className="text-sm font-medium">
-                    {creator.displayName || creator.username}
-                  </div>
+                  <div className="text-sm font-medium">{creator.displayName || creator.username}</div>
                   <div className="text-xs text-slate-500">@{creator.username}</div>
                 </div>
               </div>
@@ -528,11 +570,7 @@ export default function ClubDetailPage() {
                     <Button>Log in to Join</Button>
                   </Link>
                 ) : isMember ? (
-                  <Button
-                    variant="outline"
-                    onClick={() => leaveClubMutation.mutate()}
-                    disabled={leaveClubMutation.isPending}
-                  >
+                  <Button variant="outline" onClick={() => leaveClubMutation.mutate()} disabled={leaveClubMutation.isPending}>
                     {leaveClubMutation.isPending ? "Leaving..." : "Leave Club"}
                   </Button>
                 ) : (
@@ -555,7 +593,7 @@ export default function ClubDetailPage() {
           </Card>
         ) : null}
 
-                {/* New Post */}
+        {/* New Post */}
         {user && isMember ? (
           <Card className="border-0 shadow-sm bg-white/80 backdrop-blur-sm">
             <CardHeader>
@@ -622,17 +660,31 @@ export default function ClubDetailPage() {
                   <div className="grid gap-3 md:grid-cols-12">
                     <div className="md:col-span-12">
                       <Label>Recipe Title</Label>
-                      <Input value={recipeTitle} onChange={(e) => setRecipeTitle(e.target.value)} placeholder="e.g., Honey Garlic Chicken" />
+                      <Input
+                        value={recipeTitle}
+                        onChange={(e) => setRecipeTitle(e.target.value)}
+                        placeholder="e.g., Honey Garlic Chicken"
+                      />
                     </div>
 
                     <div className="md:col-span-4">
                       <Label>Cook Time (minutes)</Label>
-                      <Input value={recipeCookTime} onChange={(e) => setRecipeCookTime(e.target.value)} placeholder="e.g., 35" />
+                      <Input
+                        value={recipeCookTime}
+                        onChange={(e) => setRecipeCookTime(e.target.value)}
+                        placeholder="e.g., 35"
+                        inputMode="numeric"
+                      />
                     </div>
 
                     <div className="md:col-span-4">
                       <Label>Servings</Label>
-                      <Input value={recipeServings} onChange={(e) => setRecipeServings(e.target.value)} placeholder="e.g., 4" />
+                      <Input
+                        value={recipeServings}
+                        onChange={(e) => setRecipeServings(e.target.value)}
+                        placeholder="e.g., 4"
+                        inputMode="numeric"
+                      />
                     </div>
 
                     <div className="md:col-span-4">
@@ -650,20 +702,22 @@ export default function ClubDetailPage() {
                     </div>
                   </div>
 
+                  {/* ✅ UPDATED INGREDIENTS UI: qty dropdown + unit dropdown + ingredient */}
                   <div className="space-y-2">
                     <Label>Ingredients</Label>
+
                     <div className="space-y-2">
                       {ingredientRows.map((row, index) => (
                         <div key={index} className="grid grid-cols-12 gap-2 items-center">
                           <div className="col-span-4 sm:col-span-2">
-                            <Select value={row.amount} onValueChange={(v) => updateIngredientRow(index, { amount: v })}>
+                            <Select value={row.qty} onValueChange={(v) => updateIngredientRow(index, { qty: v })}>
                               <SelectTrigger>
                                 <SelectValue placeholder="Qty" />
                               </SelectTrigger>
                               <SelectContent>
-                                {AMOUNT_OPTIONS.map((opt) => (
-                                  <SelectItem key={opt} value={opt}>
-                                    {opt}
+                                {QTY_OPTIONS.map((opt) => (
+                                  <SelectItem key={opt || "__blank"} value={opt}>
+                                    {opt || "—"}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -715,11 +769,7 @@ export default function ClubDetailPage() {
                     <div className="space-y-2">
                       {instructionRows.map((step, index) => (
                         <div key={index} className="flex items-center gap-2">
-                          <Input
-                            value={step}
-                            onChange={(e) => updateInstructionRow(index, e.target.value)}
-                            placeholder={`Step ${index + 1}`}
-                          />
+                          <Input value={step} onChange={(e) => updateInstructionRow(index, e.target.value)} placeholder={`Step ${index + 1}`} />
                           {instructionRows.length > 1 ? (
                             <Button type="button" variant="outline" size="sm" onClick={() => removeInstructionRow(index)}>
                               <Minus className="h-4 w-4" />
@@ -811,9 +861,7 @@ export default function ClubDetailPage() {
                         </AvatarFallback>
                       </Avatar>
                       <div className="leading-tight">
-                        <div className="text-sm font-medium">
-                          {p.author.displayName || p.author.username}
-                        </div>
+                        <div className="text-sm font-medium">{p.author.displayName || p.author.username}</div>
                         <div className="flex flex-wrap gap-2 mt-1">
                           {clubData?.club?.creator?.id && p.post.userId === clubData.club.creator.id ? (
                             <Badge variant="secondary" className="bg-amber-100 text-amber-800">
@@ -822,26 +870,24 @@ export default function ClubDetailPage() {
                             </Badge>
                           ) : null}
                           {p.post.recipeId ? (
-                            <Badge variant="secondary" className="bg-emerald-100 text-emerald-800">🍽️ Recipe</Badge>
+                            <Badge variant="secondary" className="bg-emerald-100 text-emerald-800">
+                              🍽️ Recipe
+                            </Badge>
                           ) : null}
                           {typeof p.post.content === "string" && p.post.content.startsWith("📝 Review:") ? (
-                            <Badge variant="secondary" className="bg-indigo-100 text-indigo-800">⭐ Review</Badge>
+                            <Badge variant="secondary" className="bg-indigo-100 text-indigo-800">
+                              ⭐ Review
+                            </Badge>
                           ) : null}
                         </div>
-                        <div className="text-xs text-slate-500">
-                          {new Date(p.post.createdAt).toLocaleString()}
-                        </div>
+                        <div className="text-xs text-slate-500">{new Date(p.post.createdAt).toLocaleString()}</div>
                       </div>
                     </div>
                   </CardHeader>
                   <CardContent className="pt-0 space-y-3">
                     {editingPostId === p.post.id ? (
                       <>
-                        <Textarea
-                          value={editPostContent}
-                          onChange={(e) => setEditPostContent(e.target.value)}
-                          rows={3}
-                        />
+                        <Textarea value={editPostContent} onChange={(e) => setEditPostContent(e.target.value)} rows={3} />
                         <div className="flex justify-end gap-2">
                           <Button variant="outline" size="sm" onClick={cancelEditingPost}>
                             <X className="h-4 w-4 mr-1" />
