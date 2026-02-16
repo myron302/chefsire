@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,13 +14,15 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Upload, Plus, Minus, X, Star } from "lucide-react";
+import { Camera, Upload, Plus, Minus, X, MapPin } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
+import { useGoogleMaps } from "@/hooks/useGoogleMaps";
+
+const SELECT_NONE = "__none__"; // ✅ Radix SelectItem cannot have value=""
 
 const AMOUNT_OPTIONS = [
-  "",
   "1/8",
   "1/4",
   "1/3",
@@ -36,7 +38,6 @@ const AMOUNT_OPTIONS = [
 ];
 
 const UNIT_OPTIONS = [
-  "",
   "tsp",
   "tbsp",
   "cup",
@@ -81,6 +82,13 @@ export default function CreatePost() {
   const [, setLocation] = useLocation();
   const { user } = useUser();
 
+  // Google Maps / Places (same pattern as wedding-planning.tsx)
+  const mapsLoaded = useGoogleMaps();
+  const reviewBusinessRef = useRef<HTMLInputElement>(null);
+  const reviewLocationRef = useRef<HTMLInputElement>(null);
+  const reviewBusinessAutocompleteRef = useRef<any>(null);
+  const reviewLocationAutocompleteRef = useRef<any>(null);
+
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
 
@@ -89,7 +97,6 @@ export default function CreatePost() {
     caption: "",
     imageUrl: "",
     tags: [""],
-
     // Recipe fields
     recipeTitle: "",
     ingredients: [{ amount: "", unit: "", name: "" }] as IngredientRow[],
@@ -98,13 +105,95 @@ export default function CreatePost() {
     servings: "",
     difficulty: "Easy",
 
-    // ✅ Review fields (NEW)
-    reviewTitle: "",
-    reviewRating: "5",
-    reviewPros: "",
-    reviewCons: "",
-    reviewVerdict: "",
+    // Review fields (NEW)
+    reviewBusinessName: "",
+    reviewLocation: "",
   });
+
+  const handleChange = (field: string, value: any) => {
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  };
+
+  // Initialize Google Places Autocomplete for review fields (business + location)
+  useEffect(() => {
+    if (formData.postType !== "review") return;
+    if (!mapsLoaded) return;
+    if (!window.google?.maps?.places) return;
+
+    // Business name (establishment)
+    if (reviewBusinessRef.current && !reviewBusinessAutocompleteRef.current) {
+      const businessOptions: any = {
+        types: ["establishment"],
+        componentRestrictions: { country: "us" },
+        fields: ["name", "formatted_address"],
+      };
+
+      try {
+        reviewBusinessAutocompleteRef.current =
+          new window.google.maps.places.Autocomplete(
+            reviewBusinessRef.current,
+            businessOptions
+          );
+
+        reviewBusinessAutocompleteRef.current.addListener(
+          "place_changed",
+          () => {
+            const place =
+              reviewBusinessAutocompleteRef.current?.getPlace?.() || null;
+            const name = place?.name;
+            const addr = place?.formatted_address;
+
+            // Prefer "Name, Address" if both exist
+            const display =
+              name && addr && !String(addr).startsWith(String(name))
+                ? `${name}, ${addr}`
+                : name || addr || "";
+
+            if (display) {
+              handleChange("reviewBusinessName", display);
+            }
+          }
+        );
+      } catch (e) {
+        console.error("[CreatePost] Business autocomplete init failed:", e);
+      }
+    }
+
+    // Location (regions) – same as vendor location input in wedding-planning.tsx
+    if (reviewLocationRef.current && !reviewLocationAutocompleteRef.current) {
+      const locationOptions: any = {
+        types: ["(regions)"],
+        componentRestrictions: { country: "us" },
+        fields: ["name", "formatted_address"],
+      };
+
+      try {
+        reviewLocationAutocompleteRef.current =
+          new window.google.maps.places.Autocomplete(
+            reviewLocationRef.current,
+            locationOptions
+          );
+
+        reviewLocationAutocompleteRef.current.addListener("place_changed", () => {
+          const place =
+            reviewLocationAutocompleteRef.current?.getPlace?.() || null;
+          const name = place?.name;
+          const addr = place?.formatted_address;
+
+          const display =
+            name && addr && !String(addr).startsWith(String(name))
+              ? `${name}, ${addr}`
+              : addr || name || "";
+
+          if (display) {
+            handleChange("reviewLocation", display);
+          }
+        });
+      } catch (e) {
+        console.error("[CreatePost] Location autocomplete init failed:", e);
+      }
+    }
+  }, [mapsLoaded, formData.postType]);
 
   const createPostMutation = useMutation({
     mutationFn: async () => {
@@ -114,26 +203,6 @@ export default function CreatePost() {
 
       const isRecipe = formData.postType === "recipe";
 
-      // Validate basics
-      if (!formData.imageUrl.trim()) {
-        throw new Error("Please add an image (upload or URL)");
-      }
-
-      // Review template content
-      const reviewContent =
-        `📝 Review: ${formData.reviewTitle.trim()}\n` +
-        `⭐ Rating: ${formData.reviewRating}/5\n\n` +
-        (formData.reviewPros.trim()
-          ? `✅ Pros: ${formData.reviewPros.trim()}\n\n`
-          : "") +
-        (formData.reviewCons.trim()
-          ? `⚠️ Cons: ${formData.reviewCons.trim()}\n\n`
-          : "") +
-        (formData.reviewVerdict.trim()
-          ? `💡 Verdict: ${formData.reviewVerdict.trim()}\n\n`
-          : "") +
-        (formData.caption.trim() ? `Notes: ${formData.caption.trim()}` : "");
-
       // Tags
       const baseTags = formData.tags.map((t) => t.trim()).filter(Boolean);
       const tags =
@@ -141,34 +210,24 @@ export default function CreatePost() {
           ? Array.from(new Set([...baseTags, "review"]))
           : baseTags;
 
-      // Caption to store
-      const captionToStore =
-        formData.postType === "review" ? reviewContent : formData.caption;
+      // Caption normalization
+      let caption = formData.caption;
 
-      if (formData.postType === "post" && !captionToStore.trim()) {
-        throw new Error("Please write a caption for your post");
+      if (formData.postType === "review") {
+        const biz = (formData.reviewBusinessName || "").trim();
+        const loc = (formData.reviewLocation || "").trim();
+        const body = (formData.caption || "").trim();
+
+        // Put review metadata into the caption in a consistent template
+        caption =
+          `📝 Review: ${biz}\n` +
+          `📍 Location: ${loc}\n\n` +
+          (body ? body : "");
       }
 
-      if (formData.postType === "review" && !formData.reviewTitle.trim()) {
-        throw new Error("Please add what you’re reviewing");
-      }
-
-      if (isRecipe) {
-        if (!formData.recipeTitle.trim()) {
-          throw new Error("Please add a recipe title");
-        }
-
-        const ingredients = ingredientRowsToStrings(formData.ingredients);
-        const instructions = normalizeSteps(formData.instructions);
-
-        if (ingredients.length === 0) throw new Error("Please add at least one ingredient");
-        if (instructions.length === 0) throw new Error("Please add at least one instruction step");
-      }
-
-      // Create the post
       const postData = {
         userId: user.id,
-        caption: captionToStore,
+        caption,
         imageUrl: formData.imageUrl,
         tags,
         isRecipe,
@@ -181,8 +240,8 @@ export default function CreatePost() {
       }
       const post = await postResponse.json();
 
-      // If it's a recipe, create the recipe data (linked to post.id)
-      if (isRecipe) {
+      // If it's a recipe, create recipe row linked to post.id
+      if (isRecipe && formData.recipeTitle) {
         const ingredients = ingredientRowsToStrings(formData.ingredients);
         const instructions = normalizeSteps(formData.instructions);
 
@@ -237,19 +296,18 @@ export default function CreatePost() {
       return;
     }
 
-    if (formData.postType === "post" && !formData.caption.trim()) {
-      toast({
-        variant: "destructive",
-        description: "Please write a caption for your post",
-      });
-      return;
-    }
-
     if (formData.postType === "review") {
-      if (!formData.reviewTitle.trim()) {
+      if (!formData.reviewBusinessName.trim()) {
         toast({
           variant: "destructive",
-          description: "Please add what you’re reviewing",
+          description: "Please select a business name",
+        });
+        return;
+      }
+      if (!formData.reviewLocation.trim()) {
+        toast({
+          variant: "destructive",
+          description: "Please select a location",
         });
         return;
       }
@@ -286,10 +344,6 @@ export default function CreatePost() {
     createPostMutation.mutate();
   };
 
-  const handleChange = (field: string, value: any) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
-  };
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -299,7 +353,6 @@ export default function CreatePost() {
       reader.onloadend = () => {
         const result = reader.result as string;
         setImagePreview(result);
-        // Store as data URL (same pattern used elsewhere in your app)
         handleChange("imageUrl", result);
       };
       reader.readAsDataURL(file);
@@ -356,7 +409,10 @@ export default function CreatePost() {
   };
 
   const addInstruction = () => {
-    setFormData((prev) => ({ ...prev, instructions: [...prev.instructions, ""] }));
+    setFormData((prev) => ({
+      ...prev,
+      instructions: [...prev.instructions, ""],
+    }));
   };
 
   const removeInstruction = (index: number) => {
@@ -405,6 +461,52 @@ export default function CreatePost() {
               </Select>
             </div>
 
+            {/* Review Fields (NEW) */}
+            {formData.postType === "review" && (
+              <>
+                <Separator />
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <MapPin className="h-4 w-4" />
+                    <span>
+                      Start typing and pick from suggestions (Google Places)
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Business name *</Label>
+                    <Input
+                      ref={reviewBusinessRef}
+                      value={formData.reviewBusinessName}
+                      onChange={(e) =>
+                        handleChange("reviewBusinessName", e.target.value)
+                      }
+                      placeholder="e.g., Joe’s Pizza"
+                      autoComplete="off"
+                    />
+                    {!mapsLoaded && (
+                      <p className="text-xs text-muted-foreground">
+                        Loading Google Places…
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Location *</Label>
+                    <Input
+                      ref={reviewLocationRef}
+                      value={formData.reviewLocation}
+                      onChange={(e) =>
+                        handleChange("reviewLocation", e.target.value)
+                      }
+                      placeholder="e.g., Brooklyn, NY"
+                      autoComplete="off"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
             {/* Image Upload */}
             <div className="space-y-2">
               <Label htmlFor="imageUrl">Image *</Label>
@@ -440,7 +542,9 @@ export default function CreatePost() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => document.getElementById("camera-input")?.click()}
+                        onClick={() =>
+                          document.getElementById("camera-input")?.click()
+                        }
                         className="flex-1"
                       >
                         <Camera className="h-4 w-4 mr-2" />
@@ -449,7 +553,9 @@ export default function CreatePost() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => document.getElementById("file-input")?.click()}
+                        onClick={() =>
+                          document.getElementById("file-input")?.click()
+                        }
                         className="flex-1"
                       >
                         <Upload className="h-4 w-4 mr-2" />
@@ -475,7 +581,9 @@ export default function CreatePost() {
                       data-testid="input-file"
                     />
 
-                    <p className="text-xs text-muted-foreground mb-2">or paste an image URL</p>
+                    <p className="text-xs text-muted-foreground mb-2">
+                      or paste an image URL
+                    </p>
                     <Input
                       id="imageUrl"
                       type="url"
@@ -496,20 +604,14 @@ export default function CreatePost() {
             {/* Caption */}
             <div className="space-y-2">
               <Label htmlFor="caption">
-                {formData.postType === "post"
-                  ? "Caption"
-                  : formData.postType === "recipe"
-                  ? "Caption / Notes (optional)"
-                  : "Notes (optional)"}
+                {formData.postType === "review" ? "Review text" : "Caption"}
               </Label>
               <Textarea
                 id="caption"
                 placeholder={
-                  formData.postType === "post"
-                    ? "Write a caption for your post..."
-                    : formData.postType === "recipe"
-                    ? "Add a short intro, story, or extra details..."
-                    : "Optional extra thoughts to add to your review..."
+                  formData.postType === "review"
+                    ? "Write your review… (food, service, vibes, price, etc.)"
+                    : "Write a caption for your post..."
                 }
                 value={formData.caption}
                 onChange={(e) => handleChange("caption", e.target.value)}
@@ -518,77 +620,6 @@ export default function CreatePost() {
                 data-testid="textarea-caption"
               />
             </div>
-
-            {/* ✅ Review Template UI */}
-            {formData.postType === "review" && (
-              <>
-                <Separator />
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Star className="h-4 w-4" />
-                    Review Template
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>What are you reviewing? *</Label>
-                    <Input
-                      value={formData.reviewTitle}
-                      onChange={(e) => handleChange("reviewTitle", e.target.value)}
-                      placeholder="e.g., 'Stainless Steel Pan'"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Rating</Label>
-                    <Select
-                      value={formData.reviewRating}
-                      onValueChange={(v) => handleChange("reviewRating", v)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Rating" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="5">5 - Amazing</SelectItem>
-                        <SelectItem value="4">4 - Great</SelectItem>
-                        <SelectItem value="3">3 - Good</SelectItem>
-                        <SelectItem value="2">2 - Meh</SelectItem>
-                        <SelectItem value="1">1 - Bad</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Pros</Label>
-                    <Textarea
-                      value={formData.reviewPros}
-                      onChange={(e) => handleChange("reviewPros", e.target.value)}
-                      rows={2}
-                      placeholder="What did you like?"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Cons</Label>
-                    <Textarea
-                      value={formData.reviewCons}
-                      onChange={(e) => handleChange("reviewCons", e.target.value)}
-                      rows={2}
-                      placeholder="What didn’t you like?"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Verdict</Label>
-                    <Textarea
-                      value={formData.reviewVerdict}
-                      onChange={(e) => handleChange("reviewVerdict", e.target.value)}
-                      rows={2}
-                      placeholder="Would you recommend it?"
-                    />
-                  </div>
-                </div>
-              </>
-            )}
 
             {/* Tags */}
             <div className="space-y-2">
@@ -643,7 +674,9 @@ export default function CreatePost() {
                       id="recipeTitle"
                       placeholder="Enter the recipe name"
                       value={formData.recipeTitle}
-                      onChange={(e) => handleChange("recipeTitle", e.target.value)}
+                      onChange={(e) =>
+                        handleChange("recipeTitle", e.target.value)
+                      }
                       data-testid="input-recipe-title"
                     />
                   </div>
@@ -657,7 +690,9 @@ export default function CreatePost() {
                         inputMode="numeric"
                         placeholder="30"
                         value={formData.cookTime}
-                        onChange={(e) => handleChange("cookTime", e.target.value)}
+                        onChange={(e) =>
+                          handleChange("cookTime", e.target.value)
+                        }
                         data-testid="input-cook-time"
                       />
                     </div>
@@ -669,7 +704,9 @@ export default function CreatePost() {
                         inputMode="numeric"
                         placeholder="4"
                         value={formData.servings}
-                        onChange={(e) => handleChange("servings", e.target.value)}
+                        onChange={(e) =>
+                          handleChange("servings", e.target.value)
+                        }
                         data-testid="input-servings"
                       />
                     </div>
@@ -677,7 +714,9 @@ export default function CreatePost() {
                       <Label htmlFor="difficulty">Difficulty</Label>
                       <Select
                         value={formData.difficulty}
-                        onValueChange={(value) => handleChange("difficulty", value)}
+                        onValueChange={(value) =>
+                          handleChange("difficulty", value)
+                        }
                       >
                         <SelectTrigger data-testid="select-difficulty">
                           <SelectValue />
@@ -714,9 +753,11 @@ export default function CreatePost() {
                         >
                           <div className="col-span-4 sm:col-span-3">
                             <Select
-                              value={row.amount}
+                              value={row.amount ? row.amount : SELECT_NONE}
                               onValueChange={(v) =>
-                                updateIngredient(index, { amount: v })
+                                updateIngredient(index, {
+                                  amount: v === SELECT_NONE ? "" : v,
+                                })
                               }
                             >
                               <SelectTrigger
@@ -726,9 +767,10 @@ export default function CreatePost() {
                                 <SelectValue placeholder="Amt" />
                               </SelectTrigger>
                               <SelectContent>
+                                <SelectItem value={SELECT_NONE}>—</SelectItem>
                                 {AMOUNT_OPTIONS.map((opt) => (
-                                  <SelectItem key={opt || "__blank"} value={opt}>
-                                    {opt || "—"}
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -737,9 +779,11 @@ export default function CreatePost() {
 
                           <div className="col-span-4 sm:col-span-3">
                             <Select
-                              value={row.unit}
+                              value={row.unit ? row.unit : SELECT_NONE}
                               onValueChange={(v) =>
-                                updateIngredient(index, { unit: v })
+                                updateIngredient(index, {
+                                  unit: v === SELECT_NONE ? "" : v,
+                                })
                               }
                             >
                               <SelectTrigger
@@ -749,9 +793,10 @@ export default function CreatePost() {
                                 <SelectValue placeholder="Unit" />
                               </SelectTrigger>
                               <SelectContent>
+                                <SelectItem value={SELECT_NONE}>—</SelectItem>
                                 {UNIT_OPTIONS.map((opt) => (
-                                  <SelectItem key={opt || "__blank"} value={opt}>
-                                    {opt || "—"}
+                                  <SelectItem key={opt} value={opt}>
+                                    {opt}
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -763,7 +808,9 @@ export default function CreatePost() {
                               placeholder="Ingredient"
                               value={row.name}
                               onChange={(e) =>
-                                updateIngredient(index, { name: e.target.value })
+                                updateIngredient(index, {
+                                  name: e.target.value,
+                                })
                               }
                               className="h-9"
                               data-testid={`input-ingredient-name-${index}`}
