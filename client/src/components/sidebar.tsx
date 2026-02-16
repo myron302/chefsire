@@ -18,6 +18,10 @@ type NavItem =
 
 const NAV: NavItem[] = [
   { name: "🏠 Feed", href: "/feed" },
+
+  // ✅ Added Reviews hub
+  { name: "⭐ Reviews", href: "/reviews" },
+
   { name: "🧭 Explore", href: "/explore" },
   { name: "🗺️ BiteMap", href: "/bitemap" },
   { name: "💬 Royal Table Talk", href: "/messages" },
@@ -62,8 +66,8 @@ const NAV: NavItem[] = [
           { name: "💪 Protein", href: "/drinks/smoothies/protein" },
           { name: "🍨 Dessert", href: "/drinks/smoothies/dessert" },
           { name: "🏋️ Workout", href: "/drinks/smoothies/workout" },
-          { name: "🍓 Berry", href: "/drinks/smoothies/berry" },       // ✅ added
-          { name: "🏝️ Tropical", href: "/drinks/smoothies/tropical" }, // ✅ added
+          { name: "🍓 Berry", href: "/drinks/smoothies/berry" },
+          { name: "🏝️ Tropical", href: "/drinks/smoothies/tropical" },
         ],
       },
       {
@@ -75,8 +79,8 @@ const NAV: NavItem[] = [
           { name: "🌱 Plant-Based", href: "/drinks/protein-shakes/plant-based" },
           { name: "🧀 Casein", href: "/drinks/protein-shakes/casein" },
           { name: "✨ Collagen", href: "/drinks/protein-shakes/collagen" },
-          { name: "🥚 Egg", href: "/drinks/protein-shakes/egg" },       // ✅ added
-          { name: "🐄 Beef", href: "/drinks/protein-shakes/beef" },     // ✅ added
+          { name: "🥚 Egg", href: "/drinks/protein-shakes/egg" },
+          { name: "🐄 Beef", href: "/drinks/protein-shakes/beef" },
         ],
       },
       {
@@ -113,24 +117,22 @@ const NAV: NavItem[] = [
           { name: "🥃 Whiskey & Bourbon", href: "/drinks/potent-potables/whiskey-bourbon" },
           { name: "🌵 Tequila & Mezcal", href: "/drinks/potent-potables/tequila-mezcal" },
           { name: "🏝️ Rum", href: "/drinks/potent-potables/rum" },
-          { name: "🍓 Daiquiri", href: "/drinks/potent-potables/daiquiri" }, // ✅ added earlier
+          { name: "🍓 Daiquiri", href: "/drinks/potent-potables/daiquiri" },
           { name: "🍸 Martinis", href: "/drinks/potent-potables/martinis" },
           { name: "🍹 Cocktails", href: "/drinks/potent-potables/cocktails" },
-          { name: "🍸 Gin", href: "/drinks/potent-potables/gin" },           // ✅ new
-          { name: "🔥 Hot Drinks", href: "/drinks/potent-potables/hot-drinks" }, // ✅ new
-          { name: "🥃 Liqueurs", href: "/drinks/potent-potables/liqueurs" }, // ✅ new
-          { name: "🥂 Spritz", href: "/drinks/potent-potables/spritz" },     // ✅ new
+          { name: "🍸 Gin", href: "/drinks/potent-potables/gin" },
+          { name: "🔥 Hot Drinks", href: "/drinks/potent-potables/hot-drinks" },
+          { name: "🥃 Liqueurs", href: "/drinks/potent-potables/liqueurs" },
+          { name: "🥂 Spritz", href: "/drinks/potent-potables/spritz" },
           { name: "🍾 Cognac & Brandy", href: "/drinks/potent-potables/cognac-brandy" },
           { name: "🏴 Scotch & Irish", href: "/drinks/potent-potables/scotch-irish-whiskey" },
           { name: "🗓️ Seasonal", href: "/drinks/potent-potables/seasonal" },
-          // ❌ Virgin Cocktails removed (merged into Mocktails)
-          { name: "🧃 Mocktails (Zero-Proof)", href: "/drinks/potent-potables/mocktails" }, // zero-proof, not age-gated
+          { name: "🧃 Mocktails (Zero-Proof)", href: "/drinks/potent-potables/mocktails" },
         ],
       },
     ],
   },
 
-  // ✅ New top-level Pet Food section
   {
     name: "🐾 Pet Food",
     href: "/pet-food",
@@ -147,15 +149,12 @@ const NAV: NavItem[] = [
     name: "🍽️ Catering",
     href: "/catering",
     hasSubmenu: true,
-    submenu: [
-      { name: "👨‍🍳 Browse Caterers", href: "/catering" },
-    ],
+    submenu: [{ name: "👨‍🍳 Browse Caterers", href: "/catering" }],
   },
 
   { name: "🛒 Marketplace", href: "/marketplace" },
   { name: "❤️ Allergies", href: "/allergies" },
 
-  // 💎 Premium Features Section
   { name: "divider-premium", href: "#", isDivider: true } as any,
 
   {
@@ -183,18 +182,15 @@ const NAV: NavItem[] = [
 
   { name: "divider-features", href: "#", isDivider: true } as any,
 
-  // ⚡ Phase 1: Daily Addiction Features
   { name: "🎯 My Quests", href: "/quests" },
   { name: "🔄 Recipe Remixes", href: "/remixes" },
   { name: "💡 AI Suggestions", href: "/suggestions" },
 
-  // ⚡ Phase 2: Social Explosion Features
   { name: "👥 Cook Together", href: "/cook-together" },
   { name: "🎭 Recipe Duets", href: "/duets" },
   { name: "🎉 Seasonal Events", href: "/events" },
   { name: "🏆 Leaderboard", href: "/leaderboard" },
 
-  // 📊 Phase 3: Power User Features
   { name: "📊 Analytics", href: "/analytics" },
 
   { name: "👤 Profile", href: "/profile" },
@@ -204,8 +200,7 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
   const [location] = useLocation();
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
 
-  const isActive = (href: string) =>
-    location === href || location.startsWith(href + "/");
+  const isActive = (href: string) => location === href || location.startsWith(href + "/");
 
   const autoOpen = useMemo(() => {
     const map: Record<string, boolean> = {};
@@ -238,7 +233,6 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
     });
 
   const Row = ({ item, trail = [] as string[], depth = 0 }) => {
-    // Render divider
     if ("isDivider" in item && item.isDivider) {
       return (
         <div className="my-3">
@@ -269,7 +263,9 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
               >
                 <span>{item.name}</span>
                 {"isPremium" in item && item.isPremium && (
-                  <span className="ml-2 px-1.5 py-0.5 bg-yellow-300 text-black text-[10px] rounded font-semibold">Premium</span>
+                  <span className="ml-2 px-1.5 py-0.5 bg-yellow-300 text-black text-[10px] rounded font-semibold">
+                    Premium
+                  </span>
                 )}
               </div>
             </Link>
@@ -280,15 +276,17 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                const nav = e.currentTarget.closest('nav');
+                const nav = e.currentTarget.closest("nav");
                 const scrollTop = nav?.scrollTop || 0;
                 toggle(currentTrail);
-                // Restore scroll position after state update
                 requestAnimationFrame(() => {
                   if (nav) nav.scrollTop = scrollTop;
                 });
               }}
-              className={["ml-2 p-1 rounded hover:bg-muted transition-transform", isOpen(currentTrail) ? "rotate-90" : ""].join(" ")}
+              className={[
+                "ml-2 p-1 rounded hover:bg-muted transition-transform",
+                isOpen(currentTrail) ? "rotate-90" : "",
+              ].join(" ")}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -332,7 +330,6 @@ export default function Sidebar({ onCreatePost }: SidebarProps) {
 
   return (
     <aside className="hidden lg:flex flex-col w-64 h-screen bg-card border-r border-border fixed">
-      {/* Create Post button - fixed at top for visibility */}
       <div className="p-4 border-b border-border">
         <button
           onClick={onCreatePost}
