@@ -61,7 +61,8 @@ router.get("/", async (req: Request, res: Response) => {
     } else {
       filtered.sort(
         (a, b) =>
-          new Date(b.club.createdAt).getTime() - new Date(a.club.createdAt).getTime()
+          new Date(b.club.createdAt).getTime() -
+          new Date(a.club.createdAt).getTime()
       );
     }
 
@@ -154,7 +155,11 @@ router.post("/:id/join", requireAuth, async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const clubId = req.params.id;
 
-    const [club] = await db.select().from(clubs).where(eq(clubs.id, clubId)).limit(1);
+    const [club] = await db
+      .select()
+      .from(clubs)
+      .where(eq(clubs.id, clubId))
+      .limit(1);
 
     if (!club) {
       return res.status(404).json({ message: "Club not found" });
@@ -167,7 +172,12 @@ router.post("/:id/join", requireAuth, async (req: Request, res: Response) => {
     const [existingMembership] = await db
       .select()
       .from(clubMemberships)
-      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
+      .where(
+        and(
+          eq(clubMemberships.clubId, clubId),
+          eq(clubMemberships.userId, userId)
+        )
+      )
       .limit(1);
 
     if (existingMembership) {
@@ -199,11 +209,18 @@ router.post("/:id/leave", requireAuth, async (req: Request, res: Response) => {
     const [membership] = await db
       .select()
       .from(clubMemberships)
-      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
+      .where(
+        and(
+          eq(clubMemberships.clubId, clubId),
+          eq(clubMemberships.userId, userId)
+        )
+      )
       .limit(1);
 
     if (!membership) {
-      return res.status(404).json({ message: "You are not a member of this club" });
+      return res
+        .status(404)
+        .json({ message: "You are not a member of this club" });
     }
 
     if (membership.role === "owner") {
@@ -214,7 +231,12 @@ router.post("/:id/leave", requireAuth, async (req: Request, res: Response) => {
 
     await db
       .delete(clubMemberships)
-      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)));
+      .where(
+        and(
+          eq(clubMemberships.clubId, clubId),
+          eq(clubMemberships.userId, userId)
+        )
+      );
 
     res.json({ message: "Left club successfully" });
   } catch (error) {
@@ -247,6 +269,10 @@ router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
     res.status(500).json({ message: "Failed to fetch clubs" });
   }
 });
+
+// ============================================================
+// CLUB POSTS
+// ============================================================
 
 // Get club posts
 router.get("/:id/posts", async (req: Request, res: Response) => {
@@ -284,17 +310,17 @@ router.get("/:id/posts", async (req: Request, res: Response) => {
   }
 });
 
-// Create club post (supports recipe template)
+// Create club post (supports post / recipe / review templates)
 router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const clubId = req.params.id;
 
-    const { content, imageUrl, recipeId, recipe, postType } = req.body as {
+    const { postType, content, imageUrl, recipeId, recipe } = req.body as {
+      postType?: "post" | "recipe" | "review";
       content?: string;
       imageUrl?: string | null;
       recipeId?: string | null;
-      postType?: "post" | "recipe" | "review" | string;
       recipe?: {
         title: string;
         imageUrl?: string | null;
@@ -306,40 +332,42 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
       };
     };
 
-    // Must be a club member to post
+    if (!content || !content.trim()) {
+      return res.status(400).json({ message: "Post content is required" });
+    }
+
     const [membership] = await db
       .select()
       .from(clubMemberships)
-      .where(and(eq(clubMemberships.clubId, clubId), eq(clubMemberships.userId, userId)))
+      .where(
+        and(
+          eq(clubMemberships.clubId, clubId),
+          eq(clubMemberships.userId, userId)
+        )
+      )
       .limit(1);
 
     if (!membership) {
       return res.status(403).json({ message: "You must be a member to post" });
     }
 
-    const trimmedContent = (content ?? "").trim();
-    const wantsRecipe = postType === "recipe" || (!!recipe && typeof recipe === "object");
-
-    if (!wantsRecipe && !trimmedContent) {
-      return res.status(400).json({ message: "Post content is required" });
-    }
-
+    // If this is a recipe template post, create a recipe record and link it.
     let linkedRecipeId: string | null = recipeId || null;
 
-    // Create a recipe row if needed (club recipe: postId = null)
-    if (
-      !linkedRecipeId &&
-      recipe &&
-      recipe.title &&
-      Array.isArray(recipe.ingredients) &&
-      Array.isArray(recipe.instructions)
-    ) {
+    const isRecipeTemplate =
+      postType === "recipe" ||
+      (!!recipe &&
+        typeof recipe.title === "string" &&
+        Array.isArray(recipe.ingredients) &&
+        Array.isArray(recipe.instructions));
+
+    if (!linkedRecipeId && isRecipeTemplate && recipe) {
       const [createdRecipe] = await db
         .insert(recipes)
         .values({
-          postId: null,
-          title: recipe.title.trim(),
-          imageUrl: (recipe.imageUrl ?? imageUrl ?? null) as any,
+          postId: null, // club recipes are not linked to a social post row
+          title: recipe.title,
+          imageUrl: recipe.imageUrl ?? null,
           ingredients: recipe.ingredients,
           instructions: recipe.instructions,
           cookTime: recipe.cookTime ?? null,
@@ -356,8 +384,8 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
       .values({
         clubId,
         userId,
-        content: trimmedContent || "",
-        imageUrl: (imageUrl ?? null) as any,
+        content: content.trim(),
+        imageUrl: imageUrl ?? null,
         recipeId: linkedRecipeId,
       })
       .returning();
@@ -550,9 +578,14 @@ router.post("/challenges/:id/progress", requireAuth, async (req: Request, res: R
 
     const newProgress = progress.currentProgress + 1;
 
-    const [challenge] = await db.select().from(challenges).where(eq(challenges.id, challengeId)).limit(1);
-    const requirements = (challenge?.requirements || []) as any[];
-    const totalRequired = requirements.reduce((sum, req: any) => sum + (req.target || 1), 0);
+    const [challenge] = await db
+      .select()
+      .from(challenges)
+      .where(eq(challenges.id, challengeId))
+      .limit(1);
+
+    const requirements = challenge?.requirements || [];
+    const totalRequired = requirements.reduce((sum: number, req: any) => sum + (req.target || 1), 0);
     const isCompleted = newProgress >= totalRequired;
 
     const [updated] = await db
@@ -566,8 +599,8 @@ router.post("/challenges/:id/progress", requireAuth, async (req: Request, res: R
       .where(eq(challengeProgress.id, progress.id))
       .returning();
 
-    if (isCompleted && (challenge as any)?.rewards) {
-      for (const reward of (challenge as any).rewards as any[]) {
+    if (isCompleted && challenge?.rewards) {
+      for (const reward of challenge.rewards as any[]) {
         if (reward.type === "badge") {
           await db
             .insert(userBadges)
@@ -580,69 +613,10 @@ router.post("/challenges/:id/progress", requireAuth, async (req: Request, res: R
       }
     }
 
-    res.json({ progress: updated });
+    res.json({ progress: updated, isCompleted });
   } catch (error) {
     console.error("Error updating challenge progress:", error);
     res.status(500).json({ message: "Failed to update progress" });
-  }
-});
-
-// Get user's challenge progress
-router.get("/my-challenges", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-
-    const userChallenges = await db
-      .select({
-        challenge: challenges,
-        progress: challengeProgress,
-      })
-      .from(challengeProgress)
-      .innerJoin(challenges, eq(challengeProgress.challengeId, challenges.id))
-      .where(eq(challengeProgress.userId, userId))
-      .orderBy(desc(challengeProgress.startedAt));
-
-    res.json({ challenges: userChallenges });
-  } catch (error) {
-    console.error("Error fetching user challenges:", error);
-    res.status(500).json({ message: "Failed to fetch challenges" });
-  }
-});
-
-// ============================================================
-// BADGES
-// ============================================================
-
-// Get all badges
-router.get("/badges", async (_req: Request, res: Response) => {
-  try {
-    const allBadges = await db.select().from(badges).orderBy(badges.tier, badges.name);
-    res.json({ badges: allBadges });
-  } catch (error) {
-    console.error("Error fetching badges:", error);
-    res.status(500).json({ message: "Failed to fetch badges" });
-  }
-});
-
-// Get user's badges
-router.get("/my-badges", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-
-    const userBadgesList = await db
-      .select({
-        userBadge: userBadges,
-        badge: badges,
-      })
-      .from(userBadges)
-      .innerJoin(badges, eq(userBadges.badgeId, badges.id))
-      .where(eq(userBadges.userId, userId))
-      .orderBy(desc(userBadges.earnedAt));
-
-    res.json({ badges: userBadgesList });
-  } catch (error) {
-    console.error("Error fetching user badges:", error);
-    res.status(500).json({ message: "Failed to fetch badges" });
   }
 });
 
