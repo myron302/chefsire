@@ -14,7 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Upload, Plus, Minus, X, Star, MapPin } from "lucide-react";
+import { Camera, Upload, Plus, Minus, X, Star, MapPin, Video } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
@@ -76,6 +76,22 @@ function normalizeSteps(steps: string[]): string[] {
   return steps.map((s) => (s ?? "").trim()).filter(Boolean);
 }
 
+function isVideoUrl(url: string): boolean {
+  const u = (url || "").toLowerCase().trim();
+  if (!u) return false;
+
+  // data URL
+  if (u.startsWith("data:video/")) return true;
+
+  // common extensions
+  if (/\.(mp4|webm|mov|m4v|ogg)(\?.*)?$/.test(u)) return true;
+
+  // fallback heuristic if your backend stores something like "...video..."
+  if (u.includes("video")) return true;
+
+  return false;
+}
+
 export default function CreatePost() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -89,13 +105,13 @@ export default function CreatePost() {
   const reviewBusinessAutocompleteRef = useRef<any>(null);
   const reviewLocationAutocompleteRef = useRef<any>(null);
 
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>("");
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<string>("");
 
   const [formData, setFormData] = useState({
     postType: "post" as PostType,
     caption: "",
-    imageUrl: "",
+    imageUrl: "", // NOTE: kept as imageUrl to match your existing backend schema; can store video URL/dataURL too
     tags: [""],
     // Recipe fields
     recipeTitle: "",
@@ -105,7 +121,7 @@ export default function CreatePost() {
     servings: "",
     difficulty: "Easy",
 
-    // ✅ Review fields (zip already had these)
+    // Review fields (zip already had these)
     reviewTitle: "",
     reviewLocation: "",
     reviewRating: "5",
@@ -153,10 +169,7 @@ export default function CreatePost() {
           }
         );
       } catch (error) {
-        console.error(
-          "[CreatePost] Business autocomplete init failed:",
-          error
-        );
+        console.error("[CreatePost] Business autocomplete init failed:", error);
       }
     }
 
@@ -175,25 +188,19 @@ export default function CreatePost() {
             locationOptions
           );
 
-        reviewLocationAutocompleteRef.current.addListener(
-          "place_changed",
-          () => {
-            const place = reviewLocationAutocompleteRef.current?.getPlace?.();
-            const name = place?.name;
-            const fullAddress = place?.formatted_address;
-            const display =
-              name && fullAddress && !String(fullAddress).startsWith(String(name))
-                ? `${name}, ${fullAddress}`
-                : fullAddress || name || "";
+        reviewLocationAutocompleteRef.current.addListener("place_changed", () => {
+          const place = reviewLocationAutocompleteRef.current?.getPlace?.();
+          const name = place?.name;
+          const fullAddress = place?.formatted_address;
+          const display =
+            name && fullAddress && !String(fullAddress).startsWith(String(name))
+              ? `${name}, ${fullAddress}`
+              : fullAddress || name || "";
 
-            if (display) handleChange("reviewLocation", display);
-          }
-        );
+          if (display) handleChange("reviewLocation", display);
+        });
       } catch (error) {
-        console.error(
-          "[CreatePost] Location autocomplete init failed:",
-          error
-        );
+        console.error("[CreatePost] Location autocomplete init failed:", error);
       }
     }
   }, [isGoogleMapsLoaded, formData.postType]);
@@ -206,7 +213,7 @@ export default function CreatePost() {
 
       const isRecipe = formData.postType === "recipe";
 
-      // Build review caption (existing pattern, now includes location)
+      // Build review caption (existing pattern, includes location)
       const reviewContent =
         `📝 Review: ${formData.reviewTitle.trim()}\n` +
         (formData.reviewLocation.trim()
@@ -237,7 +244,7 @@ export default function CreatePost() {
 
       // Validate basics
       if (!formData.imageUrl.trim()) {
-        throw new Error("Please add an image (upload or URL)");
+        throw new Error("Please add media (photo/video upload or URL)");
       }
 
       if (formData.postType === "post" && !captionToStore.trim()) {
@@ -271,7 +278,7 @@ export default function CreatePost() {
       const postData = {
         userId: user.id,
         caption: captionToStore,
-        imageUrl: formData.imageUrl,
+        imageUrl: formData.imageUrl, // may contain image OR video data URL / URL
         tags,
         isRecipe,
       };
@@ -296,7 +303,7 @@ export default function CreatePost() {
           cookTime: formData.cookTime ? parseInt(formData.cookTime) : null,
           servings: formData.servings ? parseInt(formData.servings) : null,
           difficulty: formData.difficulty,
-          imageUrl: formData.imageUrl || null,
+          imageUrl: formData.imageUrl || null, // can be video too; if you want recipe image-only later, we can enforce
         };
 
         const recipeRes = await apiRequest("POST", "/api/recipes", recipeData);
@@ -334,7 +341,7 @@ export default function CreatePost() {
     if (!formData.imageUrl.trim()) {
       toast({
         variant: "destructive",
-        description: "Please add an image (upload or URL)",
+        description: "Please add media (photo/video upload or URL)",
       });
       return;
     }
@@ -390,22 +397,22 @@ export default function CreatePost() {
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      setImageFile(file);
+      setMediaFile(file);
 
       const reader = new FileReader();
       reader.onloadend = () => {
         const result = reader.result as string;
-        setImagePreview(result);
-        // Store as data URL (same pattern used elsewhere in your app)
+        setMediaPreview(result);
+        // Store as data URL
         handleChange("imageUrl", result);
       };
       reader.readAsDataURL(file);
     }
   };
 
-  const clearImage = () => {
-    setImageFile(null);
-    setImagePreview("");
+  const clearMedia = () => {
+    setMediaFile(null);
+    setMediaPreview("");
     handleChange("imageUrl", "");
   };
 
@@ -478,6 +485,9 @@ export default function CreatePost() {
     }));
   };
 
+  const previewSrc = mediaPreview || formData.imageUrl;
+  const previewIsVideo = isVideoUrl(previewSrc);
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <Card className="w-full">
@@ -505,37 +515,50 @@ export default function CreatePost() {
               </Select>
             </div>
 
-            {/* Image Upload */}
+            {/* Media Upload */}
             <div className="space-y-2">
-              <Label htmlFor="imageUrl">Image *</Label>
+              <Label htmlFor="imageUrl">Media (photo or video) *</Label>
               <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
-                {imagePreview ? (
+                {previewSrc ? (
                   <div className="space-y-4">
-                    <img
-                      src={imagePreview}
-                      alt="Preview"
-                      className="w-full max-w-md mx-auto h-64 object-cover rounded-lg"
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement;
-                        target.style.display = "none";
-                      }}
-                    />
+                    {previewIsVideo ? (
+                      <video
+                        src={previewSrc}
+                        controls
+                        className="w-full max-w-md mx-auto h-64 object-cover rounded-lg bg-black"
+                      />
+                    ) : (
+                      <img
+                        src={previewSrc}
+                        alt="Preview"
+                        className="w-full max-w-md mx-auto h-64 object-cover rounded-lg"
+                        onError={(e) => {
+                          const target = e.target as HTMLImageElement;
+                          target.style.display = "none";
+                        }}
+                      />
+                    )}
+
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
-                      onClick={clearImage}
+                      onClick={clearMedia}
                     >
                       <X className="h-4 w-4 mr-2" />
-                      Remove Image
+                      Remove Media
                     </Button>
                   </div>
                 ) : (
                   <>
-                    <Camera className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <div className="flex items-center justify-center gap-3 mb-4">
+                      <Camera className="h-10 w-10 text-muted-foreground" />
+                      <Video className="h-10 w-10 text-muted-foreground" />
+                    </div>
                     <p className="text-sm text-muted-foreground mb-4">
-                      Take a photo or choose from your device
+                      Upload a photo or video from your device
                     </p>
+
                     <div className="flex flex-col sm:flex-row gap-2 mb-4">
                       <Button
                         type="button"
@@ -557,14 +580,14 @@ export default function CreatePost() {
                         className="flex-1"
                       >
                         <Upload className="h-4 w-4 mr-2" />
-                        Upload Photo
+                        Upload Media
                       </Button>
                     </div>
 
                     <input
                       id="camera-input"
                       type="file"
-                      accept="image/*"
+                      accept="image/*,video/*"
                       capture="environment"
                       onChange={handleFileSelect}
                       className="hidden"
@@ -573,24 +596,24 @@ export default function CreatePost() {
                     <input
                       id="file-input"
                       type="file"
-                      accept="image/*"
+                      accept="image/*,video/*"
                       onChange={handleFileSelect}
                       className="hidden"
                       data-testid="input-file"
                     />
 
                     <p className="text-xs text-muted-foreground mb-2">
-                      or paste an image URL
+                      or paste a media URL (image/video)
                     </p>
                     <Input
                       id="imageUrl"
                       type="url"
-                      placeholder="https://example.com/image.jpg"
+                      placeholder="https://example.com/media.mp4"
                       value={formData.imageUrl}
                       onChange={(e) => {
                         const url = e.target.value;
                         handleChange("imageUrl", url);
-                        if (url) setImagePreview(url);
+                        if (url) setMediaPreview(url);
                       }}
                       data-testid="input-image-url"
                     />
@@ -625,7 +648,7 @@ export default function CreatePost() {
               />
             </div>
 
-            {/* ✅ Review Template UI */}
+            {/* Review Template UI */}
             {formData.postType === "review" && (
               <>
                 <Separator />
@@ -640,9 +663,7 @@ export default function CreatePost() {
                     <Input
                       ref={reviewBusinessRef}
                       value={formData.reviewTitle}
-                      onChange={(e) =>
-                        handleChange("reviewTitle", e.target.value)
-                      }
+                      onChange={(e) => handleChange("reviewTitle", e.target.value)}
                       placeholder="Start typing and pick a place…"
                       autoComplete="off"
                     />
@@ -661,9 +682,7 @@ export default function CreatePost() {
                     <Input
                       ref={reviewLocationRef}
                       value={formData.reviewLocation}
-                      onChange={(e) =>
-                        handleChange("reviewLocation", e.target.value)
-                      }
+                      onChange={(e) => handleChange("reviewLocation", e.target.value)}
                       placeholder="City / region…"
                       autoComplete="off"
                     />
@@ -692,9 +711,7 @@ export default function CreatePost() {
                     <Label>Pros</Label>
                     <Textarea
                       value={formData.reviewPros}
-                      onChange={(e) =>
-                        handleChange("reviewPros", e.target.value)
-                      }
+                      onChange={(e) => handleChange("reviewPros", e.target.value)}
                       rows={2}
                       placeholder="What did you like?"
                     />
@@ -704,9 +721,7 @@ export default function CreatePost() {
                     <Label>Cons</Label>
                     <Textarea
                       value={formData.reviewCons}
-                      onChange={(e) =>
-                        handleChange("reviewCons", e.target.value)
-                      }
+                      onChange={(e) => handleChange("reviewCons", e.target.value)}
                       rows={2}
                       placeholder="What didn’t you like?"
                     />
@@ -716,9 +731,7 @@ export default function CreatePost() {
                     <Label>Verdict</Label>
                     <Textarea
                       value={formData.reviewVerdict}
-                      onChange={(e) =>
-                        handleChange("reviewVerdict", e.target.value)
-                      }
+                      onChange={(e) => handleChange("reviewVerdict", e.target.value)}
                       rows={2}
                       placeholder="Would you recommend it?"
                     />
@@ -780,9 +793,7 @@ export default function CreatePost() {
                       id="recipeTitle"
                       placeholder="Enter the recipe name"
                       value={formData.recipeTitle}
-                      onChange={(e) =>
-                        handleChange("recipeTitle", e.target.value)
-                      }
+                      onChange={(e) => handleChange("recipeTitle", e.target.value)}
                       data-testid="input-recipe-title"
                     />
                   </div>
@@ -796,9 +807,7 @@ export default function CreatePost() {
                         inputMode="numeric"
                         placeholder="30"
                         value={formData.cookTime}
-                        onChange={(e) =>
-                          handleChange("cookTime", e.target.value)
-                        }
+                        onChange={(e) => handleChange("cookTime", e.target.value)}
                         data-testid="input-cook-time"
                       />
                     </div>
@@ -810,9 +819,7 @@ export default function CreatePost() {
                         inputMode="numeric"
                         placeholder="4"
                         value={formData.servings}
-                        onChange={(e) =>
-                          handleChange("servings", e.target.value)
-                        }
+                        onChange={(e) => handleChange("servings", e.target.value)}
                         data-testid="input-servings"
                       />
                     </div>
@@ -820,9 +827,7 @@ export default function CreatePost() {
                       <Label htmlFor="difficulty">Difficulty</Label>
                       <Select
                         value={formData.difficulty}
-                        onValueChange={(value) =>
-                          handleChange("difficulty", value)
-                        }
+                        onValueChange={(value) => handleChange("difficulty", value)}
                       >
                         <SelectTrigger data-testid="select-difficulty">
                           <SelectValue />
@@ -840,12 +845,7 @@ export default function CreatePost() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label>Ingredients *</Label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={addIngredient}
-                      >
+                      <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
                         <Plus className="h-4 w-4 mr-2" />
                         Add
                       </Button>
@@ -853,23 +853,15 @@ export default function CreatePost() {
 
                     <div className="space-y-2">
                       {formData.ingredients.map((row, index) => (
-                        <div
-                          key={index}
-                          className="grid grid-cols-12 gap-2 items-center"
-                        >
+                        <div key={index} className="grid grid-cols-12 gap-2 items-center">
                           <div className="col-span-4 sm:col-span-3">
                             <Select
                               value={row.amount ? row.amount : SELECT_NONE}
                               onValueChange={(v) =>
-                                updateIngredient(index, {
-                                  amount: v === SELECT_NONE ? "" : v,
-                                })
+                                updateIngredient(index, { amount: v === SELECT_NONE ? "" : v })
                               }
                             >
-                              <SelectTrigger
-                                className="h-9"
-                                data-testid={`select-ingredient-amount-${index}`}
-                              >
+                              <SelectTrigger className="h-9" data-testid={`select-ingredient-amount-${index}`}>
                                 <SelectValue placeholder="Amt" />
                               </SelectTrigger>
                               <SelectContent>
@@ -887,15 +879,10 @@ export default function CreatePost() {
                             <Select
                               value={row.unit ? row.unit : SELECT_NONE}
                               onValueChange={(v) =>
-                                updateIngredient(index, {
-                                  unit: v === SELECT_NONE ? "" : v,
-                                })
+                                updateIngredient(index, { unit: v === SELECT_NONE ? "" : v })
                               }
                             >
-                              <SelectTrigger
-                                className="h-9"
-                                data-testid={`select-ingredient-unit-${index}`}
-                              >
+                              <SelectTrigger className="h-9" data-testid={`select-ingredient-unit-${index}`}>
                                 <SelectValue placeholder="Unit" />
                               </SelectTrigger>
                               <SelectContent>
@@ -913,11 +900,7 @@ export default function CreatePost() {
                             <Input
                               placeholder="Ingredient"
                               value={row.name}
-                              onChange={(e) =>
-                                updateIngredient(index, {
-                                  name: e.target.value,
-                                })
-                              }
+                              onChange={(e) => updateIngredient(index, { name: e.target.value })}
                               className="h-9"
                               data-testid={`input-ingredient-name-${index}`}
                             />
@@ -944,12 +927,7 @@ export default function CreatePost() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <Label>Instructions *</Label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={addInstruction}
-                      >
+                      <Button type="button" variant="outline" size="sm" onClick={addInstruction}>
                         <Plus className="h-4 w-4 mr-2" />
                         Add step
                       </Button>
@@ -961,9 +939,7 @@ export default function CreatePost() {
                           <Input
                             placeholder={`Step ${index + 1}`}
                             value={instruction}
-                            onChange={(e) =>
-                              updateInstruction(index, e.target.value)
-                            }
+                            onChange={(e) => updateInstruction(index, e.target.value)}
                             data-testid={`input-instruction-${index}`}
                           />
                           <Button
@@ -998,4 +974,12 @@ export default function CreatePost() {
       </Card>
     </div>
   );
+
+  // Tag helpers (kept at bottom for minimal diff from your original layout)
+  function updateTag(index: number, value: string) {
+    setFormData((prev) => ({
+      ...prev,
+      tags: prev.tags.map((tag, i) => (i === index ? value : tag)),
+    }));
+  }
 }
