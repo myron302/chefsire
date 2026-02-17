@@ -35,22 +35,34 @@ type ParsedReview = {
   priceLevel?: number;
 };
 
+function normalizeReviewText(raw: string) {
+  // Turns one-line reviews into multi-line by inserting \n before each section marker.
+  // This makes both parsing + display cleaner.
+  return String(raw ?? "")
+    .replace(/\s+(📍\s*Location:)/g, "\n$1")
+    .replace(/\s+(⭐️?\s*Rating:)/g, "\n$1")
+    .replace(/\s+(✅\s*Pros:)/g, "\n$1")
+    .replace(/\s+(⚠️\s*Cons:)/g, "\n$1")
+    .replace(/\s+(💰\s*Price:)/g, "\n$1")
+    .replace(/\s+(💡\s*Verdict:)/g, "\n$1")
+    .replace(/\s+(Notes:)/gi, "\n$1")
+    .trim();
+}
+
 function parsePriceLevelFromLine(text?: string): number | undefined {
   const s = String(text ?? "").trim();
   if (!s) return undefined;
 
-  // Prefer longest "$$$" group so "$$ - $$$" becomes 3 (not 5)
+  // Prefer the longest $ group (so "$$ - $$$" => 3)
   const groups = s.match(/\$+/g);
   if (groups && groups.length) {
     const maxLen = Math.max(...groups.map((g) => g.length));
     return Math.max(1, Math.min(4, maxLen));
   }
 
-  // Fallback: allow numeric forms like "2", "2/4", "2 dollars"
-  const num = Number((s.match(/\d+/)?.[0] ?? "").trim());
-  if (Number.isFinite(num) && num > 0) {
-    return Math.max(1, Math.min(4, Math.floor(num)));
-  }
+  // Fallback numeric forms: "2", "2/4"
+  const n = Number((s.match(/\d+/)?.[0] ?? "").trim());
+  if (Number.isFinite(n) && n > 0) return Math.max(1, Math.min(4, Math.floor(n)));
 
   return undefined;
 }
@@ -59,7 +71,8 @@ function parseReviewCaption(caption: string): ParsedReview | null {
   const raw = (caption || "").trim();
   if (!raw.startsWith("📝 Review:")) return null;
 
-  const lines = raw
+  const normalized = normalizeReviewText(raw);
+  const lines = normalized
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
@@ -92,9 +105,7 @@ function parseReviewCaption(caption: string): ParsedReview | null {
   const priceLevel = parsePriceLevelFromLine(priceRaw);
 
   const notesLine = lines.find((l) => /^Notes:/i.test(l));
-  const notes = notesLine
-    ? notesLine.replace(/^Notes:\s*/i, "").trim()
-    : undefined;
+  const notes = notesLine ? notesLine.replace(/^Notes:\s*/i, "").trim() : undefined;
 
   return {
     businessName,
@@ -116,6 +127,17 @@ function buildMapsUrl(review: ParsedReview) {
     .trim();
   if (!q) return null;
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+}
+
+function splitToBullets(text?: string) {
+  const s = String(text ?? "").trim();
+  if (!s) return [];
+  // Split gently on separators people commonly use
+  const parts = s
+    .split(/•|;|\||,(?!\s*\d)/g) // avoid weird splits on numeric commas
+    .map((x) => x.trim())
+    .filter(Boolean);
+  return parts.length ? parts : [s];
 }
 
 export default function ReviewsPage() {
@@ -174,19 +196,14 @@ export default function ReviewsPage() {
     }));
 
     withParsed.sort((a, b) => {
-      if (sortByRating) {
-        return (b.parsed?.rating || 0) - (a.parsed?.rating || 0);
-      }
-      return (
-        new Date(b.post.createdAt).getTime() -
-        new Date(a.post.createdAt).getTime()
-      );
+      if (sortByRating) return (b.parsed?.rating || 0) - (a.parsed?.rating || 0);
+      return new Date(b.post.createdAt).getTime() - new Date(a.post.createdAt).getTime();
     });
 
     return withParsed.filter(({ post, parsed }) => {
       if (showSavedOnly && !savedIds.includes(post.id)) return false;
 
-      // IMPORTANT: use explicit null check (not truthy check)
+      // $ filter
       if (activePrice !== null) {
         if ((parsed?.priceLevel ?? null) !== activePrice) return false;
       }
@@ -229,21 +246,23 @@ export default function ReviewsPage() {
             <CardTitle className="text-2xl font-bold text-slate-900 italic tracking-tighter">
               REVIEWS
             </CardTitle>
+
             <div className="flex gap-2">
               <Button
                 variant={sortByRating ? "default" : "outline"}
                 size="sm"
                 onClick={() => setSortByRating(!sortByRating)}
               >
-                <ArrowUpNarrowWide className="mr-2 h-4 w-4" />{" "}
+                <ArrowUpNarrowWide className="mr-2 h-4 w-4" />
                 {sortByRating ? "Top Rated" : "Latest"}
               </Button>
+
               <Button
                 variant={showSavedOnly ? "secondary" : "outline"}
                 size="sm"
                 onClick={() => setShowSavedOnly(!showSavedOnly)}
               >
-                <Bookmark className="mr-2 h-4 w-4" />{" "}
+                <Bookmark className="mr-2 h-4 w-4" />
                 {showSavedOnly ? "Saved" : "All"}
               </Button>
             </div>
@@ -293,9 +312,7 @@ export default function ReviewsPage() {
                 key={p}
                 onClick={() => setActivePrice(activePrice === p ? null : p)}
                 className={`px-3 py-1 text-[10px] font-bold rounded ${
-                  activePrice === p
-                    ? "bg-primary text-white"
-                    : "text-muted-foreground"
+                  activePrice === p ? "bg-primary text-white" : "text-muted-foreground"
                 }`}
                 type="button"
               >
@@ -306,12 +323,10 @@ export default function ReviewsPage() {
         </CardHeader>
 
         <CardContent className="text-sm text-muted-foreground">
-          This page shows posts marked as{" "}
-          <span className="font-medium">Review</span>. <br />
-          <span className="text-xs">
-            Note: the $ filter only works if the review caption includes a line
-            like <span className="font-medium">💰 Price: $$</span>.
-          </span>
+          This page shows posts marked as <span className="font-medium">Review</span>.
+          <div className="text-xs mt-2">
+            Tip: reviews saved as one line will still display clean now.
+          </div>
         </CardContent>
       </Card>
 
@@ -326,66 +341,167 @@ export default function ReviewsPage() {
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-12">
+        <div className="space-y-10">
           {reviewPosts.map(({ post, parsed }) => {
-            const mapsUrl = parsed ? buildMapsUrl(parsed) : null;
             const isSaved = savedIds.includes(post.id);
+            const mapsUrl = parsed ? buildMapsUrl(parsed) : null;
+
+            const tags = (post.tags || []).filter((t) => t !== "review");
+            const pros = splitToBullets(parsed?.pros);
+            const cons = splitToBullets(parsed?.cons);
 
             return (
-              <div key={post.id} className="space-y-4">
-                {parsed && (
-                  <div className="px-1 space-y-3">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className="text-2xl font-black text-slate-900">
-                          {parsed.businessName}
-                        </h3>
-                        <div className="flex items-center gap-3 mt-1">
-                          {parsed.rating && (
-                            <div className="flex items-center text-yellow-500 font-bold">
-                              {parsed.rating}{" "}
-                              <Star
-                                size={16}
-                                fill="currentColor"
-                                className="ml-1"
-                              />
+              <Card key={post.id} className="overflow-hidden">
+                <CardContent className="p-4 space-y-4">
+                  {parsed ? (
+                    <div className="space-y-3">
+                      {/* Top row */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-2xl font-black text-slate-900 leading-tight">
+                            {parsed.businessName}
+                          </div>
+
+                          {/* Clickable address */}
+                          {(parsed.fullAddress || parsed.locationLabel) && (
+                            mapsUrl ? (
+                              <a
+                                href={mapsUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-1 inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-slate-900 hover:underline"
+                              >
+                                <MapPin size={14} />
+                                <span className="truncate">
+                                  {parsed.fullAddress || parsed.locationLabel}
+                                </span>
+                              </a>
+                            ) : (
+                              <div className="mt-1 inline-flex items-center gap-2 text-sm text-muted-foreground">
+                                <MapPin size={14} />
+                                <span className="truncate">
+                                  {parsed.fullAddress || parsed.locationLabel}
+                                </span>
+                              </div>
+                            )
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {typeof parsed.rating === "number" && (
+                            <div className="flex items-center gap-1 font-bold text-yellow-600">
+                              <span>{parsed.rating}</span>
+                              <Star size={16} fill="currentColor" />
                             </div>
                           )}
-                          {parsed.locationLabel && (
-                            <div className="text-muted-foreground text-xs flex items-center">
-                              <MapPin size={12} className="mr-1" />{" "}
-                              {parsed.locationLabel}
-                            </div>
+                          {typeof parsed.priceLevel === "number" && (
+                            <Badge variant="secondary" className="text-xs">
+                              {"$".repeat(parsed.priceLevel)}
+                            </Badge>
                           )}
                         </div>
                       </div>
+
+                      {/* Verdict */}
+                      {parsed.verdict && (
+                        <div className="bg-primary/5 border-l-4 border-primary p-3 rounded-r-lg">
+                          <div className="flex gap-2">
+                            <Lightbulb size={18} className="text-primary shrink-0" />
+                            <p className="text-sm italic font-medium">"{parsed.verdict}"</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Pros / Cons */}
+                      {(pros.length > 0 || cons.length > 0) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {pros.length > 0 && (
+                            <div className="rounded-lg border bg-emerald-50/40 p-3">
+                              <div className="flex items-center gap-2 font-semibold text-emerald-700 text-sm">
+                                <ThumbsUp size={14} />
+                                Pros
+                              </div>
+                              <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                                {pros.map((x, idx) => (
+                                  <li key={idx} className="leading-snug">
+                                    • {x}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {cons.length > 0 && (
+                            <div className="rounded-lg border bg-rose-50/40 p-3">
+                              <div className="flex items-center gap-2 font-semibold text-rose-700 text-sm">
+                                <ThumbsDown size={14} />
+                                Cons
+                              </div>
+                              <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                                {cons.map((x, idx) => (
+                                  <li key={idx} className="leading-snug">
+                                    • {x}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Notes */}
+                      {parsed.notes && (
+                        <div className="rounded-lg border bg-muted/30 p-3">
+                          <div className="text-xs font-semibold text-muted-foreground">
+                            Notes
+                          </div>
+                          <div className="mt-1 text-sm text-slate-800">
+                            {parsed.notes}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Tags */}
+                      {tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {tags.slice(0, 6).map((t) => (
+                            <Badge key={t} variant="outline">
+                              {t}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Save / Share */}
                       <div className="flex gap-2">
                         <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 rounded-full"
+                          variant="outline"
+                          size="sm"
                           onClick={() => {
                             const newIds = isSaved
                               ? savedIds.filter((i) => i !== post.id)
                               : [...savedIds, post.id];
                             setSavedIds(newIds);
-                            localStorage.setItem(
-                              "saved_reviews",
-                              JSON.stringify(newIds)
-                            );
+                            localStorage.setItem("saved_reviews", JSON.stringify(newIds));
                             toast({ title: isSaved ? "Removed" : "Saved" });
                           }}
                         >
                           {isSaved ? (
-                            <BookmarkCheck className="text-primary" />
+                            <>
+                              <BookmarkCheck className="mr-2 h-4 w-4 text-primary" />
+                              Saved
+                            </>
                           ) : (
-                            <Bookmark />
+                            <>
+                              <Bookmark className="mr-2 h-4 w-4" />
+                              Save
+                            </>
                           )}
                         </Button>
+
                         <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 rounded-full"
+                          variant="outline"
+                          size="sm"
                           onClick={() => {
                             navigator.clipboard.writeText(
                               `${window.location.origin}/posts/${post.id}`
@@ -396,64 +512,43 @@ export default function ReviewsPage() {
                           }}
                         >
                           {copiedId === post.id ? (
-                            <Check className="text-emerald-500" />
+                            <>
+                              <Check className="mr-2 h-4 w-4 text-emerald-500" />
+                              Copied
+                            </>
                           ) : (
-                            <Share2 />
+                            <>
+                              <Share2 className="mr-2 h-4 w-4" />
+                              Share
+                            </>
                           )}
                         </Button>
+
                         {mapsUrl && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="rounded-full text-xs"
-                            asChild
-                          >
+                          <Button variant="outline" size="sm" asChild>
                             <a href={mapsUrl} target="_blank" rel="noreferrer">
-                              Directions
+                              <MapPin className="mr-2 h-4 w-4" />
+                              Open Map
                             </a>
                           </Button>
                         )}
                       </div>
                     </div>
-
-                    {parsed.verdict && (
-                      <div className="bg-primary/5 border-l-4 border-primary p-3 rounded-r-lg">
-                        <div className="flex gap-2">
-                          <Lightbulb
-                            size={18}
-                            className="text-primary shrink-0"
-                          />
-                          <p className="text-sm italic font-medium">
-                            "{parsed.verdict}"
-                          </p>
-                        </div>
-                      </div>
-                    )}
-
-                    <div className="flex flex-wrap gap-2">
-                      {parsed.pros && (
-                        <Badge
-                          variant="secondary"
-                          className="bg-emerald-50 text-emerald-700 border-emerald-100"
-                        >
-                          <ThumbsUp size={12} className="mr-1" /> {parsed.pros}
-                        </Badge>
-                      )}
-                      {parsed.cons && (
-                        <Badge
-                          variant="secondary"
-                          className="bg-rose-50 text-rose-700 border-rose-100"
-                        >
-                          <ThumbsDown size={12} className="mr-1" /> {parsed.cons}
-                        </Badge>
-                      )}
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      This review doesn’t match the template format, so it’s shown as a normal post.
                     </div>
-                  </div>
-                )}
-                <div className="rounded-2xl overflow-hidden border shadow-sm">
-                  <PostCard post={post} currentUserId={currentUserId} />
+                  )}
+                </CardContent>
+
+                {/* Keep PostCard for image + likes/comments, but remove the garbled caption */}
+                <div className="border-t">
+                  <PostCard
+                    post={{ ...post, caption: "" }}
+                    currentUserId={currentUserId}
+                  />
                 </div>
-              </div>
+              </Card>
             );
           })}
         </div>
