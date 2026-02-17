@@ -30,7 +30,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -214,8 +213,7 @@ export default function ClubPage() {
   const businessInputRef = useRef<HTMLInputElement | null>(null);
   const locationInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Create post composer state
-  const [composerOpen, setComposerOpen] = useState(false);
+  // Composer state (inline in Posts tab)
   const [newPostType, setNewPostType] = useState<"post" | "recipe" | "review">("post");
   const [newPostCaption, setNewPostCaption] = useState("");
   const [newPostTags, setNewPostTags] = useState<string[]>([""]);
@@ -223,7 +221,7 @@ export default function ClubPage() {
   const [newPostImagePreview, setNewPostImagePreview] = useState<string>("");
   const [newPostMediaKind, setNewPostMediaKind] = useState<MediaKind>("");
 
-  // Recipe fields (club composer)
+  // Recipe fields
   const [recipeTitle, setRecipeTitle] = useState("");
   const [ingredients, setIngredients] = useState<IngredientRow[]>([{ amount: "", unit: "", name: "" }]);
   const [instructions, setInstructions] = useState<string[]>([""]);
@@ -231,7 +229,7 @@ export default function ClubPage() {
   const [servings, setServings] = useState("");
   const [difficulty, setDifficulty] = useState("Easy");
 
-  // Review fields (club composer)
+  // Review fields
   const [reviewBusinessName, setReviewBusinessName] = useState("");
   const [reviewFullAddress, setReviewFullAddress] = useState("");
   const [reviewLocationLabel, setReviewLocationLabel] = useState("");
@@ -268,30 +266,6 @@ export default function ClubPage() {
     newPostCaption,
   ]);
 
-  // Club details
-  const {
-    data: clubData,
-    isLoading: clubLoading,
-    isError: clubIsError,
-    error: clubError,
-  } = useQuery({
-    queryKey: [`/api/clubs/${clubId}`],
-  });
-
-  // Club posts (DO NOT gate by membership)
-  const { data: postsData, isLoading: postsLoading } = useQuery({
-    queryKey: [`/api/clubs/${clubId}/posts`],
-    enabled: !!clubId,
-  });
-
-  const club = (clubData as ClubDetailsResponse | undefined)?.club;
-  const stats = (clubData as ClubDetailsResponse | undefined)?.stats;
-
-  const posts = ((postsData as ClubPostsResponse | undefined)?.posts || []) as ClubPost[];
-
-  const isMember = !!stats?.isMember;
-  const isAdmin = !!stats?.isAdmin;
-
   const resetComposer = () => {
     setNewPostType("post");
     setNewPostCaption("");
@@ -317,7 +291,30 @@ export default function ClubPage() {
     setReviewNotes("");
   };
 
-  const handleNewPostImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Club details
+  const {
+    data: clubData,
+    isLoading: clubLoading,
+    isError: clubIsError,
+    error: clubError,
+  } = useQuery({
+    queryKey: [`/api/clubs/${clubId}`],
+  });
+
+  // Club posts
+  const { data: postsData, isLoading: postsLoading } = useQuery({
+    queryKey: [`/api/clubs/${clubId}/posts`],
+    enabled: !!clubId,
+  });
+
+  const club = (clubData as ClubDetailsResponse | undefined)?.club;
+  const stats = (clubData as ClubDetailsResponse | undefined)?.stats;
+  const posts = ((postsData as ClubPostsResponse | undefined)?.posts || []) as ClubPost[];
+
+  const isMember = !!stats?.isMember;
+  const isAdmin = !!stats?.isAdmin;
+
+  const handleNewPostMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -344,7 +341,7 @@ export default function ClubPage() {
     reader.readAsDataURL(file);
   };
 
-  // Join / Leave club
+  // Join / Leave
   const joinMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/clubs/${clubId}/join`);
@@ -369,7 +366,6 @@ export default function ClubPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
       toast({ description: "Left club" });
-      setComposerOpen(false);
       resetComposer();
     },
     onError: (err: Error) => {
@@ -382,10 +378,10 @@ export default function ClubPage() {
     mutationFn: async () => {
       if (!user?.id) throw new Error("You must be logged in");
       if (!isMember) throw new Error("Join the club to post");
+      if (!newPostImagePreview.trim()) throw new Error("Please add a photo/video (upload or URL)");
 
       const tags = newPostTags.map((t) => t.trim()).filter(Boolean);
 
-      // Review uses template caption
       const captionToSend =
         newPostType === "review"
           ? buildReviewCaption({
@@ -401,10 +397,6 @@ export default function ClubPage() {
             })
           : newPostCaption;
 
-      if (!newPostImagePreview.trim()) {
-        throw new Error("Please add a photo/video (upload or URL)");
-      }
-
       const payload: any = {
         clubId,
         caption: captionToSend,
@@ -413,7 +405,6 @@ export default function ClubPage() {
         postType: newPostType,
       };
 
-      // Recipe
       if (newPostType === "recipe") {
         if (!recipeTitle.trim()) throw new Error("Please add a recipe title");
 
@@ -434,7 +425,6 @@ export default function ClubPage() {
         };
       }
 
-      // Review (optional extra structured fields)
       if (newPostType === "review") {
         if (!reviewBusinessName.trim()) throw new Error("Please choose a business");
         if (!reviewRating.trim()) throw new Error("Please select a rating");
@@ -459,8 +449,8 @@ export default function ClubPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}/posts`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/clubs/${clubId}`] });
       toast({ description: "Posted to club!" });
-      setComposerOpen(false);
       resetComposer();
     },
     onError: (err: Error) => {
@@ -468,7 +458,7 @@ export default function ClubPage() {
     },
   });
 
-  // Wire up Google Places Autocomplete (business + location) for review
+  // Google Places Autocomplete for review
   useEffect(() => {
     if (!isGoogleMapsLoaded) return;
     if (!window.google?.maps?.places) return;
@@ -506,7 +496,7 @@ export default function ClubPage() {
     }
   }, [isGoogleMapsLoaded]);
 
-  // Ingredients helpers (club composer)
+  // Ingredients helpers
   const addIngredientRow = () =>
     setIngredients((prev) => [...prev, { amount: "", unit: "", name: "" }]);
 
@@ -516,14 +506,14 @@ export default function ClubPage() {
   const updateIngredientRow = (index: number, patch: Partial<IngredientRow>) =>
     setIngredients((prev) => prev.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 
-  // Instructions helpers (club composer)
+  // Instructions helpers
   const addInstruction = () => setInstructions((prev) => [...prev, ""]);
   const removeInstruction = (index: number) =>
     setInstructions((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   const updateInstruction = (index: number, value: string) =>
     setInstructions((prev) => prev.map((s, i) => (i === index ? value : s)));
 
-  // Error UI (IMPORTANT FIX)
+  // Error UI
   if (clubIsError) {
     const msg =
       (clubError as any)?.message ||
@@ -660,502 +650,12 @@ export default function ClubPage() {
                     Join
                   </Button>
                 )}
-
-                {isMember && (
-                  <Dialog open={composerOpen} onOpenChange={setComposerOpen}>
-                    <DialogTrigger asChild>
-                      <Button>
-                        <Plus className="h-4 w-4 mr-2" />
-                        Post
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="max-w-2xl">
-                      <DialogHeader>
-                        <DialogTitle>Post to {club.name}</DialogTitle>
-                      </DialogHeader>
-
-                      <div className="space-y-5">
-                        {/* Post type */}
-                        <div className="space-y-2">
-                          <Label>Post type</Label>
-                          <Select value={newPostType} onValueChange={(v) => setNewPostType(v as any)}>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Choose type" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="post">Post</SelectItem>
-                              <SelectItem value="recipe">Recipe</SelectItem>
-                              <SelectItem value="review">Review</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-
-                        {/* Media */}
-                        <div className="space-y-2">
-                          <Label>Photo/Video *</Label>
-                          <div className="border-2 border-dashed rounded-lg p-4">
-                            {newPostImagePreview ? (
-                              <div className="space-y-3">
-                                <div className="rounded-lg overflow-hidden">
-                                  {newPostMediaKind === "video" ? (
-                                    <video src={newPostImagePreview} controls className="w-full max-h-80 object-cover" />
-                                  ) : (
-                                    <img src={newPostImagePreview} alt="Post preview" className="w-full max-h-80 object-cover" />
-                                  )}
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    onClick={() => {
-                                      setNewPostImageFile(null);
-                                      setNewPostImagePreview("");
-                                      setNewPostMediaKind("");
-                                    }}
-                                  >
-                                    <X className="h-4 w-4 mr-2" />
-                                    Remove
-                                  </Button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="space-y-3">
-                                <div className="flex items-center justify-center gap-3">
-                                  <Camera className="h-9 w-9 text-slate-500" />
-                                  <Video className="h-9 w-9 text-slate-500" />
-                                </div>
-                                <div className="flex flex-col sm:flex-row gap-2">
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="flex-1"
-                                    onClick={() => document.getElementById("club-camera-input")?.click()}
-                                  >
-                                    <Camera className="h-4 w-4 mr-2" />
-                                    Camera
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="flex-1"
-                                    onClick={() => document.getElementById("club-file-input")?.click()}
-                                  >
-                                    <Upload className="h-4 w-4 mr-2" />
-                                    Upload Media
-                                  </Button>
-                                </div>
-
-                                <input
-                                  id="club-camera-input"
-                                  type="file"
-                                  accept="image/*,video/*"
-                                  capture="environment"
-                                  onChange={handleNewPostImageChange}
-                                  className="hidden"
-                                />
-                                <input
-                                  id="club-file-input"
-                                  type="file"
-                                  accept="image/*,video/*"
-                                  onChange={handleNewPostImageChange}
-                                  className="hidden"
-                                />
-
-                                <p className="text-xs text-slate-500">
-                                  Or paste a media URL
-                                </p>
-                                <Input
-                                  placeholder="https://example.com/image.jpg or .mp4"
-                                  value={newPostImagePreview}
-                                  onChange={(e) => {
-                                    const url = e.target.value;
-                                    setNewPostImagePreview(url);
-                                    if (!url) {
-                                      setNewPostMediaKind("");
-                                      return;
-                                    }
-                                    setNewPostMediaKind(isVideoUrl(url) ? "video" : "image");
-                                  }}
-                                />
-                              </div>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Review fields */}
-                        {newPostType === "review" && (
-                          <>
-                            <Separator />
-                            <div className="space-y-4">
-                              <h3 className="text-lg font-semibold">Review Details</h3>
-
-                              <div className="space-y-2">
-                                <Label>Business *</Label>
-                                <Input
-                                  ref={businessInputRef}
-                                  placeholder="Search a business (Google Places)…"
-                                  value={reviewBusinessName}
-                                  onChange={(e) => setReviewBusinessName(e.target.value)}
-                                />
-                                <p className="text-xs text-slate-500">
-                                  Start typing to use Google Places suggestions.
-                                </p>
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                  <Label>Full address</Label>
-                                  <Input
-                                    placeholder="Auto-filled from selection"
-                                    value={reviewFullAddress}
-                                    onChange={(e) => setReviewFullAddress(e.target.value)}
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Location (City/State)</Label>
-                                  <Input
-                                    ref={locationInputRef}
-                                    placeholder="City, State (Google Places)…"
-                                    value={reviewLocationLabel}
-                                    onChange={(e) => setReviewLocationLabel(e.target.value)}
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                  <Label>Rating *</Label>
-                                  <Select value={reviewRating} onValueChange={setReviewRating}>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Select rating" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="5">5/5</SelectItem>
-                                      <SelectItem value="4">4/5</SelectItem>
-                                      <SelectItem value="3">3/5</SelectItem>
-                                      <SelectItem value="2">2/5</SelectItem>
-                                      <SelectItem value="1">1/5</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Verdict</Label>
-                                  <Input
-                                    placeholder="e.g., Def recommend"
-                                    value={reviewVerdict}
-                                    onChange={(e) => setReviewVerdict(e.target.value)}
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                  <Label>Pros</Label>
-                                  <Input
-                                    placeholder="e.g., Flavor"
-                                    value={reviewPros}
-                                    onChange={(e) => setReviewPros(e.target.value)}
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Cons</Label>
-                                  <Input
-                                    placeholder="e.g., Price"
-                                    value={reviewCons}
-                                    onChange={(e) => setReviewCons(e.target.value)}
-                                  />
-                                </div>
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label>Notes</Label>
-                                <Input
-                                  placeholder="e.g., Stewed Chicken"
-                                  value={reviewNotes}
-                                  onChange={(e) => setReviewNotes(e.target.value)}
-                                />
-                              </div>
-
-                              <div className="space-y-2">
-                                <Label>Hashtags / extra lines (optional)</Label>
-                                <Textarea
-                                  placeholder={"#jamaican\n#hartford\n..."}
-                                  value={newPostCaption}
-                                  onChange={(e) => setNewPostCaption(e.target.value)}
-                                  rows={3}
-                                  className="resize-none"
-                                />
-                              </div>
-
-                              {reviewCaptionPreview && (
-                                <div className="rounded-md border p-3 bg-slate-50">
-                                  <div className="text-xs font-medium mb-2 text-slate-500">
-                                    Preview
-                                  </div>
-                                  <pre className="whitespace-pre-wrap text-sm leading-relaxed">
-                                    {reviewCaptionPreview}
-                                  </pre>
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        )}
-
-                        {/* Caption (post/recipe only) */}
-                        {newPostType !== "review" && (
-                          <div className="space-y-2">
-                            <Label>Caption</Label>
-                            <Textarea
-                              placeholder="Write something..."
-                              value={newPostCaption}
-                              onChange={(e) => setNewPostCaption(e.target.value)}
-                              rows={4}
-                              className="resize-none"
-                            />
-                          </div>
-                        )}
-
-                        {/* Tags */}
-                        <div className="space-y-2">
-                          <Label>Tags</Label>
-                          <div className="space-y-2">
-                            {newPostTags.map((tag, index) => (
-                              <div key={index} className="flex items-center gap-2">
-                                <Input
-                                  placeholder="Enter a tag (e.g., italian, pasta)"
-                                  value={tag}
-                                  onChange={(e) =>
-                                    setNewPostTags((prev) =>
-                                      prev.map((t, i) => (i === index ? e.target.value : t))
-                                    )
-                                  }
-                                />
-                                {newPostTags.length > 1 && (
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="icon"
-                                    onClick={() =>
-                                      setNewPostTags((prev) => prev.filter((_, i) => i !== index))
-                                    }
-                                  >
-                                    <Minus className="h-4 w-4" />
-                                  </Button>
-                                )}
-                              </div>
-                            ))}
-
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => setNewPostTags((prev) => [...prev, ""])}
-                            >
-                              <Plus className="h-4 w-4 mr-2" />
-                              Add Tag
-                            </Button>
-                          </div>
-                        </div>
-
-                        {/* Recipe fields */}
-                        {newPostType === "recipe" && (
-                          <>
-                            <Separator />
-                            <div className="space-y-4">
-                              <h3 className="text-lg font-semibold">Recipe Details</h3>
-
-                              <div className="space-y-2">
-                                <Label>Recipe Title *</Label>
-                                <Input
-                                  placeholder="Enter the recipe name"
-                                  value={recipeTitle}
-                                  onChange={(e) => setRecipeTitle(e.target.value)}
-                                />
-                              </div>
-
-                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                  <Label>Cook Time (minutes)</Label>
-                                  <Input
-                                    type="number"
-                                    inputMode="numeric"
-                                    placeholder="30"
-                                    value={cookTime}
-                                    onChange={(e) => setCookTime(e.target.value)}
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Servings</Label>
-                                  <Input
-                                    type="number"
-                                    inputMode="numeric"
-                                    placeholder="4"
-                                    value={servings}
-                                    onChange={(e) => setServings(e.target.value)}
-                                  />
-                                </div>
-                                <div className="space-y-2">
-                                  <Label>Difficulty</Label>
-                                  <Select value={difficulty} onValueChange={setDifficulty}>
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="Easy">Easy</SelectItem>
-                                      <SelectItem value="Medium">Medium</SelectItem>
-                                      <SelectItem value="Hard">Hard</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </div>
-
-                              {/* Ingredients */}
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <Label>Ingredients *</Label>
-                                  <Button type="button" variant="outline" size="sm" onClick={addIngredientRow}>
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Add
-                                  </Button>
-                                </div>
-
-                                <div className="space-y-2">
-                                  {ingredients.map((row, index) => (
-                                    <div key={index} className="grid grid-cols-12 gap-2 items-center">
-                                      <div className="col-span-4 sm:col-span-3">
-                                        <Select
-                                          value={row.amount || SELECT_NONE}
-                                          onValueChange={(v) =>
-                                            updateIngredientRow(index, {
-                                              amount: v === SELECT_NONE ? "" : v,
-                                            })
-                                          }
-                                        >
-                                          <SelectTrigger className="h-9">
-                                            <SelectValue placeholder="Amt" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value={SELECT_NONE}>—</SelectItem>
-                                            {AMOUNT_OPTIONS.map((opt) => (
-                                              <SelectItem key={opt} value={opt}>
-                                                {opt}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-
-                                      <div className="col-span-4 sm:col-span-3">
-                                        <Select
-                                          value={row.unit || SELECT_NONE}
-                                          onValueChange={(v) =>
-                                            updateIngredientRow(index, {
-                                              unit: v === SELECT_NONE ? "" : v,
-                                            })
-                                          }
-                                        >
-                                          <SelectTrigger className="h-9">
-                                            <SelectValue placeholder="Unit" />
-                                          </SelectTrigger>
-                                          <SelectContent>
-                                            <SelectItem value={SELECT_NONE}>—</SelectItem>
-                                            {UNIT_OPTIONS.map((opt) => (
-                                              <SelectItem key={opt} value={opt}>
-                                                {opt}
-                                              </SelectItem>
-                                            ))}
-                                          </SelectContent>
-                                        </Select>
-                                      </div>
-
-                                      <div className="col-span-4 sm:col-span-5">
-                                        <Input
-                                          placeholder="Ingredient"
-                                          value={row.name}
-                                          onChange={(e) => updateIngredientRow(index, { name: e.target.value })}
-                                          className="h-9"
-                                        />
-                                      </div>
-
-                                      <div className="col-span-12 sm:col-span-1 flex justify-end">
-                                        <Button
-                                          type="button"
-                                          variant="ghost"
-                                          size="icon"
-                                          onClick={() => removeIngredientRow(index)}
-                                          disabled={ingredients.length <= 1}
-                                        >
-                                          <Minus className="h-4 w-4" />
-                                        </Button>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-
-                              {/* Instructions */}
-                              <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                  <Label>Instructions *</Label>
-                                  <Button type="button" variant="outline" size="sm" onClick={addInstruction}>
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Add step
-                                  </Button>
-                                </div>
-
-                                <div className="space-y-2">
-                                  {instructions.map((instruction, index) => (
-                                    <div key={index} className="flex items-center gap-2">
-                                      <Input
-                                        placeholder={`Step ${index + 1}`}
-                                        value={instruction}
-                                        onChange={(e) => updateInstruction(index, e.target.value)}
-                                      />
-                                      <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => removeInstruction(index)}
-                                        disabled={instructions.length <= 1}
-                                      >
-                                        <Minus className="h-4 w-4" />
-                                      </Button>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </div>
-                          </>
-                        )}
-
-                        <div className="flex justify-end gap-2 pt-2">
-                          <Button
-                            variant="outline"
-                            type="button"
-                            onClick={() => {
-                              setComposerOpen(false);
-                              resetComposer();
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            type="button"
-                            onClick={() => createClubPostMutation.mutate()}
-                            disabled={createClubPostMutation.isPending}
-                          >
-                            {createClubPostMutation.isPending ? "Posting..." : "Post"}
-                          </Button>
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                )}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Content */}
+        {/* Tabs */}
         <Tabs defaultValue="posts">
           <TabsList>
             <TabsTrigger value="posts">Posts</TabsTrigger>
@@ -1164,6 +664,500 @@ export default function ClubPage() {
           </TabsList>
 
           <TabsContent value="posts" className="space-y-4 mt-4">
+            {/* INLINE COMPOSER */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Post in this club</CardTitle>
+                <CardDescription>
+                  {isMember ? "Share a post, recipe, or review." : "Join the club to post."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {!user?.id ? (
+                  <Alert variant="destructive">
+                    <AlertTitle>Login required</AlertTitle>
+                    <AlertDescription>You must be logged in to post.</AlertDescription>
+                  </Alert>
+                ) : !isMember ? (
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button
+                      onClick={() => joinMutation.mutate()}
+                      disabled={joinMutation.isPending}
+                      className="sm:w-auto w-full"
+                    >
+                      {joinMutation.isPending ? "Joining..." : "Join to post"}
+                    </Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Post type</Label>
+                      <Select value={newPostType} onValueChange={(v) => setNewPostType(v as any)}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="post">Post</SelectItem>
+                          <SelectItem value="recipe">Recipe</SelectItem>
+                          <SelectItem value="review">Review</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Photo/Video *</Label>
+                      <div className="border-2 border-dashed rounded-lg p-4">
+                        {newPostImagePreview ? (
+                          <div className="space-y-3">
+                            <div className="rounded-lg overflow-hidden">
+                              {newPostMediaKind === "video" ? (
+                                <video src={newPostImagePreview} controls className="w-full max-h-80 object-cover" />
+                              ) : (
+                                <img src={newPostImagePreview} alt="Post preview" className="w-full max-h-80 object-cover" />
+                              )}
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                  setNewPostImageFile(null);
+                                  setNewPostImagePreview("");
+                                  setNewPostMediaKind("");
+                                }}
+                              >
+                                <X className="h-4 w-4 mr-2" />
+                                Remove
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-center gap-3">
+                              <Camera className="h-9 w-9 text-slate-500" />
+                              <Video className="h-9 w-9 text-slate-500" />
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-2">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => document.getElementById("club-camera-input")?.click()}
+                              >
+                                <Camera className="h-4 w-4 mr-2" />
+                                Camera
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="flex-1"
+                                onClick={() => document.getElementById("club-file-input")?.click()}
+                              >
+                                <Upload className="h-4 w-4 mr-2" />
+                                Upload Media
+                              </Button>
+                            </div>
+
+                            <input
+                              id="club-camera-input"
+                              type="file"
+                              accept="image/*,video/*"
+                              capture="environment"
+                              onChange={handleNewPostMediaChange}
+                              className="hidden"
+                            />
+                            <input
+                              id="club-file-input"
+                              type="file"
+                              accept="image/*,video/*"
+                              onChange={handleNewPostMediaChange}
+                              className="hidden"
+                            />
+
+                            <p className="text-xs text-slate-500">Or paste a media URL</p>
+                            <Input
+                              placeholder="https://example.com/image.jpg or .mp4"
+                              value={newPostImagePreview}
+                              onChange={(e) => {
+                                const url = e.target.value;
+                                setNewPostImagePreview(url);
+                                if (!url) {
+                                  setNewPostMediaKind("");
+                                  return;
+                                }
+                                setNewPostMediaKind(isVideoUrl(url) ? "video" : "image");
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* REVIEW FIELDS */}
+                    {newPostType === "review" && (
+                      <>
+                        <Separator />
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold">Review Details</h3>
+
+                          <div className="space-y-2">
+                            <Label>Business *</Label>
+                            <Input
+                              ref={businessInputRef}
+                              placeholder="Search a business (Google Places)…"
+                              value={reviewBusinessName}
+                              onChange={(e) => setReviewBusinessName(e.target.value)}
+                            />
+                            <p className="text-xs text-slate-500">
+                              Start typing to use Google Places suggestions.
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>Full address</Label>
+                              <Input
+                                placeholder="Auto-filled from selection"
+                                value={reviewFullAddress}
+                                onChange={(e) => setReviewFullAddress(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Location (City/State)</Label>
+                              <Input
+                                ref={locationInputRef}
+                                placeholder="City, State (Google Places)…"
+                                value={reviewLocationLabel}
+                                onChange={(e) => setReviewLocationLabel(e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>Rating *</Label>
+                              <Select value={reviewRating} onValueChange={setReviewRating}>
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select rating" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="5">5/5</SelectItem>
+                                  <SelectItem value="4">4/5</SelectItem>
+                                  <SelectItem value="3">3/5</SelectItem>
+                                  <SelectItem value="2">2/5</SelectItem>
+                                  <SelectItem value="1">1/5</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Verdict</Label>
+                              <Input
+                                placeholder="e.g., Def recommend"
+                                value={reviewVerdict}
+                                onChange={(e) => setReviewVerdict(e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label>Pros</Label>
+                              <Input
+                                placeholder="e.g., Flavor"
+                                value={reviewPros}
+                                onChange={(e) => setReviewPros(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Cons</Label>
+                              <Input
+                                placeholder="e.g., Price"
+                                value={reviewCons}
+                                onChange={(e) => setReviewCons(e.target.value)}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Notes</Label>
+                            <Input
+                              placeholder="e.g., Stewed Chicken"
+                              value={reviewNotes}
+                              onChange={(e) => setReviewNotes(e.target.value)}
+                            />
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Hashtags / extra lines (optional)</Label>
+                            <Textarea
+                              placeholder={"#jamaican\n#hartford\n..."}
+                              value={newPostCaption}
+                              onChange={(e) => setNewPostCaption(e.target.value)}
+                              rows={3}
+                              className="resize-none"
+                            />
+                          </div>
+
+                          {reviewCaptionPreview && (
+                            <div className="rounded-md border p-3 bg-slate-50">
+                              <div className="text-xs font-medium mb-2 text-slate-500">Preview</div>
+                              <pre className="whitespace-pre-wrap text-sm leading-relaxed">
+                                {reviewCaptionPreview}
+                              </pre>
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {/* CAPTION (POST/RECIPE) */}
+                    {newPostType !== "review" && (
+                      <div className="space-y-2">
+                        <Label>Caption</Label>
+                        <Textarea
+                          placeholder="Write something..."
+                          value={newPostCaption}
+                          onChange={(e) => setNewPostCaption(e.target.value)}
+                          rows={4}
+                          className="resize-none"
+                        />
+                      </div>
+                    )}
+
+                    {/* TAGS */}
+                    <div className="space-y-2">
+                      <Label>Tags</Label>
+                      <div className="space-y-2">
+                        {newPostTags.map((tag, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <Input
+                              placeholder="Enter a tag (e.g., italian, pasta)"
+                              value={tag}
+                              onChange={(e) =>
+                                setNewPostTags((prev) =>
+                                  prev.map((t, i) => (i === index ? e.target.value : t))
+                                )
+                              }
+                            />
+                            {newPostTags.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                onClick={() =>
+                                  setNewPostTags((prev) => prev.filter((_, i) => i !== index))
+                                }
+                              >
+                                <Minus className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
+                        ))}
+
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setNewPostTags((prev) => [...prev, ""])}
+                        >
+                          <Plus className="h-4 w-4 mr-2" />
+                          Add Tag
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* RECIPE FIELDS */}
+                    {newPostType === "recipe" && (
+                      <>
+                        <Separator />
+                        <div className="space-y-4">
+                          <h3 className="text-lg font-semibold">Recipe Details</h3>
+
+                          <div className="space-y-2">
+                            <Label>Recipe Title *</Label>
+                            <Input
+                              placeholder="Enter the recipe name"
+                              value={recipeTitle}
+                              onChange={(e) => setRecipeTitle(e.target.value)}
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                              <Label>Cook Time (minutes)</Label>
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                placeholder="30"
+                                value={cookTime}
+                                onChange={(e) => setCookTime(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Servings</Label>
+                              <Input
+                                type="number"
+                                inputMode="numeric"
+                                placeholder="4"
+                                value={servings}
+                                onChange={(e) => setServings(e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label>Difficulty</Label>
+                              <Select value={difficulty} onValueChange={setDifficulty}>
+                                <SelectTrigger>
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="Easy">Easy</SelectItem>
+                                  <SelectItem value="Medium">Medium</SelectItem>
+                                  <SelectItem value="Hard">Hard</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          {/* Ingredients */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label>Ingredients *</Label>
+                              <Button type="button" variant="outline" size="sm" onClick={addIngredientRow}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add
+                              </Button>
+                            </div>
+
+                            <div className="space-y-2">
+                              {ingredients.map((row, index) => (
+                                <div key={index} className="grid grid-cols-12 gap-2 items-center">
+                                  <div className="col-span-4 sm:col-span-3">
+                                    <Select
+                                      value={row.amount || SELECT_NONE}
+                                      onValueChange={(v) =>
+                                        updateIngredientRow(index, {
+                                          amount: v === SELECT_NONE ? "" : v,
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="h-9">
+                                        <SelectValue placeholder="Amt" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value={SELECT_NONE}>—</SelectItem>
+                                        {AMOUNT_OPTIONS.map((opt) => (
+                                          <SelectItem key={opt} value={opt}>
+                                            {opt}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  <div className="col-span-4 sm:col-span-3">
+                                    <Select
+                                      value={row.unit || SELECT_NONE}
+                                      onValueChange={(v) =>
+                                        updateIngredientRow(index, {
+                                          unit: v === SELECT_NONE ? "" : v,
+                                        })
+                                      }
+                                    >
+                                      <SelectTrigger className="h-9">
+                                        <SelectValue placeholder="Unit" />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        <SelectItem value={SELECT_NONE}>—</SelectItem>
+                                        {UNIT_OPTIONS.map((opt) => (
+                                          <SelectItem key={opt} value={opt}>
+                                            {opt}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+
+                                  <div className="col-span-4 sm:col-span-5">
+                                    <Input
+                                      placeholder="Ingredient"
+                                      value={row.name}
+                                      onChange={(e) => updateIngredientRow(index, { name: e.target.value })}
+                                      className="h-9"
+                                    />
+                                  </div>
+
+                                  <div className="col-span-12 sm:col-span-1 flex justify-end">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="icon"
+                                      onClick={() => removeIngredientRow(index)}
+                                      disabled={ingredients.length <= 1}
+                                    >
+                                      <Minus className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Instructions */}
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between">
+                              <Label>Instructions *</Label>
+                              <Button type="button" variant="outline" size="sm" onClick={addInstruction}>
+                                <Plus className="h-4 w-4 mr-2" />
+                                Add step
+                              </Button>
+                            </div>
+
+                            <div className="space-y-2">
+                              {instructions.map((instruction, index) => (
+                                <div key={index} className="flex items-center gap-2">
+                                  <Input
+                                    placeholder={`Step ${index + 1}`}
+                                    value={instruction}
+                                    onChange={(e) => updateInstruction(index, e.target.value)}
+                                  />
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => removeInstruction(index)}
+                                    disabled={instructions.length <= 1}
+                                  >
+                                    <Minus className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    <div className="flex flex-col sm:flex-row sm:justify-end gap-2 pt-2">
+                      <Button
+                        variant="outline"
+                        type="button"
+                        onClick={resetComposer}
+                      >
+                        Clear
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={() => createClubPostMutation.mutate()}
+                        disabled={createClubPostMutation.isPending}
+                      >
+                        {createClubPostMutation.isPending ? "Posting..." : "Post"}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* POSTS LIST */}
             {postsLoading ? (
               <Card>
                 <CardContent className="py-10 text-center text-slate-600">
