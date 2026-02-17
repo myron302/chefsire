@@ -1,3 +1,4 @@
+// client/src/App.tsx
 import * as React from "react";
 import { Switch, Route, useLocation } from "wouter";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -45,10 +46,12 @@ import HouseholdPantry from "@/pages/pantry/household";
 import PantryScanner from "@/pages/pantry/scanner";
 import ShoppingListPage from "@/pages/pantry/shopping-list";
 import AllergiesDashboard from "@/pages/allergies";
-import NutritionMealPlanner from "@/components/NutritionMealPlanner";
+import NutritionPage from "@/pages/nutrition";
 import MealPlanCreator from "@/pages/nutrition/MealPlanCreator";
 import MealPlanMarketplace from "@/pages/nutrition/MealPlanMarketplace";
 import CreatorAnalytics from "@/pages/nutrition/CreatorAnalytics";
+import MealPlanDetailsPage from "@/pages/nutrition/MealPlanDetailsPage";
+import MyPurchasesPage from "@/pages/nutrition/MyPurchasesPage";
 import ClubsPage from "@/pages/clubs";
 import ClubDetailPage from "@/pages/clubs/[id]";
 import NotFound from "@/pages/not-found";
@@ -433,19 +436,59 @@ export default function App() {
         {/* Allergies Dashboard */}
         <Route path="/allergies" component={AllergiesDashboard} />
 
-        {/* Nutrition */}
-        <Route path="/nutrition/meal-plans/create" component={MealPlanCreator} />
-        <Route path="/nutrition/meal-plans/marketplace" component={MealPlanMarketplace} />
-        <Route path="/nutrition/creator-analytics" component={CreatorAnalytics} />
-        <Route path="/nutrition/meal-planner" component={NutritionMealPlanner} />
+        {/* Nutrition (Meal Planner + Marketplace) */}
+        <Route path="/nutrition/create" component={MealPlanCreator} />
+        <Route path="/nutrition/marketplace" component={MealPlanMarketplace} />
+        <Route path="/nutrition/analytics" component={CreatorAnalytics} />
+        <Route path="/nutrition/my-purchases" component={MyPurchasesPage} />
+
+        {/* Legacy Nutrition Paths (redirects) */}
+        <Route path="/nutrition/meal-plans/create">
+          <Redirect to="/nutrition/create" />
+        </Route>
+        <Route path="/nutrition/meal-plans/marketplace">
+          <Redirect to="/nutrition/marketplace" />
+        </Route>
+        <Route path="/nutrition/creator-analytics">
+          <Redirect to="/nutrition/analytics" />
+        </Route>
+        <Route path="/nutrition/meal-planner">
+          <Redirect to="/nutrition" />
+        </Route>
+
+        {/* Meal Plan Details */}
+        <Route path="/nutrition/meal-plans/:id" component={MealPlanDetailsPage} />
+
+        <Route path="/nutrition/meal-plans">
+          <Redirect to="/nutrition/marketplace" />
+        </Route>
+
+        {/* Main Nutrition landing (Meal Planner) */}
+        <Route path="/nutrition" component={NutritionPage} />
 
                 {/* Services */}
+                {/* Aliases used by nav/sidebar */}
+                <Route path="/catering/wedding-planning">
+                  <Redirect to="/services/wedding-planning" />
+                </Route>
+                <Route path="/catering/wedding-map">
+                  <Redirect to="/services/wedding-map" />
+                </Route>
+                <Route path="/catering">
+                  <Redirect to="/services/catering" />
+                </Route>
+
                 <Route path="/services/catering" component={CateringMarketplace} />
                 <Route path="/services/wedding-planning" component={WeddingPlanning} />
                 <Route path="/services/wedding-map" component={WeddingVendorMap} />
                 <Route path="/services/public-registry" component={PublicRegistryPage} />
 
                 {/* Store / Marketplace */}
+                {/* Alias used by nav/sidebar */}
+                <Route path="/marketplace">
+                  <Redirect to="/store" />
+                </Route>
+
                 <Route path="/store" component={Marketplace} />
                 <Route path="/store/create" component={StoreCreatePage} />
                 <Route path="/store/dashboard" component={StoreDashboard} />
