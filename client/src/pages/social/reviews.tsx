@@ -1,3 +1,4 @@
+// client/src/pages/social/reviews.tsx
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import PostCard from "@/components/post-card";
@@ -6,7 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Star, MapPin, ThumbsUp, ThumbsDown, Lightbulb, Share2, Bookmark, BookmarkCheck, Check, ArrowUpNarrowWide } from "lucide-react";
+import {
+  Star,
+  MapPin,
+  ThumbsUp,
+  ThumbsDown,
+  Lightbulb,
+  Share2,
+  Bookmark,
+  BookmarkCheck,
+  Check,
+  ArrowUpNarrowWide,
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { PostWithUser } from "@shared/schema";
 import { useUser } from "@/contexts/UserContext";
@@ -20,14 +32,37 @@ type ParsedReview = {
   cons?: string;
   verdict?: string;
   notes?: string;
-  priceLevel?: number; // Added for professional filter
+  priceLevel?: number;
 };
+
+function parsePriceLevelFromLine(text?: string): number | undefined {
+  const s = String(text ?? "").trim();
+  if (!s) return undefined;
+
+  // Prefer longest "$$$" group so "$$ - $$$" becomes 3 (not 5)
+  const groups = s.match(/\$+/g);
+  if (groups && groups.length) {
+    const maxLen = Math.max(...groups.map((g) => g.length));
+    return Math.max(1, Math.min(4, maxLen));
+  }
+
+  // Fallback: allow numeric forms like "2", "2/4", "2 dollars"
+  const num = Number((s.match(/\d+/)?.[0] ?? "").trim());
+  if (Number.isFinite(num) && num > 0) {
+    return Math.max(1, Math.min(4, Math.floor(num)));
+  }
+
+  return undefined;
+}
 
 function parseReviewCaption(caption: string): ParsedReview | null {
   const raw = (caption || "").trim();
   if (!raw.startsWith("📝 Review:")) return null;
 
-  const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
+  const lines = raw
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
 
   const first = lines[0] || "";
   const firstValue = first.replace(/^📝\s*Review:\s*/i, "").trim();
@@ -53,12 +88,13 @@ function parseReviewCaption(caption: string): ParsedReview | null {
     if (m) rating = Math.max(0, Math.min(5, Number(m[1])));
   }
 
-  // Support for professional price parsing
   const priceRaw = takeAfter("💰 Price:") || takeAfter("Price:");
-  const priceLevel = priceRaw ? (priceRaw.match(/\$/g) || []).length : undefined;
+  const priceLevel = parsePriceLevelFromLine(priceRaw);
 
   const notesLine = lines.find((l) => /^Notes:/i.test(l));
-  const notes = notesLine ? notesLine.replace(/^Notes:\s*/i, "").trim() : undefined;
+  const notes = notesLine
+    ? notesLine.replace(/^Notes:\s*/i, "").trim()
+    : undefined;
 
   return {
     businessName,
@@ -97,7 +133,13 @@ export default function ReviewsPage() {
 
   useEffect(() => {
     const saved = localStorage.getItem("saved_reviews");
-    if (saved) setSavedIds(JSON.parse(saved));
+    if (!saved) return;
+    try {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) setSavedIds(parsed);
+    } catch {
+      // ignore malformed localStorage
+    }
   }, []);
 
   const { data: posts = [], isLoading } = useQuery<PostWithUser[]>({
@@ -126,29 +168,34 @@ export default function ReviewsPage() {
       return tagReview || starts;
     });
 
-    const withParsed = onlyReviews
-      .map((p) => ({
-        post: p,
-        parsed: parseReviewCaption(p.caption || ""),
-      }));
+    const withParsed = onlyReviews.map((p) => ({
+      post: p,
+      parsed: parseReviewCaption(p.caption || ""),
+    }));
 
-    // Sorting Logic
     withParsed.sort((a, b) => {
       if (sortByRating) {
         return (b.parsed?.rating || 0) - (a.parsed?.rating || 0);
       }
-      return new Date(b.post.createdAt).getTime() - new Date(a.post.createdAt).getTime();
+      return (
+        new Date(b.post.createdAt).getTime() -
+        new Date(a.post.createdAt).getTime()
+      );
     });
 
     return withParsed.filter(({ post, parsed }) => {
       if (showSavedOnly && !savedIds.includes(post.id)) return false;
-      if (activePrice && parsed?.priceLevel !== activePrice) return false;
+
+      // IMPORTANT: use explicit null check (not truthy check)
+      if (activePrice !== null) {
+        if ((parsed?.priceLevel ?? null) !== activePrice) return false;
+      }
+
       if (!normalizedQ && minRating === "") return true;
 
       const cap = (post.caption || "").toLowerCase();
       const tags = (post.tags || []).join(" ").toLowerCase();
 
-      // YOUR EXACT SEARCH POOL LOGIC
       const hay = [
         cap,
         tags,
@@ -179,14 +226,26 @@ export default function ReviewsPage() {
       <Card>
         <CardHeader className="space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <CardTitle className="text-2xl font-bold text-slate-900 italic tracking-tighter">REVIEWS</CardTitle>
+            <CardTitle className="text-2xl font-bold text-slate-900 italic tracking-tighter">
+              REVIEWS
+            </CardTitle>
             <div className="flex gap-2">
-               <Button variant={sortByRating ? "default" : "outline"} size="sm" onClick={() => setSortByRating(!sortByRating)}>
-                  <ArrowUpNarrowWide className="mr-2 h-4 w-4" /> {sortByRating ? "Top Rated" : "Latest"}
-               </Button>
-               <Button variant={showSavedOnly ? "secondary" : "outline"} size="sm" onClick={() => setShowSavedOnly(!showSavedOnly)}>
-                  <Bookmark className="mr-2 h-4 w-4" /> {showSavedOnly ? "Saved" : "All"}
-               </Button>
+              <Button
+                variant={sortByRating ? "default" : "outline"}
+                size="sm"
+                onClick={() => setSortByRating(!sortByRating)}
+              >
+                <ArrowUpNarrowWide className="mr-2 h-4 w-4" />{" "}
+                {sortByRating ? "Top Rated" : "Latest"}
+              </Button>
+              <Button
+                variant={showSavedOnly ? "secondary" : "outline"}
+                size="sm"
+                onClick={() => setShowSavedOnly(!showSavedOnly)}
+              >
+                <Bookmark className="mr-2 h-4 w-4" />{" "}
+                {showSavedOnly ? "Saved" : "All"}
+              </Button>
             </div>
           </div>
 
@@ -210,24 +269,35 @@ export default function ReviewsPage() {
                   setMinRating(Math.max(1, Math.min(5, Math.floor(n))));
                 }}
                 type="number"
-                placeholder="Rating"
+                placeholder="Min ★ (1–5)"
               />
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => { setQ(""); setMinRating(""); setSortByRating(false); setActivePrice(null); setShowSavedOnly(false); }}
+                onClick={() => {
+                  setQ("");
+                  setMinRating("");
+                  setSortByRating(false);
+                  setActivePrice(null);
+                  setShowSavedOnly(false);
+                }}
               >
                 Clear
               </Button>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-1 bg-muted/50 p-1 rounded-md w-fit border">
-            {[1, 2, 3, 4].map(p => (
-              <button 
-                key={p} 
+            {[1, 2, 3, 4].map((p) => (
+              <button
+                key={p}
                 onClick={() => setActivePrice(activePrice === p ? null : p)}
-                className={`px-3 py-1 text-[10px] font-bold rounded ${activePrice === p ? 'bg-primary text-white' : 'text-muted-foreground'}`}
+                className={`px-3 py-1 text-[10px] font-bold rounded ${
+                  activePrice === p
+                    ? "bg-primary text-white"
+                    : "text-muted-foreground"
+                }`}
+                type="button"
               >
                 {"$".repeat(p)}
               </button>
@@ -236,7 +306,12 @@ export default function ReviewsPage() {
         </CardHeader>
 
         <CardContent className="text-sm text-muted-foreground">
-          This page shows posts marked as <span className="font-medium">Review</span>.
+          This page shows posts marked as{" "}
+          <span className="font-medium">Review</span>. <br />
+          <span className="text-xs">
+            Note: the $ filter only works if the review caption includes a line
+            like <span className="font-medium">💰 Price: $$</span>.
+          </span>
         </CardContent>
       </Card>
 
@@ -262,40 +337,80 @@ export default function ReviewsPage() {
                   <div className="px-1 space-y-3">
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="text-2xl font-black text-slate-900">{parsed.businessName}</h3>
+                        <h3 className="text-2xl font-black text-slate-900">
+                          {parsed.businessName}
+                        </h3>
                         <div className="flex items-center gap-3 mt-1">
                           {parsed.rating && (
                             <div className="flex items-center text-yellow-500 font-bold">
-                              {parsed.rating} <Star size={16} fill="currentColor" className="ml-1" />
+                              {parsed.rating}{" "}
+                              <Star
+                                size={16}
+                                fill="currentColor"
+                                className="ml-1"
+                              />
                             </div>
                           )}
                           {parsed.locationLabel && (
                             <div className="text-muted-foreground text-xs flex items-center">
-                              <MapPin size={12} className="mr-1" /> {parsed.locationLabel}
+                              <MapPin size={12} className="mr-1" />{" "}
+                              {parsed.locationLabel}
                             </div>
                           )}
                         </div>
                       </div>
                       <div className="flex gap-2">
-                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={() => {
-                          const newIds = isSaved ? savedIds.filter(i => i !== post.id) : [...savedIds, post.id];
-                          setSavedIds(newIds);
-                          localStorage.setItem("saved_reviews", JSON.stringify(newIds));
-                          toast({ title: isSaved ? "Removed" : "Saved" });
-                        }}>
-                          {isSaved ? <BookmarkCheck className="text-primary" /> : <Bookmark />}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-full"
+                          onClick={() => {
+                            const newIds = isSaved
+                              ? savedIds.filter((i) => i !== post.id)
+                              : [...savedIds, post.id];
+                            setSavedIds(newIds);
+                            localStorage.setItem(
+                              "saved_reviews",
+                              JSON.stringify(newIds)
+                            );
+                            toast({ title: isSaved ? "Removed" : "Saved" });
+                          }}
+                        >
+                          {isSaved ? (
+                            <BookmarkCheck className="text-primary" />
+                          ) : (
+                            <Bookmark />
+                          )}
                         </Button>
-                        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full" onClick={() => {
-                          navigator.clipboard.writeText(`${window.location.origin}/posts/${post.id}`);
-                          setCopiedId(post.id);
-                          toast({ title: "Link copied" });
-                          setTimeout(() => setCopiedId(null), 2000);
-                        }}>
-                          {copiedId === post.id ? <Check className="text-emerald-500" /> : <Share2 />}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 rounded-full"
+                          onClick={() => {
+                            navigator.clipboard.writeText(
+                              `${window.location.origin}/posts/${post.id}`
+                            );
+                            setCopiedId(post.id);
+                            toast({ title: "Link copied" });
+                            setTimeout(() => setCopiedId(null), 2000);
+                          }}
+                        >
+                          {copiedId === post.id ? (
+                            <Check className="text-emerald-500" />
+                          ) : (
+                            <Share2 />
+                          )}
                         </Button>
                         {mapsUrl && (
-                          <Button variant="outline" size="sm" className="rounded-full text-xs" asChild>
-                            <a href={mapsUrl} target="_blank" rel="noreferrer">Directions</a>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="rounded-full text-xs"
+                            asChild
+                          >
+                            <a href={mapsUrl} target="_blank" rel="noreferrer">
+                              Directions
+                            </a>
                           </Button>
                         )}
                       </div>
@@ -304,20 +419,39 @@ export default function ReviewsPage() {
                     {parsed.verdict && (
                       <div className="bg-primary/5 border-l-4 border-primary p-3 rounded-r-lg">
                         <div className="flex gap-2">
-                          <Lightbulb size={18} className="text-primary shrink-0" />
-                          <p className="text-sm italic font-medium">"{parsed.verdict}"</p>
+                          <Lightbulb
+                            size={18}
+                            className="text-primary shrink-0"
+                          />
+                          <p className="text-sm italic font-medium">
+                            "{parsed.verdict}"
+                          </p>
                         </div>
                       </div>
                     )}
 
                     <div className="flex flex-wrap gap-2">
-                      {parsed.pros && <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-100"><ThumbsUp size={12} className="mr-1" /> {parsed.pros}</Badge>}
-                      {parsed.cons && <Badge variant="secondary" className="bg-rose-50 text-rose-700 border-rose-100"><ThumbsDown size={12} className="mr-1" /> {parsed.cons}</Badge>}
+                      {parsed.pros && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-emerald-50 text-emerald-700 border-emerald-100"
+                        >
+                          <ThumbsUp size={12} className="mr-1" /> {parsed.pros}
+                        </Badge>
+                      )}
+                      {parsed.cons && (
+                        <Badge
+                          variant="secondary"
+                          className="bg-rose-50 text-rose-700 border-rose-100"
+                        >
+                          <ThumbsDown size={12} className="mr-1" /> {parsed.cons}
+                        </Badge>
+                      )}
                     </div>
                   </div>
                 )}
                 <div className="rounded-2xl overflow-hidden border shadow-sm">
-                   <PostCard post={post} currentUserId={currentUserId} />
+                  <PostCard post={post} currentUserId={currentUserId} />
                 </div>
               </div>
             );
