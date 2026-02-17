@@ -13,7 +13,7 @@ import {
   users,
   recipes,
 } from "../../shared/schema.js";
-import { requireAuth } from "../middleware/index";
+import { requireAuth, optionalAuth } from "../middleware/index";
 
 const router = express.Router();
 
@@ -71,47 +71,6 @@ router.get("/", async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error browsing clubs:", error);
     res.status(500).json({ message: "Failed to browse clubs" });
-  }
-});
-
-// Get club details
-router.get("/:id", async (req: Request, res: Response) => {
-  try {
-    const clubId = req.params.id;
-
-    const [club] = await db
-      .select({
-        club: clubs,
-        creator: {
-          id: users.id,
-          username: users.username,
-          displayName: users.displayName,
-        },
-      })
-      .from(clubs)
-      .innerJoin(users, eq(clubs.creatorId, users.id))
-      .where(eq(clubs.id, clubId))
-      .limit(1);
-
-    if (!club) {
-      return res.status(404).json({ message: "Club not found" });
-    }
-
-    const [stats] = await db
-      .select({
-        memberCount: sql`count(distinct ${clubMemberships.id})`,
-        postCount: sql`count(distinct ${clubPosts.id})`,
-      })
-      .from(clubs)
-      .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
-      .leftJoin(clubPosts, eq(clubs.id, clubPosts.clubId))
-      .where(eq(clubs.id, clubId))
-      .groupBy(clubs.id);
-
-    res.json({ club, stats });
-  } catch (error) {
-    console.error("Error fetching club details:", error);
-    res.status(500).json({ message: "Failed to fetch club details" });
   }
 });
 
@@ -247,7 +206,7 @@ router.post("/:id/leave", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// Get user's clubs
+// Get user's clubs (MUST come before GET /:id)
 router.get("/my-clubs", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
@@ -282,13 +241,14 @@ router.get("/:id/posts", async (req: Request, res: Response) => {
     const clubId = req.params.id;
     const { limit = 20, offset = 0 } = req.query;
 
-    const posts = await db
+    const rows = await db
       .select({
         post: clubPosts,
         author: {
           id: users.id,
           username: users.username,
           displayName: users.displayName,
+          avatar: users.avatar,
         },
         recipe: recipes,
       })
@@ -300,12 +260,38 @@ router.get("/:id/posts", async (req: Request, res: Response) => {
       .limit(parseInt(limit as string))
       .offset(parseInt(offset as string));
 
-    const normalized = posts.map((row: any) => ({
-      ...row,
-      recipe: row.recipe && row.recipe.id ? row.recipe : null,
-    }));
+    // Flatten into the shape the club page expects
+    const posts = rows.map((row: any) => {
+      const p = row.post;
+      const caption = String(p.content ?? "");
 
-    res.json({ posts: normalized });
+      const inferredType: "post" | "recipe" | "review" = p.recipeId
+        ? "recipe"
+        : caption.trim().startsWith("📝 Review:")
+        ? "review"
+        : "post";
+
+      return {
+        id: p.id,
+        clubId: p.clubId,
+        userId: p.userId,
+        caption,
+        imageUrl: p.imageUrl ?? null,
+        tags: null,
+        postType: inferredType,
+        recipeId: p.recipeId ?? null,
+        reviewId: null,
+        createdAt: p.createdAt,
+        user: {
+          id: row.author.id,
+          username: row.author.username,
+          avatarUrl: row.author.avatar ?? null,
+        },
+        recipe: row.recipe && row.recipe.id ? row.recipe : null,
+      };
+    });
+
+    res.json({ posts });
   } catch (error) {
     console.error("Error fetching club posts:", error);
     res.status(500).json({ message: "Failed to fetch club posts" });
@@ -318,24 +304,32 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const clubId = req.params.id;
 
-    const { postType, content, imageUrl, recipeId, recipe } = req.body as {
-      postType?: "post" | "recipe" | "review";
-      content?: string;
-      imageUrl?: string | null;
-      recipeId?: string | null;
-      recipe?: {
-        title: string;
-        imageUrl?: string | null;
-        ingredients: string[];
-        instructions: string[];
-        cookTime?: number | null;
-        servings?: number | null;
-        difficulty?: string | null;
-      };
-    };
+    const body: any = req.body || {};
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: "Post content is required" });
+    // Accept both {content} and {caption} from client
+    const postType = (body.postType || "post") as "post" | "recipe" | "review";
+    const contentRaw = body.caption ?? body.content ?? "";
+    const content = String(contentRaw ?? "").trim();
+    const imageUrl = (body.imageUrl ?? null) as string | null;
+
+    const recipeId = (body.recipeId ?? null) as string | null;
+    const recipe = body.recipe as
+      | {
+          title: string;
+          imageUrl?: string | null;
+          ingredients: string[];
+          instructions: string[];
+          cookTime?: number | null;
+          servings?: number | null;
+          difficulty?: string | null;
+        }
+      | undefined;
+
+    // Allow image-only posts, but still require *something* meaningful.
+    if (!content && !imageUrl && !recipe && !recipeId) {
+      return res
+        .status(400)
+        .json({ message: "Post content or media is required" });
     }
 
     const [membership] = await db
@@ -411,13 +405,32 @@ router.post("/:id/posts", requireAuth, async (req: Request, res: Response) => {
       .values({
         clubId,
         userId,
-        content: content.trim(),
+        content: content || "", // club_posts.content is NOT NULL
         imageUrl: imageUrl ?? null,
         recipeId: linkedRecipeId,
       })
       .returning();
 
-    res.json({ post });
+    const inferredType: "post" | "recipe" | "review" = post.recipeId
+      ? "recipe"
+      : content.trim().startsWith("📝 Review:")
+      ? "review"
+      : "post";
+
+    res.json({
+      post: {
+        id: post.id,
+        clubId: post.clubId,
+        userId: post.userId,
+        caption: post.content ?? "",
+        imageUrl: post.imageUrl ?? null,
+        tags: null,
+        postType: inferredType,
+        recipeId: post.recipeId ?? null,
+        reviewId: null,
+        createdAt: post.createdAt,
+      },
+    });
   } catch (error) {
     console.error("Error creating club post:", error);
     res.status(500).json({ message: "Failed to create post" });
@@ -433,9 +446,11 @@ router.patch(
       const userId = req.user!.id;
       const clubId = req.params.id;
       const postId = req.params.postId;
-      const { content } = req.body;
+      const { content, caption } = req.body;
 
-      if (!content || !content.trim()) {
+      const nextContent = String((caption ?? content) ?? "").trim();
+
+      if (!nextContent) {
         return res.status(400).json({ message: "Post content is required" });
       }
 
@@ -457,7 +472,7 @@ router.patch(
 
       const [post] = await db
         .update(clubPosts)
-        .set({ content: content.trim() })
+        .set({ content: nextContent })
         .where(and(eq(clubPosts.id, postId), eq(clubPosts.clubId, clubId)))
         .returning();
 
@@ -473,7 +488,7 @@ router.patch(
 // CHALLENGES
 // ============================================================
 
-// Browse challenges
+// Browse challenges (MUST come before GET /:id)
 router.get("/challenges", async (req: Request, res: Response) => {
   try {
     const { status } = req.query;
@@ -680,5 +695,96 @@ router.post(
     }
   }
 );
+
+// ============================================================
+// CLUB DETAILS
+// ============================================================
+
+// Get club details (MUST be after /my-clubs and /challenges)
+router.get("/:id", optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const clubId = req.params.id;
+
+    const [row] = await db
+      .select({
+        club: clubs,
+        creator: {
+          id: users.id,
+          username: users.username,
+          displayName: users.displayName,
+          avatar: users.avatar,
+        },
+      })
+      .from(clubs)
+      .innerJoin(users, eq(clubs.creatorId, users.id))
+      .where(eq(clubs.id, clubId))
+      .limit(1);
+
+    if (!row) {
+      return res.status(404).json({ message: "Club not found" });
+    }
+
+    const [counts] = await db
+      .select({
+        memberCount: sql`count(distinct ${clubMemberships.id})`,
+        postCount: sql`count(distinct ${clubPosts.id})`,
+      })
+      .from(clubs)
+      .leftJoin(clubMemberships, eq(clubs.id, clubMemberships.clubId))
+      .leftJoin(clubPosts, eq(clubs.id, clubPosts.clubId))
+      .where(eq(clubs.id, clubId))
+      .groupBy(clubs.id);
+
+    const memberCount = Number((counts as any)?.memberCount ?? 0);
+    const postCount = Number((counts as any)?.postCount ?? 0);
+
+    // IMPORTANT: the club page needs isMember/isAdmin to gate posting.
+    // The creator is inserted into club_memberships as role=owner, but the old
+    // response did not include membership state, so the UI showed "Join to post".
+    let isMember = false;
+    let isAdmin = false;
+
+    const userId = req.user?.id;
+    if (userId) {
+      const [membership] = await db
+        .select({ role: clubMemberships.role })
+        .from(clubMemberships)
+        .where(
+          and(
+            eq(clubMemberships.clubId, clubId),
+            eq(clubMemberships.userId, userId)
+          )
+        )
+        .limit(1);
+
+      if (membership) {
+        isMember = true;
+        const role = (membership.role as any) ?? "member";
+        isAdmin = role === "owner" || role === "admin" || role === "moderator";
+      }
+
+      // Safety: treat the creator as member/admin even if membership row is missing
+      if (row.club.creatorId === userId) {
+        isMember = true;
+        isAdmin = true;
+      }
+    }
+
+    res.json({
+      // Flatten `club` for the client (client expects club fields directly)
+      club: row.club,
+      creator: row.creator,
+      stats: {
+        memberCount,
+        postCount,
+        isMember,
+        isAdmin,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching club details:", error);
+    res.status(500).json({ message: "Failed to fetch club details" });
+  }
+});
 
 export default router;
