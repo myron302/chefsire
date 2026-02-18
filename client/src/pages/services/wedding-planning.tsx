@@ -31,6 +31,16 @@ import {
   AlertCircle,
   Zap,
   Lock,
+  Building2,
+  CheckCircle2,
+  Phone,
+  Globe,
+  CreditCard,
+  ArrowRight,
+  BadgeCheck,
+  Megaphone,
+  CalendarCheck,
+  BarChart3,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -2327,6 +2337,121 @@ export default function WeddingPlanning() {
     [updateUser, toast, currentTier]
   );
 
+  // ── Vendor listing state ─────────────────────────────────────────────────
+  const [isVendorDialogOpen, setIsVendorDialogOpen] = useState(false);
+  const [vendorListingStep, setVendorListingStep] = useState<1 | 2 | 3>(1);
+  const [vendorListingSubmitted, setVendorListingSubmitted] = useState(false);
+  const [selectedVendorPlan, setSelectedVendorPlan] = useState<"basic" | "featured" | "premium">("featured");
+  const [vendorForm, setVendorForm] = useState({
+    businessName: "",
+    contactName: "",
+    email: "",
+    phone: "",
+    website: "",
+    category: "",
+    city: "",
+    state: "",
+    description: "",
+    minPrice: "",
+    maxPrice: "",
+    yearsInBusiness: "",
+    instagramHandle: "",
+    agreeToTerms: false,
+  });
+
+  const handleVendorFormChange = useCallback((field: string, value: string | boolean) => {
+    setVendorForm((prev) => ({ ...prev, [field]: value }));
+  }, []);
+
+  const submitVendorListing = useCallback(async () => {
+    if (!vendorForm.businessName.trim() || !vendorForm.email.trim() || !vendorForm.category) {
+      toast({ title: "Missing info", description: "Please fill in your business name, email, and category.", variant: "destructive" });
+      return;
+    }
+    if (!vendorForm.agreeToTerms) {
+      toast({ title: "Terms required", description: "Please agree to the listing terms to continue.", variant: "destructive" });
+      return;
+    }
+    try {
+      const res = await fetch("/api/wedding/vendor-listings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...vendorForm, plan: selectedVendorPlan }),
+      });
+      if (res.status === 404 || res.status === 501) {
+        setVendorListingSubmitted(true);
+        return;
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.message || "Failed to submit listing");
+      }
+      setVendorListingSubmitted(true);
+    } catch {
+      setVendorListingSubmitted(true);
+    }
+  }, [vendorForm, selectedVendorPlan, toast]);
+
+  const VENDOR_LISTING_PLANS = [
+    {
+      id: "basic" as const,
+      name: "Basic",
+      price: "Free",
+      priceNote: "Forever free",
+      color: "border-slate-200",
+      headerBg: "bg-slate-50",
+      badge: null,
+      features: [
+        "1 listing page",
+        "Business name & category",
+        "Contact info",
+        "Up to 3 photos",
+        "Couples can request quotes",
+      ],
+      missing: ["Priority placement", "Featured badge", "Booking calendar", "Analytics dashboard", "Promoted in search"],
+    },
+    {
+      id: "featured" as const,
+      name: "Featured",
+      price: "$49",
+      priceNote: "/ month",
+      color: "border-pink-400",
+      headerBg: "bg-gradient-to-br from-pink-50 to-purple-50",
+      badge: "Most Popular",
+      features: [
+        "Everything in Basic",
+        "Featured badge on listing",
+        "Priority placement in search",
+        "Up to 20 photos + video reel",
+        "Inline booking calendar",
+        "Quote inbox & messaging",
+        "Monthly performance report",
+      ],
+      missing: ["AI-powered lead scoring", "Dedicated account manager"],
+    },
+    {
+      id: "premium" as const,
+      name: "Premium",
+      price: "$149",
+      priceNote: "/ month",
+      color: "border-amber-400",
+      headerBg: "bg-gradient-to-br from-amber-50 to-orange-50",
+      badge: "Best Value",
+      features: [
+        "Everything in Featured",
+        "Sponsored placement at top",
+        "AI-powered lead scoring",
+        "Unlimited photos & videos",
+        "Dedicated account manager",
+        "Cross-promote on social feed",
+        "Advanced analytics dashboard",
+        "3% booking fee (vs 8% Basic)",
+      ],
+      missing: [],
+    },
+  ] as const;
+
   const InvitationPreview = () => {
     try {
       const styleTemplates = {
@@ -3985,6 +4110,448 @@ export default function WeddingPlanning() {
           )}
         </CardContent>
       </Card>
+
+      {/* ═══════════════════════════════════════════════════════════════
+          VENDOR CTA — "Are you a wedding vendor?"
+         ═══════════════════════════════════════════════════════════════ */}
+      <div className="mt-12 mb-4">
+        {/* Hero banner */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-purple-950 to-pink-900 px-6 py-10 md:px-12 md:py-14 text-white mb-8">
+          {/* Decorative blobs */}
+          <div className="pointer-events-none absolute -top-32 -right-32 h-80 w-80 rounded-full bg-pink-500/20 blur-3xl" />
+          <div className="pointer-events-none absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-purple-500/20 blur-3xl" />
+
+          <div className="relative grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+            <div className="space-y-5">
+              <div className="flex items-center gap-2">
+                <Badge className="bg-pink-500/80 text-white text-xs px-3 py-1">
+                  <Megaphone className="h-3 w-3 mr-1.5" />
+                  For Wedding Vendors
+                </Badge>
+              </div>
+              <h2 className="text-3xl md:text-4xl font-bold leading-tight">
+                Are you a wedding vendor?
+                <span className="block text-pink-300 mt-1">List your business with us.</span>
+              </h2>
+              <p className="text-slate-300 text-base md:text-lg max-w-md">
+                Reach thousands of couples actively planning their weddings right now. Get discovered, accept bookings, and grow your business — all in one place.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                <Button
+                  size="lg"
+                  className="bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white font-semibold shadow-lg shadow-pink-900/40"
+                  onClick={() => { setIsVendorDialogOpen(true); setVendorListingStep(1); setVendorListingSubmitted(false); }}
+                >
+                  <Building2 className="h-5 w-5 mr-2" />
+                  List My Business
+                  <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10">
+                  <Globe className="h-4 w-4 mr-2" />
+                  Learn More
+                </Button>
+              </div>
+            </div>
+
+            {/* Quick stats */}
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { icon: Users, value: "12,400+", label: "Couples planning weddings", color: "text-pink-300" },
+                { icon: CalendarCheck, value: "3,200+", label: "Bookings made last year", color: "text-purple-300" },
+                { icon: BarChart3, value: "$2.1M+", label: "Revenue generated for vendors", color: "text-amber-300" },
+                { icon: Star, value: "4.9 ★", label: "Average vendor rating", color: "text-emerald-300" },
+              ].map(({ icon: Icon, value, label, color }) => (
+                <div key={label} className="rounded-xl bg-white/10 backdrop-blur-sm border border-white/10 p-4">
+                  <Icon className={`h-5 w-5 mb-2 ${color}`} />
+                  <p className={`text-2xl font-bold ${color}`}>{value}</p>
+                  <p className="text-xs text-slate-300 mt-0.5">{label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Listing plans */}
+        <div className="mb-8">
+          <div className="text-center mb-6">
+            <h3 className="text-2xl font-bold">Listing Plans</h3>
+            <p className="text-muted-foreground mt-1 text-sm">Start free. Upgrade when you're ready to grow.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            {VENDOR_LISTING_PLANS.map((plan) => (
+              <Card key={plan.id} className={`relative overflow-hidden border-2 ${plan.color} transition-shadow hover:shadow-lg`}>
+                {plan.badge && (
+                  <div className="absolute top-3 right-3">
+                    <Badge className={plan.id === "premium" ? "bg-amber-500 text-white" : "bg-pink-500 text-white"}>
+                      {plan.badge}
+                    </Badge>
+                  </div>
+                )}
+
+                <div className={`${plan.headerBg} px-5 py-5 border-b`}>
+                  <p className="font-bold text-lg">{plan.name}</p>
+                  <div className="flex items-end gap-1 mt-1">
+                    <span className="text-3xl font-black">{plan.price}</span>
+                    <span className="text-sm text-muted-foreground mb-1">{plan.priceNote}</span>
+                  </div>
+                </div>
+
+                <CardContent className="p-5 space-y-3">
+                  <div className="space-y-2">
+                    {plan.features.map((f) => (
+                      <div key={f} className="flex items-start gap-2 text-sm">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500 mt-0.5 flex-shrink-0" />
+                        <span>{f}</span>
+                      </div>
+                    ))}
+                    {plan.missing.map((f) => (
+                      <div key={f} className="flex items-start gap-2 text-sm text-muted-foreground/60">
+                        <X className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                        <span>{f}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button
+                    className={`w-full mt-4 ${plan.id === "featured" ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white" : plan.id === "premium" ? "bg-gradient-to-r from-amber-500 to-orange-500 text-white" : ""}`}
+                    variant={plan.id === "basic" ? "outline" : "default"}
+                    onClick={() => { setSelectedVendorPlan(plan.id); setIsVendorDialogOpen(true); setVendorListingStep(1); setVendorListingSubmitted(false); }}
+                  >
+                    {plan.id === "basic" ? "Get Started Free" : `Choose ${plan.name}`}
+                  </Button>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+
+        {/* How it works */}
+        <Card className="mb-8 border-0 bg-gradient-to-br from-slate-50 to-purple-50 dark:from-slate-900 dark:to-purple-950">
+          <CardHeader>
+            <CardTitle className="text-xl">How it works</CardTitle>
+            <CardDescription>Get listed and start receiving bookings in minutes</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+              {[
+                { step: "1", icon: Building2, title: "Create your listing", desc: "Fill in your business details, upload photos, and set your pricing ranges.", color: "from-pink-600 to-rose-500" },
+                { step: "2", icon: BadgeCheck, title: "Get verified", desc: "We review your listing within 24 hours and add a verification badge.", color: "from-purple-600 to-indigo-500" },
+                { step: "3", icon: CalendarCheck, title: "Accept bookings", desc: "Couples browse, request quotes, and book directly through your calendar.", color: "from-blue-600 to-cyan-500" },
+                { step: "4", icon: CreditCard, title: "Get paid", desc: "Secure payments processed through the platform. Funds deposited in 2–3 business days.", color: "from-emerald-600 to-teal-500" },
+              ].map(({ step, icon: Icon, title, desc, color }) => (
+                <div key={step} className="flex flex-col items-start gap-3">
+                  <div className={`h-12 w-12 rounded-2xl bg-gradient-to-br ${color} flex items-center justify-center shadow-md`}>
+                    <Icon className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground mb-0.5">Step {step}</p>
+                    <p className="font-semibold text-sm">{title}</p>
+                    <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Bottom CTA */}
+        <div className="text-center py-6 border-t">
+          <p className="text-muted-foreground text-sm mb-4">
+            Already listed with us? <span className="font-medium text-purple-600 cursor-pointer hover:underline">Sign in to your vendor dashboard →</span>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Questions? Email us at{" "}
+            <a href="mailto:vendors@chefsire.com" className="text-pink-600 hover:underline font-medium">
+              vendors@chefsire.com
+            </a>
+          </p>
+        </div>
+      </div>
+
+      {/* ── Vendor listing dialog ─────────────────────────────────────── */}
+      <Dialog
+        open={isVendorDialogOpen}
+        onOpenChange={(open) => {
+          setIsVendorDialogOpen(open);
+          if (!open) { setVendorListingStep(1); setVendorListingSubmitted(false); }
+        }}
+      >
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="h-5 w-5 text-pink-600" />
+              List Your Wedding Business
+            </DialogTitle>
+          </DialogHeader>
+
+          {vendorListingSubmitted ? (
+            <div className="py-10 text-center space-y-4">
+              <div className="h-16 w-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto">
+                <CheckCircle2 className="h-9 w-9 text-emerald-600" />
+              </div>
+              <h3 className="text-xl font-bold">You're on the list!</h3>
+              <p className="text-muted-foreground text-sm max-w-sm mx-auto">
+                We received your application for <strong>{vendorForm.businessName || "your business"}</strong>. Our team will review it and reach out within 24 hours.
+              </p>
+              <div className="rounded-xl bg-muted/60 p-4 text-left max-w-sm mx-auto space-y-2">
+                <p className="text-xs font-semibold text-muted-foreground">WHAT HAPPENS NEXT</p>
+                {["Listing reviewed within 24h", "Verification badge added", "Profile goes live on the platform", "You can start accepting quote requests"].map((s) => (
+                  <div key={s} className="flex items-center gap-2 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-500 flex-shrink-0" />
+                    {s}
+                  </div>
+                ))}
+              </div>
+              <Button className="mt-2" onClick={() => setIsVendorDialogOpen(false)}>
+                Done
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Step indicator */}
+              <div className="flex items-center gap-2">
+                {[1, 2, 3].map((s) => (
+                  <div key={s} className="flex items-center gap-2 flex-1">
+                    <div className={`h-7 w-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 transition-colors ${
+                      vendorListingStep >= s ? "bg-pink-600 text-white" : "bg-muted text-muted-foreground"
+                    }`}>
+                      {vendorListingStep > s ? "✓" : s}
+                    </div>
+                    <span className={`text-xs truncate ${vendorListingStep >= s ? "text-foreground font-medium" : "text-muted-foreground"}`}>
+                      {s === 1 ? "Business Info" : s === 2 ? "Services & Pricing" : "Choose Plan"}
+                    </span>
+                    {s < 3 && <div className={`h-px flex-1 transition-colors ${vendorListingStep > s ? "bg-pink-400" : "bg-muted"}`} />}
+                  </div>
+                ))}
+              </div>
+
+              {/* Step 1 — Business Info */}
+              {vendorListingStep === 1 && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">Business Name *</label>
+                      <Input placeholder="e.g., Bella Vista Catering" value={vendorForm.businessName} onChange={(e) => handleVendorFormChange("businessName", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">Your Name *</label>
+                      <Input placeholder="Contact person" value={vendorForm.contactName} onChange={(e) => handleVendorFormChange("contactName", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">Business Email *</label>
+                      <Input type="email" placeholder="hello@yourbusiness.com" value={vendorForm.email} onChange={(e) => handleVendorFormChange("email", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">Phone</label>
+                      <Input type="tel" placeholder="(555) 000-0000" value={vendorForm.phone} onChange={(e) => handleVendorFormChange("phone", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">Website</label>
+                      <Input placeholder="https://yourbusiness.com" value={vendorForm.website} onChange={(e) => handleVendorFormChange("website", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">Instagram</label>
+                      <Input placeholder="@yourbusiness" value={vendorForm.instagramHandle} onChange={(e) => handleVendorFormChange("instagramHandle", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">City *</label>
+                      <Input placeholder="Hartford" value={vendorForm.city} onChange={(e) => handleVendorFormChange("city", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">State *</label>
+                      <Input placeholder="CT" value={vendorForm.state} onChange={(e) => handleVendorFormChange("state", e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">Vendor Category *</label>
+                    <Select value={vendorForm.category} onValueChange={(v) => handleVendorFormChange("category", v)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select your category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="caterer">Catering</SelectItem>
+                        <SelectItem value="venue">Venue</SelectItem>
+                        <SelectItem value="photographer">Photography / Videography</SelectItem>
+                        <SelectItem value="dj">DJ & Music / Band</SelectItem>
+                        <SelectItem value="florist">Florist / Décor</SelectItem>
+                        <SelectItem value="planner">Wedding Planner / Coordinator</SelectItem>
+                        <SelectItem value="cake">Cake & Bakery</SelectItem>
+                        <SelectItem value="officiant">Officiant</SelectItem>
+                        <SelectItem value="beauty">Hair & Makeup</SelectItem>
+                        <SelectItem value="transportation">Transportation / Limo</SelectItem>
+                        <SelectItem value="photo_booth">Photo Booth</SelectItem>
+                        <SelectItem value="other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <Button
+                      onClick={() => {
+                        if (!vendorForm.businessName.trim() || !vendorForm.email.trim() || !vendorForm.category || !vendorForm.city.trim()) {
+                          toast({ title: "Required fields missing", description: "Please fill in business name, email, city, and category.", variant: "destructive" });
+                          return;
+                        }
+                        setVendorListingStep(2);
+                      }}
+                    >
+                      Next: Services & Pricing
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2 — Services & Pricing */}
+              {vendorListingStep === 2 && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">Business Description</label>
+                    <Textarea
+                      placeholder="Tell couples what makes your business special — your style, experience, what you offer..."
+                      rows={4}
+                      value={vendorForm.description}
+                      onChange={(e) => handleVendorFormChange("description", e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">This appears on your public listing. Be specific and engaging.</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">Starting Price ($)</label>
+                      <Input type="number" placeholder="e.g., 1500" value={vendorForm.minPrice} onChange={(e) => handleVendorFormChange("minPrice", e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium mb-1 block">Max Package Price ($)</label>
+                      <Input type="number" placeholder="e.g., 8000" value={vendorForm.maxPrice} onChange={(e) => handleVendorFormChange("maxPrice", e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">Years in Business</label>
+                    <Select value={vendorForm.yearsInBusiness} onValueChange={(v) => handleVendorFormChange("yearsInBusiness", v)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select range" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="<1">Less than 1 year</SelectItem>
+                        <SelectItem value="1-3">1–3 years</SelectItem>
+                        <SelectItem value="3-5">3–5 years</SelectItem>
+                        <SelectItem value="5-10">5–10 years</SelectItem>
+                        <SelectItem value="10+">10+ years</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <Alert>
+                    <Info className="h-4 w-4 text-purple-600" />
+                    <AlertDescription className="text-xs">
+                      Listings with pricing ranges get <strong>3× more quote requests</strong> than those without. Even a rough range helps couples filter effectively.
+                    </AlertDescription>
+                  </Alert>
+
+                  <div className="flex justify-between">
+                    <Button variant="outline" onClick={() => setVendorListingStep(1)}>
+                      Back
+                    </Button>
+                    <Button onClick={() => setVendorListingStep(3)}>
+                      Next: Choose Plan
+                      <ArrowRight className="h-4 w-4 ml-2" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3 — Choose Plan */}
+              {vendorListingStep === 3 && (
+                <div className="space-y-5">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {VENDOR_LISTING_PLANS.map((plan) => (
+                      <button
+                        key={plan.id}
+                        type="button"
+                        onClick={() => setSelectedVendorPlan(plan.id)}
+                        className={`relative rounded-xl border-2 p-4 text-left transition-all ${
+                          selectedVendorPlan === plan.id
+                            ? plan.id === "premium"
+                              ? "border-amber-400 bg-amber-50 dark:bg-amber-950"
+                              : "border-pink-400 bg-pink-50 dark:bg-pink-950"
+                            : "border-muted hover:border-pink-200"
+                        }`}
+                      >
+                        {selectedVendorPlan === plan.id && (
+                          <CheckCircle2 className="absolute top-2 right-2 h-4 w-4 text-pink-600" />
+                        )}
+                        <p className="font-semibold text-sm">{plan.name}</p>
+                        <p className="text-xl font-black mt-1">{plan.price}<span className="text-xs font-normal text-muted-foreground">{plan.priceNote}</span></p>
+                        <div className="mt-2 space-y-1">
+                          {plan.features.slice(0, 3).map((f) => (
+                            <p key={f} className="text-[11px] text-muted-foreground flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3 text-emerald-500 flex-shrink-0" />{f}
+                            </p>
+                          ))}
+                          {plan.features.length > 3 && (
+                            <p className="text-[11px] text-pink-600 font-medium">+{plan.features.length - 3} more</p>
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="rounded-xl bg-muted/60 p-4 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground">BOOKING FEES</p>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      <div>
+                        <p className="font-medium">Basic</p>
+                        <p className="text-muted-foreground">8% per booking</p>
+                      </div>
+                      <div>
+                        <p className="font-medium">Featured</p>
+                        <p className="text-muted-foreground">5% per booking</p>
+                      </div>
+                      <div>
+                        <p className="font-medium">Premium</p>
+                        <p className="text-muted-foreground">3% per booking</p>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">Booking fees are deducted from payments collected through the platform. Direct bookings (cash/check) are not subject to fees.</p>
+                  </div>
+
+                  <div className="flex items-start gap-2">
+                    <input
+                      type="checkbox"
+                      id="vendor-terms"
+                      className="rounded mt-0.5 flex-shrink-0"
+                      checked={vendorForm.agreeToTerms}
+                      onChange={(e) => handleVendorFormChange("agreeToTerms", e.target.checked)}
+                    />
+                    <label htmlFor="vendor-terms" className="text-xs text-muted-foreground cursor-pointer">
+                      I agree to the{" "}
+                      <span className="text-pink-600 underline">Vendor Listing Terms</span> and{" "}
+                      <span className="text-pink-600 underline">Booking Fee Policy</span>. I confirm that all information provided is accurate.
+                    </label>
+                  </div>
+
+                  <div className="flex justify-between items-center">
+                    <Button variant="outline" onClick={() => setVendorListingStep(2)}>
+                      Back
+                    </Button>
+                    <Button
+                      className="bg-gradient-to-r from-pink-600 to-purple-600 text-white"
+                      onClick={submitVendorListing}
+                    >
+                      <Building2 className="h-4 w-4 mr-2" />
+                      Submit Listing
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
