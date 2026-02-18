@@ -109,16 +109,18 @@ function buildReviewCaption(input: {
   fullAddress?: string;
   locationLabel?: string;
   rating?: string;
+  priceLevel?: string;
   pros?: string;
   cons?: string;
   verdict?: string;
   notes?: string;
-  extra?: string; // hashtags / extra lines
+  extra?: string;
 }) {
   const business = (input.businessName || "").trim();
   const address = (input.fullAddress || "").trim();
   const loc = (input.locationLabel || "").trim();
   const rating = (input.rating || "").trim();
+  const priceLevel = (input.priceLevel || "").trim();
   const pros = (input.pros || "").trim();
   const cons = (input.cons || "").trim();
   const verdict = (input.verdict || "").trim();
@@ -127,17 +129,16 @@ function buildReviewCaption(input: {
 
   const lines: string[] = [];
 
-  // First line (keeps your “📝 Review: Name, Address…” format)
   lines.push(`📝 Review: ${business}${address ? `, ${address}` : ""}`);
 
   if (loc) lines.push(`📍 Location: ${loc}`);
   if (rating) lines.push(`⭐ Rating: ${rating}/5`);
+  if (priceLevel) lines.push(`💰 Price: ${"$".repeat(Number(priceLevel))}`);
   if (pros) lines.push(`✅ Pros: ${pros}`);
   if (cons) lines.push(`⚠️ Cons: ${cons}`);
   if (verdict) lines.push(`💡 Verdict: ${verdict}`);
   if (notes) lines.push(`Notes: ${notes}`);
 
-  // Allow hashtags / extra lines appended (won’t break parsing)
   if (extra) lines.push(extra);
 
   return lines.join("\n").trim();
@@ -149,7 +150,6 @@ export default function CreatePost() {
   const [, setLocation] = useLocation();
   const { user } = useUser();
 
-  // Google Maps API (same hook used in wedding-planning page)
   const isGoogleMapsLoaded = useGoogleMaps();
 
   // Media
@@ -163,7 +163,7 @@ export default function CreatePost() {
 
   const [formData, setFormData] = useState({
     postType: "post" as PostType,
-    caption: "", // used for: post caption OR extra hashtags/extra lines on reviews
+    caption: "",
     imageUrl: "",
     tags: [""],
 
@@ -180,6 +180,7 @@ export default function CreatePost() {
     reviewFullAddress: "",
     reviewLocationLabel: "",
     reviewRating: "5",
+    reviewPriceLevel: "" as "" | "1" | "2" | "3" | "4",
     reviewPros: "",
     reviewCons: "",
     reviewVerdict: "",
@@ -195,6 +196,7 @@ export default function CreatePost() {
       fullAddress: formData.reviewFullAddress,
       locationLabel: formData.reviewLocationLabel,
       rating: formData.reviewRating,
+      priceLevel: formData.reviewPriceLevel,
       pros: formData.reviewPros,
       cons: formData.reviewCons,
       verdict: formData.reviewVerdict,
@@ -271,6 +273,7 @@ export default function CreatePost() {
               fullAddress: formData.reviewFullAddress,
               locationLabel: formData.reviewLocationLabel,
               rating: formData.reviewRating,
+              priceLevel: formData.reviewPriceLevel,
               pros: formData.reviewPros,
               cons: formData.reviewCons,
               verdict: formData.reviewVerdict,
@@ -409,7 +412,6 @@ export default function CreatePost() {
       const result = reader.result as string;
       setMediaPreview(result);
       setMediaKind(kind);
-      // Store as data URL (same pattern used elsewhere in your app)
       handleChange("imageUrl", result);
     };
     reader.readAsDataURL(file);
@@ -679,24 +681,56 @@ export default function CreatePost() {
                           <SelectValue placeholder="Select rating" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="5">5/5</SelectItem>
-                          <SelectItem value="4">4/5</SelectItem>
-                          <SelectItem value="3">3/5</SelectItem>
-                          <SelectItem value="2">2/5</SelectItem>
-                          <SelectItem value="1">1/5</SelectItem>
+                          <SelectItem value="5">⭐⭐⭐⭐⭐ — 5/5</SelectItem>
+                          <SelectItem value="4">⭐⭐⭐⭐ — 4/5</SelectItem>
+                          <SelectItem value="3">⭐⭐⭐ — 3/5</SelectItem>
+                          <SelectItem value="2">⭐⭐ — 2/5</SelectItem>
+                          <SelectItem value="1">⭐ — 1/5</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="reviewVerdict">Verdict</Label>
-                      <Input
-                        id="reviewVerdict"
-                        placeholder="e.g., Def recommend"
-                        value={formData.reviewVerdict}
-                        onChange={(e) => handleChange("reviewVerdict", e.target.value)}
-                      />
+                      <Label>Price Level</Label>
+                      <div className="flex gap-2 pt-1">
+                        {[
+                          { value: "1", label: "$" },
+                          { value: "2", label: "$$" },
+                          { value: "3", label: "$$$" },
+                          { value: "4", label: "$$$$" },
+                        ].map(({ value, label }) => (
+                          <button
+                            key={value}
+                            type="button"
+                            aria-pressed={formData.reviewPriceLevel === value}
+                            onClick={() =>
+                              handleChange(
+                                "reviewPriceLevel",
+                                formData.reviewPriceLevel === value ? "" : value
+                              )
+                            }
+                            className={`px-3 py-1.5 rounded border text-sm font-semibold transition-colors ${
+                              formData.reviewPriceLevel === value
+                                ? "bg-primary text-white border-primary"
+                                : "border-input text-muted-foreground hover:border-primary"
+                            }`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">Optional</p>
                     </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="reviewVerdict">Verdict</Label>
+                    <Input
+                      id="reviewVerdict"
+                      placeholder="e.g., Def recommend"
+                      value={formData.reviewVerdict}
+                      onChange={(e) => handleChange("reviewVerdict", e.target.value)}
+                    />
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -704,19 +738,25 @@ export default function CreatePost() {
                       <Label htmlFor="reviewPros">Pros</Label>
                       <Input
                         id="reviewPros"
-                        placeholder="e.g., Flavor"
+                        placeholder="e.g., Great flavor; friendly staff"
                         value={formData.reviewPros}
                         onChange={(e) => handleChange("reviewPros", e.target.value)}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Separate multiple with a semicolon (;)
+                      </p>
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="reviewCons">Cons</Label>
                       <Input
                         id="reviewCons"
-                        placeholder="e.g., Price"
+                        placeholder="e.g., Parking; long wait"
                         value={formData.reviewCons}
                         onChange={(e) => handleChange("reviewCons", e.target.value)}
                       />
+                      <p className="text-xs text-muted-foreground">
+                        Separate multiple with a semicolon (;)
+                      </p>
                     </div>
                   </div>
 
@@ -724,7 +764,7 @@ export default function CreatePost() {
                     <Label htmlFor="reviewNotes">Notes</Label>
                     <Input
                       id="reviewNotes"
-                      placeholder="e.g., Stewed Chicken"
+                      placeholder="e.g., Try the stewed chicken"
                       value={formData.reviewNotes}
                       onChange={(e) => handleChange("reviewNotes", e.target.value)}
                     />
