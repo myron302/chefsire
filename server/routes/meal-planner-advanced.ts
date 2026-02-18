@@ -1,4 +1,4 @@
-import express, { type Request, type Response } from "express";
+import express, { type Request, type Response, type NextFunction } from "express";
 import { db } from "../db/index.js";
 import { eq, and, desc, sql, gte, lte, isNull } from "drizzle-orm";
 import {
@@ -21,6 +21,150 @@ import {
 import { requireAuth } from "../middleware";
 
 const router = express.Router();
+
+// ============================================================
+// Schema safety: ensure advanced meal planning tables/columns exist
+// This keeps production DBs compatible even if a migration was missed.
+// ============================================================
+
+let _advancedMealPlanningSchemaReady: Promise<void> | null = null;
+
+async function ensureAdvancedMealPlanningSchema() {
+  if (_advancedMealPlanningSchemaReady) return _advancedMealPlanningSchemaReady;
+
+  _advancedMealPlanningSchemaReady = (async () => {
+    if (!db) {
+      throw new Error("Database is not configured (missing DATABASE_URL).");
+    }
+
+    // gen_random_uuid() is provided by pgcrypto
+    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+
+    // ---- Create tables if missing (id defaults match shared/schema) ----
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS meal_recommendations (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        recipe_id VARCHAR REFERENCES recipes(id),
+        blueprint_id VARCHAR REFERENCES meal_plan_blueprints(id),
+        recommendation_type TEXT NOT NULL,
+        target_date TIMESTAMP,
+        meal_type TEXT,
+        score DECIMAL(3, 2) NOT NULL,
+        reason TEXT NOT NULL,
+        metadata JSONB DEFAULT '{}'::jsonb,
+        accepted BOOLEAN DEFAULT false,
+        dismissed BOOLEAN DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS meal_recommendations_user_idx ON meal_recommendations(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS meal_recommendations_date_idx ON meal_recommendations(target_date);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS meal_recommendations_score_idx ON meal_recommendations(score);`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS meal_prep_schedules (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        meal_plan_id VARCHAR REFERENCES meal_plans(id),
+        prep_day TEXT NOT NULL,
+        prep_time TEXT,
+        batch_recipes JSONB DEFAULT '[]'::jsonb,
+        shopping_day TEXT,
+        notes TEXT,
+        is_running_low BOOLEAN DEFAULT false,
+        reminder_enabled BOOLEAN DEFAULT true,
+        reminder_time TEXT,
+        completed BOOLEAN DEFAULT false,
+        completed_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS meal_prep_schedules_user_idx ON meal_prep_schedules(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS meal_prep_schedules_prep_day_idx ON meal_prep_schedules(prep_day);`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS leftovers (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        recipe_id VARCHAR REFERENCES recipes(id),
+        recipe_name TEXT NOT NULL,
+        quantity TEXT,
+        stored_date TIMESTAMP NOT NULL,
+        expiry_date TIMESTAMP,
+        storage_location TEXT,
+        notes TEXT,
+        is_running_low BOOLEAN DEFAULT false,
+        consumed BOOLEAN DEFAULT false,
+        consumed_at TIMESTAMP,
+        wasted BOOLEAN DEFAULT false,
+        repurposed_into VARCHAR REFERENCES recipes(id),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS leftovers_user_idx ON leftovers(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS leftovers_expiry_idx ON leftovers(expiry_date);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS leftovers_consumed_idx ON leftovers(consumed);`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS grocery_list_items (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        meal_plan_id VARCHAR REFERENCES meal_plans(id),
+        list_name TEXT DEFAULT 'My Grocery List',
+        ingredient_name TEXT NOT NULL,
+        quantity TEXT,
+        unit TEXT,
+        category TEXT,
+        location TEXT,
+        estimated_price DECIMAL(8, 2),
+        actual_price DECIMAL(8, 2),
+        store TEXT,
+        aisle TEXT,
+        priority TEXT DEFAULT 'normal',
+        is_pantry_item BOOLEAN DEFAULT false,
+        is_running_low BOOLEAN DEFAULT false,
+        purchased BOOLEAN DEFAULT false,
+        purchased_at TIMESTAMP,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS grocery_list_items_user_idx ON grocery_list_items(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS grocery_list_items_category_idx ON grocery_list_items(category);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS grocery_list_items_purchased_idx ON grocery_list_items(purchased);`);
+
+    // ---- Patch older deployments that created these tables without newer columns ----
+    await db.execute(sql`ALTER TABLE meal_prep_schedules ADD COLUMN IF NOT EXISTS is_running_low BOOLEAN DEFAULT false;`);
+    await db.execute(sql`ALTER TABLE leftovers ADD COLUMN IF NOT EXISTS is_running_low BOOLEAN DEFAULT false;`);
+    await db.execute(sql`ALTER TABLE grocery_list_items ADD COLUMN IF NOT EXISTS location TEXT;`);
+    await db.execute(sql`ALTER TABLE grocery_list_items ADD COLUMN IF NOT EXISTS is_running_low BOOLEAN DEFAULT false;`);
+
+    // Backfill nulls for safety (older rows)
+    await db.execute(sql`UPDATE meal_prep_schedules SET is_running_low = false WHERE is_running_low IS NULL;`);
+    await db.execute(sql`UPDATE leftovers SET is_running_low = false WHERE is_running_low IS NULL;`);
+    await db.execute(sql`UPDATE grocery_list_items SET is_running_low = false WHERE is_running_low IS NULL;`);
+  })();
+
+  return _advancedMealPlanningSchemaReady;
+}
+
+router.use(async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureAdvancedMealPlanningSchema();
+    next();
+  } catch (e: any) {
+    console.error("[meal-planner-advanced] Schema ensure failed:", e);
+    res.status(500).json({
+      message: "Meal planner database schema is not ready",
+      details: String(e?.message || e),
+    });
+  }
+});
 
 // ============================================================
 // AI-POWERED MEAL RECOMMENDATIONS
@@ -78,82 +222,112 @@ router.post("/meal-recommendations/generate", requireAuth, async (req: Request, 
       const score = Math.random() * 0.3 + 0.7; // 0.7-1.0
       const reason = calorieDifference > 0
         ? `This meal helps you meet your ${calorieGoal} calorie goal`
-        : `Balanced nutrition for your goals`;
+        : "This meal provides balanced nutrition";
 
-      const [rec] = await db
+      const [recommendation] = await db
         .insert(mealRecommendations)
         .values({
           userId,
           recipeId: recipe.id,
-          recommendationType: "goal_based",
-          targetDate: targetDate ? new Date(targetDate) : new Date(),
-          mealType: mealType || "lunch",
+          recommendationType: "nutritional_balance",
+          targetDate: targetDate ? new Date(targetDate) : null,
+          mealType,
           score: score.toFixed(2),
           reason,
           metadata: {
-            nutritionGaps: calorieDifference > 100 ? ["calories"] : [],
-            goalAlignment: "calorie_target",
+            calorieDifference,
+            dietaryRestrictions,
           },
         })
         .returning();
 
-      recommendations.push({ ...rec, recipe });
+      recommendations.push({
+        ...recommendation,
+        recipe,
+      });
     }
 
-    res.json({ recommendations, user: { calorieGoal, avgDailyCalories } });
+    res.json({ recommendations });
   } catch (error) {
-    console.error("Error generating recommendations:", error);
+    console.error("Error generating meal recommendations:", error);
     res.status(500).json({ message: "Failed to generate recommendations" });
   }
 });
 
-// Get meal recommendations for user
+// Get user's meal recommendations
 router.get("/meal-recommendations", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { targetDate, mealType } = req.query;
+    const { date, mealType, accepted, dismissed } = req.query;
 
-    let query = db
+    const whereConditions = [eq(mealRecommendations.userId, userId)];
+
+    if (date) {
+      whereConditions.push(eq(mealRecommendations.targetDate, new Date(date as string)));
+    }
+    if (mealType) {
+      whereConditions.push(eq(mealRecommendations.mealType, mealType as string));
+    }
+    if (accepted !== undefined) {
+      whereConditions.push(eq(mealRecommendations.accepted, accepted === "true"));
+    }
+    if (dismissed !== undefined) {
+      whereConditions.push(eq(mealRecommendations.dismissed, dismissed === "true"));
+    }
+
+    const recommendations = await db
       .select({
         recommendation: mealRecommendations,
         recipe: recipes,
       })
       .from(mealRecommendations)
       .leftJoin(recipes, eq(mealRecommendations.recipeId, recipes.id))
-      .where(eq(mealRecommendations.userId, userId))
-      .orderBy(desc(mealRecommendations.score));
-
-    const recommendations = await query;
+      .where(and(...whereConditions))
+      .orderBy(desc(mealRecommendations.createdAt))
+      .limit(50);
 
     res.json({ recommendations });
   } catch (error) {
-    console.error("Error fetching recommendations:", error);
+    console.error("Error fetching meal recommendations:", error);
     res.status(500).json({ message: "Failed to fetch recommendations" });
   }
 });
 
-// Accept/dismiss recommendation
-router.patch("/meal-recommendations/:id", requireAuth, async (req: Request, res: Response) => {
+// Accept meal recommendation
+router.patch("/meal-recommendations/:id/accept", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id } = req.params;
-    const { accepted, dismissed } = req.body;
 
     const [updated] = await db
       .update(mealRecommendations)
-      .set({ accepted, dismissed })
-      .where(
-        and(
-          eq(mealRecommendations.id, id),
-          eq(mealRecommendations.userId, userId)
-        )
-      )
+      .set({ accepted: true })
+      .where(and(eq(mealRecommendations.id, id), eq(mealRecommendations.userId, userId)))
       .returning();
 
     res.json({ recommendation: updated });
   } catch (error) {
-    console.error("Error updating recommendation:", error);
-    res.status(500).json({ message: "Failed to update recommendation" });
+    console.error("Error accepting recommendation:", error);
+    res.status(500).json({ message: "Failed to accept recommendation" });
+  }
+});
+
+// Dismiss meal recommendation
+router.patch("/meal-recommendations/:id/dismiss", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const [updated] = await db
+      .update(mealRecommendations)
+      .set({ dismissed: true })
+      .where(and(eq(mealRecommendations.id, id), eq(mealRecommendations.userId, userId)))
+      .returning();
+
+    res.json({ recommendation: updated });
+  } catch (error) {
+    console.error("Error dismissing recommendation:", error);
+    res.status(500).json({ message: "Failed to dismiss recommendation" });
   }
 });
 
@@ -162,7 +336,7 @@ router.patch("/meal-recommendations/:id", requireAuth, async (req: Request, res:
 // ============================================================
 
 // Create meal prep schedule
-router.post("/meal-prep-schedules", requireAuth, async (req: Request, res: Response) => {
+router.post("/prep-schedules", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const {
@@ -190,62 +364,70 @@ router.post("/meal-prep-schedules", requireAuth, async (req: Request, res: Respo
         batchRecipes: batchRecipes || [],
         shoppingDay,
         notes,
-        reminderEnabled: reminderEnabled ?? true,
+        reminderEnabled: reminderEnabled !== undefined ? reminderEnabled : true,
         reminderTime,
       })
       .returning();
 
     res.json({ schedule });
   } catch (error) {
-    console.error("Error creating meal prep schedule:", error);
-    res.status(500).json({ message: "Failed to create meal prep schedule" });
+    console.error("Error creating prep schedule:", error);
+    res.status(500).json({ message: "Failed to create schedule" });
   }
 });
 
 // Get meal prep schedules
-router.get("/meal-prep-schedules", requireAuth, async (req: Request, res: Response) => {
+router.get("/prep-schedules", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    const { mealPlanId, completed } = req.query;
+
+    const whereConditions = [eq(mealPrepSchedules.userId, userId)];
+
+    if (mealPlanId) {
+      whereConditions.push(eq(mealPrepSchedules.mealPlanId, mealPlanId as string));
+    }
+    if (completed !== undefined) {
+      whereConditions.push(eq(mealPrepSchedules.completed, completed === "true"));
+    }
 
     const schedules = await db
       .select()
       .from(mealPrepSchedules)
-      .where(eq(mealPrepSchedules.userId, userId))
+      .where(and(...whereConditions))
       .orderBy(mealPrepSchedules.prepDay);
 
     res.json({ schedules });
   } catch (error) {
-    console.error("Error fetching meal prep schedules:", error);
-    res.status(500).json({ message: "Failed to fetch meal prep schedules" });
+    console.error("Error fetching prep schedules:", error);
+    res.status(500).json({ message: "Failed to fetch schedules" });
   }
 });
 
 // Mark prep schedule as completed
-router.patch("/meal-prep-schedules/:id/complete", requireAuth, async (req: Request, res: Response) => {
+router.patch("/prep-schedules/:id/complete", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id } = req.params;
 
     const [updated] = await db
       .update(mealPrepSchedules)
-      .set({ completed: true, completedAt: new Date() })
-      .where(
-        and(
-          eq(mealPrepSchedules.id, id),
-          eq(mealPrepSchedules.userId, userId)
-        )
-      )
+      .set({
+        completed: true,
+        completedAt: new Date(),
+      })
+      .where(and(eq(mealPrepSchedules.id, id), eq(mealPrepSchedules.userId, userId)))
       .returning();
 
     res.json({ schedule: updated });
   } catch (error) {
-    console.error("Error completing meal prep schedule:", error);
-    res.status(500).json({ message: "Failed to complete meal prep schedule" });
+    console.error("Error completing schedule:", error);
+    res.status(500).json({ message: "Failed to complete schedule" });
   }
 });
 
 // ============================================================
-// LEFTOVER TRACKING
+// LEFTOVERS TRACKING
 // ============================================================
 
 // Add leftover
@@ -275,7 +457,7 @@ router.post("/leftovers", requireAuth, async (req: Request, res: Response) => {
         quantity,
         storedDate: new Date(storedDate),
         expiryDate: expiryDate ? new Date(expiryDate) : null,
-        storageLocation: storageLocation || "fridge",
+        storageLocation,
         notes,
       })
       .returning();
@@ -287,22 +469,22 @@ router.post("/leftovers", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// Get leftovers (with filtering for expiring soon)
+// Get leftovers
 router.get("/leftovers", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const { expiringSoon, consumed } = req.query;
 
-    let query = db
+    const conditions = [eq(leftovers.userId, userId)];
+    if (consumed === "false") conditions.push(eq(leftovers.consumed, false));
+
+    const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+
+    const allLeftovers = await db
       .select()
       .from(leftovers)
-      .where(eq(leftovers.userId, userId));
-
-    if (consumed === "false") {
-      query = query.where(eq(leftovers.consumed, false));
-    }
-
-    const allLeftovers = await query.orderBy(leftovers.expiryDate);
+      .where(whereClause)
+      .orderBy(leftovers.expiryDate);
 
     // Filter for expiring soon (within 2 days)
     let result = allLeftovers;
@@ -447,20 +629,17 @@ router.get("/grocery-list", requireAuth, async (req: Request, res: Response) => 
     const userId = req.user!.id;
     const { mealPlanId, purchased } = req.query;
 
-    let query = db
+    const conditions = [eq(groceryListItems.userId, userId)];
+    if (purchased === "false") conditions.push(eq(groceryListItems.purchased, false));
+    if (mealPlanId) conditions.push(eq(groceryListItems.mealPlanId, mealPlanId as string));
+
+    const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+
+    const items = await db
       .select()
       .from(groceryListItems)
-      .where(eq(groceryListItems.userId, userId));
-
-    if (purchased === "false") {
-      query = query.where(eq(groceryListItems.purchased, false));
-    }
-
-    if (mealPlanId) {
-      query = query.where(eq(groceryListItems.mealPlanId, mealPlanId as string));
-    }
-
-    const items = await query.orderBy(groceryListItems.category, groceryListItems.aisle);
+      .where(whereClause)
+      .orderBy(groceryListItems.category, groceryListItems.aisle);
 
     // Calculate budget summary
     const totalEstimated = items.reduce((sum, item) =>
@@ -518,90 +697,41 @@ router.get("/grocery-list/optimized", requireAuth, async (req: Request, res: Res
       "dairy",
       "frozen",
       "pantry",
-      "beverages",
       "snacks",
-      "condiments",
-      "other",
+      "beverages",
+      "household",
+      "other"
     ];
 
-    const optimized = storeLayoutOrder
-      .map(category => ({
-        category,
-        items: grouped[category] || [],
-      }))
-      .filter(g => g.items.length > 0);
+    // Sort groups by store layout order
+    const sortedGroups = Object.entries(grouped).sort(([a], [b]) => {
+      const aIndex = storeLayoutOrder.indexOf(a.toLowerCase());
+      const bIndex = storeLayoutOrder.indexOf(b.toLowerCase());
+      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+    });
 
-    res.json({ optimized, totalItems: items.length });
+    res.json({ grouped: sortedGroups });
   } catch (error) {
     console.error("Error optimizing grocery list:", error);
     res.status(500).json({ message: "Failed to optimize grocery list" });
   }
 });
 
-// Check items against pantry
-router.post("/grocery-list/check-pantry", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-
-    // Get unpurchased grocery items
-    const groceryItems = await db
-      .select()
-      .from(groceryListItems)
-      .where(
-        and(
-          eq(groceryListItems.userId, userId),
-          eq(groceryListItems.purchased, false)
-        )
-      );
-
-    // Get pantry items
-    const pantryIngredients = await db
-      .select()
-      .from(pantryItems)
-      .where(eq(pantryItems.userId, userId));
-
-    // Mark items as pantry items if they exist
-    const updates = [];
-    for (const grocery of groceryItems) {
-      const inPantry = pantryIngredients.some(p =>
-        p.name.toLowerCase().includes(grocery.ingredientName.toLowerCase()) ||
-        grocery.ingredientName.toLowerCase().includes(p.name.toLowerCase())
-      );
-
-      if (inPantry && !grocery.isPantryItem) {
-        updates.push(
-          db.update(groceryListItems)
-            .set({ isPantryItem: true })
-            .where(eq(groceryListItems.id, grocery.id))
-        );
-      }
-    }
-
-    await Promise.all(updates);
-
-    res.json({ message: "Pantry check complete", matched: updates.length });
-  } catch (error) {
-    console.error("Error checking pantry:", error);
-    res.status(500).json({ message: "Failed to check pantry" });
-  }
-});
-
-// Update grocery list item
+// Update grocery item (mark purchased, update price, etc)
 router.patch("/grocery-list/:id", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id } = req.params;
-    const { ingredientName, quantity, unit, category, notes } = req.body;
+    const updates = req.body;
+
+    // If marking as purchased, set purchasedAt
+    if (updates.purchased === true) {
+      updates.purchasedAt = new Date();
+    }
 
     const [updated] = await db
       .update(groceryListItems)
-      .set({
-        ingredientName: ingredientName,
-        quantity: quantity,
-        unit: unit,
-        category: category,
-        notes: notes,
-      })
+      .set(updates)
       .where(
         and(
           eq(groceryListItems.id, id),
@@ -609,267 +739,94 @@ router.patch("/grocery-list/:id", requireAuth, async (req: Request, res: Respons
         )
       )
       .returning();
-
-    if (!updated) {
-      return res.status(404).json({ message: "Grocery item not found" });
-    }
 
     res.json({ item: updated });
   } catch (error) {
     console.error("Error updating grocery item:", error);
-    res.status(500).json({ message: "Failed to update grocery item" });
+    res.status(500).json({ message: "Failed to update item" });
   }
 });
 
-// Mark item as purchased (or toggle)
-router.patch("/grocery-list/:id/purchase", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const { id } = req.params;
-    const { actualPrice, toggle } = req.body;
-
-    // If toggle is true, first fetch the current state
-    let purchased = true;
-    if (toggle) {
-      const [currentItem] = await db
-        .select()
-        .from(groceryListItems)
-        .where(
-          and(
-            eq(groceryListItems.id, id),
-            eq(groceryListItems.userId, userId)
-          )
-        );
-
-      if (currentItem) {
-        purchased = !currentItem.purchased;
-      }
-    }
-
-    const [updated] = await db
-      .update(groceryListItems)
-      .set({
-        purchased,
-        purchasedAt: purchased ? new Date() : null,
-        actualPrice: actualPrice || null,
-      })
-      .where(
-        and(
-          eq(groceryListItems.id, id),
-          eq(groceryListItems.userId, userId)
-        )
-      )
-      .returning();
-
-    res.json({ item: updated });
-  } catch (error) {
-    console.error("Error purchasing item:", error);
-    res.status(500).json({ message: "Failed to purchase item" });
-  }
-});
-
-// Delete grocery list item
+// Delete grocery item
 router.delete("/grocery-list/:id", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
     const { id } = req.params;
 
-    const [deleted] = await db
+    await db
       .delete(groceryListItems)
       .where(
         and(
           eq(groceryListItems.id, id),
           eq(groceryListItems.userId, userId)
         )
-      )
-      .returning();
+      );
 
-    if (!deleted) {
-      return res.status(404).json({ message: "Grocery item not found" });
-    }
-
-    res.json({ success: true, id });
+    res.json({ message: "Item deleted" });
   } catch (error) {
     console.error("Error deleting grocery item:", error);
-    res.status(500).json({ message: "Failed to delete grocery item" });
+    res.status(500).json({ message: "Failed to delete item" });
   }
 });
 
 // ============================================================
-// PROGRESS TRACKING & ACHIEVEMENTS
+// PANTRY INTEGRATION
 // ============================================================
 
-// Get user progress for a meal plan
-router.get("/progress/:mealPlanId", requireAuth, async (req: Request, res: Response) => {
+// Add pantry items to grocery list (items running low)
+router.post("/grocery-list/from-pantry", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { mealPlanId } = req.params;
+    const { threshold = 1 } = req.body;
 
-    const [progress] = await db
+    // Get pantry items that are running low or below threshold
+    const lowPantryItems = await db
       .select()
-      .from(userMealPlanProgress)
+      .from(pantryItems)
       .where(
         and(
-          eq(userMealPlanProgress.userId, userId),
-          eq(userMealPlanProgress.mealPlanId, mealPlanId)
+          eq(pantryItems.userId, userId),
+          sql`${pantryItems.quantity} <= ${threshold} OR ${pantryItems.isRunningLow} = true`
         )
       );
 
-    if (!progress) {
-      return res.status(404).json({ message: "Progress not found" });
-    }
+    const addedItems = [];
 
-    res.json({ progress });
-  } catch (error) {
-    console.error("Error fetching progress:", error);
-    res.status(500).json({ message: "Failed to fetch progress" });
-  }
-});
+    for (const pantryItem of lowPantryItems) {
+      // Check if already in grocery list and not purchased
+      const [existing] = await db
+        .select()
+        .from(groceryListItems)
+        .where(
+          and(
+            eq(groceryListItems.userId, userId),
+            eq(groceryListItems.ingredientName, pantryItem.name),
+            eq(groceryListItems.purchased, false)
+          )
+        );
 
-// Update meal plan progress
-router.patch("/progress/:id", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-    const { id } = req.params;
-    const { currentDay, mealsCompleted, goalsMet, averageRating } = req.body;
-
-    const [existing] = await db
-      .select()
-      .from(userMealPlanProgress)
-      .where(eq(userMealPlanProgress.id, id));
-
-    if (!existing) {
-      return res.status(404).json({ message: "Progress not found" });
-    }
-
-    const adherenceRate = ((mealsCompleted || existing.mealsCompleted) / existing.mealsTotal * 100).toFixed(2);
-
-    const [updated] = await db
-      .update(userMealPlanProgress)
-      .set({
-        currentDay: currentDay || existing.currentDay,
-        mealsCompleted: mealsCompleted || existing.mealsCompleted,
-        adherenceRate,
-        averageRating: averageRating || existing.averageRating,
-        goalsMet: goalsMet || existing.goalsMet,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(userMealPlanProgress.id, id),
-          eq(userMealPlanProgress.userId, userId)
-        )
-      )
-      .returning();
-
-    // Check for achievement unlocks
-    await checkAchievements(userId);
-
-    res.json({ progress: updated });
-  } catch (error) {
-    console.error("Error updating progress:", error);
-    res.status(500).json({ message: "Failed to update progress" });
-  }
-});
-
-// Get user achievements
-router.get("/achievements", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const userId = req.user!.id;
-
-    const userAchievements = await db
-      .select({
-        userAchievement: userMealPlanAchievements,
-        achievement: mealPlanAchievements,
-      })
-      .from(userMealPlanAchievements)
-      .innerJoin(
-        mealPlanAchievements,
-        eq(userMealPlanAchievements.achievementId, mealPlanAchievements.id)
-      )
-      .where(eq(userMealPlanAchievements.userId, userId))
-      .orderBy(desc(userMealPlanAchievements.completedAt));
-
-    const totalPoints = userAchievements
-      .filter(ua => ua.userAchievement.completed)
-      .reduce((sum, ua) => sum + (ua.achievement.points || 0), 0);
-
-    res.json({ achievements: userAchievements, totalPoints });
-  } catch (error) {
-    console.error("Error fetching achievements:", error);
-    res.status(500).json({ message: "Failed to fetch achievements" });
-  }
-});
-
-// Initialize default achievements (run once)
-router.post("/achievements/initialize", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const defaultAchievements = [
-      {
-        name: "First Steps",
-        description: "Complete your first meal plan",
-        icon: "🎯",
-        category: "consistency",
-        requirement: { type: "plans_completed", threshold: 1 },
-        points: 10,
-        tier: "bronze",
-      },
-      {
-        name: "Week Warrior",
-        description: "Complete 7 days in a row",
-        icon: "🔥",
-        category: "consistency",
-        requirement: { type: "days_streak", threshold: 7 },
-        points: 25,
-        tier: "silver",
-      },
-      {
-        name: "Meal Prep Master",
-        description: "Complete 10 meal prep sessions",
-        icon: "👨‍🍳",
-        category: "consistency",
-        requirement: { type: "meal_preps", threshold: 10 },
-        points: 50,
-        tier: "gold",
-      },
-      {
-        name: "Nutrition Tracker",
-        description: "Log nutrition for 30 days",
-        icon: "📊",
-        category: "nutrition",
-        requirement: { type: "calories_tracked", threshold: 30 },
-        points: 40,
-        tier: "gold",
-      },
-      {
-        name: "Recipe Explorer",
-        description: "Try 25 different recipes",
-        icon: "🌟",
-        category: "variety",
-        requirement: { type: "recipes_tried", threshold: 25 },
-        points: 35,
-        tier: "silver",
-      },
-    ];
-
-    const inserted = [];
-    for (const ach of defaultAchievements) {
-      try {
-        const [achievement] = await db
-          .insert(mealPlanAchievements)
-          .values(ach)
-          .onConflictDoNothing()
+      if (!existing) {
+        const [newItem] = await db
+          .insert(groceryListItems)
+          .values({
+            userId,
+            ingredientName: pantryItem.name,
+            quantity: String(Math.max(1, (pantryItem.quantity || 0) * 2)),
+            unit: pantryItem.unit,
+            category: pantryItem.category,
+            isPantryItem: true,
+            notes: "Auto-added from pantry (running low)",
+          })
           .returning();
-        if (achievement) inserted.push(achievement);
-      } catch (e) {
-        // Skip if already exists
+
+        addedItems.push(newItem);
       }
     }
 
-    res.json({ message: "Achievements initialized", count: inserted.length });
+    res.json({ added: addedItems, count: addedItems.length });
   } catch (error) {
-    console.error("Error initializing achievements:", error);
-    res.status(500).json({ message: "Failed to initialize achievements" });
+    console.error("Error adding pantry items to grocery list:", error);
+    res.status(500).json({ message: "Failed to add pantry items" });
   }
 });
 
@@ -883,16 +840,15 @@ router.post("/family-profiles", requireAuth, async (req: Request, res: Response)
     const userId = req.user!.id;
     const {
       familyMemberId,
-      name,
-      calorieTarget,
-      macroGoals,
+      dietaryRestrictions,
+      allergies,
       preferences,
-      dislikes,
-      portionMultiplier,
+      dislikedFoods,
+      goals,
     } = req.body;
 
-    if (!name) {
-      return res.status(400).json({ message: "Name is required" });
+    if (!familyMemberId) {
+      return res.status(400).json({ message: "Family member ID is required" });
     }
 
     const [profile] = await db
@@ -900,19 +856,19 @@ router.post("/family-profiles", requireAuth, async (req: Request, res: Response)
       .values({
         userId,
         familyMemberId,
-        name,
-        calorieTarget,
-        macroGoals,
+        dietaryRestrictions: dietaryRestrictions || [],
+        allergies: allergies || [],
         preferences: preferences || [],
-        dislikes: dislikes || [],
-        portionMultiplier: portionMultiplier || "1.00",
+        dislikedFoods: dislikedFoods || [],
+        goals: goals || {},
+        isActive: true,
       })
       .returning();
 
     res.json({ profile });
   } catch (error) {
     console.error("Error creating family profile:", error);
-    res.status(500).json({ message: "Failed to create family profile" });
+    res.status(500).json({ message: "Failed to create profile" });
   }
 });
 
@@ -981,19 +937,16 @@ router.get("/grocery-list/savings-report", requireAuth, async (req: Request, res
     const { startDate, endDate } = req.query;
 
     // Get all grocery list items within date range
-    let query = db
+    const conditions = [eq(groceryListItems.userId, userId)];
+    if (startDate) conditions.push(gte(groceryListItems.createdAt, new Date(startDate as string)));
+    if (endDate) conditions.push(lte(groceryListItems.createdAt, new Date(endDate as string)));
+
+    const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+
+    const items = await db
       .select()
       .from(groceryListItems)
-      .where(eq(groceryListItems.userId, userId));
-
-    if (startDate) {
-      query = query.where(gte(groceryListItems.createdAt, new Date(startDate as string)));
-    }
-    if (endDate) {
-      query = query.where(lte(groceryListItems.createdAt, new Date(endDate as string)));
-    }
-
-    const items = await query;
+      .where(whereClause);
 
     // Calculate savings metrics
     const totalEstimated = items.reduce((sum, item) =>
@@ -1038,34 +991,29 @@ router.get("/grocery-list/savings-report", requireAuth, async (req: Request, res
 
     res.json({
       summary: {
-        totalEstimated: totalEstimated.toFixed(2),
-        totalActual: totalActual.toFixed(2),
-        totalSaved: totalSaved.toFixed(2),
-        savingsRate: `${savingsRate}%`,
-        itemCount: items.length,
-        purchasedCount: items.filter(i => i.purchased).length,
-      },
-      pantry: {
-        itemCount: pantryItems.length,
-        savings: pantrySavings.toFixed(2),
+        totalEstimated,
+        totalActual,
+        totalSaved,
+        savingsRate: Number(savingsRate),
+        pantrySavings,
+        itemsCount: items.length,
       },
       topSavingCategories,
-      periodStart: startDate || items[0]?.createdAt || new Date(),
-      periodEnd: endDate || new Date(),
     });
   } catch (error) {
     console.error("Error generating savings report:", error);
-    res.status(500).json({ message: "Failed to generate savings report" });
+    res.status(500).json({ message: "Failed to generate report" });
   }
 });
 
 // ============================================================
-// HELPER FUNCTIONS
+// ACHIEVEMENTS SYSTEM
 // ============================================================
 
+// Check and award meal planning achievements (called periodically or on actions)
 async function checkAchievements(userId: string) {
   try {
-    // Get user's completed meal plans
+    // Get user progress
     const completedPlans = await db
       .select()
       .from(userMealPlanProgress)
