@@ -172,6 +172,7 @@ function buildReviewCaption(input: {
   fullAddress?: string;
   locationLabel?: string;
   rating?: string;
+  priceLevel?: string;
   pros?: string;
   cons?: string;
   verdict?: string;
@@ -182,6 +183,7 @@ function buildReviewCaption(input: {
   const address = (input.fullAddress || "").trim();
   const loc = (input.locationLabel || "").trim();
   const rating = (input.rating || "").trim();
+  const priceLevel = (input.priceLevel || "").trim();
   const pros = (input.pros || "").trim();
   const cons = (input.cons || "").trim();
   const verdict = (input.verdict || "").trim();
@@ -192,6 +194,7 @@ function buildReviewCaption(input: {
   lines.push(`📝 Review: ${business}${address ? `, ${address}` : ""}`);
   if (loc) lines.push(`📍 Location: ${loc}`);
   if (rating) lines.push(`⭐ Rating: ${rating}/5`);
+  if (priceLevel) lines.push(`💰 Price: ${"$".repeat(Number(priceLevel))}`);
   if (pros) lines.push(`✅ Pros: ${pros}`);
   if (cons) lines.push(`⚠️ Cons: ${cons}`);
   if (verdict) lines.push(`💡 Verdict: ${verdict}`);
@@ -234,6 +237,7 @@ export default function ClubPage() {
   const [reviewFullAddress, setReviewFullAddress] = useState("");
   const [reviewLocationLabel, setReviewLocationLabel] = useState("");
   const [reviewRating, setReviewRating] = useState("5");
+  const [reviewPriceLevel, setReviewPriceLevel] = useState<"" | "1" | "2" | "3" | "4">("");
   const [reviewPros, setReviewPros] = useState("");
   const [reviewCons, setReviewCons] = useState("");
   const [reviewVerdict, setReviewVerdict] = useState("");
@@ -247,6 +251,7 @@ export default function ClubPage() {
       fullAddress: reviewFullAddress,
       locationLabel: reviewLocationLabel,
       rating: reviewRating,
+      priceLevel: reviewPriceLevel,
       pros: reviewPros,
       cons: reviewCons,
       verdict: reviewVerdict,
@@ -259,6 +264,7 @@ export default function ClubPage() {
     reviewFullAddress,
     reviewLocationLabel,
     reviewRating,
+    reviewPriceLevel,
     reviewPros,
     reviewCons,
     reviewVerdict,
@@ -285,6 +291,7 @@ export default function ClubPage() {
     setReviewFullAddress("");
     setReviewLocationLabel("");
     setReviewRating("5");
+    setReviewPriceLevel("");
     setReviewPros("");
     setReviewCons("");
     setReviewVerdict("");
@@ -389,6 +396,7 @@ export default function ClubPage() {
               fullAddress: reviewFullAddress,
               locationLabel: reviewLocationLabel,
               rating: reviewRating,
+              priceLevel: reviewPriceLevel,
               pros: reviewPros,
               cons: reviewCons,
               verdict: reviewVerdict,
@@ -433,6 +441,7 @@ export default function ClubPage() {
           fullAddress: reviewFullAddress || null,
           locationLabel: reviewLocationLabel || null,
           rating: parseInt(reviewRating),
+          priceLevel: reviewPriceLevel ? parseInt(reviewPriceLevel) : null,
           pros: reviewPros || null,
           cons: reviewCons || null,
           verdict: reviewVerdict || null,
@@ -841,47 +850,85 @@ export default function ClubPage() {
                                   <SelectValue placeholder="Select rating" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                  <SelectItem value="5">5/5</SelectItem>
-                                  <SelectItem value="4">4/5</SelectItem>
-                                  <SelectItem value="3">3/5</SelectItem>
-                                  <SelectItem value="2">2/5</SelectItem>
-                                  <SelectItem value="1">1/5</SelectItem>
+                                  <SelectItem value="5">⭐⭐⭐⭐⭐ — 5/5</SelectItem>
+                                  <SelectItem value="4">⭐⭐⭐⭐ — 4/5</SelectItem>
+                                  <SelectItem value="3">⭐⭐⭐ — 3/5</SelectItem>
+                                  <SelectItem value="2">⭐⭐ — 2/5</SelectItem>
+                                  <SelectItem value="1">⭐ — 1/5</SelectItem>
                                 </SelectContent>
                               </Select>
                             </div>
+
                             <div className="space-y-2">
-                              <Label>Verdict</Label>
-                              <Input
-                                placeholder="e.g., Def recommend"
-                                value={reviewVerdict}
-                                onChange={(e) => setReviewVerdict(e.target.value)}
-                              />
+                              <Label>Price Level</Label>
+                              <div className="flex gap-2 pt-1">
+                                {[
+                                  { value: "1", label: "$" },
+                                  { value: "2", label: "$$" },
+                                  { value: "3", label: "$$$" },
+                                  { value: "4", label: "$$$$" },
+                                ].map(({ value, label }) => (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    aria-pressed={reviewPriceLevel === value}
+                                    onClick={() =>
+                                      setReviewPriceLevel(
+                                        reviewPriceLevel === value ? "" : (value as any)
+                                      )
+                                    }
+                                    className={`px-3 py-1.5 rounded border text-sm font-semibold transition-colors ${
+                                      reviewPriceLevel === value
+                                        ? "bg-primary text-white border-primary"
+                                        : "border-input text-muted-foreground hover:border-primary"
+                                    }`}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                              <p className="text-xs text-slate-500">Optional</p>
                             </div>
+                          </div>
+
+                          <div className="space-y-2">
+                            <Label>Verdict</Label>
+                            <Input
+                              placeholder="e.g., Def recommend"
+                              value={reviewVerdict}
+                              onChange={(e) => setReviewVerdict(e.target.value)}
+                            />
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-2">
                               <Label>Pros</Label>
                               <Input
-                                placeholder="e.g., Flavor"
+                                placeholder="e.g., Great flavor; friendly staff"
                                 value={reviewPros}
                                 onChange={(e) => setReviewPros(e.target.value)}
                               />
+                              <p className="text-xs text-slate-500">
+                                Separate multiple with a semicolon (;)
+                              </p>
                             </div>
                             <div className="space-y-2">
                               <Label>Cons</Label>
                               <Input
-                                placeholder="e.g., Price"
+                                placeholder="e.g., Parking; long wait"
                                 value={reviewCons}
                                 onChange={(e) => setReviewCons(e.target.value)}
                               />
+                              <p className="text-xs text-slate-500">
+                                Separate multiple with a semicolon (;)
+                              </p>
                             </div>
                           </div>
 
                           <div className="space-y-2">
                             <Label>Notes</Label>
                             <Input
-                              placeholder="e.g., Stewed Chicken"
+                              placeholder="e.g., Try the stewed chicken"
                               value={reviewNotes}
                               onChange={(e) => setReviewNotes(e.target.value)}
                             />
