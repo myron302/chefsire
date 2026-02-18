@@ -15,8 +15,8 @@ import allergiesRouter from "./allergies";
 import searchRouter from "./search";
 import nutritionRouter from "./nutrition";
 import mealPlansRouter from "./meal-plans";
-import groceryListRouter from "./grocery-list";
 import mealPlannerAdvancedRouter from "./meal-planner-advanced";
+import mealPlannerWeekRouter from "./meal-planner-week";
 import dmRouter from "./dm";
 import clubsRouter from "./clubs";
 
@@ -122,8 +122,10 @@ r.use("/nutrition", nutritionRouter);
 r.use(mealPlansRouter);
 
 // Advanced Meal Planning Features - prefixed
-r.use("/meal-planner", groceryListRouter);
 r.use("/meal-planner", mealPlannerAdvancedRouter);
+
+// Week planning (one-click generator + weekly plan fetch) - prefixed
+r.use("/meal-planner", mealPlannerWeekRouter);
 
 // DM (Direct Messages) - prefixed
 r.use("/dm", dmRouter);
