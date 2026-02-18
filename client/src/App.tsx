@@ -215,6 +215,8 @@ function PotentPotablesSection() {
         <Route path="/drinks/potent-potables/liqueurs" component={LiqueursPage} />
         <Route path="/drinks/potent-potables/spritz" component={SpritzPage} />
         <Route path="/drinks/potent-potables/hot-drinks" component={HotDrinksPage} />
+        {/* ✅ FIX: This route was missing, which breaks virgin→mocktails redirects */}
+        <Route path="/drinks/potent-potables/mocktails" component={MocktailsPage} />
         <Route path="/drinks/potent-potables" component={PotentPotablesHub} />
         <Route>
           <Redirect to="/drinks/potent-potables" />
@@ -297,21 +299,11 @@ function DrinksSection() {
   return (
     <DrinksProvider>
       <Switch>
-        <Route path="/drinks/caffeinated/:rest*">
-          {() => <CaffeinatedSection />}
-        </Route>
-        <Route path="/drinks/smoothies/:rest*">
-          {() => <SmoothiesSection />}
-        </Route>
-        <Route path="/drinks/protein-shakes/:rest*">
-          {() => <ProteinShakesSection />}
-        </Route>
-        <Route path="/drinks/detoxes/:rest*">
-          {() => <DetoxesSection />}
-        </Route>
-        <Route path="/drinks/potent-potables/:rest*">
-          {() => <PotentPotablesSection />}
-        </Route>
+        <Route path="/drinks/caffeinated/:rest*">{() => <CaffeinatedSection />}</Route>
+        <Route path="/drinks/smoothies/:rest*">{() => <SmoothiesSection />}</Route>
+        <Route path="/drinks/protein-shakes/:rest*">{() => <ProteinShakesSection />}</Route>
+        <Route path="/drinks/detoxes/:rest*">{() => <DetoxesSection />}</Route>
+        <Route path="/drinks/potent-potables/:rest*">{() => <PotentPotablesSection />}</Route>
         <Route path="/drinks" component={DrinksHubPage} />
         <Route>
           <Redirect to="/drinks" />
@@ -345,8 +337,12 @@ export default function App() {
             <ErrorBoundary>
               <Switch>
                 {/* Shortlinks (optional nice-to-have) */}
-                <Route path="/daiquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
-                <Route path="/daquiri"><Redirect to="/drinks/potent-potables/daiquiri" /></Route>
+                <Route path="/daiquiri">
+                  <Redirect to="/drinks/potent-potables/daiquiri" />
+                </Route>
+                <Route path="/daquiri">
+                  <Redirect to="/drinks/potent-potables/daiquiri" />
+                </Route>
 
                 {/* Legacy redirects: Virgin → Mocktails */}
                 <Route path="/drinks/potent-potables/virgin">
@@ -408,13 +404,9 @@ export default function App() {
                 <Route path="/analytics" component={AnalyticsPage} />
 
                 {/* Recipes */}
-                <Route path="/recipes/baby-food/:rest*">
-                  {() => <RecipesSection />}
-                </Route>
+                <Route path="/recipes/baby-food/:rest*">{() => <RecipesSection />}</Route>
                 <Route path="/recipes/filters" component={RecipesFiltersPage} />
-                <Route path="/recipes/:rest*">
-                  {() => <RecipesSection />}
-                </Route>
+                <Route path="/recipes/:rest*">{() => <RecipesSection />}</Route>
                 <Route path="/recipes" component={RecipesSection} />
                 <Route path="/explore/filters">
                   <Redirect to="/recipes/filters" />
@@ -423,48 +415,73 @@ export default function App() {
                 {/* Misc */}
                 <Route path="/create" component={CreatePost} />
 
-        {/* Pantry Routes */}
-        <Route path="/pantry/scanner" component={PantryScanner} />
+                {/* Pantry Routes */}
+                <Route path="/pantry/scanner" component={PantryScanner} />
                 <Route path="/pantry/recipe-matches" component={RecipeMatches} />
                 <Route path="/pantry/household" component={HouseholdPantry} />
                 <Route path="/pantry/shopping-list" component={ShoppingListPage} />
                 <Route path="/pantry" component={Pantry} />
 
-        {/* Substitutions */}
-        <Route path="/substitutions" component={SubstitutionsPage} />
+                {/* Substitutions */}
+                <Route path="/substitutions" component={SubstitutionsPage} />
 
-        {/* Allergies Dashboard */}
-        <Route path="/allergies" component={AllergiesDashboard} />
+                {/* Allergies Dashboard */}
+                <Route path="/allergies" component={AllergiesDashboard} />
 
-        {/* Nutrition (Meal Planner + Marketplace) */}
-        <Route path="/nutrition/create" component={MealPlanCreator} />
-        <Route path="/nutrition/marketplace" component={MealPlanMarketplace} />
-        <Route path="/nutrition/analytics" component={CreatorAnalytics} />
-        <Route path="/nutrition/my-purchases" component={MyPurchasesPage} />
+                {/* =========================================================
+                    Meal Planner aliases (✅ fixes 404 for meal-planner + subs)
+                   ========================================================= */}
+                <Route path="/meal-planner">
+                  <Redirect to="/nutrition" />
+                </Route>
+                <Route path="/meal-planner/create">
+                  <Redirect to="/nutrition/create" />
+                </Route>
+                <Route path="/meal-planner/marketplace">
+                  <Redirect to="/nutrition/marketplace" />
+                </Route>
+                <Route path="/meal-planner/analytics">
+                  <Redirect to="/nutrition/analytics" />
+                </Route>
+                <Route path="/meal-planner/my-purchases">
+                  <Redirect to="/nutrition/my-purchases" />
+                </Route>
+                <Route path="/meal-planner/meal-plans/:id">
+                  {(params: any) => <Redirect to={`/nutrition/meal-plans/${params.id}`} />}
+                </Route>
+                <Route path="/meal-planner/meal-plans">
+                  <Redirect to="/nutrition/marketplace" />
+                </Route>
 
-        {/* Legacy Nutrition Paths (redirects) */}
-        <Route path="/nutrition/meal-plans/create">
-          <Redirect to="/nutrition/create" />
-        </Route>
-        <Route path="/nutrition/meal-plans/marketplace">
-          <Redirect to="/nutrition/marketplace" />
-        </Route>
-        <Route path="/nutrition/creator-analytics">
-          <Redirect to="/nutrition/analytics" />
-        </Route>
-        <Route path="/nutrition/meal-planner">
-          <Redirect to="/nutrition" />
-        </Route>
+                {/* Nutrition (Meal Planner + Marketplace) */}
+                <Route path="/nutrition/create" component={MealPlanCreator} />
+                <Route path="/nutrition/marketplace" component={MealPlanMarketplace} />
+                <Route path="/nutrition/analytics" component={CreatorAnalytics} />
+                <Route path="/nutrition/my-purchases" component={MyPurchasesPage} />
 
-        {/* Meal Plan Details */}
-        <Route path="/nutrition/meal-plans/:id" component={MealPlanDetailsPage} />
+                {/* Legacy Nutrition Paths (redirects) */}
+                <Route path="/nutrition/meal-plans/create">
+                  <Redirect to="/nutrition/create" />
+                </Route>
+                <Route path="/nutrition/meal-plans/marketplace">
+                  <Redirect to="/nutrition/marketplace" />
+                </Route>
+                <Route path="/nutrition/creator-analytics">
+                  <Redirect to="/nutrition/analytics" />
+                </Route>
+                <Route path="/nutrition/meal-planner">
+                  <Redirect to="/nutrition" />
+                </Route>
 
-        <Route path="/nutrition/meal-plans">
-          <Redirect to="/nutrition/marketplace" />
-        </Route>
+                {/* Meal Plan Details */}
+                <Route path="/nutrition/meal-plans/:id" component={MealPlanDetailsPage} />
 
-        {/* Main Nutrition landing (Meal Planner) */}
-        <Route path="/nutrition" component={NutritionPage} />
+                <Route path="/nutrition/meal-plans">
+                  <Redirect to="/nutrition/marketplace" />
+                </Route>
+
+                {/* Main Nutrition landing (Meal Planner) */}
+                <Route path="/nutrition" component={NutritionPage} />
 
                 {/* Services */}
                 {/* Aliases used by nav/sidebar */}
@@ -506,14 +523,10 @@ export default function App() {
                 <Route path="/clubs" component={ClubsPage} />
 
                 {/* Drinks */}
-                <Route path="/drinks/:rest*">
-                  {() => <DrinksSection />}
-                </Route>
+                <Route path="/drinks/:rest*">{() => <DrinksSection />}</Route>
 
                 {/* Pet Food */}
-                <Route path="/pet-food/:rest*">
-                  {() => <PetFoodSection />}
-                </Route>
+                <Route path="/pet-food/:rest*">{() => <PetFoodSection />}</Route>
 
                 <Route component={NotFound} />
               </Switch>
