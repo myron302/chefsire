@@ -5,127 +5,129 @@ import { requireAuth } from "../middleware/auth";
 
 const r = Router();
 
+
+// ────────────────────────────────────────────────────────────────
+// Ensure table exists (runs automatically on first access)
+async function ensureWeddingBudgetSettingsTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS wedding_budget_settings (
+      user_id VARCHAR PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      budget_min INTEGER NOT NULL DEFAULT 5000,
+      budget_max INTEGER NOT NULL DEFAULT 50000,
+      guest_count INTEGER NOT NULL DEFAULT 100,
+      allocations JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS wedding_budget_settings_user_idx
+      ON wedding_budget_settings(user_id)
+  `);
+}
+// ────────────────────────────────────────────────────────────────
+
+
 /**
- * Budget settings for Wedding Planning (cross-device sync).
- *
- * Table: wedding_budget_settings
- * Primary key: user_id
- *
- * Endpoints:
- *   GET  /api/wedding/budget-settings
- *   POST /api/wedding/budget-settings
+ * Budget settings for Wedding Planning
+ * GET /api/wedding/budget-settings
+ * POST /api/wedding/budget-settings
  */
-
-function clampInt(n: any, min: number, max: number) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return min;
-  return Math.max(min, Math.min(max, Math.round(x)));
-}
-
-function normalizeAllocations(allocations: any) {
-  if (!Array.isArray(allocations)) return null;
-
-  const allowedKeys = new Set(["catering", "venue", "photography", "music", "flowers", "other"]);
-  const cleaned = allocations
-    .filter((a) => a && typeof a === "object" && allowedKeys.has(String(a.key)))
-    .map((a) => ({
-      key: String(a.key),
-      label: String(a.label ?? "").slice(0, 80),
-      percentage: clampInt(a.percentage, 0, 100),
-    }));
-
-  if (cleaned.length === 0) return null;
-
-  // Ensure we always keep all keys (server will also accept partial, but filling keeps client simpler)
-  const defaults = [
-    { key: "catering", label: "Catering & Bar", percentage: 40 },
-    { key: "venue", label: "Venue", percentage: 20 },
-    { key: "photography", label: "Photography", percentage: 12 },
-    { key: "music", label: "Music & Entertainment", percentage: 8 },
-    { key: "flowers", label: "Flowers & Decor", percentage: 10 },
-    { key: "other", label: "Other", percentage: 10 },
-  ];
-
-  const byKey = new Map(defaults.map((d) => [d.key, d]));
-  for (const item of cleaned) {
-    byKey.set(item.key, {
-      key: item.key,
-      label: item.label || byKey.get(item.key)?.label || item.key,
-      percentage: item.percentage,
-    });
-  }
-
-  const filled = defaults.map((d) => byKey.get(d.key) ?? d);
-
-  // Rebalance other so totals don't exceed 100 (best-effort)
-  const nonOtherTotal = filled.filter((a) => a.key !== "other").reduce((sum, a) => sum + a.percentage, 0);
-  const otherPct = clampInt(100 - nonOtherTotal, 0, 100);
-
-  return filled.map((a) => (a.key === "other" ? { ...a, percentage: otherPct } : a));
-}
-
 r.get("/budget-settings", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).user?.id;
-    const result = await db.execute(
-      sql`
-        SELECT user_id, budget_min, budget_max, guest_count, allocations, updated_at
-        FROM wedding_budget_settings
-        WHERE user_id = ${userId}
-        LIMIT 1
-      `
-    );
+    await ensureWeddingBudgetSettingsTable();
 
-    const row = (result as any).rows?.[0];
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
+
+    const result: any = await db.execute(sql`
+      SELECT budget_min AS "budgetMin",
+             budget_max AS "budgetMax",
+             guest_count AS "guestCount",
+             allocations
+      FROM wedding_budget_settings
+      WHERE user_id = ${userId}
+      LIMIT 1
+    `);
+
+    const row = result?.rows?.[0] ?? result?.[0];
     if (!row) {
-      return res.json({ ok: true, settings: null });
+      return res.json({
+        ok: true,
+        settings: null,
+      });
     }
 
     return res.json({
       ok: true,
       settings: {
-        budgetMin: row.budget_min ?? 5000,
-        budgetMax: row.budget_max ?? 50000,
-        guestCount: row.guest_count ?? 100,
+        budgetMin: typeof row.budgetMin === "number" ? row.budgetMin : null,
+        budgetMax: typeof row.budgetMax === "number" ? row.budgetMax : null,
+        guestCount: typeof row.guestCount === "number" ? row.guestCount : null,
         allocations: row.allocations ?? null,
-        updatedAt: row.updated_at ?? null,
       },
     });
-  } catch (error) {
-    console.error("[wedding-budget-settings] GET error:", error);
-    return res.status(500).json({ ok: false, error: "Failed to load budget settings" });
+  } catch (err: any) {
+    console.error("[Wedding Budget] fetch budget settings error:", err);
+    return res.status(500).json({ ok: false, error: err?.message || "Server error" });
   }
 });
 
 r.post("/budget-settings", requireAuth, async (req, res) => {
   try {
-    const userId = (req as any).user?.id;
+    await ensureWeddingBudgetSettingsTable();
 
-    const budgetMin = clampInt(req.body?.budgetMin, 0, 10000000);
-    const budgetMax = clampInt(req.body?.budgetMax, 0, 10000000);
-    const guestCount = clampInt(req.body?.guestCount, 0, 100000);
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
 
-    const allocations = normalizeAllocations(req.body?.allocations);
-    const allocationsJson = allocations ? JSON.stringify(allocations) : null;
+    const budgetMin = Number(req.body?.budgetMin);
+    const budgetMax = Number(req.body?.budgetMax);
+    const guestCount = Number(req.body?.guestCount);
+    const allocations = req.body?.allocations ?? {};
 
-    await db.execute(
-      sql`
-        INSERT INTO wedding_budget_settings (user_id, budget_min, budget_max, guest_count, allocations, updated_at)
-        VALUES (${userId}, ${budgetMin}, ${budgetMax}, ${guestCount}, ${allocations ? sql`${JSON.stringify(allocations)}::jsonb` : sql`NULL`}, NOW())
-        ON CONFLICT (user_id)
-        DO UPDATE SET
-          budget_min = EXCLUDED.budget_min,
-          budget_max = EXCLUDED.budget_max,
-          guest_count = EXCLUDED.guest_count,
-          allocations = EXCLUDED.allocations,
-          updated_at = NOW()
-      `
-    );
+    if (!Number.isFinite(budgetMin) || !Number.isFinite(budgetMax) || budgetMin < 0 || budgetMax < 0 || budgetMax < budgetMin) {
+      return res.status(400).json({ ok: false, error: "Invalid budget range" });
+    }
 
-    return res.json({ ok: true });
-  } catch (error) {
-    console.error("[wedding-budget-settings] POST error:", error);
-    return res.status(500).json({ ok: false, error: "Failed to save budget settings" });
+    if (!Number.isFinite(guestCount) || guestCount < 0) {
+      return res.status(400).json({ ok: false, error: "Invalid guest count" });
+    }
+
+    const payload = JSON.stringify(allocations);
+
+    const result: any = await db.execute(sql`
+      INSERT INTO wedding_budget_settings (user_id, budget_min, budget_max, guest_count, allocations, updated_at, created_at)
+      VALUES (${userId}, ${budgetMin}, ${budgetMax}, ${guestCount}, ${payload}::jsonb, NOW(), NOW())
+      ON CONFLICT (user_id)
+      DO UPDATE SET
+        budget_min = EXCLUDED.budget_min,
+        budget_max = EXCLUDED.budget_max,
+        guest_count = EXCLUDED.guest_count,
+        allocations = EXCLUDED.allocations,
+        updated_at = NOW()
+      RETURNING budget_min AS "budgetMin",
+                budget_max AS "budgetMax",
+                guest_count AS "guestCount",
+                allocations,
+                updated_at AS "updatedAt"
+    `);
+
+    const row = result?.rows?.[0] ?? result?.[0];
+
+    return res.json({
+      ok: true,
+      settings: {
+        budgetMin: row?.budgetMin ?? budgetMin,
+        budgetMax: row?.budgetMax ?? budgetMax,
+        guestCount: row?.guestCount ?? guestCount,
+        allocations: row?.allocations ?? allocations,
+        updatedAt: row?.updatedAt ?? null,
+      },
+    });
+  } catch (err: any) {
+    console.error("[Wedding Budget] save budget settings error:", err);
+    return res.status(500).json({ ok: false, error: err?.message || "Server error" });
   }
 });
 
