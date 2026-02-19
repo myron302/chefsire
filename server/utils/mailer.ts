@@ -760,6 +760,219 @@ export async function sendVendorQuoteRequestEmail(params: {
   });
 }
 
+/**
+ * Notify admin/ops when a new vendor listing application is submitted.
+ * Recipient: VENDOR_LISTINGS_TO → VENDOR_QUOTES_TO → MAIL_USER
+ */
+export async function sendVendorListingSubmittedEmail(params: {
+  listingId: number | string;
+  businessName: string;
+  contactName?: string;
+  email: string;
+  phone?: string;
+  website?: string;
+  instagramHandle?: string;
+  category: string;
+  city: string;
+  state?: string;
+  description?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  yearsInBusiness?: string;
+  plan: string;
+  appUrl: string;
+}) {
+  const from =
+    process.env.WEDDING_MAIL_FROM ||
+    process.env.MAIL_FROM ||
+    "ChefSire Vendors <vendors@chefsire.com>";
+
+  const to =
+    process.env.VENDOR_LISTINGS_TO ||
+    process.env.VENDOR_QUOTES_TO ||
+    process.env.WEDDING_MAIL_USER ||
+    process.env.MAIL_USER;
+
+  if (!to) {
+    throw new Error(
+      "No admin recipient. Set VENDOR_LISTINGS_TO (or MAIL_USER/WEDDING_MAIL_USER)."
+    );
+  }
+
+  const dashboardLink = `${params.appUrl.replace(/\/$/, "")}/admin/vendor-listings/${params.listingId}`;
+  const planLabel = params.plan.charAt(0).toUpperCase() + params.plan.slice(1);
+  const location = [params.city, params.state].filter(Boolean).join(", ");
+  const priceRange =
+    params.minPrice != null && params.maxPrice != null
+      ? `$${params.minPrice.toLocaleString()} – $${params.maxPrice.toLocaleString()}`
+      : params.minPrice != null
+      ? `From $${params.minPrice.toLocaleString()}`
+      : "Not specified";
+
+  const html = `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.6;max-width:620px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg,#db2777,#7c3aed);color:#fff;padding:32px 24px;border-radius:12px 12px 0 0;text-align:center;">
+        <h1 style="margin:0;font-size:22px;">🏢 New Vendor Listing Application</h1>
+        <p style="margin:8px 0 0;font-size:15px;opacity:.9;">${escapeHtml(planLabel)} Plan</p>
+      </div>
+
+      <div style="background:#ffffff;padding:28px 24px;border:1px solid #e5e7eb;border-top:none;">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;">
+          <tr style="background:#f9fafb;">
+            <td style="padding:10px 12px;font-weight:600;width:35%;color:#374151;">Business</td>
+            <td style="padding:10px 12px;color:#111827;">${escapeHtml(params.businessName)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;font-weight:600;color:#374151;">Contact</td>
+            <td style="padding:10px 12px;color:#111827;">${escapeHtml(params.contactName || "—")}</td>
+          </tr>
+          <tr style="background:#f9fafb;">
+            <td style="padding:10px 12px;font-weight:600;color:#374151;">Email</td>
+            <td style="padding:10px 12px;"><a href="mailto:${escapeHtml(params.email)}" style="color:#db2777;">${escapeHtml(params.email)}</a></td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;font-weight:600;color:#374151;">Phone</td>
+            <td style="padding:10px 12px;color:#111827;">${escapeHtml(params.phone || "—")}</td>
+          </tr>
+          <tr style="background:#f9fafb;">
+            <td style="padding:10px 12px;font-weight:600;color:#374151;">Category</td>
+            <td style="padding:10px 12px;color:#111827;">${escapeHtml(params.category)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;font-weight:600;color:#374151;">Location</td>
+            <td style="padding:10px 12px;color:#111827;">${escapeHtml(location)}</td>
+          </tr>
+          <tr style="background:#f9fafb;">
+            <td style="padding:10px 12px;font-weight:600;color:#374151;">Pricing Range</td>
+            <td style="padding:10px 12px;color:#111827;">${escapeHtml(priceRange)}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;font-weight:600;color:#374151;">Years in Business</td>
+            <td style="padding:10px 12px;color:#111827;">${escapeHtml(params.yearsInBusiness || "—")}</td>
+          </tr>
+          <tr style="background:#f9fafb;">
+            <td style="padding:10px 12px;font-weight:600;color:#374151;">Website</td>
+            <td style="padding:10px 12px;">${params.website ? `<a href="${escapeHtml(params.website)}" style="color:#db2777;">${escapeHtml(params.website)}</a>` : "—"}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 12px;font-weight:600;color:#374151;">Instagram</td>
+            <td style="padding:10px 12px;color:#111827;">${escapeHtml(params.instagramHandle || "—")}</td>
+          </tr>
+          <tr style="background:#f9fafb;">
+            <td style="padding:10px 12px;font-weight:600;color:#374151;">Chosen Plan</td>
+            <td style="padding:10px 12px;"><strong style="color:#7c3aed;">${escapeHtml(planLabel)}</strong></td>
+          </tr>
+        </table>
+
+        ${params.description ? `
+          <div style="margin-top:20px;">
+            <p style="font-weight:600;color:#374151;margin:0 0 6px;">Business Description</p>
+            <div style="background:#f6f7f9;border:1px solid #e5e7eb;padding:14px;border-radius:8px;font-size:14px;color:#374151;white-space:pre-wrap;">${escapeHtml(params.description)}</div>
+          </div>
+        ` : ""}
+
+        <div style="margin-top:28px;text-align:center;">
+          <a href="${escapeHtml(dashboardLink)}"
+            style="display:inline-block;background:linear-gradient(135deg,#db2777,#7c3aed);color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">
+            Review in Dashboard →
+          </a>
+        </div>
+      </div>
+
+      <div style="text-align:center;padding:16px;color:#9ca3af;font-size:12px;">
+        <p style="margin:0;">ChefSire • Vendor Listings</p>
+      </div>
+    </div>
+  `;
+
+  const activeTransport = weddingTransport || transport;
+  if (!activeTransport) throw new Error("Email transport not available");
+
+  return activeTransport.sendMail({
+    from,
+    to,
+    subject: `🏢 New ${planLabel} vendor listing — ${params.businessName}`,
+    html,
+    replyTo: params.email,
+  });
+}
+
+/**
+ * Send a confirmation email to the vendor after they submit their listing.
+ */
+export async function sendVendorListingConfirmationEmail(params: {
+  to: string;
+  businessName: string;
+  contactName?: string;
+  plan: string;
+  appUrl: string;
+}) {
+  const from =
+    process.env.VENDOR_LISTINGS_FROM ||
+    process.env.WEDDING_MAIL_FROM ||
+    process.env.MAIL_FROM ||
+    "ChefSire Vendors <vendors@chefsire.com>";
+
+  const planLabel = params.plan.charAt(0).toUpperCase() + params.plan.slice(1);
+  const greeting  = params.contactName ? `Hi ${params.contactName},` : "Hi there,";
+  const listingUrl = `${params.appUrl.replace(/\/$/, "")}/services/vendor-listing`;
+
+  const html = `
+    <div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;line-height:1.6;max-width:600px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg,#db2777,#7c3aed);color:#fff;padding:36px 24px;border-radius:12px 12px 0 0;text-align:center;">
+        <h1 style="margin:0;font-size:24px;">🎉 Application Received!</h1>
+        <p style="margin:10px 0 0;font-size:15px;opacity:.9;">${escapeHtml(params.businessName)}</p>
+      </div>
+
+      <div style="background:#ffffff;padding:32px 28px;border:1px solid #e5e7eb;border-top:none;">
+        <p style="font-size:16px;color:#111827;">${escapeHtml(greeting)}</p>
+
+        <p style="color:#374151;">
+          Thank you for applying to list <strong>${escapeHtml(params.businessName)}</strong> on ChefSire Weddings
+          with the <strong style="color:#7c3aed;">${escapeHtml(planLabel)}</strong> plan.
+          We received your application and our team will review it within <strong>24 hours</strong>.
+        </p>
+
+        <div style="background:#fdf4ff;border:1px solid #e9d5ff;border-radius:10px;padding:20px;margin:24px 0;">
+          <p style="margin:0 0 12px;font-weight:700;color:#7c3aed;font-size:15px;">What happens next</p>
+          <ul style="margin:0;padding-left:20px;color:#374151;font-size:14px;line-height:2;">
+            <li>Our team reviews your listing within 24 hours</li>
+            <li>We add a verification badge to your profile</li>
+            <li>Your listing goes live on the platform</li>
+            <li>Couples can start sending quote requests</li>
+          </ul>
+        </div>
+
+        <p style="color:#374151;font-size:14px;">
+          Have questions in the meantime? Reply to this email or reach us at
+          <a href="mailto:vendors@chefsire.com" style="color:#db2777;">vendors@chefsire.com</a>.
+        </p>
+
+        <div style="text-align:center;margin-top:28px;">
+          <a href="${escapeHtml(listingUrl)}"
+            style="display:inline-block;background:linear-gradient(135deg,#db2777,#7c3aed);color:#fff;padding:13px 32px;border-radius:8px;text-decoration:none;font-weight:700;font-size:15px;">
+            View Listing Page
+          </a>
+        </div>
+      </div>
+
+      <div style="text-align:center;padding:16px;color:#9ca3af;font-size:12px;">
+        <p style="margin:0;">ChefSire Weddings • vendors@chefsire.com</p>
+      </div>
+    </div>
+  `;
+
+  const activeTransport = weddingTransport || transport;
+  if (!activeTransport) throw new Error("Email transport not available");
+
+  return activeTransport.sendMail({
+    from,
+    to: params.to,
+    subject: `✅ We received your listing application — ${params.businessName}`,
+    html,
+  });
+}
+
 function escapeHtml(input: string) {
   return String(input)
     .replace(/&/g, "&amp;")
