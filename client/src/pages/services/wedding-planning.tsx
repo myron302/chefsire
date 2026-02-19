@@ -2455,12 +2455,37 @@ export default function WeddingPlanning() {
       {/* Header */}
       <div className="mb-8">
         <div className="mb-6">
-          <div className="mb-4">
-            <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-              Wedding Planning Hub
-            </h1>
-            <p className="text-muted-foreground mt-2 text-sm md:text-base">Find and book the perfect vendors for your special day</p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+            {/* Title */}
+            <div>
+              <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+                Wedding Planning Hub
+              </h1>
+              <p className="text-muted-foreground mt-2 text-sm md:text-base">Find and book the perfect vendors for your special day</p>
+            </div>
+
+            {/* Vendor CTA — separated by a left border on sm+ */}
+            <div className="flex-shrink-0 sm:border-l sm:pl-5 sm:ml-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">Are you a vendor?</p>
+              <p className="text-xs text-muted-foreground mb-3 max-w-[200px] leading-relaxed hidden sm:block">
+                List your business and reach thousands of couples.
+              </p>
+              <div className="flex sm:flex-col gap-2">
+                <Link href="/services/vendor-listing">
+                  <Button size="sm" className="bg-gradient-to-r from-pink-600 to-purple-600 text-white w-full whitespace-nowrap">
+                    <Building2 className="w-3.5 h-3.5 mr-1.5" />
+                    List My Business
+                  </Button>
+                </Link>
+                <Link href="/services/vendor-listing">
+                  <Button size="sm" className="w-full whitespace-nowrap text-pink-600 bg-transparent border border-pink-300 hover:bg-pink-50">
+                    Learn More
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
+
           <div className="flex flex-col sm:flex-row gap-2">
             <Button variant="outline" onClick={() => setShowBudgetCalculator(!showBudgetCalculator)} className="w-full sm:w-auto">
               <DollarSign className="w-4 h-4 mr-2 text-emerald-600" />
@@ -4014,7 +4039,7 @@ export default function WeddingPlanning() {
                 </Button>
               </Link>
               <Link href="/services/vendor-listing" className="w-full">
-                <Button size="lg" variant="outline" className="w-full border-white/30 text-white hover:bg-white/10">
+                <Button size="lg" className="w-full bg-white/15 border border-white/40 text-white hover:bg-white/25 hover:text-white">
                   Learn More
                 </Button>
               </Link>
