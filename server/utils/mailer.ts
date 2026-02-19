@@ -34,6 +34,10 @@ let initError: string | null = null;
 let weddingTransport: nodemailer.Transporter | null = null;
 let weddingInitError: string | null = null;
 
+// Vendor listings transport (separate email account for vendor applications)
+let vendorTransport: nodemailer.Transporter | null = null;
+let vendorInitError: string | null = null;
+
 // Create transport once (for verification emails)
 try {
   transport = nodemailer.createTransport({
@@ -84,6 +88,34 @@ try {
 } catch (e: any) {
   weddingInitError = e?.message || String(e);
   console.error("❌ Mailer: failed to create wedding transport:", weddingInitError);
+}
+
+// Create vendor transport (separate credentials for vendor listing emails)
+try {
+  if (process.env.VENDOR_LISTINGS_MAIL_USER && process.env.VENDOR_LISTINGS_MAIL_PASS) {
+    vendorTransport = nodemailer.createTransport({
+      host: process.env.VENDOR_LISTINGS_MAIL_HOST || process.env.MAIL_HOST || "smtp.ionos.com",
+      port: Number(process.env.VENDOR_LISTINGS_MAIL_PORT || process.env.MAIL_PORT || 587),
+      secure: false, // STARTTLS on 587
+      auth: {
+        user: process.env.VENDOR_LISTINGS_MAIL_USER,
+        pass: process.env.VENDOR_LISTINGS_MAIL_PASS,
+      },
+      tls: {
+        rejectUnauthorized: true,
+      },
+      debug: process.env.NODE_ENV !== "production",
+      logger: process.env.NODE_ENV !== "production",
+    });
+    console.log("✅ Mailer: vendor transport created with separate credentials");
+  } else {
+    // Fall back to wedding transport, then main transport
+    vendorTransport = weddingTransport || transport;
+    console.log("ℹ️  Mailer: using fallback transport for vendor emails (no separate credentials)");
+  }
+} catch (e: any) {
+  vendorInitError = e?.message || String(e);
+  console.error("❌ Mailer: failed to create vendor transport:", vendorInitError);
 }
 
 /**
@@ -885,7 +917,7 @@ export async function sendVendorListingSubmittedEmail(params: {
     </div>
   `;
 
-  const activeTransport = weddingTransport || transport;
+  const activeTransport = vendorTransport || weddingTransport || transport;
   if (!activeTransport) throw new Error("Email transport not available");
 
   return activeTransport.sendMail({
@@ -962,7 +994,7 @@ export async function sendVendorListingConfirmationEmail(params: {
     </div>
   `;
 
-  const activeTransport = weddingTransport || transport;
+  const activeTransport = vendorTransport || weddingTransport || transport;
   if (!activeTransport) throw new Error("Email transport not available");
 
   return activeTransport.sendMail({
