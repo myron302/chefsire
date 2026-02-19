@@ -42,11 +42,32 @@ function sanitizeTasks(input: unknown): PlanningTask[] {
   return out;
 }
 
+// ────────────────────────────────────────────────────────────────
+// Ensure table exists (added - runs automatically on first access)
+async function ensureWeddingPlanningTasksTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS wedding_planning_tasks (
+      user_id VARCHAR PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+      tasks JSONB NOT NULL DEFAULT '[]'::jsonb,
+      updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS wedding_planning_tasks_user_idx
+      ON wedding_planning_tasks(user_id)
+  `);
+}
+// ────────────────────────────────────────────────────────────────
+
 /**
  * GET /api/wedding/planning-tasks
  */
 router.get("/planning-tasks", requireAuth, async (req, res) => {
   try {
+    await ensureWeddingPlanningTasksTable();   // Added
+
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
 
@@ -73,6 +94,8 @@ router.get("/planning-tasks", requireAuth, async (req, res) => {
  */
 router.post("/planning-tasks", requireAuth, async (req, res) => {
   try {
+    await ensureWeddingPlanningTasksTable();   // Added
+
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
 
