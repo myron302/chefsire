@@ -425,7 +425,7 @@ const VendorCard = memo(
                     <span className="hidden sm:inline">Get Quote</span>
                     <span className="sm:hidden">Quote</span>
                   </Button>
-                  <Link href="/services/vendor-listing" className="flex-1 sm:flex-none">
+                  <Link href="/catering/wedding-map" className="flex-1 sm:flex-none">
                     <Button size="sm" className="bg-gradient-to-r from-pink-600 to-purple-600 w-full text-xs">
                       <span className="hidden sm:inline">View Map</span>
                       <span className="sm:hidden">Map</span>
@@ -2467,7 +2467,7 @@ export default function WeddingPlanning() {
               <span className="hidden sm:inline">Budget Calculator</span>
               <span className="sm:hidden">Budget</span>
             </Button>
-            <Link href="/services/vendor-listing" className="w-full sm:w-auto">
+            <Link href="/catering/wedding-map" className="w-full sm:w-auto">
               <Button variant="outline" className="w-full">
                 <MapPin className="w-4 h-4 mr-2 text-purple-600" />
                 <span className="hidden sm:inline">Open Vendor Map</span>
@@ -2480,38 +2480,6 @@ export default function WeddingPlanning() {
             </Button>
           </div>
         </div>
-
-
-
-{/* Vendor CTA (Top) */}
-<Card className="mb-6 overflow-hidden border-0 bg-gradient-to-r from-purple-600 via-pink-600 to-rose-500 text-white shadow-lg">
-  <CardContent className="p-4 sm:p-6">
-    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div className="min-w-0">
-        <h2 className="text-lg sm:text-xl font-bold leading-tight">Are you a wedding vendor?</h2>
-        <p className="text-white/90 text-sm sm:text-base">
-          Get discovered by couples planning their big day.
-        </p>
-      </div>
-      <div className="flex w-full md:w-auto gap-2">
-        <Link href="/vendor-signup" className="flex-1 md:flex-none">
-          <Button className="w-full bg-white text-purple-700 hover:bg-white/90 font-semibold">
-            <Plus className="h-4 w-4 mr-2" />
-            List my business
-          </Button>
-        </Link>
-        <Link href="/services/vendor-listing" className="flex-1 md:flex-none">
-          <Button
-            variant="outline"
-            className="w-full border-white/60 text-white bg-transparent hover:bg-white/15"
-          >
-            Learn more
-          </Button>
-        </Link>
-      </div>
-    </div>
-  </CardContent>
-</Card>
 
         {/* Progress */}
         <Card className="mb-6">
@@ -4038,16 +4006,16 @@ export default function WeddingPlanning() {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row md:flex-col gap-3 w-full md:w-auto md:min-w-[200px]">
-              <Link href="/vendor-signup" className="w-full">
+              <Link href="/services/vendor-listing" className="w-full">
                 <Button size="lg" className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white font-semibold shadow-lg shadow-pink-900/40">
                   <Building2 className="h-5 w-5 mr-2" />
-                  List my business
+                  List My Business
                   <ArrowRight className="h-4 w-4 ml-2" />
                 </Button>
               </Link>
               <Link href="/services/vendor-listing" className="w-full">
-                <Button size="lg" variant="outline" className="w-full border-white/60 text-white bg-transparent hover:bg-white/15">
-                  Learn more
+                <Button size="lg" variant="outline" className="w-full border-white/30 text-white hover:bg-white/10">
+                  Learn More
                 </Button>
               </Link>
             </div>
