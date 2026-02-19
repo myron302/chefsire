@@ -29,7 +29,9 @@ function sanitizeTasks(input: unknown): PlanningTask[] {
     const completed = typeof t.completed === "boolean" ? t.completed : false;
     const budgetKey = typeof t.budgetKey === "string" ? t.budgetKey.trim() : "";
     const cost = typeof t.cost === "number" && Number.isFinite(t.cost) && t.cost >= 0 ? t.cost : undefined;
+
     if (!id || !label) continue;
+
     out.push({
       id,
       label,
@@ -37,13 +39,14 @@ function sanitizeTasks(input: unknown): PlanningTask[] {
       ...(budgetKey ? { budgetKey } : null),
       ...(typeof cost === "number" ? { cost } : null),
     });
+
     if (out.length >= 200) break; // safety cap
   }
   return out;
 }
 
 // ────────────────────────────────────────────────────────────────
-// Ensure table exists (added - runs automatically on first access)
+// Ensure table exists (runs automatically on first access)
 async function ensureWeddingPlanningTasksTable() {
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS wedding_planning_tasks (
@@ -66,7 +69,7 @@ async function ensureWeddingPlanningTasksTable() {
  */
 router.get("/planning-tasks", requireAuth, async (req, res) => {
   try {
-    await ensureWeddingPlanningTasksTable();   // Added
+    await ensureWeddingPlanningTasksTable();
 
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
@@ -94,13 +97,12 @@ router.get("/planning-tasks", requireAuth, async (req, res) => {
  */
 router.post("/planning-tasks", requireAuth, async (req, res) => {
   try {
-    await ensureWeddingPlanningTasksTable();   // Added
+    await ensureWeddingPlanningTasksTable();
 
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
 
     const tasks = sanitizeTasks(req.body?.tasks);
-
     const payload = JSON.stringify(tasks);
 
     const result: any = await db.execute(sql`
