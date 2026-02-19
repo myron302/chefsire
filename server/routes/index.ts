@@ -71,6 +71,7 @@ import weddingBudgetSettingsRouter from "./wedding-budget-settings";
 import weddingPlanningTasksRouter from "./wedding-planning-tasks";
 import weddingRegistryLinksRouter from "./wedding-registry-links";
 import weddingVendorQuotesRouter from "./wedding-vendor-quotes";
+import weddingVendorListingsRouter from "./wedding-vendor-listings";
 
 const r = Router();
 
@@ -184,6 +185,7 @@ r.use("/wedding", weddingBudgetSettingsRouter);
 r.use("/wedding", weddingPlanningTasksRouter);
 r.use("/wedding", weddingRegistryLinksRouter);
 r.use("/wedding", weddingVendorQuotesRouter);
+r.use("/wedding", weddingVendorListingsRouter);
 
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {
