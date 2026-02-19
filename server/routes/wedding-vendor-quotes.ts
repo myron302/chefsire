@@ -1,71 +1,118 @@
 // server/routes/wedding-vendor-quotes.ts
 //
 // Wedding vendor "Get a Quote" requests.
-// - Persists requests in Postgres (Neon) so "Quote Requested" survives refresh/device changes.
-// - Sends an email notification so the vendor/admin actually receives the request.
+// - Persists requests in Postgres (Neon) so "Quote Requested" survives refresh/logins.
+// - Prevents duplicates by upserting on (user_id, vendor_id).
 //
-// Endpoints (mounted under /api/wedding):
-//   GET  /vendor-quotes          -> returns { ok, vendorIds: number[], quotes: Quote[] }
-//   POST /vendor-quotes          -> creates one quote per (user_id, vendor_id)
+// Routes (mounted under /api/wedding):
+// GET  /api/wedding/vendor-quotes   -> list user's requested quotes
+// POST /api/wedding/vendor-quotes   -> create/update quote request
 
 import { Router } from "express";
+import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { requireAuth } from "../middleware/auth";
-import { sendVendorQuoteRequestEmail } from "../utils/mailer";
 
 const router = Router();
 
-function isEmail(s: unknown): s is string {
-  if (typeof s !== "string") return false;
-  const v = s.trim();
-  if (!v) return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-}
+// ────────────────────────────────────────────────────────────────
+// Ensure table exists (runs automatically on first access)
+async function ensureWeddingVendorQuotesTable() {
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS wedding_vendor_quotes (
+      id BIGSERIAL PRIMARY KEY,
+      user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      vendor_id INTEGER NOT NULL,
+      vendor_type VARCHAR(64),
+      vendor_name VARCHAR(255),
 
-function cleanText(input: unknown, max = 2000): string {
-  if (typeof input !== "string") return "";
-  const t = input.trim();
-  if (!t) return "";
-  return t.length > max ? t.slice(0, max) : t;
-}
+      wedding_date DATE,
+      guest_count INTEGER,
 
-function cleanInt(input: unknown, min: number, max: number): number | null {
-  const n = typeof input === "number" ? input : Number(input);
-  if (!Number.isFinite(n)) return null;
-  const i = Math.trunc(n);
-  if (i < min || i > max) return null;
-  return i;
+      contact_email VARCHAR(255),
+      contact_phone VARCHAR(64),
+      message TEXT,
+
+      status VARCHAR(64) NOT NULL DEFAULT 'requested',
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  await db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS wedding_vendor_quotes_user_vendor_uq
+      ON wedding_vendor_quotes(user_id, vendor_id)
+  `);
+
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS wedding_vendor_quotes_user_idx
+      ON wedding_vendor_quotes(user_id)
+  `);
+}
+// ────────────────────────────────────────────────────────────────
+
+const QuoteSchema = z.object({
+  vendorId: z.number().int().nonnegative(),
+  vendorType: z.string().min(1).max(64).optional(),
+  vendorName: z.string().min(1).max(255).optional(),
+  weddingDate: z.string().optional(), // ISO yyyy-mm-dd from client
+  guestCount: z.number().int().nonnegative().optional(),
+  contactEmail: z.string().email().optional(),
+  contactPhone: z.string().max(64).optional(),
+  message: z.string().max(5000).optional(),
+});
+
+function toDateOrNull(iso: any): string | null {
+  if (!iso) return null;
+  if (typeof iso !== "string") return null;
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
 }
 
 /**
  * GET /api/wedding/vendor-quotes
- * Returns quote state for the currently logged-in user.
  */
 router.get("/vendor-quotes", requireAuth, async (req, res) => {
   try {
+    await ensureWeddingVendorQuotesTable();
+
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
 
     const result: any = await db.execute(sql`
-      SELECT id, vendor_id AS "vendorId", vendor_type AS "vendorType", vendor_name AS "vendorName",
-             wedding_date AS "weddingDate", guest_count AS "guestCount",
-             contact_email AS "contactEmail", contact_phone AS "contactPhone",
-             message, status, created_at AS "createdAt"
+      SELECT
+        id,
+        vendor_id AS "vendorId",
+        vendor_type AS "vendorType",
+        vendor_name AS "vendorName",
+        wedding_date AS "weddingDate",
+        guest_count AS "guestCount",
+        contact_email AS "contactEmail",
+        contact_phone AS "contactPhone",
+        message,
+        status,
+        created_at AS "createdAt"
       FROM wedding_vendor_quotes
       WHERE user_id = ${userId}
       ORDER BY created_at DESC
-      LIMIT 200
     `);
 
     const rows = result?.rows ?? result ?? [];
-    const vendorIds = Array.from(
-      new Set(
-        rows.map((r: any) => Number(r.vendorId)).filter((n: any) => Number.isFinite(n))
-      )
-    );
+    const quotes = (rows || []).map((r: any) => ({
+      id: r.id,
+      vendorId: r.vendorId,
+      vendorType: r.vendorType ?? null,
+      vendorName: r.vendorName ?? null,
+      weddingDate: r.weddingDate ? String(r.weddingDate).slice(0, 10) : null,
+      guestCount: typeof r.guestCount === "number" ? r.guestCount : null,
+      contactEmail: r.contactEmail ?? null,
+      contactPhone: r.contactPhone ?? null,
+      message: r.message ?? null,
+      status: r.status ?? "requested",
+      createdAt: r.createdAt ?? null,
+    }));
 
-    return res.json({ ok: true, vendorIds, quotes: rows });
+    return res.json({ ok: true, quotes });
   } catch (err: any) {
     console.error("[Wedding Quotes] fetch error:", err);
     return res.status(500).json({ ok: false, error: err?.message || "Server error" });
@@ -77,85 +124,77 @@ router.get("/vendor-quotes", requireAuth, async (req, res) => {
  */
 router.post("/vendor-quotes", requireAuth, async (req, res) => {
   try {
+    await ensureWeddingVendorQuotesTable();
+
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ ok: false, error: "Not authenticated" });
 
-    const vendorId = cleanInt(req.body?.vendorId, 1, 1_000_000);
-    if (!vendorId) return res.status(400).json({ ok: false, error: "vendorId is required" });
+    const parsed = QuoteSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.message });
+    }
 
-    const vendorName = cleanText(req.body?.vendorName, 120);
-    const vendorType = cleanText(req.body?.vendorType, 40);
-
-    const weddingDate = cleanText(req.body?.weddingDate, 32); // store as date in SQL below
-    const guestCount = cleanInt(req.body?.guestCount, 0, 5000);
-
-    const contactEmail = isEmail(req.body?.contactEmail) ? req.body.contactEmail.trim() : "";
-    const contactPhone = cleanText(req.body?.contactPhone, 40);
-    const message = cleanText(req.body?.message, 4000);
-
-    const vendorEmail = isEmail(req.body?.vendorEmail) ? req.body.vendorEmail.trim() : "";
+    const q = parsed.data;
+    const weddingDate = toDateOrNull(q.weddingDate);
 
     const result: any = await db.execute(sql`
       INSERT INTO wedding_vendor_quotes (
-        user_id, vendor_id, vendor_type, vendor_name, wedding_date, guest_count,
-        contact_email, contact_phone, message, status, created_at
+        user_id, vendor_id, vendor_type, vendor_name,
+        wedding_date, guest_count, contact_email, contact_phone,
+        message, status
       )
       VALUES (
-        ${userId},
-        ${vendorId},
-        ${vendorType || null},
-        ${vendorName || null},
-        ${weddingDate ? sql`${weddingDate}::date` : null},
-        ${typeof guestCount === "number" ? guestCount : null},
-        ${contactEmail || null},
-        ${contactPhone || null},
-        ${message || null},
-        'requested',
-        NOW()
+        ${userId}, ${q.vendorId}, ${q.vendorType ?? null}, ${q.vendorName ?? null},
+        ${weddingDate}::date, ${q.guestCount ?? null}, ${q.contactEmail ?? null}, ${q.contactPhone ?? null},
+        ${q.message ?? null}, 'requested'
       )
       ON CONFLICT (user_id, vendor_id)
       DO UPDATE SET
-        vendor_type = COALESCE(EXCLUDED.vendor_type, wedding_vendor_quotes.vendor_type),
-        vendor_name = COALESCE(EXCLUDED.vendor_name, wedding_vendor_quotes.vendor_name),
-        wedding_date = COALESCE(EXCLUDED.wedding_date, wedding_vendor_quotes.wedding_date),
-        guest_count = COALESCE(EXCLUDED.guest_count, wedding_vendor_quotes.guest_count),
-        contact_email = COALESCE(EXCLUDED.contact_email, wedding_vendor_quotes.contact_email),
-        contact_phone = COALESCE(EXCLUDED.contact_phone, wedding_vendor_quotes.contact_phone),
-        message = COALESCE(EXCLUDED.message, wedding_vendor_quotes.message)
-      RETURNING id, vendor_id AS "vendorId", vendor_type AS "vendorType", vendor_name AS "vendorName",
-                wedding_date AS "weddingDate", guest_count AS "guestCount",
-                contact_email AS "contactEmail", contact_phone AS "contactPhone",
-                message, status, created_at AS "createdAt",
-                (xmax = 0) AS "wasInserted"
+        vendor_type = EXCLUDED.vendor_type,
+        vendor_name = EXCLUDED.vendor_name,
+        wedding_date = EXCLUDED.wedding_date,
+        guest_count = EXCLUDED.guest_count,
+        contact_email = EXCLUDED.contact_email,
+        contact_phone = EXCLUDED.contact_phone,
+        message = EXCLUDED.message,
+        status = 'requested'
+      RETURNING
+        id,
+        vendor_id AS "vendorId",
+        vendor_type AS "vendorType",
+        vendor_name AS "vendorName",
+        wedding_date AS "weddingDate",
+        guest_count AS "guestCount",
+        contact_email AS "contactEmail",
+        contact_phone AS "contactPhone",
+        message,
+        status,
+        created_at AS "createdAt",
+        (xmax = 0) AS "inserted"
     `);
 
-    const row = (result?.rows?.[0] ?? result?.[0]) as any;
-    if (!row) return res.status(500).json({ ok: false, error: "Failed to create quote" });
+    const row = result?.rows?.[0] ?? result?.[0];
+    const created = !!row?.inserted;
 
-    // Only email on true insert (not repeat clicks)
-    if (row.wasInserted) {
-      const appUrl = process.env.APP_URL || process.env.PUBLIC_URL || "";
-      try {
-        await sendVendorQuoteRequestEmail({
-          vendorTo: vendorEmail || undefined,
-          vendorName: vendorName || undefined,
-          vendorType: vendorType || undefined,
-          userEmail: contactEmail || undefined,
-          userPhone: contactPhone || undefined,
-          weddingDate: weddingDate || undefined,
-          guestCount: typeof guestCount === "number" ? guestCount : undefined,
-          message: message || undefined,
-          appUrl,
-          quoteId: row.id,
-        });
-      } catch (e: any) {
-        console.error("[Wedding Quotes] email send failed:", e?.message || e);
-      }
-    }
-
-    return res.json({ ok: true, quote: row });
+    return res.json({
+      ok: true,
+      created,
+      quote: {
+        id: row?.id ?? null,
+        vendorId: row?.vendorId ?? q.vendorId,
+        vendorType: row?.vendorType ?? q.vendorType ?? null,
+        vendorName: row?.vendorName ?? q.vendorName ?? null,
+        weddingDate: row?.weddingDate ? String(row.weddingDate).slice(0, 10) : weddingDate,
+        guestCount: typeof row?.guestCount === "number" ? row.guestCount : q.guestCount ?? null,
+        contactEmail: row?.contactEmail ?? q.contactEmail ?? null,
+        contactPhone: row?.contactPhone ?? q.contactPhone ?? null,
+        message: row?.message ?? q.message ?? null,
+        status: row?.status ?? "requested",
+        createdAt: row?.createdAt ?? null,
+      },
+    });
   } catch (err: any) {
-    console.error("[Wedding Quotes] create error:", err);
+    console.error("[Wedding Quotes] save error:", err);
     return res.status(500).json({ ok: false, error: err?.message || "Server error" });
   }
 });
