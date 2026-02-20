@@ -271,15 +271,6 @@ const parsePlanningTasks = (rawValue: string | null): PlanningTask[] => {
   }
 };
 
-const getWeddingPlanningTasksStorageKey = (userId?: string | number) =>
-  userId ? `weddingPlanningTasks:${userId}` : "weddingPlanningTasks:guest";
-
-const getWeddingBudgetSettingsStorageKey = (userId?: string | number) =>
-  userId ? `weddingBudgetSettings:${userId}` : "weddingBudgetSettings:guest";
-
-const getWeddingRegistryLinksStorageKey = (userId?: string | number) =>
-  userId ? `weddingRegistryLinks:${userId}` : "weddingRegistryLinks:guest";
-
 const normalizeBudgetAllocations = (input: any): BudgetAllocation[] => {
   if (!Array.isArray(input)) return DEFAULT_BUDGET_ALLOCATIONS;
 
@@ -470,9 +461,7 @@ export default function WeddingPlanning() {
   const [selectedDate, setSelectedDate] = useState("");
   const [savedVendors, setSavedVendors] = useState(new Set<number>());
   const [showBudgetCalculator, setShowBudgetCalculator] = useState(false);
-  const [showTrialBanner, setShowTrialBanner] = useState(() => {
-    return localStorage.getItem("weddingTrialBannerDismissed") !== "true";
-  });
+  const [showTrialBanner, setShowTrialBanner] = useState(() => !isPremium);
   const [requestedQuotes, setRequestedQuotes] = useState(new Set<number>());
 
   // Quote request dialog state (Get a Quote)
@@ -563,31 +552,13 @@ export default function WeddingPlanning() {
   const vendorLocationAutocompleteRef = useRef<any>(null);
 
   // Trial selector modal - only show once if user is on free tier
-  const [showTrialSelector, setShowTrialSelector] = useState(() => {
-    const hasSelected = localStorage.getItem("weddingTierSelected");
-    if (hasSelected) return false;
+  const [showTrialSelector, setShowTrialSelector] = useState(() => currentTier === "free");
 
-    const storedUser = localStorage.getItem("user");
-    if (storedUser) {
-      try {
-        const userData = JSON.parse(storedUser);
-        if (userData.subscriptionTier === "premium" || userData.subscriptionTier === "elite") {
-          localStorage.setItem("weddingTierSelected", "true");
-          return false;
-        }
-      } catch (e) {
-        console.error("[Wedding Planning] Failed to parse user from localStorage:", e);
-      }
-    }
-
-    return true;
-  });
-
-  // Hide selector if user already has premium/elite tier
+  // Hide selector + trial banner if user already has premium/elite tier
   useEffect(() => {
     if (currentTier === "premium" || currentTier === "elite") {
       setShowTrialSelector(false);
-      localStorage.setItem("weddingTierSelected", "true");
+      setShowTrialBanner(false);
     }
   }, [currentTier]);
 
@@ -599,13 +570,10 @@ export default function WeddingPlanning() {
 
     const loadPlanningTasks = async () => {
       setHasLoadedPlanningTasks(false);
-
-      // Logged-out guests: keep using localStorage only.
+      // Logged-out guests: no persistence (in-memory only).
       if (!user?.id) {
-        const guestKey = getWeddingPlanningTasksStorageKey(undefined);
-        const raw = localStorage.getItem(guestKey) ?? localStorage.getItem("weddingPlanningTasks");
         if (!cancelled) {
-          setPlanningTasks(parsePlanningTasks(raw));
+          setPlanningTasks(DEFAULT_PLANNING_TASKS);
           setHasLoadedPlanningTasks(true);
         }
         return;
@@ -621,40 +589,17 @@ export default function WeddingPlanning() {
               setPlanningTasks(data.tasks);
               setHasLoadedPlanningTasks(true);
             }
-            try {
-              localStorage.removeItem("weddingPlanningTasks");
-            } catch {}
             return;
           }
         }
       } catch (error) {
         console.error("[Wedding Planning] Failed to fetch planning tasks from DB:", error);
       }
-
-      // Fallback: legacy local cache (one-time migration) and/or defaults.
-      const legacy = localStorage.getItem("weddingPlanningTasks");
-      const localTasks = parsePlanningTasks(legacy);
-
+      // If DB fetch fails or returns nothing, fall back to defaults.
       if (!cancelled) {
-        setPlanningTasks(localTasks);
+        setPlanningTasks(DEFAULT_PLANNING_TASKS);
         setHasLoadedPlanningTasks(true);
       }
-
-      // Best-effort: seed DB so tasks follow the user across devices.
-      try {
-        await fetch("/api/wedding/planning-tasks", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tasks: localTasks }),
-        });
-      } catch (error) {
-        console.error("[Wedding Planning] Failed to seed planning tasks to DB:", error);
-      }
-
-      try {
-        if (legacy) localStorage.removeItem("weddingPlanningTasks");
-      } catch {}
     };
 
     loadPlanningTasks();
@@ -666,14 +611,6 @@ export default function WeddingPlanning() {
 
   useEffect(() => {
     if (!hasLoadedPlanningTasks) return;
-
-    // Guests (logged out) keep local storage only.
-    if (!user?.id) {
-      try {
-        const storageKey = getWeddingPlanningTasksStorageKey(undefined);
-        localStorage.setItem(storageKey, JSON.stringify(planningTasks));
-      } catch {}
-    }
 
     // If signed in, sync to DB (debounced).
     if (!user?.id) return;
@@ -701,27 +638,13 @@ export default function WeddingPlanning() {
 
     const loadBudgetSettings = async () => {
       setHasLoadedBudgetSettings(false);
-
       if (!user?.id) {
-        const guestKey = getWeddingBudgetSettingsStorageKey(undefined);
-        const raw = localStorage.getItem(guestKey);
-        if (raw) {
-          try {
-            const parsed = JSON.parse(raw);
-            if (!cancelled) {
-              setBudgetRange([
-                Math.max(5000, Math.min(100000, Math.round(Number(parsed?.budgetMin) || 5000))),
-                Math.max(5000, Math.min(100000, Math.round(Number(parsed?.budgetMax) || 50000))),
-              ]);
-              setGuestCount([Math.max(1, Math.min(2000, Math.round(Number(parsed?.guestCount) || 100)))]);
-              setBudgetAllocations(normalizeBudgetAllocations(parsed?.allocations));
-            }
-          } catch (error) {
-            console.error("[Wedding Planning] Failed to parse guest budget settings:", error);
-          }
+        if (!cancelled) {
+          setBudgetRange([5000, 50000]);
+          setGuestCount([100]);
+          setBudgetAllocations(DEFAULT_BUDGET_ALLOCATIONS);
+          setHasLoadedBudgetSettings(true);
         }
-
-        if (!cancelled) setHasLoadedBudgetSettings(true);
         return;
       }
 
@@ -789,25 +712,16 @@ export default function WeddingPlanning() {
       setHasLoadedRegistryLinks(false);
 
       if (!user?.id) {
-        try {
-          const guestRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(undefined));
-          if (guestRaw) {
-            const parsed = JSON.parse(guestRaw);
-            if (!cancelled) {
-              const normalized = normalizeRegistryLinks(parsed);
-              setRegistryLinks(normalized);
-              setRegistryDraft(normalized);
-            }
-          }
-        } catch {}
-
-        if (!cancelled) setHasLoadedRegistryLinks(true);
+        if (!cancelled) {
+          setRegistryLinks(DEFAULT_REGISTRY_LINKS);
+          setRegistryDraft(DEFAULT_REGISTRY_LINKS);
+          setHasLoadedRegistryLinks(true);
+        }
         return;
       }
 
       try {
         const response = await fetch("/api/wedding/registry-links", { credentials: "include" });
-        let loadedFromServer = false;
         if (response.ok) {
           const data = await response.json();
           const fromServer =
@@ -817,51 +731,20 @@ export default function WeddingPlanning() {
             if (fromServer && fromServer.length > 0) {
               setRegistryLinks(fromServer);
               setRegistryDraft(fromServer);
-              loadedFromServer = true;
-            }
-          }
-        }
-
-        // Only use local fallback when DB data wasn't successfully loaded.
-        if (!loadedFromServer && !cancelled) {
-          try {
-            const localRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(user.id));
-            const guestRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(undefined));
-            const raw = localRaw || guestRaw;
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              const normalized = normalizeRegistryLinks(parsed);
-              setRegistryLinks(normalized);
-              setRegistryDraft(normalized);
             } else {
               setRegistryLinks(DEFAULT_REGISTRY_LINKS);
               setRegistryDraft(DEFAULT_REGISTRY_LINKS);
             }
-          } catch {
-            setRegistryLinks(DEFAULT_REGISTRY_LINKS);
-            setRegistryDraft(DEFAULT_REGISTRY_LINKS);
           }
+        } else if (!cancelled) {
+          setRegistryLinks(DEFAULT_REGISTRY_LINKS);
+          setRegistryDraft(DEFAULT_REGISTRY_LINKS);
         }
       } catch (error) {
         console.error("[Wedding Planning] Failed to load registry links:", error);
         if (!cancelled) {
-          try {
-            const localRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(user.id));
-            const guestRaw = localStorage.getItem(getWeddingRegistryLinksStorageKey(undefined));
-            const raw = localRaw || guestRaw;
-            if (raw) {
-              const parsed = JSON.parse(raw);
-              const normalized = normalizeRegistryLinks(parsed);
-              setRegistryLinks(normalized);
-              setRegistryDraft(normalized);
-            } else {
-              setRegistryLinks(DEFAULT_REGISTRY_LINKS);
-              setRegistryDraft(DEFAULT_REGISTRY_LINKS);
-            }
-          } catch {
-            setRegistryLinks(DEFAULT_REGISTRY_LINKS);
-            setRegistryDraft(DEFAULT_REGISTRY_LINKS);
-          }
+          setRegistryLinks(DEFAULT_REGISTRY_LINKS);
+          setRegistryDraft(DEFAULT_REGISTRY_LINKS);
         }
       } finally {
         if (!cancelled) setHasLoadedRegistryLinks(true);
@@ -877,16 +760,10 @@ export default function WeddingPlanning() {
 
   useEffect(() => {
     if (!hasLoadedRegistryLinks) return;
-    try {
-      const safe = registryLinks.map((link) => ({ id: link.id, name: link.name, url: link.url, icon: link.icon }));
-      localStorage.setItem(getWeddingRegistryLinksStorageKey(user?.id), JSON.stringify(safe));
-      localStorage.setItem(getWeddingRegistryLinksStorageKey(undefined), JSON.stringify(safe));
-    } catch {}
-
     if (!isEditingRegistryLinks) {
       setRegistryDraft(registryLinks);
     }
-  }, [registryLinks, user?.id, hasLoadedRegistryLinks, isEditingRegistryLinks]);
+  }, [registryLinks, hasLoadedRegistryLinks, isEditingRegistryLinks]);
 
   // Load guest list and wedding details from backend on mount
   useEffect(() => {
@@ -954,23 +831,14 @@ export default function WeddingPlanning() {
               respondedAt: g.respondedAt ?? null,
               partnerName: g.partnerName ?? undefined,
             }));
-
-            const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-            const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || "[]");
-
-            setGuestList([...sentGuests, ...unsentGuests]);
+            setGuestList(sentGuests);
             return;
           }
         }
-
-        const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-        const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || "[]");
-        setGuestList(unsentGuests);
+        setGuestList([]);
       } catch (error) {
         console.error("[Wedding Planning] Failed to fetch guest list:", error);
-        const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-        const unsentGuests = JSON.parse(localStorage.getItem(unsentGuestsKey) || "[]");
-        setGuestList(unsentGuests);
+        setGuestList([]);
       }
     };
 
@@ -1078,7 +946,6 @@ export default function WeddingPlanning() {
 
   const handleStartTrial = () => {
     setShowTrialBanner(false);
-    localStorage.setItem("weddingTrialBannerDismissed", "true");
     toast({
       description: "🎉 All wedding planning features are completely free! Enjoy unlimited access.",
     });
@@ -1482,12 +1349,6 @@ export default function WeddingPlanning() {
       setGuestList((prev) => {
         const updated = [...prev, tempGuest];
 
-        if (user?.id) {
-          const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-          const unsentGuests = updated.filter((g) => typeof g.id === "number");
-          localStorage.setItem(unsentGuestsKey, JSON.stringify(unsentGuests));
-        }
-
         return updated;
       });
 
@@ -1537,12 +1398,6 @@ export default function WeddingPlanning() {
 
       setGuestList((prev) => {
         const updated = prev.filter((g) => g.id !== guestId);
-
-        if (user?.id) {
-          const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-          const unsentGuests = updated.filter((g) => typeof g.id === "number");
-          localStorage.setItem(unsentGuestsKey, JSON.stringify(unsentGuests));
-        }
 
         return updated;
       });
@@ -1621,13 +1476,7 @@ export default function WeddingPlanning() {
 
       const data = await response.json();
 
-      if (data.ok) {
-        if (user?.id) {
-          const unsentGuestsKey = `wedding-unsent-guests-${user.id}`;
-          localStorage.removeItem(unsentGuestsKey);
-        }
-
-        setGuestList((prev) => prev.filter((g) => typeof g.id === "string"));
+      if (data.ok) {        setGuestList((prev) => prev.filter((g) => typeof g.id === "string"));
 
         if (data.errors && data.errors.length > 0) {
           const errorMessages = data.errors.map((err: any) => `${err.email}: ${err.error}`).join("\n");
@@ -1963,24 +1812,17 @@ export default function WeddingPlanning() {
   const saveRegistryLinks = useCallback(async () => {
     const saved = normalizeRegistryLinks(registryDraft);
 
-    // Always persist locally first so the user never loses work (offline-safe).
-    try {
-      localStorage.setItem(
-        getWeddingRegistryLinksStorageKey(user?.id),
-        JSON.stringify(saved.map((l) => ({ id: l.id, name: l.name, url: l.url, icon: l.icon })))
-      );
-      // Keep a guest copy too (handy if a user signs out / loses session)
-      localStorage.setItem(getWeddingRegistryLinksStorageKey(undefined), JSON.stringify(saved));
-    } catch {}
-
     // Update UI immediately (optimistic UI).
     setRegistryLinks(saved);
     setRegistryDraft(saved);
     setIsEditingRegistryLinks(false);
 
-    // Guests: local-only.
+    // Guests: no persistence (in-memory only).
     if (!user?.id) {
-      toast({ title: "Saved", description: "Your registry links were saved on this device." });
+      toast({
+        title: "Saved",
+        description: "Registry links updated for this session. Sign in to save across devices.",
+      });
       return;
     }
 
@@ -2002,15 +1844,7 @@ export default function WeddingPlanning() {
 
       if (!response.ok || !data?.ok) {
         const msg = data?.error || response.statusText || "Failed to save registry links";
-        console.error("[Wedding Planning] Registry save failed:", msg, data);
-        toast({
-          title: "Saved locally, but not to your account",
-          description:
-            "We saved your registry links on this device, but couldn't save them to the database. " +
-            "That’s why they don’t show on other devices. Check your server logs for /api/wedding/registry-links.",
-          variant: "destructive",
-        });
-        return;
+        throw new Error(msg);
       }
 
       // Server may normalize/overwrite; trust DB copy for cross-device consistency.
@@ -2018,25 +1852,17 @@ export default function WeddingPlanning() {
         const fromServer = normalizeRegistryLinks(data.registryLinks);
         setRegistryLinks(fromServer);
         setRegistryDraft(fromServer);
-        try {
-          localStorage.setItem(
-            getWeddingRegistryLinksStorageKey(user?.id),
-            JSON.stringify(fromServer.map((l) => ({ id: l.id, name: l.name, url: l.url, icon: l.icon })))
-          );
-        } catch {}
       }
 
       toast({
         title: "Saved",
         description: "Your registry links were saved to your account (works on all devices).",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("[Wedding Planning] Failed to save registry links to DB:", error);
       toast({
-        title: "Saved locally, but not to your account",
-        description:
-          "We saved your registry links on this device, but couldn't reach the server to save them to the database. " +
-          "That’s why they don’t show on other devices.",
+        title: "Save Failed",
+        description: "Couldn't save registry links to your account. Please try again.",
         variant: "destructive",
       });
     }
@@ -2302,8 +2128,6 @@ export default function WeddingPlanning() {
         });
 
         await new Promise((resolve) => setTimeout(resolve, 500));
-
-        localStorage.setItem("weddingTierSelected", "true");
         setShowTrialSelector(false);
 
         if (tier === "free") {
@@ -2436,7 +2260,6 @@ export default function WeddingPlanning() {
                   size="sm"
                   onClick={() => {
                     setShowTrialBanner(false);
-                    localStorage.setItem("weddingTrialBannerDismissed", "true");
                   }}
                   className="flex-shrink-0"
                 >
