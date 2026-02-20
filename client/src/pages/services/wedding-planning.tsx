@@ -522,7 +522,9 @@ const VendorCard = memo(
 
 VendorCard.displayName = "VendorCard";
 
-export default function WeddingPlanning() {
+export type WeddingPlanningView = "hub" | "vendors" | "budget" | "checklist" | "registry" | "calendar" | "invitations";
+
+export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlanningView } = {}) {
   const { toast } = useToast();
 
   // Load Google Maps API
@@ -2751,9 +2753,69 @@ const displaySmartTips = useMemo(() => {
     }
   };
 
+  const sectionTitleMap: Record<WeddingPlanningView, string> = {
+    hub: "Wedding Planning Hub",
+    vendors: "Vendors & Quotes",
+    budget: "Budget Planner",
+    checklist: "Checklist & Progress",
+    registry: "Gift Registry",
+    calendar: "Planning Calendar",
+    invitations: "Guests & Invitations",
+  };
+
+  const showProgressSection = mode === "hub" || mode === "checklist";
+  const showBudgetSection = mode === "budget";
+  const showRoadmapSection = mode === "hub" || mode === "checklist";
+  const showHubSummaryCards = mode === "hub";
+  const showVendorsSection = mode === "vendors";
+  const showRegistrySection = mode === "registry";
+  const showCalendarSection = mode === "calendar";
+  const showInvitationsSection = mode === "invitations";
+  const showVendorCtaSection = mode === "hub" || mode === "vendors";
   return (
     <div className="max-w-7xl mx-auto px-3 md:px-4 py-4 md:py-8">
       <WeddingTrialSelector open={showTrialSelector} onSelect={handleTrialSelect} />
+
+      <Card className="mb-4 md:mb-6 border-dashed">
+        <CardContent className="p-3 md:p-4">
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">Wedding Planner</p>
+                <h2 className="text-lg md:text-xl font-semibold">{sectionTitleMap[mode]}</h2>
+                {mode !== "hub" && (
+                  <p className="text-xs md:text-sm text-muted-foreground">Focused workspace for this part of your wedding planning flow.</p>
+                )}
+              </div>
+              {mode !== "hub" && (
+                <Link href="/services/wedding-planning" className="w-full md:w-auto">
+                  <Button variant="outline" className="w-full md:w-auto">Back to Hub</Button>
+                </Link>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2">
+              {[
+                ["hub", "Hub", "/services/wedding-planning"],
+                ["checklist", "Checklist", "/services/wedding-planning/checklist"],
+                ["budget", "Budget", "/services/wedding-planning/budget"],
+                ["vendors", "Vendors", "/services/wedding-planning/vendors"],
+                ["calendar", "Calendar", "/services/wedding-planning/calendar"],
+                ["invitations", "Guests", "/services/wedding-planning/invitations"],
+              ].map(([key, label, href]) => (
+                <Link key={String(key)} href={String(href)}>
+                  <Button
+                    variant={mode === key ? "default" : "outline"}
+                    className={`w-full justify-center ${mode === key ? "bg-gradient-to-r from-pink-600 to-purple-600 text-white" : ""}`}
+                  >
+                    {label}
+                  </Button>
+                </Link>
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {showTrialBanner && (
         <Card className="mb-4 md:mb-6 border-2 border-purple-500 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950 dark:to-pink-950">
@@ -2899,6 +2961,7 @@ const displaySmartTips = useMemo(() => {
           </div>
         </div>
 
+        {showProgressSection && (
         {/* Progress */}
         <Card className="mb-6">
           <CardContent className="p-4 md:p-6">
@@ -3040,7 +3103,10 @@ const displaySmartTips = useMemo(() => {
           </CardContent>
         </Card>
 
-        {showBudgetCalculator && (
+        )}
+
+        {showBudgetSection && (
+          {showBudgetCalculator && (
           <Card className="mb-6">
             <CardHeader>
               <CardTitle>Smart Budget Calculator</CardTitle>
@@ -3172,6 +3238,10 @@ const displaySmartTips = useMemo(() => {
           </Card>
         </div>
 
+          )}
+        )}
+
+        {showRoadmapSection && (
         {/* Wedding 101: DIY tutorial */}
         <Card className="mb-6">
           <CardHeader className="pb-3">
@@ -3643,6 +3713,85 @@ const displaySmartTips = useMemo(() => {
           </CardContent>
         </Card>
 
+        )}
+
+        {showHubSummaryCards && (
+          <div className="mb-8">
+            <div className="mb-3">
+              <h3 className="text-base md:text-lg font-semibold">Open a focused workspace</h3>
+              <p className="text-sm text-muted-foreground">Use the hub for overview, then jump into the tool you want to work on.</p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Checklist & Progress</CardTitle>
+                  <CardDescription>{completedTasks}/{planningTasks.length} tasks complete</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Progress value={planningProgress} />
+                  <Link href="/services/wedding-planning/checklist"><Button className="w-full">Open Checklist</Button></Link>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Budget Planner</CardTitle>
+                  <CardDescription>Target: ${budgetRange[1].toLocaleString()}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between"><span>Planned spend</span><span className="font-medium">${Math.round(totalSpent).toLocaleString()}</span></div>
+                  <div className="flex items-center justify-between"><span>Guests</span><span className="font-medium">{guestCountNum}</span></div>
+                  <Link href="/services/wedding-planning/budget"><Button className="w-full mt-2">Open Budget</Button></Link>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Vendors & Quotes</CardTitle>
+                  <CardDescription>{filteredVendors.length} vendor matches right now</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2 text-sm">
+                  <div className="flex items-center justify-between"><span>Quotes requested</span><span className="font-medium">{requestedQuotes.size}</span></div>
+                  <div className="flex items-center justify-between"><span>Category</span><span className="font-medium capitalize">{selectedVendorType}</span></div>
+                  <Link href="/services/wedding-planning/vendors"><Button className="w-full mt-2">Browse Vendors</Button></Link>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Gift Registry</CardTitle>
+                  <CardDescription>{registryLinks.filter((l) => (l.url || "").trim()).length} active links</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/services/wedding-planning/registry"><Button className="w-full">Manage Registry</Button></Link>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Planning Calendar</CardTitle>
+                  <CardDescription>{calendarEvents.length} events scheduled</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/services/wedding-planning/calendar"><Button className="w-full">Open Calendar</Button></Link>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Guests & Invitations</CardTitle>
+                  <CardDescription>{guests.length} guests • {rsvpStats.responded} responded</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Link href="/services/wedding-planning/invitations"><Button className="w-full">Manage Guests</Button></Link>
+                </CardContent>
+              </Card>
+            </div>
+          </div>
+        )}
+
+        {showVendorsSection && (
         {/* Filters */}
         <Card className="mb-6">
           <CardContent className="p-4 md:p-6">
@@ -3998,6 +4147,9 @@ const displaySmartTips = useMemo(() => {
         ))}
       </div>
 
+        )}
+
+        {showRegistrySection && (
       {/* Gift Registry */}
       <Card className="mb-8">
         <CardHeader className="p-4 md:p-6">
@@ -4099,6 +4251,9 @@ const displaySmartTips = useMemo(() => {
         </CardContent>
       </Card>
 
+        )}
+
+        {showCalendarSection && (
       {/* Planning Calendar */}
       <Card className="mb-8">
         <CardHeader className="p-4 md:p-6">
@@ -4241,6 +4396,9 @@ const displaySmartTips = useMemo(() => {
         </CardContent>
       </Card>
 
+        )}
+
+        {showInvitationsSection && (
       {/* Email Invitations Section */}
       <Card className={`mb-8 ${isPremium ? "border-purple-500/50" : "border-gray-300"}`}>
         <CardHeader className="p-4 md:p-6">
@@ -4773,6 +4931,9 @@ const displaySmartTips = useMemo(() => {
         </CardContent>
       </Card>
 
+        )}
+
+      {showVendorCtaSection && (
       {/* ── Vendor CTA ─────────────────────────────────────────────────────── */}
       <div className="mt-12 mb-4">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-purple-950 to-pink-900 px-6 py-10 md:px-12 md:py-14 text-white">
@@ -4805,7 +4966,11 @@ const displaySmartTips = useMemo(() => {
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
+}
+
+export default function WeddingPlanning() {
+  return <WeddingPlanningWorkspace mode="hub" />;
 }
