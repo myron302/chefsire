@@ -216,6 +216,78 @@ const DEFAULT_PLANNING_TASKS: PlanningTask[] = [
   { id: "cake", label: "Cake", completed: false },
 ];
 
+
+const WEDDING_EVENT_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  // Core
+  { value: "appointment", label: "Appointment / Meeting" },
+  { value: "task", label: "Task / Deadline" },
+  { value: "milestone", label: "Milestone" },
+  { value: "payment", label: "Payment Due" },
+
+  // Wedding-specific
+  { value: "venue-tour", label: "Venue tour / walkthrough" },
+  { value: "vendor-meeting", label: "Vendor meeting" },
+  { value: "menu-tasting", label: "Menu tasting" },
+  { value: "cake-tasting", label: "Cake tasting" },
+  { value: "dress-fitting", label: "Dress fitting" },
+  { value: "suit-fitting", label: "Suit fitting" },
+  { value: "hair-makeup-trial", label: "Hair & makeup trial" },
+  { value: "engagement-session", label: "Engagement photos" },
+  { value: "final-walkthrough", label: "Final walkthrough" },
+  { value: "rehearsal", label: "Ceremony rehearsal" },
+  { value: "rehearsal-dinner", label: "Rehearsal dinner" },
+  { value: "marriage-license", label: "Marriage license / legal" },
+  { value: "shower", label: "Bridal shower" },
+  { value: "bachelor-bachelorette", label: "Bachelor / bachelorette" },
+  { value: "wedding-day", label: "Wedding day" },
+  { value: "honeymoon", label: "Honeymoon" },
+
+  // Payments (more specific)
+  { value: "deposit-due", label: "Deposit due" },
+  { value: "final-payment", label: "Final payment" },
+];
+
+const formatWeddingEventTypeLabel = (value: string): string => {
+  const found = WEDDING_EVENT_TYPE_OPTIONS.find((t) => t.value === value);
+  if (found) return found.label;
+  if (!value) return "Event";
+  // Fallback: Title Case for unknown types
+  return value
+    .replace(/[_-]+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.slice(0, 1).toUpperCase() + w.slice(1))
+    .join(" ");
+};
+
+const weddingEventTypeVariant = (value: string): "default" | "destructive" | "secondary" => {
+  const v = (value || "").toLowerCase();
+  if (v.includes("payment") || v.includes("deposit") || v.includes("invoice")) return "destructive";
+  if (
+    v.includes("appointment") ||
+    v.includes("meeting") ||
+    v.includes("tour") ||
+    v.includes("tasting") ||
+    v.includes("fitting") ||
+    v.includes("trial") ||
+    v.includes("rehearsal") ||
+    v.includes("license") ||
+    v.includes("wedding")
+  )
+    return "default";
+  return "secondary";
+};
+
+const inferBudgetKeyFromTask = (task: { id?: string; label?: string; budgetKey?: any }): BudgetAllocation["key"] => {
+  const raw = `${task?.id ?? ""} ${task?.label ?? ""}`.toLowerCase();
+  if (raw.includes("cater") || raw.includes("food") || raw.includes("bar") || raw.includes("dinner")) return "catering";
+  if (raw.includes("venue") || raw.includes("hall") || raw.includes("banquet") || raw.includes("site")) return "venue";
+  if (raw.includes("photo") || raw.includes("video") || raw.includes("camera")) return "photography";
+  if (raw.includes("dj") || raw.includes("music") || raw.includes("band") || raw.includes("entertain")) return "music";
+  if (raw.includes("flower") || raw.includes("flor") || raw.includes("decor") || raw.includes("bouquet")) return "flowers";
+  return "other";
+};
+
 interface RegistryLink {
   id: number;
   name: string;
@@ -488,6 +560,9 @@ export default function WeddingPlanning() {
   const [isProgressEditorOpen, setIsProgressEditorOpen] = useState(false);
   const [progressEditorTasks, setProgressEditorTasks] = useState<PlanningTask[]>([]);
   const [newPlanningTaskLabel, setNewPlanningTaskLabel] = useState("");
+  const [newPlanningTaskBudgetKey, setNewPlanningTaskBudgetKey] = useState<BudgetAllocation["key"]>("other");
+  const [newPlanningTaskCost, setNewPlanningTaskCost] = useState<string>("");
+
   const [hasLoadedPlanningTasks, setHasLoadedPlanningTasks] = useState(false);
   const [hasLoadedBudgetSettings, setHasLoadedBudgetSettings] = useState(false);
 
@@ -1104,10 +1179,13 @@ export default function WeddingPlanning() {
     for (const key of DEFAULT_BUDGET_ALLOCATIONS.map((a) => a.key)) out.set(key, 0);
 
     for (const t of planningTasks) {
-      if (!t?.completed) continue;
       const cost = Number((t as any).cost);
       if (!Number.isFinite(cost) || cost <= 0) continue;
-      const key = (t as any).budgetKey as BudgetAllocation["key"] | undefined;
+
+      const explicitKey = (t as any).budgetKey as BudgetAllocation["key"] | undefined;
+      const inferred = inferBudgetKeyFromTask(t);
+      const key = explicitKey && out.has(explicitKey) ? explicitKey : inferred;
+
       const safeKey: BudgetAllocation["key"] = key && out.has(key) ? key : "other";
       out.set(safeKey, (out.get(safeKey) || 0) + cost);
     }
@@ -1276,8 +1354,16 @@ export default function WeddingPlanning() {
 
 
   const openProgressEditor = useCallback(() => {
-    setProgressEditorTasks(planningTasks);
+    // Ensure every task has a category so costs can roll up into the budget calculator.
+    setProgressEditorTasks(
+      planningTasks.map((t) => ({
+        ...t,
+        budgetKey: (t as any).budgetKey ? (t as any).budgetKey : inferBudgetKeyFromTask(t),
+      }))
+    );
     setNewPlanningTaskLabel("");
+    setNewPlanningTaskBudgetKey("other");
+    setNewPlanningTaskCost("");
     setIsProgressEditorOpen(true);
   }, [planningTasks]);
 
@@ -1286,6 +1372,8 @@ export default function WeddingPlanning() {
     if (!open) {
       setProgressEditorTasks([]);
       setNewPlanningTaskLabel("");
+      setNewPlanningTaskBudgetKey("other");
+      setNewPlanningTaskCost("");
     }
   }, []);
 
@@ -1297,13 +1385,51 @@ export default function WeddingPlanning() {
     setProgressEditorTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, label } : task)));
   }, []);
 
+  const updateEditorTaskBudgetKey = useCallback((taskId: string, budgetKey: BudgetAllocation["key"]) => {
+    setProgressEditorTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, budgetKey } : task)));
+  }, []);
+
+  const updateEditorTaskCost = useCallback((taskId: string, raw: string) => {
+    const cleaned = String(raw ?? "").trim();
+    if (!cleaned) {
+      setProgressEditorTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, cost: undefined } : task)));
+      return;
+    }
+
+    const next = Number(cleaned);
+    if (!Number.isFinite(next) || next <= 0) {
+      setProgressEditorTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, cost: undefined } : task)));
+      return;
+    }
+
+    const capped = Math.min(next, 100000000);
+    setProgressEditorTasks((prev) => prev.map((task) => (task.id === taskId ? { ...task, cost: capped } : task)));
+  }, []);
+
   const addEditorTask = useCallback(() => {
     const trimmedTask = newPlanningTaskLabel.trim();
     if (!trimmedTask) return;
 
-    setProgressEditorTasks((prev) => [...prev, { id: `custom-${Date.now()}`, label: trimmedTask, completed: false }]);
+    const costRaw = String(newPlanningTaskCost ?? "").trim();
+    const parsed = costRaw ? Number(costRaw) : NaN;
+    const cost = Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 100000000) : undefined;
+
+    const budgetKey: BudgetAllocation["key"] = newPlanningTaskBudgetKey || "other";
+
+    setProgressEditorTasks((prev) => [
+      ...prev,
+      {
+        id: `custom-${Date.now()}`,
+        label: trimmedTask,
+        completed: false,
+        budgetKey,
+        ...(typeof cost === "number" ? { cost } : null),
+      },
+    ]);
     setNewPlanningTaskLabel("");
-  }, [newPlanningTaskLabel]);
+    setNewPlanningTaskBudgetKey("other");
+    setNewPlanningTaskCost("");
+  }, [newPlanningTaskLabel, newPlanningTaskBudgetKey, newPlanningTaskCost]);
 
   const removeEditorTask = useCallback((taskId: string) => {
     setProgressEditorTasks((prev) => prev.filter((task) => task.id !== taskId));
@@ -2419,7 +2545,7 @@ export default function WeddingPlanning() {
                 </DialogHeader>
 
                 <div className="space-y-4">
-                  <div className="flex flex-col sm:flex-row gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_220px_140px_auto] gap-2">
                     <Input
                       value={newPlanningTaskLabel}
                       onChange={(event) => setNewPlanningTaskLabel(event.target.value)}
@@ -2431,20 +2557,78 @@ export default function WeddingPlanning() {
                         }
                       }}
                     />
+                    <Select value={newPlanningTaskBudgetKey} onValueChange={(value) => setNewPlanningTaskBudgetKey(value as BudgetAllocation["key"])}>
+                      <SelectTrigger className="text-sm">
+                        <SelectValue placeholder="Category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {budgetAllocations.map((a) => (
+                          <SelectItem key={a.key} value={a.key}>
+                            {a.category}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      className="text-sm"
+                      placeholder="Cost (USD)"
+                      value={newPlanningTaskCost}
+                      onChange={(event) => setNewPlanningTaskCost(event.target.value)}
+                    />
                     <Button variant="outline" onClick={addEditorTask} className="sm:w-auto">
                       <Plus className="w-4 h-4 mr-2" />
                       Add Item
                     </Button>
                   </div>
 
+                  <p className="text-xs text-muted-foreground">
+                    Optional: add a category + cost so it automatically rolls up into the Smart Budget sections.
+                  </p>
+
                   <div className="max-h-[420px] overflow-y-auto space-y-2 pr-1">
                     {progressEditorTasks.map((task) => (
-                      <div key={task.id} className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={() => toggleEditorTask(task.id)}>
-                          {task.completed ? "✅" : "⚪️"}
-                        </Button>
-                        <Input value={task.label} onChange={(event) => updateEditorTaskLabel(task.id, event.target.value)} />
-                        <Button variant="ghost" size="sm" onClick={() => removeEditorTask(task.id)}>
+                      <div key={task.id} className="flex flex-col sm:flex-row sm:items-center gap-2 rounded-lg border bg-background p-2">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <Button variant="outline" size="sm" className="shrink-0" onClick={() => toggleEditorTask(task.id)}>
+                            {task.completed ? "✅" : "⚪️"}
+                          </Button>
+                          <Input
+                            className="min-w-0"
+                            value={task.label}
+                            onChange={(event) => updateEditorTaskLabel(task.id, event.target.value)}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 sm:w-[360px]">
+                          <Select
+                            value={(task.budgetKey ?? inferBudgetKeyFromTask(task)) as BudgetAllocation["key"]}
+                            onValueChange={(value) => updateEditorTaskBudgetKey(task.id, value as BudgetAllocation["key"])}
+                          >
+                            <SelectTrigger className="text-sm">
+                              <SelectValue placeholder="Category" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {budgetAllocations.map((a) => (
+                                <SelectItem key={a.key} value={a.key}>
+                                  {a.category}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+
+                          <Input
+                            type="number"
+                            inputMode="numeric"
+                            className="text-sm"
+                            placeholder="Cost (USD)"
+                            value={typeof task.cost === "number" ? String(task.cost) : ""}
+                            onChange={(event) => updateEditorTaskCost(task.id, event.target.value)}
+                          />
+                        </div>
+
+                        <Button variant="ghost" size="sm" className="self-end sm:self-auto" onClick={() => removeEditorTask(task.id)}>
                           <X className="w-4 h-4" />
                         </Button>
                       </div>
@@ -2493,6 +2677,21 @@ export default function WeddingPlanning() {
                         <span className="font-semibold">${item.amount.toLocaleString()}</span>
                       </div>
 
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>${Math.round(Number(spendByCategory.get(item.key) || 0)).toLocaleString()} planned</span>
+                          <span>${Math.round(item.amount - Number(spendByCategory.get(item.key) || 0)).toLocaleString()} remaining</span>
+                        </div>
+                        <Progress
+                          value={
+                            item.amount <= 0
+                              ? 0
+                              : Math.max(0, Math.min(100, Math.round((Number(spendByCategory.get(item.key) || 0) / item.amount) * 100)))
+                          }
+                          className="h-2"
+                        />
+                      </div>
+
                       {item.key !== "other" && (
                         <Slider value={[item.percentage]} onValueChange={(value) => updateBudgetAllocation(item.key, value[0] ?? item.percentage)} max={100} min={0} step={1} />
                       )}
@@ -2530,7 +2729,7 @@ export default function WeddingPlanning() {
                 <div className="space-y-2">
                   <Progress value={budgetUsedPct} />
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>${totalSpent.toLocaleString()} spent</span>
+                    <span>${totalSpent.toLocaleString()} planned</span>
                     <span>{isOverBudget ? `${Math.abs(budgetDelta).toLocaleString()} over` : `${budgetDelta.toLocaleString()} remaining`}</span>
                   </div>
                 </div>
@@ -2723,7 +2922,7 @@ export default function WeddingPlanning() {
 
                         <div className="mt-2">
                           <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>Spent ${b.spent.toLocaleString()}</span>
+                            <span>Planned ${b.spent.toLocaleString()}</span>
                             <span>Target ${b.target.toLocaleString()}</span>
                           </div>
                           <Progress value={pct} className="mt-2 h-2" />
@@ -2986,7 +3185,7 @@ export default function WeddingPlanning() {
                   <p className="text-lg font-bold">${totalBudget.toLocaleString()}</p>
                 </div>
                 <div className="rounded-2xl border bg-muted/40 p-4">
-                  <p className="text-xs text-muted-foreground">Total spent (tracked)</p>
+                  <p className="text-xs text-muted-foreground">Total planned (tracked)</p>
                   <p className="text-lg font-bold">${totalSpent.toLocaleString()}</p>
                 </div>
                 <div className="rounded-2xl border bg-muted/40 p-4">
@@ -3027,7 +3226,7 @@ export default function WeddingPlanning() {
                   <p className="text-lg font-bold">${totalBudget.toLocaleString()}</p>
                 </div>
                 <div className="rounded-2xl border bg-muted/40 p-4">
-                  <p className="text-xs text-muted-foreground">Total spent (tracked)</p>
+                  <p className="text-xs text-muted-foreground">Total planned (tracked)</p>
                   <p className="text-lg font-bold">${totalSpent.toLocaleString()}</p>
                 </div>
                 <div className="rounded-2xl border bg-muted/40 p-4">
@@ -3264,10 +3463,10 @@ export default function WeddingPlanning() {
                           {event.notes && <p className="text-[10px] md:text-xs text-muted-foreground mt-1 line-clamp-2">{event.notes}</p>}
                           <div className="flex items-center gap-2 mt-1">
                             <Badge
-                              variant={event.type === "payment" ? "destructive" : event.type === "appointment" ? "default" : "secondary"}
+                              variant={weddingEventTypeVariant(event.type)}
                               className="text-[10px] md:text-xs capitalize"
                             >
-                              {event.type}
+                              {formatWeddingEventTypeLabel(event.type)}
                             </Badge>
                             {event.reminder && <BellRing className="w-3 h-3 text-muted-foreground" />}
                           </div>
@@ -3323,10 +3522,11 @@ export default function WeddingPlanning() {
                     <SelectValue placeholder="Event type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="appointment">Appointment</SelectItem>
-                    <SelectItem value="payment">Payment Due</SelectItem>
-                    <SelectItem value="task">Task</SelectItem>
-                    <SelectItem value="milestone">Milestone</SelectItem>
+                    {WEDDING_EVENT_TYPE_OPTIONS.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
 
