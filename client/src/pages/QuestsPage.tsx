@@ -38,6 +38,17 @@ type QuestProgress = {
   quest: Quest;
 };
 
+// The API returns { progress, quest } pairs — normalize to flat QuestProgress
+function normalizeQuest(raw: any): QuestProgress {
+  // If already flat (has status at top level), return as-is
+  if (raw.status) return raw as QuestProgress;
+  // Otherwise it's { progress: {...}, quest: {...} }
+  return {
+    ...raw.progress,
+    quest: raw.quest,
+  } as QuestProgress;
+}
+
 export default function QuestsPage() {
   const { user } = useUser();
   const [tab, setTab] = useState<"active" | "completed" | "history">("active");
@@ -49,7 +60,10 @@ export default function QuestsPage() {
         credentials: "include",
       });
       if (!response.ok) throw new Error("Failed to fetch quests");
-      return response.json() as Promise<QuestProgress[]>;
+      const json = await response.json();
+      // API returns { quests: [...] } where each item is { progress, quest }
+      const raw = Array.isArray(json) ? json : json.quests ?? [];
+      return raw.map(normalizeQuest) as QuestProgress[];
     },
     enabled: !!user,
     refetchInterval: 30000, // Refresh every 30 seconds
