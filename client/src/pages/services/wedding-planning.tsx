@@ -2960,8 +2960,10 @@ const displaySmartTips = useMemo(() => {
             </Button>
           </div>
         </div>
+      </div>
 
         {showProgressSection && (
+        <>
         {/* Progress */}
         <Card className="mb-6">
           <CardContent className="p-4 md:p-6">
@@ -3102,10 +3104,11 @@ const displaySmartTips = useMemo(() => {
             </Dialog>
           </CardContent>
         </Card>
-
+        </>
         )}
 
         {showBudgetSection && (
+          <>
           {showBudgetCalculator && (
           <Card className="mb-6">
             <CardHeader>
@@ -3238,10 +3241,11 @@ const displaySmartTips = useMemo(() => {
           </Card>
         </div>
 
-          )}
+          </>
         )}
 
         {showRoadmapSection && (
+        <>
         {/* Wedding 101: DIY tutorial */}
         <Card className="mb-6">
           <CardHeader className="pb-3">
@@ -3712,7 +3716,7 @@ const displaySmartTips = useMemo(() => {
             </div>
           </CardContent>
         </Card>
-
+        </>
         )}
 
         {showHubSummaryCards && (
@@ -3792,6 +3796,7 @@ const displaySmartTips = useMemo(() => {
         )}
 
         {showVendorsSection && (
+        <>
         {/* Filters */}
         <Card className="mb-6">
           <CardContent className="p-4 md:p-6">
@@ -3864,7 +3869,6 @@ const displaySmartTips = useMemo(() => {
 </div>
           </CardContent>
         </Card>
-      </div>
 
       {/* Category buttons */}
       <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-6">
@@ -4146,10 +4150,11 @@ const displaySmartTips = useMemo(() => {
           />
         ))}
       </div>
-
+        </>
         )}
 
         {showRegistrySection && (
+      <>
       {/* Gift Registry */}
       <Card className="mb-8">
         <CardHeader className="p-4 md:p-6">
@@ -4250,10 +4255,11 @@ const displaySmartTips = useMemo(() => {
           </div>
         </CardContent>
       </Card>
-
+      </>
         )}
 
         {showCalendarSection && (
+      <>
       {/* Planning Calendar */}
       <Card className="mb-8">
         <CardHeader className="p-4 md:p-6">
@@ -4395,10 +4401,11 @@ const displaySmartTips = useMemo(() => {
           </Alert>
         </CardContent>
       </Card>
-
+      </>
         )}
 
         {showInvitationsSection && (
+      <>
       {/* Email Invitations Section */}
       <Card className={`mb-8 ${isPremium ? "border-purple-500/50" : "border-gray-300"}`}>
         <CardHeader className="p-4 md:p-6">
@@ -4930,10 +4937,11 @@ const displaySmartTips = useMemo(() => {
           )}
         </CardContent>
       </Card>
-
+      </>
         )}
 
       {showVendorCtaSection && (
+      <>
       {/* ── Vendor CTA ─────────────────────────────────────────────────────── */}
       <div className="mt-12 mb-4">
         <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-purple-950 to-pink-900 px-6 py-10 md:px-12 md:py-14 text-white">
@@ -4966,6 +4974,8 @@ const displaySmartTips = useMemo(() => {
             </div>
           </div>
         </div>
+      </div>
+      </>
       )}
     </div>
   );
