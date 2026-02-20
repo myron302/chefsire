@@ -1520,6 +1520,232 @@ const displaySmartTips = useMemo(() => {
 }, [customTips, smartTips]);
 
 
+  const weddingDateForInsights = useMemo(() => {
+    if (!selectedDate) return null;
+    const d = new Date(`${selectedDate}T12:00:00`);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }, [selectedDate]);
+
+  const daysUntilWedding = useMemo(() => {
+    if (!weddingDateForInsights) return null;
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const weddingDay = new Date(
+      weddingDateForInsights.getFullYear(),
+      weddingDateForInsights.getMonth(),
+      weddingDateForInsights.getDate()
+    );
+    return Math.ceil((weddingDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  }, [weddingDateForInsights]);
+
+  const automatedRoadmap = useMemo(() => {
+    const hasTaskDone = (ids: string[]) =>
+      planningTasks.some((t) => ids.includes(String(t.id)) && !!t.completed);
+
+    const hasTaskCostEntries = planningTasks.some((t) => typeof (t as any).cost === "number" && Number((t as any).cost) > 0);
+
+    const hasTimelineEvent = calendarEvents.some((e) => {
+      const raw = `${e?.type ?? ""} ${e?.title ?? ""}`.toLowerCase();
+      return (
+        raw.includes("tasting") ||
+        raw.includes("fitting") ||
+        raw.includes("trial") ||
+        raw.includes("rehearsal") ||
+        raw.includes("walkthrough") ||
+        raw.includes("license") ||
+        raw.includes("wedding")
+      );
+    });
+
+    const hasEventDetails = Boolean(weddingLocation || weddingTime || partner1Name || partner2Name);
+
+    const steps: Array<{
+      id: string;
+      label: string;
+      done: boolean;
+      source: string;
+      reason: string;
+      target: "checklist" | "budget" | "calendar" | "details" | "vendors" | null;
+      dueLabel?: string;
+      priority: number;
+    }> = [
+      {
+        id: "date",
+        label: "Confirm your wedding date",
+        done: !!selectedDate,
+        source: "Tracked from Event Details → Wedding date",
+        reason: "Your date drives venue availability, vendor quotes, and timeline planning.",
+        target: "details",
+        dueLabel: !selectedDate ? "Start here" : undefined,
+        priority: !selectedDate ? 1 : 99,
+      },
+      {
+        id: "guests",
+        label: "Lock your guest count range",
+        done: guestCountNum > 0,
+        source: "Tracked from Budget Planner → Guest count slider",
+        reason: "Guest count affects venue size, catering, rentals, and invitation budget.",
+        target: "budget",
+        dueLabel: guestCountNum <= 0 ? "Core planning" : undefined,
+        priority: guestCountNum <= 0 ? 2 : 99,
+      },
+      {
+        id: "venue",
+        label: "Shortlist / book your venue",
+        done: hasTaskDone(["venue"]),
+        source: "Marked done from Wedding Progress → Venue task",
+        reason: "Venue usually unlocks your final date, catering, layout, and guest capacity decisions.",
+        target: "checklist",
+        dueLabel: "High impact",
+        priority: hasTaskDone(["venue"]) ? 99 : 3,
+      },
+      {
+        id: "quotes",
+        label: "Request at least 2–3 vendor quotes",
+        done: requestedQuotes.size >= 2,
+        source: "Tracked from quote requests submitted on vendor cards",
+        reason: "Real quotes help replace estimates with actual pricing before you overspend.",
+        target: "vendors",
+        dueLabel: requestedQuotes.size === 0 ? "Do this week" : undefined,
+        priority: requestedQuotes.size >= 2 ? 99 : 4,
+      },
+      {
+        id: "event-details",
+        label: "Fill key ceremony details (time/location/couple names)",
+        done: hasEventDetails,
+        source: "Tracked from Wedding Details / invitations fields",
+        reason: "These details are used in invites, previews, and wedding day scheduling.",
+        target: "details",
+        dueLabel: !hasEventDetails ? "Needed for invites" : undefined,
+        priority: hasEventDetails ? 99 : 5,
+      },
+      {
+        id: "task-costs",
+        label: "Add estimated/actual costs to your checklist tasks",
+        done: hasTaskCostEntries,
+        source: "Tracked from Wedding Progress editor → task cost fields",
+        reason: "Task costs roll into your budget categories and make Budget Watch useful.",
+        target: "checklist",
+        dueLabel: !hasTaskCostEntries ? "Improves budget tracking" : undefined,
+        priority: hasTaskCostEntries ? 99 : 6,
+      },
+      {
+        id: "timeline",
+        label: "Add timeline events (tastings, fittings, rehearsal, walkthrough)",
+        done: hasTimelineEvent,
+        source: "Tracked from Planning Calendar → event type/title",
+        reason: "Scheduling milestones early prevents last-minute congestion and missed deadlines.",
+        target: "calendar",
+        dueLabel: !hasTimelineEvent ? "Plan milestones" : undefined,
+        priority: hasTimelineEvent ? 99 : 7,
+      },
+      {
+        id: "major-vendors",
+        label: "Complete core vendor tasks (catering / photo / music / flowers)",
+        done: ["catering", "photo", "music", "flowers"].every((id) => hasTaskDone([id])),
+        source: "Tracked from Wedding Progress checklist",
+        reason: "These categories are the biggest coordination and budget drivers after venue.",
+        target: "checklist",
+        dueLabel: "Core vendors",
+        priority: ["catering", "photo", "music", "flowers"].every((id) => hasTaskDone([id])) ? 99 : 8,
+      },
+    ];
+
+    return steps.sort((a, b) => {
+      if (a.done !== b.done) return a.done ? 1 : -1;
+      return a.priority - b.priority;
+    });
+  }, [
+    planningTasks,
+    calendarEvents,
+    guestCountNum,
+    requestedQuotes.size,
+    selectedDate,
+    weddingLocation,
+    weddingTime,
+    partner1Name,
+    partner2Name,
+  ]);
+
+  const nextAutomatedStep = useMemo(
+    () => automatedRoadmap.find((s) => !s.done) ?? null,
+    [automatedRoadmap]
+  );
+
+  const combinedInsightsTips = useMemo(() => {
+    const tips: Array<{
+      id: string;
+      title: string;
+      detail: string;
+      source: string;
+      severity?: "info" | "watch" | "warning";
+      action?: "budget" | "checklist" | "calendar" | null;
+    }> = [];
+
+    if (typeof daysUntilWedding === "number") {
+      if (daysUntilWedding > 365) {
+        tips.push({
+          id: "timeline-12plus",
+          title: "Timeline view: plenty of runway",
+          detail: "You have over 12 months. Focus on venue, rough budget, and guest count before fine details.",
+          source: "Calculated from your wedding date",
+          severity: "info",
+          action: "checklist",
+        });
+      } else if (daysUntilWedding > 180) {
+        tips.push({
+          id: "timeline-6to12",
+          title: "Timeline view: lock major vendors",
+          detail: "You’re within 6–12 months. Prioritize venue, catering, photo/video, and music decisions now.",
+          source: "Calculated from your wedding date",
+          severity: "watch",
+          action: "checklist",
+        });
+      } else if (daysUntilWedding > 90) {
+        tips.push({
+          id: "timeline-3to6",
+          title: "Timeline view: schedule tastings, fittings, and invites",
+          detail: "This is a great window to lock wedding-day details and confirm vendor timelines.",
+          source: "Calculated from your wedding date",
+          severity: "watch",
+          action: "calendar",
+        });
+      } else if (daysUntilWedding >= 0) {
+        tips.push({
+          id: "timeline-final90",
+          title: "Timeline view: final confirmation phase",
+          detail: "Focus on final payments, walkthroughs, rehearsal timing, seating, and day-of logistics.",
+          source: "Calculated from your wedding date",
+          severity: "warning",
+          action: "calendar",
+        });
+      }
+    }
+
+    for (const t of displaySmartTips) {
+      tips.push({
+        id: `existing-${t.id}`,
+        title: t.title,
+        detail: t.detail,
+        source: t.source === "custom" ? "Pinned note (you added this)" : "Auto-generated from your wedding data",
+        severity: /over target|over/i.test(`${t.title} ${t.detail}`) ? "warning" : "info",
+        action: /budget/i.test(`${t.title} ${t.detail}`) ? "budget" : null,
+      });
+    }
+
+    const deduped: typeof tips = [];
+    const seen = new Set<string>();
+    for (const t of tips) {
+      const key = `${t.title}|${t.detail}`.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(t);
+    }
+
+    return deduped.slice(0, 8);
+  }, [displaySmartTips, daysUntilWedding]);
+
+
   const openProgressEditor = useCallback(() => {
     // Ensure every task has a category so costs can roll up into the budget calculator.
     setProgressEditorTasks(
@@ -2946,414 +3172,472 @@ const displaySmartTips = useMemo(() => {
           </Card>
         </div>
 
-        {/* Smart Tips */}
-        <Card className="mb-6 border-0 shadow-lg bg-white/80 backdrop-blur-sm overflow-hidden relative">
-          {/* Decorative blobs */}
-          <div className="pointer-events-none absolute -top-28 -right-28 h-72 w-72 rounded-full bg-purple-200/30 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-28 -left-28 h-72 w-72 rounded-full bg-pink-200/20 blur-3xl" />
+        {/* Wedding 101: DIY tutorial */}
+        <Card className="mb-6">
+          <CardHeader className="pb-3">
+            <div className="flex items-start gap-3">
+              <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center shadow-sm flex-shrink-0">
+                <Info className="h-4 w-4 text-white" />
+              </div>
+              <div className="min-w-0">
+                <CardTitle className="text-lg font-bold">Wedding 101: DIY Planning Tutorial</CardTitle>
+                <CardDescription className="text-sm">
+                  A simple beginner-friendly roadmap you can follow while the smart planner tracks your real progress.
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ol className="list-decimal pl-5 space-y-3 text-sm leading-relaxed">
+              <li><span className="font-semibold">Set your vision + budget:</span> Align on style, rough guest count, and a budget range. Start broad, then tighten with real quotes.</li>
+              <li><span className="font-semibold">Build the guest list draft:</span> Create your A-list first, then expand if budget and venue capacity allow.</li>
+              <li><span className="font-semibold">Lock venue + date:</span> Venue and date decisions drive almost everything else (vendors, timing, logistics, travel).</li>
+              <li><span className="font-semibold">Book major vendors:</span> Prioritize catering, photography/video, music, and florals/decor based on your budget and guest count.</li>
+              <li><span className="font-semibold">Plan decor + rentals:</span> Decide what you can DIY vs. rent (linens, chairs, signage, centerpieces, arches).</li>
+              <li><span className="font-semibold">Handle attire + beauty:</span> Start dress/suit decisions early enough for alterations, fittings, and beauty trials.</li>
+              <li><span className="font-semibold">Food + cake decisions:</span> Tastings, menu choices, dietary needs, and dessert/cake planning should be scheduled early.</li>
+              <li><span className="font-semibold">Ceremony logistics:</span> Officiant, vows, marriage license requirements, and ceremony flow all need a small checklist.</li>
+              <li><span className="font-semibold">Build the timeline:</span> Add tastings, fittings, walkthroughs, rehearsal, payment deadlines, and day-of milestones to your calendar.</li>
+              <li><span className="font-semibold">Final confirmations:</span> Confirm RSVPs, vendor times, final payments, emergency kit items, and contact list.</li>
+            </ol>
+            <p className="mt-4 text-xs text-muted-foreground leading-relaxed">
+              Inspiration: common wedding-planning guidance used across major wedding resources and community planning advice.
+            </p>
+          </CardContent>
+        </Card>
 
-          <CardHeader className="relative">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex items-start gap-3">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-sm">
-                  <Sparkles className="h-5 w-5 text-white" />
+        {/* Smart Planning Roadmap */}
+        <Card className="mb-6">
+          <CardHeader className="pb-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-500 flex items-center justify-center shadow-sm flex-shrink-0">
+                  <Sparkles className="h-4 w-4 text-white" />
                 </div>
-                <div>
-                  <CardTitle className="text-xl md:text-2xl font-bold">Smart Tips & Next Steps</CardTitle>
-                  <CardDescription className="text-sm md:text-base">
-                    Auto-updated guidance based on your date, guest count, budget, checklist progress, and quotes. Customize it anytime.
+                <div className="min-w-0">
+                  <CardTitle className="text-lg font-bold">Smart Planning Roadmap</CardTitle>
+                  <CardDescription className="text-sm leading-relaxed">
+                    This section auto-tracks your progress from your checklist, budget, calendar, quotes, and wedding details — and suggests what to do next.
                   </CardDescription>
                 </div>
               </div>
 
-<div className="flex flex-col items-end gap-2">
-  <Dialog open={isInsightsEditorOpen} onOpenChange={setIsInsightsEditorOpen}>
-    <DialogTrigger asChild>
-      <Button size="sm" variant="outline" className="bg-white/70 border-slate-200">
-        Customize
-      </Button>
-    </DialogTrigger>
-    <DialogContent className="max-w-2xl">
-      <DialogHeader>
-        <DialogTitle>Smart Tips & Next Steps</DialogTitle>
-      </DialogHeader>
-
-      <div className="space-y-6">
-        <div className="rounded-xl border bg-muted/40 p-4">
-          <p className="text-sm font-semibold">How this section updates</p>
-          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
-            The “Auto” items update from your wedding date, guest count, completed checklist items, your entered task costs, and quote requests.
-            Add “Custom” items to track anything else that matters to you.
-          </p>
-
-          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
-            <div className="rounded-lg border bg-background/60 p-3">
-              <p className="font-medium text-foreground">Auto actions are based on:</p>
-              <ul className="mt-2 space-y-1">
-                <li>• Wedding date selected</li>
-                <li>• Guest count set</li>
-                <li>• Venue/Catering checklist marked done</li>
-                <li>• Quote requests submitted</li>
-              </ul>
-            </div>
-            <div className="rounded-lg border bg-background/60 p-3">
-              <p className="font-medium text-foreground">Budget watch uses:</p>
-              <ul className="mt-2 space-y-1">
-                <li>• Your total budget range</li>
-                <li>• Your budget allocations</li>
-                <li>• Costs entered on checklist tasks</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <p className="text-sm font-semibold mb-2">Custom next steps</p>
-
-          {customActions.length === 0 ? (
-            <p className="text-xs text-muted-foreground mb-2">
-              Add steps you want to track manually (example: “Book florist”, “Schedule tasting”).
-            </p>
-          ) : null}
-
-          <div className="space-y-2">
-            {customActions.map((a) => (
-              <div key={a.id} className="flex items-center gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={a.done ? "default" : "outline"}
-                  onClick={() => toggleCustomActionDone(a.id)}
-                  className="whitespace-nowrap"
-                >
-                  {a.done ? "Done" : "To do"}
-                </Button>
-
-                <Input
-                  value={a.label}
-                  onChange={(e) =>
-                    setCustomActions((prev) =>
-                      prev.map((x) => (x.id === a.id ? { ...x, label: e.target.value } : x))
-                    )
-                  }
-                  placeholder="Next step..."
-                />
-
-                <Button type="button" size="sm" variant="ghost" onClick={() => removeCustomAction(a.id)}>
-                  <X className="h-4 w-4" />
-                </Button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className="bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100">
+                  Automated
+                </Badge>
+                {typeof daysUntilWedding === "number" && (
+                  <Badge variant="secondary" className="text-xs">
+                    {daysUntilWedding >= 0 ? `${daysUntilWedding} days to go` : `${Math.abs(daysUntilWedding)} days since date`}
+                  </Badge>
+                )}
               </div>
-            ))}
-          </div>
-
-          <div className="mt-3 flex items-center gap-2">
-            <Input
-              value={newCustomActionLabel}
-              onChange={(e) => setNewCustomActionLabel(e.target.value)}
-              placeholder="Add a next step..."
-            />
-            <Button type="button" onClick={addCustomAction} className="whitespace-nowrap">
-              <Plus className="h-4 w-4 mr-1" />
-              Add
-            </Button>
-          </div>
-        </div>
-
-        <div>
-          <p className="text-sm font-semibold mb-2">Custom tips</p>
-
-          {customTips.length === 0 ? (
-            <p className="text-xs text-muted-foreground mb-2">
-              Pin your own tips (notes, reminders, vendor preferences).
-            </p>
-          ) : null}
-
-          <div className="space-y-3">
-            {customTips.map((t) => (
-              <div key={t.id} className="rounded-xl border bg-background p-3">
-                <div className="flex items-start gap-2">
-                  <div className="flex-1 space-y-2">
-                    <Input
-                      value={t.title}
-                      onChange={(e) =>
-                        setCustomTips((prev) =>
-                          prev.map((x) => (x.id === t.id ? { ...x, title: e.target.value } : x))
-                        )
-                      }
-                      placeholder="Tip title"
-                    />
-                    <Textarea
-                      value={t.detail}
-                      onChange={(e) =>
-                        setCustomTips((prev) =>
-                          prev.map((x) => (x.id === t.id ? { ...x, detail: e.target.value } : x))
-                        )
-                      }
-                      placeholder="Tip detail"
-                      className="min-h-[72px]"
-                    />
-                  </div>
-
-                  <Button type="button" size="sm" variant="ghost" onClick={() => removeCustomTip(t.id)}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mt-3 grid grid-cols-1 gap-2">
-            <Input
-              value={newCustomTipTitle}
-              onChange={(e) => setNewCustomTipTitle(e.target.value)}
-              placeholder="New tip title"
-            />
-            <Textarea
-              value={newCustomTipDetail}
-              onChange={(e) => setNewCustomTipDetail(e.target.value)}
-              placeholder="New tip detail"
-              className="min-h-[72px]"
-            />
-            <div className="flex justify-end">
-              <Button type="button" onClick={addCustomTip} className="whitespace-nowrap">
-                <Plus className="h-4 w-4 mr-1" />
-                Add tip
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </DialogContent>
-  </Dialog>
-
-  <Badge className="mt-0">
-    {displayNextActions.filter((a) => a.done).length}/{displayNextActions.length} done
-  </Badge>
-</div>
             </div>
           </CardHeader>
 
-          <CardContent className="relative">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              {/* Next Best Actions */}
-              <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Shield className="h-4 w-4 text-blue-600" />
-                    <p className="font-semibold">Next best actions</p>
-                  </div>
-                  <Badge variant="secondary">Plan</Badge>
-                </div>
-
-                <div className="space-y-2">
-                  {displayNextActions.map((a) => (
-                    <div
-                      key={a.id}
-                      className={[
-                        "flex items-center justify-between gap-3 rounded-xl border bg-white/60 px-3 py-2",
-                        a.source === "custom" ? "cursor-pointer hover:bg-white/80" : "",
-                      ].join(" ")}
-                      onClick={a.source === "custom" ? () => toggleCustomActionDone(a.id) : undefined}
-                      title={a.source === "custom" ? "Click to toggle done" : undefined}
-                      role={a.source === "custom" ? "button" : undefined}
-                      tabIndex={a.source === "custom" ? 0 : undefined}
-                      onKeyDown={
-                        a.source === "custom"
-                          ? (e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                toggleCustomActionDone(a.id);
-                              }
-                            }
-                          : undefined
-                      }
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span
-                          className={[
-                            "h-2.5 w-2.5 rounded-full flex-shrink-0",
-                            a.done ? "bg-green-600" : "bg-slate-300",
-                          ].join(" ")}
-                        />
-                        <p className="text-sm font-medium truncate">{a.label}</p>
-                      </div>
-
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        {a.source === "custom" ? (
-                          <Badge variant="secondary" className="whitespace-nowrap">
-                            Custom
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="whitespace-nowrap">
-                            Auto
-                          </Badge>
-                        )}
-
-                        {a.done ? (
-                          <Badge>Done</Badge>
-                        ) : (
-                          <Badge variant="outline" className="whitespace-nowrap">
-                            To do
-                          </Badge>
-                        )}
-
-                        {a.source === "custom" ? (
-                          <Button
-                            type="button"
-                            size="icon"
-                            variant="ghost"
-                            className="h-8 w-8"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeCustomAction(a.id);
-                            }}
-                            aria-label="Remove custom action"
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        ) : null}
-                      </div>
+          <CardContent className="space-y-5">
+            {/* Next best step hero */}
+            <div className={[
+              "rounded-2xl border p-4 md:p-5",
+              nextAutomatedStep ? "bg-purple-50/70 border-purple-200" : "bg-emerald-50 border-emerald-200",
+            ].join(" ")}>
+              {nextAutomatedStep ? (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="h-9 w-9 rounded-xl bg-purple-600 flex items-center justify-center flex-shrink-0">
+                      <ArrowRight className="h-4 w-4 text-white" />
                     </div>
-                  ))}
-                </div>
+                    <div className="min-w-0">
+                      <p className="text-xs uppercase tracking-wide font-semibold text-purple-700">Your next best step</p>
+                      <p className="text-base md:text-lg font-semibold leading-snug whitespace-normal break-words">
+                        {nextAutomatedStep.label}
+                      </p>
+                      <p className="text-xs md:text-sm text-muted-foreground mt-1 leading-relaxed whitespace-normal break-words">
+                        {nextAutomatedStep.reason}
+                      </p>
+                      <p className="text-[11px] md:text-xs text-purple-700/90 mt-1 whitespace-normal break-words">
+                        {nextAutomatedStep.source}
+                      </p>
+                    </div>
+                  </div>
 
-                <div className="mt-4 rounded-xl bg-muted/60 p-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-muted-foreground">Momentum</p>
-                    <p className="text-xs font-medium">
-                      {Math.round((displayNextActions.filter((a) => a.done).length / Math.max(1, displayNextActions.length)) * 100)}%
+                  <div className="flex flex-wrap gap-2">
+                    {nextAutomatedStep.dueLabel && (
+                      <Badge className="bg-purple-100 text-purple-700 border-purple-200 hover:bg-purple-100">
+                        {nextAutomatedStep.dueLabel}
+                      </Badge>
+                    )}
+
+                    {nextAutomatedStep.target === "checklist" && (
+                      <Button size="sm" variant="outline" onClick={openProgressEditor}>
+                        Open checklist editor
+                      </Button>
+                    )}
+                    {nextAutomatedStep.target === "budget" && (
+                      <Button size="sm" variant="outline" onClick={handleViewBudgetReport}>
+                        Open budget report
+                      </Button>
+                    )}
+                    {nextAutomatedStep.target === "calendar" && (
+                      <Button size="sm" variant="outline" onClick={() => setIsCalendarAddOpen(true)}>
+                        Add calendar event
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-start gap-3">
+                  <div className="h-9 w-9 rounded-xl bg-emerald-600 flex items-center justify-center flex-shrink-0">
+                    <svg className="h-4 w-4 text-white" viewBox="0 0 16 16" fill="none">
+                      <path d="M3 8l3 3 7-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-emerald-700">You’re in great shape</p>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      Your main roadmap items are complete. Use the checklist editor and calendar to keep fine details moving.
                     </p>
                   </div>
-                  <Progress
-                    value={Math.round((displayNextActions.filter((a) => a.done).length / Math.max(1, displayNextActions.length)) * 100)}
-                    className="mt-2 h-2"
-                  />
                 </div>
-              </div>
+              )}
+            </div>
 
-              {/* Tips */}
-              <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Star className="h-4 w-4 text-amber-500" />
-                    <p className="font-semibold">Tips that match your plan</p>
-                  </div>
-                  <Badge variant="secondary">Smart</Badge>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              {/* Left: automated roadmap */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Automated Roadmap</p>
+                  <p className="text-xs text-muted-foreground">
+                    {automatedRoadmap.filter((s) => s.done).length}/{automatedRoadmap.length} complete
+                  </p>
                 </div>
 
                 <div className="space-y-2">
-                  {displaySmartTips.map((t) => (
-                    <div key={t.id} className="rounded-xl border bg-white/60 p-3">
-                      <div className="flex items-start gap-2">
-                        <Info className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <p className="text-sm font-semibold">{t.title}</p>
+                  {automatedRoadmap.map((step) => {
+                    const isNext = !!nextAutomatedStep && nextAutomatedStep.id === step.id;
+                    return (
+                      <div
+                        key={step.id}
+                        className={[
+                          "rounded-xl border p-3 md:p-3.5 transition-colors",
+                          step.done
+                            ? "bg-emerald-50 border-emerald-200"
+                            : isNext
+                            ? "bg-purple-50 border-purple-300"
+                            : "bg-muted/30 border-transparent",
+                        ].join(" ")}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div className="mt-0.5 flex-shrink-0">
+                            {step.done ? (
+                              <div className="h-5 w-5 rounded-full bg-emerald-500 flex items-center justify-center">
+                                <svg className="h-3 w-3 text-white" viewBox="0 0 12 12" fill="none">
+                                  <path d="M2 6l2.4 2.4L10 2.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                                </svg>
+                              </div>
+                            ) : isNext ? (
+                              <div className="h-5 w-5 rounded-full bg-purple-600 flex items-center justify-center">
+                                <ArrowRight className="h-3 w-3 text-white" />
+                              </div>
+                            ) : (
+                              <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30" />
+                            )}
+                          </div>
 
-                            <div className="flex items-center gap-2 flex-shrink-0">
-                              {t.source === "custom" ? (
-                                <Badge variant="secondary" className="whitespace-nowrap">
-                                  Pinned
-                                </Badge>
-                              ) : (
-                                <Badge variant="outline" className="whitespace-nowrap">
-                                  Auto
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-start gap-2">
+                              <p
+                                className={[
+                                  "text-sm font-medium leading-relaxed min-w-0 whitespace-normal break-words",
+                                  step.done ? "text-muted-foreground line-through" : "text-foreground",
+                                ].join(" ")}
+                              >
+                                {step.label}
+                              </p>
+                              {step.dueLabel && !step.done && (
+                                <Badge variant="secondary" className="text-[10px] h-auto py-0.5 px-1.5">
+                                  {step.dueLabel}
                                 </Badge>
                               )}
-
-                              {t.source === "custom" ? (
-                                <Button
-                                  type="button"
-                                  size="icon"
-                                  variant="ghost"
-                                  className="h-8 w-8"
-                                  onClick={() => removeCustomTip(t.id)}
-                                  aria-label="Remove pinned tip"
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              ) : null}
+                              {step.done && (
+                                <Badge className="bg-emerald-500 hover:bg-emerald-500 text-white text-[10px] h-auto py-0.5 px-1.5">
+                                  Done
+                                </Badge>
+                              )}
                             </div>
+
+                            <p className="mt-1 text-xs text-muted-foreground leading-relaxed whitespace-normal break-words">
+                              {step.reason}
+                            </p>
+                            <p className="mt-1 text-[11px] text-muted-foreground/90 leading-relaxed whitespace-normal break-words">
+                              {step.source}
+                            </p>
+                            {isNext && !step.done && (
+                              <p className="mt-1 text-xs font-semibold text-purple-700">Do this next →</p>
+                            )}
                           </div>
-
-                          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{t.detail}</p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {!selectedDate ? (
-                  <div className="mt-4 flex items-center gap-2 rounded-xl border border-dashed bg-white/60 p-3">
-                    <Calendar className="h-4 w-4 text-blue-600" />
-                    <p className="text-xs text-muted-foreground">
-                      Set your date to unlock tighter vendor availability + pricing tips.
-                    </p>
-                  </div>
-                ) : null}
-              </div>
-
-              {/* Budget Watch */}
-              <div className="rounded-2xl border bg-white/70 backdrop-blur-sm p-4 md:p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-purple-600" />
-                    <p className="font-semibold">Budget watch</p>
-                  </div>
-                  <Badge variant="secondary">Top 3</Badge>
-                </div>
-
-                <div className="space-y-3">
-                  {topBudgetItems.map((b) => {
-                    const pct = Math.min(100, Math.round((b.spent / Math.max(1, b.target)) * 100));
-                    const isOver = b.remaining < 0;
-
-                    return (
-                      <div key={b.key} className="rounded-xl border bg-white/60 p-3">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <b.icon className={`h-4 w-4 ${budgetIconTone(b.key)} flex-shrink-0`} />
-                            <p className="text-sm font-semibold truncate">{b.category}</p>
-                          </div>
-
-                          <Badge variant={isOver ? "destructive" : "outline"} className="whitespace-nowrap">
-                            {isOver ? "Over" : "On track"}
-                          </Badge>
-                        </div>
-
-                        <div className="mt-2">
-                          <div className="flex items-center justify-between text-xs text-muted-foreground">
-                            <span>Planned ${b.spent.toLocaleString()}</span>
-                            <span>Target ${b.target.toLocaleString()}</span>
-                          </div>
-                          <Progress value={pct} className="mt-2 h-2" />
-                        </div>
-
-                        <div className="mt-3 flex items-center justify-between gap-2">
-                          <p className="text-xs text-muted-foreground">
-                            {isOver ? "Over by" : "Remaining"}{" "}
-                            <span className={isOver ? "text-red-600 font-semibold" : "text-green-600 font-semibold"}>
-                              ${Math.abs(b.remaining).toLocaleString()}
-                            </span>
-                          </p>
-
-                          <Button size="sm" className="h-8" onClick={handleViewBudgetReport}>
-                            View report
-                          </Button>
                         </div>
                       </div>
                     );
                   })}
                 </div>
+              </div>
 
-                <div className="mt-4 rounded-xl bg-muted/60 p-3">
-                  <div className="flex items-center gap-2">
-                    <Zap className="h-4 w-4 text-pink-600" />
-                    <p className="text-xs text-muted-foreground">
-                      Pro tip: keep venue + catering aligned with guest count to avoid surprise jumps.
-                    </p>
+              {/* Right: tips + budget watch */}
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Smart Tips</p>
+                    <Badge variant="secondary" className="text-[10px]">Auto-generated</Badge>
+                  </div>
+
+                  {combinedInsightsTips.length === 0 ? (
+                    <div className="rounded-xl border border-dashed p-4 text-center">
+                      <Sparkles className="h-5 w-5 text-muted-foreground mx-auto mb-1.5" />
+                      <p className="text-xs text-muted-foreground">
+                        Add a wedding date, guest count, or quotes and this section will get smarter automatically.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {combinedInsightsTips.map((tip) => {
+                        const tone =
+                          tip.severity === "warning"
+                            ? "border-red-200 bg-red-50"
+                            : tip.severity === "watch"
+                            ? "border-amber-200 bg-amber-50"
+                            : "border-transparent bg-muted/30";
+
+                        return (
+                          <div key={tip.id} className={["rounded-xl border p-3", tone].join(" ")}>
+                            <div className="flex items-start gap-2.5">
+                              <div className={[
+                                "mt-0.5 h-6 w-6 rounded-lg flex items-center justify-center flex-shrink-0",
+                                tip.severity === "warning"
+                                  ? "bg-red-100 text-red-700"
+                                  : tip.severity === "watch"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-purple-100 text-purple-700",
+                              ].join(" ")}>
+                                <Sparkles className="h-3.5 w-3.5" />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium leading-relaxed whitespace-normal break-words">{tip.title}</p>
+                                <p className="mt-0.5 text-xs text-muted-foreground leading-relaxed whitespace-normal break-words">
+                                  {tip.detail}
+                                </p>
+                                <p className="mt-1 text-[11px] text-muted-foreground/90 leading-relaxed whitespace-normal break-words">
+                                  {tip.source}
+                                </p>
+
+                                <div className="mt-2 flex flex-wrap gap-2">
+                                  {tip.action === "budget" && (
+                                    <Button size="sm" variant="outline" onClick={handleViewBudgetReport}>
+                                      Open budget report
+                                    </Button>
+                                  )}
+                                  {tip.action === "checklist" && (
+                                    <Button size="sm" variant="outline" onClick={openProgressEditor}>
+                                      Open checklist
+                                    </Button>
+                                  )}
+                                  {tip.action === "calendar" && (
+                                    <Button size="sm" variant="outline" onClick={() => setIsCalendarAddOpen(true)}>
+                                      Add calendar milestone
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {totalBudget > 0 && (
+                  <div className="rounded-xl border p-3 md:p-4">
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2">
+                        <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Budget Watch</p>
+                      </div>
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={handleViewBudgetReport}>
+                        Full report
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {topBudgetItems.map((b) => {
+                        const denom = Math.max(1, b.target || 1);
+                        const pct = Math.min(100, Math.round((Math.max(0, b.spent) / denom) * 100));
+                        const isOver = b.remaining < 0;
+
+                        return (
+                          <div
+                            key={b.key}
+                            className={[
+                              "rounded-lg border p-2.5",
+                              isOver ? "bg-red-50 border-red-200" : "bg-muted/30 border-transparent",
+                            ].join(" ")}
+                          >
+                            <div className="flex items-start justify-between gap-2 mb-1.5">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium whitespace-normal break-words">{b.category}</p>
+                                <p className="text-[11px] text-muted-foreground whitespace-normal break-words">
+                                  Spent ${Number(b.spent || 0).toLocaleString()} / target ${Number(b.target || 0).toLocaleString()}
+                                </p>
+                              </div>
+                              <span
+                                className={[
+                                  "text-xs font-semibold flex-shrink-0",
+                                  isOver ? "text-red-600" : "text-emerald-600",
+                                ].join(" ")}
+                              >
+                                {isOver
+                                  ? `$${Math.abs(Number(b.remaining || 0)).toLocaleString()} over`
+                                  : `$${Number(b.remaining || 0).toLocaleString()} left`}
+                              </span>
+                            </div>
+                            <Progress value={pct} className={["h-1.5", isOver ? "[&>div]:bg-red-500" : ""].join(" ")} />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Optional user notes/reminders (simple, no dialog) */}
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pt-1">
+              <div className="rounded-xl border p-3 md:p-4">
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Pinned Notes (Optional)</p>
+                    <p className="text-xs text-muted-foreground mt-1">Your own reminders — separate from the automated roadmap.</p>
+                  </div>
+                  <Badge variant="secondary" className="text-[10px]">Saved</Badge>
+                </div>
+
+                <div className="space-y-2 mb-3">
+                  <Input
+                    value={newCustomTipTitle}
+                    onChange={(e) => setNewCustomTipTitle(e.target.value)}
+                    placeholder="Short note title (e.g., Ask aunt about cake stand)"
+                  />
+                  <Textarea
+                    value={newCustomTipDetail}
+                    onChange={(e) => setNewCustomTipDetail(e.target.value)}
+                    placeholder="Optional details"
+                    rows={2}
+                  />
+                  <div className="flex justify-end">
+                    <Button size="sm" onClick={addCustomTip}>Pin note</Button>
                   </div>
                 </div>
+
+                {customTips.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No pinned notes yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {customTips.map((tip) => (
+                      <div key={tip.id} className="rounded-lg border p-2.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium whitespace-normal break-words">
+                              {tip.title || "Pinned note"}
+                            </p>
+                            {tip.detail ? (
+                              <p className="mt-0.5 text-xs text-muted-foreground whitespace-normal break-words leading-relaxed">
+                                {tip.detail}
+                              </p>
+                            ) : null}
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 flex-shrink-0"
+                            onClick={() => removeCustomTip(tip.id)}
+                            aria-label="Remove pinned note"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-xl border p-3 md:p-4">
+                <div className="flex items-start justify-between gap-2 mb-3">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Personal Reminders (Optional)</p>
+                    <p className="text-xs text-muted-foreground mt-1">Simple manual checklist items. These do not change auto progress.</p>
+                  </div>
+                  <Badge variant="secondary" className="text-[10px]">Saved</Badge>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                  <Input
+                    value={newCustomActionLabel}
+                    onChange={(e) => setNewCustomActionLabel(e.target.value)}
+                    placeholder="Add a personal reminder"
+                    className="flex-1"
+                  />
+                  <Button size="sm" onClick={addCustomAction} className="sm:w-auto w-full">
+                    Add reminder
+                  </Button>
+                </div>
+
+                {customActions.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">No personal reminders yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {customActions.map((a) => (
+                      <div key={a.id} className="rounded-lg border p-2.5">
+                        <div className="flex items-start gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleCustomActionDone(a.id)}
+                            className={[
+                              "mt-0.5 h-5 w-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors",
+                              a.done ? "bg-emerald-500 border-emerald-500 text-white" : "border-muted-foreground/30",
+                            ].join(" ")}
+                            aria-label={a.done ? "Mark reminder not done" : "Mark reminder done"}
+                          >
+                            {a.done ? (
+                              <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none">
+                                <path d="M2 6l2.4 2.4L10 2.8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            ) : null}
+                          </button>
+
+                          <div className="min-w-0 flex-1">
+                            <p className={["text-sm leading-relaxed whitespace-normal break-words", a.done ? "line-through text-muted-foreground" : ""].join(" ")}>
+                              {a.label}
+                            </p>
+                          </div>
+
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 flex-shrink-0"
+                            onClick={() => removeCustomAction(a.id)}
+                            aria-label="Remove personal reminder"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>
