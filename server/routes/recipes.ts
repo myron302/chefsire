@@ -242,12 +242,12 @@ router.get("/search", async (req, res) => {
         ? req.query.pageSize
         : 24;
 
-    const page =
-      typeof req.query.page === "string"
-        ? Number(req.query.page)
-        : typeof req.query.page === "number"
-        ? req.query.page
-        : undefined;
+    const offset =
+      typeof req.query.offset === "string"
+        ? Number(req.query.offset)
+        : typeof req.query.offset === "number"
+        ? req.query.offset
+        : 0;
 
     const result = await searchRecipes({
       q,
@@ -255,10 +255,12 @@ router.get("/search", async (req, res) => {
       diets,
       mealTypes,
       pageSize: Number.isFinite(pageSize) ? pageSize : 24,
-      page: page && Number.isFinite(page) ? page : undefined,
+      offset: Number.isFinite(offset) ? offset : 0,
     });
 
-    res.json({ ok: true, ...result });
+    // Return `items` (what the client expects) aliased from `results`
+    const { results, ...rest } = result;
+    res.json({ ok: true, ...rest, items: results });
   } catch (err: any) {
     console.error("recipes search error:", err);
     res.status(500).json({ ok: false, error: err?.message || "Search failed" });
@@ -273,7 +275,8 @@ router.get("/random", async (_req, res) => {
   noStore(res);
   try {
     const result = await searchRecipes({ pageSize: 24 });
-    res.json({ ok: true, ...result });
+    const { results, ...rest } = result;
+    res.json({ ok: true, ...rest, items: results });
   } catch (err: any) {
     console.error("recipes random error:", err);
     res.status(500).json({ ok: false, error: err?.message || "Random failed" });
