@@ -157,6 +157,18 @@ interface PlanningTask {
   budgetKey?: BudgetAllocation["key"];
 }
 
+interface PlanningInsightTip {
+  id: string;
+  title: string;
+  detail: string;
+}
+
+interface PlanningInsightAction {
+  id: string;
+  label: string;
+  done: boolean;
+}
+
 const DEFAULT_BUDGET_ALLOCATIONS: BudgetAllocation[] = [
   { key: "catering", category: "Catering & Bar", percentage: 40, icon: ChefHat },
   { key: "venue", category: "Venue", percentage: 20, icon: MapPin },
@@ -1208,7 +1220,126 @@ export default function WeddingPlanning() {
   const budgetStatusLabel = isOverBudget ? "Over budget" : "Under budget";
 
 
-  // -------------------- Smart Tips & Next Steps (dynamic) --------------------
+  // -------------------- Customizable Insights (saved per user) --------------------
+const [customTips, setCustomTips] = useState<PlanningInsightTip[]>([]);
+const [customActions, setCustomActions] = useState<PlanningInsightAction[]>([]);
+const [hasLoadedInsights, setHasLoadedInsights] = useState(false);
+const [isInsightsEditorOpen, setIsInsightsEditorOpen] = useState(false);
+
+const [newCustomTipTitle, setNewCustomTipTitle] = useState("");
+const [newCustomTipDetail, setNewCustomTipDetail] = useState("");
+const [newCustomActionLabel, setNewCustomActionLabel] = useState("");
+
+useEffect(() => {
+  // Custom tips/actions live in the database for logged-in users.
+  // If the user is not logged in, we keep them in-memory (page-only).
+  if (!user?.id) {
+    setHasLoadedInsights(true);
+    return;
+  }
+
+  let cancelled = false;
+
+  (async () => {
+    try {
+      const res = await fetch("/api/wedding/insights", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load insights");
+      const data = await res.json();
+
+      const tips = Array.isArray(data?.tips) ? (data.tips as PlanningInsightTip[]) : [];
+      const actions = Array.isArray(data?.actions) ? (data.actions as PlanningInsightAction[]) : [];
+
+      if (!cancelled) {
+        setCustomTips(
+          tips
+            .filter((t) => t && typeof t.id === "string" && typeof t.title === "string" && typeof t.detail === "string")
+            .slice(0, 25)
+        );
+        setCustomActions(
+          actions
+            .filter((a) => a && typeof a.id === "string" && typeof a.label === "string")
+            .map((a) => ({ ...a, done: !!(a as any).done }))
+            .slice(0, 25)
+        );
+      }
+    } catch (e) {
+      if (!cancelled) {
+        setCustomTips([]);
+        setCustomActions([]);
+      }
+    } finally {
+      if (!cancelled) setHasLoadedInsights(true);
+    }
+  })();
+
+  return () => {
+    cancelled = true;
+  };
+}, [user?.id]);
+
+useEffect(() => {
+  // Save with a small debounce so edits don't spam the API.
+  if (!user?.id || !hasLoadedInsights) return;
+
+  const timeout = window.setTimeout(async () => {
+    try {
+      await fetch("/api/wedding/insights", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tips: customTips, actions: customActions }),
+      });
+    } catch (e) {
+      console.error("[Wedding Planning] save insights failed:", e);
+    }
+  }, 800);
+
+  return () => window.clearTimeout(timeout);
+}, [customTips, customActions, user?.id, hasLoadedInsights]);
+
+const addCustomAction = useCallback(() => {
+  const label = newCustomActionLabel.trim();
+  if (!label) return;
+
+  setCustomActions((prev) => [
+    ...prev,
+    { id: `action-${Date.now()}`, label: label.slice(0, 120), done: false },
+  ]);
+
+  setNewCustomActionLabel("");
+}, [newCustomActionLabel]);
+
+const toggleCustomActionDone = useCallback((id: string) => {
+  setCustomActions((prev) => prev.map((a) => (a.id === id ? { ...a, done: !a.done } : a)));
+}, []);
+
+const removeCustomAction = useCallback((id: string) => {
+  setCustomActions((prev) => prev.filter((a) => a.id !== id));
+}, []);
+
+const addCustomTip = useCallback(() => {
+  const title = newCustomTipTitle.trim();
+  const detail = newCustomTipDetail.trim();
+  if (!title && !detail) return;
+
+  setCustomTips((prev) => [
+    ...prev,
+    {
+      id: `tip-${Date.now()}`,
+      title: (title || "Pinned tip").slice(0, 80),
+      detail: detail.slice(0, 360),
+    },
+  ]);
+
+  setNewCustomTipTitle("");
+  setNewCustomTipDetail("");
+}, [newCustomTipTitle, newCustomTipDetail]);
+
+const removeCustomTip = useCallback((id: string) => {
+  setCustomTips((prev) => prev.filter((t) => t.id !== id));
+}, []);
+
+// -------------------- Smart Tips & Next Steps (dynamic) --------------------
   const totalBudget = Number(budgetRange?.[1] ?? 0);
   const guestCountNum = Number(guestCount?.[0] ?? 0);
 
@@ -1351,6 +1482,42 @@ export default function WeddingPlanning() {
 
     return tips.slice(0, 6);
   }, [selectedDate, guestCountNum, totalBudget, requestedQuotes.size, topBudgetItems]);
+
+const displayNextActions = useMemo(() => {
+  const custom: { id: string; label: string; done: boolean; source: "custom" }[] = customActions.map((a) => ({
+    id: a.id,
+    label: a.label,
+    done: !!a.done,
+    source: "custom",
+  }));
+
+  const auto: { id: string; label: string; done: boolean; source: "auto" }[] = nextBestActions.map((a, idx) => ({
+    id: `auto-${idx}`,
+    label: a.label,
+    done: a.done,
+    source: "auto",
+  }));
+
+  return [...custom, ...auto].slice(0, 7);
+}, [customActions, nextBestActions]);
+
+const displaySmartTips = useMemo(() => {
+  const custom: { id: string; title: string; detail: string; source: "custom" }[] = customTips.map((t) => ({
+    id: t.id,
+    title: t.title,
+    detail: t.detail,
+    source: "custom",
+  }));
+
+  const auto: { id: string; title: string; detail: string; source: "auto" }[] = smartTips.map((t, idx) => ({
+    id: `auto-${idx}`,
+    title: t.title,
+    detail: t.detail,
+    source: "auto",
+  }));
+
+  return [...custom, ...auto].slice(0, 8);
+}, [customTips, smartTips]);
 
 
   const openProgressEditor = useCallback(() => {
@@ -2794,14 +2961,175 @@ export default function WeddingPlanning() {
                 <div>
                   <CardTitle className="text-xl md:text-2xl font-bold">Smart Tips & Next Steps</CardTitle>
                   <CardDescription className="text-sm md:text-base">
-                    Personalized guidance based on your date, guests, budget, and progress.
+                    Auto-updated guidance based on your date, guest count, budget, checklist progress, and quotes. Customize it anytime.
                   </CardDescription>
                 </div>
               </div>
 
-              <Badge className="mt-1">
-                {nextBestActions.filter((a) => a.done).length}/{nextBestActions.length} done
-              </Badge>
+<div className="flex flex-col items-end gap-2">
+  <Dialog open={isInsightsEditorOpen} onOpenChange={setIsInsightsEditorOpen}>
+    <DialogTrigger asChild>
+      <Button size="sm" variant="outline" className="bg-white/70 border-slate-200">
+        Customize
+      </Button>
+    </DialogTrigger>
+    <DialogContent className="max-w-2xl">
+      <DialogHeader>
+        <DialogTitle>Smart Tips & Next Steps</DialogTitle>
+      </DialogHeader>
+
+      <div className="space-y-6">
+        <div className="rounded-xl border bg-muted/40 p-4">
+          <p className="text-sm font-semibold">How this section updates</p>
+          <p className="text-xs text-muted-foreground mt-1 leading-relaxed">
+            The “Auto” items update from your wedding date, guest count, completed checklist items, your entered task costs, and quote requests.
+            Add “Custom” items to track anything else that matters to you.
+          </p>
+
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-muted-foreground">
+            <div className="rounded-lg border bg-background/60 p-3">
+              <p className="font-medium text-foreground">Auto actions are based on:</p>
+              <ul className="mt-2 space-y-1">
+                <li>• Wedding date selected</li>
+                <li>• Guest count set</li>
+                <li>• Venue/Catering checklist marked done</li>
+                <li>• Quote requests submitted</li>
+              </ul>
+            </div>
+            <div className="rounded-lg border bg-background/60 p-3">
+              <p className="font-medium text-foreground">Budget watch uses:</p>
+              <ul className="mt-2 space-y-1">
+                <li>• Your total budget range</li>
+                <li>• Your budget allocations</li>
+                <li>• Costs entered on checklist tasks</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-sm font-semibold mb-2">Custom next steps</p>
+
+          {customActions.length === 0 ? (
+            <p className="text-xs text-muted-foreground mb-2">
+              Add steps you want to track manually (example: “Book florist”, “Schedule tasting”).
+            </p>
+          ) : null}
+
+          <div className="space-y-2">
+            {customActions.map((a) => (
+              <div key={a.id} className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={a.done ? "default" : "outline"}
+                  onClick={() => toggleCustomActionDone(a.id)}
+                  className="whitespace-nowrap"
+                >
+                  {a.done ? "Done" : "To do"}
+                </Button>
+
+                <Input
+                  value={a.label}
+                  onChange={(e) =>
+                    setCustomActions((prev) =>
+                      prev.map((x) => (x.id === a.id ? { ...x, label: e.target.value } : x))
+                    )
+                  }
+                  placeholder="Next step..."
+                />
+
+                <Button type="button" size="sm" variant="ghost" onClick={() => removeCustomAction(a.id)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <Input
+              value={newCustomActionLabel}
+              onChange={(e) => setNewCustomActionLabel(e.target.value)}
+              placeholder="Add a next step..."
+            />
+            <Button type="button" onClick={addCustomAction} className="whitespace-nowrap">
+              <Plus className="h-4 w-4 mr-1" />
+              Add
+            </Button>
+          </div>
+        </div>
+
+        <div>
+          <p className="text-sm font-semibold mb-2">Custom tips</p>
+
+          {customTips.length === 0 ? (
+            <p className="text-xs text-muted-foreground mb-2">
+              Pin your own tips (notes, reminders, vendor preferences).
+            </p>
+          ) : null}
+
+          <div className="space-y-3">
+            {customTips.map((t) => (
+              <div key={t.id} className="rounded-xl border bg-background p-3">
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 space-y-2">
+                    <Input
+                      value={t.title}
+                      onChange={(e) =>
+                        setCustomTips((prev) =>
+                          prev.map((x) => (x.id === t.id ? { ...x, title: e.target.value } : x))
+                        )
+                      }
+                      placeholder="Tip title"
+                    />
+                    <Textarea
+                      value={t.detail}
+                      onChange={(e) =>
+                        setCustomTips((prev) =>
+                          prev.map((x) => (x.id === t.id ? { ...x, detail: e.target.value } : x))
+                        )
+                      }
+                      placeholder="Tip detail"
+                      className="min-h-[72px]"
+                    />
+                  </div>
+
+                  <Button type="button" size="sm" variant="ghost" onClick={() => removeCustomTip(t.id)}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-3 grid grid-cols-1 gap-2">
+            <Input
+              value={newCustomTipTitle}
+              onChange={(e) => setNewCustomTipTitle(e.target.value)}
+              placeholder="New tip title"
+            />
+            <Textarea
+              value={newCustomTipDetail}
+              onChange={(e) => setNewCustomTipDetail(e.target.value)}
+              placeholder="New tip detail"
+              className="min-h-[72px]"
+            />
+            <div className="flex justify-end">
+              <Button type="button" onClick={addCustomTip} className="whitespace-nowrap">
+                <Plus className="h-4 w-4 mr-1" />
+                Add tip
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </DialogContent>
+  </Dialog>
+
+  <Badge className="mt-0">
+    {displayNextActions.filter((a) => a.done).length}/{displayNextActions.length} done
+  </Badge>
+</div>
             </div>
           </CardHeader>
 
@@ -2818,10 +3146,27 @@ export default function WeddingPlanning() {
                 </div>
 
                 <div className="space-y-2">
-                  {nextBestActions.map((a) => (
+                  {displayNextActions.map((a) => (
                     <div
-                      key={a.label}
-                      className="flex items-center justify-between gap-3 rounded-xl border bg-white/60 px-3 py-2"
+                      key={a.id}
+                      className={[
+                        "flex items-center justify-between gap-3 rounded-xl border bg-white/60 px-3 py-2",
+                        a.source === "custom" ? "cursor-pointer hover:bg-white/80" : "",
+                      ].join(" ")}
+                      onClick={a.source === "custom" ? () => toggleCustomActionDone(a.id) : undefined}
+                      title={a.source === "custom" ? "Click to toggle done" : undefined}
+                      role={a.source === "custom" ? "button" : undefined}
+                      tabIndex={a.source === "custom" ? 0 : undefined}
+                      onKeyDown={
+                        a.source === "custom"
+                          ? (e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                toggleCustomActionDone(a.id);
+                              }
+                            }
+                          : undefined
+                      }
                     >
                       <div className="flex items-center gap-3 min-w-0">
                         <span
@@ -2833,13 +3178,41 @@ export default function WeddingPlanning() {
                         <p className="text-sm font-medium truncate">{a.label}</p>
                       </div>
 
-                      {a.done ? (
-                        <Badge>Done</Badge>
-                      ) : (
-                        <Badge variant="outline" className="whitespace-nowrap">
-                          To do
-                        </Badge>
-                      )}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {a.source === "custom" ? (
+                          <Badge variant="secondary" className="whitespace-nowrap">
+                            Custom
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="whitespace-nowrap">
+                            Auto
+                          </Badge>
+                        )}
+
+                        {a.done ? (
+                          <Badge>Done</Badge>
+                        ) : (
+                          <Badge variant="outline" className="whitespace-nowrap">
+                            To do
+                          </Badge>
+                        )}
+
+                        {a.source === "custom" ? (
+                          <Button
+                            type="button"
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeCustomAction(a.id);
+                            }}
+                            aria-label="Remove custom action"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2848,11 +3221,11 @@ export default function WeddingPlanning() {
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground">Momentum</p>
                     <p className="text-xs font-medium">
-                      {Math.round((nextBestActions.filter((a) => a.done).length / Math.max(1, nextBestActions.length)) * 100)}%
+                      {Math.round((displayNextActions.filter((a) => a.done).length / Math.max(1, displayNextActions.length)) * 100)}%
                     </p>
                   </div>
                   <Progress
-                    value={Math.round((nextBestActions.filter((a) => a.done).length / Math.max(1, nextBestActions.length)) * 100)}
+                    value={Math.round((displayNextActions.filter((a) => a.done).length / Math.max(1, displayNextActions.length)) * 100)}
                     className="mt-2 h-2"
                   />
                 </div>
@@ -2869,12 +3242,40 @@ export default function WeddingPlanning() {
                 </div>
 
                 <div className="space-y-2">
-                  {smartTips.map((t) => (
-                    <div key={t.title} className="rounded-xl border bg-white/60 p-3">
+                  {displaySmartTips.map((t) => (
+                    <div key={t.id} className="rounded-xl border bg-white/60 p-3">
                       <div className="flex items-start gap-2">
                         <Info className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-sm font-semibold">{t.title}</p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-semibold">{t.title}</p>
+
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                              {t.source === "custom" ? (
+                                <Badge variant="secondary" className="whitespace-nowrap">
+                                  Pinned
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="whitespace-nowrap">
+                                  Auto
+                                </Badge>
+                              )}
+
+                              {t.source === "custom" ? (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8"
+                                  onClick={() => removeCustomTip(t.id)}
+                                  aria-label="Remove pinned tip"
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              ) : null}
+                            </div>
+                          </div>
+
                           <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{t.detail}</p>
                         </div>
                       </div>
