@@ -1,384 +1,277 @@
-// server/routes/recipes.ts
-import { Router } from "express";
-import { z } from "zod";
-import { searchRecipes } from "../services/recipes-service";
-import { storage } from "../storage";
-import { requireAuth } from "../middleware/auth";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-const router = Router();
-
-function noStore(res: any) {
-  res.setHeader("Cache-Control", "no-store, max-age=0");
+:root {
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(222.2 84% 4.9%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(222.2 84% 4.9%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(222.2 84% 4.9%);
+  --primary: hsl(18 100% 60%);
+  --primary-foreground: hsl(210 40% 98%);
+  --secondary: hsl(186 70% 60%);
+  --secondary-foreground: hsl(222.2 47.4% 11.2%);
+  --muted: hsl(210 40% 96%);
+  --muted-foreground: hsl(215.4 16.3% 46.9%);
+  --accent: hsl(22 100% 65%);
+  --accent-foreground: hsl(222.2 47.4% 11.2%);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(210 40% 98%);
+  --border: hsl(214.3 31.8% 91.4%);
+  --input: hsl(214.3 31.8% 91.4%);
+  --ring: hsl(18 100% 60%);
+  --chart-1: hsl(18 100% 60%);
+  --chart-2: hsl(159.7826 100% 36.0784%);
+  --chart-3: hsl(42.0290 92.8251% 56.2745%);
+  --chart-4: hsl(147.1429 78.5047% 41.9608%);
+  --chart-5: hsl(341.4894 75.2000% 50.9804%);
+  --sidebar: hsl(0 0% 100%);
+  --sidebar-foreground: hsl(222.2 84% 4.9%);
+  --sidebar-primary: hsl(18 100% 60%);
+  --sidebar-primary-foreground: hsl(210 40% 98%);
+  --sidebar-accent: hsl(22 100% 65%);
+  --sidebar-accent-foreground: hsl(222.2 47.4% 11.2%);
+  --sidebar-border: hsl(214.3 31.8% 91.4%);
+  --sidebar-ring: hsl(18 100% 60%);
+  --font-sans: Inter, var(--font-sans);
+  --font-serif: Georgia, serif;
+  --font-mono: Menlo, monospace;
+  --radius: 0.75rem;
+  --shadow-2xs: 0px 2px 0px 0px hsl(18 100% 60% / 0.00);
+  --shadow-xs: 0px 2px 0px 0px hsl(18 100% 60% / 0.00);
+  --shadow-sm: 0px 2px 0px 0px hsl(18 100% 60% / 0.00), 0px 1px 2px -1px hsl(18 100% 60% / 0.00);
+  --shadow: 0px 2px 0px 0px hsl(18 100% 60% / 0.00), 0px 1px 2px -1px hsl(18 100% 60% / 0.00);
+  --shadow-md: 0px 2px 0px 0px hsl(18 100% 60% / 0.00), 0px 2px 4px -1px hsl(18 100% 60% / 0.00);
+  --shadow-lg: 0px 2px 0px 0px hsl(18 100% 60% / 0.00), 0px 4px 6px -1px hsl(18 100% 60% / 0.00);
+  --shadow-xl: 0px 2px 0px 0px hsl(18 100% 60% / 0.00), 0px 8px 10px -1px hsl(18 100% 60% / 0.00);
+  --shadow-2xl: 0px 2px 0px 0px hsl(18 100% 60% / 0.00);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
 }
 
-function parseList(input: unknown): string[] {
-  if (Array.isArray(input)) {
-    return input
-      .flatMap((x) => String(x).split(","))
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  if (typeof input === "string") {
-    return input
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return [];
+.dark {
+  --background: hsl(222.2 84% 4.9%);
+  --foreground: hsl(210 40% 98%);
+  --card: hsl(222.2 84% 4.9%);
+  --card-foreground: hsl(210 40% 98%);
+  --popover: hsl(222.2 84% 4.9%);
+  --popover-foreground: hsl(210 40% 98%);
+  --primary: hsl(18 100% 60%);
+  --primary-foreground: hsl(222.2 47.4% 11.2%);
+  --secondary: hsl(217.2 32.6% 17.5%);
+  --secondary-foreground: hsl(210 40% 98%);
+  --muted: hsl(217.2 32.6% 17.5%);
+  --muted-foreground: hsl(215 20.2% 65.1%);
+  --accent: hsl(217.2 32.6% 17.5%);
+  --accent-foreground: hsl(210 40% 98%);
+  --border: hsl(217.2 32.6% 17.5%);
+  --input: hsl(217.2 32.6% 17.5%);
+  --ring: hsl(18 100% 60%);
+  --chart-1: hsl(18 100% 60%);
+  --chart-2: hsl(159.7826 100% 36.0784%);
+  --chart-3: hsl(42.0290 92.8251% 56.2745%);
+  --chart-4: hsl(147.1429 78.5047% 41.9608%);
+  --chart-5: hsl(341.4894 75.2000% 50.9804%);
+  --sidebar: hsl(222.2 84% 4.9%);
+  --sidebar-foreground: hsl(210 40% 98%);
+  --sidebar-primary: hsl(18 100% 60%);
+  --sidebar-primary-foreground: hsl(210 40% 98%);
+  --sidebar-accent: hsl(217.2 32.6% 17.5%);
+  --sidebar-accent-foreground: hsl(210 40% 98%);
+  --sidebar-border: hsl(217.2 32.6% 17.5%);
+  --sidebar-ring: hsl(18 100% 60%);
 }
 
-/**
- * USER-CREATED RECIPES (for social posts / club posts)
- *
- * - Regular social recipes are linked to posts via recipes.postId
- * - Club recipes may have postId = null and are managed via /api/clubs routes
- */
-
-type IngredientRow = {
-  amount?: string | number;
-  unit?: string;
-  ingredient?: string;
-  name?: string;
-};
-type InstructionRow = { step?: string; text?: string };
-
-function normalizeIngredients(input: unknown): string[] {
-  if (!input) return [];
-  if (Array.isArray(input)) {
-    // Already array of strings
-    if (input.every((x) => typeof x === "string")) {
-      return (input as string[]).map((s) => s.trim()).filter(Boolean);
-    }
-
-    // Array of objects -> join into a nice single string per row
-    return (input as any[])
-      .map((row: IngredientRow) => {
-        const amount = row.amount ?? "";
-        const unit = row.unit ?? "";
-        const name = row.ingredient ?? row.name ?? "";
-        const joined = [amount, unit, name]
-          .map((x) => String(x ?? "").trim())
-          .filter(Boolean)
-          .join(" ");
-        return joined.trim();
-      })
-      .filter(Boolean);
+@layer base {
+  * {
+    @apply border-border;
   }
-  return [];
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-family: Inter, var(--font-sans);
+  }
 }
 
-function normalizeInstructions(input: unknown): string[] {
-  if (!input) return [];
-  if (Array.isArray(input)) {
-    // Already array of strings
-    if (input.every((x) => typeof x === "string")) {
-      return (input as string[]).map((s) => s.trim()).filter(Boolean);
-    }
+@layer utilities {
+  .story-gradient { background: linear-gradient(45deg, var(--primary), var(--accent)); }
+  .hover-scale { transition: transform 0.2s ease-in-out; }
+  .hover-scale:hover { transform: scale(1.05); }
+  .glass-effect { backdrop-filter: blur(10px); background: rgba(255,255,255,0.9); }
+  .dark .glass-effect { background: rgba(0,0,0,0.9); }
 
-    // Array of objects -> extract text
-    return (input as any[])
-      .map((row: InstructionRow) => String(row.step ?? row.text ?? "").trim())
-      .filter(Boolean);
+  /* Hide scrollbar but keep horizontal scroll */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* Mobile FAB glow */
+  @keyframes glow { 0%{box-shadow:0 0 0 0 rgba(255,87,34,.35)} 70%{box-shadow:0 0 0 12px rgba(255,87,34,0)} 100%{box-shadow:0 0 0 0 rgba(255,87,34,0)} }
+  .animate-glow { animation: glow 2.4s ease-in-out infinite; }
+  @media (prefers-reduced-motion: reduce) { .animate-glow { animation: none; } }
+
+  /* Page layout safety */
+  html, body, #root, #__next { height: 100%; min-height: 100%; }
+  body { min-height: 100dvh; overflow-x: hidden; -webkit-tap-highlight-color: transparent; }
+  img { max-width: 100%; height: auto; display: block; }
+  .flex > * { min-width: 0; }
+
+  /* Horizontal chip rows (Explore header) */
+  .touch-pan-x { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; }
+  .edge-fade-x {
+    -webkit-mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, black 16px, black calc(100% - 16px), transparent 100%);
   }
-  return [];
+  .chip-row { white-space: nowrap; }
+  .sticky-ancestor-fix { overflow: visible; contain: layout paint; }
+
+  /* CommandList mobile drag scroll */
+  .cmd-scroll { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; touch-action: pan-y; }
+  .cmd-scroll [cmdk-item],
+  .cmd-scroll [role="option"],
+  .cmd-scroll [data-cmdk-item] { touch-action: pan-y !important; }
+  .cmd-scroll, .cmd-scroll * { -webkit-user-select: none; user-select: none; }
+
+  /* Secondary nav spacing (prevents overlap on mobile) */
+  .secondary-tabs { white-space: nowrap; }
+  .secondary-tabs > * + * { margin-left: 0.75rem; }
+
+  /* ========== PAGE-SPECIFIC HEADER FIXES (z-40 only, NOT main site header z-50) ========== */
+  
+  /* Target ONLY page-specific headers with z-40 */
+  @media (max-width: 768px) {
+    /* Allow page header to wrap - targets z-40 only */
+    .z-40.sticky.top-0 > div > div.h-16 {
+      height: auto !important;
+      min-height: 4rem !important;
+      padding-top: 0.75rem !important;
+      padding-bottom: 0.75rem !important;
+    }
+    
+    /* Make h1 in page headers slightly smaller */
+    .z-40.sticky h1 {
+      font-size: 1.125rem !important;
+      line-height: 1.5rem !important;
+    }
+    
+    /* Hide dividers in page headers only */
+    .z-40.sticky .w-px {
+      display: none !important;
+    }
+    
+    /* Reduce gaps in page headers */
+    .z-40.sticky .gap-4 {
+      gap: 0.5rem !important;
+    }
+    
+    /* Reduce icon sizes in page headers */
+    .z-40.sticky svg {
+      width: 1rem !important;
+      height: 1rem !important;
+    }
+    
+    /* Make badges in page headers more compact */
+    .z-40.sticky [class*="Badge"],
+    .z-40.sticky [class*="badge"] {
+      font-size: 0.65rem !important;
+      padding: 0.25rem 0.5rem !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      line-height: 1 !important;
+    }
+    
+    /* Button sizing for page headers */
+    .z-40.sticky button {
+      padding-left: 0.5rem !important;
+      padding-right: 0.5rem !important;
+      padding-top: 0.4rem !important;
+      padding-bottom: 0.4rem !important;
+      font-size: 0.65rem !important;
+      white-space: nowrap !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+  }
+  
+  /* Landscape mobile - AGGRESSIVE space saving */
+  @media (min-width: 641px) and (max-width: 900px) and (orientation: landscape) {
+    /* Even smaller gaps */
+    .z-40.sticky .gap-4 {
+      gap: 0.25rem !important;
+    }
+    
+    /* Smaller h1 */
+    .z-40.sticky h1 {
+      font-size: 0.9rem !important;
+      line-height: 1.2rem !important;
+    }
+    
+    /* Hide Level/XP stats in landscape to save space */
+    .z-40.sticky .text-sm.text-gray-600 {
+      display: none !important;
+    }
+    
+    /* Make buttons more compact but readable */
+    .z-40.sticky button {
+      padding-left: 0.6rem !important;
+      padding-right: 0.6rem !important;
+      font-size: 0.7rem !important;
+      min-width: auto !important;
+    }
+    
+    /* Smaller badges */
+    .z-40.sticky [class*="Badge"],
+    .z-40.sticky [class*="badge"] {
+      font-size: 0.65rem !important;
+      padding: 0.2rem 0.5rem !important;
+      line-height: 1 !important;
+    }
+    
+    /* Smaller icons */
+    .z-40.sticky svg {
+      width: 0.9rem !important;
+      height: 0.9rem !important;
+    }
+  }
+  
+  /* Portrait mobile - Page headers wrap to 2 rows */
+  @media (max-width: 640px) and (orientation: portrait) {
+    .z-40.sticky > div > div.h-16 {
+      flex-wrap: wrap !important;
+      gap: 0.5rem !important;
+    }
+    
+    .z-40.sticky > div > div > div:first-child {
+      width: 100% !important;
+      justify-content: flex-start !important;
+    }
+    
+    .z-40.sticky > div > div > div:last-child {
+      width: 100% !important;
+      justify-content: space-between !important;
+    }
+    
+    .z-40.sticky button {
+      flex: 1 !important;
+      min-width: 0 !important;
+      max-width: 48% !important;
+    }
+    
+    .z-40.sticky .text-sm.text-gray-600 {
+      display: none !important;
+    }
+  }
+  
+  /* Fix button alignment globally */
+  button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  button svg {
+    flex-shrink: 0;
+  }
 }
-
-/**
- * POST /api/recipes
- * Create a recipe linked to a post you own (recipes.postId = posts.id)
- */
-router.post("/", requireAuth, async (req, res) => {
-  try {
-    const schema = z.object({
-      postId: z.string().min(1),
-      title: z.string().min(1),
-      imageUrl: z.string().optional().nullable(),
-      ingredients: z.any().optional(),
-      instructions: z.any().optional(),
-      cookTime: z.number().int().positive().optional().nullable(),
-      servings: z.number().int().positive().optional().nullable(),
-      difficulty: z.string().optional().nullable(),
-    });
-
-    const body = schema.parse(req.body);
-
-    const post = await storage.getPost(body.postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-
-    // Only the post owner can attach a recipe to their post
-    if (post.userId !== req.user!.id) {
-      return res.status(403).json({ message: "Not allowed" });
-    }
-
-    const ingredients = normalizeIngredients(body.ingredients);
-    const instructions = normalizeInstructions(body.instructions);
-
-    if (!ingredients.length) {
-      return res.status(400).json({ message: "At least one ingredient is required" });
-    }
-    if (!instructions.length) {
-      return res.status(400).json({ message: "At least one instruction step is required" });
-    }
-
-    const recipe = await storage.createRecipe({
-      postId: body.postId,
-      title: body.title.trim(),
-      imageUrl: body.imageUrl ?? null,
-      ingredients,
-      instructions,
-      cookTime: body.cookTime ?? null,
-      servings: body.servings ?? null,
-      difficulty: body.difficulty ?? null,
-    } as any);
-
-    res.status(201).json(recipe);
-  } catch (err: any) {
-    if (err?.issues) return res.status(400).json({ message: "Invalid payload", issues: err.issues });
-    console.error("create recipe error:", err);
-    res.status(500).json({ message: "Failed to create recipe" });
-  }
-});
-
-/**
- * GET /api/recipes/by-post/:postId
- * Fetch the recipe attached to a post you own (used for editing).
- */
-router.get("/by-post/:postId", requireAuth, async (req, res) => {
-  try {
-    const postId = req.params.postId;
-    const post = await storage.getPost(postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-    if (post.userId !== req.user!.id) return res.status(403).json({ message: "Not allowed" });
-
-    const recipe = await storage.getRecipeByPostId(postId);
-    if (!recipe) return res.status(404).json({ message: "Recipe not found" });
-
-    res.json(recipe);
-  } catch (err: any) {
-    console.error("get recipe by post error:", err);
-    res.status(500).json({ message: "Failed to fetch recipe" });
-  }
-});
-
-/**
- * PATCH /api/recipes/:id
- * Update a recipe linked to one of your posts.
- */
-router.patch("/:id", requireAuth, async (req, res) => {
-  try {
-    const recipeId = req.params.id;
-
-    const schema = z.object({
-      title: z.string().min(1).optional(),
-      imageUrl: z.string().optional().nullable(),
-      ingredients: z.any().optional(),
-      instructions: z.any().optional(),
-      cookTime: z.number().int().positive().optional().nullable(),
-      servings: z.number().int().positive().optional().nullable(),
-      difficulty: z.string().optional().nullable(),
-    });
-
-    const body = schema.parse(req.body);
-
-    const existing = await storage.getRecipe(recipeId);
-    if (!existing) return res.status(404).json({ message: "Recipe not found" });
-
-    // This endpoint is only for post-linked recipes (club recipes are managed by /api/clubs)
-    if (!existing.postId) {
-      return res.status(403).json({ message: "This recipe can only be updated from its club post" });
-    }
-
-    const post = await storage.getPost(existing.postId);
-    if (!post) return res.status(404).json({ message: "Post not found" });
-    if (post.userId !== req.user!.id) return res.status(403).json({ message: "Not allowed" });
-
-    const updates: any = {};
-
-    if (typeof body.title === "string") updates.title = body.title.trim();
-    if (body.imageUrl !== undefined) updates.imageUrl = body.imageUrl;
-    if (body.cookTime !== undefined) updates.cookTime = body.cookTime;
-    if (body.servings !== undefined) updates.servings = body.servings;
-    if (body.difficulty !== undefined) updates.difficulty = body.difficulty;
-
-    if (body.ingredients !== undefined) {
-      const ingredients = normalizeIngredients(body.ingredients);
-      if (!ingredients.length) return res.status(400).json({ message: "At least one ingredient is required" });
-      updates.ingredients = ingredients;
-    }
-
-    if (body.instructions !== undefined) {
-      const instructions = normalizeInstructions(body.instructions);
-      if (!instructions.length) return res.status(400).json({ message: "At least one instruction step is required" });
-      updates.instructions = instructions;
-    }
-
-    const updatedRecipe = await storage.updateRecipe(recipeId, updates);
-    if (!updatedRecipe) return res.status(404).json({ message: "Recipe not found" });
-
-    res.json(updatedRecipe);
-  } catch (err: any) {
-    if (err?.issues) return res.status(400).json({ message: "Invalid payload", issues: err.issues });
-    console.error("update recipe error:", err);
-    res.status(500).json({ message: "Failed to update recipe" });
-  }
-});
-
-/**
- * GET /api/recipes/search
- * If q is missing/empty => returns a random page (fresh each request)
- */
-router.get("/search", async (req, res) => {
-  noStore(res);
-  try {
-    const q = typeof req.query.q === "string" ? req.query.q : undefined;
-    const cuisines = parseList(req.query.cuisines);
-    const diets = parseList(req.query.diets);
-    const mealTypes = parseList(req.query.mealTypes);
-
-    const pageSize =
-      typeof req.query.pageSize === "string"
-        ? Number(req.query.pageSize)
-        : typeof req.query.pageSize === "number"
-        ? req.query.pageSize
-        : 24;
-
-    const offset =
-      typeof req.query.offset === "string"
-        ? Number(req.query.offset)
-        : typeof req.query.offset === "number"
-        ? req.query.offset
-        : 0;
-
-    const result = await searchRecipes({
-      q,
-      cuisines,
-      diets,
-      mealTypes,
-      pageSize: Number.isFinite(pageSize) ? pageSize : 24,
-      offset: Number.isFinite(offset) ? offset : 0,
-    });
-
-    // Return `items` (what the client expects) aliased from `results`
-    const { results, ...rest } = result;
-    res.json({ ok: true, ...rest, items: results });
-  } catch (err: any) {
-    console.error("recipes search error:", err);
-    res.status(500).json({ ok: false, error: err?.message || "Search failed" });
-  }
-});
-
-/**
- * GET /api/recipes/random
- * Returns a random page of recipes (fresh each request)
- */
-router.get("/random", async (_req, res) => {
-  noStore(res);
-  try {
-    const result = await searchRecipes({ pageSize: 24 });
-    const { results, ...rest } = result;
-    res.json({ ok: true, ...rest, items: results });
-  } catch (err: any) {
-    console.error("recipes random error:", err);
-    res.status(500).json({ ok: false, error: err?.message || "Random failed" });
-  }
-});
-
-/**
- * GET /api/recipes/trending
- * Returns top recipes by likes/reviews (DB-based)
- */
-router.get("/trending", async (req, res) => {
-  noStore(res);
-  try {
-    const limit =
-      typeof req.query.limit === "string"
-        ? Number(req.query.limit)
-        : typeof req.query.limit === "number"
-        ? req.query.limit
-        : 10;
-
-    const recipes = await storage.getTrendingRecipes(Number.isFinite(limit) ? limit : 10);
-    res.json({ ok: true, recipes });
-  } catch (err: any) {
-    console.error("recipes trending error:", err);
-    res.status(500).json({ ok: false, error: err?.message || "Trending failed" });
-  }
-});
-
-/**
- * POST /api/recipes/:id/save
- * Save a recipe for the authenticated user
- */
-router.post("/:id/save", async (req, res) => {
-  try {
-    const { userId } = req.body;
-    const recipeId = req.params.id;
-
-    if (!userId) {
-      return res.status(400).json({ ok: false, error: "userId is required" });
-    }
-
-    const save = await storage.saveRecipe(userId, recipeId);
-    res.status(201).json({ ok: true, save });
-  } catch (err: any) {
-    console.error("recipe save error:", err);
-    res.status(500).json({ ok: false, error: err?.message || "Save failed" });
-  }
-});
-
-/**
- * DELETE /api/recipes/:id/save
- * Unsave a recipe for the authenticated user
- */
-router.delete("/:id/save", async (req, res) => {
-  try {
-    const userId = req.query.userId as string;
-    const recipeId = req.params.id;
-
-    if (!userId) {
-      return res.status(400).json({ ok: false, error: "userId is required" });
-    }
-
-    const ok = await storage.unsaveRecipe(userId, recipeId);
-    res.json({ ok });
-  } catch (err: any) {
-    console.error("recipe unsave error:", err);
-    res.status(500).json({ ok: false, error: err?.message || "Unsave failed" });
-  }
-});
-
-/**
- * GET /api/recipes/:id/save-status?userId=...
- */
-router.get("/:id/save-status", async (req, res) => {
-  try {
-    const userId = req.query.userId as string;
-    const recipeId = req.params.id;
-
-    if (!userId) {
-      return res.status(400).json({ ok: false, error: "userId is required" });
-    }
-
-    const isSaved = await storage.isRecipeSaved(userId, recipeId);
-    res.json({ ok: true, isSaved });
-  } catch (err: any) {
-    console.error("recipe save-status error:", err);
-    res.status(500).json({ ok: false, error: err?.message || "Save-status failed" });
-  }
-});
-
-/**
- * GET /api/recipes/users/:id/saved-recipes
- */
-router.get("/users/:id/saved-recipes", async (req, res) => {
-  try {
-    const userId = req.params.id;
-    const recipes = await storage.getSavedRecipes(userId);
-    res.json({ ok: true, recipes });
-  } catch (err: any) {
-    console.error("get saved recipes error:", err);
-    res.status(500).json({ ok: false, error: err?.message || "Fetch failed" });
-  }
-});
-
-export default router;
