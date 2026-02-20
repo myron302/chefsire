@@ -32,6 +32,12 @@ import DMThreadPage from "@/pages/dm/ThreadPage";
 // Service Pages
 import CateringMarketplace from "@/pages/services/catering";
 import WeddingPlanning from "@/pages/services/wedding-planning";
+import WeddingPlanningBudgetPage from "@/pages/services/wedding-planning/budget";
+import WeddingPlanningCalendarPage from "@/pages/services/wedding-planning/calendar";
+import WeddingPlanningChecklistPage from "@/pages/services/wedding-planning/checklist";
+import WeddingPlanningInvitationsPage from "@/pages/services/wedding-planning/invitations";
+import WeddingPlanningRegistryPage from "@/pages/services/wedding-planning/registry";
+import WeddingPlanningVendorsPage from "@/pages/services/wedding-planning/vendors";
 import WeddingVendorMap from "@/pages/services/wedding-map";
 import PublicRegistryPage from "@/pages/services/public-registry";
 import VendorListingPage from "@/pages/services/vendor-listing";
@@ -498,6 +504,17 @@ export default function App() {
 
                 <Route path="/services/catering" component={CateringMarketplace} />
                 <Route path="/services/wedding-planning" component={WeddingPlanning} />
+                <Route path="/services/wedding-planning/checklist" component={WeddingPlanningChecklistPage} />
+                <Route path="/services/wedding-planning/budget" component={WeddingPlanningBudgetPage} />
+                <Route path="/services/wedding-planning/vendors" component={WeddingPlanningVendorsPage} />
+                <Route path="/services/wedding-planning/registry" component={WeddingPlanningRegistryPage} />
+                <Route path="/services/wedding-planning/calendar" component={WeddingPlanningCalendarPage} />
+                <Route path="/services/wedding-planning/invitations" component={WeddingPlanningInvitationsPage} />
+                <Route path="/services/wedding-budget"><Redirect to="/services/wedding-planning/budget" /></Route>
+                <Route path="/services/wedding-vendors"><Redirect to="/services/wedding-planning/vendors" /></Route>
+                <Route path="/services/wedding-registry"><Redirect to="/services/wedding-planning/registry" /></Route>
+                <Route path="/services/wedding-calendar"><Redirect to="/services/wedding-planning/calendar" /></Route>
+                <Route path="/services/wedding-guests"><Redirect to="/services/wedding-planning/invitations" /></Route>
                 <Route path="/services/wedding-map" component={WeddingVendorMap} />
                 <Route path="/services/public-registry" component={PublicRegistryPage} />
                 <Route path="/services/vendor-listing" component={VendorListingPage} />
