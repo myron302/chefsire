@@ -3785,7 +3785,7 @@ const displaySmartTips = useMemo(() => {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base">Guests & Invitations</CardTitle>
-                  <CardDescription>{guests.length} guests • {rsvpStats.responded} responded</CardDescription>
+                  <CardDescription>{guestList.length} guests • {rsvpStats.responded} responded</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Link href="/services/wedding-planning/invitations"><Button className="w-full">Manage Guests</Button></Link>
