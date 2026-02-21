@@ -73,6 +73,7 @@ import weddingRegistryLinksRouter from "./wedding-registry-links";
 import weddingVendorQuotesRouter from "./wedding-vendor-quotes";
 import weddingVendorListingsRouter from "./wedding-vendor-listings";
 import weddingInsightsRouter from "./wedding-insights";
+import importPaprikaRouter from "./import-paprika";
 
 const r = Router();
 
@@ -86,6 +87,7 @@ r.use(authRouter);
 
 // Recipes routes (prefixed)
 r.use("/recipes", recipesRouter);
+r.use("/recipes", importPaprikaRouter);
 
 // Reviews - prefixed
 r.use("/reviews", reviewsRouter);
