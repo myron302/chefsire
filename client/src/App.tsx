@@ -47,6 +47,7 @@ import ExplorePage from "@/pages/explore/ExplorePage";
 import RecipesListPage from "@/pages/recipes/RecipesListPage";
 import RecipesFiltersPage from "@/pages/recipes/RecipesFiltersPage";
 import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
+import ImportPaprikaPage from "@/pages/ImportPaprikaPage";
 import Pantry from "@/pages/pantry";
 import RecipeMatches from "@/pages/pantry/recipe-matches";
 import HouseholdPantry from "@/pages/pantry/household";
@@ -195,6 +196,7 @@ function RecipesSection() {
         <Route path="/recipes/baby-food/toddler" component={BabyFoodToddler} />
         <Route path="/recipes/baby-food" component={BabyFoodHub} />
         <Route path="/recipes/filters" component={RecipesFiltersPage} />
+        <Route path="/recipes/import-paprika" component={ImportPaprikaPage} />
         <Route path="/recipes" component={RecipesListPage} />
         <Route>
           <Redirect to="/recipes" />
