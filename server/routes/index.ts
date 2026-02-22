@@ -65,7 +65,7 @@ import uploadRouter from "./upload";
 
 // Wedding Planning
 import weddingRsvpRouter from "./wedding-rsvp";
-import weddingEventDetailsRouter from "./wedding-event-details"; // <-- Added import
+import weddingEventDetailsRouter from "./wedding-event-details";
 import weddingCalendarEventsRouter from "./wedding-calendar-events";
 import weddingBudgetSettingsRouter from "./wedding-budget-settings";
 import weddingPlanningTasksRouter from "./wedding-planning-tasks";
@@ -73,6 +73,8 @@ import weddingRegistryLinksRouter from "./wedding-registry-links";
 import weddingVendorQuotesRouter from "./wedding-vendor-quotes";
 import weddingVendorListingsRouter from "./wedding-vendor-listings";
 import weddingInsightsRouter from "./wedding-insights";
+
+// Recipe imports (Paprika / AnyList / Plan to Eat / URL import)
 import importPaprikaRouter from "./import-paprika";
 
 const r = Router();
@@ -182,7 +184,7 @@ r.use("/upload", uploadRouter);
 
 // Wedding Planning
 r.use("/wedding", weddingRsvpRouter);
-r.use("/wedding", weddingEventDetailsRouter); // <-- Added mounting
+r.use("/wedding", weddingEventDetailsRouter);
 r.use("/wedding", weddingCalendarEventsRouter);
 r.use("/wedding", weddingBudgetSettingsRouter);
 r.use("/wedding", weddingPlanningTasksRouter);
