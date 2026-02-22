@@ -3,28 +3,75 @@
 // POST /api/recipes/import-paprika
 // Accepts a .paprikarecipes file (ZIP of gzipped JSON files, one per recipe),
 // parses them, and inserts them as standalone recipes for the authenticated user.
+//
+// Uses ONLY built-in Node modules for ZIP parsing — no adm-zip needed.
 
 import { Router } from "express";
 import multer from "multer";
-import path from "path";
-import fs from "fs";
 import zlib from "zlib";
 import { promisify } from "util";
 import { randomUUID } from "crypto";
-import AdmZip from "adm-zip";
+import { eq } from "drizzle-orm";
 import { requireAuth } from "../middleware/auth";
 import { db } from "../db";
-import { recipes, posts } from "../../shared/schema";
+import { recipes } from "../../shared/schema";
 
 const gunzip = promisify(zlib.gunzip);
+const inflateRaw = promisify(zlib.inflateRaw);
 const router = Router();
 
-// ── Multer: memory storage for Paprika files (typically < 50 MB) ──────────────
+// ── Minimal ZIP parser (no external deps) ────────────────────────────────────
+// ZIP local file header layout:
+//   0–3   signature (0x04034b50)
+//   4–5   version needed
+//   6–7   general purpose bit flag
+//   8–9   compression method (0=stored, 8=deflated)
+//   10–11 last mod time
+//   12–13 last mod date
+//   14–17 crc-32
+//   18–21 compressed size
+//   22–25 uncompressed size
+//   26–27 file name length
+//   28–29 extra field length
+//   30+   file name, extra field, then file data
+
+type ZipEntry = { name: string; data: Buffer; compression: number };
+
+function parseZip(buf: Buffer): ZipEntry[] {
+  const entries: ZipEntry[] = [];
+  let offset = 0;
+
+  while (offset + 30 < buf.length) {
+    const sig = buf.readUInt32LE(offset);
+    if (sig !== 0x04034b50) break; // not a local file header — end of entries
+
+    const compression = buf.readUInt16LE(offset + 8);
+    const compSize    = buf.readUInt32LE(offset + 18);
+    const nameLen     = buf.readUInt16LE(offset + 26);
+    const extraLen    = buf.readUInt16LE(offset + 28);
+    const dataOffset  = offset + 30 + nameLen + extraLen;
+
+    const name        = buf.slice(offset + 30, offset + 30 + nameLen).toString("utf-8");
+    const data        = buf.slice(dataOffset, dataOffset + compSize);
+
+    entries.push({ name, data, compression });
+    offset = dataOffset + compSize;
+  }
+
+  return entries;
+}
+
+async function decompressEntry(entry: ZipEntry): Promise<Buffer> {
+  if (entry.compression === 0) return entry.data; // stored — no compression
+  if (entry.compression === 8) return inflateRaw(entry.data) as Promise<Buffer>; // deflated
+  throw new Error(`Unsupported ZIP compression method: ${entry.compression}`);
+}
+
+// ── Multer ────────────────────────────────────────────────────────────────────
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
   fileFilter: (_req, file, cb) => {
-    // Paprika exports as .paprikarecipes — treat as application/zip
     const ok =
       file.originalname.toLowerCase().endsWith(".paprikarecipes") ||
       file.mimetype === "application/zip" ||
@@ -39,8 +86,8 @@ const upload = multer({
 type PaprikaRecipe = {
   uid?: string;
   name?: string;
-  ingredients?: string;       // newline-separated plain text
-  directions?: string;        // newline-separated plain text
+  ingredients?: string;
+  directions?: string;
   description?: string;
   notes?: string;
   servings?: string;
@@ -51,16 +98,14 @@ type PaprikaRecipe = {
   source?: string;
   source_url?: string;
   difficulty?: string;
-  rating?: number;             // 0–5
-  photo_data?: string;         // base64 JPEG
-  photo?: string;              // URL
+  rating?: number;
+  photo_data?: string;
+  photo?: string;
   nutritional_info?: string;
-  scale?: string;
 };
 
 function parseMinutes(s?: string): number | null {
   if (!s) return null;
-  // formats: "30 mins", "1 hr 15 mins", "45 minutes", "1:30"
   const hours = s.match(/(\d+)\s*h/i);
   const mins  = s.match(/(\d+)\s*m/i);
   const colon = s.match(/^(\d+):(\d+)$/);
@@ -79,7 +124,7 @@ function parseIngredients(raw?: string): string[] {
 function parseInstructions(raw?: string): string[] {
   if (!raw) return [];
   return raw
-    .split(/\n{1,}/)
+    .split(/\n+/)
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 }
@@ -99,7 +144,7 @@ function parseDifficulty(raw?: string, rating?: number): string | null {
   return null;
 }
 
-function mapPaprikaRecipe(p: PaprikaRecipe, userId: string) {
+function mapPaprikaRecipe(p: PaprikaRecipe) {
   const cookTime =
     parseMinutes(p.cook_time) ||
     parseMinutes(p.total_time) ||
@@ -112,7 +157,6 @@ function mapPaprikaRecipe(p: PaprikaRecipe, userId: string) {
   const ingredients  = parseIngredients(p.ingredients);
   const instructions = parseInstructions(p.directions);
 
-  // Derive cuisine / meal type from categories
   const categories  = Array.isArray(p.categories) ? p.categories : [];
   const cuisineMap  = ["Italian", "Mexican", "Chinese", "Japanese", "Indian", "French", "Thai", "Greek", "American", "Mediterranean"];
   const mealTypeMap = ["Breakfast", "Lunch", "Dinner", "Snack", "Dessert", "Appetizer", "Salad", "Soup", "Side Dish"];
@@ -123,7 +167,7 @@ function mapPaprikaRecipe(p: PaprikaRecipe, userId: string) {
     id: randomUUID(),
     postId: null,
     title: (p.name || "Untitled Recipe").trim(),
-    imageUrl: p.photo || null,          // URL photos only; base64 handled separately
+    imageUrl: p.photo || null,
     ingredients: ingredients.length ? ingredients : ["(No ingredients listed)"],
     instructions: instructions.length ? instructions : ["(No instructions listed)"],
     cookTime,
@@ -134,7 +178,6 @@ function mapPaprikaRecipe(p: PaprikaRecipe, userId: string) {
     cuisine,
     mealType,
     sourceUrl: p.source_url || p.source || null,
-    // nutrition fields — Paprika stores as plain text, best-effort parse
     calories: null,
     nutrition: p.nutritional_info ? { raw: p.nutritional_info } : null,
   };
@@ -158,32 +201,32 @@ router.post(
     }
 
     try {
-      const zip = new AdmZip(file.buffer);
-      const entries = zip.getEntries();
-
+      const zipEntries = parseZip(file.buffer);
       const parsed: PaprikaRecipe[] = [];
 
-      for (const entry of entries) {
-        if (entry.isDirectory) continue;
+      for (const entry of zipEntries) {
+        if (entry.name.endsWith("/")) continue; // directory entry
 
-        const rawBuf = zip.readFile(entry);
-        if (!rawBuf) continue;
-
-        let jsonBuf: Buffer;
+        let decompressed: Buffer;
+        try {
+          decompressed = await decompressEntry(entry);
+        } catch {
+          continue;
+        }
 
         // Each entry inside is a gzipped JSON file
+        let jsonBuf: Buffer;
         try {
-          jsonBuf = await gunzip(rawBuf) as Buffer;
+          jsonBuf = await gunzip(decompressed) as Buffer;
         } catch {
-          // Not gzipped — try as raw JSON
-          jsonBuf = rawBuf;
+          jsonBuf = decompressed; // not gzipped — try as raw JSON
         }
 
         try {
           const obj = JSON.parse(jsonBuf.toString("utf-8")) as PaprikaRecipe;
           if (obj.name) parsed.push(obj);
         } catch {
-          console.warn("[Paprika Import] Skipped non-JSON entry:", entry.entryName);
+          console.warn("[Paprika Import] Skipped non-JSON entry:", entry.name);
         }
       }
 
@@ -191,26 +234,25 @@ router.post(
         return res.status(400).json({ ok: false, error: "No recipes found in the file. Make sure it is a valid Paprika export." });
       }
 
-      // Deduplicate against existing externalId for this user's recipes
-      // (simple check: if same externalId already exists, skip)
+      // Deduplicate: find existing paprika externalIds in the DB
       const existingIds = new Set<string>();
       try {
         const existing = await db
           .select({ externalId: recipes.externalId })
           .from(recipes)
-          .innerJoin(posts, (recipes as any).postId === posts.id);
+          .where(eq(recipes.externalSource, "paprika"));
         existing.forEach((r) => { if (r.externalId) existingIds.add(r.externalId); });
       } catch {
-        // dedup is best-effort
+        // dedup is best-effort — proceed even if this fails
       }
 
       let imported = 0;
-      let skipped = 0;
+      let skipped  = 0;
       const errors: string[] = [];
 
       for (const p of parsed) {
         try {
-          const mapped = mapPaprikaRecipe(p, userId);
+          const mapped = mapPaprikaRecipe(p);
 
           if (mapped.externalId && existingIds.has(mapped.externalId)) {
             skipped++;
@@ -218,6 +260,7 @@ router.post(
           }
 
           await db.insert(recipes).values(mapped as any);
+          if (mapped.externalId) existingIds.add(mapped.externalId); // prevent dupes within same upload
           imported++;
         } catch (err: any) {
           errors.push(p.name || "Unknown");
