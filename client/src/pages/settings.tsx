@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'wouter';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User,
@@ -430,6 +431,25 @@ export default function SettingsPage() {
 
                 {/* Follow Requests (incoming) */}
                 <FollowRequestsPanel />
+
+                {/* Recipe Imports */}
+                <div>
+                  <h4 className="font-semibold mb-2">Recipe Imports</h4>
+                  <div className="flex flex-col gap-3 p-4 border rounded-lg bg-white md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="font-medium">Import recipes from other apps and websites</div>
+                      <div className="text-sm text-gray-600">
+                        Bring in recipes from Paprika, AnyList, Plan to Eat, or paste a public recipe URL.
+                      </div>
+                    </div>
+                    <Button asChild className="bg-orange-500 hover:bg-orange-600">
+                      <Link href="/recipes/import-paprika">
+                        <Upload size={16} className="mr-2" />
+                        Open Recipe Import
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
 
                 {/* Avatar */}
                 <div>
