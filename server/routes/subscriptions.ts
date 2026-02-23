@@ -238,16 +238,27 @@ router.get("/history", requireAuth, async (req, res) => {
 
     res.json({
       ok: true,
-      history: rows.map((row: any) => ({
-        id: row.id,
-        tier: row.tier,
-        amount: row.amount,
-        startDate: row.startDate,
-        endDate: row.endDate,
-        status: row.status,
-        paymentMethod: row.paymentMethod || null,
-        createdAt: row.createdAt,
-      })),
+      history: rows.map((row: any) => {
+        const rowTier = String(row.tier || "");
+        const rowPaymentMethod = String(row.paymentMethod || "").toLowerCase();
+
+        const subscriptionType =
+          rowPaymentMethod === "nutrition" || rowTier.startsWith("nutrition_")
+            ? "nutrition"
+            : "marketplace";
+
+        return {
+          id: row.id,
+          tier: row.tier,
+          amount: row.amount,
+          startDate: row.startDate,
+          endDate: row.endDate,
+          status: row.status,
+          paymentMethod: row.paymentMethod || null,
+          createdAt: row.createdAt,
+          subscriptionType, // <-- additive field for UI labeling
+        };
+      }),
     });
   } catch (error: any) {
     if (error?.issues) {
