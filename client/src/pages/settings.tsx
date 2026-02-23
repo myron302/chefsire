@@ -4,7 +4,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   User,
   Lock,
-  Shield,
   Bell,
   Tag,
   Trash2,
@@ -33,6 +32,28 @@ const FOOD_CATEGORIES = [
   'Desserts', 'Baking', 'Seafood', 'Breakfast', 'Appetizers',
   'Soups', 'Salads'
 ];
+
+function RecipeImportsSection() {
+  return (
+    <div>
+      <h4 className="font-semibold mb-2">Recipe Imports</h4>
+      <div className="flex flex-col gap-3 p-4 border rounded-lg bg-white md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="font-medium">Import recipes from other apps and websites</div>
+          <div className="text-sm text-gray-600">
+            Bring in recipes from Paprika, AnyList, Plan to Eat, or paste a public recipe URL.
+          </div>
+        </div>
+        <Button asChild className="bg-orange-500 hover:bg-orange-600">
+          <Link href="/recipes/import-paprika">
+            <Upload size={16} className="mr-2" />
+            Open Recipe Import
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 export default function SettingsPage() {
   const { user, updateUser } = useUser();
@@ -427,23 +448,7 @@ export default function SettingsPage() {
                 <FollowRequestsPanel />
 
                 {/* Recipe Imports */}
-                <div>
-                  <h4 className="font-semibold mb-2">Recipe Imports</h4>
-                  <div className="flex flex-col gap-3 p-4 border rounded-lg bg-white md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <div className="font-medium">Import recipes from other apps and websites</div>
-                      <div className="text-sm text-gray-600">
-                        Bring in recipes from Paprika, AnyList, Plan to Eat, or paste a public recipe URL.
-                      </div>
-                    </div>
-                    <Button asChild className="bg-orange-500 hover:bg-orange-600">
-                      <Link href="/recipes/import-paprika">
-                        <Upload size={16} className="mr-2" />
-                        Open Recipe Import
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
+                <RecipeImportsSection />
 
                 {/* Avatar */}
                 <div>
@@ -582,24 +587,8 @@ export default function SettingsPage() {
                 {/* Follow Requests (incoming) */}
                 <FollowRequestsPanel />
 
-                {/* Recipe Imports (added to Account tab too) */}
-                <div>
-                  <h4 className="font-semibold mb-2">Recipe Imports</h4>
-                  <div className="flex flex-col gap-3 p-4 border rounded-lg bg-white md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <div className="font-medium">Import recipes from other apps and websites</div>
-                      <div className="text-sm text-gray-600">
-                        Bring in recipes from Paprika, AnyList, Plan to Eat, or paste a public recipe URL.
-                      </div>
-                    </div>
-                    <Button asChild className="bg-orange-500 hover:bg-orange-600">
-                      <Link href="/recipes/import-paprika">
-                        <Upload size={16} className="mr-2" />
-                        Open Recipe Import
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
+                {/* Recipe Imports (reused component) */}
+                <RecipeImportsSection />
 
                 {/* Account Type Switcher */}
                 <div className="grid grid-cols-2 gap-4">
