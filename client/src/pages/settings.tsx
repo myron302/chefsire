@@ -196,6 +196,9 @@ export default function SettingsPage() {
     return `$${num.toFixed(2)}`;
   };
 
+  // ----------------------------
+  // Marketplace subscription data
+  // ----------------------------
   const subscriptionTiersQuery = useQuery({
     queryKey: ["/api/subscriptions/tiers"],
     enabled: !!user,
@@ -206,7 +209,7 @@ export default function SettingsPage() {
         credentials: "include",
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Failed to load subscription tiers");
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to load subscription tiers");
       return data as {
         ok: boolean;
         tiers: Record<
@@ -233,7 +236,7 @@ export default function SettingsPage() {
         credentials: "include",
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error || "Failed to load your subscription");
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to load your subscription");
       return data as {
         ok: boolean;
         currentTier: string;
@@ -250,18 +253,116 @@ export default function SettingsPage() {
     },
   });
 
+  // ----------------------------
+  // Nutrition subscription data
+  // ----------------------------
+  const nutritionTiersQuery = useQuery({
+    queryKey: ["/api/nutrition/subscription/tiers"],
+    enabled: !!user,
+    retry: false,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const res = await fetch("/api/nutrition/subscription/tiers", {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to load nutrition tiers");
+      return data as {
+        ok: boolean;
+        tiers: Record<
+          string,
+          {
+            name?: string;
+            price?: number;
+            features?: string[];
+          }
+        >;
+      };
+    },
+  });
+
+  const myNutritionSubscriptionQuery = useQuery({
+    queryKey: ["/api/nutrition/subscription"],
+    enabled: !!user,
+    retry: false,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const res = await fetch("/api/nutrition/subscription", {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to load nutrition subscription");
+      return data as {
+        ok: boolean;
+        currentTier: "free" | "premium";
+        status: "active" | "inactive" | "expired";
+        endsAt?: string | null;
+        tierInfo?: {
+          name?: string;
+          price?: number;
+          features?: string[];
+        };
+      };
+    },
+  });
+
+  // ----------------------------
+  // Shared subscription history
+  // ----------------------------
+  const subscriptionHistoryQuery = useQuery({
+    queryKey: ["/api/subscriptions/history"],
+    enabled: !!user,
+    retry: false,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const res = await fetch("/api/subscriptions/history?limit=50", {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to load subscription history");
+      return data as {
+        ok: boolean;
+        history: Array<{
+          id: string;
+          tier: string;
+          amount: string | number;
+          startDate?: string | null;
+          endDate?: string | null;
+          status: string;
+          paymentMethod?: string | null;
+          createdAt?: string | null;
+          subscriptionType?: "marketplace" | "nutrition";
+        }>;
+      };
+    },
+  });
+
+  // ----------------------------
+  // Marketplace subscription mutations
+  // ----------------------------
   const updateSubscriptionMutation = useMutation({
     mutationFn: async (tier: string) => {
-      const res = await fetch("/api/subscriptions/upgrade", {
+      const currentTier = String(
+        mySubscriptionQuery.data?.currentTier || user?.subscriptionTier || user?.subscription || "free"
+      );
+
+      const currentIdx = subscriptionTierOrder.indexOf(currentTier as (typeof subscriptionTierOrder)[number]);
+      const targetIdx = subscriptionTierOrder.indexOf(tier as (typeof subscriptionTierOrder)[number]);
+
+      const endpoint =
+        currentIdx !== -1 && targetIdx !== -1 && targetIdx < currentIdx
+          ? "/api/subscriptions/downgrade"
+          : "/api/subscriptions/upgrade";
+
+      const res = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ tier }),
       });
+
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data?.error || "Failed to update subscription");
-      }
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to update subscription");
       return data as {
         ok: boolean;
         message?: string;
@@ -271,16 +372,19 @@ export default function SettingsPage() {
     },
     onSuccess: (data) => {
       const nextEndsAt = data?.endsAt ? new Date(data.endsAt).toISOString() : user?.subscriptionEndsAt;
+
       updateUser({
         subscriptionTier: data.tier,
         subscription: data.tier,
         subscriptionStatus: "active",
         subscriptionEndsAt: nextEndsAt || undefined,
         trialEndDate: nextEndsAt || user?.trialEndDate,
-      });
+      } as any);
+
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/my-tier"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/tiers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/history"] });
+
       toast({
         title: "Subscription updated",
         description: data?.message || "Your subscription was updated successfully.",
@@ -302,9 +406,7 @@ export default function SettingsPage() {
         credentials: "include",
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        throw new Error(data?.error || "Failed to cancel subscription");
-      }
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to cancel subscription");
       return data as {
         ok: boolean;
         message?: string;
@@ -313,22 +415,113 @@ export default function SettingsPage() {
     },
     onSuccess: (data) => {
       const endsAt = data?.endsAt ? new Date(data.endsAt).toISOString() : user?.subscriptionEndsAt;
+
       updateUser({
         subscriptionStatus: "cancelled",
         subscriptionEndsAt: endsAt || undefined,
         trialEndDate: endsAt || user?.trialEndDate,
-      });
+      } as any);
+
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/my-tier"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/history"] });
+
       toast({
         title: "Subscription cancelled",
-        description:
-          data?.message || "You'll keep access until the end of your current billing period.",
+        description: data?.message || "You'll keep access until the end of your current billing period.",
       });
     },
     onError: (error: any) => {
       toast({
         title: "Unable to cancel subscription",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // ----------------------------
+  // Nutrition subscription mutations
+  // ----------------------------
+  const updateNutritionSubscriptionMutation = useMutation({
+    mutationFn: async (tier: "free" | "premium") => {
+      const res = await fetch("/api/nutrition/subscription/change", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tier }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to update nutrition subscription");
+
+      return data as {
+        ok: boolean;
+        message?: string;
+        currentTier: "free" | "premium";
+        status?: "active" | "inactive" | "expired";
+        endsAt?: string | null;
+      };
+    },
+    onSuccess: (data) => {
+      updateUser({
+        nutritionPremium: data.currentTier === "premium",
+        nutritionTrialEndsAt: data.endsAt || null,
+      } as any);
+
+      queryClient.invalidateQueries({ queryKey: ["/api/nutrition/subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/nutrition/subscription/tiers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/history"] });
+
+      toast({
+        title: "Nutrition subscription updated",
+        description: data?.message || "Your nutrition subscription was updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Unable to update nutrition subscription",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelNutritionSubscriptionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/nutrition/subscription/cancel", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to cancel nutrition subscription");
+
+      return data as {
+        ok: boolean;
+        message?: string;
+        currentTier: "free";
+        status?: "inactive" | "expired";
+        endsAt?: string | null;
+      };
+    },
+    onSuccess: (data) => {
+      updateUser({
+        nutritionPremium: false,
+        nutritionTrialEndsAt: data.endsAt || null,
+      } as any);
+
+      queryClient.invalidateQueries({ queryKey: ["/api/nutrition/subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/nutrition/subscription/tiers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/history"] });
+
+      toast({
+        title: "Nutrition subscription cancelled",
+        description: data?.message || "Nutrition subscription has been cancelled.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Unable to cancel nutrition subscription",
         description: error?.message || "Please try again.",
         variant: "destructive",
       });
@@ -488,32 +681,14 @@ export default function SettingsPage() {
       }
     >;
 
-    const subscriptionHistoryQuery = useQuery({
-      queryKey: ["/api/subscriptions/history"],
-      enabled: !!user,
-      retry: false,
-      staleTime: 30_000,
-      queryFn: async () => {
-        const res = await fetch("/api/subscriptions/history?limit=20", {
-          credentials: "include",
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data?.error || "Failed to load subscription history");
-        return data as {
-          ok: boolean;
-          history: Array<{
-            id: string;
-            tier: string;
-            amount: string | number;
-            startDate?: string | null;
-            endDate?: string | null;
-            status: string;
-            paymentMethod?: string | null;
-            createdAt?: string | null;
-          }>;
-        };
-      },
-    });
+    const nutritionTiersMap = (nutritionTiersQuery.data?.tiers || {}) as Record<
+      string,
+      {
+        name?: string;
+        price?: number;
+        features?: string[];
+      }
+    >;
 
     const currentTier =
       mySubscriptionQuery.data?.currentTier ||
@@ -539,11 +714,28 @@ export default function SettingsPage() {
       return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
     });
 
-    const isBusy =
+    const nutritionCurrentTier =
+      myNutritionSubscriptionQuery.data?.currentTier || (user?.nutritionPremium ? "premium" : "free");
+
+    const nutritionStatus =
+      myNutritionSubscriptionQuery.data?.status || (user?.nutritionPremium ? "active" : "inactive");
+
+    const nutritionEndsAt =
+      myNutritionSubscriptionQuery.data?.endsAt || user?.nutritionTrialEndsAt || null;
+
+    const nutritionTierEntries = Object.entries(nutritionTiersMap);
+
+    const isMarketplaceBusy =
       updateSubscriptionMutation.isPending ||
       cancelSubscriptionMutation.isPending ||
       subscriptionTiersQuery.isLoading ||
       mySubscriptionQuery.isLoading;
+
+    const isNutritionBusy =
+      updateNutritionSubscriptionMutation.isPending ||
+      cancelNutritionSubscriptionMutation.isPending ||
+      nutritionTiersQuery.isLoading ||
+      myNutritionSubscriptionQuery.isLoading;
 
     const onSelectTier = (tierKey: string) => {
       if (tierKey === "free") {
@@ -563,18 +755,66 @@ export default function SettingsPage() {
       return "Upgrade";
     };
 
-    const historyRows = subscriptionHistoryQuery.data?.history || [];
+    const onSelectNutritionTier = (tierKey: string) => {
+      if (tierKey === nutritionCurrentTier) return;
+      if (tierKey === "free") {
+        cancelNutritionSubscriptionMutation.mutate();
+        return;
+      }
+      updateNutritionSubscriptionMutation.mutate("premium");
+    };
 
-    const hasNutritionSubscription = !!(user?.nutritionPremium || user?.nutritionTrialEndsAt);
+    const renderNutritionActionLabel = (tierKey: string) => {
+      if (tierKey === nutritionCurrentTier) return "Current Plan";
+      if (tierKey === "free") return "Downgrade to Free";
+      return nutritionCurrentTier === "free" ? "Upgrade" : "Switch to Premium";
+    };
+
+    const historyRows = subscriptionHistoryQuery.data?.history || [];
 
     const refreshAllSubscriptionData = () => {
       subscriptionTiersQuery.refetch();
       mySubscriptionQuery.refetch();
+      nutritionTiersQuery.refetch();
+      myNutritionSubscriptionQuery.refetch();
       subscriptionHistoryQuery.refetch();
     };
 
     return (
       <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>My Active Subscriptions</CardTitle>
+            <CardDescription>
+              Each subscription type is separated so marketplace upgrades don&apos;t mix with nutrition.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border p-4 bg-white">
+              <div className="text-sm text-gray-500">Marketplace Seller</div>
+              <div className="mt-1 font-semibold">{titleCase(currentTier)}</div>
+              <div className="text-sm text-gray-600">{titleCase(currentStatus)}</div>
+              {currentEndsAt ? (
+                <div className="text-xs text-gray-500 mt-1">
+                  {String(currentStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}:{" "}
+                  {formatDateTime(currentEndsAt) || "—"}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="rounded-lg border p-4 bg-white">
+              <div className="text-sm text-gray-500">Nutrition</div>
+              <div className="mt-1 font-semibold">{titleCase(nutritionCurrentTier)}</div>
+              <div className="text-sm text-gray-600">{titleCase(nutritionStatus)}</div>
+              {nutritionEndsAt ? (
+                <div className="text-xs text-gray-500 mt-1">
+                  Ends: {formatDateTime(nutritionEndsAt) || "—"}
+                </div>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+
         <Tabs defaultValue="marketplace" className="space-y-4">
           <TabsList className="grid w-full grid-cols-3 h-auto">
             <TabsTrigger value="marketplace">Marketplace</TabsTrigger>
@@ -587,9 +827,7 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Marketplace Seller Subscription</CardTitle>
-                <CardDescription>
-                  Manage your seller plan, upgrade, downgrade, or cancel billing.
-                </CardDescription>
+                <CardDescription>Manage your seller plan, upgrade, downgrade, or cancel billing.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 {mySubscriptionQuery.error ? (
@@ -630,11 +868,7 @@ export default function SettingsPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={refreshAllSubscriptionData}
-                    disabled={isBusy || subscriptionHistoryQuery.isLoading}
-                  >
+                  <Button variant="outline" onClick={refreshAllSubscriptionData} disabled={isMarketplaceBusy}>
                     <RefreshCw size={16} className="mr-2" />
                     Refresh
                   </Button>
@@ -643,7 +877,7 @@ export default function SettingsPage() {
                     <Button
                       variant="destructive"
                       onClick={() => cancelSubscriptionMutation.mutate()}
-                      disabled={isBusy}
+                      disabled={isMarketplaceBusy}
                     >
                       <XCircle size={16} className="mr-2" />
                       Cancel Marketplace Subscription
@@ -712,7 +946,7 @@ export default function SettingsPage() {
                             <Button
                               className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
                               variant={isCurrent ? "outline" : "default"}
-                              disabled={isBusy || isCurrent}
+                              disabled={isMarketplaceBusy || isCurrent}
                               onClick={() => onSelectTier(tierKey)}
                             >
                               {renderActionLabel(tierKey)}
@@ -731,61 +965,127 @@ export default function SettingsPage() {
           <TabsContent value="nutrition" className="space-y-6">
             <Card>
               <CardHeader>
-                <CardTitle>Nutrition Premium Subscription</CardTitle>
-                <CardDescription>
-                  View your nutrition subscription separately from your marketplace seller plan.
-                </CardDescription>
+                <CardTitle>Nutrition Subscription</CardTitle>
+                <CardDescription>Manage nutrition subscription separately from marketplace.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
+                {myNutritionSubscriptionQuery.error ? (
+                  <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+                    {(myNutritionSubscriptionQuery.error as any)?.message || "Could not load nutrition subscription."}
+                  </div>
+                ) : null}
+
                 <div className="rounded-lg border bg-white p-4">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                       <div className="flex items-center gap-2">
                         <CreditCard size={16} className="text-orange-500" />
-                        <div className="font-semibold">Nutrition Premium</div>
-                        <Badge variant="outline" className="text-xs">
-                          {hasNutritionSubscription ? "Separate subscription type" : "Not active"}
-                        </Badge>
+                        <div className="font-semibold">Current Nutrition Plan</div>
                       </div>
 
                       <div className="mt-1 text-sm text-gray-700">
-                        <span className="font-medium">
-                          {user?.nutritionPremium ? "Premium" : user?.nutritionTrialEndsAt ? "Trial" : "None"}
-                        </span>{" "}
-                        · {user?.nutritionPremium ? "Active" : user?.nutritionTrialEndsAt ? "Trial" : "Inactive"}
+                        <span className="font-medium">{titleCase(nutritionCurrentTier)}</span> ·{" "}
+                        {titleCase(nutritionStatus)}
                       </div>
 
-                      {user?.nutritionTrialEndsAt ? (
+                      {nutritionEndsAt ? (
                         <div className="mt-1 text-xs text-gray-600 flex items-center gap-1">
                           <CalendarDays size={13} />
-                          Trial ends: {formatDateTime(user.nutritionTrialEndsAt) || "—"}
+                          Ends: {formatDateTime(nutritionEndsAt) || "—"}
                         </div>
                       ) : null}
-
-                      <p className="mt-2 text-xs text-gray-600">
-                        This tab is intentionally separate so it doesn&apos;t get mixed with marketplace plan upgrades.
-                      </p>
                     </div>
                   </div>
                 </div>
 
-                <div className="rounded-lg border bg-amber-50 border-amber-200 p-4">
-                  <p className="text-sm text-amber-800">
-                    Nutrition subscription management is currently shown separately for visibility. If you want, I can
-                    wire up dedicated nutrition upgrade/cancel endpoints and buttons next.
-                  </p>
-                </div>
-
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={refreshAllSubscriptionData}
-                    disabled={isBusy || subscriptionHistoryQuery.isLoading}
-                  >
+                  <Button variant="outline" onClick={refreshAllSubscriptionData} disabled={isNutritionBusy}>
                     <RefreshCw size={16} className="mr-2" />
                     Refresh
                   </Button>
+
+                  {nutritionCurrentTier !== "free" ? (
+                    <Button
+                      variant="destructive"
+                      onClick={() => cancelNutritionSubscriptionMutation.mutate()}
+                      disabled={isNutritionBusy}
+                    >
+                      <XCircle size={16} className="mr-2" />
+                      Cancel Nutrition Subscription
+                    </Button>
+                  ) : null}
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Change Nutrition Plan</CardTitle>
+                <CardDescription>Upgrade to Premium or downgrade back to Free.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {nutritionTiersQuery.isLoading ? (
+                  <div className="text-sm text-gray-600">Loading plans…</div>
+                ) : nutritionTiersQuery.error ? (
+                  <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+                    {(nutritionTiersQuery.error as any)?.message || "Could not load plans."}
+                  </div>
+                ) : nutritionTierEntries.length === 0 ? (
+                  <div className="text-sm text-gray-600">No nutrition plans available right now.</div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {nutritionTierEntries.map(([tierKey, tier]) => {
+                      const isCurrent = tierKey === nutritionCurrentTier;
+                      const price =
+                        typeof tier?.price === "number"
+                          ? tier.price > 0
+                            ? `$${tier.price}/mo`
+                            : "Free"
+                          : "—";
+
+                      return (
+                        <Card
+                          key={tierKey}
+                          className={`border ${isCurrent ? "ring-2 ring-orange-500 border-orange-300" : ""}`}
+                        >
+                          <CardContent className="pt-6 space-y-4">
+                            <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <h4 className="font-semibold text-lg">{tier?.name || titleCase(tierKey)}</h4>
+                                {isCurrent ? (
+                                  <Badge className="bg-orange-500 hover:bg-orange-600">Current</Badge>
+                                ) : null}
+                              </div>
+                              <p className="text-sm text-gray-600 mt-1">{price}</p>
+                            </div>
+
+                            {Array.isArray(tier?.features) && tier.features.length > 0 ? (
+                              <ul className="space-y-2 text-sm">
+                                {tier.features.slice(0, 5).map((feature) => (
+                                  <li key={feature} className="flex items-start gap-2">
+                                    <Check size={14} className="mt-0.5 text-green-600 flex-shrink-0" />
+                                    <span>{feature}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-sm text-gray-500">No plan details available.</p>
+                            )}
+
+                            <Button
+                              className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
+                              variant={isCurrent ? "outline" : "default"}
+                              disabled={isNutritionBusy || isCurrent}
+                              onClick={() => onSelectNutritionTier(tierKey)}
+                            >
+                              {renderNutritionActionLabel(tierKey)}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -796,7 +1096,7 @@ export default function SettingsPage() {
               <CardHeader>
                 <CardTitle>Subscription History</CardTitle>
                 <CardDescription>
-                  Recent subscription events including upgrades, downgrades, and cancellations.
+                  Recent subscription events including marketplace and nutrition (upgrades, downgrades, cancellations).
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -804,7 +1104,7 @@ export default function SettingsPage() {
                   <Button
                     variant="outline"
                     onClick={refreshAllSubscriptionData}
-                    disabled={isBusy || subscriptionHistoryQuery.isLoading}
+                    disabled={isMarketplaceBusy || isNutritionBusy || subscriptionHistoryQuery.isLoading}
                   >
                     <RefreshCw size={16} className="mr-2" />
                     Refresh
@@ -815,7 +1115,8 @@ export default function SettingsPage() {
                   <div className="text-sm text-gray-600">Loading subscription history…</div>
                 ) : subscriptionHistoryQuery.error ? (
                   <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
-                    {(subscriptionHistoryQuery.error as any)?.message || "Could not load subscription history."}
+                    {(subscriptionHistoryQuery.error as any)?.message || "Could not load subscription history."
+                    }
                   </div>
                 ) : historyRows.length === 0 ? (
                   <div className="rounded-lg border bg-white p-4 text-sm text-gray-600">
@@ -828,9 +1129,13 @@ export default function SettingsPage() {
                       const badgeClass =
                         status === "cancelled"
                           ? "border-red-200 text-red-700 bg-red-50"
-                          : status === "active"
+                          : status === "active" || status === "upgraded" || status === "renewed"
                           ? "border-green-200 text-green-700 bg-green-50"
                           : "border-gray-200 text-gray-700 bg-gray-50";
+
+                      const subscriptionType =
+                        row.subscriptionType ||
+                        (String(row.tier || "").startsWith("nutrition_") ? "nutrition" : "marketplace");
 
                       return (
                         <div key={row.id} className="rounded-lg border bg-white p-4">
@@ -840,6 +1145,9 @@ export default function SettingsPage() {
                                 <div className="font-semibold">{titleCase(row.tier)}</div>
                                 <Badge variant="outline" className={badgeClass}>
                                   {titleCase(row.status)}
+                                </Badge>
+                                <Badge variant="outline">
+                                  {subscriptionType === "nutrition" ? "Nutrition" : "Marketplace"}
                                 </Badge>
                               </div>
 
@@ -912,7 +1220,7 @@ export default function SettingsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        const errorMsg = data?.error || data?.message || "Failed to update profile";
+        const errorMsg = (data as any)?.error || (data as any)?.message || "Failed to update profile";
         throw new Error(errorMsg);
       }
 
@@ -921,7 +1229,7 @@ export default function SettingsPage() {
         displayName: data.user.displayName,
         bio: data.user.bio,
         avatar: data.user.avatar,
-      });
+      } as any);
 
       toast({
         title: "✓ Profile updated",
@@ -981,7 +1289,7 @@ export default function SettingsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || "Failed to change password");
+        throw new Error((data as any)?.error || "Failed to change password");
       }
 
       setPassword({ current: "", new: "", confirm: "" });
@@ -1019,7 +1327,7 @@ export default function SettingsPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.message || "Failed to delete account");
+        throw new Error((data as any)?.message || "Failed to delete account");
       }
 
       toast({
@@ -1491,9 +1799,7 @@ export default function SettingsPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Food Interests</CardTitle>
-                <CardDescription>
-                  Select your favorite food categories to personalize your experience
-                </CardDescription>
+                <CardDescription>Select your favorite food categories to personalize your experience</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
                 <SharedSocialControls />
@@ -1504,9 +1810,7 @@ export default function SettingsPage() {
                       key={category}
                       variant={interests.includes(category) ? "default" : "outline"}
                       className={`cursor-pointer px-4 py-2 ${
-                        interests.includes(category)
-                          ? "bg-orange-500 hover:bg-orange-600"
-                          : "hover:bg-gray-100"
+                        interests.includes(category) ? "bg-orange-500 hover:bg-orange-600" : "hover:bg-gray-100"
                       }`}
                       onClick={() => toggleInterest(category)}
                     >
@@ -1520,9 +1824,7 @@ export default function SettingsPage() {
                   <p className="text-sm">
                     <strong>Selected:</strong> {interests.length} categories
                   </p>
-                  <p className="text-sm text-gray-600 mt-1">
-                    We&apos;ll use your interests to recommend relevant content and recipes
-                  </p>
+                  <p className="text-sm text-gray-600 mt-1">We&apos;ll use your interests to recommend relevant content and recipes</p>
                 </div>
 
                 <Button className="bg-orange-500 hover:bg-orange-600">
