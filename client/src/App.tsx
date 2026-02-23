@@ -196,7 +196,14 @@ function RecipesSection() {
         <Route path="/recipes/baby-food/toddler" component={BabyFoodToddler} />
         <Route path="/recipes/baby-food" component={BabyFoodHub} />
         <Route path="/recipes/filters" component={RecipesFiltersPage} />
+
+        {/* Recipe Import Routes */}
         <Route path="/recipes/import-paprika" component={ImportPaprikaPage} />
+        <Route path="/recipes/import-anylist" component={ImportPaprikaPage} />
+        <Route path="/recipes/import-plan-to-eat" component={ImportPaprikaPage} />
+        <Route path="/recipes/import-url" component={ImportPaprikaPage} />
+        <Route path="/recipes/import" component={ImportPaprikaPage} />
+
         <Route path="/recipes" component={RecipesListPage} />
         <Route>
           <Redirect to="/recipes" />
