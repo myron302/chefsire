@@ -13,6 +13,10 @@ import {
   Building2,
   AlertTriangle,
   Check,
+  CreditCard,
+  CalendarDays,
+  RefreshCw,
+  XCircle,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -166,6 +170,162 @@ export default function SettingsPage() {
   const [interests, setInterests] = useState<string[]>([]);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
+  const subscriptionTierOrder = ["free", "starter", "professional", "enterprise", "premium_plus"] as const;
+
+  const titleCase = (value?: string | null) => {
+    if (!value) return "—";
+    return value
+      .replace(/_/g, " ")
+      .split(" ")
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  };
+
+  const formatDateTime = (value?: string | Date | null) => {
+    if (!value) return null;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleString();
+  };
+
+  const subscriptionTiersQuery = useQuery({
+    queryKey: ["/api/subscriptions/tiers"],
+    enabled: !!user,
+    retry: false,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const res = await fetch("/api/subscriptions/tiers", {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to load subscription tiers");
+      return data as {
+        ok: boolean;
+        tiers: Record<
+          string,
+          {
+            name: string;
+            price: number;
+            commission?: number;
+            features?: string[];
+            limits?: Record<string, unknown>;
+          }
+        >;
+      };
+    },
+  });
+
+  const mySubscriptionQuery = useQuery({
+    queryKey: ["/api/subscriptions/my-tier"],
+    enabled: !!user,
+    retry: false,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const res = await fetch("/api/subscriptions/my-tier", {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to load your subscription");
+      return data as {
+        ok: boolean;
+        currentTier: string;
+        tierInfo?: {
+          name?: string;
+          price?: number;
+          commission?: number;
+          features?: string[];
+        };
+        status?: string;
+        endsAt?: string | null;
+        monthlyRevenue?: number;
+      };
+    },
+  });
+
+  const updateSubscriptionMutation = useMutation({
+    mutationFn: async (tier: string) => {
+      const res = await fetch("/api/subscriptions/upgrade", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tier }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to update subscription");
+      }
+      return data as {
+        ok: boolean;
+        message?: string;
+        tier: string;
+        endsAt?: string | Date | null;
+      };
+    },
+    onSuccess: (data) => {
+      const nextEndsAt = data?.endsAt ? new Date(data.endsAt).toISOString() : user?.subscriptionEndsAt;
+      updateUser({
+        subscriptionTier: data.tier,
+        subscription: data.tier,
+        subscriptionStatus: "active",
+        subscriptionEndsAt: nextEndsAt || undefined,
+        trialEndDate: nextEndsAt || user?.trialEndDate,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/my-tier"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/tiers"] });
+      toast({
+        title: "Subscription updated",
+        description: data?.message || "Your subscription was updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Unable to update subscription",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelSubscriptionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/subscriptions/cancel", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to cancel subscription");
+      }
+      return data as {
+        ok: boolean;
+        message?: string;
+        endsAt?: string | Date | null;
+      };
+    },
+    onSuccess: (data) => {
+      const endsAt = data?.endsAt ? new Date(data.endsAt).toISOString() : user?.subscriptionEndsAt;
+      updateUser({
+        subscriptionStatus: "cancelled",
+        subscriptionEndsAt: endsAt || undefined,
+        trialEndDate: endsAt || user?.trialEndDate,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/my-tier"] });
+      toast({
+        title: "Subscription cancelled",
+        description:
+          data?.message || "You'll keep access until the end of your current billing period.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Unable to cancel subscription",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const getPasswordStrength = (value: string): { strength: number; label: string; color: string } => {
     let strength = 0;
     if (value.length >= 8) strength++;
@@ -305,6 +465,244 @@ export default function SettingsPage() {
         <FollowRequestsPanel />
         {includeRecipeImports ? <RecipeImportsSection /> : null}
       </>
+    );
+  }
+
+  function SubscriptionSettingsPanel() {
+    const tiersMap = (subscriptionTiersQuery.data?.tiers || {}) as Record<
+      string,
+      {
+        name?: string;
+        price?: number;
+        commission?: number;
+        features?: string[];
+      }
+    >;
+
+    const currentTier =
+      mySubscriptionQuery.data?.currentTier ||
+      user?.subscriptionTier ||
+      user?.subscription ||
+      "free";
+
+    const currentStatus =
+      mySubscriptionQuery.data?.status ||
+      user?.subscriptionStatus ||
+      (currentTier === "free" ? "active" : "active");
+
+    const currentEndsAt =
+      mySubscriptionQuery.data?.endsAt ||
+      user?.subscriptionEndsAt ||
+      user?.trialEndDate ||
+      null;
+
+    const currentTierIndex = subscriptionTierOrder.indexOf(currentTier as (typeof subscriptionTierOrder)[number]);
+    const tierEntries = Object.entries(tiersMap).sort((a, b) => {
+      const aIdx = subscriptionTierOrder.indexOf(a[0] as (typeof subscriptionTierOrder)[number]);
+      const bIdx = subscriptionTierOrder.indexOf(b[0] as (typeof subscriptionTierOrder)[number]);
+      return (aIdx === -1 ? 999 : aIdx) - (bIdx === -1 ? 999 : bIdx);
+    });
+
+    const isBusy =
+      updateSubscriptionMutation.isPending ||
+      cancelSubscriptionMutation.isPending ||
+      subscriptionTiersQuery.isLoading ||
+      mySubscriptionQuery.isLoading;
+
+    const onSelectTier = (tierKey: string) => {
+      if (tierKey === "free") {
+        if (currentTier === "free") return;
+        cancelSubscriptionMutation.mutate();
+        return;
+      }
+      if (tierKey === currentTier) return;
+      updateSubscriptionMutation.mutate(tierKey);
+    };
+
+    const renderActionLabel = (tierKey: string) => {
+      if (tierKey === currentTier) return "Current Plan";
+      if (tierKey === "free") return currentTier === "free" ? "Current Plan" : "Cancel / Free";
+      const targetIdx = subscriptionTierOrder.indexOf(tierKey as (typeof subscriptionTierOrder)[number]);
+      if (currentTierIndex !== -1 && targetIdx !== -1 && targetIdx < currentTierIndex) return "Downgrade";
+      return "Upgrade";
+    };
+
+    const subscriptionRows = [
+      {
+        id: "marketplace",
+        name: "Marketplace Seller Subscription",
+        tier: titleCase(currentTier),
+        status: titleCase(currentStatus),
+        endsAt: currentEndsAt,
+        canManage: true,
+        note:
+          currentTier === "free"
+            ? "You are on the free tier."
+            : currentStatus === "cancelled"
+            ? "Scheduled to end at the end of your billing period."
+            : "Active paid subscription for store / seller tools.",
+      },
+      ...(user?.nutritionPremium || user?.nutritionTrialEndsAt
+        ? [
+            {
+              id: "nutrition",
+              name: "Nutrition Premium",
+              tier: user?.nutritionPremium ? "Premium" : "Trial",
+              status: user?.nutritionPremium ? "Active" : "Trial",
+              endsAt: user?.nutritionTrialEndsAt || null,
+              canManage: false,
+              note: "Shown for visibility only in Settings.",
+            },
+          ]
+        : []),
+    ];
+
+    return (
+      <div className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Subscription Overview</CardTitle>
+            <CardDescription>
+              See what you&apos;re subscribed to and manage downgrades or cancellations.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {mySubscriptionQuery.error ? (
+              <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+                {(mySubscriptionQuery.error as any)?.message || "Could not load your subscription right now."}
+              </div>
+            ) : null}
+
+            <div className="grid gap-3">
+              {subscriptionRows.map((sub) => (
+                <div key={sub.id} className="rounded-lg border bg-white p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <CreditCard size={16} className="text-orange-500" />
+                        <div className="font-semibold">{sub.name}</div>
+                        {!sub.canManage ? (
+                          <Badge variant="outline" className="text-xs">
+                            Read only
+                          </Badge>
+                        ) : null}
+                      </div>
+                      <div className="mt-1 text-sm text-gray-700">
+                        <span className="font-medium">{sub.tier}</span> · {sub.status}
+                      </div>
+                      {sub.endsAt ? (
+                        <div className="mt-1 text-xs text-gray-600 flex items-center gap-1">
+                          <CalendarDays size={13} />
+                          {sub.status.toLowerCase() === "cancelled" ? "Ends" : "Renews"}:{" "}
+                          {formatDateTime(sub.endsAt) || "—"}
+                        </div>
+                      ) : null}
+                      <p className="mt-2 text-xs text-gray-600">{sub.note}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  subscriptionTiersQuery.refetch();
+                  mySubscriptionQuery.refetch();
+                }}
+                disabled={isBusy}
+              >
+                <RefreshCw size={16} className="mr-2" />
+                Refresh
+              </Button>
+              {currentTier !== "free" ? (
+                <Button
+                  variant="destructive"
+                  onClick={() => cancelSubscriptionMutation.mutate()}
+                  disabled={isBusy}
+                >
+                  <XCircle size={16} className="mr-2" />
+                  Cancel Subscription
+                </Button>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Change Plan</CardTitle>
+            <CardDescription>
+              Upgrade or downgrade your seller subscription. Downgrading to Free uses cancel and keeps access until
+              period end.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {subscriptionTiersQuery.isLoading ? (
+              <div className="text-sm text-gray-600">Loading plans…</div>
+            ) : subscriptionTiersQuery.error ? (
+              <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+                {(subscriptionTiersQuery.error as any)?.message || "Could not load plans."}
+              </div>
+            ) : tierEntries.length === 0 ? (
+              <div className="text-sm text-gray-600">No subscription plans available right now.</div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {tierEntries.map(([tierKey, tier]) => {
+                  const isCurrent = tierKey === currentTier;
+                  const price =
+                    typeof tier?.price === "number" ? `$${tier.price}/mo` : tier?.price ? `$${tier.price}/mo` : "—";
+                  const commission =
+                    typeof tier?.commission === "number" ? `${tier.commission}% commission` : undefined;
+
+                  return (
+                    <Card
+                      key={tierKey}
+                      className={`border ${isCurrent ? "ring-2 ring-orange-500 border-orange-300" : ""}`}
+                    >
+                      <CardContent className="pt-6 space-y-4">
+                        <div>
+                          <div className="flex items-center justify-between gap-2">
+                            <h4 className="font-semibold text-lg">{tier?.name || titleCase(tierKey)}</h4>
+                            {isCurrent ? (
+                              <Badge className="bg-orange-500 hover:bg-orange-600">Current</Badge>
+                            ) : null}
+                          </div>
+                          <p className="text-sm text-gray-600 mt-1">{price}</p>
+                          {commission ? <p className="text-xs text-gray-500 mt-1">{commission}</p> : null}
+                        </div>
+
+                        {Array.isArray(tier?.features) && tier.features.length > 0 ? (
+                          <ul className="space-y-2 text-sm">
+                            {tier.features.slice(0, 5).map((feature) => (
+                              <li key={feature} className="flex items-start gap-2">
+                                <Check size={14} className="mt-0.5 text-green-600 flex-shrink-0" />
+                                <span>{feature}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-sm text-gray-500">No plan details available.</p>
+                        )}
+
+                        <Button
+                          className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
+                          variant={isCurrent ? "outline" : "default"}
+                          disabled={isBusy || isCurrent}
+                          onClick={() => onSelectTier(tierKey)}
+                        >
+                          {renderActionLabel(tierKey)}
+                        </Button>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
@@ -479,9 +877,10 @@ export default function SettingsPage() {
         </div>
 
         <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-6">
+          <TabsList className="grid w-full grid-cols-2 md:grid-cols-7 h-auto">
             <TabsTrigger value="profile">Profile</TabsTrigger>
             <TabsTrigger value="account">Account</TabsTrigger>
+            <TabsTrigger value="subscription">Subscription</TabsTrigger>
             <TabsTrigger value="password">Password</TabsTrigger>
             <TabsTrigger value="privacy">Privacy</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
@@ -676,6 +1075,11 @@ export default function SettingsPage() {
                 </Button>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Subscription Tab */}
+          <TabsContent value="subscription">
+            <SubscriptionSettingsPanel />
           </TabsContent>
 
           {/* Password Tab */}
