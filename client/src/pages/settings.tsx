@@ -189,6 +189,13 @@ export default function SettingsPage() {
     return date.toLocaleString();
   };
 
+  const formatMoney = (value?: string | number | null) => {
+    if (value === null || value === undefined || value === "") return "—";
+    const num = typeof value === "number" ? value : Number(value);
+    if (Number.isNaN(num)) return "—";
+    return `$${num.toFixed(2)}`;
+  };
+
   const subscriptionTiersQuery = useQuery({
     queryKey: ["/api/subscriptions/tiers"],
     enabled: !!user,
@@ -273,6 +280,7 @@ export default function SettingsPage() {
       });
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/my-tier"] });
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/tiers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/history"] });
       toast({
         title: "Subscription updated",
         description: data?.message || "Your subscription was updated successfully.",
@@ -311,6 +319,7 @@ export default function SettingsPage() {
         trialEndDate: endsAt || user?.trialEndDate,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/my-tier"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/history"] });
       toast({
         title: "Subscription cancelled",
         description:
@@ -479,6 +488,33 @@ export default function SettingsPage() {
       }
     >;
 
+    const subscriptionHistoryQuery = useQuery({
+      queryKey: ["/api/subscriptions/history"],
+      enabled: !!user,
+      retry: false,
+      staleTime: 30_000,
+      queryFn: async () => {
+        const res = await fetch("/api/subscriptions/history?limit=20", {
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data?.error || "Failed to load subscription history");
+        return data as {
+          ok: boolean;
+          history: Array<{
+            id: string;
+            tier: string;
+            amount: string | number;
+            startDate?: string | null;
+            endDate?: string | null;
+            status: string;
+            paymentMethod?: string | null;
+            createdAt?: string | null;
+          }>;
+        };
+      },
+    });
+
     const currentTier =
       mySubscriptionQuery.data?.currentTier ||
       user?.subscriptionTier ||
@@ -527,181 +563,317 @@ export default function SettingsPage() {
       return "Upgrade";
     };
 
-    const subscriptionRows = [
-      {
-        id: "marketplace",
-        name: "Marketplace Seller Subscription",
-        tier: titleCase(currentTier),
-        status: titleCase(currentStatus),
-        endsAt: currentEndsAt,
-        canManage: true,
-        note:
-          currentTier === "free"
-            ? "You are on the free tier."
-            : currentStatus === "cancelled"
-            ? "Scheduled to end at the end of your billing period."
-            : "Active paid subscription for store / seller tools.",
-      },
-      ...(user?.nutritionPremium || user?.nutritionTrialEndsAt
-        ? [
-            {
-              id: "nutrition",
-              name: "Nutrition Premium",
-              tier: user?.nutritionPremium ? "Premium" : "Trial",
-              status: user?.nutritionPremium ? "Active" : "Trial",
-              endsAt: user?.nutritionTrialEndsAt || null,
-              canManage: false,
-              note: "Shown for visibility only in Settings.",
-            },
-          ]
-        : []),
-    ];
+    const historyRows = subscriptionHistoryQuery.data?.history || [];
+
+    const hasNutritionSubscription = !!(user?.nutritionPremium || user?.nutritionTrialEndsAt);
+
+    const refreshAllSubscriptionData = () => {
+      subscriptionTiersQuery.refetch();
+      mySubscriptionQuery.refetch();
+      subscriptionHistoryQuery.refetch();
+    };
 
     return (
       <div className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Subscription Overview</CardTitle>
-            <CardDescription>
-              See what you&apos;re subscribed to and manage downgrades or cancellations.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {mySubscriptionQuery.error ? (
-              <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
-                {(mySubscriptionQuery.error as any)?.message || "Could not load your subscription right now."}
-              </div>
-            ) : null}
+        <Tabs defaultValue="marketplace" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-3 h-auto">
+            <TabsTrigger value="marketplace">Marketplace</TabsTrigger>
+            <TabsTrigger value="nutrition">Nutrition</TabsTrigger>
+            <TabsTrigger value="history">History</TabsTrigger>
+          </TabsList>
 
-            <div className="grid gap-3">
-              {subscriptionRows.map((sub) => (
-                <div key={sub.id} className="rounded-lg border bg-white p-4">
+          {/* Marketplace Subscription */}
+          <TabsContent value="marketplace" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Marketplace Seller Subscription</CardTitle>
+                <CardDescription>
+                  Manage your seller plan, upgrade, downgrade, or cancel billing.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {mySubscriptionQuery.error ? (
+                  <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+                    {(mySubscriptionQuery.error as any)?.message || "Could not load your subscription right now."}
+                  </div>
+                ) : null}
+
+                <div className="rounded-lg border bg-white p-4">
                   <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                     <div>
                       <div className="flex items-center gap-2">
                         <CreditCard size={16} className="text-orange-500" />
-                        <div className="font-semibold">{sub.name}</div>
-                        {!sub.canManage ? (
-                          <Badge variant="outline" className="text-xs">
-                            Read only
-                          </Badge>
-                        ) : null}
+                        <div className="font-semibold">Current Marketplace Plan</div>
                       </div>
+
                       <div className="mt-1 text-sm text-gray-700">
-                        <span className="font-medium">{sub.tier}</span> · {sub.status}
+                        <span className="font-medium">{titleCase(currentTier)}</span> · {titleCase(currentStatus)}
                       </div>
-                      {sub.endsAt ? (
+
+                      {currentEndsAt ? (
                         <div className="mt-1 text-xs text-gray-600 flex items-center gap-1">
                           <CalendarDays size={13} />
-                          {sub.status.toLowerCase() === "cancelled" ? "Ends" : "Renews"}:{" "}
-                          {formatDateTime(sub.endsAt) || "—"}
+                          {String(currentStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}:{" "}
+                          {formatDateTime(currentEndsAt) || "—"}
                         </div>
                       ) : null}
-                      <p className="mt-2 text-xs text-gray-600">{sub.note}</p>
+
+                      <p className="mt-2 text-xs text-gray-600">
+                        {currentTier === "free"
+                          ? "You are currently on the free marketplace tier."
+                          : String(currentStatus).toLowerCase() === "cancelled"
+                          ? "Your paid plan is cancelled and will remain active until the end of the billing period."
+                          : "Your paid marketplace seller subscription is active."}
+                      </p>
                     </div>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            <div className="flex flex-wrap gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  subscriptionTiersQuery.refetch();
-                  mySubscriptionQuery.refetch();
-                }}
-                disabled={isBusy}
-              >
-                <RefreshCw size={16} className="mr-2" />
-                Refresh
-              </Button>
-              {currentTier !== "free" ? (
-                <Button
-                  variant="destructive"
-                  onClick={() => cancelSubscriptionMutation.mutate()}
-                  disabled={isBusy}
-                >
-                  <XCircle size={16} className="mr-2" />
-                  Cancel Subscription
-                </Button>
-              ) : null}
-            </div>
-          </CardContent>
-        </Card>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={refreshAllSubscriptionData}
+                    disabled={isBusy || subscriptionHistoryQuery.isLoading}
+                  >
+                    <RefreshCw size={16} className="mr-2" />
+                    Refresh
+                  </Button>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Change Plan</CardTitle>
-            <CardDescription>
-              Upgrade or downgrade your seller subscription. Downgrading to Free uses cancel and keeps access until
-              period end.
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {subscriptionTiersQuery.isLoading ? (
-              <div className="text-sm text-gray-600">Loading plans…</div>
-            ) : subscriptionTiersQuery.error ? (
-              <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
-                {(subscriptionTiersQuery.error as any)?.message || "Could not load plans."}
-              </div>
-            ) : tierEntries.length === 0 ? (
-              <div className="text-sm text-gray-600">No subscription plans available right now.</div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2">
-                {tierEntries.map(([tierKey, tier]) => {
-                  const isCurrent = tierKey === currentTier;
-                  const price =
-                    typeof tier?.price === "number" ? `$${tier.price}/mo` : tier?.price ? `$${tier.price}/mo` : "—";
-                  const commission =
-                    typeof tier?.commission === "number" ? `${tier.commission}% commission` : undefined;
-
-                  return (
-                    <Card
-                      key={tierKey}
-                      className={`border ${isCurrent ? "ring-2 ring-orange-500 border-orange-300" : ""}`}
+                  {currentTier !== "free" ? (
+                    <Button
+                      variant="destructive"
+                      onClick={() => cancelSubscriptionMutation.mutate()}
+                      disabled={isBusy}
                     >
-                      <CardContent className="pt-6 space-y-4">
-                        <div>
-                          <div className="flex items-center justify-between gap-2">
-                            <h4 className="font-semibold text-lg">{tier?.name || titleCase(tierKey)}</h4>
-                            {isCurrent ? (
-                              <Badge className="bg-orange-500 hover:bg-orange-600">Current</Badge>
-                            ) : null}
-                          </div>
-                          <p className="text-sm text-gray-600 mt-1">{price}</p>
-                          {commission ? <p className="text-xs text-gray-500 mt-1">{commission}</p> : null}
-                        </div>
+                      <XCircle size={16} className="mr-2" />
+                      Cancel Marketplace Subscription
+                    </Button>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
 
-                        {Array.isArray(tier?.features) && tier.features.length > 0 ? (
-                          <ul className="space-y-2 text-sm">
-                            {tier.features.slice(0, 5).map((feature) => (
-                              <li key={feature} className="flex items-start gap-2">
-                                <Check size={14} className="mt-0.5 text-green-600 flex-shrink-0" />
-                                <span>{feature}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="text-sm text-gray-500">No plan details available.</p>
-                        )}
+            <Card>
+              <CardHeader>
+                <CardTitle>Change Marketplace Plan</CardTitle>
+                <CardDescription>
+                  Upgrade or downgrade your seller subscription. Choosing Free will cancel paid billing and keep access
+                  until period end.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {subscriptionTiersQuery.isLoading ? (
+                  <div className="text-sm text-gray-600">Loading plans…</div>
+                ) : subscriptionTiersQuery.error ? (
+                  <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+                    {(subscriptionTiersQuery.error as any)?.message || "Could not load plans."}
+                  </div>
+                ) : tierEntries.length === 0 ? (
+                  <div className="text-sm text-gray-600">No subscription plans available right now.</div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {tierEntries.map(([tierKey, tier]) => {
+                      const isCurrent = tierKey === currentTier;
+                      const price =
+                        typeof tier?.price === "number" ? `$${tier.price}/mo` : tier?.price ? `$${tier.price}/mo` : "—";
+                      const commission =
+                        typeof tier?.commission === "number" ? `${tier.commission}% commission` : undefined;
 
-                        <Button
-                          className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
-                          variant={isCurrent ? "outline" : "default"}
-                          disabled={isBusy || isCurrent}
-                          onClick={() => onSelectTier(tierKey)}
+                      return (
+                        <Card
+                          key={tierKey}
+                          className={`border ${isCurrent ? "ring-2 ring-orange-500 border-orange-300" : ""}`}
                         >
-                          {renderActionLabel(tierKey)}
-                        </Button>
-                      </CardContent>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                          <CardContent className="pt-6 space-y-4">
+                            <div>
+                              <div className="flex items-center justify-between gap-2">
+                                <h4 className="font-semibold text-lg">{tier?.name || titleCase(tierKey)}</h4>
+                                {isCurrent ? (
+                                  <Badge className="bg-orange-500 hover:bg-orange-600">Current</Badge>
+                                ) : null}
+                              </div>
+                              <p className="text-sm text-gray-600 mt-1">{price}</p>
+                              {commission ? <p className="text-xs text-gray-500 mt-1">{commission}</p> : null}
+                            </div>
+
+                            {Array.isArray(tier?.features) && tier.features.length > 0 ? (
+                              <ul className="space-y-2 text-sm">
+                                {tier.features.slice(0, 5).map((feature) => (
+                                  <li key={feature} className="flex items-start gap-2">
+                                    <Check size={14} className="mt-0.5 text-green-600 flex-shrink-0" />
+                                    <span>{feature}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-sm text-gray-500">No plan details available.</p>
+                            )}
+
+                            <Button
+                              className={isCurrent ? "" : "bg-orange-500 hover:bg-orange-600"}
+                              variant={isCurrent ? "outline" : "default"}
+                              disabled={isBusy || isCurrent}
+                              onClick={() => onSelectTier(tierKey)}
+                            >
+                              {renderActionLabel(tierKey)}
+                            </Button>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Nutrition Subscription */}
+          <TabsContent value="nutrition" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Nutrition Premium Subscription</CardTitle>
+                <CardDescription>
+                  View your nutrition subscription separately from your marketplace seller plan.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="rounded-lg border bg-white p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <CreditCard size={16} className="text-orange-500" />
+                        <div className="font-semibold">Nutrition Premium</div>
+                        <Badge variant="outline" className="text-xs">
+                          {hasNutritionSubscription ? "Separate subscription type" : "Not active"}
+                        </Badge>
+                      </div>
+
+                      <div className="mt-1 text-sm text-gray-700">
+                        <span className="font-medium">
+                          {user?.nutritionPremium ? "Premium" : user?.nutritionTrialEndsAt ? "Trial" : "None"}
+                        </span>{" "}
+                        · {user?.nutritionPremium ? "Active" : user?.nutritionTrialEndsAt ? "Trial" : "Inactive"}
+                      </div>
+
+                      {user?.nutritionTrialEndsAt ? (
+                        <div className="mt-1 text-xs text-gray-600 flex items-center gap-1">
+                          <CalendarDays size={13} />
+                          Trial ends: {formatDateTime(user.nutritionTrialEndsAt) || "—"}
+                        </div>
+                      ) : null}
+
+                      <p className="mt-2 text-xs text-gray-600">
+                        This tab is intentionally separate so it doesn&apos;t get mixed with marketplace plan upgrades.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border bg-amber-50 border-amber-200 p-4">
+                  <p className="text-sm text-amber-800">
+                    Nutrition subscription management is currently shown separately for visibility. If you want, I can
+                    wire up dedicated nutrition upgrade/cancel endpoints and buttons next.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={refreshAllSubscriptionData}
+                    disabled={isBusy || subscriptionHistoryQuery.isLoading}
+                  >
+                    <RefreshCw size={16} className="mr-2" />
+                    Refresh
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Subscription History */}
+          <TabsContent value="history" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Subscription History</CardTitle>
+                <CardDescription>
+                  Recent subscription events including upgrades, downgrades, and cancellations.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="mb-4 flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={refreshAllSubscriptionData}
+                    disabled={isBusy || subscriptionHistoryQuery.isLoading}
+                  >
+                    <RefreshCw size={16} className="mr-2" />
+                    Refresh
+                  </Button>
+                </div>
+
+                {subscriptionHistoryQuery.isLoading ? (
+                  <div className="text-sm text-gray-600">Loading subscription history…</div>
+                ) : subscriptionHistoryQuery.error ? (
+                  <div className="p-3 rounded-lg border border-red-200 bg-red-50 text-sm text-red-700">
+                    {(subscriptionHistoryQuery.error as any)?.message || "Could not load subscription history."}
+                  </div>
+                ) : historyRows.length === 0 ? (
+                  <div className="rounded-lg border bg-white p-4 text-sm text-gray-600">
+                    No subscription history yet.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {historyRows.map((row) => {
+                      const status = (row.status || "").toLowerCase();
+                      const badgeClass =
+                        status === "cancelled"
+                          ? "border-red-200 text-red-700 bg-red-50"
+                          : status === "active"
+                          ? "border-green-200 text-green-700 bg-green-50"
+                          : "border-gray-200 text-gray-700 bg-gray-50";
+
+                      return (
+                        <div key={row.id} className="rounded-lg border bg-white p-4">
+                          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <div className="font-semibold">{titleCase(row.tier)}</div>
+                                <Badge variant="outline" className={badgeClass}>
+                                  {titleCase(row.status)}
+                                </Badge>
+                              </div>
+
+                              <div className="text-sm text-gray-700">
+                                Amount: <span className="font-medium">{formatMoney(row.amount)}</span>
+                              </div>
+
+                              <div className="text-xs text-gray-600 space-y-0.5">
+                                <div>
+                                  Start: <span>{formatDateTime(row.startDate) || "—"}</span>
+                                </div>
+                                <div>
+                                  End: <span>{formatDateTime(row.endDate) || "—"}</span>
+                                </div>
+                                <div>
+                                  Logged: <span>{formatDateTime(row.createdAt) || "—"}</span>
+                                </div>
+                                {row.paymentMethod ? (
+                                  <div>
+                                    Payment method: <span>{row.paymentMethod}</span>
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     );
   }
