@@ -99,7 +99,6 @@ export default function SettingsPage() {
     return { strength: 100, label: 'Strong', color: 'bg-green-500' };
   };
 
-
   const queryClient = useQueryClient();
 
   function FollowRequestsPanel() {
@@ -197,7 +196,6 @@ export default function SettingsPage() {
     );
   }
 
-
   const passwordStrength = getPasswordStrength(password.new);
 
   const toggleInterest = (category: string) => {
@@ -236,7 +234,6 @@ export default function SettingsPage() {
         throw new Error(errorMsg);
       }
 
-      // Update the user context with new data
       updateUser({
         username: data.user.username,
         displayName: data.user.displayName,
@@ -261,7 +258,6 @@ export default function SettingsPage() {
   };
 
   const handleChangePassword = async () => {
-    // Validation
     if (!password.current || !password.new || !password.confirm) {
       toast({
         title: "Missing fields",
@@ -306,7 +302,6 @@ export default function SettingsPage() {
         throw new Error(data.error || 'Failed to change password');
       }
 
-      // Clear password fields
       setPassword({ current: '', new: '', confirm: '' });
 
       toast({
@@ -350,7 +345,6 @@ export default function SettingsPage() {
         description: "Your account has been permanently deleted",
       });
 
-      // Redirect to home page after a short delay
       setTimeout(() => {
         window.location.href = '/';
       }, 2000);
@@ -390,7 +384,7 @@ export default function SettingsPage() {
                 <CardDescription>Update your profile information and avatar</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-{/* Private account */}
+                {/* Private account */}
                 <div>
                   <h4 className="font-semibold mb-2">Account Privacy</h4>
                   <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
@@ -546,7 +540,7 @@ export default function SettingsPage() {
                 <CardDescription>Switch between personal and business account</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-{/* Private account */}
+                {/* Private account */}
                 <div>
                   <h4 className="font-semibold mb-2">Account Privacy</h4>
                   <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
@@ -587,6 +581,25 @@ export default function SettingsPage() {
 
                 {/* Follow Requests (incoming) */}
                 <FollowRequestsPanel />
+
+                {/* Recipe Imports (added to Account tab too) */}
+                <div>
+                  <h4 className="font-semibold mb-2">Recipe Imports</h4>
+                  <div className="flex flex-col gap-3 p-4 border rounded-lg bg-white md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <div className="font-medium">Import recipes from other apps and websites</div>
+                      <div className="text-sm text-gray-600">
+                        Bring in recipes from Paprika, AnyList, Plan to Eat, or paste a public recipe URL.
+                      </div>
+                    </div>
+                    <Button asChild className="bg-orange-500 hover:bg-orange-600">
+                      <Link href="/recipes/import-paprika">
+                        <Upload size={16} className="mr-2" />
+                        Open Recipe Import
+                      </Link>
+                    </Button>
+                  </div>
+                </div>
 
                 {/* Account Type Switcher */}
                 <div className="grid grid-cols-2 gap-4">
@@ -689,7 +702,7 @@ export default function SettingsPage() {
                 <CardDescription>Update your password to keep your account secure</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-{/* Private account */}
+                {/* Private account */}
                 <div>
                   <h4 className="font-semibold mb-2">Account Privacy</h4>
                   <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
@@ -826,7 +839,7 @@ export default function SettingsPage() {
                 <CardDescription>Control who can see your information</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-{/* Private account */}
+                {/* Private account */}
                 <div>
                   <h4 className="font-semibold mb-2">Account Privacy</h4>
                   <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
@@ -915,7 +928,7 @@ export default function SettingsPage() {
                 <CardDescription>Choose what notifications you want to receive</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-{/* Private account */}
+                {/* Private account */}
                 <div>
                   <h4 className="font-semibold mb-2">Account Privacy</h4>
                   <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
@@ -1013,7 +1026,7 @@ export default function SettingsPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-{/* Private account */}
+                {/* Private account */}
                 <div>
                   <h4 className="font-semibold mb-2">Account Privacy</h4>
                   <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
