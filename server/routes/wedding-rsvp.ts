@@ -53,16 +53,29 @@ router.post("/send-invitations", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "guests array is required" });
     }
 
-    // Check if user has premium or elite subscription
+    // Check wedding planner subscription (separate from marketplace subscription)
     const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
     if (!user) {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    if (user.subscriptionTier !== "premium" && user.subscriptionTier !== "elite") {
+    const weddingTier = String((user as any).weddingTier || "free");
+    const weddingStatus = String((user as any).weddingStatus || (weddingTier === "free" ? "inactive" : "active"));
+    const weddingEndsAtRaw = (user as any).weddingEndsAt;
+    const weddingEndsAt =
+      weddingEndsAtRaw && !Number.isNaN(new Date(weddingEndsAtRaw).getTime())
+        ? new Date(weddingEndsAtRaw)
+        : null;
+
+    const hasPaidWeddingPlan = weddingTier === "premium" || weddingTier === "elite";
+    const isActive = String(weddingStatus).toLowerCase() === "active";
+    const isCancelledButValid =
+      String(weddingStatus).toLowerCase() === "cancelled" && weddingEndsAt && weddingEndsAt.getTime() > Date.now();
+
+    if (!hasPaidWeddingPlan || (!isActive && !isCancelledButValid)) {
       return res.status(403).json({
         ok: false,
-        error: "Premium or Elite subscription required to send wedding invitations",
+        error: "Premium or Elite wedding subscription required to send wedding invitations",
       });
     }
 
