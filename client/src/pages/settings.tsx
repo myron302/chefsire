@@ -254,6 +254,90 @@ export default function SettingsPage() {
   });
 
   // ----------------------------
+  // Nutrition subscription data
+  // ----------------------------
+  const nutritionTiersQuery = useQuery({
+    queryKey: ["/api/nutrition/subscription/tiers"],
+    enabled: !!user,
+    retry: false,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const res = await fetch("/api/nutrition/subscription/tiers", {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to load nutrition tiers");
+      return data as {
+        ok: boolean;
+        tiers: Record<
+          string,
+          {
+            name?: string;
+            price?: number;
+            features?: string[];
+          }
+        >;
+      };
+    },
+  });
+
+  const myNutritionSubscriptionQuery = useQuery({
+    queryKey: ["/api/nutrition/subscription"],
+    enabled: !!user,
+    retry: false,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const res = await fetch("/api/nutrition/subscription", {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to load nutrition subscription");
+      return data as {
+        ok: boolean;
+        currentTier: "free" | "premium";
+        status: "active" | "inactive" | "expired";
+        endsAt?: string | null;
+        tierInfo?: {
+          name?: string;
+          price?: number;
+          features?: string[];
+        };
+      };
+    },
+  });
+
+  // ----------------------------
+  // Shared subscription history
+  // ----------------------------
+  const subscriptionHistoryQuery = useQuery({
+    queryKey: ["/api/subscriptions/history"],
+    enabled: !!user,
+    retry: false,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const res = await fetch("/api/subscriptions/history?limit=50", {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to load subscription history");
+      return data as {
+        ok: boolean;
+        history: Array<{
+          id: string;
+          tier: string;
+          amount: string | number;
+          startDate?: string | null;
+          endDate?: string | null;
+          status: string;
+          paymentMethod?: string | null;
+          createdAt?: string | null;
+          subscriptionType?: "marketplace" | "nutrition";
+        }>;
+      };
+    },
+  });
+
+  // ----------------------------
   // Marketplace subscription mutations
   // ----------------------------
   const updateSubscriptionMutation = useMutation({
@@ -350,6 +434,95 @@ export default function SettingsPage() {
     onError: (error: any) => {
       toast({
         title: "Unable to cancel subscription",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // ----------------------------
+  // Nutrition subscription mutations
+  // ----------------------------
+  const updateNutritionSubscriptionMutation = useMutation({
+    mutationFn: async (tier: "free" | "premium") => {
+      const res = await fetch("/api/nutrition/subscription/change", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tier }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to update nutrition subscription");
+
+      return data as {
+        ok: boolean;
+        message?: string;
+        currentTier: "free" | "premium";
+        status?: "active" | "inactive" | "expired";
+        endsAt?: string | null;
+      };
+    },
+    onSuccess: (data) => {
+      updateUser({
+        nutritionPremium: data.currentTier === "premium",
+        nutritionTrialEndsAt: data.endsAt || null,
+      } as any);
+
+      queryClient.invalidateQueries({ queryKey: ["/api/nutrition/subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/nutrition/subscription/tiers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/history"] });
+
+      toast({
+        title: "Nutrition subscription updated",
+        description: data?.message || "Your nutrition subscription was updated successfully.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Unable to update nutrition subscription",
+        description: error?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const cancelNutritionSubscriptionMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/nutrition/subscription/cancel", {
+        method: "POST",
+        credentials: "include",
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as any)?.error || "Failed to cancel nutrition subscription");
+
+      return data as {
+        ok: boolean;
+        message?: string;
+        currentTier: "free";
+        status?: "inactive" | "expired";
+        endsAt?: string | null;
+      };
+    },
+    onSuccess: (data) => {
+      updateUser({
+        nutritionPremium: false,
+        nutritionTrialEndsAt: data.endsAt || null,
+      } as any);
+
+      queryClient.invalidateQueries({ queryKey: ["/api/nutrition/subscription"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/nutrition/subscription/tiers"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/history"] });
+
+      toast({
+        title: "Nutrition subscription cancelled",
+        description: data?.message || "Nutrition subscription has been cancelled.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Unable to cancel nutrition subscription",
         description: error?.message || "Please try again.",
         variant: "destructive",
       });
