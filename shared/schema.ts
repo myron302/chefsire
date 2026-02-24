@@ -50,6 +50,12 @@ export const users = pgTable(
     monthlyRevenue: decimal("monthly_revenue", { precision: 10, scale: 2 }).default("0"),
     nutritionPremium: boolean("nutrition_premium").default(false),
     nutritionTrialEndsAt: timestamp("nutrition_trial_ends_at"),
+weddingTier: text("wedding_tier").default("free"),
+weddingStatus: text("wedding_status").default("inactive"),
+weddingEndsAt: timestamp("wedding_ends_at"),
+vendorTier: text("vendor_tier").default("free"),
+vendorStatus: text("vendor_status").default("inactive"),
+vendorEndsAt: timestamp("vendor_ends_at"),
     dailyCalorieGoal: integer("daily_calorie_goal"),
     macroGoals: jsonb("macro_goals").$type<{ protein: number; carbs: number; fat: number }>(),
     dietaryRestrictions: jsonb("dietary_restrictions").$type<string[]>().default(sql`'[]'::jsonb`),
@@ -306,6 +312,7 @@ export const subscriptionHistory = pgTable("subscription_history", {
   endDate: timestamp("end_date").notNull(),
   status: text("status").notNull(),
   paymentMethod: text("payment_method"),
+  subscriptionType: text("subscription_type").default("marketplace"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
