@@ -29,172 +29,44 @@ import { Badge } from "@/components/ui/badge";
 import { useUser } from "@/contexts/UserContext";
 import { useToast } from "@/hooks/use-toast";
 
-const FOOD_CATEGORIES = [
-  "Italian",
-  "Mexican",
-  "Chinese",
-  "Japanese",
-  "Thai",
-  "Indian",
-  "French",
-  "Mediterranean",
-  "American",
-  "BBQ",
-  "Vegan",
-  "Vegetarian",
-  "Gluten-Free",
-  "Keto",
-  "Paleo",
-  "Desserts",
-  "Baking",
-  "Seafood",
-  "Breakfast",
-  "Appetizers",
-  "Soups",
-  "Salads",
-];
 
-function RecipeImportsSection() {
-  return (
-    <div>
-      <h4 className="font-semibold mb-2">Recipe Imports</h4>
-      <div className="flex flex-col gap-3 p-4 border rounded-lg bg-white md:flex-row md:items-center md:justify-between">
-        <div>
-          <div className="font-medium">Import recipes from other apps and websites</div>
-          <div className="text-sm text-gray-600">
-            Bring in recipes from Paprika, AnyList, Plan to Eat, or paste a public recipe URL.
-          </div>
-        </div>
-        <Button asChild className="bg-orange-500 hover:bg-orange-600">
-          <Link href="/recipes/import-paprika">
-            <Upload size={16} className="mr-2" />
-            Open Recipe Import
-          </Link>
-        </Button>
-      </div>
-    </div>
-  );
+
+// ---------------------------------------------------------------------------
+// Subscription helpers — module-level so SubscriptionSettingsPanel is stable
+// ---------------------------------------------------------------------------
+const SUBSCRIPTION_TIER_ORDER = ["free", "starter", "professional", "enterprise", "premium_plus"] as const;
+
+function titleCase(value?: string | null): string {
+  if (!value) return "—";
+  return value
+    .replace(/_/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
 }
 
-function AccountPrivacySection({
-  isPrivate,
-  onToggle,
-  onSave,
-  isSaving,
-}: {
-  isPrivate: boolean;
-  onToggle: () => void;
-  onSave: () => void;
-  isSaving: boolean;
-}) {
-  return (
-    <div>
-      <h4 className="font-semibold mb-2">Account Privacy</h4>
-      <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
-        <div>
-          <div className="font-medium">Private account</div>
-          <div className="text-sm text-gray-600">When enabled, people must request to follow you.</div>
-        </div>
-        <Button variant={isPrivate ? "default" : "outline"} size="sm" onClick={onToggle}>
-          {isPrivate ? (
-            <>
-              <EyeOff size={16} className="mr-2" />
-              Private
-            </>
-          ) : (
-            <>
-              <Eye size={16} className="mr-2" />
-              Public
-            </>
-          )}
-        </Button>
-      </div>
-      <div className="mt-3">
-        <Button onClick={onSave} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600">
-          {isSaving ? "Saving..." : "Save privacy"}
-        </Button>
-      </div>
-    </div>
-  );
+function formatDateTime(value?: string | Date | null): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleString();
 }
 
-export default function SettingsPage() {
+function formatMoney(value?: string | number | null): string {
+  if (value === null || value === undefined || value === "") return "—";
+  const num = typeof value === "number" ? value : Number(value);
+  if (Number.isNaN(num)) return "—";
+  return `$${num.toFixed(2)}`;
+}
+
+function SubscriptionSettingsPanel() {
   const { user, updateUser } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const [profile, setProfile] = useState({
-    username: user?.username || "",
-    displayName: user?.displayName || "",
-    bio: user?.bio || "",
-    avatar: user?.avatar || "",
-    isPrivate: user?.isPrivate || false,
-  });
-
-  const [isSaving, setIsSaving] = useState(false);
-
-  const [accountType, setAccountType] = useState<"personal" | "business">(user?.isChef ? "business" : "personal");
-
-  const [businessInfo, setBusinessInfo] = useState({
-    businessName: "",
-    businessCategory: "",
-  });
-
-  const [password, setPassword] = useState({
-    current: "",
-    new: "",
-    confirm: "",
-  });
-
-  const [showPasswords, setShowPasswords] = useState({
-    current: false,
-    new: false,
-    confirm: false,
-  });
-
-  const [privacy, setPrivacy] = useState({
-    profilePublic: true,
-    showEmail: false,
-    allowMessages: true,
-  });
-
-  const [notifications, setNotifications] = useState({
-    emailLikes: true,
-    emailComments: true,
-    emailFollows: true,
-    emailMessages: true,
-    emailNewsletter: false,
-    pushEnabled: true,
-  });
-
-  const [interests, setInterests] = useState<string[]>([]);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-
-  const subscriptionTierOrder = ["free", "starter", "professional", "enterprise", "premium_plus"] as const;
-
-  const titleCase = (value?: string | null) => {
-    if (!value) return "—";
-    return value
-      .replace(/_/g, " ")
-      .split(" ")
-      .filter(Boolean)
-      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-      .join(" ");
-  };
-
-  const formatDateTime = (value?: string | Date | null) => {
-    if (!value) return null;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return null;
-    return date.toLocaleString();
-  };
-
-  const formatMoney = (value?: string | number | null) => {
-    if (value === null || value === undefined || value === "") return "—";
-    const num = typeof value === "number" ? value : Number(value);
-    if (Number.isNaN(num)) return "—";
-    return `$${num.toFixed(2)}`;
-  };
+  // Re-alias so existing panel code referencing subscriptionTierOrder still works
+  const subscriptionTierOrder = SUBSCRIPTION_TIER_ORDER;
 
   // ----------------------------
   // Marketplace subscription data
@@ -529,149 +401,6 @@ export default function SettingsPage() {
     },
   });
 
-  const getPasswordStrength = (value: string): { strength: number; label: string; color: string } => {
-    let strength = 0;
-    if (value.length >= 8) strength++;
-    if (value.length >= 12) strength++;
-    if (/[a-z]/.test(value) && /[A-Z]/.test(value)) strength++;
-    if (/\d/.test(value)) strength++;
-    if (/[^a-zA-Z0-9]/.test(value)) strength++;
-
-    if (strength <= 1) return { strength: 20, label: "Weak", color: "bg-red-500" };
-    if (strength <= 3) return { strength: 50, label: "Fair", color: "bg-yellow-500" };
-    if (strength <= 4) return { strength: 75, label: "Good", color: "bg-blue-500" };
-    return { strength: 100, label: "Strong", color: "bg-green-500" };
-  };
-
-  function FollowRequestsPanel() {
-    const { data, isLoading, error } = useQuery({
-      queryKey: ["/api/follows/requests/incoming"],
-      enabled: !!user,
-      queryFn: async () => {
-        const res = await fetch("/api/follows/requests/incoming?limit=50", {
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("Failed to load follow requests");
-        return res.json() as Promise<{
-          requests: { id: string; createdAt: string; requester: any }[];
-        }>;
-      },
-      retry: false,
-    });
-
-    const accept = useMutation({
-      mutationFn: async (requestId: string) => {
-        const res = await fetch(`/api/follows/requests/${requestId}/accept`, {
-          method: "POST",
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("Failed to accept request");
-        return res.json();
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["/api/follows/requests/incoming"] });
-        toast({ title: "Accepted", description: "They can now follow you." });
-      },
-      onError: () =>
-        toast({
-          title: "Error",
-          description: "Could not accept request",
-          variant: "destructive",
-        }),
-    });
-
-    const decline = useMutation({
-      mutationFn: async (requestId: string) => {
-        const res = await fetch(`/api/follows/requests/${requestId}/decline`, {
-          method: "POST",
-          credentials: "include",
-        });
-        if (!res.ok) throw new Error("Failed to decline request");
-        return res.json();
-      },
-      onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ["/api/follows/requests/incoming"] });
-        toast({ title: "Declined", description: "Request declined." });
-      },
-      onError: () =>
-        toast({
-          title: "Error",
-          description: "Could not decline request",
-          variant: "destructive",
-        }),
-    });
-
-    const requests = data?.requests || [];
-
-    return (
-      <div>
-        <h4 className="font-semibold mb-2">Follow Requests</h4>
-        <div className="border rounded-lg p-4 bg-white">
-          {isLoading ? (
-            <div className="text-sm text-gray-600">Loading…</div>
-          ) : error ? (
-            <div className="text-sm text-red-600">Could not load requests.</div>
-          ) : requests.length === 0 ? (
-            <div className="text-sm text-gray-600">No pending requests.</div>
-          ) : (
-            <div className="space-y-3">
-              {requests.map((r) => (
-                <div key={r.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={r.requester?.avatar || "/images/placeholder-avatar.svg"}
-                      alt=""
-                      className="w-9 h-9 rounded-full object-cover border"
-                    />
-                    <div>
-                      <div className="font-medium">
-                        {r.requester?.displayName || r.requester?.username || "User"}
-                      </div>
-                      <div className="text-sm text-gray-600">@{r.requester?.username}</div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button size="sm" onClick={() => accept.mutate(r.id)} disabled={accept.isPending}>
-                      Accept
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => decline.mutate(r.id)}
-                      disabled={decline.isPending}
-                    >
-                      Decline
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  function SharedSocialControls({
-    includeRecipeImports = false,
-  }: {
-    includeRecipeImports?: boolean;
-  }) {
-    return (
-      <>
-        <AccountPrivacySection
-          isPrivate={profile.isPrivate}
-          onToggle={() => setProfile((prev) => ({ ...prev, isPrivate: !prev.isPrivate }))}
-          onSave={handleSaveProfile}
-          isSaving={isSaving}
-        />
-        <FollowRequestsPanel />
-        {includeRecipeImports ? <RecipeImportsSection /> : null}
-      </>
-    );
-  }
-
-function SubscriptionSettingsPanel() {
   // ---------- Marketplace (Seller) ----------
   const marketplaceTiersMap = (subscriptionTiersQuery.data?.tiers || {}) as Record<
     string,
@@ -1887,6 +1616,290 @@ function SubscriptionSettingsPanel() {
     </div>
   );
 }
+
+const FOOD_CATEGORIES = [
+  "Italian",
+  "Mexican",
+  "Chinese",
+  "Japanese",
+  "Thai",
+  "Indian",
+  "French",
+  "Mediterranean",
+  "American",
+  "BBQ",
+  "Vegan",
+  "Vegetarian",
+  "Gluten-Free",
+  "Keto",
+  "Paleo",
+  "Desserts",
+  "Baking",
+  "Seafood",
+  "Breakfast",
+  "Appetizers",
+  "Soups",
+  "Salads",
+];
+
+function RecipeImportsSection() {
+  return (
+    <div>
+      <h4 className="font-semibold mb-2">Recipe Imports</h4>
+      <div className="flex flex-col gap-3 p-4 border rounded-lg bg-white md:flex-row md:items-center md:justify-between">
+        <div>
+          <div className="font-medium">Import recipes from other apps and websites</div>
+          <div className="text-sm text-gray-600">
+            Bring in recipes from Paprika, AnyList, Plan to Eat, or paste a public recipe URL.
+          </div>
+        </div>
+        <Button asChild className="bg-orange-500 hover:bg-orange-600">
+          <Link href="/recipes/import-paprika">
+            <Upload size={16} className="mr-2" />
+            Open Recipe Import
+          </Link>
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function AccountPrivacySection({
+  isPrivate,
+  onToggle,
+  onSave,
+  isSaving,
+}: {
+  isPrivate: boolean;
+  onToggle: () => void;
+  onSave: () => void;
+  isSaving: boolean;
+}) {
+  return (
+    <div>
+      <h4 className="font-semibold mb-2">Account Privacy</h4>
+      <div className="flex items-center justify-between p-4 border rounded-lg bg-white">
+        <div>
+          <div className="font-medium">Private account</div>
+          <div className="text-sm text-gray-600">When enabled, people must request to follow you.</div>
+        </div>
+        <Button variant={isPrivate ? "default" : "outline"} size="sm" onClick={onToggle}>
+          {isPrivate ? (
+            <>
+              <EyeOff size={16} className="mr-2" />
+              Private
+            </>
+          ) : (
+            <>
+              <Eye size={16} className="mr-2" />
+              Public
+            </>
+          )}
+        </Button>
+      </div>
+      <div className="mt-3">
+        <Button onClick={onSave} disabled={isSaving} className="bg-orange-500 hover:bg-orange-600">
+          {isSaving ? "Saving..." : "Save privacy"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export default function SettingsPage() {
+  const { user, updateUser } = useUser();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const [profile, setProfile] = useState({
+    username: user?.username || "",
+    displayName: user?.displayName || "",
+    bio: user?.bio || "",
+    avatar: user?.avatar || "",
+    isPrivate: user?.isPrivate || false,
+  });
+
+  const [isSaving, setIsSaving] = useState(false);
+
+  const [accountType, setAccountType] = useState<"personal" | "business">(user?.isChef ? "business" : "personal");
+
+  const [businessInfo, setBusinessInfo] = useState({
+    businessName: "",
+    businessCategory: "",
+  });
+
+  const [password, setPassword] = useState({
+    current: "",
+    new: "",
+    confirm: "",
+  });
+
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    new: false,
+    confirm: false,
+  });
+
+  const [privacy, setPrivacy] = useState({
+    profilePublic: true,
+    showEmail: false,
+    allowMessages: true,
+  });
+
+  const [notifications, setNotifications] = useState({
+    emailLikes: true,
+    emailComments: true,
+    emailFollows: true,
+    emailMessages: true,
+    emailNewsletter: false,
+    pushEnabled: true,
+  });
+
+  const [interests, setInterests] = useState<string[]>([]);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const getPasswordStrength = (value: string): { strength: number; label: string; color: string } => {
+    let strength = 0;
+    if (value.length >= 8) strength++;
+    if (value.length >= 12) strength++;
+    if (/[a-z]/.test(value) && /[A-Z]/.test(value)) strength++;
+    if (/\d/.test(value)) strength++;
+    if (/[^a-zA-Z0-9]/.test(value)) strength++;
+
+    if (strength <= 1) return { strength: 20, label: "Weak", color: "bg-red-500" };
+    if (strength <= 3) return { strength: 50, label: "Fair", color: "bg-yellow-500" };
+    if (strength <= 4) return { strength: 75, label: "Good", color: "bg-blue-500" };
+    return { strength: 100, label: "Strong", color: "bg-green-500" };
+  };
+
+  function FollowRequestsPanel() {
+    const { data, isLoading, error } = useQuery({
+      queryKey: ["/api/follows/requests/incoming"],
+      enabled: !!user,
+      queryFn: async () => {
+        const res = await fetch("/api/follows/requests/incoming?limit=50", {
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to load follow requests");
+        return res.json() as Promise<{
+          requests: { id: string; createdAt: string; requester: any }[];
+        }>;
+      },
+      retry: false,
+    });
+
+    const accept = useMutation({
+      mutationFn: async (requestId: string) => {
+        const res = await fetch(`/api/follows/requests/${requestId}/accept`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to accept request");
+        return res.json();
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/follows/requests/incoming"] });
+        toast({ title: "Accepted", description: "They can now follow you." });
+      },
+      onError: () =>
+        toast({
+          title: "Error",
+          description: "Could not accept request",
+          variant: "destructive",
+        }),
+    });
+
+    const decline = useMutation({
+      mutationFn: async (requestId: string) => {
+        const res = await fetch(`/api/follows/requests/${requestId}/decline`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("Failed to decline request");
+        return res.json();
+      },
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: ["/api/follows/requests/incoming"] });
+        toast({ title: "Declined", description: "Request declined." });
+      },
+      onError: () =>
+        toast({
+          title: "Error",
+          description: "Could not decline request",
+          variant: "destructive",
+        }),
+    });
+
+    const requests = data?.requests || [];
+
+    return (
+      <div>
+        <h4 className="font-semibold mb-2">Follow Requests</h4>
+        <div className="border rounded-lg p-4 bg-white">
+          {isLoading ? (
+            <div className="text-sm text-gray-600">Loading…</div>
+          ) : error ? (
+            <div className="text-sm text-red-600">Could not load requests.</div>
+          ) : requests.length === 0 ? (
+            <div className="text-sm text-gray-600">No pending requests.</div>
+          ) : (
+            <div className="space-y-3">
+              {requests.map((r) => (
+                <div key={r.id} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <img
+                      src={r.requester?.avatar || "/images/placeholder-avatar.svg"}
+                      alt=""
+                      className="w-9 h-9 rounded-full object-cover border"
+                    />
+                    <div>
+                      <div className="font-medium">
+                        {r.requester?.displayName || r.requester?.username || "User"}
+                      </div>
+                      <div className="text-sm text-gray-600">@{r.requester?.username}</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" onClick={() => accept.mutate(r.id)} disabled={accept.isPending}>
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => decline.mutate(r.id)}
+                      disabled={decline.isPending}
+                    >
+                      Decline
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function SharedSocialControls({
+    includeRecipeImports = false,
+  }: {
+    includeRecipeImports?: boolean;
+  }) {
+    return (
+      <>
+        <AccountPrivacySection
+          isPrivate={profile.isPrivate}
+          onToggle={() => setProfile((prev) => ({ ...prev, isPrivate: !prev.isPrivate }))}
+          onSave={handleSaveProfile}
+          isSaving={isSaving}
+        />
+        <FollowRequestsPanel />
+        {includeRecipeImports ? <RecipeImportsSection /> : null}
+      </>
+    );
+  }
+
 
 
   const passwordStrength = getPasswordStrength(password.new);
