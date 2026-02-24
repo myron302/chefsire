@@ -8,8 +8,7 @@ import { Input } from "@/components/ui/input";
 import {
   Leaf, Heart, Star, Search, ArrowLeft, Sparkles, Wine, Zap, Moon,
   Target, Flame, Apple, Sprout, Dumbbell, ArrowRight, Camera,
-  Check, Clipboard, Share2, RotateCcw, X
-, Coffee} from 'lucide-react';
+  Check, Clipboard, Share2, RotateCcw, X, Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';

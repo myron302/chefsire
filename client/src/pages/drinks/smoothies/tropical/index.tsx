@@ -8,8 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { 
   Palmtree, Sun, Heart, Star, Search, Share2, ArrowLeft,
   Camera, Zap, Waves, Droplets, X, Check, Apple, Leaf, Sparkles,
-  Clipboard, RotateCcw, Crown, Activity, Wine, Flame
-, Coffee} from 'lucide-react';
+  Clipboard, RotateCcw, Crown, Activity, Wine, Flame, Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
