@@ -69,8 +69,14 @@ async function ensureSubscriptionHistoryTable() {
       end_date TIMESTAMP NOT NULL,
       status TEXT NOT NULL,
       payment_method TEXT,
+      subscription_type TEXT DEFAULT 'marketplace',
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
+  `);
+
+  await db.execute(sql`
+    ALTER TABLE subscription_history
+      ADD COLUMN IF NOT EXISTS subscription_type TEXT DEFAULT 'marketplace';
   `);
 
   await db.execute(sql`
@@ -107,6 +113,7 @@ async function logNutritionSubscriptionHistory(params: {
     endDate: params.endDate,
     status: params.status,
     paymentMethod: params.paymentMethod ?? null,
+    subscriptionType: "nutrition",
   } as any);
 }
 
