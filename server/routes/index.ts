@@ -64,6 +64,8 @@ import payoutsRouter from "./payouts";
 import uploadRouter from "./upload";
 
 // Wedding Planning
+import weddingSubscriptionRouter from "./wedding-subscription";
+import vendorSubscriptionRouter from "./vendor-subscription";
 import weddingRsvpRouter from "./wedding-rsvp";
 import weddingEventDetailsRouter from "./wedding-event-details";
 import weddingCalendarEventsRouter from "./wedding-calendar-events";
@@ -73,10 +75,6 @@ import weddingRegistryLinksRouter from "./wedding-registry-links";
 import weddingVendorQuotesRouter from "./wedding-vendor-quotes";
 import weddingVendorListingsRouter from "./wedding-vendor-listings";
 import weddingInsightsRouter from "./wedding-insights";
-
-// ✅ NEW: Wedding subscription + Vendors subscription (separate paid modules)
-import weddingSubscriptionRouter from "./wedding-subscription";
-import vendorSubscriptionRouter from "./vendor-subscription";
 
 // Recipe imports (Paprika / AnyList / Plan to Eat / URL import)
 import importPaprikaRouter from "./import-paprika";
@@ -186,14 +184,9 @@ r.use("/payouts", payoutsRouter);
 // File uploads
 r.use("/upload", uploadRouter);
 
-// ✅ NEW: Separate paid subscription modules
-// Wedding paid subscription (trial/upgrade/downgrade/cancel)
-r.use("/wedding/subscription", weddingSubscriptionRouter);
-
-// Vendors paid subscription (trial/upgrade/downgrade/cancel)
-r.use("/vendors/subscription", vendorSubscriptionRouter);
-
-// Wedding Planning (feature routers)
+// Wedding Planning — subscription management (must come before other /wedding mounts so routes resolve)
+r.use("/wedding", weddingSubscriptionRouter);
+r.use("/vendors", vendorSubscriptionRouter);
 r.use("/wedding", weddingRsvpRouter);
 r.use("/wedding", weddingEventDetailsRouter);
 r.use("/wedding", weddingCalendarEventsRouter);
@@ -231,22 +224,22 @@ if (process.env.NODE_ENV !== "production") {
         "/stores/*",
         "/square/*",
         "/notifications/*", // ⚡ Phase 1
-        "/quests/*", // ⚡ Phase 1
-        "/suggestions/*", // ⚡ Phase 1
-        "/remixes/*", // ⚡ Phase 1
-        "/leaderboard/*", // ⚡ Phase 1
-        "/achievements/*", // ⚡ Phase 1
-        "/streaks/*", // ⚡ Phase 1
-        "/duets/*", // 🎉 Phase 2
-        "/events/*", // 🎉 Phase 2
+        "/quests/*",        // ⚡ Phase 1
+        "/suggestions/*",   // ⚡ Phase 1
+        "/remixes/*",       // ⚡ Phase 1
+        "/leaderboard/*",   // ⚡ Phase 1
+        "/achievements/*",  // ⚡ Phase 1
+        "/streaks/*",       // ⚡ Phase 1
+        "/duets/*",         // 🎉 Phase 2
+        "/events/*",        // 🎉 Phase 2
         "/cook-together/*", // 🎉 Phase 2
-        "/analytics/*", // 📊 Phase 3
-        "/subscriptions/*", // 💰 Monetization (Marketplace Seller)
-        "/wedding/subscription/*", // ✅ Wedding Subscription
-        "/vendors/subscription/*", // ✅ Vendors Subscription
-        "/orders/*", // 💰 Monetization
-        "/payments/*", // 💰 Square payments
-        "/payouts/*", // 💰 Seller payouts
+        "/analytics/*",     // 📊 Phase 3
+        "/subscriptions/*", // 💰 Monetization
+        "/orders/*",        // 💰 Monetization
+        "/payments/*",      // 💰 Square payments
+        "/payouts/*",       // 💰 Seller payouts
+        "/wedding/*",       // 💍 Wedding Planning + Subscription
+        "/vendors/*",       // 🏪 Vendor Subscriptions
       ],
     });
   });
