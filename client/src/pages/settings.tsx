@@ -1189,7 +1189,9 @@ function SubscriptionSettingsPanel() {
 
     if (module === "marketplace") {
       if (action === "cancel") cancelSubscriptionMutation.mutate();
-      if (action === "change" && targetTier) updateSubscriptionTierMutation.mutate(targetTier as any);
+      // Use the marketplace mutation that actually calls /api/subscriptions/upgrade|downgrade.
+      // (A previous iteration referenced an older variable name; this fixes "tier doesn't change" issues.)
+      if (action === "change" && targetTier) updateSubscriptionMutation.mutate(targetTier as any);
     } else if (module === "wedding") {
       if (action === "cancel") cancelWeddingSubscriptionMutation.mutate();
       if (action === "change" && targetTier) updateWeddingSubscriptionMutation.mutate(targetTier as any);
@@ -1429,7 +1431,8 @@ function SubscriptionSettingsPanel() {
                                 }
                                 disabled={isMarketplaceBusy}
                               >
-                                Switch to {titleCase(tierKey)} <ArrowUpRight size={16} className="ml-2" />
+                                Switch to {(tier as any)?.name || titleCase(tierKey)}{" "}
+                                <ArrowUpRight size={16} className="ml-2" />
                               </Button>
                             </div>
                           );
