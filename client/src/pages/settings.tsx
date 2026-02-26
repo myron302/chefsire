@@ -17,6 +17,10 @@ import {
   CalendarDays,
   RefreshCw,
   XCircle,
+  Loader2,
+  AlertCircle,
+  ArrowUpRight,
+  CheckCircle2,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -28,6 +32,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useUser } from "@/contexts/UserContext";
 import { useToast } from "@/hooks/use-toast";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
 
 const FOOD_CATEGORIES = [
   "Italian",
@@ -1067,6 +1080,130 @@ function SubscriptionSettingsPanel() {
     return nutritionCurrentTier === "free" ? "Upgrade" : "Switch to Premium";
   };
 
+  // -------------------------------
+  // B-level UX: unified actions + confirm dialog + overview cards
+  // -------------------------------
+  const [confirmAction, setConfirmAction] = useState<{
+    module: "marketplace" | "wedding" | "vendors" | "nutrition";
+    action: "change" | "cancel" | "trial";
+    targetTier?: string;
+    days?: number;
+  } | null>(null);
+
+  const relativeTimeFromNow = (value: string | Date | null | undefined) => {
+    if (!value) return "";
+    const d = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(d.getTime())) return "";
+    const diffMs = d.getTime() - Date.now();
+    const abs = Math.abs(diffMs);
+    const minutes = Math.round(abs / 60000);
+    const hours = Math.round(abs / 3600000);
+    const days = Math.round(abs / 86400000);
+
+    const unit =
+      minutes < 60 ? `${minutes} min` : hours < 48 ? `${hours} hr` : `${days} day`;
+    return diffMs >= 0 ? `in ${unit}` : `${unit} ago`;
+  };
+
+  const subscriptionTrialMutation = useMutation({
+    mutationFn: async (vars: { module: "wedding" | "nutrition"; tier: string; days?: number }) => {
+      if (!user) throw new Error("Not signed in");
+      if (vars.module === "nutrition") {
+        const res = await fetch(`/api/nutrition/users/${user.id}/trial`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ days: vars.days ?? 30 }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok)
+          throw new Error(
+            (data as any)?.error || (data as any)?.message || "Failed to start nutrition trial"
+          );
+        return data;
+      }
+
+      // Wedding trial endpoint (works if you've added it; if not, server will return 404 and we'll show the toast).
+      const res = await fetch(`/api/wedding/subscription/trial`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ tier: vars.tier, days: vars.days }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(
+          (data as any)?.error || (data as any)?.message || "Failed to start wedding trial"
+        );
+      return data;
+    },
+    onSuccess: (_data, vars) => {
+      toast({
+        title: "Trial started",
+        description:
+          vars.module === "nutrition"
+            ? "Nutrition Premium trial activated."
+            : "Wedding Planner trial activated.",
+      });
+
+      queryClient.invalidateQueries({ queryKey: ["/api/subscriptions/history"] });
+      if (vars.module === "nutrition") {
+        queryClient.invalidateQueries({ queryKey: ["/api/nutrition/subscription"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/nutrition/subscription/tiers"] });
+      } else {
+        queryClient.invalidateQueries({ queryKey: ["/api/wedding/subscription"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/wedding/subscription/tiers"] });
+      }
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Trial error",
+        description: err?.message || "Could not start trial",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleConfirmedAction = () => {
+    if (!confirmAction) return;
+
+    const { module, action, targetTier, days } = confirmAction;
+
+    if (action === "trial") {
+      if (module === "nutrition") {
+        subscriptionTrialMutation.mutate({
+          module: "nutrition",
+          tier: targetTier || "premium",
+          days: days ?? 30,
+        });
+      } else if (module === "wedding") {
+        subscriptionTrialMutation.mutate({
+          module: "wedding",
+          tier: targetTier || "premium",
+          days: days ?? 14,
+        });
+      }
+      setConfirmAction(null);
+      return;
+    }
+
+    if (module === "marketplace") {
+      if (action === "cancel") cancelSubscriptionMutation.mutate();
+      if (action === "change" && targetTier) updateSubscriptionTierMutation.mutate(targetTier as any);
+    } else if (module === "wedding") {
+      if (action === "cancel") cancelWeddingSubscriptionMutation.mutate();
+      if (action === "change" && targetTier) updateWeddingSubscriptionMutation.mutate(targetTier as any);
+    } else if (module === "vendors") {
+      if (action === "cancel") cancelVendorSubscriptionMutation.mutate();
+      if (action === "change" && targetTier) updateVendorSubscriptionMutation.mutate(targetTier as any);
+    } else if (module === "nutrition") {
+      if (action === "cancel") cancelNutritionSubscriptionMutation.mutate();
+      if (action === "change" && targetTier) updateNutritionSubscriptionMutation.mutate(targetTier as any);
+    }
+
+    setConfirmAction(null);
+  };
+
   const historyRows = subscriptionHistoryQuery.data?.history || [];
 
   return (
@@ -1143,14 +1280,552 @@ function SubscriptionSettingsPanel() {
         </Button>
       </div>
 
-      <Tabs defaultValue="marketplace" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 h-auto">
+      <Tabs defaultValue="overview" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-2 md:grid-cols-6 h-auto">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="marketplace">Marketplace</TabsTrigger>
           <TabsTrigger value="wedding">Wedding Planner</TabsTrigger>
           <TabsTrigger value="vendors">Vendors</TabsTrigger>
           <TabsTrigger value="nutrition">Nutrition</TabsTrigger>
           <TabsTrigger value="history">History</TabsTrigger>
         </TabsList>
+
+        {/* Overview */}
+        <TabsContent value="overview" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between gap-3 flex-wrap">
+                <span>Subscriptions & Plans</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={refreshAllSubscriptionData}
+                  disabled={
+                    isMarketplaceBusy ||
+                    isWeddingBusy ||
+                    isVendorBusy ||
+                    isNutritionBusy ||
+                    subscriptionHistoryQuery.isLoading
+                  }
+                >
+                  <RefreshCw size={16} className="mr-2" />
+                  Refresh
+                </Button>
+              </CardTitle>
+              <CardDescription>
+                This dashboard shows your current plan, what’s included, and upgrade options for each module. Payments
+                are not processed yet (testing mode). When you’re ready, Square can be wired into the same actions.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-8">
+              {/* Marketplace Overview */}
+              <div className="rounded-xl border overflow-hidden bg-white">
+                <div className="p-5 bg-gradient-to-r from-orange-50 to-orange-100">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-sm text-gray-600">Marketplace Seller</div>
+                      <div className="text-xl font-semibold mt-1">{titleCase(marketplaceCurrentTier)}</div>
+                      <div className="text-sm text-gray-700 mt-1">
+                        Status: <span className="font-medium">{titleCase(marketplaceStatus)}</span>
+                      </div>
+                      {marketplaceEndsAt ? (
+                        <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
+                          <CalendarDays size={13} />
+                          {String(marketplaceStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
+                          {formatDateTime(marketplaceEndsAt) || "—"}{" "}
+                          <span className="text-gray-500">({relativeTimeFromNow(marketplaceEndsAt)})</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <Badge variant="outline" className="text-base px-3 py-1 bg-white">
+                        {(() => {
+                          const tier = marketplaceTiersMap?.[marketplaceCurrentTier] as any;
+                          const price = typeof tier?.price === "number" ? tier.price : 0;
+                          return `${titleCase(marketplaceCurrentTier)} · ${price > 0 ? `$${price}/mo` : "Free"}`;
+                        })()}
+                      </Badge>
+
+                      {marketplaceCurrentTier !== "free" ? (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setConfirmAction({ module: "marketplace", action: "cancel" })}
+                          disabled={isMarketplaceBusy}
+                        >
+                          <XCircle size={16} className="mr-2" />
+                          Cancel
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 space-y-6">
+                  <div>
+                    <div className="font-medium mb-3">What’s included</div>
+                    <ul className="space-y-2 text-sm">
+                      {(marketplaceTiersMap?.[marketplaceCurrentTier]?.features || []).slice(0, 7).map((feat) => (
+                        <li key={feat} className="flex items-start gap-2">
+                          <CheckCircle2 size={18} className="mt-0.5 text-green-600 flex-shrink-0" />
+                          <span>{feat}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <div className="font-medium mb-3">Upgrade options</div>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {marketplaceTierEntries
+                        .filter(([tierKey]) => {
+                          const idx = subscriptionTierOrder.indexOf(tierKey as any);
+                          return idx > marketplaceTierIndex;
+                        })
+                        .map(([tierKey, tier]) => {
+                          const price = typeof (tier as any)?.price === "number" ? (tier as any).price : 0;
+                          const commission =
+                            typeof (tier as any)?.commission === "number" ? (tier as any).commission : null;
+
+                          return (
+                            <div
+                              key={tierKey}
+                              className="rounded-lg border p-4 hover:border-orange-400 transition-colors bg-white"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="font-semibold">{(tier as any)?.name || titleCase(tierKey)}</div>
+                                  <div className="text-sm text-gray-600">
+                                    {price > 0 ? `$${price}/mo` : "Free"}
+                                    {commission !== null ? ` · ${commission}% commission` : ""}
+                                  </div>
+                                </div>
+                                <Badge variant="outline">Next</Badge>
+                              </div>
+
+                              <ul className="mt-3 space-y-2 text-sm text-gray-700">
+                                {Array.isArray((tier as any)?.features)
+                                  ? (tier as any).features.slice(0, 3).map((f: string) => (
+                                      <li key={f} className="flex items-start gap-2">
+                                        <Check size={14} className="mt-0.5 text-green-600 flex-shrink-0" />
+                                        <span>{f}</span>
+                                      </li>
+                                    ))
+                                  : null}
+                              </ul>
+
+                              <Button
+                                className="mt-4 w-full bg-orange-500 hover:bg-orange-600"
+                                size="sm"
+                                onClick={() =>
+                                  setConfirmAction({
+                                    module: "marketplace",
+                                    action: "change",
+                                    targetTier: tierKey,
+                                  })
+                                }
+                                disabled={isMarketplaceBusy}
+                              >
+                                Switch to {titleCase(tierKey)} <ArrowUpRight size={16} className="ml-2" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                    </div>
+                    {marketplaceTierIndex >= subscriptionTierOrder.length - 1 ? (
+                      <div className="text-sm text-gray-600">You’re already on the highest Marketplace plan.</div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+
+              {/* Wedding Overview */}
+              <div className="rounded-xl border overflow-hidden bg-white">
+                <div className="p-5 bg-gradient-to-r from-orange-50 to-orange-100">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-sm text-gray-600">Wedding Planner</div>
+                      <div className="text-xl font-semibold mt-1">{titleCase(weddingCurrentTier)}</div>
+                      <div className="text-sm text-gray-700 mt-1">
+                        Status: <span className="font-medium">{titleCase(weddingStatus)}</span>
+                      </div>
+                      {weddingEndsAt ? (
+                        <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
+                          <CalendarDays size={13} />
+                          {String(weddingStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
+                          {formatDateTime(weddingEndsAt) || "—"}{" "}
+                          <span className="text-gray-500">({relativeTimeFromNow(weddingEndsAt)})</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="text-base px-3 py-1 bg-white">
+                        {(() => {
+                          const tier = weddingTiersMap?.[weddingCurrentTier] as any;
+                          const price = typeof tier?.price === "number" ? tier.price : 0;
+                          return `${titleCase(weddingCurrentTier)} · ${price > 0 ? `$${price}/mo` : "Free"}`;
+                        })()}
+                      </Badge>
+
+                      {weddingCurrentTier !== "free" ? (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setConfirmAction({ module: "wedding", action: "cancel" })}
+                          disabled={isWeddingBusy}
+                        >
+                          <XCircle size={16} className="mr-2" />
+                          Cancel
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 space-y-6">
+                  <div>
+                    <div className="font-medium mb-3">What’s included</div>
+                    <ul className="space-y-2 text-sm">
+                      {(weddingTiersMap?.[weddingCurrentTier]?.features || []).slice(0, 7).map((feat) => (
+                        <li key={feat} className="flex items-start gap-2">
+                          <CheckCircle2 size={18} className="mt-0.5 text-green-600 flex-shrink-0" />
+                          <span>{feat}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <div className="font-medium mb-3">Upgrade options</div>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {weddingTierEntries
+                        .filter(([tierKey]) => tierKey !== weddingCurrentTier && tierKey !== "free")
+                        .map(([tierKey, tier]) => {
+                          const price = typeof (tier as any)?.price === "number" ? (tier as any).price : 0;
+                          const trialDays =
+                            typeof (tier as any)?.trialDays === "number" ? (tier as any).trialDays : null;
+                          const popular = !!(tier as any)?.popular;
+
+                          return (
+                            <div
+                              key={tierKey}
+                              className="rounded-lg border p-4 hover:border-orange-400 transition-colors bg-white"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="font-semibold">{(tier as any)?.name || titleCase(tierKey)}</div>
+                                  <div className="text-sm text-gray-600">
+                                    {price > 0 ? `$${price}/mo` : "Free"}
+                                    {trialDays ? ` · ${trialDays}-day trial` : ""}
+                                  </div>
+                                </div>
+                                {popular ? (
+                                  <Badge className="bg-orange-500 hover:bg-orange-600">Most popular</Badge>
+                                ) : (
+                                  <Badge variant="outline">Upgrade</Badge>
+                                )}
+                              </div>
+
+                              <ul className="mt-3 space-y-2 text-sm text-gray-700">
+                                {Array.isArray((tier as any)?.features)
+                                  ? (tier as any).features.slice(0, 3).map((f: string) => (
+                                      <li key={f} className="flex items-start gap-2">
+                                        <Check size={14} className="mt-0.5 text-green-600 flex-shrink-0" />
+                                        <span>{f}</span>
+                                      </li>
+                                    ))
+                                  : null}
+                              </ul>
+
+                              <div className="mt-4 space-y-2">
+                                <Button
+                                  className="w-full bg-orange-500 hover:bg-orange-600"
+                                  size="sm"
+                                  onClick={() =>
+                                    setConfirmAction({ module: "wedding", action: "change", targetTier: tierKey })
+                                  }
+                                  disabled={isWeddingBusy}
+                                >
+                                  Switch to {titleCase(tierKey)} <ArrowUpRight size={16} className="ml-2" />
+                                </Button>
+
+                                {weddingCurrentTier === "free" && trialDays ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full"
+                                    onClick={() =>
+                                      setConfirmAction({
+                                        module: "wedding",
+                                        action: "trial",
+                                        targetTier: tierKey,
+                                        days: trialDays,
+                                      })
+                                    }
+                                    disabled={subscriptionTrialMutation.isPending}
+                                  >
+                                    Start {trialDays}-day trial
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Vendors Overview */}
+              <div className="rounded-xl border overflow-hidden bg-white">
+                <div className="p-5 bg-gradient-to-r from-orange-50 to-orange-100">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-sm text-gray-600">Wedding Vendors</div>
+                      <div className="text-xl font-semibold mt-1">{titleCase(vendorCurrentTier)}</div>
+                      <div className="text-sm text-gray-700 mt-1">
+                        Status: <span className="font-medium">{titleCase(vendorStatus)}</span>
+                      </div>
+                      {vendorEndsAt ? (
+                        <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
+                          <CalendarDays size={13} />
+                          {String(vendorStatus).toLowerCase() === "cancelled" ? "Ends" : "Renews"}: {" "}
+                          {formatDateTime(vendorEndsAt) || "—"}{" "}
+                          <span className="text-gray-500">({relativeTimeFromNow(vendorEndsAt)})</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="text-base px-3 py-1 bg-white">
+                        {(() => {
+                          const tier = vendorTiersMap?.[vendorCurrentTier] as any;
+                          const price = typeof tier?.price === "number" ? tier.price : 0;
+                          return `${titleCase(vendorCurrentTier)} · ${price > 0 ? `$${price}/mo` : "Free"}`;
+                        })()}
+                      </Badge>
+
+                      {vendorCurrentTier !== "free" ? (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setConfirmAction({ module: "vendors", action: "cancel" })}
+                          disabled={isVendorBusy}
+                        >
+                          <XCircle size={16} className="mr-2" />
+                          Cancel
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 space-y-6">
+                  <div>
+                    <div className="font-medium mb-3">What’s included</div>
+                    <ul className="space-y-2 text-sm">
+                      {(vendorTiersMap?.[vendorCurrentTier]?.features || []).slice(0, 7).map((feat) => (
+                        <li key={feat} className="flex items-start gap-2">
+                          <CheckCircle2 size={18} className="mt-0.5 text-green-600 flex-shrink-0" />
+                          <span>{feat}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <div className="font-medium mb-3">Upgrade options</div>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {vendorTierEntries
+                        .filter(([tierKey]) => tierKey !== vendorCurrentTier && tierKey !== "free")
+                        .map(([tierKey, tier]) => {
+                          const price = typeof (tier as any)?.price === "number" ? (tier as any).price : 0;
+
+                          return (
+                            <div
+                              key={tierKey}
+                              className="rounded-lg border p-4 hover:border-orange-400 transition-colors bg-white"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="font-semibold">{(tier as any)?.name || titleCase(tierKey)}</div>
+                                  <div className="text-sm text-gray-600">{price > 0 ? `$${price}/mo` : "Free"}</div>
+                                </div>
+                                <Badge variant="outline">Upgrade</Badge>
+                              </div>
+
+                              <ul className="mt-3 space-y-2 text-sm text-gray-700">
+                                {Array.isArray((tier as any)?.features)
+                                  ? (tier as any).features.slice(0, 3).map((f: string) => (
+                                      <li key={f} className="flex items-start gap-2">
+                                        <Check size={14} className="mt-0.5 text-green-600 flex-shrink-0" />
+                                        <span>{f}</span>
+                                      </li>
+                                    ))
+                                  : null}
+                              </ul>
+
+                              <Button
+                                className="mt-4 w-full bg-orange-500 hover:bg-orange-600"
+                                size="sm"
+                                onClick={() =>
+                                  setConfirmAction({
+                                    module: "vendors",
+                                    action: "change",
+                                    targetTier: tierKey,
+                                  })
+                                }
+                                disabled={isVendorBusy}
+                              >
+                                Switch to {titleCase(tierKey)} <ArrowUpRight size={16} className="ml-2" />
+                              </Button>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Nutrition Overview */}
+              <div className="rounded-xl border overflow-hidden bg-white">
+                <div className="p-5 bg-gradient-to-r from-orange-50 to-orange-100">
+                  <div className="flex items-start justify-between gap-4 flex-wrap">
+                    <div>
+                      <div className="text-sm text-gray-600">Nutrition</div>
+                      <div className="text-xl font-semibold mt-1">{titleCase(nutritionCurrentTier)}</div>
+                      <div className="text-sm text-gray-700 mt-1">
+                        Status: <span className="font-medium">{titleCase(nutritionStatus)}</span>
+                      </div>
+                      {nutritionEndsAt ? (
+                        <div className="text-xs text-gray-600 mt-2 flex items-center gap-1">
+                          <CalendarDays size={13} />
+                          Ends: {formatDateTime(nutritionEndsAt) || "—"}{" "}
+                          <span className="text-gray-500">({relativeTimeFromNow(nutritionEndsAt)})</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge variant="outline" className="text-base px-3 py-1 bg-white">
+                        {(() => {
+                          const tier = nutritionTiersMap?.[nutritionCurrentTier] as any;
+                          const price = typeof tier?.price === "number" ? tier.price : 0;
+                          return `${titleCase(nutritionCurrentTier)} · ${price > 0 ? `$${price}/mo` : "Free"}`;
+                        })()}
+                      </Badge>
+
+                      {nutritionCurrentTier !== "free" ? (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => setConfirmAction({ module: "nutrition", action: "cancel" })}
+                          disabled={isNutritionBusy}
+                        >
+                          <XCircle size={16} className="mr-2" />
+                          Cancel
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 space-y-6">
+                  <div>
+                    <div className="font-medium mb-3">What’s included</div>
+                    <ul className="space-y-2 text-sm">
+                      {(nutritionTiersMap?.[nutritionCurrentTier]?.features || []).slice(0, 7).map((feat) => (
+                        <li key={feat} className="flex items-start gap-2">
+                          <CheckCircle2 size={18} className="mt-0.5 text-green-600 flex-shrink-0" />
+                          <span>{feat}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <Separator />
+
+                  <div>
+                    <div className="font-medium mb-3">Upgrade options</div>
+                    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                      {nutritionTierEntries
+                        .filter(([tierKey]) => tierKey !== nutritionCurrentTier && tierKey !== "free")
+                        .map(([tierKey, tier]) => {
+                          const price = typeof (tier as any)?.price === "number" ? (tier as any).price : 0;
+
+                          return (
+                            <div
+                              key={tierKey}
+                              className="rounded-lg border p-4 hover:border-orange-400 transition-colors bg-white"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="font-semibold">{(tier as any)?.name || titleCase(tierKey)}</div>
+                                  <div className="text-sm text-gray-600">{price > 0 ? `$${price}/mo` : "Free"}</div>
+                                </div>
+                                <Badge variant="outline">Upgrade</Badge>
+                              </div>
+
+                              <ul className="mt-3 space-y-2 text-sm text-gray-700">
+                                {Array.isArray((tier as any)?.features)
+                                  ? (tier as any).features.slice(0, 3).map((f: string) => (
+                                      <li key={f} className="flex items-start gap-2">
+                                        <Check size={14} className="mt-0.5 text-green-600 flex-shrink-0" />
+                                        <span>{f}</span>
+                                      </li>
+                                    ))
+                                  : null}
+                              </ul>
+
+                              <div className="mt-4 space-y-2">
+                                <Button
+                                  className="w-full bg-orange-500 hover:bg-orange-600"
+                                  size="sm"
+                                  onClick={() =>
+                                    setConfirmAction({ module: "nutrition", action: "change", targetTier: tierKey })
+                                  }
+                                  disabled={isNutritionBusy}
+                                >
+                                  Switch to {titleCase(tierKey)} <ArrowUpRight size={16} className="ml-2" />
+                                </Button>
+
+                                {nutritionCurrentTier === "free" ? (
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full"
+                                    onClick={() =>
+                                      setConfirmAction({
+                                        module: "nutrition",
+                                        action: "trial",
+                                        targetTier: "premium",
+                                        days: 30,
+                                      })
+                                    }
+                                    disabled={subscriptionTrialMutation.isPending}
+                                  >
+                                    Start 30-day trial
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         {/* Marketplace */}
         <TabsContent value="marketplace" className="space-y-6">
@@ -1712,6 +2387,72 @@ function SubscriptionSettingsPanel() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Confirm dialog for overview actions */}
+      <Dialog open={!!confirmAction} onOpenChange={(open) => (!open ? setConfirmAction(null) : null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {confirmAction?.action === "cancel" ? (
+                <>
+                  <XCircle className="h-5 w-5 text-red-600" />
+                  Cancel subscription?
+                </>
+              ) : confirmAction?.action === "trial" ? (
+                <>
+                  <AlertCircle className="h-5 w-5 text-orange-600" />
+                  Start free trial?
+                </>
+              ) : (
+                <>
+                  <ArrowUpRight className="h-5 w-5 text-orange-600" />
+                  Change plan?
+                </>
+              )}
+            </DialogTitle>
+            <DialogDescription className="space-y-2">
+              {confirmAction?.action === "cancel" ? (
+                <span>
+                  You’ll keep access until the end of the current period (if applicable). This updates your account
+                  status immediately; payments are not processed yet (testing mode).
+                </span>
+              ) : confirmAction?.action === "trial" ? (
+                <span>
+                  This will activate a free trial for <span className="font-medium">{confirmAction?.days ?? 0}</span>
+                  days (if supported by your backend). If the trial endpoint hasn’t been added yet, you’ll see an error
+                  and nothing will change.
+                </span>
+              ) : (
+                <span>
+                  You’re about to switch to <span className="font-medium">{titleCase(confirmAction?.targetTier || "")}</span>.
+                  Changes take effect immediately in testing mode.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmAction(null)}>
+              Go back
+            </Button>
+            <Button
+              variant={confirmAction?.action === "cancel" ? "destructive" : "default"}
+              onClick={handleConfirmedAction}
+              disabled={
+                subscriptionTrialMutation.isPending ||
+                isMarketplaceBusy ||
+                isWeddingBusy ||
+                isVendorBusy ||
+                isNutritionBusy
+              }
+              className={confirmAction?.action === "cancel" ? "" : "bg-orange-500 hover:bg-orange-600"}
+            >
+              {subscriptionTrialMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
