@@ -173,6 +173,19 @@ async function logSubscriptionHistory(params: {
 }) {
   await ensureSubscriptionHistoryTable();
 
+  // IMPORTANT: prevent multiple "active" history rows.
+  // If a user upgrades/downgrades, we keep the old row for audit, but it should no longer be active.
+  // This fixes the UI issue where an old tier appears to stay active after switching plans.
+  if (params.status === "active") {
+    await db.execute(sql`
+      UPDATE subscription_history
+      SET status = 'superseded', end_date = NOW()
+      WHERE user_id = ${params.userId}
+        AND status = 'active'
+        AND end_date > NOW()
+    `);
+  }
+
   await db.insert(subscriptionHistory).values({
     userId: params.userId,
     tier: params.tier,
@@ -383,6 +396,16 @@ router.post("/cancel", requireAuth, async (req, res) => {
     if (!updated) {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
+
+    // Mark any previously-active history rows as cancelled so history doesn't show the prior tier as still active.
+    await ensureSubscriptionHistoryTable();
+    await db.execute(sql`
+      UPDATE subscription_history
+      SET status = 'cancelled'
+      WHERE user_id = ${userId}
+        AND status = 'active'
+        AND end_date > NOW()
+    `);
 
     // Log cancellation event
     await logSubscriptionHistory({
