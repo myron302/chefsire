@@ -15,6 +15,7 @@ import { ProductManager } from "@/components/store/ProductManager";
 import ThemeSelector from "@/components/store/ThemeSelector";
 import StoreCustomization from "@/components/store/StoreCustomization";
 import SubscriptionPlansModal from "@/components/store/SubscriptionPlansModal";
+import StoreBuilder from "@/components/store/StoreBuilder";
 
 interface DashboardStats {
   totalProducts: number;
@@ -45,6 +46,7 @@ export default function StoreDashboard() {
   const [publishing, setPublishing] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState("modern");
   const [showPlansModal, setShowPlansModal] = useState(false);
+  const [showBuilder, setShowBuilder] = useState(false);
 
   useEffect(() => {
     if (user?.id) loadDashboard();
@@ -176,25 +178,47 @@ export default function StoreDashboard() {
     }
   };
 
-  const handleSubscriptionUpgrade = async (tierName: string) => {
+  const handleSubscriptionUpgrade = async (tierName: string, isTrial = false) => {
+    if (!user) {
+      toast({ title: "Not logged in", description: "Please log in to upgrade.", variant: "destructive" });
+      return;
+    }
     try {
-      const res = await fetch("/api/subscriptions/upgrade", {
+      const resp = await fetch("/api/square/subscription-link", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ tier: tierName }),
+        body: JSON.stringify({
+          tier: tierName,
+          trial: isTrial,
+          userId: user.id,
+          email: user.email,
+        }),
       });
-      if (res.ok) {
-        toast({ description: `Upgraded to ${tierName}!` });
-        loadDashboard();
-      } else {
-        const err = await res.json();
-        toast({ title: "Error", description: err.error || "Upgrade failed", variant: "destructive" });
+      const data = await resp.json();
+      if (!resp.ok || !data?.url) {
+        const errorMsg = data?.error || "Could not start checkout";
+        if (errorMsg.includes("Missing plan variation")) {
+          toast({ title: "Coming soon", description: "Subscription service is being configured. Please check back later.", variant: "destructive" });
+        } else {
+          toast({ title: "Checkout error", description: errorMsg, variant: "destructive" });
+        }
+        return;
       }
-    } catch {
-      toast({ title: "Error", description: "Upgrade failed", variant: "destructive" });
+      // Optimistically update local trial state before redirect
+      if (isTrial) {
+        const trialEnds = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        updateUser({ subscription: tierName as any, trialEndDate: trialEnds });
+      }
+      window.location.href = data.url; // Redirect to Square-hosted checkout
+    } catch (e) {
+      console.error("Square upgrade error:", e);
+      toast({ title: "Checkout error", description: "There was a problem starting checkout. Please try again.", variant: "destructive" });
     }
   };
+
+  if (showBuilder && store) {
+    return <StoreBuilder storeId={store.id} onBack={() => setShowBuilder(false)} />;
+  }
 
   if (loading) {
     return (
@@ -323,6 +347,9 @@ export default function StoreDashboard() {
             <TabsTrigger value="orders">
               <ShoppingCart className="w-4 h-4 mr-1.5" />Orders
             </TabsTrigger>
+            <TabsTrigger value="builder">
+              <Edit className="w-4 h-4 mr-1.5" />Store Builder
+            </TabsTrigger>
             <TabsTrigger value="customize">
               <Sparkles className="w-4 h-4 mr-1.5" />Customize
             </TabsTrigger>
@@ -402,6 +429,32 @@ export default function StoreDashboard() {
                     ))}
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Store Builder Tab */}
+          <TabsContent value="builder">
+            <Card>
+              <CardHeader>
+                <CardTitle>Store Builder</CardTitle>
+                <CardDescription>Drag and drop elements to customise your storefront layout</CardDescription>
+              </CardHeader>
+              <CardContent className="text-center py-10">
+                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Edit className="w-8 h-8 text-orange-500" />
+                </div>
+                <h3 className="font-semibold text-lg mb-2">Launch the Visual Editor</h3>
+                <p className="text-gray-500 text-sm mb-6 max-w-sm mx-auto">
+                  Build your store layout with drag-and-drop containers, banners, text blocks, and product cards.
+                </p>
+                <Button
+                  className="bg-orange-500 hover:bg-orange-600"
+                  onClick={() => setShowBuilder(true)}
+                >
+                  <Edit className="w-4 h-4 mr-2" />
+                  Open Store Builder
+                </Button>
               </CardContent>
             </Card>
           </TabsContent>
@@ -521,21 +574,32 @@ export default function StoreDashboard() {
                         ${plan.price}<span className="text-sm text-gray-500 font-normal">/mo</span>
                       </div>
                       <p className="text-sm text-green-600 font-medium mb-3">{plan.commission} commission</p>
-                      <ul className="space-y-1 mb-4">
+                      <ul className="space-y-1 mb-5">
                         {plan.features.map((f, i) => (
                           <li key={i} className="text-sm text-gray-600 flex items-center gap-1.5">
                             <span className="text-green-500">✓</span> {f}
                           </li>
                         ))}
                       </ul>
-                      <Button
-                        onClick={() => handleSubscriptionUpgrade(plan.id)}
-                        className={`w-full ${plan.popular ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-                        variant={plan.popular ? "default" : "outline"}
-                        disabled={currentTier === plan.id}
-                      >
-                        {currentTier === plan.id ? "Current Plan" : `Upgrade to ${plan.name}`}
-                      </Button>
+                      <div className="space-y-2">
+                        <Button
+                          onClick={() => handleSubscriptionUpgrade(plan.id, false)}
+                          className={`w-full ${plan.popular ? "bg-orange-500 hover:bg-orange-600" : ""}`}
+                          variant={plan.popular ? "default" : "outline"}
+                          disabled={currentTier === plan.id}
+                        >
+                          {currentTier === plan.id ? "Current Plan" : `Upgrade with Square`}
+                        </Button>
+                        {currentTier !== plan.id && (
+                          <Button
+                            onClick={() => handleSubscriptionUpgrade(plan.id, true)}
+                            variant="ghost"
+                            className="w-full text-sm text-gray-500 hover:text-gray-800"
+                          >
+                            Start 30-day free trial
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
