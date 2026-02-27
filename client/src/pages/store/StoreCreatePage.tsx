@@ -287,11 +287,25 @@ export default function StoreCreatePage() {
                     </div>
                   )}
                 </div>
-                <p className="text-sm text-gray-500 mt-1">
-                  Your store URL: chefsire.com/store/<span className="font-medium">{formData.handle || 'your-handle'}</span>
-                </p>
+                {handleAvailable === true && (
+                  <p className="text-sm text-green-600 mt-1">
+                    ✓ Available — your store will be at{" "}
+                    <span className="font-medium">chefsire.com/store/{formData.handle}</span>
+                  </p>
+                )}
                 {handleAvailable === false && (
-                  <p className="text-sm text-red-600 mt-1">This handle is already taken</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    ✗ <span className="font-medium">{formData.handle}</span> is already taken — please choose a different handle
+                  </p>
+                )}
+                {handleAvailable === null && formData.handle.length >= 3 && (
+                  <p className="text-sm text-gray-400 mt-1">Checking availability…</p>
+                )}
+                {formData.handle.length === 0 && (
+                  <p className="text-sm text-gray-400 mt-1">
+                    Your store URL will be{" "}
+                    <span className="font-medium">chefsire.com/store/your-handle</span>
+                  </p>
                 )}
               </div>
 
