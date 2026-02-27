@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Check, ChevronRight, ChevronLeft, Store, Palette, Package, Rocket } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -39,6 +39,27 @@ export const StoreWizard: React.FC<StoreWizardProps> = ({ onComplete, onCancel }
   });
   const [errors, setErrors] = useState<Partial<Record<keyof StoreData, string>>>({});
   const [loading, setLoading] = useState(false);
+  const [handleAvailable, setHandleAvailable] = useState<boolean | null>(null);
+  const [checkingHandle, setCheckingHandle] = useState(false);
+
+  useEffect(() => {
+    if (storeData.handle.length < 3) {
+      setHandleAvailable(null);
+      return;
+    }
+    setCheckingHandle(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/stores/${storeData.handle}`);
+        setHandleAvailable(res.status === 404);
+      } catch {
+        setHandleAvailable(null);
+      } finally {
+        setCheckingHandle(false);
+      }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [storeData.handle]);
 
   const validateStep = (step: number): boolean => {
     const newErrors: Partial<Record<keyof StoreData, string>> = {};
@@ -48,6 +69,10 @@ export const StoreWizard: React.FC<StoreWizardProps> = ({ onComplete, onCancel }
         newErrors.handle = 'Store handle is required';
       } else if (!/^[a-z0-9-]+$/.test(storeData.handle)) {
         newErrors.handle = 'Handle can only contain lowercase letters, numbers, and hyphens';
+      } else if (handleAvailable === false) {
+        newErrors.handle = 'This handle is already taken — please choose a different one';
+      } else if (handleAvailable === null && storeData.handle.length >= 3) {
+        newErrors.handle = 'Please wait while we check handle availability';
       }
       if (!storeData.name.trim()) {
         newErrors.name = 'Store name is required';
@@ -144,22 +169,44 @@ export const StoreWizard: React.FC<StoreWizardProps> = ({ onComplete, onCancel }
             {/* Store Handle */}
             <div>
               <Label htmlFor="handle">Store Handle *</Label>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-gray-500">chefsire.com/store/</span>
+              <div className="relative mt-1">
                 <Input
                   id="handle"
                   value={storeData.handle}
-                  onChange={(e) => updateField('handle', e.target.value.toLowerCase())}
+                  onChange={(e) => updateField('handle', e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
                   placeholder="your-store-handle"
-                  className={errors.handle ? 'border-red-500' : ''}
+                  className={errors.handle ? 'border-red-500 pr-10' : 'pr-10'}
                 />
+                {storeData.handle.length >= 3 && (
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-sm">
+                    {checkingHandle && <span className="text-gray-400">…</span>}
+                    {!checkingHandle && handleAvailable === true && <span className="text-green-600">✓</span>}
+                    {!checkingHandle && handleAvailable === false && <span className="text-red-600">✗</span>}
+                  </div>
+                )}
               </div>
-              {errors.handle && (
+              {/* URL preview — only when available */}
+              {handleAvailable === true && !errors.handle && (
+                <p className="text-sm text-green-600 mt-1">
+                  ✓ Available — chefsire.com/store/<span className="font-medium">{storeData.handle}</span>
+                </p>
+              )}
+              {handleAvailable === false && (
+                <p className="text-sm text-red-600 mt-1">
+                  ✗ <span className="font-medium">{storeData.handle}</span> is already taken
+                </p>
+              )}
+              {checkingHandle && (
+                <p className="text-sm text-gray-400 mt-1">Checking availability…</p>
+              )}
+              {storeData.handle.length === 0 && (
+                <p className="text-xs text-gray-500 mt-1">
+                  Use only lowercase letters, numbers, and hyphens
+                </p>
+              )}
+              {errors.handle && handleAvailable !== false && (
                 <p className="text-red-500 text-sm mt-1">{errors.handle}</p>
               )}
-              <p className="text-xs text-gray-500 mt-1">
-                This will be your store's URL. Use only lowercase letters, numbers, and hyphens.
-              </p>
             </div>
 
             {/* Store Name */}
