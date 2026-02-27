@@ -1105,7 +1105,11 @@ function SubscriptionSettingsPanel() {
     const days = Math.round(abs / 86400000);
 
     const unit =
-      minutes < 60 ? `${minutes} min` : hours < 48 ? `${hours} hr` : `${days} day`;
+      minutes < 60
+        ? `${minutes} ${minutes === 1 ? "min" : "mins"}`
+        : hours < 48
+        ? `${hours} ${hours === 1 ? "hr" : "hrs"}`
+        : `${days} ${days === 1 ? "day" : "days"}`;
     return diffMs >= 0 ? `in ${unit}` : `${unit} ago`;
   };
 
