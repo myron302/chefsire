@@ -537,10 +537,13 @@ export default function App() {
                 <Route path="/store" component={Marketplace} />
                 <Route path="/store/create" component={StoreCreatePage} />
                 <Route path="/store/dashboard" component={StoreDashboard} />
+                {/* /store/seller redirects to consolidated dashboard via shim */}
                 <Route path="/store/seller" component={SellerDashboard} />
-                <Route path="/store/:storeId" component={StoreViewer} />
-                <Route path="/store/:storeId/products/new" component={ProductFormPage} />
-                <Route path="/store/:storeId/products/:productId" component={ProductFormPage} />
+                {/* Product form routes — must come before the :handle catch-all */}
+                <Route path="/store/products/new" component={ProductFormPage} />
+                <Route path="/store/products/edit/:id" component={ProductFormPage} />
+                {/* Public store viewer */}
+                <Route path="/store/:handle" component={StoreViewer} />
 
                 {/* Checkout */}
                 <Route path="/checkout" component={CheckoutPage} />
