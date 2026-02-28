@@ -117,11 +117,22 @@ router.post("/", requireAuth, async (req, res) => {
 
     res.json({ ok: true, store: newStore });
   } catch (error: any) {
-    console.error("Error creating store:", error);
+    console.error("[StoreCreate] Error creating store:", {
+      message: error.message,
+      code: error.code,
+      detail: error.detail,
+      table: error.table,
+      constraint: error.constraint,
+      stack: error.stack?.split('
+').slice(0, 5),
+    });
     if (error.code === "23505") {
-      return res.status(400).json({ ok: false, error: "Handle already taken" });
+      return res.status(400).json({ ok: false, error: "Handle already taken", detail: error.detail });
     }
-    res.status(500).json({ ok: false, error: "Failed to create store" });
+    if (error.code === "42P01") {
+      return res.status(500).json({ ok: false, error: "Stores table does not exist in database. Run: npm run db:push", code: error.code });
+    }
+    res.status(500).json({ ok: false, error: error.message || "Failed to create store", code: error.code });
   }
 });
 
