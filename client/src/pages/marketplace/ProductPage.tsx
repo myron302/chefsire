@@ -59,14 +59,14 @@ export default function ProductPage() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [isFavorited, setIsFavorited] = useState(false);
 
-  const productId = params?.id;
+  const id = params?.id;
 
   const fetchProduct = async () => {
-    if (!productId) return;
+    if (!id) return;
 
     try {
       setLoading(true);
-      const response = await fetch(`/api/marketplace/products/${productId}`);
+      const response = await fetch(`/api/marketplace/products/${id}`);
 
       if (!response.ok) {
         if (response.status === 404) {
@@ -99,7 +99,7 @@ export default function ProductPage() {
   useEffect(() => {
     fetchProduct();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [productId]);
+  }, [id]);
 
   const handleAddToCart = () => {
     toast({
