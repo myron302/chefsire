@@ -103,7 +103,7 @@ router.post("/", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "Handle and name required" });
     }
 
-    // Create store with user's subscription tier, published by default
+    // Create store — published by default so it is immediately visible
     const [newStore] = await db
       .insert(stores)
       .values({
@@ -111,7 +111,6 @@ router.post("/", requireAuth, async (req, res) => {
         handle,
         name,
         bio: bio || null,
-        subscriptionTier: userTier,
         published: true,
       })
       .returning();
