@@ -83,10 +83,23 @@ export default function StoreCreatePage() {
 
     try {
       const response = await fetch(`/api/stores/check-handle/${handle}`);
+      if (!response.ok) {
+        // Endpoint not available yet — fall back to the public store endpoint
+        const fallback = await fetch(`/api/stores/${handle}`);
+        // 404 = not found (available), 200 = exists (taken), 500 = error (unknown)
+        if (fallback.status === 404) setHandleAvailable(true);
+        else if (fallback.status === 200) setHandleAvailable(false);
+        // else leave as null — do not block the user
+        return;
+      }
       const data = await response.json();
-      setHandleAvailable(data.available === true);
+      if (typeof data.available === 'boolean') {
+        setHandleAvailable(data.available);
+      }
+      // If response is malformed, leave handleAvailable as null — do not block
     } catch (error) {
       console.error('Error checking handle:', error);
+      // Network error — leave as null, do not block the user
     }
   };
 
