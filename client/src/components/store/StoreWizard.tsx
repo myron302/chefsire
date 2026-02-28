@@ -51,17 +51,19 @@ export const StoreWizard: React.FC<StoreWizardProps> = ({ onComplete, onCancel }
     const timer = setTimeout(async () => {
       try {
         const res = await fetch(`/api/stores/check-handle/${storeData.handle}`);
-        if (!res.ok) {
-          // Fallback to public store endpoint
-          const fallback = await fetch(`/api/stores/${storeData.handle}`);
-          if (fallback.status === 404) setHandleAvailable(true);
-          else if (fallback.status === 200) setHandleAvailable(false);
-          return;
+        if (res.ok) {
+          const data = await res.json();
+          if (typeof data.available === 'boolean') { setHandleAvailable(data.available); return; }
         }
-        const data = await res.json();
-        if (typeof data.available === 'boolean') setHandleAvailable(data.available);
+        // Fallback: use public endpoint
+        const fallback = await fetch(`/api/stores/${storeData.handle}`);
+        if (fallback.status === 404) { setHandleAvailable(true); return; }
+        if (fallback.status === 200) { setHandleAvailable(false); return; }
+        // Any ambiguous result — assume available, let server validate on submit
+        setHandleAvailable(true);
       } catch {
-        setHandleAvailable(null);
+        // Network error — assume available so user is never blocked
+        setHandleAvailable(true);
       } finally {
         setCheckingHandle(false);
       }
