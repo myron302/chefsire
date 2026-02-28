@@ -82,8 +82,9 @@ export default function StoreCreatePage() {
     }
 
     try {
-      const response = await fetch(`/api/stores/${handle}`);
-      setHandleAvailable(response.status === 404);
+      const response = await fetch(`/api/stores/check-handle/${handle}`);
+      const data = await response.json();
+      setHandleAvailable(data.available === true);
     } catch (error) {
       console.error('Error checking handle:', error);
     }
