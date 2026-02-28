@@ -105,7 +105,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         {/* Price and Actions */}
         <div className="flex items-center justify-between mt-4">
           <span className="text-2xl font-bold text-orange-600">
-            ${product.price.toFixed(2)}
+            ${parseFloat(String(product.price)).toFixed(2)}
           </span>
 
           {showActions && onAddToCart && (
