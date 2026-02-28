@@ -50,8 +50,8 @@ export const StoreWizard: React.FC<StoreWizardProps> = ({ onComplete, onCancel }
     setCheckingHandle(true);
     const timer = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/stores/${storeData.handle}`);
-        setHandleAvailable(res.status === 404);
+        const res = await fetch(`/api/stores/check-handle/${storeData.handle}`);
+        const data = await res.json(); setHandleAvailable(data.available === true);
       } catch {
         setHandleAvailable(null);
       } finally {
