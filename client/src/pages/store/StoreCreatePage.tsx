@@ -170,12 +170,26 @@ export default function StoreCreatePage() {
 
       const data = await response.json();
 
+      // 🔍 DEBUG — log full response so we can see exactly what the server returned
+      console.error('[StoreCreate] POST /api/stores response:', {
+        status: response.status,
+        ok: response.ok,
+        data,
+      });
+
       if (!response.ok) {
+        const errMsg = data.error || data.message || `HTTP ${response.status}`;
+        console.error('[StoreCreate] Server error detail:', JSON.stringify(data, null, 2));
+        toast({
+          title: `Store creation failed (${response.status})`,
+          description: errMsg,
+          variant: 'destructive',
+        });
         if (response.status === 403 && data.requiredFeature === 'storeBuilder') {
           setError('Store builder requires Starter tier or higher. Please upgrade your subscription.');
           setHasAccess(false);
         } else {
-          setError(data.error || 'Failed to create store');
+          setError(errMsg);
         }
         return;
       }
@@ -188,7 +202,12 @@ export default function StoreCreatePage() {
       // Redirect to store dashboard
       setTimeout(() => setLocation('/store/dashboard'), 1000);
     } catch (error) {
-      console.error('Error creating store:', error);
+      console.error('[StoreCreate] Network/fetch error:', error);
+      toast({
+        title: 'Network error',
+        description: String(error),
+        variant: 'destructive',
+      });
       setError('An error occurred while creating your store');
     } finally {
       setLoading(false);
