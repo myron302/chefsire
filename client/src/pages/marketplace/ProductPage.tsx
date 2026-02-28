@@ -3,312 +3,347 @@ import { useLocation, useRoute } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { useUser } from "@/contexts/UserContext";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Package,
-  ShoppingCart,
+  ArrowLeft,
+  Star,
+  Store,
   MapPin,
   Truck,
-  Star,
-  ArrowLeft,
-  Minus,
-  Plus,
-  Edit,
+  Download,
+  ShoppingCart,
+  Heart,
+  Share2,
+  Eye,
+  Package
 } from "lucide-react";
 
+interface ProductData {
+  id: number;
+  name: string;
+  description: string;
+  price: string;
+  images: string[];
+  sellerId: number;
+  sellerName: string;
+  storeName?: string;
+  storeHandle?: string;
+  category: string;
+  productCategory: string;
+  deliveryMethods: string[];
+  rating?: number;
+  reviewCount?: number;
+  location?: string;
+  shippingEnabled?: boolean;
+  localPickupEnabled?: boolean;
+  inStoreOnly?: boolean;
+  isDigital?: boolean;
+  viewCount?: number;
+  favoriteCount?: number;
+  tags?: string[];
+  digitalDownloadUrl?: string;
+  digitalFileName?: string;
+  digitalFileSize?: number;
+  inventory?: number;
+  createdAt: string;
+}
+
 export default function ProductPage() {
-  const [, params] = useRoute("/marketplace/product/:id");
-  const [location, navigate] = useLocation();
-  const { user } = useUser();
+  const [, setLocation] = useLocation();
+  const [match, params] = useRoute("/product/:id");
   const { toast } = useToast();
 
-  const [product, setProduct] = useState<any>(null);
-  const [seller, setSeller] = useState<any>(null);
+  const [product, setProduct] = useState<ProductData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [quantity, setQuantity] = useState(1);
+  const [selectedImage, setSelectedImage] = useState(0);
+  const [isFavorited, setIsFavorited] = useState(false);
 
-  useEffect(() => {
-    if (params?.id) {
-      fetchProduct(params.id);
-    }
-  }, [params?.id]);
+  const productId = params?.id;
 
-  const fetchProduct = async (id: string) => {
+  const fetchProduct = async () => {
+    if (!productId) return;
+
     try {
       setLoading(true);
-      const response = await fetch(`/api/marketplace/products/${id}`);
-      if (response.ok) {
-        const data = await response.json();
-        setProduct(data.product || data);
-        if (data.seller) {
-          setSeller(data.seller);
+      const response = await fetch(`/api/marketplace/products/${productId}`);
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          toast({
+            title: "Product not found",
+            description: "This product doesn't exist or has been removed.",
+            variant: "destructive"
+          });
+          setLocation("/marketplace");
+          return;
         }
-      } else {
-        toast({
-          title: "Product not found",
-          description: "This product may no longer be available",
-          variant: "destructive",
-        });
-        navigate("/marketplace");
+        throw new Error("Failed to fetch product");
       }
+
+      const productData = await response.json();
+      setProduct(productData);
     } catch (error) {
       console.error("Error fetching product:", error);
       toast({
         title: "Error",
-        description: "Failed to load product",
-        variant: "destructive",
+        description: "Failed to load product. Please try again.",
+        variant: "destructive"
       });
+      setLocation("/marketplace");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleBuyNow = () => {
-    if (!user) {
-      toast({
-        title: "Please log in",
-        description: "You must be logged in to make a purchase",
-        variant: "destructive",
+  useEffect(() => {
+    fetchProduct();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [productId]);
+
+  const handleAddToCart = () => {
+    toast({
+      title: "Added to cart",
+      description: `${product?.name} has been added to your cart.`
+    });
+  };
+
+  const handleFavorite = () => {
+    setIsFavorited(!isFavorited);
+    toast({
+      title: isFavorited ? "Removed from favorites" : "Added to favorites",
+      description: `${product?.name} has been ${isFavorited ? "removed from" : "added to"} your favorites.`
+    });
+  };
+
+  const handleShare = () => {
+    if (navigator.share) {
+      navigator.share({
+        title: product?.name,
+        text: product?.description,
+        url: window.location.href
       });
-      navigate("/login");
-      return;
-    }
-
-    // Navigate to checkout with product details
-    navigate(`/checkout?productId=${product.id}&quantity=${quantity}`);
-  };
-
-  const handleQuantityChange = (delta: number) => {
-    const newQuantity = quantity + delta;
-    if (newQuantity >= 1 && (!product.inventory || newQuantity <= product.inventory)) {
-      setQuantity(newQuantity);
+    } else {
+      navigator.clipboard.writeText(window.location.href);
+      toast({
+        title: "Link copied",
+        description: "Product link has been copied to clipboard."
+      });
     }
   };
+
+  const getDeliveryIcon = (method: string) => {
+    switch (method) {
+      case "shipping":
+        return <Truck className="w-4 h-4" />;
+      case "local_pickup":
+        return <MapPin className="w-4 h-4" />;
+      case "digital":
+        return <Download className="w-4 h-4" />;
+      case "in_store":
+        return <Store className="w-4 h-4" />;
+      default:
+        return <Package className="w-4 h-4" />;
+    }
+  };
+
+  if (!match) return null;
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading product...</p>
+      <div className="min-h-screen bg-gray-50">
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          <Skeleton className="h-8 w-32 mb-6" />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <Skeleton className="h-96 w-full" />
+            <div className="space-y-4">
+              <Skeleton className="h-8 w-3/4" />
+              <Skeleton className="h-6 w-1/2" />
+              <Skeleton className="h-4 w-full" />
+              <Skeleton className="h-4 w-2/3" />
+              <Skeleton className="h-12 w-full" />
+            </div>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (!product) {
-    return null;
-  }
-
-  const price = parseFloat(product.price);
-  const total = price * quantity;
+  if (!product) return null;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Back button and Edit */}
-        <div className="flex items-center justify-between mb-6">
-          <Button
-            variant="ghost"
-            onClick={() => navigate("/marketplace")}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Marketplace
-          </Button>
+    <div className="min-h-screen bg-gray-50">
+      <div className="max-w-6xl mx-auto px-4 py-8">
+        <Button
+          variant="ghost"
+          onClick={() => setLocation("/marketplace")}
+          className="mb-6"
+        >
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Marketplace
+        </Button>
 
-          {user && product.sellerId === user.id && (
-            <Button
-              variant="outline"
-              onClick={() => navigate(`/store/products/edit/${product.id}`)}
-            >
-              <Edit className="h-4 w-4 mr-2" />
-              Edit Product
-            </Button>
-          )}
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-8">
-          {/* Left - Images */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Images */}
           <div>
-            <Card>
-              <CardContent className="p-6">
-                <div className="aspect-square bg-gray-200 rounded-lg flex items-center justify-center mb-4">
-                  {product.images && product.images.length > 0 ? (
-                    <img
-                      src={product.images[0]}
-                      alt={product.name}
-                      className="w-full h-full object-cover rounded-lg"
-                    />
-                  ) : (
-                    <Package className="h-32 w-32 text-gray-400" />
-                  )}
-                </div>
-
-                {product.images && product.images.length > 1 && (
-                  <div className="grid grid-cols-4 gap-2">
-                    {product.images.slice(1, 5).map((img: string, idx: number) => (
-                      <div
-                        key={idx}
-                        className="aspect-square bg-gray-200 rounded-lg overflow-hidden"
-                      >
-                        <img
-                          src={img}
-                          alt={`${product.name} ${idx + 2}`}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                )}
+            <Card className="mb-4">
+              <CardContent className="p-0">
+                <img
+                  src={product.images?.[selectedImage] || "/placeholder-product.jpg"}
+                  alt={product.name}
+                  className="w-full h-96 object-cover rounded-lg"
+                />
               </CardContent>
             </Card>
 
-            {/* Seller Info */}
-            {seller && (
-              <Card className="mt-4">
-                <CardContent className="p-6">
-                  <h3 className="font-semibold mb-3">Sold by</h3>
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center">
-                      {seller.avatar ? (
-                        <img
-                          src={seller.avatar}
-                          alt={seller.username}
-                          className="w-full h-full rounded-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-lg font-bold text-gray-600">
-                          {seller.username?.charAt(0).toUpperCase()}
-                        </span>
-                      )}
-                    </div>
-                    <div>
-                      <p className="font-semibold">
-                        {seller.displayName || seller.username}
-                      </p>
-                      {seller.isChef && (
-                        <Badge variant="secondary" className="mt-1">
-                          Verified Chef
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+            {product.images?.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto pb-2">
+                {product.images.map((image, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setSelectedImage(index)}
+                    className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 ${
+                      selectedImage === index ? "border-blue-500" : "border-gray-200"
+                    }`}
+                  >
+                    <img
+                      src={image}
+                      alt={`${product.name} ${index + 1}`}
+                      className="w-full h-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
-          {/* Right - Details */}
-          <div className="space-y-6">
-            <div>
-              <Badge className="mb-3 bg-orange-500">{product.category}</Badge>
-              <h1 className="text-4xl font-bold text-gray-900 mb-4">
-                {product.name}
-              </h1>
-              <div className="flex items-baseline gap-2 mb-6">
-                <span className="text-4xl font-bold text-orange-600">
-                  ${price.toFixed(2)}
-                </span>
-                {quantity > 1 && (
-                  <span className="text-xl text-gray-600">
-                    (${total.toFixed(2)} total)
+          {/* Product Details */}
+          <div>
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
+                <div className="flex items-center gap-4 mb-2">
+                  <span className="text-3xl font-bold text-green-600">
+                    ${product.price}
                   </span>
-                )}
+                  {product.inventory !== undefined && (
+                    <Badge variant={product.inventory > 0 ? "default" : "destructive"}>
+                      {product.inventory > 0 ? `${product.inventory} in stock` : "Out of stock"}
+                    </Badge>
+                  )}
+                </div>
               </div>
 
-              {product.description && (
-                <p className="text-gray-700 text-lg leading-relaxed mb-6">
-                  {product.description}
-                </p>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={handleFavorite}>
+                  <Heart className={`w-4 h-4 ${isFavorited ? "fill-current text-red-500" : ""}`} />
+                </Button>
+                <Button size="sm" variant="outline" onClick={handleShare}>
+                  <Share2 className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Rating */}
+            <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-1">
+                <Star className="w-5 h-5 text-yellow-500 fill-current" />
+                <span className="font-semibold">{product.rating || 0}</span>
+              </div>
+              <span className="text-gray-500">
+                ({product.reviewCount || 0} reviews)
+              </span>
+              {typeof product.viewCount === "number" && (
+                <div className="flex items-center gap-1 text-gray-500">
+                  <Eye className="w-4 h-4" />
+                  <span>{product.viewCount}</span>
+                </div>
               )}
             </div>
 
-            {/* Quantity */}
-            <Card>
-              <CardContent className="p-6">
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Quantity
-                </label>
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleQuantityChange(-1)}
-                    disabled={quantity <= 1}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                  <span className="text-2xl font-bold w-16 text-center">
-                    {quantity}
-                  </span>
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleQuantityChange(1)}
-                    disabled={
-                      product.inventory !== null && quantity >= product.inventory
-                    }
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                  {product.inventory !== null && (
-                    <span className="text-sm text-gray-600 ml-4">
-                      {product.inventory} available
-                    </span>
+            {/* Seller Info */}
+            <Card className="mb-6">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Store className="w-8 h-8 text-gray-500" />
+                    <div>
+                      <p className="font-semibold">{product.sellerName}</p>
+                      {product.storeName && (
+                        <p className="text-sm text-gray-600">{product.storeName}</p>
+                      )}
+                      {product.location && (
+                        <p className="text-sm text-gray-500 flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          {product.location}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {product.storeHandle && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setLocation(`/store/${product.storeHandle}`)}
+                    >
+                      Visit Store
+                    </Button>
                   )}
                 </div>
               </CardContent>
             </Card>
 
-            {/* Shipping */}
-            <Card>
-              <CardContent className="p-6 space-y-3">
-                <h3 className="font-semibold mb-3">Delivery Options</h3>
+            {/* Delivery Methods */}
+            <div className="mb-6">
+              <h3 className="font-semibold mb-3">Delivery Options</h3>
+              <div className="flex flex-wrap gap-2">
+                {product.deliveryMethods?.map((method, index) => (
+                  <Badge key={index} variant="outline" className="flex items-center gap-1">
+                    {getDeliveryIcon(method)}
+                    {method.replace("_", " ")}
+                  </Badge>
+                ))}
+              </div>
+            </div>
 
-                {product.shippingEnabled && (
-                  <div className="flex items-start gap-3">
-                    <Truck className="h-5 w-5 text-gray-600 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Shipping Available</p>
-                      <p className="text-sm text-gray-600">
-                        {product.shippingCost
-                          ? `$${parseFloat(product.shippingCost).toFixed(2)} shipping`
-                          : "Free shipping"}
-                      </p>
-                    </div>
-                  </div>
-                )}
+            {/* Description */}
+            <div className="mb-6">
+              <h3 className="font-semibold mb-3">Description</h3>
+              <p className="text-gray-700 whitespace-pre-wrap">{product.description}</p>
+            </div>
 
-                {product.localPickupEnabled && (
-                  <div className="flex items-start gap-3">
-                    <MapPin className="h-5 w-5 text-gray-600 mt-0.5" />
-                    <div>
-                      <p className="font-medium">Local Pickup</p>
-                      <p className="text-sm text-gray-600">
-                        {product.pickupLocation || "Available for pickup"}
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            {/* Tags */}
+            {product.tags && product.tags.length > 0 && (
+              <div className="mb-6">
+                <h3 className="font-semibold mb-3">Tags</h3>
+                <div className="flex flex-wrap gap-2">
+                  {product.tags.map((tag, index) => (
+                    <Badge key={index} variant="secondary">
+                      {tag}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Actions */}
             <div className="space-y-3">
               <Button
-                onClick={handleBuyNow}
-                className="w-full bg-orange-500 hover:bg-orange-600 text-lg py-6"
-                disabled={!product.isActive}
+                className="w-full"
+                size="lg"
+                onClick={handleAddToCart}
+                disabled={product.inventory !== undefined && product.inventory <= 0}
               >
-                <ShoppingCart className="h-5 w-5 mr-2" />
-                Buy Now - ${total.toFixed(2)}
+                <ShoppingCart className="w-5 h-5 mr-2" />
+                Add to Cart
               </Button>
 
-              {!product.isActive && (
-                <p className="text-center text-red-600 text-sm">
-                  This product is currently unavailable
-                </p>
+              {product.isDigital && product.digitalDownloadUrl && (
+                <Button className="w-full" size="lg" variant="outline">
+                  <Download className="w-5 h-5 mr-2" />
+                  Download Now
+                </Button>
               )}
             </div>
           </div>
