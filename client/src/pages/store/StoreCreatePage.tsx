@@ -80,26 +80,25 @@ export default function StoreCreatePage() {
       setHandleAvailable(null);
       return;
     }
-
     try {
-      const response = await fetch(`/api/stores/check-handle/${handle}`);
-      if (!response.ok) {
-        // Endpoint not available yet — fall back to the public store endpoint
-        const fallback = await fetch(`/api/stores/${handle}`);
-        // 404 = not found (available), 200 = exists (taken), 500 = error (unknown)
-        if (fallback.status === 404) setHandleAvailable(true);
-        else if (fallback.status === 200) setHandleAvailable(false);
-        // else leave as null — do not block the user
-        return;
+      // Try dedicated check endpoint first (accurate for unpublished stores)
+      const res = await fetch(`/api/stores/check-handle/${handle}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (typeof data.available === 'boolean') {
+          setHandleAvailable(data.available);
+          return;
+        }
       }
-      const data = await response.json();
-      if (typeof data.available === 'boolean') {
-        setHandleAvailable(data.available);
-      }
-      // If response is malformed, leave handleAvailable as null — do not block
-    } catch (error) {
-      console.error('Error checking handle:', error);
-      // Network error — leave as null, do not block the user
+      // Fallback: 404 means not found = available, 200 means exists = taken
+      const fallback = await fetch(`/api/stores/${handle}`);
+      if (fallback.status === 404) { setHandleAvailable(true); return; }
+      if (fallback.status === 200) { setHandleAvailable(false); return; }
+      // Any other response (500, network issue) — assume available, let server validate on submit
+      setHandleAvailable(true);
+    } catch {
+      // Network error — assume available so user is never blocked
+      setHandleAvailable(true);
     }
   };
 
