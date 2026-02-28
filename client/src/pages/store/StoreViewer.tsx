@@ -68,23 +68,42 @@ export default function StoreViewer() {
 
       if (!response.ok) {
         if (response.status === 404) {
+          // Before giving up, check if the current user owns a store with this handle
+          // (unpublished stores return 404 to non-owners)
+          try {
+            const ownerRes = await fetch(`/api/stores/check-handle/${storeHandle}`);
+            if (ownerRes.ok) {
+              const checkData = await ownerRes.json();
+              // available=false means store EXISTS (just not published)
+              if (checkData.available === false) {
+                toast({
+                  title: "Store not published",
+                  description: "This store exists but isn't published yet.",
+                  variant: "destructive",
+                });
+                setLocation("/store/dashboard");
+                return;
+              }
+            }
+          } catch {}
           toast({
             title: "Store not found",
             description: "This store doesn't exist or isn't published yet.",
             variant: "destructive",
           });
-          setLocation("/marketplace");
+          setLocation("/store");
           return;
         }
         throw new Error("Failed to fetch store");
       }
 
       const storeData = await response.json();
-      setStore(storeData);
+      const storeObj = storeData.store ?? storeData; // handle both { store: {...} } and raw store
+      setStore(storeObj);
 
       // Track store view
-      if (storeData?.id) {
-        fetch(`/api/stores/${storeData.id}/increment-view`, { method: "PATCH" }).catch(() => {});
+      if (storeObj?.id) {
+        fetch(`/api/stores/${storeObj.id}/increment-view`, { method: "PATCH" }).catch(() => {});
       }
     } catch (error) {
       console.error("Error fetching store:", error);
@@ -99,14 +118,18 @@ export default function StoreViewer() {
     }
   };
 
-  const fetchProducts = async (sellerId: number) => {
+  const fetchProducts = async (sellerId: string | number) => {
     try {
       setProductsLoading(true);
       const response = await fetch(`/api/marketplace/sellers/${sellerId}/products`);
 
-      if (!response.ok) throw new Error("Failed to fetch products");
+      if (!response.ok) {
+        console.error('[StoreViewer] fetchProducts failed:', response.status, sellerId);
+        throw new Error("Failed to fetch products");
+      }
 
       const data = await response.json();
+      console.log('[StoreViewer] products response:', { sellerId, count: data.products?.length, data });
       setProducts(data.products || []);
     } catch (error) {
       console.error("Error fetching store products:", error);
