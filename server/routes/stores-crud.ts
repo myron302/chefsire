@@ -31,6 +31,24 @@ router.get("/user/:userId", async (req, res) => {
   }
 });
 
+// GET /api/stores/check-handle/:handle - Check if a handle is available
+// Must come BEFORE /:handle to avoid being swallowed by that route
+router.get("/check-handle/:handle", async (req, res) => {
+  try {
+    const { handle } = req.params;
+    if (!handle || handle.length < 3 || !/^[a-z0-9-]+$/.test(handle)) {
+      return res.json({ available: false, reason: "invalid" });
+    }
+    const existing = await db.query.stores.findFirst({
+      where: eq(stores.handle, handle),
+    });
+    res.json({ available: !existing });
+  } catch (error) {
+    console.error("Error checking handle:", error);
+    res.status(500).json({ available: false, reason: "error" });
+  }
+});
+
 // GET /api/stores/:handle - Public view of a store (with optional auth)
 router.get("/:handle", optionalAuth, async (req, res) => {
   try {
