@@ -123,8 +123,7 @@ router.post("/", requireAuth, async (req, res) => {
       detail: error.detail,
       table: error.table,
       constraint: error.constraint,
-      stack: error.stack?.split('
-').slice(0, 5),
+      stack: error.stack?.split('\n').slice(0, 5),
     });
     if (error.code === "23505") {
       return res.status(400).json({ ok: false, error: "Handle already taken", detail: error.detail });
