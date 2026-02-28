@@ -98,7 +98,11 @@ export default function StoreViewer() {
       }
 
       const storeData = await response.json();
-      const storeObj = storeData.store ?? storeData; // handle both { store: {...} } and raw store
+      const storeObj = storeData.store ?? storeData;
+      // DEBUG — log full response so we can see the shape
+      console.log('[StoreViewer] raw response:', storeData);
+      console.log('[StoreViewer] storeObj:', storeObj);
+      console.log('[StoreViewer] userId:', storeObj?.userId, '| user_id:', (storeObj as any)?.user_id);
       setStore(storeObj);
 
       // Track store view
@@ -149,11 +153,13 @@ export default function StoreViewer() {
   }, [storeHandle]);
 
   useEffect(() => {
-    if (store?.userId) {
-      fetchProducts(store.userId);
+    const sellerId = store?.userId ?? (store as any)?.user_id;
+    console.log('[StoreViewer] useEffect store changed:', { store, sellerId });
+    if (sellerId) {
+      fetchProducts(sellerId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store?.userId]);
+  }, [store?.userId, (store as any)?.user_id]);
 
   if (!match) return null;
 
