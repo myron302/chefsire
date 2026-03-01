@@ -21,9 +21,25 @@ type DrinkIndexFile = {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const drinksPagesRoot = path.join(repoRoot, "client", "src", "pages", "drinks");
-const generatedFilePath = path.join(repoRoot, "server", "generated", "drink-index.json");
+const generatedDirPath = path.join(repoRoot, "server", "generated");
+const generatedFilePath = path.join(generatedDirPath, "drink-index.json");
 
-function normalizeName(value: string): string {
+// Heuristic: only index objects that look like actual drink recipe cards,
+// not every arbitrary "name" field that might appear in the file.
+const recipeSignalFields = new Set([
+  "ingredients",
+  "instructions",
+  "glassware",
+  "method",
+  "abv",
+  "nutrition",
+  "prepTime",
+  "servingSize",
+  "spiritType",
+  "difficulty",
+]);
+
+function normalizeKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
@@ -52,13 +68,30 @@ function walkIndexPages(dir: string): string[] {
       files.push(...walkIndexPages(fullPath));
       continue;
     }
-
     if (entry.isFile() && entry.name === "index.tsx") {
       files.push(fullPath);
     }
   }
 
   return files;
+}
+
+function getPropertyName(name: ts.PropertyName): string | null {
+  if (ts.isIdentifier(name) || ts.isStringLiteral(name)) {
+    return name.text;
+  }
+  return null;
+}
+
+function hasRecipeSignals(objectLiteral: ts.ObjectLiteralExpression): boolean {
+  for (const property of objectLiteral.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const propName = getPropertyName(property.name);
+    if (propName && recipeSignalFields.has(propName)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function extractNamesFromFile(filePath: string): string[] {
@@ -69,16 +102,13 @@ function extractNamesFromFile(filePath: string): string[] {
   const visit = (node: ts.Node) => {
     if (ts.isVariableDeclaration(node) && node.initializer && ts.isArrayLiteralExpression(node.initializer)) {
       for (const element of node.initializer.elements) {
-        if (!ts.isObjectLiteralExpression(element)) continue;
+        if (!ts.isObjectLiteralExpression(element) || !hasRecipeSignals(element)) continue;
+
         for (const property of element.properties) {
           if (!ts.isPropertyAssignment(property)) continue;
 
-          const propertyName =
-            ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
-              ? property.name.text
-              : undefined;
-
-          if (propertyName !== "name") continue;
+          const propName = getPropertyName(property.name);
+          if (propName !== "name") continue;
 
           if (ts.isStringLiteral(property.initializer) || ts.isNoSubstitutionTemplateLiteral(property.initializer)) {
             const value = property.initializer.text.trim();
@@ -95,7 +125,17 @@ function extractNamesFromFile(filePath: string): string[] {
   return [...names];
 }
 
+function writeAtomically(filePath: string, contents: string) {
+  const tempPath = `${filePath}.tmp`;
+  fs.writeFileSync(tempPath, contents, "utf8");
+  fs.renameSync(tempPath, filePath);
+}
+
 function main() {
+  if (!fs.existsSync(drinksPagesRoot)) {
+    throw new Error(`Drinks pages root not found: ${drinksPagesRoot}`);
+  }
+
   const pageFiles = walkIndexPages(drinksPagesRoot);
   const recipes: Record<string, DrinkIndexEntry> = {};
   const routes = new Map<string, DrinkRoute>();
@@ -107,7 +147,7 @@ function main() {
 
     const names = extractNamesFromFile(filePath);
     for (const name of names) {
-      const key = normalizeName(name);
+      const key = normalizeKey(name);
       if (!key) continue;
 
       if (!recipes[key]) {
@@ -130,8 +170,8 @@ function main() {
     generatedAt: new Date().toISOString(),
   };
 
-  fs.mkdirSync(path.dirname(generatedFilePath), { recursive: true });
-  fs.writeFileSync(generatedFilePath, `${JSON.stringify(output, null, 2)}\n`, "utf8");
+  fs.mkdirSync(generatedDirPath, { recursive: true });
+  writeAtomically(generatedFilePath, `${JSON.stringify(output, null, 2)}\n`);
 
   console.log(
     `[generate-drink-index] Indexed ${Object.keys(recipes).length} recipes across ${output.routes.length} routes (${duplicates.length} duplicates).`

@@ -38,7 +38,8 @@
     "fix:coffee": "node tools/fix-missing-coffee-imports.js Coffee",
     "clean:assets": "node tools/clean-assets.js",
     "rebuild": "npm run clean:assets && npm run build:client && npm run build:server",
-    "generate:drink-index": "tsx scripts/generate-drink-index.ts"
+    "generate:drink-index": "tsx scripts/generate-drink-index.ts",
+    "predev": "npm run generate:drink-index"
   },
   "dependencies": {
     "@craftjs/core": "^0.2.12",

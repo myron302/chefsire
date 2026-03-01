@@ -20,9 +20,43 @@ type DrinkIndexFile = {
 };
 
 let drinkIndexCache: DrinkIndexFile | null | undefined;
+let drinkIndexLooseCache: Record<string, DrinkIndexEntry> | null | undefined;
 
 function normalizeDrinkQuery(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return value
+    .normalize("NFKD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeDrinkQueryLoose(value: string): string {
+  return normalizeDrinkQuery(value).replace(/[^a-z0-9\s&/-]/g, "");
+}
+
+function lookupDrinkRecipeByQuery(index: DrinkIndexFile | null, query: string): DrinkIndexEntry | null {
+  if (!index?.recipes) return null;
+
+  const strictKey = normalizeDrinkQuery(query);
+  if (strictKey && index.recipes[strictKey]) {
+    return index.recipes[strictKey];
+  }
+
+  const looseKey = normalizeDrinkQueryLoose(query);
+  if (!looseKey) return null;
+
+  if (drinkIndexLooseCache === undefined || drinkIndexLooseCache === null) {
+    drinkIndexLooseCache = {};
+    for (const [key, value] of Object.entries(index.recipes)) {
+      const loose = normalizeDrinkQueryLoose(key);
+      if (loose && !drinkIndexLooseCache[loose]) {
+        drinkIndexLooseCache[loose] = value;
+      }
+    }
+  }
+
+  return drinkIndexLooseCache[looseKey] || null;
 }
 
 function loadDrinkIndex(): DrinkIndexFile | null {
@@ -34,8 +68,10 @@ function loadDrinkIndex(): DrinkIndexFile | null {
     const filePath = path.join(process.cwd(), "server", "generated", "drink-index.json");
     const json = fs.readFileSync(filePath, "utf8");
     drinkIndexCache = JSON.parse(json) as DrinkIndexFile;
+    drinkIndexLooseCache = null;
   } catch {
     drinkIndexCache = null;
+    drinkIndexLooseCache = null;
   }
 
   return drinkIndexCache;
@@ -154,9 +190,7 @@ router.get("/autocomplete", async (req, res) => {
     // prefer routing cocktail-name results to that category/subcategory page
     // so users land on pages that render recipe cards.
     const bestDrinkRoute = (() => {
-      const exact = DRINK_ROUTES.find(
-        (x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower
-      );
+      const exact = DRINK_ROUTES.find((x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower);
       if (exact) return exact.route;
 
       const containsId = DRINK_ROUTES.find((x) => x.id.toLowerCase().includes(qLower));
@@ -168,12 +202,8 @@ router.get("/autocomplete", async (req, res) => {
       return null;
     })();
 
-    const exactDrinkRouteMatch = DRINK_ROUTES.find(
-      (x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower
-    );
-    const exactDrinkRecipe = exactDrinkRouteMatch
-      ? null
-      : drinkIndex?.recipes?.[normalizeDrinkQuery(trimmedQuery)];
+    const exactDrinkRouteMatch = DRINK_ROUTES.find((x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower);
+    const exactDrinkRecipe = exactDrinkRouteMatch ? null : lookupDrinkRecipeByQuery(drinkIndex, trimmedQuery);
 
     const exactDrinkMatch = exactDrinkRecipe
       ? {
@@ -203,17 +233,20 @@ router.get("/autocomplete", async (req, res) => {
     // Search in parallel for better performance
     const [foundUsers, recipesResult, cocktailDbDrinks, reviewPosts] = await Promise.all([
       // Search users
-      storage.searchUsers(trimmedQuery, 5).then((list) =>
-        list.map((user) => ({
-          id: user.id,
-          username: user.username,
-          displayName: user.displayName,
-          avatar: user.avatar,
-          specialty: user.specialty,
-          isChef: user.isChef,
-          type: "user" as const,
-        }))
-      ),
+      storage
+        .searchUsers(trimmedQuery, 5)
+        .then((list) =>
+          list.map((user) => ({
+            id: user.id,
+            username: user.username,
+            displayName: user.displayName,
+            avatar: user.avatar,
+            specialty: user.specialty,
+            isChef: user.isChef,
+            type: "user" as const,
+          }))
+        )
+        .catch(() => []),
 
       // Search recipes (external APIs)
       searchRecipes({ q: trimmedQuery, pageSize: 5, offset: 0 })
@@ -275,6 +308,10 @@ router.get("/autocomplete", async (req, res) => {
     // Merge drinks: category routes first (site navigation), then drink-name matches.
     const mergedDrinks = [exactDrinkMatch, ...drinkCategoryMatches, ...cocktailDbDrinks]
       .filter((x): x is NonNullable<typeof x> => Boolean(x))
+      .filter((drink, index, array) => {
+        const key = `${drink.name.toLowerCase()}|${drink.route || ""}`;
+        return index === array.findIndex((candidate) => `${candidate.name.toLowerCase()}|${candidate.route || ""}` === key);
+      })
       .slice(0, 10);
 
     // Reviews: extract restaurant name from caption's first line when possible.
