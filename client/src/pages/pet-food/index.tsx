@@ -183,7 +183,7 @@ export default function PetFoodHub() {
                 <Sparkles className="h-4 w-4" />
                 Explore Recipes
               </Button>
-              <Button variant="outline" className="border-white text-white hover:bg-white/20">
+              <Button className="bg-white text-purple-600 hover:bg-white/90 gap-2">
                 Safety Guidelines
               </Button>
             </div>
