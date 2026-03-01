@@ -46,15 +46,7 @@ export default function SearchAutocomplete() {
   const debounceTimer = useRef<NodeJS.Timeout>();
   const { toast } = useToast();
 
-  // Debug: Log component mount
-  useEffect(() => {
-    console.log("[SearchAutocomplete] Component mounted");
-    toast({
-      title: "Search Ready",
-      description: "SearchAutocomplete component loaded successfully",
-      duration: 2000,
-    });
-  }, []);
+  // Component mounted
 
   // Flatten results for keyboard navigation
   const allResults = results
