@@ -88,7 +88,7 @@ export const StoreHeader: React.FC<StoreHeaderProps> = ({ store, isOwner, onEdit
                 {store.rating && (
                   <div className="flex items-center gap-1">
                     <Star size={16} className="fill-yellow-400 text-yellow-400" />
-                    <span>{store.rating.toFixed(1)} ({store.review_count} reviews)</span>
+                    <span>{parseFloat(String(store.rating)).toFixed(1)} ({store.review_count} reviews)</span>
                   </div>
                 )}
               </div>
