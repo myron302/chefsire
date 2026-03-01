@@ -1,3 +1,4 @@
+// client/src/pages/dm/InboxPage.tsx
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -6,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Crown, Send, MessageSquare, Scroll } from "lucide-react";
+import { Crown, Send, MessageSquare, Scroll, Search } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 
 type DMUser = {
@@ -99,12 +100,17 @@ function ThreadRow({ thread, meId }: { thread: DMThread; meId?: string }) {
                   </Badge>
                 )}
               </CardTitle>
-              <Badge variant="secondary" className="text-xs text-gray-600 bg-amber-100">
+              <Badge
+                variant="secondary"
+                className="text-xs text-gray-600 bg-amber-100"
+              >
                 {new Date(ts).toLocaleDateString()}
               </Badge>
             </CardHeader>
             <CardContent className="pt-0">
-              <p className="text-sm text-gray-700 line-clamp-2 italic leading-relaxed">{preview}</p>
+              <p className="text-sm text-gray-700 line-clamp-2 italic leading-relaxed">
+                {preview}
+              </p>
             </CardContent>
           </Card>
         </div>
@@ -117,11 +123,11 @@ export default function DMInboxPage() {
   const { user } = useUser();
   const meId = user?.id;
   const qc = useQueryClient();
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
 
   // Extract ?new=username from URL
-  const urlParams = new URLSearchParams(location.split('?')[1]);
-  const newUsername = urlParams.get('new') || '';
+  const urlParams = new URLSearchParams(location.split("?")[1]);
+  const newUsername = urlParams.get("new") || "";
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["dm", "threads"],
@@ -144,7 +150,10 @@ export default function DMInboxPage() {
     }
     debounceRef.current = setTimeout(async () => {
       try {
-        const res = await fetch(`/api/search/autocomplete?q=${encodeURIComponent(toUsername)}`, { credentials: "include" });
+        const res = await fetch(
+          `/api/search/autocomplete?q=${encodeURIComponent(toUsername)}`,
+          { credentials: "include" }
+        );
         if (res.ok) {
           const data = await res.json();
           setUserSuggestions(data.users || []);
@@ -152,13 +161,18 @@ export default function DMInboxPage() {
         }
       } catch {}
     }, 250);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
   }, [toUsername]);
 
-  // Close suggestions on outside click
+  // Close suggestions on outside click (compose autocomplete)
   React.useEffect(() => {
     const handler = (e: MouseEvent) => {
-      if (suggestionRef.current && !suggestionRef.current.contains(e.target as Node)) {
+      if (
+        suggestionRef.current &&
+        !suggestionRef.current.contains(e.target as Node)
+      ) {
         setShowSuggestions(false);
       }
     };
@@ -178,22 +192,93 @@ export default function DMInboxPage() {
   const threads = data?.threads ?? [];
   const [filter, setFilter] = React.useState("");
 
+  // === Search autocomplete for existing conversations ===
+  const [showSearchSuggestions, setShowSearchSuggestions] =
+    React.useState(false);
+  const searchRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
+        setShowSearchSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   const filtered = React.useMemo(() => {
     if (!filter.trim()) return threads;
     const q = filter.toLowerCase();
     return threads.filter((t) => {
-      const names = (t.participants ?? []).map((p) => (p.displayName || p.username || "").toLowerCase());
+      const names = (t.participants ?? []).map((p) =>
+        (p.displayName || p.username || "").toLowerCase()
+      );
       const text = t.lastMessage?.body?.toLowerCase() ?? "";
       return names.some((n) => n.includes(q)) || text.includes(q);
     });
   }, [threads, filter]);
 
+  const searchSuggestions = React.useMemo(() => {
+    const q = filter.trim().toLowerCase();
+    if (!q) return [];
+    // Use the same logic as `filtered`, but keep a tight list for dropdown
+    const hits = threads
+      .filter((t) => {
+        const names = (t.participants ?? []).map((p) =>
+          (p.displayName || p.username || "").toLowerCase()
+        );
+        const text = t.lastMessage?.body?.toLowerCase() ?? "";
+        return names.some((n) => n.includes(q)) || text.includes(q);
+      })
+      .slice(0, 8);
+    return hits;
+  }, [threads, filter]);
+
+  function threadDisplayName(t: DMThread) {
+    const parts = t.participants ?? [];
+    const other = parts.find((p) => p.id !== meId) ?? parts[0];
+    return (
+      (other?.displayName && other.displayName.trim()) ||
+      other?.username ||
+      (t.isGroup ? "Group" : "Conversation")
+    );
+  }
+
+  function threadSecondaryLine(t: DMThread) {
+    const msg = t.lastMessage?.body ?? "No messages yet";
+    return msg.length > 70 ? `${msg.slice(0, 70)}…` : msg;
+  }
+
+  function goToThread(threadId: string) {
+    setShowSearchSuggestions(false);
+    setLocation(`/messages/${threadId}`);
+  }
+
+  function onSubmitSearch(e: React.FormEvent) {
+    e.preventDefault();
+    const q = filter.trim();
+    if (!q) return;
+
+    // If only one match, jump right in.
+    if (searchSuggestions.length === 1) {
+      goToThread(searchSuggestions[0].id);
+      return;
+    }
+
+    // Otherwise, open suggestions.
+    setShowSearchSuggestions(true);
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-red-50">
       {/* Decorative background pattern */}
-      <div className="fixed inset-0 opacity-[0.03] pointer-events-none" style={{
-        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23FF6B35' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-      }}></div>
+      <div
+        className="fixed inset-0 opacity-[0.03] pointer-events-none"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23FF6B35' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+        }}
+      ></div>
 
       <div className="relative max-w-3xl mx-auto p-4 md:p-6 space-y-6">
         {/* Royal Header */}
@@ -219,16 +304,76 @@ export default function DMInboxPage() {
           </div>
         </div>
 
-        {/* Search */}
-        <div className="relative">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-300 to-red-300 rounded-lg blur opacity-30 pointer-events-none"></div>
-          <Input
-            placeholder="Search conversations..."
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-            className="relative bg-white border-2 border-amber-200 focus:border-amber-400 focus:ring-amber-400 shadow-md"
-          />
-        </div>
+        {/* Search (now with submit + autocomplete) */}
+        <form onSubmit={onSubmitSearch}>
+          <div className="relative" ref={searchRef}>
+            <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-300 to-red-300 rounded-lg blur opacity-30 pointer-events-none"></div>
+
+            <div className="relative flex gap-2">
+              <Input
+                placeholder="Search conversations..."
+                value={filter}
+                onChange={(e) => {
+                  setFilter(e.target.value);
+                  if (e.target.value.trim()) setShowSearchSuggestions(true);
+                  else setShowSearchSuggestions(false);
+                }}
+                onFocus={() => {
+                  if (filter.trim() && searchSuggestions.length > 0) {
+                    setShowSearchSuggestions(true);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") setShowSearchSuggestions(false);
+                  if (e.key === "Enter") {
+                    // let the form submit handler decide what to do
+                    if (!filter.trim()) e.preventDefault();
+                  }
+                }}
+                className="bg-white border-2 border-amber-200 focus:border-amber-400 focus:ring-amber-400 shadow-md"
+              />
+
+              <Button
+                type="submit"
+                disabled={!filter.trim()}
+                className="bg-white border-2 border-amber-200 hover:border-amber-400 shadow-md"
+              >
+                <Search className="h-4 w-4 mr-2 text-amber-700" />
+                Search
+              </Button>
+            </div>
+
+            {showSearchSuggestions && searchSuggestions.length > 0 && (
+              <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-amber-200 rounded-lg shadow-xl z-50 max-h-72 overflow-y-auto">
+                {searchSuggestions.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="w-full px-3 py-2 flex items-center justify-between gap-3 hover:bg-amber-50 text-left transition-colors"
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      goToThread(t.id);
+                    }}
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold text-sm truncate text-gray-800">
+                        {threadDisplayName(t)}
+                      </div>
+                      <div className="text-xs text-gray-500 truncate">
+                        {threadSecondaryLine(t)}
+                      </div>
+                    </div>
+                    {(t.unread ?? 0) > 0 && (
+                      <Badge className="bg-gradient-to-r from-fuchsia-600 to-rose-600 text-white shadow-md">
+                        {t.unread}
+                      </Badge>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </form>
 
         {/* Compose */}
         <div className="relative group">
@@ -240,69 +385,87 @@ export default function DMInboxPage() {
                   <Scroll className="h-5 w-5 text-amber-600" />
                   <div className="absolute inset-0 bg-amber-400 blur-sm opacity-30"></div>
                 </div>
-                <span className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-bold" style={{ fontFamily: "'Playfair Display', serif" }}>
+                <span
+                  className="bg-gradient-to-r from-orange-700 to-red-700 bg-clip-text text-transparent font-bold"
+                  style={{ fontFamily: "'Playfair Display', serif" }}
+                >
                   Dispatch a Royal Message
                 </span>
               </CardTitle>
             </CardHeader>
-        <CardContent className="space-y-3 pt-4">
-          <div className="flex gap-2">
-            <div className="relative flex-1" ref={suggestionRef}>
-              <Input
-                placeholder="Recipient username (e.g., chefsire)"
-                value={toUsername}
-                onChange={(e) => setToUsername(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && toUsername.trim() && !createMutation.isPending) {
-                    setShowSuggestions(false);
-                    createMutation.mutate(toUsername.trim());
-                  }
-                  if (e.key === "Escape") setShowSuggestions(false);
-                }}
-                onFocus={() => { if (userSuggestions.length > 0) setShowSuggestions(true); }}
-                className="border-amber-300 focus:border-amber-500 focus:ring-amber-500 w-full"
-                autoComplete="off"
-              />
-              {showSuggestions && userSuggestions.length > 0 && (
-                <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-amber-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
-                  {userSuggestions.map((u) => (
-                    <button
-                      key={u.id}
-                      type="button"
-                      className="w-full px-3 py-2 flex items-center gap-3 hover:bg-amber-50 text-left transition-colors"
-                      onMouseDown={(e) => {
-                        e.preventDefault();
-                        setToUsername(u.username);
+            <CardContent className="space-y-3 pt-4">
+              <div className="flex gap-2">
+                <div className="relative flex-1" ref={suggestionRef}>
+                  <Input
+                    placeholder="Recipient username (e.g., chefsire)"
+                    value={toUsername}
+                    onChange={(e) => setToUsername(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "Enter" &&
+                        toUsername.trim() &&
+                        !createMutation.isPending
+                      ) {
                         setShowSuggestions(false);
-                      }}
-                    >
-                      <Avatar className="h-8 w-8 flex-shrink-0">
-                        <AvatarImage src={u.avatar} />
-                        <AvatarFallback>{(u.displayName || u.username).charAt(0).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                      <div className="min-w-0">
-                        <div className="font-medium text-sm truncate">{u.displayName || u.username}</div>
-                        <div className="text-xs text-gray-500">@{u.username}</div>
-                      </div>
-                    </button>
-                  ))}
+                        createMutation.mutate(toUsername.trim());
+                      }
+                      if (e.key === "Escape") setShowSuggestions(false);
+                    }}
+                    onFocus={() => {
+                      if (userSuggestions.length > 0) setShowSuggestions(true);
+                    }}
+                    className="border-amber-300 focus:border-amber-500 focus:ring-amber-500 w-full"
+                    autoComplete="off"
+                  />
+                  {showSuggestions && userSuggestions.length > 0 && (
+                    <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-amber-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+                      {userSuggestions.map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          className="w-full px-3 py-2 flex items-center gap-3 hover:bg-amber-50 text-left transition-colors"
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            setToUsername(u.username);
+                            setShowSuggestions(false);
+                          }}
+                        >
+                          <Avatar className="h-8 w-8 flex-shrink-0">
+                            <AvatarImage src={u.avatar} />
+                            <AvatarFallback>
+                              {(u.displayName || u.username)
+                                .charAt(0)
+                                .toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <div className="font-medium text-sm truncate">
+                              {u.displayName || u.username}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              @{u.username}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
+                <Button
+                  disabled={!toUsername.trim() || createMutation.isPending}
+                  onClick={() => createMutation.mutate(toUsername.trim())}
+                  className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold shadow-md"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  Dispatch
+                </Button>
+              </div>
+              {createMutation.isError && (
+                <p className="text-sm text-red-600">
+                  {(createMutation.error as Error)?.message ||
+                    "Failed to create conversation"}
+                </p>
               )}
-            </div>
-            <Button
-              disabled={!toUsername.trim() || createMutation.isPending}
-              onClick={() => createMutation.mutate(toUsername.trim())}
-              className="bg-gradient-to-r from-orange-600 to-red-600 hover:from-orange-700 hover:to-red-700 text-white font-semibold shadow-md"
-            >
-              <Send className="h-4 w-4 mr-2" />
-              Dispatch
-            </Button>
-          </div>
-          {createMutation.isError && (
-            <p className="text-sm text-red-600">
-              {(createMutation.error as Error)?.message || "Failed to create conversation"}
-            </p>
-          )}
             </CardContent>
           </Card>
         </div>
@@ -311,14 +474,18 @@ export default function DMInboxPage() {
         {isLoading && (
           <div className="text-center py-4">
             <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-amber-600"></div>
-            <p className="text-sm text-muted-foreground mt-2">Loading your royal conversations...</p>
+            <p className="text-sm text-muted-foreground mt-2">
+              Loading your royal conversations...
+            </p>
           </div>
         )}
 
         {isError && (
           <Card className="border-2 border-red-200 bg-red-50">
             <CardContent className="p-6">
-              <p className="text-sm text-red-600">Error: {(error as Error).message}</p>
+              <p className="text-sm text-red-600">
+                Error: {(error as Error).message}
+              </p>
             </CardContent>
           </Card>
         )}
@@ -331,7 +498,9 @@ export default function DMInboxPage() {
             <Card className="border-2 border-amber-200 bg-gradient-to-br from-orange-50 to-red-50">
               <CardContent className="p-8 text-center">
                 <Crown className="h-16 w-16 mx-auto mb-4 text-amber-300" />
-                <p className="text-gray-600 italic">No conversations yet. Begin your royal discourse!</p>
+                <p className="text-gray-600 italic">
+                  No conversations yet. Begin your royal discourse!
+                </p>
               </CardContent>
             </Card>
           )}
