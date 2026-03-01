@@ -31,6 +31,7 @@ interface AutocompleteResult {
     imageUrl?: string;
     category?: string;
     route?: string;
+    matchKind?: "recipe-exact" | "category" | "external";
     type: "drink";
   }>;
   reviews: Array<{
@@ -145,28 +146,35 @@ export default function SearchAutocomplete() {
     const safeQ = encodeURIComponent(q);
     const has = results;
 
-    // Prefer exact navigational routes for drinks/pet food/reviews when present.
+    // Submit priority:
+    // 1) exact drink recipe hit (from generated index)
+    // 2) drink category route
+    // 3) reviews route
+    // 4) recipes fallback
     if (has?.drinks?.length) {
-      const preferred = has.drinks.find(
-        (d) => typeof d.route === "string" && d.route && !d.route.includes("/drinks?q=")
+      const exactDrink = has.drinks.find(
+        (d) => d.matchKind === "recipe-exact" && typeof d.route === "string" && d.route
       );
-      const fallback = has.drinks.find((d) => typeof d.route === "string" && d.route);
-      const target = preferred?.route || fallback?.route;
-      if (target) {
-        setLocation(target);
+      if (exactDrink?.route) {
+        setLocation(exactDrink.route);
         return;
       }
-      setLocation(`/drinks?q=${safeQ}`);
-      return;
-    }
 
-    if (has?.petFoods?.length) {
-      const target = has.petFoods.find((p) => typeof p.route === "string" && p.route)?.route;
-      if (target) {
-        setLocation(target);
+      const drinkCategory = has.drinks.find(
+        (d) => d.matchKind === "category" && typeof d.route === "string" && d.route
+      );
+      if (drinkCategory?.route) {
+        setLocation(drinkCategory.route);
         return;
       }
-      setLocation("/pet-food");
+
+      const fallbackDrinkRoute = has.drinks.find((d) => typeof d.route === "string" && d.route)?.route;
+      if (fallbackDrinkRoute) {
+        setLocation(fallbackDrinkRoute);
+        return;
+      }
+
+      setLocation(`/drinks?q=${safeQ}`);
       return;
     }
 
@@ -177,6 +185,16 @@ export default function SearchAutocomplete() {
         return;
       }
       setLocation(`/reviews?q=${safeQ}`);
+      return;
+    }
+
+    if (has?.petFoods?.length) {
+      const target = has.petFoods.find((p) => typeof p.route === "string" && p.route)?.route;
+      if (target) {
+        setLocation(target);
+        return;
+      }
+      setLocation("/pet-food");
       return;
     }
 
