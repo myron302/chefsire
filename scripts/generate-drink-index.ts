@@ -24,6 +24,8 @@ const drinksPagesRoot = path.join(repoRoot, "client", "src", "pages", "drinks");
 const generatedDirPath = path.join(repoRoot, "server", "generated");
 const generatedFilePath = path.join(generatedDirPath, "drink-index.json");
 
+// Heuristic: only index objects that look like actual drink recipe cards,
+// not every arbitrary "name" field that might appear in the file.
 const recipeSignalFields = new Set([
   "ingredients",
   "instructions",
@@ -62,12 +64,10 @@ function walkIndexPages(dir: string): string[] {
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
-
     if (entry.isDirectory()) {
       files.push(...walkIndexPages(fullPath));
       continue;
     }
-
     if (entry.isFile() && entry.name === "index.tsx") {
       files.push(fullPath);
     }
@@ -84,13 +84,11 @@ function getPropertyName(name: ts.PropertyName): string | null {
 }
 
 function hasRecipeSignals(objectLiteral: ts.ObjectLiteralExpression): boolean {
-  let signalCount = 0;
   for (const property of objectLiteral.properties) {
     if (!ts.isPropertyAssignment(property)) continue;
     const propName = getPropertyName(property.name);
     if (propName && recipeSignalFields.has(propName)) {
-      signalCount += 1;
-      if (signalCount >= 1) return true;
+      return true;
     }
   }
   return false;
@@ -108,6 +106,7 @@ function extractNamesFromFile(filePath: string): string[] {
 
         for (const property of element.properties) {
           if (!ts.isPropertyAssignment(property)) continue;
+
           const propName = getPropertyName(property.name);
           if (propName !== "name") continue;
 

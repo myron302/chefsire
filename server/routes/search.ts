@@ -190,9 +190,7 @@ router.get("/autocomplete", async (req, res) => {
     // prefer routing cocktail-name results to that category/subcategory page
     // so users land on pages that render recipe cards.
     const bestDrinkRoute = (() => {
-      const exact = DRINK_ROUTES.find(
-        (x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower
-      );
+      const exact = DRINK_ROUTES.find((x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower);
       if (exact) return exact.route;
 
       const containsId = DRINK_ROUTES.find((x) => x.id.toLowerCase().includes(qLower));
@@ -204,12 +202,8 @@ router.get("/autocomplete", async (req, res) => {
       return null;
     })();
 
-    const exactDrinkRouteMatch = DRINK_ROUTES.find(
-      (x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower
-    );
-    const exactDrinkRecipe = exactDrinkRouteMatch
-      ? null
-      : lookupDrinkRecipeByQuery(drinkIndex, trimmedQuery);
+    const exactDrinkRouteMatch = DRINK_ROUTES.find((x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower);
+    const exactDrinkRecipe = exactDrinkRouteMatch ? null : lookupDrinkRecipeByQuery(drinkIndex, trimmedQuery);
 
     const exactDrinkMatch = exactDrinkRecipe
       ? {
