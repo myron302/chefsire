@@ -56,7 +56,13 @@ r.get("/search", async (req, res) => {
 
 r.get("/:id", async (req, res) => {
   try {
-    const user = await storage.getUser(req.params.id);
+    const { id } = req.params;
+    // Try UUID lookup first, then fall back to username lookup
+    // This lets /profile/:username work without a separate route
+    let user = await storage.getUser(id);
+    if (!user) {
+      user = await storage.getUserByUsername(id);
+    }
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json(user);
   } catch (error) {

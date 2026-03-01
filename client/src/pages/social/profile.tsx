@@ -255,34 +255,30 @@ export default function Profile() {
     enabled: !!profileUserId,
   });
 
-  // Store (mock)
+  // Store — real API call
   const { data: storeData } = useQuery<{ store: Store | null }>({
     queryKey: ["/api/stores/user", profileUserId],
-    queryFn: async () => ({
-      store: {
-        id: "store-1",
-        userId: profileUserId!,
-        handle: user?.username || "demo",
-        name: `${user?.displayName || "User"}'s Store`,
-        bio: "Quality ingredients and kitchen tools",
-        logo: user?.avatar || null,
-        theme: "default",
-        is_published: true,
-        subscription_tier: "free",
-        product_limit: 10,
-        current_products: 3,
-        layout: null,
-        published: true,
-        updatedAt: new Date().toISOString(),
-      },
-    }),
+    queryFn: async () => {
+      if (!profileUserId) return { store: null };
+      const res = await fetch(`/api/stores/user/${profileUserId}`, { credentials: "include" });
+      if (!res.ok) return { store: null };
+      const data = await res.json();
+      // API returns { ok, store } or { store }
+      return { store: data.store ?? null };
+    },
     enabled: !!profileUserId,
   });
 
-  // Store products count (mock)
+  // Store products count — real API call
   const { data: storeProductsData } = useQuery({
     queryKey: ["/api/stores/products/count", profileUserId],
-    queryFn: async () => ({ count: 3 }),
+    queryFn: async () => {
+      if (!profileUserId) return { count: 0 };
+      const res = await fetch(`/api/marketplace/sellers/${profileUserId}/products`, { credentials: "include" });
+      if (!res.ok) return { count: 0 };
+      const data = await res.json();
+      return { count: data.products?.length ?? 0 };
+    },
     enabled: !!profileUserId,
   });
 

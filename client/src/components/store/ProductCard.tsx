@@ -34,9 +34,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
       {/* Product Image */}
       <div className="relative h-48 bg-gray-200">
-        {product.image_url ? (
+        {(product.image_url || (product as any).images?.[0]) ? (
           <img
-            src={product.image_url}
+            src={product.image_url || (product as any).images?.[0]}
             alt={product.name}
             className="w-full h-full object-cover"
           />
@@ -105,7 +105,7 @@ export const ProductCard: React.FC<ProductCardProps> = ({
         {/* Price and Actions */}
         <div className="flex items-center justify-between mt-4">
           <span className="text-2xl font-bold text-orange-600">
-            ${product.price.toFixed(2)}
+            ${parseFloat(String(product.price)).toFixed(2)}
           </span>
 
           {showActions && onAddToCart && (

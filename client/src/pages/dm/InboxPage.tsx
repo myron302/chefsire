@@ -5,6 +5,7 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Crown, Send, MessageSquare, Scroll } from "lucide-react";
 import { useUser } from "@/contexts/UserContext";
 
@@ -128,6 +129,42 @@ export default function DMInboxPage() {
   });
 
   const [toUsername, setToUsername] = React.useState(newUsername);
+  const [userSuggestions, setUserSuggestions] = React.useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const suggestionRef = React.useRef<HTMLDivElement>(null);
+  const debounceRef = React.useRef<NodeJS.Timeout>();
+
+  // Autocomplete: search users as they type
+  React.useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!toUsername.trim() || toUsername.length < 2) {
+      setUserSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search/autocomplete?q=${encodeURIComponent(toUsername)}`, { credentials: "include" });
+        if (res.ok) {
+          const data = await res.json();
+          setUserSuggestions(data.users || []);
+          setShowSuggestions((data.users || []).length > 0);
+        }
+      } catch {}
+    }, 250);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [toUsername]);
+
+  // Close suggestions on outside click
+  React.useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (suggestionRef.current && !suggestionRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
 
   const createMutation = useMutation({
     mutationFn: (username: string) => startThread(username),
@@ -161,7 +198,7 @@ export default function DMInboxPage() {
       <div className="relative max-w-3xl mx-auto p-4 md:p-6 space-y-6">
         {/* Royal Header */}
         <div className="relative">
-          <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 to-red-600 rounded-lg blur opacity-20"></div>
+          <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 to-red-600 rounded-lg blur opacity-20 pointer-events-none"></div>
           <div className="relative bg-white rounded-lg p-6 shadow-xl border-2 border-amber-200">
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -184,7 +221,7 @@ export default function DMInboxPage() {
 
         {/* Search */}
         <div className="relative">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-300 to-red-300 rounded-lg blur opacity-30"></div>
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-300 to-red-300 rounded-lg blur opacity-30 pointer-events-none"></div>
           <Input
             placeholder="Search conversations..."
             value={filter}
@@ -195,7 +232,7 @@ export default function DMInboxPage() {
 
         {/* Compose */}
         <div className="relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 via-amber-500 to-red-600 rounded-lg blur-md opacity-40 group-hover:opacity-60 transition duration-300"></div>
+          <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 via-amber-500 to-red-600 rounded-lg blur-md opacity-40 group-hover:opacity-60 transition duration-300 pointer-events-none"></div>
           <Card className="relative border-2 border-amber-300 bg-white shadow-2xl">
             <CardHeader className="border-b-2 border-amber-200 bg-gradient-to-r from-orange-50 to-red-50">
               <CardTitle className="text-base flex items-center gap-2">
@@ -210,17 +247,48 @@ export default function DMInboxPage() {
             </CardHeader>
         <CardContent className="space-y-3 pt-4">
           <div className="flex gap-2">
-            <Input
-              placeholder="Recipient username (e.g., chefsire)"
-              value={toUsername}
-              onChange={(e) => setToUsername(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && toUsername.trim() && !createMutation.isPending) {
-                  createMutation.mutate(toUsername.trim());
-                }
-              }}
-              className="flex-1 border-amber-300 focus:border-amber-500 focus:ring-amber-500"
-            />
+            <div className="relative flex-1" ref={suggestionRef}>
+              <Input
+                placeholder="Recipient username (e.g., chefsire)"
+                value={toUsername}
+                onChange={(e) => setToUsername(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && toUsername.trim() && !createMutation.isPending) {
+                    setShowSuggestions(false);
+                    createMutation.mutate(toUsername.trim());
+                  }
+                  if (e.key === "Escape") setShowSuggestions(false);
+                }}
+                onFocus={() => { if (userSuggestions.length > 0) setShowSuggestions(true); }}
+                className="border-amber-300 focus:border-amber-500 focus:ring-amber-500 w-full"
+                autoComplete="off"
+              />
+              {showSuggestions && userSuggestions.length > 0 && (
+                <div className="absolute top-full mt-1 left-0 right-0 bg-white border border-amber-200 rounded-lg shadow-xl z-50 max-h-60 overflow-y-auto">
+                  {userSuggestions.map((u) => (
+                    <button
+                      key={u.id}
+                      type="button"
+                      className="w-full px-3 py-2 flex items-center gap-3 hover:bg-amber-50 text-left transition-colors"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setToUsername(u.username);
+                        setShowSuggestions(false);
+                      }}
+                    >
+                      <Avatar className="h-8 w-8 flex-shrink-0">
+                        <AvatarImage src={u.avatar} />
+                        <AvatarFallback>{(u.displayName || u.username).charAt(0).toUpperCase()}</AvatarFallback>
+                      </Avatar>
+                      <div className="min-w-0">
+                        <div className="font-medium text-sm truncate">{u.displayName || u.username}</div>
+                        <div className="text-xs text-gray-500">@{u.username}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <Button
               disabled={!toUsername.trim() || createMutation.isPending}
               onClick={() => createMutation.mutate(toUsername.trim())}
