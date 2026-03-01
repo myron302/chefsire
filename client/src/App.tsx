@@ -315,10 +315,15 @@ function DrinksSection() {
   return (
     <DrinksProvider>
       <Switch>
+        <Route path="/drinks/caffeinated">{() => <CaffeinatedSection />}</Route>
         <Route path="/drinks/caffeinated/:rest*">{() => <CaffeinatedSection />}</Route>
+        <Route path="/drinks/smoothies">{() => <SmoothiesSection />}</Route>
         <Route path="/drinks/smoothies/:rest*">{() => <SmoothiesSection />}</Route>
+        <Route path="/drinks/protein-shakes">{() => <ProteinShakesSection />}</Route>
         <Route path="/drinks/protein-shakes/:rest*">{() => <ProteinShakesSection />}</Route>
+        <Route path="/drinks/detoxes">{() => <DetoxesSection />}</Route>
         <Route path="/drinks/detoxes/:rest*">{() => <DetoxesSection />}</Route>
+        <Route path="/drinks/potent-potables">{() => <PotentPotablesSection />}</Route>
         <Route path="/drinks/potent-potables/:rest*">{() => <PotentPotablesSection />}</Route>
         <Route path="/drinks" component={DrinksHubPage} />
         <Route>
@@ -554,9 +559,11 @@ export default function App() {
                 <Route path="/clubs" component={ClubsPage} />
 
                 {/* Drinks */}
+                <Route path="/drinks" component={DrinksHubPage} />
                 <Route path="/drinks/:rest*">{() => <DrinksSection />}</Route>
 
                 {/* Pet Food */}
+                <Route path="/pet-food" component={PetFoodHub} />
                 <Route path="/pet-food/:rest*">{() => <PetFoodSection />}</Route>
 
                 <Route component={NotFound} />
