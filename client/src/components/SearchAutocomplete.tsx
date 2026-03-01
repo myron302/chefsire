@@ -1,6 +1,7 @@
+// client/src/components/SearchAutocomplete.tsx
 import { useState, useEffect, useRef, FormEvent } from "react";
 import { useLocation } from "wouter";
-import { Search, User, ChefHat, Utensils } from "lucide-react";
+import { Search, User, ChefHat, Utensils, Star, PawPrint } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -29,7 +30,20 @@ interface AutocompleteResult {
     name: string;
     imageUrl?: string;
     category?: string;
+    route?: string;
     type: "drink";
+  }>;
+  reviews: Array<{
+    id: string;
+    name: string;
+    route: string;
+    type: "review";
+  }>;
+  petFoods: Array<{
+    id: string;
+    name: string;
+    route: string;
+    type: "pet-food";
   }>;
   query: string;
 }
@@ -46,14 +60,14 @@ export default function SearchAutocomplete() {
   const debounceTimer = useRef<NodeJS.Timeout>();
   const { toast } = useToast();
 
-  // Component mounted
-
   // Flatten results for keyboard navigation
   const allResults = results
     ? [
         ...results.users.map((u) => ({ ...u, category: "Users" })),
         ...results.recipes.map((r) => ({ ...r, category: "Recipes" })),
+        ...results.reviews.map((rv) => ({ ...rv, category: "Reviews" })),
         ...results.drinks.map((d) => ({ ...d, category: "Drinks" })),
+        ...results.petFoods.map((p) => ({ ...p, category: "Pet Food" })),
       ]
     : [];
 
@@ -110,14 +124,17 @@ export default function SearchAutocomplete() {
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    console.log("[SearchAutocomplete] Form submitted with query:", searchText);
-    toast({
-      title: "Search Submitted",
-      description: `Searching for: ${searchText || "(empty)"}`,
-      duration: 2000,
-    });
     const q = searchText.trim();
+
+    toast({
+      title: "Search",
+      description: q ? `Searching for: ${q}` : "Searching…",
+      duration: 1500,
+    });
+
     setIsOpen(false);
+
+    // Default behavior stays the same: go to recipe search.
     if (q) {
       setLocation(`/recipes?q=${encodeURIComponent(q)}`);
     } else {
@@ -126,16 +143,39 @@ export default function SearchAutocomplete() {
   };
 
   const handleResultClick = (item: any) => {
-    console.log("[SearchAutocomplete] Result clicked:", item);
     setIsOpen(false);
     setSearchText("");
 
     if (item.type === "user") {
       setLocation(`/profile/${item.username}`);
-    } else if (item.type === "recipe") {
+      return;
+    }
+
+    if (item.type === "recipe") {
       setLocation(`/recipes/${item.id}`);
-    } else if (item.type === "drink") {
-      setLocation(`/drinks/${item.id}`);
+      return;
+    }
+
+    if (item.type === "review") {
+      setLocation(item.route || `/reviews?q=${encodeURIComponent(item.name)}`);
+      return;
+    }
+
+    if (item.type === "pet-food") {
+      setLocation(item.route || "/pet-food");
+      return;
+    }
+
+    if (item.type === "drink") {
+      // Prefer explicit route for site categories.
+      if (item.route) {
+        setLocation(item.route);
+        return;
+      }
+      // Fallback: go to drinks hub with a query.
+      const q = String(item.name || "").trim();
+      setLocation(q ? `/drinks?q=${encodeURIComponent(q)}` : "/drinks");
+      return;
     }
   };
 
@@ -168,7 +208,13 @@ export default function SearchAutocomplete() {
     }
   };
 
-  const hasResults = results && (results.users.length > 0 || results.recipes.length > 0 || results.drinks.length > 0);
+  const hasResults =
+    !!results &&
+    (results.users.length > 0 ||
+      results.recipes.length > 0 ||
+      results.reviews.length > 0 ||
+      results.drinks.length > 0 ||
+      results.petFoods.length > 0);
 
   return (
     <div className="relative w-full">
@@ -177,7 +223,7 @@ export default function SearchAutocomplete() {
         <Input
           ref={inputRef}
           type="text"
-          placeholder="Search recipes, chefs, or ingredients..."
+          placeholder="Search users, recipes, reviews, drinks, pet food…"
           className="w-full pl-10 bg-muted border-border rounded-full"
           value={searchText}
           onChange={(e) => setSearchText(e.target.value)}
@@ -202,13 +248,13 @@ export default function SearchAutocomplete() {
           ) : hasResults ? (
             <div className="py-2">
               {/* Users Section */}
-              {results.users.length > 0 && (
+              {results!.users.length > 0 && (
                 <div className="mb-2">
                   <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     <User className="inline h-3 w-3 mr-1" />
                     Chefs
                   </div>
-                  {results.users.map((user, index) => {
+                  {results!.users.map((user, index) => {
                     const globalIndex = index;
                     return (
                       <button
@@ -226,7 +272,9 @@ export default function SearchAutocomplete() {
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{user.displayName}</div>
+                          <div className="font-medium truncate">
+                            {user.displayName}
+                          </div>
                           <div className="text-sm text-muted-foreground truncate">
                             @{user.username}
                             {user.isChef && user.specialty && ` • ${user.specialty}`}
@@ -242,17 +290,17 @@ export default function SearchAutocomplete() {
               )}
 
               {/* Recipes Section */}
-              {results.recipes.length > 0 && (
+              {results!.recipes.length > 0 && (
                 <div className="mb-2">
                   <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     <Utensils className="inline h-3 w-3 mr-1" />
                     Recipes
                   </div>
-                  {results.recipes.map((recipe, index) => {
-                    const globalIndex = results.users.length + index;
+                  {results!.recipes.map((recipe, index) => {
+                    const globalIndex = results!.users.length + index;
                     return (
                       <button
-                        key={recipe.id}
+                        key={String(recipe.id)}
                         onClick={() => handleResultClick(recipe)}
                         className={cn(
                           "w-full px-3 py-2 flex items-center space-x-3 hover:bg-muted transition-colors text-left",
@@ -268,11 +316,42 @@ export default function SearchAutocomplete() {
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{recipe.title}</div>
-                          {recipe.cookTime && (
+                          {recipe.cookTime ? (
                             <div className="text-sm text-muted-foreground">
                               {recipe.cookTime} min
                             </div>
-                          )}
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Reviews Section */}
+              {results!.reviews.length > 0 && (
+                <div className="mb-2">
+                  <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <Star className="inline h-3 w-3 mr-1" />
+                    Reviews
+                  </div>
+                  {results!.reviews.map((review, index) => {
+                    const globalIndex =
+                      results!.users.length + results!.recipes.length + index;
+                    return (
+                      <button
+                        key={review.id}
+                        onClick={() => handleResultClick(review)}
+                        className={cn(
+                          "w-full px-3 py-2 flex items-center space-x-3 hover:bg-muted transition-colors text-left",
+                          selectedIndex === globalIndex && "bg-muted"
+                        )}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{review.name}</div>
+                          <div className="text-sm text-muted-foreground truncate">
+                            Search restaurant reviews
+                          </div>
                         </div>
                       </button>
                     );
@@ -281,37 +360,79 @@ export default function SearchAutocomplete() {
               )}
 
               {/* Drinks Section */}
-              {results.drinks.length > 0 && (
-                <div>
+              {results!.drinks.length > 0 && (
+                <div className="mb-2">
                   <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     🍹 Drinks
                   </div>
-                  {results.drinks.map((drink, index) => {
+                  {results!.drinks.map((drink, index) => {
                     const globalIndex =
-                      results.users.length + results.recipes.length + index;
+                      results!.users.length +
+                      results!.recipes.length +
+                      results!.reviews.length +
+                      index;
                     return (
                       <button
-                        key={drink.id}
+                        key={`${drink.id}-${index}`}
                         onClick={() => handleResultClick(drink)}
                         className={cn(
                           "w-full px-3 py-2 flex items-center space-x-3 hover:bg-muted transition-colors text-left",
                           selectedIndex === globalIndex && "bg-muted"
                         )}
                       >
-                        {drink.imageUrl && (
+                        {drink.imageUrl ? (
                           <img
                             src={drink.imageUrl}
                             alt={drink.name}
                             className="h-10 w-10 rounded object-cover flex-shrink-0"
                           />
-                        )}
+                        ) : null}
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{drink.name}</div>
-                          {drink.category && (
+                          {drink.category ? (
                             <div className="text-sm text-muted-foreground capitalize">
-                              {drink.category.replace(/-/g, " ")}
+                              {String(drink.category).replace(/-/g, " ")}
                             </div>
-                          )}
+                          ) : drink.route ? (
+                            <div className="text-sm text-muted-foreground truncate">
+                              {drink.route}
+                            </div>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Pet Food Section */}
+              {results!.petFoods.length > 0 && (
+                <div>
+                  <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    <PawPrint className="inline h-3 w-3 mr-1" />
+                    Pet Food
+                  </div>
+                  {results!.petFoods.map((pf, index) => {
+                    const globalIndex =
+                      results!.users.length +
+                      results!.recipes.length +
+                      results!.reviews.length +
+                      results!.drinks.length +
+                      index;
+                    return (
+                      <button
+                        key={pf.id}
+                        onClick={() => handleResultClick(pf)}
+                        className={cn(
+                          "w-full px-3 py-2 flex items-center space-x-3 hover:bg-muted transition-colors text-left",
+                          selectedIndex === globalIndex && "bg-muted"
+                        )}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{pf.name}</div>
+                          <div className="text-sm text-muted-foreground truncate">
+                            {pf.route}
+                          </div>
                         </div>
                       </button>
                     );
