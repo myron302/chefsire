@@ -198,7 +198,7 @@ export default function DMInboxPage() {
       <div className="relative max-w-3xl mx-auto p-4 md:p-6 space-y-6">
         {/* Royal Header */}
         <div className="relative">
-          <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 to-red-600 rounded-lg blur opacity-20"></div>
+          <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 to-red-600 rounded-lg blur opacity-20 pointer-events-none"></div>
           <div className="relative bg-white rounded-lg p-6 shadow-xl border-2 border-amber-200">
             <div className="flex items-center gap-3">
               <div className="relative">
@@ -221,7 +221,7 @@ export default function DMInboxPage() {
 
         {/* Search */}
         <div className="relative">
-          <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-300 to-red-300 rounded-lg blur opacity-30"></div>
+          <div className="absolute -inset-0.5 bg-gradient-to-r from-orange-300 to-red-300 rounded-lg blur opacity-30 pointer-events-none"></div>
           <Input
             placeholder="Search conversations..."
             value={filter}
@@ -232,7 +232,7 @@ export default function DMInboxPage() {
 
         {/* Compose */}
         <div className="relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 via-amber-500 to-red-600 rounded-lg blur-md opacity-40 group-hover:opacity-60 transition duration-300"></div>
+          <div className="absolute -inset-1 bg-gradient-to-r from-orange-600 via-amber-500 to-red-600 rounded-lg blur-md opacity-40 group-hover:opacity-60 transition duration-300 pointer-events-none"></div>
           <Card className="relative border-2 border-amber-300 bg-white shadow-2xl">
             <CardHeader className="border-b-2 border-amber-200 bg-gradient-to-r from-orange-50 to-red-50">
               <CardTitle className="text-base flex items-center gap-2">
