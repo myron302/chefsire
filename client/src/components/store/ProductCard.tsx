@@ -34,9 +34,9 @@ export const ProductCard: React.FC<ProductCardProps> = ({
     <Card className="overflow-hidden hover:shadow-lg transition-shadow duration-300">
       {/* Product Image */}
       <div className="relative h-48 bg-gray-200">
-        {product.image_url ? (
+        {(product.image_url || (product as any).images?.[0]) ? (
           <img
-            src={product.image_url}
+            src={product.image_url || (product as any).images?.[0]}
             alt={product.name}
             className="w-full h-full object-cover"
           />
