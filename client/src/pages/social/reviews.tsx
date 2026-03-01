@@ -181,7 +181,7 @@ export default function ReviewsPage() {
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
-  // ✅ NEW: support deep linking from global search -> /reviews?q=RestaurantName
+  // ✅ NEW: allow deep-linking from global search -> /reviews?q=RestaurantName
   useEffect(() => {
     try {
       const qs = location.split("?")[1] || "";
@@ -327,7 +327,7 @@ export default function ReviewsPage() {
         />
 
         {filtersOpen && (
-          <div className="rounded-xl border bg-muted/30 p-4 space-y-4>
+          <div className="rounded-xl border bg-muted/30 p-4 space-y-4">
 
             {/* Price filter */}
             <div>
@@ -478,7 +478,7 @@ export default function ReviewsPage() {
                       </div>
                     )}
 
-                    <div className="p-5 space-y-4>
+                    <div className="p-5 space-y-4">
 
                       {/* ── Business name + rating + price ── */}
                       <div className="flex items-start justify-between gap-3">
@@ -537,7 +537,7 @@ export default function ReviewsPage() {
 
                       {/* ── Pros / Cons ── */}
                       {(pros.length > 0 || cons.length > 0) && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                           {pros.length > 0 && (
                             <div className="rounded-lg border bg-emerald-50/50 p-3">
                               <div className="flex items-center gap-1.5 font-semibold text-emerald-700 text-xs uppercase tracking-wide mb-2">
