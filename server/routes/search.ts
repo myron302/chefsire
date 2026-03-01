@@ -116,6 +116,24 @@ router.get("/autocomplete", async (req, res) => {
         type: "drink" as const,
       }));
 
+    // If the user's free-text query strongly matches a known drinks route,
+    // prefer routing cocktail-name results to that category/subcategory page
+    // so users land on pages that render recipe cards.
+    const bestDrinkRoute = (() => {
+      const exact = DRINK_ROUTES.find(
+        (x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower
+      );
+      if (exact) return exact.route;
+
+      const containsId = DRINK_ROUTES.find((x) => x.id.toLowerCase().includes(qLower));
+      if (containsId) return containsId.route;
+
+      const containsName = DRINK_ROUTES.find((x) => x.name.toLowerCase().includes(qLower));
+      if (containsName) return containsName.route;
+
+      return null;
+    })();
+
     const petFoodMatches = PET_FOOD_ROUTES
       .filter(
         (x) =>
@@ -168,7 +186,9 @@ router.get("/autocomplete", async (req, res) => {
             name: d.title,
             imageUrl: d.imageUrl || undefined,
             category: d.category || undefined,
-            route: `/drinks?q=${encodeURIComponent(trimmedQuery)}`,
+            // Prefer a real drinks category/subcategory page when the query matches one,
+            // otherwise fall back to the drinks hub query.
+            route: bestDrinkRoute || `/drinks?q=${encodeURIComponent(trimmedQuery)}`,
             type: "drink" as const,
           }))
         )
