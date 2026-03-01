@@ -1,6 +1,7 @@
 // client/src/pages/social/reviews.tsx
 import { useMemo, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import PostCard from "@/components/post-card";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -166,6 +167,7 @@ function StarDisplay({ rating }: { rating: number }) {
 }
 
 export default function ReviewsPage() {
+  const [location] = useLocation();
   const { user } = useUser();
   const { toast } = useToast();
   const currentUserId = user?.id || "";
@@ -178,6 +180,25 @@ export default function ReviewsPage() {
   const [savedIds, setSavedIds] = useState<number[]>([]);
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
+
+  // ✅ NEW: allow deep links from the top search box -> /reviews?q=RestaurantName
+  useEffect(() => {
+    try {
+      const qs = location.split("?")[1] || "";
+      if (!qs) return;
+
+      const params = new URLSearchParams(qs);
+      const qParam = params.get("q");
+
+      if (qParam && qParam.trim()) {
+        const next = qParam.trim();
+        // Only set if it actually changed (prevents annoying resets)
+        setQ((prev) => (prev === next ? prev : next));
+      }
+    } catch {
+      // ignore malformed querystrings
+    }
+  }, [location]);
 
   useEffect(() => {
     const saved = localStorage.getItem("saved_reviews");
