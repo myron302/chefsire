@@ -1,5 +1,7 @@
 // server/routes/search.ts
 import { Router } from "express";
+import fs from "node:fs";
+import path from "node:path";
 import { storage } from "../storage";
 import { searchRecipes } from "../services/recipes-service";
 import { searchDrinks } from "../services/drinks-service";
@@ -8,6 +10,36 @@ import { posts, users } from "@shared/schema";
 import { and, desc, eq, ilike } from "drizzle-orm";
 
 const router = Router();
+
+type DrinkIndexEntry = { name: string; route: string };
+type DrinkIndexFile = {
+  recipes?: Record<string, DrinkIndexEntry>;
+  routes?: Array<{ route: string; title: string }>;
+  duplicates?: Array<{ key: string; name: string; keptRoute: string; duplicateRoute: string }>;
+  generatedAt?: string;
+};
+
+let drinkIndexCache: DrinkIndexFile | null | undefined;
+
+function normalizeDrinkQuery(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function loadDrinkIndex(): DrinkIndexFile | null {
+  if (drinkIndexCache !== undefined) {
+    return drinkIndexCache;
+  }
+
+  try {
+    const filePath = path.join(process.cwd(), "server", "generated", "drink-index.json");
+    const json = fs.readFileSync(filePath, "utf8");
+    drinkIndexCache = JSON.parse(json) as DrinkIndexFile;
+  } catch {
+    drinkIndexCache = null;
+  }
+
+  return drinkIndexCache;
+}
 
 /**
  * GET /api/search/autocomplete
@@ -30,6 +62,7 @@ router.get("/autocomplete", async (req, res) => {
 
     const trimmedQuery = query.trim();
     const qLower = trimmedQuery.toLowerCase();
+    const drinkIndex = loadDrinkIndex();
 
     // --- Static site categories (drinks + pet food) ---
     // These routes exist as top-level categories/subpages in the app.
@@ -114,6 +147,7 @@ router.get("/autocomplete", async (req, res) => {
         category: x.category,
         route: x.route,
         type: "drink" as const,
+        matchKind: "category" as const,
       }));
 
     // If the user's free-text query strongly matches a known drinks route,
@@ -133,6 +167,23 @@ router.get("/autocomplete", async (req, res) => {
 
       return null;
     })();
+
+    const exactDrinkRouteMatch = DRINK_ROUTES.find(
+      (x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower
+    );
+    const exactDrinkRecipe = exactDrinkRouteMatch
+      ? null
+      : drinkIndex?.recipes?.[normalizeDrinkQuery(trimmedQuery)];
+
+    const exactDrinkMatch = exactDrinkRecipe
+      ? {
+          id: `indexed-${normalizeDrinkQuery(exactDrinkRecipe.name)}`,
+          name: exactDrinkRecipe.name,
+          route: exactDrinkRecipe.route,
+          type: "drink" as const,
+          matchKind: "recipe-exact" as const,
+        }
+      : null;
 
     const petFoodMatches = PET_FOOD_ROUTES
       .filter(
@@ -190,6 +241,7 @@ router.get("/autocomplete", async (req, res) => {
             // otherwise fall back to the drinks hub query.
             route: bestDrinkRoute || `/drinks?q=${encodeURIComponent(trimmedQuery)}`,
             type: "drink" as const,
+            matchKind: "external" as const,
           }))
         )
         .catch(() => []),
@@ -221,7 +273,9 @@ router.get("/autocomplete", async (req, res) => {
     ]);
 
     // Merge drinks: category routes first (site navigation), then drink-name matches.
-    const mergedDrinks = [...drinkCategoryMatches, ...cocktailDbDrinks].slice(0, 10);
+    const mergedDrinks = [exactDrinkMatch, ...drinkCategoryMatches, ...cocktailDbDrinks]
+      .filter((x): x is NonNullable<typeof x> => Boolean(x))
+      .slice(0, 10);
 
     // Reviews: extract restaurant name from caption's first line when possible.
     const reviews = (reviewPosts as any[]).map((p) => {

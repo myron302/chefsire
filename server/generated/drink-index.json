@@ -1,0 +1,6337 @@
+{
+  "recipes": {
+    "classic cold brew": {
+      "name": "Classic Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "vanilla sweet cream cold brew": {
+      "name": "Vanilla Sweet Cream Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "nitro cold brew": {
+      "name": "Nitro Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "salted caramel cold brew": {
+      "name": "Salted Caramel Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "mocha cold brew": {
+      "name": "Mocha Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "protein cold brew": {
+      "name": "Protein Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "oat milk cold brew": {
+      "name": "Oat Milk Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "coconut cream cold brew": {
+      "name": "Coconut Cream Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "pure cold brew": {
+      "name": "Pure Cold Brew",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "flavored": {
+      "name": "Flavored",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "specialty": {
+      "name": "Specialty",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "smooth flavor": {
+      "name": "Smooth Flavor",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "high caffeine": {
+      "name": "High Caffeine",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "refreshing": {
+      "name": "Refreshing",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "versatile": {
+      "name": "Versatile",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "protein shakes": {
+      "name": "Protein Shakes",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "smoothies": {
+      "name": "Smoothies",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "all caffeinated": {
+      "name": "All Caffeinated",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "potent potables": {
+      "name": "Potent Potables",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "all drinks": {
+      "name": "All Drinks",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "espresso": {
+      "name": "Espresso",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "iced coffee": {
+      "name": "Iced Coffee",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "tea": {
+      "name": "Tea",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "matcha": {
+      "name": "Matcha",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "lattes": {
+      "name": "Lattes",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "energy drinks": {
+      "name": "Energy Drinks",
+      "route": "/drinks/caffeinated/cold-brew"
+    },
+    "classic energy coffee": {
+      "name": "Classic Energy Coffee",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "pre-workout coffee": {
+      "name": "Pre-Workout Coffee",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "guarana coffee": {
+      "name": "Guarana Coffee",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "taurine coffee blend": {
+      "name": "Taurine Coffee Blend",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "green tea energy blend": {
+      "name": "Green Tea Energy Blend",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "bcaa coffee": {
+      "name": "BCAA Coffee",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "rocket fuel coffee": {
+      "name": "Rocket Fuel Coffee",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "yerba mate coffee": {
+      "name": "Yerba Mate Coffee",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "classic energy": {
+      "name": "Classic Energy",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "energy latte": {
+      "name": "Energy Latte",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "flavored energy": {
+      "name": "Flavored Energy",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "mocha": {
+      "name": "Mocha",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "caffeine boost": {
+      "name": "Caffeine Boost",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "customizable": {
+      "name": "Customizable",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "convenient": {
+      "name": "Convenient",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "satisfying": {
+      "name": "Satisfying",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "cold brew": {
+      "name": "Cold Brew",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "energy": {
+      "name": "Energy",
+      "route": "/drinks/caffeinated/energy"
+    },
+    "classic espresso shot": {
+      "name": "Classic Espresso Shot",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "doppio": {
+      "name": "Doppio",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "espresso macchiato": {
+      "name": "Espresso Macchiato",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "caffè americano": {
+      "name": "Caffè Americano",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "ristretto": {
+      "name": "Ristretto",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "lungo": {
+      "name": "Lungo",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "cortado": {
+      "name": "Cortado",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "affogato": {
+      "name": "Affogato",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "pure espresso": {
+      "name": "Pure Espresso",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "milk-based": {
+      "name": "Milk-Based",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "dessert": {
+      "name": "Dessert",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "energy boost": {
+      "name": "Energy Boost",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "mental clarity": {
+      "name": "Mental Clarity",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "intense flavor": {
+      "name": "Intense Flavor",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "low calorie": {
+      "name": "Low Calorie",
+      "route": "/drinks/caffeinated/espresso"
+    },
+    "classic iced coffee": {
+      "name": "Classic Iced Coffee",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "vanilla iced latte": {
+      "name": "Vanilla Iced Latte",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "caramel iced coffee": {
+      "name": "Caramel Iced Coffee",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "mocha iced coffee": {
+      "name": "Mocha Iced Coffee",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "coconut iced coffee": {
+      "name": "Coconut Iced Coffee",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "hazelnut iced latte": {
+      "name": "Hazelnut Iced Latte",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "salted caramel iced coffee": {
+      "name": "Salted Caramel Iced Coffee",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "peppermint mocha iced": {
+      "name": "Peppermint Mocha Iced",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "classic iced": {
+      "name": "Classic Iced",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "iced latte": {
+      "name": "Iced Latte",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "flavored iced": {
+      "name": "Flavored Iced",
+      "route": "/drinks/caffeinated/iced"
+    },
+    "espresso drinks": {
+      "name": "Espresso Drinks",
+      "route": "/drinks/caffeinated"
+    },
+    "specialty coffee": {
+      "name": "Specialty Coffee",
+      "route": "/drinks/caffeinated"
+    },
+    "lattes & cappuccinos": {
+      "name": "Lattes & Cappuccinos",
+      "route": "/drinks/caffeinated"
+    },
+    "morning boost": {
+      "name": "Morning Boost",
+      "route": "/drinks/caffeinated"
+    },
+    "afternoon pick-me-up": {
+      "name": "Afternoon Pick-Me-Up",
+      "route": "/drinks/caffeinated"
+    },
+    "focus & productivity": {
+      "name": "Focus & Productivity",
+      "route": "/drinks/caffeinated"
+    },
+    "pre-workout": {
+      "name": "Pre-Workout",
+      "route": "/drinks/caffeinated"
+    },
+    "social drink": {
+      "name": "Social Drink",
+      "route": "/drinks/caffeinated"
+    },
+    "light caffeine": {
+      "name": "Light Caffeine",
+      "route": "/drinks/caffeinated"
+    },
+    "classic vanilla latte": {
+      "name": "Classic Vanilla Latte",
+      "route": "/drinks/caffeinated"
+    },
+    "iced caramel macchiato": {
+      "name": "Iced Caramel Macchiato",
+      "route": "/drinks/caffeinated"
+    },
+    "matcha energy latte": {
+      "name": "Matcha Energy Latte",
+      "route": "/drinks/caffeinated"
+    },
+    "cold brew protein": {
+      "name": "Cold Brew Protein",
+      "route": "/drinks/caffeinated"
+    },
+    "classic latte": {
+      "name": "Classic Latte",
+      "route": "/drinks/caffeinated/lattes"
+    },
+    "vanilla latte": {
+      "name": "Vanilla Latte",
+      "route": "/drinks/caffeinated/lattes"
+    },
+    "caramel latte": {
+      "name": "Caramel Latte",
+      "route": "/drinks/caffeinated/lattes"
+    },
+    "hazelnut latte": {
+      "name": "Hazelnut Latte",
+      "route": "/drinks/caffeinated/lattes"
+    },
+    "caffe mocha": {
+      "name": "Caffe Mocha",
+      "route": "/drinks/caffeinated/lattes"
+    },
+    "cappuccino": {
+      "name": "Cappuccino",
+      "route": "/drinks/caffeinated/lattes"
+    },
+    "pumpkin spice latte": {
+      "name": "Pumpkin Spice Latte",
+      "route": "/drinks/caffeinated/lattes"
+    },
+    "flat white": {
+      "name": "Flat White",
+      "route": "/drinks/caffeinated/lattes"
+    },
+    "latte latte": {
+      "name": "Latte Latte",
+      "route": "/drinks/caffeinated/lattes"
+    },
+    "flavored latte": {
+      "name": "Flavored Latte",
+      "route": "/drinks/caffeinated/lattes"
+    },
+    "classic matcha latte": {
+      "name": "Classic Matcha Latte",
+      "route": "/drinks/caffeinated/matcha"
+    },
+    "iced matcha latte": {
+      "name": "Iced Matcha Latte",
+      "route": "/drinks/caffeinated/matcha"
+    },
+    "ceremonial matcha": {
+      "name": "Ceremonial Matcha",
+      "route": "/drinks/caffeinated/matcha"
+    },
+    "pure": {
+      "name": "Pure",
+      "route": "/drinks/caffeinated/matcha"
+    },
+    "latte": {
+      "name": "Latte",
+      "route": "/drinks/caffeinated/matcha"
+    },
+    "calm focus": {
+      "name": "Calm Focus",
+      "route": "/drinks/caffeinated/matcha"
+    },
+    "antioxidants": {
+      "name": "Antioxidants",
+      "route": "/drinks/caffeinated/matcha"
+    },
+    "steady energy": {
+      "name": "Steady Energy",
+      "route": "/drinks/caffeinated/matcha"
+    },
+    "turkish coffee": {
+      "name": "Turkish Coffee",
+      "route": "/drinks/caffeinated/specialty"
+    },
+    "vietnamese coffee": {
+      "name": "Vietnamese Coffee",
+      "route": "/drinks/caffeinated/specialty"
+    },
+    "red eye": {
+      "name": "Red Eye",
+      "route": "/drinks/caffeinated/specialty"
+    },
+    "dalgona coffee": {
+      "name": "Dalgona Coffee",
+      "route": "/drinks/caffeinated/specialty"
+    },
+    "café de olla": {
+      "name": "Café de Olla",
+      "route": "/drinks/caffeinated/specialty"
+    },
+    "classic specialty": {
+      "name": "Classic Specialty",
+      "route": "/drinks/caffeinated/specialty"
+    },
+    "specialty latte": {
+      "name": "Specialty Latte",
+      "route": "/drinks/caffeinated/specialty"
+    },
+    "flavored specialty": {
+      "name": "Flavored Specialty",
+      "route": "/drinks/caffeinated/specialty"
+    },
+    "classic green tea": {
+      "name": "Classic Green Tea",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "earl grey tea": {
+      "name": "Earl Grey Tea",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "chamomile tea": {
+      "name": "Chamomile Tea",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "jasmine tea": {
+      "name": "Jasmine Tea",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "chai tea latte": {
+      "name": "Chai Tea Latte",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "peppermint tea": {
+      "name": "Peppermint Tea",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "oolong tea": {
+      "name": "Oolong Tea",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "english breakfast tea": {
+      "name": "English Breakfast Tea",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "green tea": {
+      "name": "Green Tea",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "black tea": {
+      "name": "Black Tea",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "herbal": {
+      "name": "Herbal",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "chai": {
+      "name": "Chai",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "oolong": {
+      "name": "Oolong",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "natural energy": {
+      "name": "Natural Energy",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "relaxation": {
+      "name": "Relaxation",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "metabolism": {
+      "name": "Metabolism",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "focus": {
+      "name": "Focus",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "digestion": {
+      "name": "Digestion",
+      "route": "/drinks/caffeinated/tea"
+    },
+    "lemon ginger blast": {
+      "name": "Lemon Ginger Blast",
+      "route": "/drinks/detoxes"
+    },
+    "green machine": {
+      "name": "Green Machine",
+      "route": "/drinks/detoxes"
+    },
+    "cucumber mint water": {
+      "name": "Cucumber Mint Water",
+      "route": "/drinks/detoxes"
+    },
+    "dandelion tea": {
+      "name": "Dandelion Tea",
+      "route": "/drinks/detoxes"
+    },
+    "caffeinated drinks": {
+      "name": "Caffeinated Drinks",
+      "route": "/drinks/detoxes/juice"
+    },
+    "detoxes": {
+      "name": "Detoxes",
+      "route": "/drinks/detoxes/juice"
+    },
+    "gentle cleanse": {
+      "name": "Gentle Cleanse",
+      "route": "/drinks/detoxes/juice"
+    },
+    "moderate reset": {
+      "name": "Moderate Reset",
+      "route": "/drinks/detoxes/juice"
+    },
+    "intense cleanse": {
+      "name": "Intense Cleanse",
+      "route": "/drinks/detoxes/juice"
+    },
+    "seasonal cleanse": {
+      "name": "Seasonal Cleanse",
+      "route": "/drinks/detoxes/juice"
+    },
+    "green cleanse elixir": {
+      "name": "Green Cleanse Elixir",
+      "route": "/drinks/detoxes/juice"
+    },
+    "liver flush tonic": {
+      "name": "Liver Flush Tonic",
+      "route": "/drinks/detoxes/juice"
+    },
+    "digestive rescue juice": {
+      "name": "Digestive Rescue Juice",
+      "route": "/drinks/detoxes/juice"
+    },
+    "immunity shield booster": {
+      "name": "Immunity Shield Booster",
+      "route": "/drinks/detoxes/juice"
+    },
+    "red radiance cleanse": {
+      "name": "Red Radiance Cleanse",
+      "route": "/drinks/detoxes/juice"
+    },
+    "kidney cleanser elixir": {
+      "name": "Kidney Cleanser Elixir",
+      "route": "/drinks/detoxes/juice"
+    },
+    "skin glow elixir": {
+      "name": "Skin Glow Elixir",
+      "route": "/drinks/detoxes/juice"
+    },
+    "adrenal revive tonic": {
+      "name": "Adrenal Revive Tonic",
+      "route": "/drinks/detoxes/juice"
+    },
+    "heavy metal cleanse": {
+      "name": "Heavy Metal Cleanse",
+      "route": "/drinks/detoxes/juice"
+    },
+    "morning glory energizer": {
+      "name": "Morning Glory Energizer",
+      "route": "/drinks/detoxes/juice"
+    },
+    "sunset serenity juice": {
+      "name": "Sunset Serenity Juice",
+      "route": "/drinks/detoxes/juice"
+    },
+    "gut hero restorer": {
+      "name": "Gut Hero Restorer",
+      "route": "/drinks/detoxes/juice"
+    },
+    "green tea metabolism boost": {
+      "name": "Green Tea Metabolism Boost",
+      "route": "/drinks/detoxes/tea"
+    },
+    "dandelion root cleanse": {
+      "name": "Dandelion Root Cleanse",
+      "route": "/drinks/detoxes/tea"
+    },
+    "ginger turmeric anti-inflammatory": {
+      "name": "Ginger Turmeric Anti-inflammatory",
+      "route": "/drinks/detoxes/tea"
+    },
+    "peppermint digestive aid": {
+      "name": "Peppermint Digestive Aid",
+      "route": "/drinks/detoxes/tea"
+    },
+    "white tea antioxidant boost": {
+      "name": "White Tea Antioxidant Boost",
+      "route": "/drinks/detoxes/tea"
+    },
+    "hibiscus liver cleanse": {
+      "name": "Hibiscus Liver Cleanse",
+      "route": "/drinks/detoxes/tea"
+    },
+    "chamomile sleep tonic": {
+      "name": "Chamomile Sleep Tonic",
+      "route": "/drinks/detoxes/tea"
+    },
+    "matcha energy elixir": {
+      "name": "Matcha Energy Elixir",
+      "route": "/drinks/detoxes/tea"
+    },
+    "rooibos immune defense": {
+      "name": "Rooibos Immune Defense",
+      "route": "/drinks/detoxes/tea"
+    },
+    "smoothies & bowls": {
+      "name": "Smoothies & Bowls",
+      "route": "/drinks"
+    },
+    "detoxes & cleanses": {
+      "name": "Detoxes & Cleanses",
+      "route": "/drinks"
+    },
+    "green goddess bowl": {
+      "name": "Green Goddess Bowl",
+      "route": "/drinks"
+    },
+    "beast mode builder": {
+      "name": "Beast Mode Builder",
+      "route": "/drinks"
+    },
+    "cosmic martini": {
+      "name": "Cosmic Martini",
+      "route": "/drinks"
+    },
+    "old fashioned": {
+      "name": "Old Fashioned",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "martini": {
+      "name": "Martini",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "manhattan": {
+      "name": "Manhattan",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "negroni": {
+      "name": "Negroni",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "whiskey sour": {
+      "name": "Whiskey Sour",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "daiquiri": {
+      "name": "Daiquiri",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "sazerac": {
+      "name": "Sazerac",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "mint julep": {
+      "name": "Mint Julep",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "golden age": {
+      "name": "Golden Age",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "pre-prohibition": {
+      "name": "Pre-Prohibition",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "prohibition era": {
+      "name": "Prohibition Era",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "spirit-forward": {
+      "name": "Spirit-Forward",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "sours": {
+      "name": "Sours",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "aperitifs": {
+      "name": "Aperitifs",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "vodka": {
+      "name": "Vodka",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "whiskey & bourbon": {
+      "name": "Whiskey & Bourbon",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "tequila & mezcal": {
+      "name": "Tequila & Mezcal",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "rum": {
+      "name": "Rum",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "gin": {
+      "name": "Gin",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "cognac & brandy": {
+      "name": "Cognac & Brandy",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "liqueurs": {
+      "name": "Liqueurs",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "scotch & irish": {
+      "name": "Scotch & Irish",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "martinis": {
+      "name": "Martinis",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "spritz & mimosas": {
+      "name": "Spritz & Mimosas",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "seasonal": {
+      "name": "Seasonal",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "hot drinks": {
+      "name": "Hot Drinks",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "mocktails": {
+      "name": "Mocktails",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "sidecar": {
+      "name": "Sidecar",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "french connection": {
+      "name": "French Connection",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "vieux carré": {
+      "name": "Vieux Carré",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "sazerac (cognac)": {
+      "name": "Sazerac (Cognac)",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "cognac old fashioned": {
+      "name": "Cognac Old Fashioned",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "french 75 (cognac)": {
+      "name": "French 75 (Cognac)",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "brandy alexander": {
+      "name": "Brandy Alexander",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "metropolitan": {
+      "name": "Metropolitan",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "jack rose": {
+      "name": "Jack Rose",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "between the sheets": {
+      "name": "Between the Sheets",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "cognac sour": {
+      "name": "Cognac Sour",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "corpse reviver no. 1": {
+      "name": "Corpse Reviver No. 1",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "all spirits": {
+      "name": "All Spirits",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "cognac": {
+      "name": "Cognac",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "brandy": {
+      "name": "Brandy",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "apple brandy": {
+      "name": "Apple Brandy",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "classic cocktails": {
+      "name": "Classic Cocktails",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "classic daiquiri": {
+      "name": "Classic Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "hemingway daiquiri": {
+      "name": "Hemingway Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "strawberry daiquiri (shaken)": {
+      "name": "Strawberry Daiquiri (Shaken)",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "frozen strawberry daiquiri": {
+      "name": "Frozen Strawberry Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "banana daiquiri": {
+      "name": "Banana Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "pineapple daiquiri": {
+      "name": "Pineapple Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "coconut daiquiri": {
+      "name": "Coconut Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "mulata daiquiri": {
+      "name": "Mulata Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "frozen mango daiquiri": {
+      "name": "Frozen Mango Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "chartreuse daiquiri": {
+      "name": "Chartreuse Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "all styles": {
+      "name": "All Styles",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "classics": {
+      "name": "Classics",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "fruit": {
+      "name": "Fruit",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "frozen": {
+      "name": "Frozen",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "cuban heritage": {
+      "name": "Cuban Heritage",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "classic gin & tonic": {
+      "name": "Classic Gin & Tonic",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "tom collins": {
+      "name": "Tom Collins",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "aviation": {
+      "name": "Aviation",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "french 75": {
+      "name": "French 75",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "bramble": {
+      "name": "Bramble",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "last word": {
+      "name": "Last Word",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "bee's knees": {
+      "name": "Bee's Knees",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "southside": {
+      "name": "Southside",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "corpse reviver #2": {
+      "name": "Corpse Reviver #2",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "all cocktails": {
+      "name": "All Cocktails",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "classic gin": {
+      "name": "Classic Gin",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "modern gin": {
+      "name": "Modern Gin",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "irish coffee": {
+      "name": "Irish Coffee",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "hot toddy": {
+      "name": "Hot Toddy",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "mulled wine": {
+      "name": "Mulled Wine",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "hot buttered rum": {
+      "name": "Hot Buttered Rum",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "tom and jerry": {
+      "name": "Tom and Jerry",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "café brulot": {
+      "name": "Café Brulot",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "hot apple cider": {
+      "name": "Hot Apple Cider",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "hot chocolate with rum": {
+      "name": "Hot Chocolate with Rum",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "all hot drinks": {
+      "name": "All Hot Drinks",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "coffee cocktails": {
+      "name": "Coffee Cocktails",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "whiskey hot drinks": {
+      "name": "Whiskey Hot Drinks",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "margarita": {
+      "name": "Margarita",
+      "route": "/drinks/potent-potables"
+    },
+    "mojito": {
+      "name": "Mojito",
+      "route": "/drinks/potent-potables"
+    },
+    "amaretto sour": {
+      "name": "Amaretto Sour",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "grasshopper": {
+      "name": "Grasshopper",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "b-52": {
+      "name": "B-52",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "midori sour": {
+      "name": "Midori Sour",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "chambord royale": {
+      "name": "Chambord Royale",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "baileys mudslide": {
+      "name": "Baileys Mudslide",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "limoncello spritz": {
+      "name": "Limoncello Spritz",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "frangelico fizz": {
+      "name": "Frangelico Fizz",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "godfather": {
+      "name": "Godfather",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "cointreau margarita": {
+      "name": "Cointreau Margarita",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "st. germain cocktail": {
+      "name": "St. Germain Cocktail",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "aperol spritz": {
+      "name": "Aperol Spritz",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "drambuie rusty nail": {
+      "name": "Drambuie Rusty Nail",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "grand marnier sidecar": {
+      "name": "Grand Marnier Sidecar",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "jägermeister bomb": {
+      "name": "Jägermeister Bomb",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "all liqueurs": {
+      "name": "All Liqueurs",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "fruit liqueurs": {
+      "name": "Fruit Liqueurs",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "cream liqueurs": {
+      "name": "Cream Liqueurs",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "nut liqueurs": {
+      "name": "Nut Liqueurs",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "herbal liqueurs": {
+      "name": "Herbal Liqueurs",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "classic gin martini": {
+      "name": "Classic Gin Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "vodka martini": {
+      "name": "Vodka Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "dirty martini": {
+      "name": "Dirty Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "espresso martini": {
+      "name": "Espresso Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "pornstar martini": {
+      "name": "Pornstar Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "lychee martini": {
+      "name": "Lychee Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "french martini": {
+      "name": "French Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "vesper martini": {
+      "name": "Vesper Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "all martinis": {
+      "name": "All Martinis",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "classic": {
+      "name": "Classic",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "modern": {
+      "name": "Modern",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "virgin mojito": {
+      "name": "Virgin Mojito",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "shirley temple": {
+      "name": "Shirley Temple",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "cucumber cooler": {
+      "name": "Cucumber Cooler",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "tropical sunrise": {
+      "name": "Tropical Sunrise",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "lavender lemonade fizz": {
+      "name": "Lavender Lemonade Fizz",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "watermelon mint smash": {
+      "name": "Watermelon Mint Smash",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "ginger spice mule": {
+      "name": "Ginger Spice Mule",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "berry basil smash": {
+      "name": "Berry Basil Smash",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "pomegranate sparkler": {
+      "name": "Pomegranate Sparkler",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "mango chili margarita": {
+      "name": "Mango Chili Margarita",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "pineapple cilantro refresher": {
+      "name": "Pineapple Cilantro Refresher",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "espresso martini (mocktail)": {
+      "name": "Espresso Martini (Mocktail)",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "all mocktails": {
+      "name": "All Mocktails",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "tropical": {
+      "name": "Tropical",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "berry": {
+      "name": "Berry",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "sparkling": {
+      "name": "Sparkling",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "spiced": {
+      "name": "Spiced",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "coffee": {
+      "name": "Coffee",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "piña colada": {
+      "name": "Piña Colada",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "mai tai": {
+      "name": "Mai Tai",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "dark and stormy": {
+      "name": "Dark and Stormy",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "zombie": {
+      "name": "Zombie",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "cuba libre": {
+      "name": "Cuba Libre",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "hurricane": {
+      "name": "Hurricane",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "ti' punch": {
+      "name": "Ti' Punch",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "painkiller": {
+      "name": "Painkiller",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "jungle bird": {
+      "name": "Jungle Bird",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "rum old fashioned": {
+      "name": "Rum Old Fashioned",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "penicillin": {
+      "name": "Penicillin",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "rob roy": {
+      "name": "Rob Roy",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "blood and sand": {
+      "name": "Blood and Sand",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "rusty nail": {
+      "name": "Rusty Nail",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "irish mule": {
+      "name": "Irish Mule",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "irish old fashioned": {
+      "name": "Irish Old Fashioned",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "tipperary": {
+      "name": "Tipperary",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "smoky martini": {
+      "name": "Smoky Martini",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "highland sour": {
+      "name": "Highland Sour",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "emerald isle": {
+      "name": "Emerald Isle",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "cameron's kick": {
+      "name": "Cameron's Kick",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "peppermint white russian": {
+      "name": "Peppermint White Russian",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "elderflower gin fizz": {
+      "name": "Elderflower Gin Fizz",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "lavender lemon drop": {
+      "name": "Lavender Lemon Drop",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "strawberry basil smash": {
+      "name": "Strawberry Basil Smash",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "watermelon margarita": {
+      "name": "Watermelon Margarita",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "frozen piña colada": {
+      "name": "Frozen Piña Colada",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "cucumber gin & tonic": {
+      "name": "Cucumber Gin & Tonic",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "apple cider bourbon smash": {
+      "name": "Apple Cider Bourbon Smash",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "pumpkin spice espresso martini": {
+      "name": "Pumpkin Spice Espresso Martini",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "cranberry moscow mule": {
+      "name": "Cranberry Moscow Mule",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "winter": {
+      "name": "Winter",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "spring": {
+      "name": "Spring",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "summer": {
+      "name": "Summer",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "fall": {
+      "name": "Fall",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "classic mimosa": {
+      "name": "Classic Mimosa",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "bellini": {
+      "name": "Bellini",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "strawberry mimosa": {
+      "name": "Strawberry Mimosa",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "hugo spritz": {
+      "name": "Hugo Spritz",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "mimosa royale": {
+      "name": "Mimosa Royale",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "campari spritz": {
+      "name": "Campari Spritz",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "pineapple mimosa": {
+      "name": "Pineapple Mimosa",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "rossini": {
+      "name": "Rossini",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "mimosas": {
+      "name": "Mimosas",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "spritzes": {
+      "name": "Spritzes",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "bellinis": {
+      "name": "Bellinis",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "classic margarita": {
+      "name": "Classic Margarita",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "paloma": {
+      "name": "Paloma",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "tequila sunrise": {
+      "name": "Tequila Sunrise",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "tommy's margarita": {
+      "name": "Tommy's Margarita",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "mezcal margarita": {
+      "name": "Mezcal Margarita",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "oaxaca old fashioned": {
+      "name": "Oaxaca Old Fashioned",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "spicy margarita": {
+      "name": "Spicy Margarita",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "tequila old fashioned": {
+      "name": "Tequila Old Fashioned",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "virgin mary": {
+      "name": "Virgin Mary",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "roy rogers": {
+      "name": "Roy Rogers",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "cucumber mint cooler": {
+      "name": "Cucumber Mint Cooler",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "grapefruit rosemary spritz": {
+      "name": "Grapefruit Rosemary Spritz",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "lavender lemonade": {
+      "name": "Lavender Lemonade",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "watermelon basil refresher": {
+      "name": "Watermelon Basil Refresher",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "berry blast": {
+      "name": "Berry Blast",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "pineapple ginger fizz": {
+      "name": "Pineapple Ginger Fizz",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "iced hibiscus tea spritzer": {
+      "name": "Iced Hibiscus Tea Spritzer",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "matcha mint cooler": {
+      "name": "Matcha Mint Cooler",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "spiced apple cider mocktail": {
+      "name": "Spiced Apple Cider Mocktail",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "moscow mule": {
+      "name": "Moscow Mule",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "bloody mary": {
+      "name": "Bloody Mary",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "cosmopolitan": {
+      "name": "Cosmopolitan",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "white russian": {
+      "name": "White Russian",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "vodka tonic": {
+      "name": "Vodka Tonic",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "lemon drop": {
+      "name": "Lemon Drop",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "sea breeze": {
+      "name": "Sea Breeze",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "black russian": {
+      "name": "Black Russian",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "vodka cranberry": {
+      "name": "Vodka Cranberry",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "classic vodka": {
+      "name": "Classic Vodka",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "modern vodka": {
+      "name": "Modern Vodka",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "fruity vodka": {
+      "name": "Fruity Vodka",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "boulevardier": {
+      "name": "Boulevardier",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "whiskey highball": {
+      "name": "Whiskey Highball",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "gold rush": {
+      "name": "Gold Rush",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "new york sour": {
+      "name": "New York Sour",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "whiskey smash": {
+      "name": "Whiskey Smash",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "paper plane": {
+      "name": "Paper Plane",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "bourbon classics": {
+      "name": "Bourbon Classics",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "whiskey classics": {
+      "name": "Whiskey Classics",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "modern whiskey": {
+      "name": "Modern Whiskey",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "detox drinks": {
+      "name": "Detox Drinks",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "whey protein": {
+      "name": "Whey Protein",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "plant-based": {
+      "name": "Plant-Based",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "casein": {
+      "name": "Casein",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "collagen": {
+      "name": "Collagen",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "egg protein": {
+      "name": "Egg Protein",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "carnivore power blast": {
+      "name": "Carnivore Power Blast",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "primal strength formula": {
+      "name": "Primal Strength Formula",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "paleo performance shake": {
+      "name": "Paleo Performance Shake",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "beef & berry recovery": {
+      "name": "Beef & Berry Recovery",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "coffee beef energizer": {
+      "name": "Coffee Beef Energizer",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "tropical beef fusion": {
+      "name": "Tropical Beef Fusion",
+      "route": "/drinks/protein-shakes/beef"
+    },
+    "beef protein": {
+      "name": "Beef Protein",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "midnight muscle recovery": {
+      "name": "Midnight Muscle Recovery",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "night owl chocolate": {
+      "name": "Night Owl Chocolate",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "strawberry moonlight": {
+      "name": "Strawberry Moonlight",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "cookie dough dreams": {
+      "name": "Cookie Dough Dreams",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "banana bedtime blend": {
+      "name": "Banana Bedtime Blend",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "coffee shop latte": {
+      "name": "Coffee Shop Latte",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "blueberry serenity": {
+      "name": "Blueberry Serenity",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "cinnamon swirl delight": {
+      "name": "Cinnamon Swirl Delight",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "peanut butter dream": {
+      "name": "Peanut Butter Dream",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "micellar casein": {
+      "name": "Micellar Casein",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "calcium caseinate": {
+      "name": "Calcium Caseinate",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "hydrolyzed casein": {
+      "name": "Hydrolyzed Casein",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "muscle recovery": {
+      "name": "Muscle Recovery",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "sleep quality": {
+      "name": "Sleep Quality",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "weight management": {
+      "name": "Weight Management",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "lean mass": {
+      "name": "Lean Mass",
+      "route": "/drinks/protein-shakes/casein"
+    },
+    "beauty boost berry": {
+      "name": "Beauty Boost Berry",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "joint support vanilla": {
+      "name": "Joint Support Vanilla",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "marine glow tropical": {
+      "name": "Marine Glow Tropical",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "multi-collagen complete": {
+      "name": "Multi-Collagen Complete",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "vegan collagen builder": {
+      "name": "Vegan Collagen Builder",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "anti-aging gold formula": {
+      "name": "Anti-Aging Gold Formula",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "type i collagen": {
+      "name": "Type I Collagen",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "type ii collagen": {
+      "name": "Type II Collagen",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "type iii collagen": {
+      "name": "Type III Collagen",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "multi-type blend": {
+      "name": "Multi-Type Blend",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "marine collagen": {
+      "name": "Marine Collagen",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "bovine collagen": {
+      "name": "Bovine Collagen",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "chicken collagen": {
+      "name": "Chicken Collagen",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "plant-based support": {
+      "name": "Plant-Based Support",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "skin health": {
+      "name": "Skin Health",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "joint health": {
+      "name": "Joint Health",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "anti-aging": {
+      "name": "Anti-Aging",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "hair & nails": {
+      "name": "Hair & Nails",
+      "route": "/drinks/protein-shakes/collagen"
+    },
+    "classic egg white power": {
+      "name": "Classic Egg White Power",
+      "route": "/drinks/protein-shakes/egg"
+    },
+    "vanilla egg protein delight": {
+      "name": "Vanilla Egg Protein Delight",
+      "route": "/drinks/protein-shakes/egg"
+    },
+    "berry egg fusion": {
+      "name": "Berry Egg Fusion",
+      "route": "/drinks/protein-shakes/egg"
+    },
+    "chocolate egg power": {
+      "name": "Chocolate Egg Power",
+      "route": "/drinks/protein-shakes/egg"
+    },
+    "green egg power smoothie": {
+      "name": "Green Egg Power Smoothie",
+      "route": "/drinks/protein-shakes/egg"
+    },
+    "tropical egg protein": {
+      "name": "Tropical Egg Protein",
+      "route": "/drinks/protein-shakes/egg"
+    },
+    "coffee egg energizer": {
+      "name": "Coffee Egg Energizer",
+      "route": "/drinks/protein-shakes/egg"
+    },
+    "pumpkin spice egg protein": {
+      "name": "Pumpkin Spice Egg Protein",
+      "route": "/drinks/protein-shakes/egg"
+    },
+    "matcha egg green tea": {
+      "name": "Matcha Egg Green Tea",
+      "route": "/drinks/protein-shakes/egg"
+    },
+    "muscle building": {
+      "name": "Muscle Building",
+      "route": "/drinks/protein-shakes"
+    },
+    "lean muscle": {
+      "name": "Lean Muscle",
+      "route": "/drinks/protein-shakes"
+    },
+    "strength": {
+      "name": "Strength",
+      "route": "/drinks/protein-shakes"
+    },
+    "endurance": {
+      "name": "Endurance",
+      "route": "/drinks/protein-shakes"
+    },
+    "weight loss": {
+      "name": "Weight Loss",
+      "route": "/drinks/protein-shakes"
+    },
+    "recovery": {
+      "name": "Recovery",
+      "route": "/drinks/protein-shakes"
+    },
+    "plant protein": {
+      "name": "Plant Protein",
+      "route": "/drinks/protein-shakes"
+    },
+    "creatine": {
+      "name": "Creatine",
+      "route": "/drinks/protein-shakes"
+    },
+    "bcaa": {
+      "name": "BCAA",
+      "route": "/drinks/protein-shakes"
+    },
+    "l-glutamine": {
+      "name": "L-Glutamine",
+      "route": "/drinks/protein-shakes"
+    },
+    "beta-alanine": {
+      "name": "Beta-Alanine",
+      "route": "/drinks/protein-shakes"
+    },
+    "hmb": {
+      "name": "HMB",
+      "route": "/drinks/protein-shakes"
+    },
+    "post-workout": {
+      "name": "Post-Workout",
+      "route": "/drinks/protein-shakes"
+    },
+    "before bed": {
+      "name": "Before Bed",
+      "route": "/drinks/protein-shakes"
+    },
+    "intra-workout": {
+      "name": "Intra-Workout",
+      "route": "/drinks/protein-shakes"
+    },
+    "lean machine": {
+      "name": "Lean Machine",
+      "route": "/drinks/protein-shakes"
+    },
+    "power surge": {
+      "name": "Power Surge",
+      "route": "/drinks/protein-shakes"
+    },
+    "pea power green machine": {
+      "name": "Pea Power Green Machine",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "hemp heart hero": {
+      "name": "Hemp Heart Hero",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "rice & quinoa complete": {
+      "name": "Rice & Quinoa Complete",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "soy supreme classic": {
+      "name": "Soy Supreme Classic",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "pumpkin seed power": {
+      "name": "Pumpkin Seed Power",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "algae omega fusion": {
+      "name": "Algae Omega Fusion",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "matcha pea energizer": {
+      "name": "Matcha Pea Energizer",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "pb oat recovery": {
+      "name": "PB Oat Recovery",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "berry antioxidant blend": {
+      "name": "Berry Antioxidant Blend",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "golden turmeric hemp": {
+      "name": "Golden Turmeric Hemp",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "pea protein": {
+      "name": "Pea Protein",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "hemp protein": {
+      "name": "Hemp Protein",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "rice & quinoa": {
+      "name": "Rice & Quinoa",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "soy protein": {
+      "name": "Soy Protein",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "general wellness": {
+      "name": "General Wellness",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "detox & cleanse": {
+      "name": "Detox & Cleanse",
+      "route": "/drinks/protein-shakes/plant-based"
+    },
+    "classic vanilla post-workout": {
+      "name": "Classic Vanilla Post-Workout",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "chocolate peanut butter powerhouse": {
+      "name": "Chocolate Peanut Butter Powerhouse",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "strawberry lean machine": {
+      "name": "Strawberry Lean Machine",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "pre-workout energy blast": {
+      "name": "Pre-Workout Energy Blast",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "hydrolyzed recovery formula": {
+      "name": "Hydrolyzed Recovery Formula",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "bedtime casein-whey blend": {
+      "name": "Bedtime Casein-Whey Blend",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "fat loss": {
+      "name": "Fat Loss",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "performance": {
+      "name": "Performance",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "mass gain": {
+      "name": "Mass Gain",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "maintenance": {
+      "name": "Maintenance",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "whey isolate": {
+      "name": "Whey Isolate",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "whey concentrate": {
+      "name": "Whey Concentrate",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "hydrolyzed whey": {
+      "name": "Hydrolyzed Whey",
+      "route": "/drinks/protein-shakes/whey"
+    },
+    "triple berry blast": {
+      "name": "Triple Berry Blast",
+      "route": "/drinks/smoothies/berry"
+    },
+    "strawberry fields": {
+      "name": "Strawberry Fields",
+      "route": "/drinks/smoothies/berry"
+    },
+    "blueberry bliss": {
+      "name": "Blueberry Bliss",
+      "route": "/drinks/smoothies/berry"
+    },
+    "raspberry revival": {
+      "name": "Raspberry Revival",
+      "route": "/drinks/smoothies/berry"
+    },
+    "blackberry boost": {
+      "name": "Blackberry Boost",
+      "route": "/drinks/smoothies/berry"
+    },
+    "açaí power bowl": {
+      "name": "Açaí Power Bowl",
+      "route": "/drinks/smoothies/berry"
+    },
+    "berry green fusion": {
+      "name": "Berry Green Fusion",
+      "route": "/drinks/smoothies/berry"
+    },
+    "strawberry banana classic": {
+      "name": "Strawberry Banana Classic",
+      "route": "/drinks/smoothies/berry"
+    },
+    "cranberry citrus zing": {
+      "name": "Cranberry Citrus Zing",
+      "route": "/drinks/smoothies/berry"
+    },
+    "mixed berries": {
+      "name": "Mixed Berries",
+      "route": "/drinks/smoothies/berry"
+    },
+    "strawberry": {
+      "name": "Strawberry",
+      "route": "/drinks/smoothies/berry"
+    },
+    "blueberry": {
+      "name": "Blueberry",
+      "route": "/drinks/smoothies/berry"
+    },
+    "raspberry": {
+      "name": "Raspberry",
+      "route": "/drinks/smoothies/berry"
+    },
+    "blackberry": {
+      "name": "Blackberry",
+      "route": "/drinks/smoothies/berry"
+    },
+    "açaí": {
+      "name": "Açaí",
+      "route": "/drinks/smoothies/berry"
+    },
+    "cranberry": {
+      "name": "Cranberry",
+      "route": "/drinks/smoothies/berry"
+    },
+    "heart health": {
+      "name": "Heart Health",
+      "route": "/drinks/smoothies/berry"
+    },
+    "brain boost": {
+      "name": "Brain Boost",
+      "route": "/drinks/smoothies/berry"
+    },
+    "immune support": {
+      "name": "Immune Support",
+      "route": "/drinks/smoothies/berry"
+    },
+    "digestive health": {
+      "name": "Digestive Health",
+      "route": "/drinks/smoothies/berry"
+    },
+    "all smoothies": {
+      "name": "All Smoothies",
+      "route": "/drinks/smoothies/berry"
+    },
+    "protein": {
+      "name": "Protein",
+      "route": "/drinks/smoothies/berry"
+    },
+    "breakfast": {
+      "name": "Breakfast",
+      "route": "/drinks/smoothies/berry"
+    },
+    "workout": {
+      "name": "Workout",
+      "route": "/drinks/smoothies/berry"
+    },
+    "green": {
+      "name": "Green",
+      "route": "/drinks/smoothies/berry"
+    },
+    "detox": {
+      "name": "Detox",
+      "route": "/drinks/smoothies/berry"
+    },
+    "overnight oats smoothie": {
+      "name": "Overnight Oats Smoothie",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "green breakfast power": {
+      "name": "Green Breakfast Power",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "coffee protein shake": {
+      "name": "Coffee Protein Shake",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "berry yogurt breakfast": {
+      "name": "Berry Yogurt Breakfast",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "tropical morning bliss": {
+      "name": "Tropical Morning Bliss",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "peanut butter energy": {
+      "name": "Peanut Butter Energy",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "chocolate breakfast treat": {
+      "name": "Chocolate Breakfast Treat",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "sunrise citrus boost": {
+      "name": "Sunrise Citrus Boost",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "oat-based": {
+      "name": "Oat-Based",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "yogurt": {
+      "name": "Yogurt",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "nut butter": {
+      "name": "Nut Butter",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "protein packed": {
+      "name": "Protein Packed",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "fiber rich": {
+      "name": "Fiber Rich",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "vitamin rich": {
+      "name": "Vitamin Rich",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "hydration": {
+      "name": "Hydration",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "satiety": {
+      "name": "Satiety",
+      "route": "/drinks/smoothies/breakfast"
+    },
+    "chocolate banana smoothie": {
+      "name": "Chocolate Banana Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "chocolate mint smoothie": {
+      "name": "Chocolate Mint Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "chocolate avocado smoothie": {
+      "name": "Chocolate Avocado Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "chocolate cherry smoothie": {
+      "name": "Chocolate Cherry Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "chocolate espresso smoothie": {
+      "name": "Chocolate Espresso Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "chocolate strawberry smoothie": {
+      "name": "Chocolate Strawberry Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "mexican hot chocolate smoothie": {
+      "name": "Mexican Hot Chocolate Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "chocolate protein smoothie": {
+      "name": "Chocolate Protein Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "chocolate matcha smoothie": {
+      "name": "Chocolate Matcha Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "raspberry chocolate smoothie": {
+      "name": "Raspberry Chocolate Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "chocolate orange smoothie": {
+      "name": "Chocolate Orange Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "chocolate peanut butter smoothie": {
+      "name": "Chocolate Peanut Butter Smoothie",
+      "route": "/drinks/smoothies/dessert"
+    },
+    "green detox smoothie": {
+      "name": "Green Detox Smoothie",
+      "route": "/drinks/smoothies/detox"
+    },
+    "golden turmeric smoothie": {
+      "name": "Golden Turmeric Smoothie",
+      "route": "/drinks/smoothies/detox"
+    },
+    "berry cleanse smoothie": {
+      "name": "Berry Cleanse Smoothie",
+      "route": "/drinks/smoothies/detox"
+    },
+    "green tea detox smoothie": {
+      "name": "Green Tea Detox Smoothie",
+      "route": "/drinks/smoothies/detox"
+    },
+    "pineapple ginger smoothie": {
+      "name": "Pineapple Ginger Smoothie",
+      "route": "/drinks/smoothies/detox"
+    },
+    "avocado spinach smoothie": {
+      "name": "Avocado Spinach Smoothie",
+      "route": "/drinks/smoothies/detox"
+    },
+    "blueberry spinach smoothie": {
+      "name": "Blueberry Spinach Smoothie",
+      "route": "/drinks/smoothies/detox"
+    },
+    "kale pineapple smoothie": {
+      "name": "Kale Pineapple Smoothie",
+      "route": "/drinks/smoothies/detox"
+    },
+    "green detox": {
+      "name": "Green Detox",
+      "route": "/drinks/smoothies/detox"
+    },
+    "berry detox": {
+      "name": "Berry Detox",
+      "route": "/drinks/smoothies/detox"
+    },
+    "tropical detox": {
+      "name": "Tropical Detox",
+      "route": "/drinks/smoothies/detox"
+    },
+    "spice detox": {
+      "name": "Spice Detox",
+      "route": "/drinks/smoothies/detox"
+    },
+    "tea detox": {
+      "name": "Tea Detox",
+      "route": "/drinks/smoothies/detox"
+    },
+    "liver support": {
+      "name": "Liver Support",
+      "route": "/drinks/smoothies/detox"
+    },
+    "antioxidant rich": {
+      "name": "Antioxidant Rich",
+      "route": "/drinks/smoothies/detox"
+    },
+    "alkalizing": {
+      "name": "Alkalizing",
+      "route": "/drinks/smoothies/detox"
+    },
+    "immune boost": {
+      "name": "Immune Boost",
+      "route": "/drinks/smoothies/detox"
+    },
+    "classic green goddess": {
+      "name": "Classic Green Goddess",
+      "route": "/drinks/smoothies/green"
+    },
+    "tropical green dream": {
+      "name": "Tropical Green Dream",
+      "route": "/drinks/smoothies/green"
+    },
+    "green machine detox": {
+      "name": "Green Machine Detox",
+      "route": "/drinks/smoothies/green"
+    },
+    "avocado green cream": {
+      "name": "Avocado Green Cream",
+      "route": "/drinks/smoothies/green"
+    },
+    "citrus green zing": {
+      "name": "Citrus Green Zing",
+      "route": "/drinks/smoothies/green"
+    },
+    "green protein power": {
+      "name": "Green Protein Power",
+      "route": "/drinks/smoothies/green"
+    },
+    "minty green refresh": {
+      "name": "Minty Green Refresh",
+      "route": "/drinks/smoothies/green"
+    },
+    "leafy greens": {
+      "name": "Leafy Greens",
+      "route": "/drinks/smoothies/green"
+    },
+    "tropical greens": {
+      "name": "Tropical Greens",
+      "route": "/drinks/smoothies/green"
+    },
+    "detox greens": {
+      "name": "Detox Greens",
+      "route": "/drinks/smoothies/green"
+    },
+    "creamy greens": {
+      "name": "Creamy Greens",
+      "route": "/drinks/smoothies/green"
+    },
+    "berry greens": {
+      "name": "Berry Greens",
+      "route": "/drinks/smoothies/green"
+    },
+    "citrus greens": {
+      "name": "Citrus Greens",
+      "route": "/drinks/smoothies/green"
+    },
+    "detoxification": {
+      "name": "Detoxification",
+      "route": "/drinks/smoothies/green"
+    },
+    "high-protein smoothies": {
+      "name": "High-Protein Smoothies",
+      "route": "/drinks/smoothies"
+    },
+    "breakfast smoothies": {
+      "name": "Breakfast Smoothies",
+      "route": "/drinks/smoothies"
+    },
+    "workout smoothies": {
+      "name": "Workout Smoothies",
+      "route": "/drinks/smoothies"
+    },
+    "green superfood": {
+      "name": "Green Superfood",
+      "route": "/drinks/smoothies"
+    },
+    "tropical smoothies": {
+      "name": "Tropical Smoothies",
+      "route": "/drinks/smoothies"
+    },
+    "berry smoothies": {
+      "name": "Berry Smoothies",
+      "route": "/drinks/smoothies"
+    },
+    "detox smoothies": {
+      "name": "Detox Smoothies",
+      "route": "/drinks/smoothies"
+    },
+    "dessert smoothies": {
+      "name": "Dessert Smoothies",
+      "route": "/drinks/smoothies"
+    },
+    "pre-workout energy": {
+      "name": "Pre-Workout Energy",
+      "route": "/drinks/smoothies"
+    },
+    "post-workout recovery": {
+      "name": "Post-Workout Recovery",
+      "route": "/drinks/smoothies"
+    },
+    "green goddess power": {
+      "name": "Green Goddess Power",
+      "route": "/drinks/smoothies"
+    },
+    "chocolate protein beast": {
+      "name": "Chocolate Protein Beast",
+      "route": "/drinks/smoothies"
+    },
+    "berry antioxidant blast": {
+      "name": "Berry Antioxidant Blast",
+      "route": "/drinks/smoothies"
+    },
+    "tropical energy boost": {
+      "name": "Tropical Energy Boost",
+      "route": "/drinks/smoothies"
+    },
+    "muscle builder max": {
+      "name": "Muscle Builder Max",
+      "route": "/drinks/smoothies/protein"
+    },
+    "chocolate peanut power": {
+      "name": "Chocolate Peanut Power",
+      "route": "/drinks/smoothies/protein"
+    },
+    "berry protein blast": {
+      "name": "Berry Protein Blast",
+      "route": "/drinks/smoothies/protein"
+    },
+    "green protein machine": {
+      "name": "Green Protein Machine",
+      "route": "/drinks/smoothies/protein"
+    },
+    "tropical gains": {
+      "name": "Tropical Gains",
+      "route": "/drinks/smoothies/protein"
+    },
+    "coffee protein energizer": {
+      "name": "Coffee Protein Energizer",
+      "route": "/drinks/smoothies/protein"
+    },
+    "overnight oats protein": {
+      "name": "Overnight Oats Protein",
+      "route": "/drinks/smoothies/protein"
+    },
+    "pumpkin spice protein": {
+      "name": "Pumpkin Spice Protein",
+      "route": "/drinks/smoothies/protein"
+    },
+    "casein protein": {
+      "name": "Casein Protein",
+      "route": "/drinks/smoothies/protein"
+    },
+    "egg white protein": {
+      "name": "Egg White Protein",
+      "route": "/drinks/smoothies/protein"
+    },
+    "collagen protein": {
+      "name": "Collagen Protein",
+      "route": "/drinks/smoothies/protein"
+    },
+    "toning": {
+      "name": "Toning",
+      "route": "/drinks/smoothies/protein"
+    },
+    "island paradise": {
+      "name": "Island Paradise",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "piña colada dream": {
+      "name": "Piña Colada Dream",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "mango madness": {
+      "name": "Mango Madness",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "passionfruit paradise": {
+      "name": "Passionfruit Paradise",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "hawaiian sunrise": {
+      "name": "Hawaiian Sunrise",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "coconut beach bliss": {
+      "name": "Coconut Beach Bliss",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "dragon fruit delight": {
+      "name": "Dragon Fruit Delight",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "tropical green fusion": {
+      "name": "Tropical Green Fusion",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "sweet & tropical": {
+      "name": "Sweet & Tropical",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "creamy coconut": {
+      "name": "Creamy Coconut",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "tangy tropical": {
+      "name": "Tangy Tropical",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "citrus tropical": {
+      "name": "Citrus Tropical",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "tropical green": {
+      "name": "Tropical Green",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "vitamin c boost": {
+      "name": "Vitamin C Boost",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "digestive support": {
+      "name": "Digestive Support",
+      "route": "/drinks/smoothies/tropical"
+    },
+    "pre-workout power blend": {
+      "name": "Pre-Workout Power Blend",
+      "route": "/drinks/smoothies/workout"
+    },
+    "hiit energy booster": {
+      "name": "HIIT Energy Booster",
+      "route": "/drinks/smoothies/workout"
+    },
+    "endurance builder": {
+      "name": "Endurance Builder",
+      "route": "/drinks/smoothies/workout"
+    },
+    "strength training fuel": {
+      "name": "Strength Training Fuel",
+      "route": "/drinks/smoothies/workout"
+    },
+    "cardio crush": {
+      "name": "Cardio Crush",
+      "route": "/drinks/smoothies/workout"
+    },
+    "recovery greens": {
+      "name": "Recovery Greens",
+      "route": "/drinks/smoothies/workout"
+    },
+    "yoga flow blend": {
+      "name": "Yoga Flow Blend",
+      "route": "/drinks/smoothies/workout"
+    },
+    "cardio": {
+      "name": "Cardio",
+      "route": "/drinks/smoothies/workout"
+    },
+    "protein synthesis": {
+      "name": "Protein Synthesis",
+      "route": "/drinks/smoothies/workout"
+    },
+    "inflammation reduction": {
+      "name": "Inflammation Reduction",
+      "route": "/drinks/smoothies/workout"
+    }
+  },
+  "routes": [
+    {
+      "route": "/drinks",
+      "title": "Drinks"
+    },
+    {
+      "route": "/drinks/caffeinated",
+      "title": "Caffeinated"
+    },
+    {
+      "route": "/drinks/caffeinated/cold-brew",
+      "title": "Cold Brew"
+    },
+    {
+      "route": "/drinks/caffeinated/energy",
+      "title": "Energy"
+    },
+    {
+      "route": "/drinks/caffeinated/espresso",
+      "title": "Espresso"
+    },
+    {
+      "route": "/drinks/caffeinated/iced",
+      "title": "Iced"
+    },
+    {
+      "route": "/drinks/caffeinated/lattes",
+      "title": "Lattes"
+    },
+    {
+      "route": "/drinks/caffeinated/matcha",
+      "title": "Matcha"
+    },
+    {
+      "route": "/drinks/caffeinated/specialty",
+      "title": "Specialty"
+    },
+    {
+      "route": "/drinks/caffeinated/tea",
+      "title": "Tea"
+    },
+    {
+      "route": "/drinks/detoxes",
+      "title": "Detoxes"
+    },
+    {
+      "route": "/drinks/detoxes/juice",
+      "title": "Juice"
+    },
+    {
+      "route": "/drinks/detoxes/tea",
+      "title": "Tea"
+    },
+    {
+      "route": "/drinks/detoxes/water",
+      "title": "Water"
+    },
+    {
+      "route": "/drinks/potent-potables",
+      "title": "Potent Potables"
+    },
+    {
+      "route": "/drinks/potent-potables/cocktails",
+      "title": "Cocktails"
+    },
+    {
+      "route": "/drinks/potent-potables/cognac-brandy",
+      "title": "Cognac Brandy"
+    },
+    {
+      "route": "/drinks/potent-potables/daiquiri",
+      "title": "Daiquiri"
+    },
+    {
+      "route": "/drinks/potent-potables/gin",
+      "title": "Gin"
+    },
+    {
+      "route": "/drinks/potent-potables/hot-drinks",
+      "title": "Hot Drinks"
+    },
+    {
+      "route": "/drinks/potent-potables/liqueurs",
+      "title": "Liqueurs"
+    },
+    {
+      "route": "/drinks/potent-potables/martinis",
+      "title": "Martinis"
+    },
+    {
+      "route": "/drinks/potent-potables/mocktails",
+      "title": "Mocktails"
+    },
+    {
+      "route": "/drinks/potent-potables/rum",
+      "title": "Rum"
+    },
+    {
+      "route": "/drinks/potent-potables/scotch-irish-whiskey",
+      "title": "Scotch Irish Whiskey"
+    },
+    {
+      "route": "/drinks/potent-potables/seasonal",
+      "title": "Seasonal"
+    },
+    {
+      "route": "/drinks/potent-potables/spritz",
+      "title": "Spritz"
+    },
+    {
+      "route": "/drinks/potent-potables/tequila-mezcal",
+      "title": "Tequila Mezcal"
+    },
+    {
+      "route": "/drinks/potent-potables/virgin-cocktails",
+      "title": "Virgin Cocktails"
+    },
+    {
+      "route": "/drinks/potent-potables/vodka",
+      "title": "Vodka"
+    },
+    {
+      "route": "/drinks/potent-potables/whiskey-bourbon",
+      "title": "Whiskey Bourbon"
+    },
+    {
+      "route": "/drinks/protein-shakes",
+      "title": "Protein Shakes"
+    },
+    {
+      "route": "/drinks/protein-shakes/beef",
+      "title": "Beef"
+    },
+    {
+      "route": "/drinks/protein-shakes/casein",
+      "title": "Casein"
+    },
+    {
+      "route": "/drinks/protein-shakes/collagen",
+      "title": "Collagen"
+    },
+    {
+      "route": "/drinks/protein-shakes/egg",
+      "title": "Egg"
+    },
+    {
+      "route": "/drinks/protein-shakes/plant-based",
+      "title": "Plant Based"
+    },
+    {
+      "route": "/drinks/protein-shakes/whey",
+      "title": "Whey"
+    },
+    {
+      "route": "/drinks/smoothies",
+      "title": "Smoothies"
+    },
+    {
+      "route": "/drinks/smoothies/berry",
+      "title": "Berry"
+    },
+    {
+      "route": "/drinks/smoothies/breakfast",
+      "title": "Breakfast"
+    },
+    {
+      "route": "/drinks/smoothies/dessert",
+      "title": "Dessert"
+    },
+    {
+      "route": "/drinks/smoothies/detox",
+      "title": "Detox"
+    },
+    {
+      "route": "/drinks/smoothies/green",
+      "title": "Green"
+    },
+    {
+      "route": "/drinks/smoothies/protein",
+      "title": "Protein"
+    },
+    {
+      "route": "/drinks/smoothies/tropical",
+      "title": "Tropical"
+    },
+    {
+      "route": "/drinks/smoothies/workout",
+      "title": "Workout"
+    }
+  ],
+  "duplicates": [
+    {
+      "key": "refreshing",
+      "name": "Refreshing",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "versatile",
+      "name": "Versatile",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "all caffeinated",
+      "name": "All Caffeinated",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "espresso",
+      "name": "Espresso",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "tea",
+      "name": "Tea",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "matcha",
+      "name": "Matcha",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "lattes",
+      "name": "Lattes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "specialty",
+      "name": "Specialty",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/energy"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "all caffeinated",
+      "name": "All Caffeinated",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "cold brew",
+      "name": "Cold Brew",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "iced coffee",
+      "name": "Iced Coffee",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "tea",
+      "name": "Tea",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "matcha",
+      "name": "Matcha",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "lattes",
+      "name": "Lattes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "specialty",
+      "name": "Specialty",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "energy drinks",
+      "name": "Energy Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/espresso"
+    },
+    {
+      "key": "mocha",
+      "name": "Mocha",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "refreshing",
+      "name": "Refreshing",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "caffeine boost",
+      "name": "Caffeine Boost",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "customizable",
+      "name": "Customizable",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "convenient",
+      "name": "Convenient",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "versatile",
+      "name": "Versatile",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "satisfying",
+      "name": "Satisfying",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "all caffeinated",
+      "name": "All Caffeinated",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "espresso",
+      "name": "Espresso",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "cold brew",
+      "name": "Cold Brew",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "tea",
+      "name": "Tea",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "matcha",
+      "name": "Matcha",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "lattes",
+      "name": "Lattes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "specialty",
+      "name": "Specialty",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "energy",
+      "name": "Energy",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/iced"
+    },
+    {
+      "key": "cold brew",
+      "name": "Cold Brew",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated"
+    },
+    {
+      "key": "tea",
+      "name": "Tea",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated"
+    },
+    {
+      "key": "matcha",
+      "name": "Matcha",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated"
+    },
+    {
+      "key": "energy drinks",
+      "name": "Energy Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated"
+    },
+    {
+      "key": "iced coffee",
+      "name": "Iced Coffee",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated"
+    },
+    {
+      "key": "mocha",
+      "name": "Mocha",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "refreshing",
+      "name": "Refreshing",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "caffeine boost",
+      "name": "Caffeine Boost",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "customizable",
+      "name": "Customizable",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "convenient",
+      "name": "Convenient",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "versatile",
+      "name": "Versatile",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "satisfying",
+      "name": "Satisfying",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "all caffeinated",
+      "name": "All Caffeinated",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "espresso",
+      "name": "Espresso",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "cold brew",
+      "name": "Cold Brew",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "tea",
+      "name": "Tea",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "matcha",
+      "name": "Matcha",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "lattes",
+      "name": "Lattes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "specialty",
+      "name": "Specialty",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "energy",
+      "name": "Energy",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/lattes"
+    },
+    {
+      "key": "specialty",
+      "name": "Specialty",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/matcha"
+    },
+    {
+      "key": "espresso",
+      "name": "Espresso",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/matcha"
+    },
+    {
+      "key": "cold brew",
+      "name": "Cold Brew",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/matcha"
+    },
+    {
+      "key": "iced coffee",
+      "name": "Iced Coffee",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/matcha"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/matcha"
+    },
+    {
+      "key": "affogato",
+      "name": "Affogato",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "cortado",
+      "name": "Cortado",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "nitro cold brew",
+      "name": "Nitro Cold Brew",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "mocha",
+      "name": "Mocha",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "refreshing",
+      "name": "Refreshing",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "caffeine boost",
+      "name": "Caffeine Boost",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "customizable",
+      "name": "Customizable",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "convenient",
+      "name": "Convenient",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "versatile",
+      "name": "Versatile",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "satisfying",
+      "name": "Satisfying",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "all caffeinated",
+      "name": "All Caffeinated",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "espresso",
+      "name": "Espresso",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "cold brew",
+      "name": "Cold Brew",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "tea",
+      "name": "Tea",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "matcha",
+      "name": "Matcha",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "lattes",
+      "name": "Lattes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "specialty",
+      "name": "Specialty",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "energy",
+      "name": "Energy",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/specialty"
+    },
+    {
+      "key": "antioxidants",
+      "name": "Antioxidants",
+      "keptRoute": "/drinks/caffeinated/matcha",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "all caffeinated",
+      "name": "All Caffeinated",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "espresso",
+      "name": "Espresso",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "cold brew",
+      "name": "Cold Brew",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "iced coffee",
+      "name": "Iced Coffee",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "matcha",
+      "name": "Matcha",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "lattes",
+      "name": "Lattes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "specialty",
+      "name": "Specialty",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "energy",
+      "name": "Energy",
+      "keptRoute": "/drinks/caffeinated/energy",
+      "duplicateRoute": "/drinks/caffeinated/tea"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/detoxes/juice"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/detoxes/juice"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/detoxes/juice"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks"
+    },
+    {
+      "key": "refreshing",
+      "name": "Refreshing",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/cognac-brandy"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/daiquiri"
+    },
+    {
+      "key": "negroni",
+      "name": "Negroni",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/hot-drinks"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "old fashioned",
+      "name": "Old Fashioned",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/martinis"
+    },
+    {
+      "key": "classic",
+      "name": "Classic",
+      "keptRoute": "/drinks/potent-potables/martinis",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "modern",
+      "name": "Modern",
+      "keptRoute": "/drinks/potent-potables/martinis",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
+    },
+    {
+      "key": "mojito",
+      "name": "Mojito",
+      "keptRoute": "/drinks/potent-potables",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "godfather",
+      "name": "Godfather",
+      "keptRoute": "/drinks/potent-potables/liqueurs",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "irish coffee",
+      "name": "Irish Coffee",
+      "keptRoute": "/drinks/potent-potables/hot-drinks",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "hot toddy",
+      "name": "Hot Toddy",
+      "keptRoute": "/drinks/potent-potables/hot-drinks",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "mulled wine",
+      "name": "Mulled Wine",
+      "keptRoute": "/drinks/potent-potables/hot-drinks",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "aperol spritz",
+      "name": "Aperol Spritz",
+      "keptRoute": "/drinks/potent-potables/liqueurs",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "limoncello spritz",
+      "name": "Limoncello Spritz",
+      "keptRoute": "/drinks/potent-potables/liqueurs",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/tequila-mezcal"
+    },
+    {
+      "key": "virgin mojito",
+      "name": "Virgin Mojito",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/potent-potables/virgin-cocktails"
+    },
+    {
+      "key": "shirley temple",
+      "name": "Shirley Temple",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/potent-potables/virgin-cocktails"
+    },
+    {
+      "key": "tropical sunrise",
+      "name": "Tropical Sunrise",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/potent-potables/virgin-cocktails"
+    },
+    {
+      "key": "vodka martini",
+      "name": "Vodka Martini",
+      "keptRoute": "/drinks/potent-potables/martinis",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "espresso martini",
+      "name": "Espresso Martini",
+      "keptRoute": "/drinks/potent-potables/martinis",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "french martini",
+      "name": "French Martini",
+      "keptRoute": "/drinks/potent-potables/martinis",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "all cocktails",
+      "name": "All Cocktails",
+      "keptRoute": "/drinks/potent-potables/gin",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "whiskey & bourbon",
+      "name": "Whiskey & Bourbon",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "old fashioned",
+      "name": "Old Fashioned",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "mint julep",
+      "name": "Mint Julep",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "manhattan",
+      "name": "Manhattan",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "whiskey sour",
+      "name": "Whiskey Sour",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "sazerac",
+      "name": "Sazerac",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "hot toddy",
+      "name": "Hot Toddy",
+      "keptRoute": "/drinks/potent-potables/hot-drinks",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "all cocktails",
+      "name": "All Cocktails",
+      "keptRoute": "/drinks/potent-potables/gin",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "vodka",
+      "name": "Vodka",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "tequila & mezcal",
+      "name": "Tequila & Mezcal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "rum",
+      "name": "Rum",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "gin",
+      "name": "Gin",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "cognac & brandy",
+      "name": "Cognac & Brandy",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "liqueurs",
+      "name": "Liqueurs",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "scotch & irish",
+      "name": "Scotch & Irish",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "martinis",
+      "name": "Martinis",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "spritz & mimosas",
+      "name": "Spritz & Mimosas",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "classic cocktails",
+      "name": "Classic Cocktails",
+      "keptRoute": "/drinks/potent-potables/cognac-brandy",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "seasonal",
+      "name": "Seasonal",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "hot drinks",
+      "name": "Hot Drinks",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "mocktails",
+      "name": "Mocktails",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "detoxes",
+      "name": "Detoxes",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/beef"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/protein-shakes/beef"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/beef"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/beef"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/casein"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/protein-shakes/casein"
+    },
+    {
+      "key": "detox drinks",
+      "name": "Detox Drinks",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/casein"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/casein"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/casein"
+    },
+    {
+      "key": "whey protein",
+      "name": "Whey Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/casein"
+    },
+    {
+      "key": "plant-based",
+      "name": "Plant-Based",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/casein"
+    },
+    {
+      "key": "collagen",
+      "name": "Collagen",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/casein"
+    },
+    {
+      "key": "egg protein",
+      "name": "Egg Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/casein"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/collagen"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/protein-shakes/collagen"
+    },
+    {
+      "key": "detox drinks",
+      "name": "Detox Drinks",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/collagen"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/collagen"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/collagen"
+    },
+    {
+      "key": "whey protein",
+      "name": "Whey Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/collagen"
+    },
+    {
+      "key": "plant-based",
+      "name": "Plant-Based",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/collagen"
+    },
+    {
+      "key": "casein",
+      "name": "Casein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/collagen"
+    },
+    {
+      "key": "egg protein",
+      "name": "Egg Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/collagen"
+    },
+    {
+      "key": "beef protein",
+      "name": "Beef Protein",
+      "keptRoute": "/drinks/protein-shakes/casein",
+      "duplicateRoute": "/drinks/protein-shakes/collagen"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/egg"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/protein-shakes/egg"
+    },
+    {
+      "key": "detox drinks",
+      "name": "Detox Drinks",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/egg"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/egg"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/egg"
+    },
+    {
+      "key": "whey protein",
+      "name": "Whey Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/egg"
+    },
+    {
+      "key": "plant-based",
+      "name": "Plant-Based",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/egg"
+    },
+    {
+      "key": "casein",
+      "name": "Casein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/egg"
+    },
+    {
+      "key": "collagen",
+      "name": "Collagen",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/egg"
+    },
+    {
+      "key": "beef protein",
+      "name": "Beef Protein",
+      "keptRoute": "/drinks/protein-shakes/casein",
+      "duplicateRoute": "/drinks/protein-shakes/egg"
+    },
+    {
+      "key": "whey protein",
+      "name": "Whey Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes"
+    },
+    {
+      "key": "casein",
+      "name": "Casein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes"
+    },
+    {
+      "key": "egg protein",
+      "name": "Egg Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes"
+    },
+    {
+      "key": "beef protein",
+      "name": "Beef Protein",
+      "keptRoute": "/drinks/protein-shakes/casein",
+      "duplicateRoute": "/drinks/protein-shakes"
+    },
+    {
+      "key": "pre-workout",
+      "name": "Pre-Workout",
+      "keptRoute": "/drinks/caffeinated",
+      "duplicateRoute": "/drinks/protein-shakes"
+    },
+    {
+      "key": "beast mode builder",
+      "name": "Beast Mode Builder",
+      "keptRoute": "/drinks",
+      "duplicateRoute": "/drinks/protein-shakes"
+    },
+    {
+      "key": "plant-based",
+      "name": "Plant-Based",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes"
+    },
+    {
+      "key": "collagen",
+      "name": "Collagen",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "detox drinks",
+      "name": "Detox Drinks",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "whey protein",
+      "name": "Whey Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "casein",
+      "name": "Casein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "collagen",
+      "name": "Collagen",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "egg protein",
+      "name": "Egg Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "beef protein",
+      "name": "Beef Protein",
+      "keptRoute": "/drinks/protein-shakes/casein",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "muscle building",
+      "name": "Muscle Building",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "weight management",
+      "name": "Weight Management",
+      "keptRoute": "/drinks/protein-shakes/casein",
+      "duplicateRoute": "/drinks/protein-shakes/plant-based"
+    },
+    {
+      "key": "smoothies",
+      "name": "Smoothies",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "detox drinks",
+      "name": "Detox Drinks",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "plant-based",
+      "name": "Plant-Based",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "casein",
+      "name": "Casein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "collagen",
+      "name": "Collagen",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "egg protein",
+      "name": "Egg Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "beef protein",
+      "name": "Beef Protein",
+      "keptRoute": "/drinks/protein-shakes/casein",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "muscle building",
+      "name": "Muscle Building",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "recovery",
+      "name": "Recovery",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/protein-shakes/whey"
+    },
+    {
+      "key": "antioxidants",
+      "name": "Antioxidants",
+      "keptRoute": "/drinks/caffeinated/matcha",
+      "duplicateRoute": "/drinks/smoothies/berry"
+    },
+    {
+      "key": "skin health",
+      "name": "Skin Health",
+      "keptRoute": "/drinks/protein-shakes/collagen",
+      "duplicateRoute": "/drinks/smoothies/berry"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/berry"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/smoothies/berry"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/berry"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/berry"
+    },
+    {
+      "key": "tropical",
+      "name": "Tropical",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/berry"
+    },
+    {
+      "key": "dessert",
+      "name": "Dessert",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/smoothies/berry"
+    },
+    {
+      "key": "green",
+      "name": "Green",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "protein",
+      "name": "Protein",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "tropical",
+      "name": "Tropical",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "energy boost",
+      "name": "Energy Boost",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "all smoothies",
+      "name": "All Smoothies",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "workout",
+      "name": "Workout",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "berry",
+      "name": "Berry",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "detox",
+      "name": "Detox",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "dessert",
+      "name": "Dessert",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/smoothies/breakfast"
+    },
+    {
+      "key": "protein",
+      "name": "Protein",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/dessert"
+    },
+    {
+      "key": "breakfast",
+      "name": "Breakfast",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/dessert"
+    },
+    {
+      "key": "workout",
+      "name": "Workout",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/dessert"
+    },
+    {
+      "key": "green",
+      "name": "Green",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/dessert"
+    },
+    {
+      "key": "tropical",
+      "name": "Tropical",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/dessert"
+    },
+    {
+      "key": "berry",
+      "name": "Berry",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/dessert"
+    },
+    {
+      "key": "detox",
+      "name": "Detox",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/dessert"
+    },
+    {
+      "key": "digestive health",
+      "name": "Digestive Health",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "natural energy",
+      "name": "Natural Energy",
+      "keptRoute": "/drinks/caffeinated/tea",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "all smoothies",
+      "name": "All Smoothies",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "protein",
+      "name": "Protein",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "breakfast",
+      "name": "Breakfast",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "workout",
+      "name": "Workout",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "green",
+      "name": "Green",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "tropical",
+      "name": "Tropical",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "berry",
+      "name": "Berry",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "dessert",
+      "name": "Dessert",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/smoothies/detox"
+    },
+    {
+      "key": "berry green fusion",
+      "name": "Berry Green Fusion",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "energy boost",
+      "name": "Energy Boost",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "digestive health",
+      "name": "Digestive Health",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "immune support",
+      "name": "Immune Support",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "alkalizing",
+      "name": "Alkalizing",
+      "keptRoute": "/drinks/smoothies/detox",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "skin health",
+      "name": "Skin Health",
+      "keptRoute": "/drinks/protein-shakes/collagen",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "detox drinks",
+      "name": "Detox Drinks",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "protein",
+      "name": "Protein",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "breakfast",
+      "name": "Breakfast",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "workout",
+      "name": "Workout",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "tropical",
+      "name": "Tropical",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "berry",
+      "name": "Berry",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "detox",
+      "name": "Detox",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "dessert",
+      "name": "Dessert",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/smoothies/green"
+    },
+    {
+      "key": "weight loss",
+      "name": "Weight Loss",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies"
+    },
+    {
+      "key": "muscle building",
+      "name": "Muscle Building",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies"
+    },
+    {
+      "key": "endurance",
+      "name": "Endurance",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies"
+    },
+    {
+      "key": "recovery",
+      "name": "Recovery",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies"
+    },
+    {
+      "key": "whey protein",
+      "name": "Whey Protein",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "plant protein",
+      "name": "Plant Protein",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "beef protein",
+      "name": "Beef Protein",
+      "keptRoute": "/drinks/protein-shakes/casein",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "muscle building",
+      "name": "Muscle Building",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "recovery",
+      "name": "Recovery",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "weight management",
+      "name": "Weight Management",
+      "keptRoute": "/drinks/protein-shakes/casein",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "strength",
+      "name": "Strength",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "endurance",
+      "name": "Endurance",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "detox drinks",
+      "name": "Detox Drinks",
+      "keptRoute": "/drinks/protein-shakes/beef",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "breakfast",
+      "name": "Breakfast",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "workout",
+      "name": "Workout",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "green",
+      "name": "Green",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "tropical",
+      "name": "Tropical",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "berry",
+      "name": "Berry",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "detox",
+      "name": "Detox",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "dessert",
+      "name": "Dessert",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/smoothies/protein"
+    },
+    {
+      "key": "hydration",
+      "name": "Hydration",
+      "keptRoute": "/drinks/smoothies/breakfast",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "natural energy",
+      "name": "Natural Energy",
+      "keptRoute": "/drinks/caffeinated/tea",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "antioxidants",
+      "name": "Antioxidants",
+      "keptRoute": "/drinks/caffeinated/matcha",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "skin health",
+      "name": "Skin Health",
+      "keptRoute": "/drinks/protein-shakes/collagen",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "all smoothies",
+      "name": "All Smoothies",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "protein",
+      "name": "Protein",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "breakfast",
+      "name": "Breakfast",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "workout",
+      "name": "Workout",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "green",
+      "name": "Green",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "berry",
+      "name": "Berry",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "detox",
+      "name": "Detox",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "dessert",
+      "name": "Dessert",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/smoothies/tropical"
+    },
+    {
+      "key": "post-workout recovery",
+      "name": "Post-Workout Recovery",
+      "keptRoute": "/drinks/smoothies",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "pre-workout",
+      "name": "Pre-Workout",
+      "keptRoute": "/drinks/caffeinated",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "post-workout",
+      "name": "Post-Workout",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "endurance",
+      "name": "Endurance",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "strength",
+      "name": "Strength",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "recovery",
+      "name": "Recovery",
+      "keptRoute": "/drinks/protein-shakes",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "energy boost",
+      "name": "Energy Boost",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "muscle recovery",
+      "name": "Muscle Recovery",
+      "keptRoute": "/drinks/protein-shakes/casein",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "hydration",
+      "name": "Hydration",
+      "keptRoute": "/drinks/smoothies/breakfast",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "protein shakes",
+      "name": "Protein Shakes",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "caffeinated drinks",
+      "name": "Caffeinated Drinks",
+      "keptRoute": "/drinks/detoxes/juice",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "all smoothies",
+      "name": "All Smoothies",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "potent potables",
+      "name": "Potent Potables",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "all drinks",
+      "name": "All Drinks",
+      "keptRoute": "/drinks/caffeinated/cold-brew",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "protein",
+      "name": "Protein",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "breakfast",
+      "name": "Breakfast",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "green",
+      "name": "Green",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "tropical",
+      "name": "Tropical",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "berry",
+      "name": "Berry",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "detox",
+      "name": "Detox",
+      "keptRoute": "/drinks/smoothies/berry",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    },
+    {
+      "key": "dessert",
+      "name": "Dessert",
+      "keptRoute": "/drinks/caffeinated/espresso",
+      "duplicateRoute": "/drinks/smoothies/workout"
+    }
+  ],
+  "generatedAt": "2026-03-01T17:02:55.897Z"
+}
