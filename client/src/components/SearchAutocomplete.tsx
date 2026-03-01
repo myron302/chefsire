@@ -134,12 +134,54 @@ export default function SearchAutocomplete() {
 
     setIsOpen(false);
 
-    // Default behavior stays the same: go to recipe search.
-    if (q) {
-      setLocation(`/recipes?q=${encodeURIComponent(q)}`);
-    } else {
+    // When the user submits without selecting a dropdown item (Enter key),
+    // route them to the most relevant section based on available autocomplete results.
+    // This keeps the existing recipe search as a fallback.
+    if (!q) {
       setLocation("/recipes");
+      return;
     }
+
+    const safeQ = encodeURIComponent(q);
+    const has = results;
+
+    // Prefer exact navigational routes for drinks/pet food/reviews when present.
+    if (has?.drinks?.length) {
+      const preferred = has.drinks.find(
+        (d) => typeof d.route === "string" && d.route && !d.route.includes("/drinks?q=")
+      );
+      const fallback = has.drinks.find((d) => typeof d.route === "string" && d.route);
+      const target = preferred?.route || fallback?.route;
+      if (target) {
+        setLocation(target);
+        return;
+      }
+      setLocation(`/drinks?q=${safeQ}`);
+      return;
+    }
+
+    if (has?.petFoods?.length) {
+      const target = has.petFoods.find((p) => typeof p.route === "string" && p.route)?.route;
+      if (target) {
+        setLocation(target);
+        return;
+      }
+      setLocation("/pet-food");
+      return;
+    }
+
+    if (has?.reviews?.length) {
+      const target = has.reviews.find((rv) => typeof rv.route === "string" && rv.route)?.route;
+      if (target) {
+        setLocation(target);
+        return;
+      }
+      setLocation(`/reviews?q=${safeQ}`);
+      return;
+    }
+
+    // Default behavior: go to recipe search.
+    setLocation(`/recipes?q=${safeQ}`);
   };
 
   const handleResultClick = (item: any) => {
