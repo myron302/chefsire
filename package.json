@@ -10,6 +10,7 @@
     "build": "npm run generate:drink-index && npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --target=node22 --outfile=server/dist/index.js",
+    "prestart": "npm run generate:drink-index",
     "start": "NODE_ENV=production node server/dist/index.js",
     "check": "tsc",
     "db:ping": "tsx server/scripts/db-ping.ts",
