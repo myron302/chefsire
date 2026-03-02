@@ -158,7 +158,7 @@ router.get("/autocomplete", async (req, res) => {
       { id: "cognac-brandy", name: "Cognac & Brandy", route: "/drinks/potent-potables/cognac-brandy", category: "potent-potables" },
       { id: "daiquiri", name: "Daiquiri", route: "/drinks/potent-potables/daiquiri", category: "potent-potables" },
       { id: "hot-drinks", name: "Hot Drinks", route: "/drinks/potent-potables/hot-drinks", category: "potent-potables" },
-      { id: "seasonal", name: "Seasonal", route: "/drinks/potent-potables/seasonal", category: "potent-potables" },
+      { id: "seasonal", name: "Seasonal", route: "/drinks/potent-potables/seasonal", category: "potent-potables" }
     ];
 
     const PET_FOOD_ROUTES: Array<{ id: string; name: string; route: string }> = [
@@ -166,7 +166,7 @@ router.get("/autocomplete", async (req, res) => {
       { id: "dogs", name: "Dog Food", route: "/pet-food/dogs" },
       { id: "cats", name: "Cat Food", route: "/pet-food/cats" },
       { id: "birds", name: "Bird Food", route: "/pet-food/birds" },
-      { id: "small-pets", name: "Small Pets", route: "/pet-food/small-pets" },
+      { id: "small-pets", name: "Small Pets", route: "/pet-food/small-pets" }
     ];
 
     const drinkCategoryMatches = DRINK_ROUTES
@@ -183,14 +183,13 @@ router.get("/autocomplete", async (req, res) => {
         category: x.category,
         route: x.route,
         type: "drink" as const,
-        matchKind: "category" as const,
+        matchKind: "category" as const
       }));
 
-    // If the user's free-text query strongly matches a known drinks route,
-    // prefer routing cocktail-name results to that category/subcategory page
-    // so users land on pages that render recipe cards.
     const bestDrinkRoute = (() => {
-      const exact = DRINK_ROUTES.find((x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower);
+      const exact = DRINK_ROUTES.find(
+        (x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower
+      );
       if (exact) return exact.route;
 
       const containsId = DRINK_ROUTES.find((x) => x.id.toLowerCase().includes(qLower));
@@ -202,7 +201,10 @@ router.get("/autocomplete", async (req, res) => {
       return null;
     })();
 
-    const exactDrinkRouteMatch = DRINK_ROUTES.find((x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower);
+    const exactDrinkRouteMatch = DRINK_ROUTES.find(
+      (x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower
+    );
+
     const exactDrinkRecipe = exactDrinkRouteMatch ? null : lookupDrinkRecipeByQuery(drinkIndex, trimmedQuery);
 
     const exactDrinkMatch = exactDrinkRecipe
@@ -211,7 +213,7 @@ router.get("/autocomplete", async (req, res) => {
           name: exactDrinkRecipe.name,
           route: exactDrinkRecipe.route,
           type: "drink" as const,
-          matchKind: "recipe-exact" as const,
+          matchKind: "recipe-exact" as const
         }
       : null;
 
@@ -227,12 +229,10 @@ router.get("/autocomplete", async (req, res) => {
         id: x.id,
         name: x.name,
         route: x.route,
-        type: "pet-food" as const,
+        type: "pet-food" as const
       }));
 
-    // Search in parallel for better performance
     const [foundUsers, recipesResult, cocktailDbDrinks, reviewPosts] = await Promise.all([
-      // Search users
       storage
         .searchUsers(trimmedQuery, 5)
         .then((list) =>
@@ -243,12 +243,11 @@ router.get("/autocomplete", async (req, res) => {
             avatar: user.avatar,
             specialty: user.specialty,
             isChef: user.isChef,
-            type: "user" as const,
+            type: "user" as const
           }))
         )
         .catch(() => []),
 
-      // Search recipes (external APIs)
       searchRecipes({ q: trimmedQuery, pageSize: 5, offset: 0 })
         .then((result) =>
           result.results.map((recipe) => ({
@@ -257,12 +256,11 @@ router.get("/autocomplete", async (req, res) => {
             imageUrl: recipe.image,
             cookTime: recipe.readyInMinutes,
             source: recipe.source || "external",
-            type: "recipe" as const,
+            type: "recipe" as const
           }))
         )
         .catch(() => []),
 
-      // Search drinks by name (CocktailDB). We link to the drinks hub search.
       searchDrinks({ q: trimmedQuery, pageSize: 5, offset: 0 })
         .then(({ results }) =>
           results.slice(0, 5).map((d) => ({
@@ -270,16 +268,13 @@ router.get("/autocomplete", async (req, res) => {
             name: d.title,
             imageUrl: d.imageUrl || undefined,
             category: d.category || undefined,
-            // Prefer a real drinks category/subcategory page when the query matches one,
-            // otherwise fall back to the drinks hub query.
             route: bestDrinkRoute || `/drinks?q=${encodeURIComponent(trimmedQuery)}`,
             type: "drink" as const,
-            matchKind: "external" as const,
+            matchKind: "external" as const
           }))
         )
         .catch(() => []),
 
-      // Search restaurant reviews (these are posts whose caption contains "📝 Review:")
       (db && typeof (db as any).select === "function"
         ? (db as any)
             .select({ post: posts, user: users })
@@ -297,24 +292,25 @@ router.get("/autocomplete", async (req, res) => {
                   id: row.user.id,
                   username: row.user.username,
                   displayName: row.user.displayName,
-                  avatar: row.user.avatar,
-                },
+                  avatar: row.user.avatar
+                }
               }))
             )
             .catch(() => [])
-        : Promise.resolve([])),
+        : Promise.resolve([]))
     ]);
 
-    // Merge drinks: category routes first (site navigation), then drink-name matches.
     const mergedDrinks = [exactDrinkMatch, ...drinkCategoryMatches, ...cocktailDbDrinks]
       .filter((x): x is NonNullable<typeof x> => Boolean(x))
       .filter((drink, index, array) => {
         const key = `${drink.name.toLowerCase()}|${drink.route || ""}`;
-        return index === array.findIndex((candidate) => `${candidate.name.toLowerCase()}|${candidate.route || ""}` === key);
+        return (
+          index ===
+          array.findIndex((candidate) => `${candidate.name.toLowerCase()}|${candidate.route || ""}` === key)
+        );
       })
       .slice(0, 10);
 
-    // Reviews: extract restaurant name from caption's first line when possible.
     const reviews = (reviewPosts as any[]).map((p) => {
       const cap = String(p.caption || "").trim();
       const firstLine = cap.split("\n")[0] || "";
@@ -324,7 +320,7 @@ router.get("/autocomplete", async (req, res) => {
         id: p.id,
         name,
         route: `/reviews?q=${encodeURIComponent(name)}`,
-        type: "review" as const,
+        type: "review" as const
       };
     });
 
@@ -334,7 +330,7 @@ router.get("/autocomplete", async (req, res) => {
       drinks: mergedDrinks,
       reviews,
       petFoods: petFoodMatches,
-      query: trimmedQuery,
+      query: trimmedQuery
     });
   } catch (error) {
     console.error("Autocomplete error:", error);
@@ -344,7 +340,7 @@ router.get("/autocomplete", async (req, res) => {
       recipes: [],
       drinks: [],
       reviews: [],
-      petFoods: [],
+      petFoods: []
     });
   }
 });
