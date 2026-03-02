@@ -21,11 +21,10 @@ type DrinkIndexFile = {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const drinksPagesRoot = path.join(repoRoot, "client", "src", "pages", "drinks");
+
 const generatedDirPath = path.join(repoRoot, "server", "generated");
 const generatedFilePath = path.join(generatedDirPath, "drink-index.json");
 
-// Heuristic: only index objects that look like actual drink recipe cards,
-// not every arbitrary "name" field that might appear in the file.
 const recipeSignalFields = new Set([
   "ingredients",
   "instructions",
@@ -64,10 +63,12 @@ function walkIndexPages(dir: string): string[] {
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
+
     if (entry.isDirectory()) {
       files.push(...walkIndexPages(fullPath));
       continue;
     }
+
     if (entry.isFile() && entry.name === "index.tsx") {
       files.push(fullPath);
     }
@@ -110,7 +111,10 @@ function extractNamesFromFile(filePath: string): string[] {
           const propName = getPropertyName(property.name);
           if (propName !== "name") continue;
 
-          if (ts.isStringLiteral(property.initializer) || ts.isNoSubstitutionTemplateLiteral(property.initializer)) {
+          if (
+            ts.isStringLiteral(property.initializer) ||
+            ts.isNoSubstitutionTemplateLiteral(property.initializer)
+          ) {
             const value = property.initializer.text.trim();
             if (value) names.add(value);
           }
