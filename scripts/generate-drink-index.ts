@@ -35,7 +35,7 @@ const recipeSignalFields = new Set([
   "prepTime",
   "servingSize",
   "spiritType",
-  "difficulty",
+  "difficulty"
 ]);
 
 function normalizeKey(value: string): string {
@@ -63,7 +63,6 @@ function walkIndexPages(dir: string): string[] {
 
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
-
     if (entry.isDirectory()) {
       files.push(...walkIndexPages(fullPath));
       continue;
@@ -97,7 +96,14 @@ function hasRecipeSignals(objectLiteral: ts.ObjectLiteralExpression): boolean {
 
 function extractNamesFromFile(filePath: string): string[] {
   const sourceText = fs.readFileSync(filePath, "utf8");
-  const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const sourceFile = ts.createSourceFile(
+    filePath,
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX
+  );
+
   const names = new Set<string>();
 
   const visit = (node: ts.Node) => {
@@ -107,7 +113,6 @@ function extractNamesFromFile(filePath: string): string[] {
 
         for (const property of element.properties) {
           if (!ts.isPropertyAssignment(property)) continue;
-
           const propName = getPropertyName(property.name);
           if (propName !== "name") continue;
 
@@ -161,7 +166,7 @@ function main() {
           key,
           name,
           keptRoute: recipes[key].route,
-          duplicateRoute: route,
+          duplicateRoute: route
         });
       }
     }
@@ -171,7 +176,7 @@ function main() {
     recipes,
     routes: [...routes.values()].sort((a, b) => a.route.localeCompare(b.route)),
     duplicates,
-    generatedAt: new Date().toISOString(),
+    generatedAt: new Date().toISOString()
   };
 
   fs.mkdirSync(generatedDirPath, { recursive: true });
