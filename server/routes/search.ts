@@ -92,7 +92,7 @@ router.get("/autocomplete", async (req, res) => {
         recipes: [],
         drinks: [],
         reviews: [],
-        petFoods: [],
+        petFoods: []
       });
     }
 
@@ -101,7 +101,6 @@ router.get("/autocomplete", async (req, res) => {
     const drinkIndex = loadDrinkIndex();
 
     // --- Static site categories (drinks + pet food) ---
-    // These routes exist as top-level categories/subpages in the app.
     const DRINK_ROUTES: Array<{ id: string; name: string; route: string; category?: string }> = [
       // Category hubs
       { id: "caffeinated", name: "Caffeinated Drinks", route: "/drinks/caffeinated", category: "caffeinated" },
@@ -187,9 +186,7 @@ router.get("/autocomplete", async (req, res) => {
       }));
 
     const bestDrinkRoute = (() => {
-      const exact = DRINK_ROUTES.find(
-        (x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower
-      );
+      const exact = DRINK_ROUTES.find((x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower);
       if (exact) return exact.route;
 
       const containsId = DRINK_ROUTES.find((x) => x.id.toLowerCase().includes(qLower));
@@ -201,9 +198,7 @@ router.get("/autocomplete", async (req, res) => {
       return null;
     })();
 
-    const exactDrinkRouteMatch = DRINK_ROUTES.find(
-      (x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower
-    );
+    const exactDrinkRouteMatch = DRINK_ROUTES.find((x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower);
 
     const exactDrinkRecipe = exactDrinkRouteMatch ? null : lookupDrinkRecipeByQuery(drinkIndex, trimmedQuery);
 
@@ -303,11 +298,8 @@ router.get("/autocomplete", async (req, res) => {
     const mergedDrinks = [exactDrinkMatch, ...drinkCategoryMatches, ...cocktailDbDrinks]
       .filter((x): x is NonNullable<typeof x> => Boolean(x))
       .filter((drink, index, array) => {
-        const key = `${drink.name.toLowerCase()}|${drink.route || ""}`;
-        return (
-          index ===
-          array.findIndex((candidate) => `${candidate.name.toLowerCase()}|${candidate.route || ""}` === key)
-        );
+        const key = `${drink.name.toLowerCase()}|${(drink as any).route || ""}`;
+        return index === array.findIndex((candidate) => `${candidate.name.toLowerCase()}|${(candidate as any).route || ""}` === key);
       })
       .slice(0, 10);
 
