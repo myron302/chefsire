@@ -1,5 +1,121 @@
 {
   "recipes": {
+    "gin & tonic": {
+      "name": "Gin & Tonic",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "negroni": {
+      "name": "Negroni",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "tom collins": {
+      "name": "Tom Collins",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "martini": {
+      "name": "Martini",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "french 75": {
+      "name": "French 75",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "aviation": {
+      "name": "Aviation",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "bee's knees": {
+      "name": "Bee's Knees",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "gimlet": {
+      "name": "Gimlet",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "singapore sling": {
+      "name": "Singapore Sling",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "ramos gin fizz": {
+      "name": "Ramos Gin Fizz",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "clover club": {
+      "name": "Clover Club",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "corpse reviver no. 2": {
+      "name": "Corpse Reviver No. 2",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "last word": {
+      "name": "Last Word",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "bramble": {
+      "name": "Bramble",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "southside": {
+      "name": "Southside",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "ode to rhubarb": {
+      "name": "Ode to Rhubarb",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "second ave spritz": {
+      "name": "Second Ave Spritz",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "glacier peak": {
+      "name": "Glacier Peak",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "israeli sour 2.0": {
+      "name": "Israeli Sour 2.0",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "sweet promise": {
+      "name": "Sweet Promise",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "tiny dancer": {
+      "name": "Tiny Dancer",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "elderflower spritz": {
+      "name": "Elderflower Spritz",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "cucumber basil smash": {
+      "name": "Cucumber Basil Smash",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "lavender gin fizz": {
+      "name": "Lavender Gin Fizz",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "pink peppercorn collins": {
+      "name": "Pink Peppercorn Collins",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "blood orange negroni": {
+      "name": "Blood Orange Negroni",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "strawberry thyme smash": {
+      "name": "Strawberry Thyme Smash",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "yuzu gin highball": {
+      "name": "Yuzu Gin Highball",
+      "route": "/drinks/potent-potables/gin"
+    },
+    "rosemary greyhound": {
+      "name": "Rosemary Greyhound",
+      "route": "/drinks/potent-potables/gin"
+    },
     "classic cold brew": {
       "name": "Classic Cold Brew",
       "route": "/drinks/caffeinated/cold-brew"
@@ -340,16 +456,8 @@
       "name": "Old Fashioned",
       "route": "/drinks/potent-potables/cocktails"
     },
-    "martini": {
-      "name": "Martini",
-      "route": "/drinks/potent-potables/cocktails"
-    },
     "manhattan": {
       "name": "Manhattan",
-      "route": "/drinks/potent-potables/cocktails"
-    },
-    "negroni": {
-      "name": "Negroni",
       "route": "/drinks/potent-potables/cocktails"
     },
     "whiskey sour": {
@@ -455,42 +563,6 @@
     "chartreuse daiquiri": {
       "name": "Chartreuse Daiquiri",
       "route": "/drinks/potent-potables/daiquiri"
-    },
-    "classic gin & tonic": {
-      "name": "Classic Gin & Tonic",
-      "route": "/drinks/potent-potables/gin"
-    },
-    "tom collins": {
-      "name": "Tom Collins",
-      "route": "/drinks/potent-potables/gin"
-    },
-    "aviation": {
-      "name": "Aviation",
-      "route": "/drinks/potent-potables/gin"
-    },
-    "french 75": {
-      "name": "French 75",
-      "route": "/drinks/potent-potables/gin"
-    },
-    "bramble": {
-      "name": "Bramble",
-      "route": "/drinks/potent-potables/gin"
-    },
-    "last word": {
-      "name": "Last Word",
-      "route": "/drinks/potent-potables/gin"
-    },
-    "bee's knees": {
-      "name": "Bee's Knees",
-      "route": "/drinks/potent-potables/gin"
-    },
-    "southside": {
-      "name": "Southside",
-      "route": "/drinks/potent-potables/gin"
-    },
-    "corpse reviver #2": {
-      "name": "Corpse Reviver #2",
-      "route": "/drinks/potent-potables/gin"
     },
     "irish coffee": {
       "name": "Irish Coffee",
@@ -1655,10 +1727,16 @@
       "duplicateRoute": "/drinks/caffeinated/specialty"
     },
     {
+      "key": "martini",
+      "name": "Martini",
+      "keptRoute": "/drinks/potent-potables/gin",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
+    },
+    {
       "key": "negroni",
       "name": "Negroni",
-      "keptRoute": "/drinks/potent-potables/cocktails",
-      "duplicateRoute": "/drinks/potent-potables/gin"
+      "keptRoute": "/drinks/potent-potables/gin",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
     },
     {
       "key": "old fashioned",
@@ -1799,5 +1877,5 @@
       "duplicateRoute": "/drinks/smoothies/green"
     }
   ],
-  "generatedAt": "2026-03-01T17:23:20.594Z"
+  "generatedAt": "2026-03-03T20:39:37.707Z"
 }

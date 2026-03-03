@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import ts from "typescript";
 import { fileURLToPath } from "node:url";
+import { drinkRouteRegistry } from "../client/src/data/drinks";
 
 type DrinkIndexEntry = { name: string; route: string };
 type DrinkRoute = { route: string; title: string };
@@ -21,7 +22,6 @@ type DrinkIndexFile = {
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const drinksPagesRoot = path.join(repoRoot, "client", "src", "pages", "drinks");
-
 const generatedDirPath = path.join(repoRoot, "server", "generated");
 const generatedFilePath = path.join(generatedDirPath, "drink-index.json");
 
@@ -96,13 +96,7 @@ function hasRecipeSignals(objectLiteral: ts.ObjectLiteralExpression): boolean {
 
 function extractNamesFromFile(filePath: string): string[] {
   const sourceText = fs.readFileSync(filePath, "utf8");
-  const sourceFile = ts.createSourceFile(
-    filePath,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-    ts.ScriptKind.TSX
-  );
+  const sourceFile = ts.createSourceFile(filePath, sourceText, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
   const names = new Set<string>();
 
@@ -116,10 +110,7 @@ function extractNamesFromFile(filePath: string): string[] {
           const propName = getPropertyName(property.name);
           if (propName !== "name") continue;
 
-          if (
-            ts.isStringLiteral(property.initializer) ||
-            ts.isNoSubstitutionTemplateLiteral(property.initializer)
-          ) {
+          if (ts.isStringLiteral(property.initializer) || ts.isNoSubstitutionTemplateLiteral(property.initializer)) {
             const value = property.initializer.text.trim();
             if (value) names.add(value);
           }
@@ -145,13 +136,40 @@ function main() {
     throw new Error(`Drinks pages root not found: ${drinksPagesRoot}`);
   }
 
-  const pageFiles = walkIndexPages(drinksPagesRoot);
   const recipes: Record<string, DrinkIndexEntry> = {};
   const routes = new Map<string, DrinkRoute>();
   const duplicates: DuplicateEntry[] = [];
 
+  const registeredRoutes = new Set(drinkRouteRegistry.map((entry) => entry.route));
+
+  for (const routeEntry of drinkRouteRegistry) {
+    routes.set(routeEntry.route, { route: routeEntry.route, title: routeEntry.title });
+    for (const recipe of routeEntry.recipes ?? []) {
+      const name = String(recipe?.name ?? "").trim();
+      if (!name) continue;
+      const key = normalizeKey(name);
+      if (!key) continue;
+
+      if (!recipes[key]) {
+        recipes[key] = { name, route: routeEntry.route };
+      } else if (recipes[key].route !== routeEntry.route) {
+        duplicates.push({
+          key,
+          name,
+          keptRoute: recipes[key].route,
+          duplicateRoute: routeEntry.route
+        });
+      }
+    }
+  }
+
+  const pageFiles = walkIndexPages(drinksPagesRoot);
   for (const filePath of pageFiles) {
     const route = toRoute(filePath);
+    if (registeredRoutes.has(route)) {
+      continue;
+    }
+
     routes.set(route, { route, title: toTitleFromRoute(route) });
 
     const names = extractNamesFromFile(filePath);
