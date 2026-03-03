@@ -49,6 +49,13 @@ interface AutocompleteResult {
   query: string;
 }
 
+function normalizeKey(value: string): string {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 export default function SearchAutocomplete() {
   const [, setLocation] = useLocation();
   const [searchText, setSearchText] = useState("");
@@ -135,9 +142,6 @@ export default function SearchAutocomplete() {
 
     setIsOpen(false);
 
-    // When the user submits without selecting a dropdown item (Enter key),
-    // route them to the most relevant section based on available autocomplete results.
-    // This keeps the existing recipe search as a fallback.
     if (!q) {
       setLocation("/recipes");
       return;
@@ -168,7 +172,9 @@ export default function SearchAutocomplete() {
         return;
       }
 
-      const fallbackDrinkRoute = has.drinks.find((d) => typeof d.route === "string" && d.route)?.route;
+      const fallbackDrinkRoute = has.drinks.find(
+        (d) => typeof d.route === "string" && d.route
+      )?.route;
       if (fallbackDrinkRoute) {
         setLocation(fallbackDrinkRoute);
         return;
@@ -198,7 +204,6 @@ export default function SearchAutocomplete() {
       return;
     }
 
-    // Default behavior: go to recipe search.
     setLocation(`/recipes?q=${safeQ}`);
   };
 
@@ -227,26 +232,23 @@ export default function SearchAutocomplete() {
     }
 
     if (item.type === "drink") {
-      // If user clicked an external drink result but we have an indexed exact recipe hit
-      // for the same name, prefer the indexed route (more accurate, goes to the page with cards).
-      const normalize = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
-      const clickedName = normalize(String(item.name || ""));
+      // ✅ IMPORTANT: If user clicks an external drink that ALSO exists as an indexed recipe-exact,
+      // always route to the indexed page (the one that actually has the cards).
+      const nameKey = normalizeKey(item.name);
+      const exact = results?.drinks?.find(
+        (d) =>
+          d.matchKind === "recipe-exact" &&
+          normalizeKey(d.name) === nameKey &&
+          typeof d.route === "string" &&
+          d.route
+      );
 
-      if (item.matchKind === "external" && results?.drinks?.length && clickedName) {
-        const exact = results.drinks.find(
-          (d) =>
-            d.matchKind === "recipe-exact" &&
-            typeof d.route === "string" &&
-            d.route &&
-            normalize(String(d.name || "")) === clickedName
-        );
-        if (exact?.route) {
-          setLocation(exact.route);
-          return;
-        }
+      if (exact?.route) {
+        setLocation(exact.route);
+        return;
       }
 
-      // Otherwise: prefer explicit route if present (indexed or category)
+      // Otherwise: follow explicit route if provided (category/external/etc.)
       if (item.route) {
         setLocation(item.route);
         return;
@@ -265,9 +267,7 @@ export default function SearchAutocomplete() {
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setSelectedIndex((prev) =>
-          prev < allResults.length - 1 ? prev + 1 : prev
-        );
+        setSelectedIndex((prev) => (prev < allResults.length - 1 ? prev + 1 : prev));
         break;
       case "ArrowUp":
         e.preventDefault();
@@ -322,9 +322,7 @@ export default function SearchAutocomplete() {
           className="absolute top-full mt-2 w-full bg-background border border-border rounded-lg shadow-xl max-h-96 overflow-y-auto z-50"
         >
           {isLoading ? (
-            <div className="p-4 text-center text-muted-foreground">
-              Searching...
-            </div>
+            <div className="p-4 text-center text-muted-foreground">Searching...</div>
           ) : hasResults ? (
             <div className="py-2">
               {/* Users Section */}
@@ -352,9 +350,7 @@ export default function SearchAutocomplete() {
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">
-                            {user.displayName}
-                          </div>
+                          <div className="font-medium truncate">{user.displayName}</div>
                           <div className="text-sm text-muted-foreground truncate">
                             @{user.username}
                             {user.isChef && user.specialty && ` • ${user.specialty}`}
