@@ -7,7 +7,7 @@
     "dev": "NODE_ENV=development tsx server/index.ts",
     "dev:4001": "PORT=4001 NODE_ENV=development tsx server/index.ts",
     "dev:4002": "PORT=4002 NODE_ENV=development tsx server/index.ts",
-    "build": "npm run build:client && npm run build:server",
+    "build": "npm run generate:drink-index && npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --target=node22 --outfile=server/dist/index.js",
     "start": "NODE_ENV=production node server/dist/index.js",
@@ -37,7 +37,10 @@
     "check:coffee": "node tools/check-missing-icon-imports.js Coffee",
     "fix:coffee": "node tools/fix-missing-coffee-imports.js Coffee",
     "clean:assets": "node tools/clean-assets.js",
-    "rebuild": "npm run clean:assets && npm run build:client && npm run build:server"
+    "rebuild": "npm run clean:assets && npm run build:client && npm run build:server",
+    "generate:drink-index": "tsx scripts/generate-drink-index.ts",
+    "predev": "npm run generate:drink-index",
+    "verify:drink-index": "node -e \"const fs=require('fs');const path=require('path');const p=path.resolve('server/generated/drink-index.json');console.log('[verify:drink-index] cwd='+process.cwd());console.log('[verify:drink-index] path='+p);if(!fs.existsSync(p)){console.error('[verify:drink-index] MISSING');process.exit(1);}const raw=fs.readFileSync(p,'utf8');const data=JSON.parse(raw);const recipeCount=Object.keys(data.recipes||{}).length;const routeCount=(data.routes||[]).length;const dupCount=(data.duplicates||[]).length;console.log('[verify:drink-index] OK recipes='+recipeCount+' routes='+routeCount+' duplicates='+dupCount);const key='tom collins';if(data.recipes&&data.recipes[key]){console.log('[verify:drink-index] sample '+key+' -> '+data.recipes[key].route);}else{console.log('[verify:drink-index] sample '+key+' -> not-found');}\""
   },
   "dependencies": {
     "@craftjs/core": "^0.2.12",
@@ -100,8 +103,8 @@
     "memorystore": "^1.6.7",
     "morgan": "^1.10.0",
     "multer": "^2.0.2",
-    "node-cron": "^4.2.1",
     "next-themes": "^0.4.6",
+    "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "nodemailer": "^7.0.10",
     "openai": "^4.0.0",
