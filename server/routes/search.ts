@@ -2,6 +2,7 @@
 import { Router } from "express";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { storage } from "../storage";
 import { searchRecipes } from "../services/recipes-service";
 import { searchDrinks } from "../services/drinks-service";
@@ -65,7 +66,8 @@ function loadDrinkIndex(): DrinkIndexFile | null {
   }
 
   try {
-    const filePath = path.join(process.cwd(), "server", "generated", "drink-index.json");
+    const routesDir = path.dirname(fileURLToPath(import.meta.url));
+    const filePath = path.join(routesDir, "..", "generated", "drink-index.json");
     const json = fs.readFileSync(filePath, "utf8");
     drinkIndexCache = JSON.parse(json) as DrinkIndexFile;
     drinkIndexLooseCache = null;
