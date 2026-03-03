@@ -49,7 +49,7 @@ interface AutocompleteResult {
   query: string;
 }
 
-function normalizeKey(value: string): string {
+function normalizeDrinkName(value: string): string {
   return String(value || "")
     .trim()
     .toLowerCase()
@@ -232,23 +232,28 @@ export default function SearchAutocomplete() {
     }
 
     if (item.type === "drink") {
-      // ✅ IMPORTANT: If user clicks an external drink that ALSO exists as an indexed recipe-exact,
-      // always route to the indexed page (the one that actually has the cards).
-      const nameKey = normalizeKey(item.name);
-      const exact = results?.drinks?.find(
-        (d) =>
-          d.matchKind === "recipe-exact" &&
-          normalizeKey(d.name) === nameKey &&
-          typeof d.route === "string" &&
-          d.route
-      );
-
-      if (exact?.route) {
-        setLocation(exact.route);
-        return;
+      // If user clicks an external drink result but we have an indexed exact match for the same name,
+      // route to the indexed page (same behavior as Enter submit priority).
+      if (
+        item.matchKind === "external" &&
+        results?.drinks?.length &&
+        typeof item.name === "string"
+      ) {
+        const clickedKey = normalizeDrinkName(item.name);
+        const exact = results.drinks.find(
+          (d) =>
+            d.matchKind === "recipe-exact" &&
+            typeof d.route === "string" &&
+            d.route &&
+            normalizeDrinkName(d.name) === clickedKey
+        );
+        if (exact?.route) {
+          setLocation(exact.route);
+          return;
+        }
       }
 
-      // Otherwise: follow explicit route if provided (category/external/etc.)
+      // Prefer explicit route if present (works for indexed + category items).
       if (item.route) {
         setLocation(item.route);
         return;
@@ -267,7 +272,9 @@ export default function SearchAutocomplete() {
     switch (e.key) {
       case "ArrowDown":
         e.preventDefault();
-        setSelectedIndex((prev) => (prev < allResults.length - 1 ? prev + 1 : prev));
+        setSelectedIndex((prev) =>
+          prev < allResults.length - 1 ? prev + 1 : prev
+        );
         break;
       case "ArrowUp":
         e.preventDefault();
@@ -322,7 +329,9 @@ export default function SearchAutocomplete() {
           className="absolute top-full mt-2 w-full bg-background border border-border rounded-lg shadow-xl max-h-96 overflow-y-auto z-50"
         >
           {isLoading ? (
-            <div className="p-4 text-center text-muted-foreground">Searching...</div>
+            <div className="p-4 text-center text-muted-foreground">
+              Searching...
+            </div>
           ) : hasResults ? (
             <div className="py-2">
               {/* Users Section */}
@@ -350,7 +359,9 @@ export default function SearchAutocomplete() {
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{user.displayName}</div>
+                          <div className="font-medium truncate">
+                            {user.displayName}
+                          </div>
                           <div className="text-sm text-muted-foreground truncate">
                             @{user.username}
                             {user.isChef && user.specialty && ` • ${user.specialty}`}
