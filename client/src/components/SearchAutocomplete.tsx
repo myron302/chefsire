@@ -227,11 +227,31 @@ export default function SearchAutocomplete() {
     }
 
     if (item.type === "drink") {
-      // Prefer explicit route for site categories.
+      // If user clicked an external drink result but we have an indexed exact recipe hit
+      // for the same name, prefer the indexed route (more accurate, goes to the page with cards).
+      const normalize = (v: string) => v.trim().toLowerCase().replace(/\s+/g, " ");
+      const clickedName = normalize(String(item.name || ""));
+
+      if (item.matchKind === "external" && results?.drinks?.length && clickedName) {
+        const exact = results.drinks.find(
+          (d) =>
+            d.matchKind === "recipe-exact" &&
+            typeof d.route === "string" &&
+            d.route &&
+            normalize(String(d.name || "")) === clickedName
+        );
+        if (exact?.route) {
+          setLocation(exact.route);
+          return;
+        }
+      }
+
+      // Otherwise: prefer explicit route if present (indexed or category)
       if (item.route) {
         setLocation(item.route);
         return;
       }
+
       // Fallback: go to drinks hub with a query.
       const q = String(item.name || "").trim();
       setLocation(q ? `/drinks?q=${encodeURIComponent(q)}` : "/drinks");
