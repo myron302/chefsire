@@ -1,19 +1,131 @@
 {
   "recipes": {
+    "old fashioned": {
+      "name": "Old Fashioned",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "martini": {
+      "name": "Martini",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "manhattan": {
+      "name": "Manhattan",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "negroni": {
+      "name": "Negroni",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "whiskey sour": {
+      "name": "Whiskey Sour",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "daiquiri": {
+      "name": "Daiquiri",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "sazerac": {
+      "name": "Sazerac",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "mint julep": {
+      "name": "Mint Julep",
+      "route": "/drinks/potent-potables/cocktails"
+    },
+    "sidecar": {
+      "name": "Sidecar",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "french connection": {
+      "name": "French Connection",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "vieux carré": {
+      "name": "Vieux Carré",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "sazerac (cognac)": {
+      "name": "Sazerac (Cognac)",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "cognac old fashioned": {
+      "name": "Cognac Old Fashioned",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "french 75 (cognac)": {
+      "name": "French 75 (Cognac)",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "brandy alexander": {
+      "name": "Brandy Alexander",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "metropolitan": {
+      "name": "Metropolitan",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "jack rose": {
+      "name": "Jack Rose",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "between the sheets": {
+      "name": "Between the Sheets",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "cognac sour": {
+      "name": "Cognac Sour",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "corpse reviver no. 1": {
+      "name": "Corpse Reviver No. 1",
+      "route": "/drinks/potent-potables/cognac-brandy"
+    },
+    "classic daiquiri": {
+      "name": "Classic Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "hemingway daiquiri": {
+      "name": "Hemingway Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "strawberry daiquiri (shaken)": {
+      "name": "Strawberry Daiquiri (Shaken)",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "frozen strawberry daiquiri": {
+      "name": "Frozen Strawberry Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "banana daiquiri": {
+      "name": "Banana Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "pineapple daiquiri": {
+      "name": "Pineapple Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "coconut daiquiri": {
+      "name": "Coconut Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "mulata daiquiri": {
+      "name": "Mulata Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "frozen mango daiquiri": {
+      "name": "Frozen Mango Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
+    "chartreuse daiquiri": {
+      "name": "Chartreuse Daiquiri",
+      "route": "/drinks/potent-potables/daiquiri"
+    },
     "gin & tonic": {
       "name": "Gin & Tonic",
       "route": "/drinks/potent-potables/gin"
     },
-    "negroni": {
-      "name": "Negroni",
-      "route": "/drinks/potent-potables/gin"
-    },
     "tom collins": {
       "name": "Tom Collins",
-      "route": "/drinks/potent-potables/gin"
-    },
-    "martini": {
-      "name": "Martini",
       "route": "/drinks/potent-potables/gin"
     },
     "french 75": {
@@ -115,14 +227,669 @@
     "rosemary greyhound": {
       "name": "Rosemary Greyhound",
       "route": "/drinks/potent-potables/gin"
+    },
+    "irish coffee": {
+      "name": "Irish Coffee",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "hot toddy": {
+      "name": "Hot Toddy",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "mulled wine": {
+      "name": "Mulled Wine",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "hot buttered rum": {
+      "name": "Hot Buttered Rum",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "tom and jerry": {
+      "name": "Tom and Jerry",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "café brulot": {
+      "name": "Café Brulot",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "hot apple cider": {
+      "name": "Hot Apple Cider",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "hot chocolate with rum": {
+      "name": "Hot Chocolate with Rum",
+      "route": "/drinks/potent-potables/hot-drinks"
+    },
+    "amaretto sour": {
+      "name": "Amaretto Sour",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "grasshopper": {
+      "name": "Grasshopper",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "b-52": {
+      "name": "B-52",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "midori sour": {
+      "name": "Midori Sour",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "chambord royale": {
+      "name": "Chambord Royale",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "baileys mudslide": {
+      "name": "Baileys Mudslide",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "limoncello spritz": {
+      "name": "Limoncello Spritz",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "frangelico fizz": {
+      "name": "Frangelico Fizz",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "godfather": {
+      "name": "Godfather",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "cointreau margarita": {
+      "name": "Cointreau Margarita",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "st. germain cocktail": {
+      "name": "St. Germain Cocktail",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "aperol spritz": {
+      "name": "Aperol Spritz",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "drambuie rusty nail": {
+      "name": "Drambuie Rusty Nail",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "grand marnier sidecar": {
+      "name": "Grand Marnier Sidecar",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "jägermeister bomb": {
+      "name": "Jägermeister Bomb",
+      "route": "/drinks/potent-potables/liqueurs"
+    },
+    "classic gin martini": {
+      "name": "Classic Gin Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "vodka martini": {
+      "name": "Vodka Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "dirty martini": {
+      "name": "Dirty Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "espresso martini": {
+      "name": "Espresso Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "pornstar martini": {
+      "name": "Pornstar Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "lychee martini": {
+      "name": "Lychee Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "french martini": {
+      "name": "French Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "vesper martini": {
+      "name": "Vesper Martini",
+      "route": "/drinks/potent-potables/martinis"
+    },
+    "virgin mojito": {
+      "name": "Virgin Mojito",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "shirley temple": {
+      "name": "Shirley Temple",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "cucumber cooler": {
+      "name": "Cucumber Cooler",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "tropical sunrise": {
+      "name": "Tropical Sunrise",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "lavender lemonade fizz": {
+      "name": "Lavender Lemonade Fizz",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "watermelon mint smash": {
+      "name": "Watermelon Mint Smash",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "ginger spice mule": {
+      "name": "Ginger Spice Mule",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "berry basil smash": {
+      "name": "Berry Basil Smash",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "pomegranate sparkler": {
+      "name": "Pomegranate Sparkler",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "mango chili margarita": {
+      "name": "Mango Chili Margarita",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "pineapple cilantro refresher": {
+      "name": "Pineapple Cilantro Refresher",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "espresso martini (mocktail)": {
+      "name": "Espresso Martini (Mocktail)",
+      "route": "/drinks/potent-potables/mocktails"
+    },
+    "mojito": {
+      "name": "Mojito",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "piña colada": {
+      "name": "Piña Colada",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "mai tai": {
+      "name": "Mai Tai",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "dark and stormy": {
+      "name": "Dark and Stormy",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "zombie": {
+      "name": "Zombie",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "cuba libre": {
+      "name": "Cuba Libre",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "hurricane": {
+      "name": "Hurricane",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "ti' punch": {
+      "name": "Ti' Punch",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "painkiller": {
+      "name": "Painkiller",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "jungle bird": {
+      "name": "Jungle Bird",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "rum old fashioned": {
+      "name": "Rum Old Fashioned",
+      "route": "/drinks/potent-potables/rum"
+    },
+    "penicillin": {
+      "name": "Penicillin",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "rob roy": {
+      "name": "Rob Roy",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "blood and sand": {
+      "name": "Blood and Sand",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "rusty nail": {
+      "name": "Rusty Nail",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "irish mule": {
+      "name": "Irish Mule",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "irish old fashioned": {
+      "name": "Irish Old Fashioned",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "tipperary": {
+      "name": "Tipperary",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "smoky martini": {
+      "name": "Smoky Martini",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "highland sour": {
+      "name": "Highland Sour",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "emerald isle": {
+      "name": "Emerald Isle",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "cameron's kick": {
+      "name": "Cameron's Kick",
+      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    "peppermint white russian": {
+      "name": "Peppermint White Russian",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "elderflower gin fizz": {
+      "name": "Elderflower Gin Fizz",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "lavender lemon drop": {
+      "name": "Lavender Lemon Drop",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "strawberry basil smash": {
+      "name": "Strawberry Basil Smash",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "watermelon margarita": {
+      "name": "Watermelon Margarita",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "frozen piña colada": {
+      "name": "Frozen Piña Colada",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "cucumber gin & tonic": {
+      "name": "Cucumber Gin & Tonic",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "apple cider bourbon smash": {
+      "name": "Apple Cider Bourbon Smash",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "pumpkin spice espresso martini": {
+      "name": "Pumpkin Spice Espresso Martini",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "cranberry moscow mule": {
+      "name": "Cranberry Moscow Mule",
+      "route": "/drinks/potent-potables/seasonal"
+    },
+    "classic mimosa": {
+      "name": "Classic Mimosa",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "bellini": {
+      "name": "Bellini",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "strawberry mimosa": {
+      "name": "Strawberry Mimosa",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "hugo spritz": {
+      "name": "Hugo Spritz",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "mimosa royale": {
+      "name": "Mimosa Royale",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "campari spritz": {
+      "name": "Campari Spritz",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "pineapple mimosa": {
+      "name": "Pineapple Mimosa",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "rossini": {
+      "name": "Rossini",
+      "route": "/drinks/potent-potables/spritz"
+    },
+    "classic margarita": {
+      "name": "Classic Margarita",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "paloma": {
+      "name": "Paloma",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "tequila sunrise": {
+      "name": "Tequila Sunrise",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "tommy's margarita": {
+      "name": "Tommy's Margarita",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "mezcal margarita": {
+      "name": "Mezcal Margarita",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "oaxaca old fashioned": {
+      "name": "Oaxaca Old Fashioned",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "spicy margarita": {
+      "name": "Spicy Margarita",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "tequila old fashioned": {
+      "name": "Tequila Old Fashioned",
+      "route": "/drinks/potent-potables/tequila-mezcal"
+    },
+    "virgin mary": {
+      "name": "Virgin Mary",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "roy rogers": {
+      "name": "Roy Rogers",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "cucumber mint cooler": {
+      "name": "Cucumber Mint Cooler",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "grapefruit rosemary spritz": {
+      "name": "Grapefruit Rosemary Spritz",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "lavender lemonade": {
+      "name": "Lavender Lemonade",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "watermelon basil refresher": {
+      "name": "Watermelon Basil Refresher",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "berry blast": {
+      "name": "Berry Blast",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "pineapple ginger fizz": {
+      "name": "Pineapple Ginger Fizz",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "iced hibiscus tea spritzer": {
+      "name": "Iced Hibiscus Tea Spritzer",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "matcha mint cooler": {
+      "name": "Matcha Mint Cooler",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "spiced apple cider mocktail": {
+      "name": "Spiced Apple Cider Mocktail",
+      "route": "/drinks/potent-potables/virgin-cocktails"
+    },
+    "moscow mule": {
+      "name": "Moscow Mule",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "bloody mary": {
+      "name": "Bloody Mary",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "cosmopolitan": {
+      "name": "Cosmopolitan",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "white russian": {
+      "name": "White Russian",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "vodka tonic": {
+      "name": "Vodka Tonic",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "lemon drop": {
+      "name": "Lemon Drop",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "sea breeze": {
+      "name": "Sea Breeze",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "black russian": {
+      "name": "Black Russian",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "vodka cranberry": {
+      "name": "Vodka Cranberry",
+      "route": "/drinks/potent-potables/vodka"
+    },
+    "boulevardier": {
+      "name": "Boulevardier",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "whiskey highball": {
+      "name": "Whiskey Highball",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "gold rush": {
+      "name": "Gold Rush",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "new york sour": {
+      "name": "New York Sour",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "whiskey smash": {
+      "name": "Whiskey Smash",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    "paper plane": {
+      "name": "Paper Plane",
+      "route": "/drinks/potent-potables/whiskey-bourbon"
     }
   },
   "routes": [
     {
+      "route": "/drinks/potent-potables/cocktails",
+      "title": "Classic Cocktails"
+    },
+    {
+      "route": "/drinks/potent-potables/cognac-brandy",
+      "title": "Cognac & Brandy"
+    },
+    {
+      "route": "/drinks/potent-potables/daiquiri",
+      "title": "Daiquiri"
+    },
+    {
       "route": "/drinks/potent-potables/gin",
       "title": "Gin"
+    },
+    {
+      "route": "/drinks/potent-potables/hot-drinks",
+      "title": "Hot Drinks"
+    },
+    {
+      "route": "/drinks/potent-potables/liqueurs",
+      "title": "Liqueurs"
+    },
+    {
+      "route": "/drinks/potent-potables/martinis",
+      "title": "Martinis"
+    },
+    {
+      "route": "/drinks/potent-potables/mocktails",
+      "title": "Mocktails"
+    },
+    {
+      "route": "/drinks/potent-potables/rum",
+      "title": "Rum"
+    },
+    {
+      "route": "/drinks/potent-potables/scotch-irish-whiskey",
+      "title": "Scotch & Irish Whiskey"
+    },
+    {
+      "route": "/drinks/potent-potables/seasonal",
+      "title": "Seasonal"
+    },
+    {
+      "route": "/drinks/potent-potables/spritz",
+      "title": "Spritz & Mimosas"
+    },
+    {
+      "route": "/drinks/potent-potables/tequila-mezcal",
+      "title": "Tequila & Mezcal"
+    },
+    {
+      "route": "/drinks/potent-potables/virgin-cocktails",
+      "title": "Virgin Cocktails"
+    },
+    {
+      "route": "/drinks/potent-potables/vodka",
+      "title": "Vodka"
+    },
+    {
+      "route": "/drinks/potent-potables/whiskey-bourbon",
+      "title": "Whiskey & Bourbon"
     }
   ],
-  "duplicates": [],
-  "generatedAt": "2026-03-03T19:49:16.788Z"
+  "duplicates": [
+    {
+      "key": "negroni",
+      "name": "Negroni",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "martini",
+      "name": "Martini",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/gin"
+    },
+    {
+      "key": "daiquiri",
+      "name": "Daiquiri",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/rum"
+    },
+    {
+      "key": "godfather",
+      "name": "Godfather",
+      "keptRoute": "/drinks/potent-potables/liqueurs",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "irish coffee",
+      "name": "Irish Coffee",
+      "keptRoute": "/drinks/potent-potables/hot-drinks",
+      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+    },
+    {
+      "key": "hot toddy",
+      "name": "Hot Toddy",
+      "keptRoute": "/drinks/potent-potables/hot-drinks",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "mulled wine",
+      "name": "Mulled Wine",
+      "keptRoute": "/drinks/potent-potables/hot-drinks",
+      "duplicateRoute": "/drinks/potent-potables/seasonal"
+    },
+    {
+      "key": "aperol spritz",
+      "name": "Aperol Spritz",
+      "keptRoute": "/drinks/potent-potables/liqueurs",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "limoncello spritz",
+      "name": "Limoncello Spritz",
+      "keptRoute": "/drinks/potent-potables/liqueurs",
+      "duplicateRoute": "/drinks/potent-potables/spritz"
+    },
+    {
+      "key": "virgin mojito",
+      "name": "Virgin Mojito",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/potent-potables/virgin-cocktails"
+    },
+    {
+      "key": "shirley temple",
+      "name": "Shirley Temple",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/potent-potables/virgin-cocktails"
+    },
+    {
+      "key": "tropical sunrise",
+      "name": "Tropical Sunrise",
+      "keptRoute": "/drinks/potent-potables/mocktails",
+      "duplicateRoute": "/drinks/potent-potables/virgin-cocktails"
+    },
+    {
+      "key": "vodka martini",
+      "name": "Vodka Martini",
+      "keptRoute": "/drinks/potent-potables/martinis",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "espresso martini",
+      "name": "Espresso Martini",
+      "keptRoute": "/drinks/potent-potables/martinis",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "french martini",
+      "name": "French Martini",
+      "keptRoute": "/drinks/potent-potables/martinis",
+      "duplicateRoute": "/drinks/potent-potables/vodka"
+    },
+    {
+      "key": "old fashioned",
+      "name": "Old Fashioned",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "mint julep",
+      "name": "Mint Julep",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "manhattan",
+      "name": "Manhattan",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "whiskey sour",
+      "name": "Whiskey Sour",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "sazerac",
+      "name": "Sazerac",
+      "keptRoute": "/drinks/potent-potables/cocktails",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    },
+    {
+      "key": "hot toddy",
+      "name": "Hot Toddy",
+      "keptRoute": "/drinks/potent-potables/hot-drinks",
+      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+    }
+  ],
+  "generatedAt": "2026-03-03T21:43:21.321Z"
 }
