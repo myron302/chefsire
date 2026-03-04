@@ -47,9 +47,9 @@ const NutritionMealPlanner = () => {
   useEffect(() => {
     fetchUserData();
     fetchMealPlans();
+    fetchGroceryList();
     if (isPremium) {
       fetchDailyNutrition();
-      fetchGroceryList();
       fetchSavingsReport();
     }
   }, [selectedDate, isPremium, user]);
@@ -761,11 +761,11 @@ const NutritionMealPlanner = () => {
                   <ShoppingCart className="w-6 h-6 text-blue-600" />
                 </div>
                 <CardTitle>Grocery Lists</CardTitle>
-                <CardDescription>Auto-generate shopping lists from your meal plan</CardDescription>
+                <CardDescription>Shared shopping lists and pantry tools stay free for households</CardDescription>
               </CardHeader>
               <CardContent>
                 <ul className="space-y-2 text-sm text-gray-600">
-                  <li>• One-click generation</li>
+                  <li>• Add pantry items to shopping list</li>
                   <li>• Organized by aisle</li>
                   <li>• Pantry integration</li>
                   <li>• Share with family</li>
@@ -773,6 +773,29 @@ const NutritionMealPlanner = () => {
               </CardContent>
             </Card>
           </div>
+
+          <Card className="mb-12 border-blue-200 bg-blue-50/60">
+            <CardHeader>
+              <CardTitle className="text-xl">Free Pantry + Household Shopping Access</CardTitle>
+              <CardDescription>
+                Your shopping list, cart flow, pantry, and household sharing are available without Nutrition Premium.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col sm:flex-row gap-3">
+              <Button variant="outline" onClick={() => (window.location.href = '/pantry/shopping-list')}>
+                <ShoppingCart className="w-4 h-4 mr-2" />
+                Open Shopping List
+              </Button>
+              <Button variant="outline" onClick={() => (window.location.href = '/pantry')}>
+                <Package className="w-4 h-4 mr-2" />
+                Open Pantry
+              </Button>
+              <Button variant="outline" onClick={() => (window.location.href = '/pantry/household')}>
+                <Users className="w-4 h-4 mr-2" />
+                Manage Household
+              </Button>
+            </CardContent>
+          </Card>
 
           <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
             <CardHeader className="text-center">

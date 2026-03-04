@@ -1,5 +1,5 @@
 import express, { type Request, type Response } from "express";
-import { and, eq, gte, lte, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { requireAuth } from "../middleware";
 import { groceryListItems, pantryItems } from "../../shared/schema.js";
@@ -66,6 +66,32 @@ async function ensureGroceryListSchema() {
 function andAll(conds: any[]) {
   if (conds.length === 1) return conds[0];
   return and(...conds);
+}
+
+async function getSharedHouseholdUserIds(userId: string): Promise<string[]> {
+  const membership = await db.execute(sql`
+    SELECT household_id
+    FROM pantry_household_members
+    WHERE user_id = ${userId}
+    ORDER BY created_at DESC
+    LIMIT 1;
+  `);
+
+  const householdId = (membership as any)?.rows?.[0]?.household_id;
+  if (!householdId) return [userId];
+
+  const members = await db.execute(sql`
+    SELECT user_id
+    FROM pantry_household_members
+    WHERE household_id = ${householdId};
+  `);
+
+  const memberIds = ((members as any)?.rows || [])
+    .map((row: any) => String(row.user_id))
+    .filter(Boolean);
+
+  const deduped = Array.from(new Set(memberIds));
+  return deduped.length ? deduped : [userId];
 }
 
 // ------------------------------------------------------------
@@ -135,9 +161,10 @@ router.get("/grocery-list", requireAuth, async (req: Request, res: Response) => 
     await ensureGroceryListSchema();
 
     const userId = req.user!.id;
+    const sharedUserIds = await getSharedHouseholdUserIds(userId);
     const { mealPlanId, purchased } = req.query;
 
-    const conds: any[] = [eq(groceryListItems.userId, userId)];
+    const conds: any[] = [inArray(groceryListItems.userId, sharedUserIds)];
 
     if (purchased === "false") {
       conds.push(eq(groceryListItems.purchased, false));
@@ -180,10 +207,11 @@ router.get("/grocery-list/optimized", requireAuth, async (req: Request, res: Res
     await ensureGroceryListSchema();
 
     const userId = req.user!.id;
+    const sharedUserIds = await getSharedHouseholdUserIds(userId);
     const { store } = req.query;
 
     const conds: any[] = [
-      eq(groceryListItems.userId, userId),
+      inArray(groceryListItems.userId, sharedUserIds),
       eq(groceryListItems.purchased, false),
     ];
 
@@ -238,16 +266,17 @@ router.post("/grocery-list/check-pantry", requireAuth, async (req: Request, res:
     await ensureGroceryListSchema();
 
     const userId = req.user!.id;
+    const sharedUserIds = await getSharedHouseholdUserIds(userId);
 
     const groceryItems = await db
       .select()
       .from(groceryListItems)
-      .where(and(eq(groceryListItems.userId, userId), eq(groceryListItems.purchased, false)));
+      .where(and(inArray(groceryListItems.userId, sharedUserIds), eq(groceryListItems.purchased, false)));
 
     const pantryIngredients = await db
       .select()
       .from(pantryItems)
-      .where(eq(pantryItems.userId, userId));
+      .where(inArray(pantryItems.userId, sharedUserIds));
 
     const updates: Promise<any>[] = [];
 
@@ -266,7 +295,7 @@ router.post("/grocery-list/check-pantry", requireAuth, async (req: Request, res:
           db
             .update(groceryListItems)
             .set({ isPantryItem: true })
-            .where(and(eq(groceryListItems.id, grocery.id), eq(groceryListItems.userId, userId)))
+            .where(and(eq(groceryListItems.id, grocery.id), inArray(groceryListItems.userId, sharedUserIds)))
         );
       }
     }
@@ -289,6 +318,7 @@ router.patch("/grocery-list/:id", requireAuth, async (req: Request, res: Respons
     await ensureGroceryListSchema();
 
     const userId = req.user!.id;
+    const sharedUserIds = await getSharedHouseholdUserIds(userId);
     const { id } = req.params;
     const { ingredientName, quantity, unit, location, category, notes, isRunningLow } = req.body;
 
@@ -303,7 +333,7 @@ router.patch("/grocery-list/:id", requireAuth, async (req: Request, res: Respons
         notes,
         isRunningLow,
       })
-      .where(and(eq(groceryListItems.id, id), eq(groceryListItems.userId, userId)))
+      .where(and(eq(groceryListItems.id, id), inArray(groceryListItems.userId, sharedUserIds)))
       .returning();
 
     if (!updated) {
@@ -326,6 +356,7 @@ router.patch("/grocery-list/:id/purchase", requireAuth, async (req: Request, res
     await ensureGroceryListSchema();
 
     const userId = req.user!.id;
+    const sharedUserIds = await getSharedHouseholdUserIds(userId);
     const { id } = req.params;
     const { actualPrice, toggle } = req.body;
 
@@ -334,7 +365,7 @@ router.patch("/grocery-list/:id/purchase", requireAuth, async (req: Request, res
       const [currentItem] = await db
         .select()
         .from(groceryListItems)
-        .where(and(eq(groceryListItems.id, id), eq(groceryListItems.userId, userId)))
+        .where(and(eq(groceryListItems.id, id), inArray(groceryListItems.userId, sharedUserIds)))
         .limit(1);
 
       if (currentItem) {
@@ -349,7 +380,7 @@ router.patch("/grocery-list/:id/purchase", requireAuth, async (req: Request, res
         purchasedAt: purchased ? new Date() : null,
         actualPrice: actualPrice || null,
       })
-      .where(and(eq(groceryListItems.id, id), eq(groceryListItems.userId, userId)))
+      .where(and(eq(groceryListItems.id, id), inArray(groceryListItems.userId, sharedUserIds)))
       .returning();
 
     res.json({ item: updated });
@@ -368,11 +399,12 @@ router.delete("/grocery-list/:id", requireAuth, async (req: Request, res: Respon
     await ensureGroceryListSchema();
 
     const userId = req.user!.id;
+    const sharedUserIds = await getSharedHouseholdUserIds(userId);
     const { id } = req.params;
 
     const [deleted] = await db
       .delete(groceryListItems)
-      .where(and(eq(groceryListItems.id, id), eq(groceryListItems.userId, userId)))
+      .where(and(eq(groceryListItems.id, id), inArray(groceryListItems.userId, sharedUserIds)))
       .returning();
 
     if (!deleted) {
@@ -395,9 +427,10 @@ router.get("/grocery-list/savings-report", requireAuth, async (req: Request, res
     await ensureGroceryListSchema();
 
     const userId = req.user!.id;
+    const sharedUserIds = await getSharedHouseholdUserIds(userId);
     const { startDate, endDate } = req.query;
 
-    const conds: any[] = [eq(groceryListItems.userId, userId)];
+    const conds: any[] = [inArray(groceryListItems.userId, sharedUserIds)];
     if (startDate) conds.push(gte(groceryListItems.createdAt, new Date(startDate as string)));
     if (endDate) conds.push(lte(groceryListItems.createdAt, new Date(endDate as string)));
 
