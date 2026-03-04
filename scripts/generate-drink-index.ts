@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { drinkRouteRegistry } from "../client/src/data/drinks";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { drinkRouteRegistry, type DrinkRouteRegistryEntry } from "../client/src/data/drinks";
 
 type DrinkIndexEntry = { name: string; route: string };
 type DrinkRoute = { route: string; title: string };
@@ -19,7 +19,11 @@ type DrinkIndexFile = {
   generatedAt: string;
 };
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+type DrinkRecipeLike = { name?: string };
+
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(scriptDir, "..");
+const drinksDataDirPath = path.join(repoRoot, "client", "src", "data", "drinks");
 const generatedDirPath = path.join(repoRoot, "server", "generated");
 const generatedFilePath = path.join(generatedDirPath, "drink-index.json");
 
@@ -33,12 +37,33 @@ function writeAtomically(filePath: string, contents: string) {
   fs.renameSync(tempPath, filePath);
 }
 
-function main() {
+async function loadRouteRecipes(routeEntry: DrinkRouteRegistryEntry): Promise<DrinkRecipeLike[]> {
+  const modulePath = path.join(drinksDataDirPath, `${routeEntry.dataModulePath}.ts`);
+  const moduleFileUrl = pathToFileURL(modulePath).href;
+  const loadedModule = await import(moduleFileUrl);
+  const moduleRecipes = loadedModule?.[routeEntry.dataExportName];
+
+  if (Array.isArray(moduleRecipes)) {
+    return moduleRecipes;
+  }
+
+  if (Array.isArray(routeEntry.recipes)) {
+    return routeEntry.recipes;
+  }
+
+  throw new Error(
+    `[generate-drink-index] Could not resolve recipe array for route '${routeEntry.route}' from ${routeEntry.dataModulePath}:${routeEntry.dataExportName}.`
+  );
+}
+
+async function main() {
   const recipes: Record<string, DrinkIndexEntry> = {};
   const duplicates: DuplicateEntry[] = [];
 
   for (const routeEntry of drinkRouteRegistry) {
-    for (const recipe of routeEntry.recipes ?? []) {
+    const routeRecipes = await loadRouteRecipes(routeEntry);
+
+    for (const recipe of routeRecipes) {
       const name = String(recipe?.name ?? "").trim();
       if (!name) continue;
 
@@ -77,4 +102,4 @@ function main() {
   );
 }
 
-main();
+await main();
