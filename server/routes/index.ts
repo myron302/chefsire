@@ -135,6 +135,10 @@ r.use("/meal-planner", mealPlannerAdvancedRouter);
 // Week planning (one-click generator + weekly plan fetch) - prefixed
 r.use("/meal-planner", mealPlannerWeekRouter);
 
+// AI nutrition lookup + recipe suggestions
+import mealNutritionAiRouter from "./meal-nutrition-ai";
+r.use("/meal-planner", mealNutritionAiRouter);
+
 // DM (Direct Messages) - prefixed
 r.use("/dm", dmRouter);
 
