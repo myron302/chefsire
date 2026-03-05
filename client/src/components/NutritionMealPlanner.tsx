@@ -145,42 +145,45 @@ const NutritionMealPlanner = () => {
   };
 
   const fetchDailyNutrition = async () => {
-    try {
-      const response = await fetch(`/api/meal-planner/settings`, {
-        credentials: 'include',
+    // Default goals used if the API call fails
+    const defaultGoals = { dailyCalorieGoal: 2000, macroGoals: { protein: 150, carbs: 200, fat: 65 } };
+
+    // Calculate today's actual nutrition totals from weeklyMeals state
+    const calcTotals = (meals: Record<string, any>, goals: any) => {
+      // Get the day name for today (Monday–Sunday)
+      const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+      const todayName = dayNames[new Date().getDay()];
+      const todayMeals = meals[todayName] || {};
+
+      // Sum all items across all meal slots for today
+      const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+      Object.values(todayMeals).forEach((slotValue: any) => {
+        const items = Array.isArray(slotValue) ? slotValue : slotValue ? [slotValue] : [];
+        items.forEach((meal: any) => {
+          totals.calories += Number(meal?.calories || 0);
+          totals.protein  += Number(meal?.protein  || 0);
+          totals.carbs    += Number(meal?.carbs    || 0);
+          totals.fat      += Number(meal?.fat      || 0);
+        });
       });
 
+      setDailyNutrition({ ...totals, goal: goals });
+    };
+
+    // Try to fetch saved goals from server; calculate regardless of outcome
+    try {
+      const response = await fetch(`/api/meal-planner/settings`, { credentials: 'include' });
       if (response.ok) {
         const data = await response.json();
-        const goals = data.settings || { dailyCalorieGoal: 2000, macroGoals: { protein: 150, carbs: 200, fat: 65 } };
+        const goals = data.settings || defaultGoals;
         setNutritionGoals(goals);
-
-        const totals = Object.values(weeklyMeals as Record<string, any> || {}).reduce((acc: any, dayMeals: any) => {
-          Object.values(dayMeals || {}).forEach((slotValue: any) => {
-            // slotValue may be a single meal object or an array of meal items
-            const items = Array.isArray(slotValue) ? slotValue : slotValue ? [slotValue] : [];
-            items.forEach((meal: any) => {
-              acc.calories += Number(meal?.calories || 0);
-              acc.protein += Number(meal?.protein || 0);
-              acc.carbs += Number(meal?.carbs || 0);
-              acc.fat += Number(meal?.fat || 0);
-              acc.count += 1;
-            });
-          });
-          return acc;
-        }, { calories: 0, protein: 0, carbs: 0, fat: 0, count: 0 });
-
-        const averageMeals = Math.max(1, totals.count);
-        setDailyNutrition({
-          calories: Math.round(totals.calories / averageMeals * 3),
-          protein: Math.round(totals.protein / averageMeals * 3),
-          carbs: Math.round(totals.carbs / averageMeals * 3),
-          fat: Math.round(totals.fat / averageMeals * 3),
-          goal: goals,
-        });
+        calcTotals(weeklyMeals, goals);
+      } else {
+        calcTotals(weeklyMeals, nutritionGoals || defaultGoals);
       }
     } catch (error) {
       console.error('Error fetching daily nutrition:', error);
+      calcTotals(weeklyMeals, nutritionGoals || defaultGoals);
     }
   };
 
@@ -809,17 +812,17 @@ const NutritionMealPlanner = () => {
     bread: { calories: 79, protein: 3, carbs: 15, fat: 1, fiber: 1, servingSize: '1 slice' },
   };
 
-  const clientSideNutritionLookup = (name: string) => {
+  // ── Nutrition Lookup — client-side first, AI refines silently ─────────────
+  const clientSideNutritionLookup = (name: string): { calories: number; protein: number; carbs: number; fat: number; fiber: number; servingSize: string } => {
     const lower = name.toLowerCase();
-    // Try direct match first
-    for (const [key, val] of Object.entries(NUTRITION_TABLE)) {
-      if (lower.includes(key.replace('_', ' '))) return val;
-    }
-    // Multi-item: split by " and ", "&", ","
-    const parts = lower.split(/[,&]|and/).map(s => s.trim()).filter(Boolean);
+
+    // STEP 1: Split into multiple items first (handles "eggs, toast and bacon")
+    const parts = lower.split(/[,&+]|\band\b|\bwith\b/).map(s => s.trim()).filter(Boolean);
+
     if (parts.length > 1) {
-      let combined = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, servingSize: 'combined serving' };
+      let combined = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 };
       let matched = 0;
+      const servings: string[] = [];
       for (const part of parts) {
         for (const [key, val] of Object.entries(NUTRITION_TABLE)) {
           if (part.includes(key.replace('_', ' '))) {
@@ -828,24 +831,55 @@ const NutritionMealPlanner = () => {
             combined.carbs += val.carbs;
             combined.fat += val.fat;
             combined.fiber += val.fiber;
+            servings.push(val.servingSize);
             matched++;
             break;
           }
         }
       }
-      if (matched > 0) return combined;
+      if (matched > 0) {
+        return { ...combined, servingSize: servings.join(' + ') };
+      }
     }
-    // Generic fallback
+
+    // STEP 2: Single item scan
+    for (const [key, val] of Object.entries(NUTRITION_TABLE)) {
+      if (lower.includes(key.replace('_', ' '))) return val;
+    }
+
+    // STEP 3: Generic fallback — fields are NEVER left blank
     return { calories: 400, protein: 25, carbs: 40, fat: 14, fiber: 4, servingSize: '1 serving' };
   };
 
+  const applyNutrition = (nutrition: { calories: number; protein: number; carbs: number; fat: number; fiber: number; servingSize: string }) => {
+    setMealForm(prev => ({
+      ...prev,
+      calories: String(nutrition.calories),
+      protein: String(nutrition.protein),
+      carbs: String(nutrition.carbs),
+      fat: String(nutrition.fat),
+      fiber: String(nutrition.fiber),
+      servingSize: nutrition.servingSize || prev.servingSize,
+    }));
+  };
+
   // ── AI Nutrition Lookup ───────────────────────────────────────────────────
+  // Fills fields IMMEDIATELY from built-in table (no network needed).
+  // Then silently asks the server AI to refine if OpenAI key is configured.
   const lookupNutritionWithAI = async () => {
     if (!mealForm.name.trim()) {
-      toast({ variant: 'destructive', description: 'Enter a meal name first to look up nutrition.' });
+      toast({ variant: 'destructive', description: 'Enter a meal name first.' });
       return;
     }
     setIsLookingUpNutrition(true);
+
+    // Fill instantly from built-in database
+    const clientResult = clientSideNutritionLookup(mealForm.name);
+    applyNutrition(clientResult);
+    toast({ description: '\u2728 Nutrition filled in \u2014 adjust any values as needed.' });
+    setIsLookingUpNutrition(false);
+
+    // Silently try the AI in background to refine accuracy (optional enhancement)
     try {
       const res = await fetch('/api/meal-planner/ai/nutrition-lookup', {
         method: 'POST',
@@ -853,51 +887,17 @@ const NutritionMealPlanner = () => {
         credentials: 'include',
         body: JSON.stringify({ mealName: mealForm.name, servingSize: mealForm.servingSize || undefined }),
       });
-
-      let nutrition: any = null;
-
       if (res.ok) {
         const data = await res.json();
-        // Validate — must have at least calories and protein as real numbers
-        if (data && typeof data.calories === 'number' && data.calories > 0 && typeof data.protein === 'number') {
-          nutrition = data;
+        if (data && typeof data.calories === 'number' && data.calories > 0) {
+          applyNutrition({ ...clientResult, ...data });
         }
       }
-
-      // Fall back to client-side lookup table if API returned bad/missing data
-      if (!nutrition) {
-        nutrition = clientSideNutritionLookup(mealForm.name);
-      }
-
-      setMealForm(prev => ({
-        ...prev,
-        calories: String(nutrition.calories),
-        protein: String(nutrition.protein),
-        carbs: String(nutrition.carbs),
-        fat: String(nutrition.fat),
-        fiber: String(nutrition.fiber),
-        servingSize: nutrition.servingSize || prev.servingSize,
-      }));
-      toast({ description: '✨ Nutrition filled in — adjust any values as needed.' });
-    } catch (err) {
-      // Network/parse error — still use client-side lookup
-      const nutrition = clientSideNutritionLookup(mealForm.name);
-      setMealForm(prev => ({
-        ...prev,
-        calories: String(nutrition.calories),
-        protein: String(nutrition.protein),
-        carbs: String(nutrition.carbs),
-        fat: String(nutrition.fat),
-        fiber: String(nutrition.fiber),
-        servingSize: nutrition.servingSize || prev.servingSize,
-      }));
-      toast({ description: '✨ Nutrition estimated from built-in database.' });
-    } finally {
-      setIsLookingUpNutrition(false);
+    } catch {
+      // Silent fail — client-side data already showing, no action needed
     }
   };
 
-  // ── AI Recipe Suggestions ─────────────────────────────────────────────────
   const loadAIRecipeSuggestions = async () => {
     setIsLoadingAiRecipes(true);
     setAiRecipes([]);
