@@ -17,12 +17,21 @@ console.log(
     HAS_PASSENGER_PORT ? " (from Passenger)" : ""
   }`
 );
+console.log(`[ChefSire] CWD: ${process.cwd()}`);
 
 // Database connection check
 if (!process.env.DATABASE_URL) {
   console.error("⚠️  WARNING: DATABASE_URL is not set! Database operations will fail.");
 } else {
   console.log("✓ DATABASE_URL is configured");
+}
+
+// OpenAI key check — logs to Plesk error log so you can confirm it's loaded
+if (!process.env.OPENAI_API_KEY) {
+  console.warn("⚠️  WARNING: OPENAI_API_KEY is not set — AI nutrition lookup will use built-in fallback data.");
+} else {
+  const prefix = process.env.OPENAI_API_KEY.substring(0, 7);
+  console.log(`✓ OPENAI_API_KEY is configured (starts with: ${prefix}...)`);
 }
 
 const server = app.listen(PORT, HOST, () => {
