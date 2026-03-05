@@ -791,6 +791,20 @@ const NutritionMealPlanner = () => {
   const remainingCalories = Math.max(0, calorieGoal - caloriesCurrent);
   const plannedSlots = weekDays.reduce((sum, day) => sum + mealTypes.filter((type) => Boolean(weeklyMeals?.[day]?.[type])).length, 0);
   const totalSlots = weekDays.length * mealTypes.length;
+  const rawSavingsSummary = savingsReport?.summary || {};
+  const rawSavingsPantry = savingsReport?.pantry || {};
+  const safeTopSavingCategories = Array.isArray(savingsReport?.topSavingCategories)
+    ? savingsReport.topSavingCategories
+    : [];
+  const normalizedSavingsReport = savingsReport
+    ? {
+        totalSaved: Number(rawSavingsSummary.totalSaved || 0),
+        savingsRate: rawSavingsSummary.savingsRate || '0%',
+        pantrySavings: Number(rawSavingsPantry.savings || 0),
+        pantryItemCount: Number(rawSavingsPantry.itemCount || 0),
+        topSavingCategories: safeTopSavingCategories,
+      }
+    : null;
 
   if (!isPremium) {
     return (
@@ -1429,7 +1443,7 @@ const NutritionMealPlanner = () => {
                   </CardContent>
                 </Card>
 
-                {savingsReport && (
+                {normalizedSavingsReport && (
                   <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
                     <CardHeader>
                       <CardTitle className="text-lg flex items-center gap-2">
@@ -1443,29 +1457,29 @@ const NutritionMealPlanner = () => {
                         <div className="bg-white rounded-lg p-3">
                           <p className="text-xs text-gray-600 mb-1">Total Saved</p>
                           <p className="text-2xl font-bold text-green-600">
-                            ${savingsReport.summary.totalSaved}
+                            ${normalizedSavingsReport.totalSaved.toFixed(2)}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {savingsReport.summary.savingsRate} savings rate
+                            {normalizedSavingsReport.savingsRate} savings rate
                           </p>
                         </div>
                         <div className="bg-white rounded-lg p-3">
                           <p className="text-xs text-gray-600 mb-1">Pantry Savings</p>
                           <p className="text-2xl font-bold text-emerald-600">
-                            ${savingsReport.pantry.savings}
+                            ${normalizedSavingsReport.pantrySavings.toFixed(2)}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {savingsReport.pantry.itemCount} items owned
+                            {normalizedSavingsReport.pantryItemCount} items owned
                           </p>
                         </div>
                       </div>
                       <div className="pt-3 border-t border-green-200">
                         <p className="text-xs font-medium text-gray-700 mb-2">Top Saving Categories:</p>
                         <div className="space-y-2">
-                          {savingsReport.topSavingCategories.slice(0, 3).map((category: any, idx: number) => (
+                          {normalizedSavingsReport.topSavingCategories.slice(0, 3).map((category: any, idx: number) => (
                             <div key={idx} className="flex items-center justify-between text-xs">
-                              <span className="text-gray-600">{category.category}</span>
-                              <span className="font-medium text-green-600">-${category.saved.toFixed(2)}</span>
+                              <span className="text-gray-600">{category?.category || 'Other'}</span>
+                              <span className="font-medium text-green-600">-${Number(category?.saved || 0).toFixed(2)}</span>
                             </div>
                           ))}
                         </div>
@@ -1476,7 +1490,7 @@ const NutritionMealPlanner = () => {
                           <p className="text-xs font-medium text-gray-700">Smart Shopping</p>
                         </div>
                         <p className="text-xs text-gray-600">
-                          You're spending {savingsReport.summary.savingsRate} less than estimated!
+                          You're spending {normalizedSavingsReport.savingsRate} less than estimated!
                         </p>
                       </div>
                     </CardContent>
