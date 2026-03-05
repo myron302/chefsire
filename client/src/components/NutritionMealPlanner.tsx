@@ -3,7 +3,7 @@ import {
   Calendar, Plus, Target, TrendingUp, Clock, Users, ChefHat, Star, Lock, Crown,
   ShoppingCart, CheckCircle, BarChart3, PieChart, Download, Filter, Save,
   AlertCircle, Package, Utensils, CalendarDays, Zap, ListChecks, Settings, Camera,
-  DollarSign, Copy
+  DollarSign, Copy, Sparkles
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 import BarcodeScanner from '@/components/BarcodeScanner';
+import AdvancedFeaturesPanel from '@/components/meal-planner/AdvancedFeaturesPanel';
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 
 const NutritionMealPlanner = () => {
@@ -24,11 +25,11 @@ const NutritionMealPlanner = () => {
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
   const [mealPlans, setMealPlans] = useState([]);
   const [groceryList, setGroceryList] = useState([]);
-  const [dailyNutrition, setDailyNutrition] = useState(null);
-  const [nutritionGoals, setNutritionGoals] = useState(null);
+  const [dailyNutrition, setDailyNutrition] = useState<any>(null);
+  const [nutritionGoals, setNutritionGoals] = useState<any>(null);
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [weeklyMeals, setWeeklyMeals] = useState({});
+  const [weeklyMeals, setWeeklyMeals] = useState<Record<string, any>>({});
   const [showAddMealModal, setShowAddMealModal] = useState(false);
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [selectedMealSlot, setSelectedMealSlot] = useState<{day: string, type: string} | null>(null);
@@ -40,19 +41,35 @@ const NutritionMealPlanner = () => {
   const [showScanModal, setShowScanModal] = useState(false);
   const [showShareFamilyModal, setShowShareFamilyModal] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
+  const [weekRange, setWeekRange] = useState<{ weekStart: string; weekEnd: string } | null>(null);
+  const [isGeneratingWeek, setIsGeneratingWeek] = useState(false);
 
   const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
+  const getCurrentWeekAnchor = () => {
+    const now = new Date(selectedDate);
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    now.setDate(now.getDate() + diff);
+    return now.toISOString().split('T')[0];
+  };
+
   useEffect(() => {
     fetchUserData();
-    fetchMealPlans();
     if (isPremium) {
+      fetchMealPlans();
       fetchDailyNutrition();
       fetchGroceryList();
       fetchSavingsReport();
     }
   }, [selectedDate, isPremium, user]);
+
+  useEffect(() => {
+    if (isPremium) {
+      fetchDailyNutrition();
+    }
+  }, [weeklyMeals]);
 
   const fetchSavingsReport = async () => {
     try {
@@ -103,15 +120,15 @@ const NutritionMealPlanner = () => {
   const fetchMealPlans = async () => {
     setLoading(true);
     try {
-      // Mock data for demo
-      setWeeklyMeals({
-        'Monday': {
-          breakfast: { name: 'Protein Oatmeal', calories: 350, protein: 20, carbs: 45, fat: 8 },
-          lunch: { name: 'Grilled Chicken Salad', calories: 450, protein: 35, carbs: 30, fat: 15 },
-          dinner: { name: 'Salmon & Quinoa', calories: 550, protein: 40, carbs: 45, fat: 20 },
-        },
-        // More days...
+      const response = await fetch(`/api/meal-planner/week?date=${getCurrentWeekAnchor()}`, {
+        credentials: 'include',
       });
+
+      if (response.ok) {
+        const data = await response.json();
+        setWeeklyMeals(data.weeklyMeals || {});
+        setWeekRange({ weekStart: data.weekStart, weekEnd: data.weekEnd });
+      }
     } catch (error) {
       console.error('Error fetching meal plans:', error);
     } finally {
@@ -121,15 +138,74 @@ const NutritionMealPlanner = () => {
 
   const fetchDailyNutrition = async () => {
     try {
-      setDailyNutrition({
-        calories: 1850,
-        protein: 145,
-        carbs: 180,
-        fat: 62,
-        goal: nutritionGoals
+      const response = await fetch(`/api/meal-planner/settings`, {
+        credentials: 'include',
       });
+
+      if (response.ok) {
+        const data = await response.json();
+        const goals = data.settings || { dailyCalorieGoal: 2000, macroGoals: { protein: 150, carbs: 200, fat: 65 } };
+        setNutritionGoals(goals);
+
+        const totals = Object.values(weeklyMeals as Record<string, any> || {}).reduce((acc: any, dayMeals: any) => {
+          Object.values(dayMeals || {}).forEach((meal: any) => {
+            acc.calories += Number(meal?.calories || 0);
+            acc.protein += Number(meal?.protein || 0);
+            acc.carbs += Number(meal?.carbs || 0);
+            acc.fat += Number(meal?.fat || 0);
+            acc.count += 1;
+          });
+          return acc;
+        }, { calories: 0, protein: 0, carbs: 0, fat: 0, count: 0 });
+
+        const averageMeals = Math.max(1, totals.count);
+        setDailyNutrition({
+          calories: Math.round(totals.calories / averageMeals * 3),
+          protein: Math.round(totals.protein / averageMeals * 3),
+          carbs: Math.round(totals.carbs / averageMeals * 3),
+          fat: Math.round(totals.fat / averageMeals * 3),
+          goal: goals,
+        });
+      }
     } catch (error) {
       console.error('Error fetching daily nutrition:', error);
+    }
+  };
+
+  const generateWeekPlan = async () => {
+    try {
+      setIsGeneratingWeek(true);
+      const response = await fetch('/api/meal-planner/week/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          date: getCurrentWeekAnchor(),
+          days: 7,
+          mealTypes: ['breakfast', 'lunch', 'dinner'],
+          servings: 2,
+          replaceExisting: true,
+          alsoCreateGroceryList: true,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to generate week plan');
+      }
+
+      const data = await response.json();
+      setWeeklyMeals(data.weeklyMeals || {});
+      setWeekRange({ weekStart: data.weekStart, weekEnd: data.weekEnd });
+      toast({
+        description: `✅ Week generated and ${data.groceryList?.created || 0} grocery items added.`,
+      });
+      fetchGroceryList();
+      fetchDailyNutrition();
+    } catch (error) {
+      console.error('Error generating week plan:', error);
+      toast({ variant: 'destructive', description: 'Could not generate your week plan.' });
+    } finally {
+      setIsGeneratingWeek(false);
     }
   };
 
@@ -705,6 +781,31 @@ const NutritionMealPlanner = () => {
     </div>
   );
 
+  const calorieGoal = nutritionGoals?.dailyCalorieGoal || 2000;
+  const macroGoals = nutritionGoals?.macroGoals || { protein: 150, carbs: 200, fat: 65 };
+  const caloriesCurrent = dailyNutrition?.calories || 0;
+  const proteinCurrent = dailyNutrition?.protein || 0;
+  const carbsCurrent = dailyNutrition?.carbs || 0;
+  const fatCurrent = dailyNutrition?.fat || 0;
+  const calorieProgress = Math.min(100, Math.round((caloriesCurrent / calorieGoal) * 100));
+  const remainingCalories = Math.max(0, calorieGoal - caloriesCurrent);
+  const plannedSlots = weekDays.reduce((sum, day) => sum + mealTypes.filter((type) => Boolean(weeklyMeals?.[day]?.[type])).length, 0);
+  const totalSlots = weekDays.length * mealTypes.length;
+  const rawSavingsSummary = savingsReport?.summary || {};
+  const rawSavingsPantry = savingsReport?.pantry || {};
+  const safeTopSavingCategories = Array.isArray(savingsReport?.topSavingCategories)
+    ? savingsReport.topSavingCategories
+    : [];
+  const normalizedSavingsReport = savingsReport
+    ? {
+        totalSaved: Number(rawSavingsSummary.totalSaved || 0),
+        savingsRate: rawSavingsSummary.savingsRate || '0%',
+        pantrySavings: Number(rawSavingsPantry.savings || 0),
+        pantryItemCount: Number(rawSavingsPantry.itemCount || 0),
+        topSavingCategories: safeTopSavingCategories,
+      }
+    : null;
+
   if (!isPremium) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-orange-50">
@@ -828,7 +929,7 @@ const NutritionMealPlanner = () => {
 
         {/* Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-5 mb-8 h-auto">
+          <TabsList className="grid w-full grid-cols-6 mb-8 h-auto">
             <TabsTrigger value="planner" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
               <Calendar className="w-4 h-4" />
               <span className="text-xs sm:text-sm">Planner</span>
@@ -851,6 +952,10 @@ const NutritionMealPlanner = () => {
               <span className="text-xs sm:text-sm hidden sm:inline">Analytics</span>
               <span className="text-xs sm:hidden">Stats</span>
             </TabsTrigger>
+            <TabsTrigger value="advanced" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
+              <Sparkles className="w-4 h-4" />
+              <span className="text-xs sm:text-sm">Advanced</span>
+            </TabsTrigger>
           </TabsList>
 
           {/* Meal Planner Tab */}
@@ -863,15 +968,15 @@ const NutritionMealPlanner = () => {
                     <div>
                       <p className="text-white/90 text-sm font-medium mb-1">Today's Calories</p>
                       <div className="flex items-baseline gap-2">
-                        <span className="text-4xl font-bold">1,850</span>
-                        <span className="text-white/80 text-lg">/ 2,000 kcal</span>
+                        <span className="text-4xl font-bold">{caloriesCurrent.toLocaleString()}</span>
+                        <span className="text-white/80 text-lg">/ {calorieGoal.toLocaleString()} kcal</span>
                       </div>
-                      <Progress value={92.5} className="h-2 mt-3 bg-white/20" />
+                      <Progress value={calorieProgress} className="h-2 mt-3 bg-white/20" />
                     </div>
                     <div className="text-right">
                       <div className="bg-white/20 backdrop-blur rounded-lg px-4 py-3">
                         <p className="text-sm text-white/90">Remaining</p>
-                        <p className="text-2xl font-bold">150</p>
+                        <p className="text-2xl font-bold">{remainingCalories}</p>
                         <p className="text-xs text-white/80">calories</p>
                       </div>
                     </div>
@@ -879,15 +984,15 @@ const NutritionMealPlanner = () => {
                   <div className="grid grid-cols-3 gap-3 mt-4">
                     <div className="bg-white/15 backdrop-blur rounded-lg p-3 text-center">
                       <p className="text-xs text-white/80">Protein</p>
-                      <p className="text-lg font-semibold">145g</p>
+                      <p className="text-lg font-semibold">{proteinCurrent}g</p>
                     </div>
                     <div className="bg-white/15 backdrop-blur rounded-lg p-3 text-center">
                       <p className="text-xs text-white/80">Carbs</p>
-                      <p className="text-lg font-semibold">180g</p>
+                      <p className="text-lg font-semibold">{carbsCurrent}g</p>
                     </div>
                     <div className="bg-white/15 backdrop-blur rounded-lg p-3 text-center">
                       <p className="text-xs text-white/80">Fat</p>
-                      <p className="text-lg font-semibold">62g</p>
+                      <p className="text-lg font-semibold">{fatCurrent}g</p>
                     </div>
                   </div>
                 </CardContent>
@@ -921,6 +1026,10 @@ const NutritionMealPlanner = () => {
                   </Button>
                 </div>
                 <div className="flex items-center gap-2 flex-1 md:flex-none">
+                  <Button variant="outline" size="sm" className="flex-1 md:flex-none" onClick={generateWeekPlan} disabled={isGeneratingWeek}>
+                    <Zap className="w-4 h-4 mr-2" />
+                    {isGeneratingWeek ? 'Generating...' : 'Auto-Plan Week'}
+                  </Button>
                   <Button variant="outline" size="sm" className="flex-1 md:flex-none" onClick={saveTemplate}>
                     <Save className="w-4 h-4 mr-2" />
                     Save Template
@@ -931,6 +1040,11 @@ const NutritionMealPlanner = () => {
                   </Button>
                 </div>
               </div>
+              {weekRange && (
+                <p className="text-sm text-gray-500">
+                  Current plan: {weekRange.weekStart} → {weekRange.weekEnd}
+                </p>
+              )}
 
               {/* Weekly Calendar View */}
               {viewMode === 'week' && (
@@ -1058,14 +1172,14 @@ const NutritionMealPlanner = () => {
                     <div>
                       <div className="flex items-center justify-between mb-2">
                         <span className="text-sm font-medium">Calories</span>
-                        <span className="text-sm text-gray-600">1,850 / 2,000</span>
+                        <span className="text-sm text-gray-600">{caloriesCurrent} / {calorieGoal}</span>
                       </div>
-                      <Progress value={92.5} className="h-2" />
+                      <Progress value={calorieProgress} className="h-2" />
                     </div>
                     <div className="grid grid-cols-3 gap-4">
-                      <MacroCard label="Protein" current={145} goal={150} unit="g" color="blue" />
-                      <MacroCard label="Carbs" current={180} goal={200} unit="g" color="orange" />
-                      <MacroCard label="Fat" current={62} goal={65} unit="g" color="purple" />
+                      <MacroCard label="Protein" current={proteinCurrent} goal={macroGoals.protein || 150} unit="g" color="blue" />
+                      <MacroCard label="Carbs" current={carbsCurrent} goal={macroGoals.carbs || 200} unit="g" color="orange" />
+                      <MacroCard label="Fat" current={fatCurrent} goal={macroGoals.fat || 65} unit="g" color="purple" />
                     </div>
                   </CardContent>
                 </Card>
@@ -1078,7 +1192,7 @@ const NutritionMealPlanner = () => {
                     <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
                       <div className="text-center text-gray-500">
                         <BarChart3 className="w-12 h-12 mx-auto mb-2" />
-                        <p>Chart visualization would go here</p>
+                        <p>{plannedSlots}/{totalSlots} weekly meal slots planned</p>
                       </div>
                     </div>
                   </CardContent>
@@ -1093,19 +1207,19 @@ const NutritionMealPlanner = () => {
                   <CardContent className="space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Daily Calories</span>
-                      <span className="text-sm font-medium">2,000 kcal</span>
+                      <span className="text-sm font-medium">{calorieGoal} kcal</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Protein</span>
-                      <span className="text-sm font-medium">150g (30%)</span>
+                      <span className="text-sm font-medium">{macroGoals.protein || 150}g</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Carbs</span>
-                      <span className="text-sm font-medium">200g (40%)</span>
+                      <span className="text-sm font-medium">{macroGoals.carbs || 200}g</span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="text-sm">Fat</span>
-                      <span className="text-sm font-medium">65g (30%)</span>
+                      <span className="text-sm font-medium">{macroGoals.fat || 65}g</span>
                     </div>
                     <Button variant="outline" size="sm" className="w-full mt-4">
                       <Target className="w-4 h-4 mr-2" />
@@ -1329,7 +1443,7 @@ const NutritionMealPlanner = () => {
                   </CardContent>
                 </Card>
 
-                {savingsReport && (
+                {normalizedSavingsReport && (
                   <Card className="bg-gradient-to-br from-green-50 to-emerald-50 border-green-200">
                     <CardHeader>
                       <CardTitle className="text-lg flex items-center gap-2">
@@ -1343,29 +1457,29 @@ const NutritionMealPlanner = () => {
                         <div className="bg-white rounded-lg p-3">
                           <p className="text-xs text-gray-600 mb-1">Total Saved</p>
                           <p className="text-2xl font-bold text-green-600">
-                            ${savingsReport.summary.totalSaved}
+                            ${normalizedSavingsReport.totalSaved.toFixed(2)}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {savingsReport.summary.savingsRate} savings rate
+                            {normalizedSavingsReport.savingsRate} savings rate
                           </p>
                         </div>
                         <div className="bg-white rounded-lg p-3">
                           <p className="text-xs text-gray-600 mb-1">Pantry Savings</p>
                           <p className="text-2xl font-bold text-emerald-600">
-                            ${savingsReport.pantry.savings}
+                            ${normalizedSavingsReport.pantrySavings.toFixed(2)}
                           </p>
                           <p className="text-xs text-gray-500 mt-1">
-                            {savingsReport.pantry.itemCount} items owned
+                            {normalizedSavingsReport.pantryItemCount} items owned
                           </p>
                         </div>
                       </div>
                       <div className="pt-3 border-t border-green-200">
                         <p className="text-xs font-medium text-gray-700 mb-2">Top Saving Categories:</p>
                         <div className="space-y-2">
-                          {savingsReport.topSavingCategories.slice(0, 3).map((category: any, idx: number) => (
+                          {normalizedSavingsReport.topSavingCategories.slice(0, 3).map((category: any, idx: number) => (
                             <div key={idx} className="flex items-center justify-between text-xs">
-                              <span className="text-gray-600">{category.category}</span>
-                              <span className="font-medium text-green-600">-${category.saved.toFixed(2)}</span>
+                              <span className="text-gray-600">{category?.category || 'Other'}</span>
+                              <span className="font-medium text-green-600">-${Number(category?.saved || 0).toFixed(2)}</span>
                             </div>
                           ))}
                         </div>
@@ -1376,7 +1490,7 @@ const NutritionMealPlanner = () => {
                           <p className="text-xs font-medium text-gray-700">Smart Shopping</p>
                         </div>
                         <p className="text-xs text-gray-600">
-                          You're spending {savingsReport.summary.savingsRate} less than estimated!
+                          You're spending {normalizedSavingsReport.savingsRate} less than estimated!
                         </p>
                       </div>
                     </CardContent>
@@ -1552,6 +1666,10 @@ const NutritionMealPlanner = () => {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          <TabsContent value="advanced">
+            <AdvancedFeaturesPanel />
           </TabsContent>
         </Tabs>
 

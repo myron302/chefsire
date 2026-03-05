@@ -6,7 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ChefHat, Plus, DollarSign, Calendar, Target, TrendingUp, Edit, Trash2, Eye } from "lucide-react";
+import { ChefHat, Plus, DollarSign, Calendar, Target, TrendingUp, Edit, Trash2, Eye, Crown } from "lucide-react";
 
 type MealPlanBlueprint = {
   id: string;
@@ -41,6 +41,22 @@ export default function MealPlanCreator() {
   const [meals, setMeals] = useState<any[]>([]);
   const [isPremiumContent, setIsPremiumContent] = useState(false);
   const [userHasPremium, setUserHasPremium] = useState(false);
+
+  const getCompletenessScore = (plan: {
+    title?: string;
+    description?: string | null;
+    targetCalories?: string | number | null;
+    meals?: any[];
+  }) => {
+    let score = 0;
+    if (plan.title?.trim()) score += 25;
+    if (plan.description?.trim()) score += 25;
+    if (plan.targetCalories) score += 20;
+    if ((plan.meals?.length || 0) >= 7) score += 30;
+    return score;
+  };
+
+  const draftCompleteness = getCompletenessScore({ title, description, targetCalories, meals });
 
   useEffect(() => {
     fetchMyPlans();
@@ -277,6 +293,16 @@ export default function MealPlanCreator() {
                   />
                 </div>
               </div>
+
+              <div className="p-3 rounded-md border bg-muted/30">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="font-medium">Plan completeness</span>
+                  <span>{draftCompleteness}%</span>
+                </div>
+                <div className="mt-2 h-2 w-full bg-muted rounded-full overflow-hidden">
+                  <div className="h-full bg-green-500" style={{ width: `${draftCompleteness}%` }} />
+                </div>
+              </div>
               <div>
                 <label className="block text-sm font-medium mb-2">Description</label>
                 <Textarea
@@ -363,6 +389,7 @@ export default function MealPlanCreator() {
                         ) : (
                           <Badge variant="secondary">Draft</Badge>
                         )}
+                        <Badge variant="outline">Quality: {getCompletenessScore({ title: plan.title, description: plan.description, meals: [] })}%</Badge>
                       </div>
                       {plan.description && (
                         <p className="text-muted-foreground mb-3">{plan.description}</p>
