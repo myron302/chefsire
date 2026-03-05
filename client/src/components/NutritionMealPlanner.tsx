@@ -18,10 +18,26 @@ import AdvancedFeaturesPanel from '@/components/meal-planner/AdvancedFeaturesPan
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 
 const NutritionMealPlanner = () => {
+  const formatLocalDate = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const parseDateOnly = (value: string) => {
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) {
+      const [, y, m, d] = match;
+      return new Date(Number(y), Number(m) - 1, Number(d));
+    }
+    return new Date(value);
+  };
+
   const { user, updateUser } = useUser();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('planner');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(formatLocalDate(new Date()));
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
   const [mealPlans, setMealPlans] = useState<any[]>([]);
   const [groceryList, setGroceryList] = useState<any[]>([]);
@@ -57,19 +73,19 @@ const NutritionMealPlanner = () => {
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
   const getDateForWeekday = (weekday: string) => {
-    const anchor = new Date(getCurrentWeekAnchor());
+    const anchor = parseDateOnly(getCurrentWeekAnchor());
     const index = weekDays.indexOf(weekday);
     const dayOffset = index >= 0 ? index : 0;
     anchor.setDate(anchor.getDate() + dayOffset);
-    return anchor.toISOString().split('T')[0];
+    return formatLocalDate(anchor);
   };
 
   const getCurrentWeekAnchor = () => {
-    const now = new Date(selectedDate);
+    const now = parseDateOnly(selectedDate);
     const day = now.getDay();
     const diff = day === 0 ? -6 : 1 - day;
     now.setDate(now.getDate() + diff);
-    return now.toISOString().split('T')[0];
+    return formatLocalDate(now);
   };
 
   useEffect(() => {
