@@ -45,7 +45,8 @@ const NutritionMealPlanner = () => {
   const [isGeneratingWeek, setIsGeneratingWeek] = useState(false);
 
   // Add Meal modal — controlled fields
-  const [mealForm, setMealForm] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: ''  });
+  const [mealForm, setMealForm] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 });
+  const [baseNutrition, setBaseNutrition] = useState<{ calories: number; protein: number; carbs: number; fat: number; fiber: number; servingSize: string } | null>(null);
   const [isLookingUpNutrition, setIsLookingUpNutrition] = useState(false);
 
   // AI Recipe Suggestions modal
@@ -417,7 +418,8 @@ const NutritionMealPlanner = () => {
     if (day && type) {
       setSelectedMealSlot({ day, type });
     }
-    setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '' });
+    setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 });
+    setBaseNutrition(null);
     setShowAddMealModal(true);
   };
 
@@ -851,16 +853,36 @@ const NutritionMealPlanner = () => {
     return { calories: 400, protein: 25, carbs: 40, fat: 14, fiber: 4, servingSize: '1 serving' };
   };
 
-  const applyNutrition = (nutrition: { calories: number; protein: number; carbs: number; fat: number; fiber: number; servingSize: string }) => {
+  const applyNutrition = (nutrition: { calories: number; protein: number; carbs: number; fat: number; fiber: number; servingSize: string }, qty?: number) => {
+    const q = qty ?? 1;
+    setBaseNutrition(nutrition);
     setMealForm(prev => ({
       ...prev,
-      calories: String(nutrition.calories),
-      protein: String(nutrition.protein),
-      carbs: String(nutrition.carbs),
-      fat: String(nutrition.fat),
-      fiber: String(nutrition.fiber),
+      calories: String(Math.round(nutrition.calories * q)),
+      protein: String(Math.round(nutrition.protein * q)),
+      carbs: String(Math.round(nutrition.carbs * q)),
+      fat: String(Math.round(nutrition.fat * q)),
+      fiber: String(Math.round(nutrition.fiber * q)),
       servingSize: nutrition.servingSize || prev.servingSize,
+      servingQty: q,
     }));
+  };
+
+  const changeServingQty = (qty: number) => {
+    if (baseNutrition) {
+      setMealForm(prev => ({
+        ...prev,
+        calories: String(Math.round(baseNutrition.calories * qty)),
+        protein: String(Math.round(baseNutrition.protein * qty)),
+        carbs: String(Math.round(baseNutrition.carbs * qty)),
+        fat: String(Math.round(baseNutrition.fat * qty)),
+        fiber: String(Math.round(baseNutrition.fiber * qty)),
+        servingQty: qty,
+      }));
+    } else {
+      // No base yet — just store the qty; user can still type macros manually
+      setMealForm(prev => ({ ...prev, servingQty: qty }));
+    }
   };
 
   // ── AI Nutrition Lookup ───────────────────────────────────────────────────
@@ -1922,7 +1944,7 @@ const NutritionMealPlanner = () => {
                 <h3 className="text-xl font-bold">
                   Add Meal {selectedMealSlot && `— ${selectedMealSlot.day} · ${selectedMealSlot.type}`}
                 </h3>
-                <Button variant="ghost" size="sm" onClick={() => { setShowAddMealModal(false); setSelectedMealSlot(null); setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '' }); }}>✕</Button>
+                <Button variant="ghost" size="sm" onClick={() => { setShowAddMealModal(false); setSelectedMealSlot(null); setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 }); setBaseNutrition(null); }}>✕</Button>
               </div>
               <p className="text-xs text-gray-500 mb-5">Type the meal name, then tap <span className="font-semibold text-orange-600">✨ AI Lookup</span> to auto-fill nutrition.</p>
 
@@ -1955,23 +1977,62 @@ const NutritionMealPlanner = () => {
                   </div>
                 </div>
 
-                {/* Serving size */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">Serving Size <span className="text-gray-400 font-normal">(optional)</span></label>
-                  <input
-                    type="text"
-                    className="w-full border rounded px-3 py-2 text-sm"
-                    placeholder="e.g., 1 cup, 200g, 1 bowl"
-                    value={mealForm.servingSize}
-                    onChange={e => setMealForm(p => ({ ...p, servingSize: e.target.value }))}
-                  />
+                {/* Serving size + Quantity — shown after lookup */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium mb-2">Serving Size</label>
+                    <input
+                      type="text"
+                      className="w-full border rounded px-3 py-2 text-sm"
+                      placeholder="e.g., 1 cup, 1 egg"
+                      value={mealForm.servingSize}
+                      onChange={e => setMealForm(p => ({ ...p, servingSize: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2">
+                      How many servings?
+                      {baseNutrition && (
+                        <span className="ml-1 font-normal text-orange-600 text-xs">
+                          (× {mealForm.servingQty})
+                        </span>
+                      )}
+                    </label>
+                    <select
+                      className="w-full border rounded px-3 py-2 text-sm bg-white"
+                      value={mealForm.servingQty}
+                      onChange={e => changeServingQty(Number(e.target.value))}
+                    >
+                      {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map(q => (
+                        <option key={q} value={q}>
+                          {q === 0.25 ? '¼ serving' : q === 0.5 ? '½ serving' : q === 0.75 ? '¾ serving' : q === 1 ? '1 serving' : q === 1.25 ? '1¼ servings' : q === 1.5 ? '1½ servings' : `${q} servings`}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
-                {/* AI-filled nutrition banner */}
-                {(mealForm.calories || mealForm.protein) && (
+                {/* Live scaled preview banner */}
+                {baseNutrition && mealForm.servingQty !== 1 && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Sparkles className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                      <p className="text-xs font-medium text-orange-700">
+                        {mealForm.servingQty} × {mealForm.servingSize || 'serving'} · macros scaled automatically
+                      </p>
+                    </div>
+                    <div className="flex gap-3 text-xs text-orange-600">
+                      <span>Base: {baseNutrition.calories} cal</span>
+                      <span>→ Total: <strong>{mealForm.calories} cal</strong></span>
+                    </div>
+                  </div>
+                )}
+
+                {/* First lookup hint */}
+                {!baseNutrition && (mealForm.calories || mealForm.protein) && (
                   <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2 flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-orange-500 shrink-0" />
-                    <p className="text-xs text-orange-700">AI has estimated these values — edit any field if needed.</p>
+                    <p className="text-xs text-orange-700">Nutrition filled in — change servings above to auto-scale, or edit any field manually.</p>
                   </div>
                 )}
 
@@ -2007,16 +2068,17 @@ const NutritionMealPlanner = () => {
                         toast({ variant: 'destructive', description: 'Please fill in meal name, calories, and protein.' });
                         return;
                       }
+                      const qtyLabel = mealForm.servingQty !== 1 ? ` (×${mealForm.servingQty})` : '';
                       saveMealToSlot({
-                        name: mealForm.name,
+                        name: mealForm.name + qtyLabel,
                         calories: Number(mealForm.calories),
                         protein: Number(mealForm.protein),
                         carbs: Number(mealForm.carbs) || 0,
                         fat: Number(mealForm.fat) || 0,
                         fiber: Number(mealForm.fiber) || 0,
-                        servingSize: mealForm.servingSize || '1 serving',
+                        servingSize: `${mealForm.servingQty === 1 ? '' : mealForm.servingQty + ' × '}${mealForm.servingSize || '1 serving'}`.trim(),
                       });
-                      setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '' });
+                      setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 }); setBaseNutrition(null);
                     }}
                   >
                     Add to Planner
@@ -2026,7 +2088,7 @@ const NutritionMealPlanner = () => {
                     onClick={() => {
                       setShowAddMealModal(false);
                       setSelectedMealSlot(null);
-                      setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '' });
+                      setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 }); setBaseNutrition(null);
                     }}
                   >
                     Cancel
