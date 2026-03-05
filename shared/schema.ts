@@ -336,6 +336,9 @@ export const mealPlanEntries = pgTable("meal_plan_entries", {
   servings: integer("servings").default(1),
   customName: text("custom_name"),
   customCalories: integer("custom_calories"),
+  customProtein: integer("custom_protein"),
+  customCarbs: integer("custom_carbs"),
+  customFat: integer("custom_fat"),
 });
 
 /* ===== MEAL PLAN MARKETPLACE ===== */
