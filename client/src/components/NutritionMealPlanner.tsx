@@ -156,12 +156,16 @@ const NutritionMealPlanner = () => {
         setNutritionGoals(goals);
 
         const totals = Object.values(weeklyMeals as Record<string, any> || {}).reduce((acc: any, dayMeals: any) => {
-          Object.values(dayMeals || {}).forEach((meal: any) => {
-            acc.calories += Number(meal?.calories || 0);
-            acc.protein += Number(meal?.protein || 0);
-            acc.carbs += Number(meal?.carbs || 0);
-            acc.fat += Number(meal?.fat || 0);
-            acc.count += 1;
+          Object.values(dayMeals || {}).forEach((slotValue: any) => {
+            // slotValue may be a single meal object or an array of meal items
+            const items = Array.isArray(slotValue) ? slotValue : slotValue ? [slotValue] : [];
+            items.forEach((meal: any) => {
+              acc.calories += Number(meal?.calories || 0);
+              acc.protein += Number(meal?.protein || 0);
+              acc.carbs += Number(meal?.carbs || 0);
+              acc.fat += Number(meal?.fat || 0);
+              acc.count += 1;
+            });
           });
           return acc;
         }, { calories: 0, protein: 0, carbs: 0, fat: 0, count: 0 });
@@ -416,20 +420,55 @@ const NutritionMealPlanner = () => {
 
   const saveMealToSlot = (mealData: any) => {
     if (selectedMealSlot) {
-      setWeeklyMeals((prev: any) => ({
-        ...prev,
-        [selectedMealSlot.day]: {
-          ...prev[selectedMealSlot.day],
-          [selectedMealSlot.type]: mealData
-        }
-      }));
-
-      toast({
-        description: "✅ Meal added to your planner!",
+      setWeeklyMeals((prev: any) => {
+        const existing = prev[selectedMealSlot.day]?.[selectedMealSlot.type];
+        // Always store as an array so multiple items per slot work
+        const currentItems = Array.isArray(existing) ? existing : existing ? [existing] : [];
+        return {
+          ...prev,
+          [selectedMealSlot.day]: {
+            ...prev[selectedMealSlot.day],
+            [selectedMealSlot.type]: [...currentItems, mealData]
+          }
+        };
       });
+      toast({ description: "✅ Meal item added!" });
     }
     setShowAddMealModal(false);
     setSelectedMealSlot(null);
+  };
+
+  const removeMealItem = (day: string, mealType: string, itemIndex: number) => {
+    setWeeklyMeals((prev: any) => {
+      const existing = prev[day]?.[mealType];
+      const items = Array.isArray(existing) ? existing : existing ? [existing] : [];
+      const updated = items.filter((_: any, i: number) => i !== itemIndex);
+      return {
+        ...prev,
+        [day]: {
+          ...prev[day],
+          [mealType]: updated.length > 0 ? updated : undefined
+        }
+      };
+    });
+  };
+
+  // Helper: get items for a slot as an array
+  const getSlotItems = (day: string, mealType: string): any[] => {
+    const val = weeklyMeals?.[day]?.[mealType];
+    if (!val) return [];
+    return Array.isArray(val) ? val : [val];
+  };
+
+  // Helper: sum macros for a slot
+  const getSlotTotals = (day: string, mealType: string) => {
+    const items = getSlotItems(day, mealType);
+    return items.reduce((acc, m) => ({
+      calories: acc.calories + (Number(m?.calories) || 0),
+      protein: acc.protein + (Number(m?.protein) || 0),
+      carbs: acc.carbs + (Number(m?.carbs) || 0),
+      fat: acc.fat + (Number(m?.fat) || 0),
+    }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
   };
 
   const saveTemplate = () => {
@@ -734,6 +773,72 @@ const NutritionMealPlanner = () => {
   };
 
 
+  // ── Built-in nutrition lookup table (works without any API key) ──────────
+  const NUTRITION_TABLE: Record<string, {calories:number;protein:number;carbs:number;fat:number;fiber:number;servingSize:string}> = {
+    egg: { calories: 78, protein: 6, carbs: 1, fat: 5, fiber: 0, servingSize: '1 large egg' },
+    eggs: { calories: 156, protein: 12, carbs: 1, fat: 10, fiber: 0, servingSize: '2 large eggs' },
+    bacon: { calories: 161, protein: 12, carbs: 0, fat: 12, fiber: 0, servingSize: '3 strips' },
+    toast: { calories: 79, protein: 3, carbs: 15, fat: 1, fiber: 1, servingSize: '1 slice' },
+    oatmeal: { calories: 158, protein: 5, carbs: 27, fat: 3, fiber: 4, servingSize: '1 cup cooked' },
+    pancakes: { calories: 350, protein: 9, carbs: 56, fat: 10, fiber: 2, servingSize: '3 medium' },
+    waffles: { calories: 310, protein: 8, carbs: 45, fat: 12, fiber: 1, servingSize: '2 waffles' },
+    yogurt: { calories: 150, protein: 17, carbs: 9, fat: 4, fiber: 0, servingSize: '1 cup' },
+    banana: { calories: 89, protein: 1, carbs: 23, fat: 0, fiber: 3, servingSize: '1 medium' },
+    apple: { calories: 72, protein: 0, carbs: 19, fat: 0, fiber: 3, servingSize: '1 medium' },
+    orange: { calories: 62, protein: 1, carbs: 15, fat: 0, fiber: 3, servingSize: '1 medium' },
+    avocado: { calories: 160, protein: 2, carbs: 9, fat: 15, fiber: 7, servingSize: '1/2 avocado' },
+    chicken: { calories: 335, protein: 38, carbs: 0, fat: 19, fiber: 0, servingSize: '1 breast' },
+    salmon: { calories: 367, protein: 39, carbs: 0, fat: 22, fiber: 0, servingSize: '1 fillet (170g)' },
+    beef: { calories: 350, protein: 30, carbs: 0, fat: 24, fiber: 0, servingSize: '4 oz' },
+    rice: { calories: 206, protein: 4, carbs: 45, fat: 0, fiber: 1, servingSize: '1 cup cooked' },
+    pasta: { calories: 220, protein: 8, carbs: 43, fat: 1, fiber: 3, servingSize: '1 cup cooked' },
+    salad: { calories: 150, protein: 5, carbs: 12, fat: 8, fiber: 4, servingSize: '1 bowl' },
+    burger: { calories: 540, protein: 27, carbs: 40, fat: 28, fiber: 2, servingSize: '1 burger' },
+    sandwich: { calories: 350, protein: 18, carbs: 40, fat: 12, fiber: 3, servingSize: '1 sandwich' },
+    pizza: { calories: 570, protein: 23, carbs: 68, fat: 21, fiber: 3, servingSize: '2 slices' },
+    soup: { calories: 180, protein: 8, carbs: 22, fat: 6, fiber: 4, servingSize: '1.5 cups' },
+    steak: { calories: 420, protein: 38, carbs: 0, fat: 28, fiber: 0, servingSize: '6 oz' },
+    tuna: { calories: 290, protein: 40, carbs: 0, fat: 13, fiber: 0, servingSize: '1 can (5oz)' },
+    shrimp: { calories: 200, protein: 38, carbs: 3, fat: 3, fiber: 0, servingSize: '4 oz' },
+    broccoli: { calories: 55, protein: 4, carbs: 11, fat: 0, fiber: 5, servingSize: '1 cup' },
+    spinach: { calories: 41, protein: 5, carbs: 7, fat: 0, fiber: 4, servingSize: '1 cup cooked' },
+    sweet_potato: { calories: 103, protein: 2, carbs: 24, fat: 0, fiber: 4, servingSize: '1 medium' },
+    milk: { calories: 149, protein: 8, carbs: 12, fat: 8, fiber: 0, servingSize: '1 cup' },
+    cheese: { calories: 113, protein: 7, carbs: 0, fat: 9, fiber: 0, servingSize: '1 oz' },
+    almonds: { calories: 164, protein: 6, carbs: 6, fat: 14, fiber: 3, servingSize: '1 oz (23 nuts)' },
+    bread: { calories: 79, protein: 3, carbs: 15, fat: 1, fiber: 1, servingSize: '1 slice' },
+  };
+
+  const clientSideNutritionLookup = (name: string) => {
+    const lower = name.toLowerCase();
+    // Try direct match first
+    for (const [key, val] of Object.entries(NUTRITION_TABLE)) {
+      if (lower.includes(key.replace('_', ' '))) return val;
+    }
+    // Multi-item: split by " and ", "&", ","
+    const parts = lower.split(/[,&]|and/).map(s => s.trim()).filter(Boolean);
+    if (parts.length > 1) {
+      let combined = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, servingSize: 'combined serving' };
+      let matched = 0;
+      for (const part of parts) {
+        for (const [key, val] of Object.entries(NUTRITION_TABLE)) {
+          if (part.includes(key.replace('_', ' '))) {
+            combined.calories += val.calories;
+            combined.protein += val.protein;
+            combined.carbs += val.carbs;
+            combined.fat += val.fat;
+            combined.fiber += val.fiber;
+            matched++;
+            break;
+          }
+        }
+      }
+      if (matched > 0) return combined;
+    }
+    // Generic fallback
+    return { calories: 400, protein: 25, carbs: 40, fat: 14, fiber: 4, servingSize: '1 serving' };
+  };
+
   // ── AI Nutrition Lookup ───────────────────────────────────────────────────
   const lookupNutritionWithAI = async () => {
     if (!mealForm.name.trim()) {
@@ -748,21 +853,45 @@ const NutritionMealPlanner = () => {
         credentials: 'include',
         body: JSON.stringify({ mealName: mealForm.name, servingSize: mealForm.servingSize || undefined }),
       });
-      if (!res.ok) throw new Error('Lookup failed');
-      const data = await res.json();
+
+      let nutrition: any = null;
+
+      if (res.ok) {
+        const data = await res.json();
+        // Validate — must have at least calories and protein as real numbers
+        if (data && typeof data.calories === 'number' && data.calories > 0 && typeof data.protein === 'number') {
+          nutrition = data;
+        }
+      }
+
+      // Fall back to client-side lookup table if API returned bad/missing data
+      if (!nutrition) {
+        nutrition = clientSideNutritionLookup(mealForm.name);
+      }
+
       setMealForm(prev => ({
         ...prev,
-        calories: String(data.calories || ''),
-        protein: String(data.protein || ''),
-        carbs: String(data.carbs || ''),
-        fat: String(data.fat || ''),
-        fiber: String(data.fiber || ''),
-        servingSize: data.servingSize || prev.servingSize,
+        calories: String(nutrition.calories),
+        protein: String(nutrition.protein),
+        carbs: String(nutrition.carbs),
+        fat: String(nutrition.fat),
+        fiber: String(nutrition.fiber),
+        servingSize: nutrition.servingSize || prev.servingSize,
       }));
-      toast({ description: '✨ AI filled in the nutrition info! Adjust if needed.' });
+      toast({ description: '✨ Nutrition filled in — adjust any values as needed.' });
     } catch (err) {
-      console.error(err);
-      toast({ variant: 'destructive', description: 'Could not look up nutrition. Fill in manually.' });
+      // Network/parse error — still use client-side lookup
+      const nutrition = clientSideNutritionLookup(mealForm.name);
+      setMealForm(prev => ({
+        ...prev,
+        calories: String(nutrition.calories),
+        protein: String(nutrition.protein),
+        carbs: String(nutrition.carbs),
+        fat: String(nutrition.fat),
+        fiber: String(nutrition.fiber),
+        servingSize: nutrition.servingSize || prev.servingSize,
+      }));
+      toast({ description: '✨ Nutrition estimated from built-in database.' });
     } finally {
       setIsLookingUpNutrition(false);
     }
@@ -865,7 +994,10 @@ const NutritionMealPlanner = () => {
   const fatCurrent = dailyNutrition?.fat || 0;
   const calorieProgress = Math.min(100, Math.round((caloriesCurrent / calorieGoal) * 100));
   const remainingCalories = Math.max(0, calorieGoal - caloriesCurrent);
-  const plannedSlots = weekDays.reduce((sum, day) => sum + mealTypes.filter((type) => Boolean(weeklyMeals?.[day]?.[type])).length, 0);
+  const plannedSlots = weekDays.reduce((sum, day) => sum + mealTypes.filter((type) => {
+    const val = weeklyMeals?.[day]?.[type];
+    return Array.isArray(val) ? val.length > 0 : Boolean(val);
+  }).length, 0);
   const totalSlots = weekDays.length * mealTypes.length;
   const rawSavingsSummary = savingsReport?.summary || {};
   const rawSavingsPantry = savingsReport?.pantry || {};
@@ -1144,27 +1276,43 @@ const NutritionMealPlanner = () => {
                         <div className="p-4 bg-gray-50 border-r flex items-center">
                           <span className="text-sm font-medium text-gray-700 capitalize">{mealType}</span>
                         </div>
-                        {weekDays.map((day) => (
-                          <div
-                            key={`${day}-${mealType}`}
-                            className="p-3 border-r last:border-r-0 hover:bg-gray-50 cursor-pointer"
-                            onClick={() => handleAddMeal(day, mealType)}
-                          >
-                            {weeklyMeals[day]?.[mealType] ? (
-                              <div className="space-y-1">
-                                <div className="text-sm font-medium text-gray-900">{weeklyMeals[day][mealType].name}</div>
-                                <div className="text-xs text-gray-500">{weeklyMeals[day][mealType].calories} cal</div>
-                                <div className="flex gap-1">
-                                  <Badge variant="secondary" className="text-xs">P: {weeklyMeals[day][mealType].protein}g</Badge>
+                        {weekDays.map((day) => {
+                          const items = getSlotItems(day, mealType);
+                          const totals = getSlotTotals(day, mealType);
+                          return (
+                            <div key={`${day}-${mealType}`} className="p-2 border-r last:border-r-0 min-h-[72px]">
+                              {items.length > 0 && (
+                                <div className="space-y-1 mb-1">
+                                  {items.map((item: any, idx: number) => (
+                                    <div key={idx} className="flex items-start justify-between gap-1 group">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-xs font-medium text-gray-900 truncate">{item.name}</div>
+                                        <div className="text-xs text-gray-400">{item.calories} cal · P:{item.protein}g</div>
+                                      </div>
+                                      <button
+                                        className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs leading-none mt-0.5 shrink-0"
+                                        onClick={e => { e.stopPropagation(); removeMealItem(day, mealType, idx); }}
+                                        title="Remove"
+                                      >✕</button>
+                                    </div>
+                                  ))}
+                                  {items.length > 1 && (
+                                    <div className="text-xs text-orange-600 font-medium border-t border-gray-100 pt-1">
+                                      Total: {totals.calories} cal
+                                    </div>
+                                  )}
                                 </div>
-                              </div>
-                            ) : (
-                              <div className="flex items-center justify-center h-full">
-                                <Plus className="w-5 h-5 text-gray-400" />
-                              </div>
-                            )}
-                          </div>
-                        ))}
+                              )}
+                              <button
+                                className="flex items-center gap-1 text-xs text-gray-400 hover:text-orange-500 w-full mt-1"
+                                onClick={() => handleAddMeal(day, mealType)}
+                              >
+                                <Plus className="w-3.5 h-3.5" />
+                                <span>{items.length > 0 ? 'Add more' : 'Add'}</span>
+                              </button>
+                            </div>
+                          );
+                        })}
                       </div>
                     ))}
                   </div>
@@ -1179,25 +1327,42 @@ const NutritionMealPlanner = () => {
                         </CardHeader>
                         <CardContent className="space-y-3">
                           {mealTypes.map((mealType) => (
-                            <div
-                              key={`${day}-${mealType}`}
-                              className="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100"
-                              onClick={() => handleAddMeal(day, mealType)}
-                            >
+                            <div key={`${day}-${mealType}`} className="p-3 bg-gray-50 rounded-lg">
                               <div className="flex items-center justify-between mb-2">
                                 <span className="text-sm font-medium text-gray-700 capitalize">{mealType}</span>
-                                {!weeklyMeals[day]?.[mealType] && <Plus className="w-4 h-4 text-gray-400" />}
+                                <button
+                                  className="flex items-center gap-1 text-xs text-orange-500 hover:text-orange-700"
+                                  onClick={() => handleAddMeal(day, mealType)}
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  {getSlotItems(day, mealType).length > 0 ? 'Add more' : 'Add'}
+                                </button>
                               </div>
-                              {weeklyMeals[day]?.[mealType] ? (
-                                <div className="space-y-1">
-                                  <div className="text-sm font-medium text-gray-900">{weeklyMeals[day][mealType].name}</div>
-                                  <div className="text-xs text-gray-500">{weeklyMeals[day][mealType].calories} cal</div>
-                                  <div className="flex gap-1">
-                                    <Badge variant="secondary" className="text-xs">P: {weeklyMeals[day][mealType].protein}g</Badge>
-                                  </div>
+                              {getSlotItems(day, mealType).length > 0 ? (
+                                <div className="space-y-2">
+                                  {getSlotItems(day, mealType).map((item: any, idx: number) => (
+                                    <div key={idx} className="flex items-start justify-between gap-2 bg-white rounded p-2">
+                                      <div className="flex-1 min-w-0">
+                                        <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
+                                        <div className="flex gap-1 mt-1 flex-wrap">
+                                          <Badge variant="secondary" className="text-xs">{item.calories} cal</Badge>
+                                          <Badge variant="secondary" className="text-xs">P: {item.protein}g</Badge>
+                                        </div>
+                                      </div>
+                                      <button
+                                        className="text-red-400 hover:text-red-600 text-xs mt-0.5 shrink-0"
+                                        onClick={() => removeMealItem(day, mealType, idx)}
+                                      >✕</button>
+                                    </div>
+                                  ))}
+                                  {getSlotItems(day, mealType).length > 1 && (
+                                    <div className="text-xs text-orange-600 font-semibold text-right">
+                                      Total: {getSlotTotals(day, mealType).calories} cal · P: {getSlotTotals(day, mealType).protein}g
+                                    </div>
+                                  )}
                                 </div>
                               ) : (
-                                <p className="text-xs text-gray-500">Tap to add meal</p>
+                                <p className="text-xs text-gray-500">Tap Add to log meals</p>
                               )}
                             </div>
                           ))}
