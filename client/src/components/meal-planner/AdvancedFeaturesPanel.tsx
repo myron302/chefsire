@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Brain, Calendar, Refrigerator, ShoppingBag, Trophy, Users, TrendingUp, Star,
-  Clock, AlertCircle, CheckCircle, ChefHat, Sparkles, Target, Award, Gift
+  Clock, AlertCircle, CheckCircle, ChefHat, Sparkles, Target, Award, Gift, Plus
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -51,6 +51,7 @@ interface Achievement {
     category: string;
     points: number;
     tier: string;
+    requirement?: any;
   };
 }
 
@@ -369,6 +370,77 @@ export const AdvancedFeaturesPanel = () => {
     return days;
   };
 
+  const acceptRecommendation = async (id: string) => {
+    try {
+      const res = await fetch(`/api/meal-planner/meal-recommendations/${id}/accept`, {
+        method: 'PATCH',
+        credentials: 'include',
+      });
+
+      if (!res.ok) throw new Error('Failed to accept recommendation');
+
+      await fetchRecommendations();
+      toast({ title: 'Added to plan', description: 'Recommendation accepted.' });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not accept recommendation',
+      });
+    }
+  };
+
+  const dismissRecommendation = async (id: string) => {
+    try {
+      const res = await fetch(`/api/meal-planner/meal-recommendations/${id}/dismiss`, {
+        method: 'PATCH',
+        credentials: 'include',
+      });
+
+      if (!res.ok) throw new Error('Failed to dismiss recommendation');
+
+      await fetchRecommendations();
+      toast({ title: 'Dismissed', description: 'Recommendation removed.' });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not dismiss recommendation',
+      });
+    }
+  };
+
+  const quickCreateMealPrepSchedule = async () => {
+    await createMealPrepSchedule({
+      prepDay: 'sunday',
+      prepTime: '14:00',
+      shoppingDay: 'saturday',
+      notes: 'Auto-created quick prep schedule',
+      batchRecipes: [],
+      reminderEnabled: true,
+    });
+  };
+
+  const markPrepScheduleComplete = async (id: string) => {
+    try {
+      const res = await fetch(`/api/meal-planner/prep-schedules/${id}/complete`, {
+        method: 'PATCH',
+        credentials: 'include',
+      });
+
+      if (!res.ok) throw new Error('Failed to mark complete');
+
+      await fetchMealPrepSchedules();
+      toast({ title: 'Nice work', description: 'Meal prep marked complete.' });
+    } catch {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not update prep schedule',
+      });
+    }
+  };
+
   return (
     <div className="container mx-auto p-4">
       <Tabs defaultValue="recommendations" className="w-full">
@@ -446,10 +518,10 @@ export const AdvancedFeaturesPanel = () => {
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <Button size="sm" variant="default">
+                            <Button size="sm" variant="default" onClick={() => acceptRecommendation(rec.id)}>
                               Add to Plan
                             </Button>
-                            <Button size="sm" variant="ghost">
+                            <Button size="sm" variant="ghost" onClick={() => dismissRecommendation(rec.id)}>
                               Dismiss
                             </Button>
                           </div>
@@ -476,7 +548,7 @@ export const AdvancedFeaturesPanel = () => {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Button className="w-full">
+              <Button className="w-full" onClick={quickCreateMealPrepSchedule}>
                 <Plus className="w-4 h-4 mr-2" />
                 Create Prep Schedule
               </Button>
@@ -506,7 +578,7 @@ export const AdvancedFeaturesPanel = () => {
                             </p>
                           </div>
                           {!schedule.completed && (
-                            <Button size="sm" variant="default">
+                            <Button size="sm" variant="default" onClick={() => markPrepScheduleComplete(schedule.id)}>
                               Mark Complete
                             </Button>
                           )}
