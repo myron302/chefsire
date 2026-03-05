@@ -44,6 +44,14 @@ const NutritionMealPlanner = () => {
   const [weekRange, setWeekRange] = useState<{ weekStart: string; weekEnd: string } | null>(null);
   const [isGeneratingWeek, setIsGeneratingWeek] = useState(false);
 
+  // Add Meal modal — controlled fields
+  const [mealForm, setMealForm] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: ''  });
+  const [isLookingUpNutrition, setIsLookingUpNutrition] = useState(false);
+
+  // AI Recipe Suggestions modal
+  const [aiRecipes, setAiRecipes] = useState<any[]>([]);
+  const [isLoadingAiRecipes, setIsLoadingAiRecipes] = useState(false);
+
   const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
@@ -402,6 +410,7 @@ const NutritionMealPlanner = () => {
     if (day && type) {
       setSelectedMealSlot({ day, type });
     }
+    setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '' });
     setShowAddMealModal(true);
   };
 
@@ -477,6 +486,7 @@ const NutritionMealPlanner = () => {
 
   const handleAIRecipe = () => {
     setShowAIRecipeModal(true);
+    loadAIRecipeSuggestions();
   };
 
   const handleUsePantry = () => {
@@ -720,6 +730,72 @@ const NutritionMealPlanner = () => {
         variant: "destructive",
         description: "Failed to add scanned item to grocery list",
       });
+    }
+  };
+
+
+  // ── AI Nutrition Lookup ───────────────────────────────────────────────────
+  const lookupNutritionWithAI = async () => {
+    if (!mealForm.name.trim()) {
+      toast({ variant: 'destructive', description: 'Enter a meal name first to look up nutrition.' });
+      return;
+    }
+    setIsLookingUpNutrition(true);
+    try {
+      const res = await fetch('/api/meal-planner/ai/nutrition-lookup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ mealName: mealForm.name, servingSize: mealForm.servingSize || undefined }),
+      });
+      if (!res.ok) throw new Error('Lookup failed');
+      const data = await res.json();
+      setMealForm(prev => ({
+        ...prev,
+        calories: String(data.calories || ''),
+        protein: String(data.protein || ''),
+        carbs: String(data.carbs || ''),
+        fat: String(data.fat || ''),
+        fiber: String(data.fiber || ''),
+        servingSize: data.servingSize || prev.servingSize,
+      }));
+      toast({ description: '✨ AI filled in the nutrition info! Adjust if needed.' });
+    } catch (err) {
+      console.error(err);
+      toast({ variant: 'destructive', description: 'Could not look up nutrition. Fill in manually.' });
+    } finally {
+      setIsLookingUpNutrition(false);
+    }
+  };
+
+  // ── AI Recipe Suggestions ─────────────────────────────────────────────────
+  const loadAIRecipeSuggestions = async () => {
+    setIsLoadingAiRecipes(true);
+    setAiRecipes([]);
+    try {
+      const res = await fetch('/api/meal-planner/ai/recipe-suggestions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          mealType: selectedMealSlot?.type,
+          calorieGoal: nutritionGoals?.dailyCalorieGoal,
+          count: 4,
+        }),
+      });
+      if (!res.ok) throw new Error('Failed');
+      const data = await res.json();
+      setAiRecipes(data.recipes || []);
+    } catch (err) {
+      console.error(err);
+      // Use fallback hardcoded recipes
+      setAiRecipes([
+        { name: 'High-Protein Chicken Bowl', calories: 520, protein: 45, carbs: 42, fat: 18, description: 'Grilled chicken with quinoa, roasted vegetables, and tahini dressing', prepTime: '25 min', difficulty: 'Easy', tags: ['High Protein'] },
+        { name: 'Mediterranean Salmon', calories: 480, protein: 38, carbs: 35, fat: 22, description: 'Baked salmon with Greek salad and whole grain pita', prepTime: '20 min', difficulty: 'Medium', tags: ['Omega-3'] },
+        { name: 'Turkey & Sweet Potato', calories: 450, protein: 42, carbs: 48, fat: 12, description: 'Lean ground turkey with roasted sweet potato and green beans', prepTime: '30 min', difficulty: 'Easy', tags: ['Low Fat'] },
+      ]);
+    } finally {
+      setIsLoadingAiRecipes(false);
     }
   };
 
@@ -1673,87 +1749,119 @@ const NutritionMealPlanner = () => {
           </TabsContent>
         </Tabs>
 
-        {/* Add Meal Modal */}
+        {/* Add Meal Modal — AI-powered */}
         {showAddMealModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <h3 className="text-xl font-bold mb-4">
-                Add Meal {selectedMealSlot && `- ${selectedMealSlot.day} ${selectedMealSlot.type}`}
-              </h3>
+            <div className="bg-white rounded-lg max-w-lg w-full p-6">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="text-xl font-bold">
+                  Add Meal {selectedMealSlot && `— ${selectedMealSlot.day} · ${selectedMealSlot.type}`}
+                </h3>
+                <Button variant="ghost" size="sm" onClick={() => { setShowAddMealModal(false); setSelectedMealSlot(null); setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '' }); }}>✕</Button>
+              </div>
+              <p className="text-xs text-gray-500 mb-5">Type the meal name, then tap <span className="font-semibold text-orange-600">✨ AI Lookup</span> to auto-fill nutrition.</p>
 
               <div className="space-y-4">
+                {/* Meal name + AI button */}
                 <div>
-                  <label className="block text-sm font-medium mb-2">Meal Name</label>
+                  <label className="block text-sm font-medium mb-2">Meal Name *</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      className="flex-1 border rounded px-3 py-2 text-sm"
+                      placeholder="e.g., Grilled Chicken Salad"
+                      value={mealForm.name}
+                      onChange={e => setMealForm(p => ({ ...p, name: e.target.value }))}
+                      onKeyDown={e => { if (e.key === 'Enter') lookupNutritionWithAI(); }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400"
+                      onClick={lookupNutritionWithAI}
+                      disabled={isLookingUpNutrition || !mealForm.name.trim()}
+                    >
+                      {isLookingUpNutrition ? (
+                        <span className="flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 animate-pulse" />Looking up…</span>
+                      ) : (
+                        <span className="flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" />✨ AI Lookup</span>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Serving size */}
+                <div>
+                  <label className="block text-sm font-medium mb-2">Serving Size <span className="text-gray-400 font-normal">(optional)</span></label>
                   <input
-                    id="mealName"
                     type="text"
-                    className="w-full border rounded px-3 py-2"
-                    placeholder="e.g., Grilled Chicken Salad"
+                    className="w-full border rounded px-3 py-2 text-sm"
+                    placeholder="e.g., 1 cup, 200g, 1 bowl"
+                    value={mealForm.servingSize}
+                    onChange={e => setMealForm(p => ({ ...p, servingSize: e.target.value }))}
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                {/* AI-filled nutrition banner */}
+                {(mealForm.calories || mealForm.protein) && (
+                  <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-orange-500 shrink-0" />
+                    <p className="text-xs text-orange-700">AI has estimated these values — edit any field if needed.</p>
+                  </div>
+                )}
+
+                {/* Macro grid */}
+                <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium mb-2">Calories</label>
-                    <input
-                      id="calories"
-                      type="number"
-                      className="w-full border rounded px-3 py-2"
-                      placeholder="450"
-                    />
+                    <label className="block text-sm font-medium mb-1">Calories</label>
+                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="450" value={mealForm.calories} onChange={e => setMealForm(p => ({ ...p, calories: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Protein (g)</label>
-                    <input
-                      id="protein"
-                      type="number"
-                      className="w-full border rounded px-3 py-2"
-                      placeholder="35"
-                    />
+                    <label className="block text-sm font-medium mb-1">Protein (g)</label>
+                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="35" value={mealForm.protein} onChange={e => setMealForm(p => ({ ...p, protein: e.target.value }))} />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium mb-2">Carbs (g)</label>
-                    <input
-                      id="carbs"
-                      type="number"
-                      className="w-full border rounded px-3 py-2"
-                      placeholder="20"
-                    />
+                    <label className="block text-sm font-medium mb-1">Carbs (g)</label>
+                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="45" value={mealForm.carbs} onChange={e => setMealForm(p => ({ ...p, carbs: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Fat (g)</label>
+                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="15" value={mealForm.fat} onChange={e => setMealForm(p => ({ ...p, fat: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Fiber (g) <span className="text-gray-400 font-normal">optional</span></label>
+                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="4" value={mealForm.fiber} onChange={e => setMealForm(p => ({ ...p, fiber: e.target.value }))} />
                   </div>
                 </div>
 
-                <div className="flex gap-3 pt-4">
+                <div className="flex gap-3 pt-2">
                   <Button
-                    className="flex-1"
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
                     onClick={() => {
-                      const name = (document.getElementById('mealName') as HTMLInputElement).value;
-                      const calories = (document.getElementById('calories') as HTMLInputElement).value;
-                      const protein = (document.getElementById('protein') as HTMLInputElement).value;
-                      const carbs = (document.getElementById('carbs') as HTMLInputElement).value;
-
-                      if (name && calories && protein) {
-                        saveMealToSlot({
-                          name,
-                          calories: Number(calories),
-                          protein: Number(protein),
-                          carbs: Number(carbs),
-                          fat: 0
-                        });
-                      } else {
-                        toast({
-                          variant: "destructive",
-                          description: "Please fill in meal name, calories, and protein",
-                        });
+                      if (!mealForm.name || !mealForm.calories || !mealForm.protein) {
+                        toast({ variant: 'destructive', description: 'Please fill in meal name, calories, and protein.' });
+                        return;
                       }
+                      saveMealToSlot({
+                        name: mealForm.name,
+                        calories: Number(mealForm.calories),
+                        protein: Number(mealForm.protein),
+                        carbs: Number(mealForm.carbs) || 0,
+                        fat: Number(mealForm.fat) || 0,
+                        fiber: Number(mealForm.fiber) || 0,
+                        servingSize: mealForm.servingSize || '1 serving',
+                      });
+                      setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '' });
                     }}
                   >
-                    Add Meal
+                    Add to Planner
                   </Button>
                   <Button
                     variant="outline"
                     onClick={() => {
                       setShowAddMealModal(false);
                       setSelectedMealSlot(null);
+                      setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '' });
                     }}
                   >
                     Cancel
@@ -1764,63 +1872,96 @@ const NutritionMealPlanner = () => {
           </div>
         )}
 
-        {/* AI Recipe Modal */}
+        {/* AI Recipe Modal — live AI suggestions */}
         {showAIRecipeModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[80vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
+            <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[85vh] overflow-y-auto">
+              <div className="flex items-center justify-between mb-2">
                 <h3 className="text-xl font-bold flex items-center gap-2">
-                  <Zap className="w-6 h-6 text-orange-500" />
+                  <Sparkles className="w-6 h-6 text-orange-500" />
                   AI Recipe Suggestions
                 </h3>
-                <Button variant="ghost" size="sm" onClick={() => setShowAIRecipeModal(false)}>✕</Button>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={loadAIRecipeSuggestions}
+                    disabled={isLoadingAiRecipes}
+                    className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                  >
+                    {isLoadingAiRecipes ? (
+                      <span className="flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 animate-pulse" />Generating…</span>
+                    ) : (
+                      <span className="flex items-center gap-1"><Zap className="w-3.5 h-3.5" />Refresh</span>
+                    )}
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowAIRecipeModal(false)}>✕</Button>
+                </div>
               </div>
+              <p className="text-sm text-gray-500 mb-5">
+                Personalized recipes based on your calorie goal
+                {selectedMealSlot ? ` for ${selectedMealSlot.type}` : ''}.
+              </p>
 
-              <p className="text-gray-600 mb-6">Based on your goals and preferences, here are some recipes for you:</p>
-
-              <div className="space-y-4">
-                {[
-                  { name: 'High-Protein Chicken Bowl', calories: 520, protein: 45, carbs: 42, fat: 18, description: 'Grilled chicken with quinoa, roasted vegetables, and tahini dressing' },
-                  { name: 'Mediterranean Salmon', calories: 480, protein: 38, carbs: 35, fat: 22, description: 'Baked salmon with Greek salad and whole grain pita' },
-                  { name: 'Turkey & Sweet Potato', calories: 450, protein: 42, carbs: 48, fat: 12, description: 'Lean ground turkey with roasted sweet potato and green beans' },
-                ].map((recipe, idx) => (
-                  <Card key={idx} className="hover:shadow-md transition-shadow cursor-pointer">
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between mb-2">
-                        <h4 className="font-semibold text-lg">{recipe.name}</h4>
-                        <Button
-                          size="sm"
-                          onClick={() => {
-                            if (selectedMealSlot) {
-                              saveMealToSlot({
-                                name: recipe.name,
-                                calories: recipe.calories,
-                                protein: recipe.protein,
-                                carbs: recipe.carbs,
-                                fat: recipe.fat
-                              });
-                            } else {
-                              toast({
-                                description: `✅ ${recipe.name} saved!`,
-                              });
-                            }
-                            setShowAIRecipeModal(false);
-                          }}
-                        >
-                          Add
-                        </Button>
+              {isLoadingAiRecipes ? (
+                <div className="space-y-3">
+                  {[1, 2, 3, 4].map(i => (
+                    <div key={i} className="animate-pulse rounded-lg border p-4">
+                      <div className="h-5 bg-gray-200 rounded w-2/3 mb-2" />
+                      <div className="h-3 bg-gray-100 rounded w-full mb-3" />
+                      <div className="flex gap-2">
+                        {[1,2,3,4].map(j => <div key={j} className="h-5 bg-gray-100 rounded w-16" />)}
                       </div>
-                      <p className="text-sm text-gray-600 mb-3">{recipe.description}</p>
-                      <div className="flex gap-3">
-                        <Badge variant="secondary">{recipe.calories} cal</Badge>
-                        <Badge variant="secondary">P: {recipe.protein}g</Badge>
-                        <Badge variant="secondary">C: {recipe.carbs}g</Badge>
-                        <Badge variant="secondary">F: {recipe.fat}g</Badge>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {aiRecipes.map((recipe: any, idx: number) => (
+                    <Card key={idx} className="hover:shadow-md transition-shadow">
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between mb-1">
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-base">{recipe.name}</h4>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {recipe.prepTime && <span className="text-xs text-gray-400 flex items-center gap-1"><Clock className="w-3 h-3" />{recipe.prepTime}</span>}
+                              {recipe.difficulty && <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${recipe.difficulty === 'Easy' ? 'bg-green-100 text-green-700' : recipe.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{recipe.difficulty}</span>}
+                            </div>
+                          </div>
+                          <Button
+                            size="sm"
+                            className="bg-orange-500 hover:bg-orange-600 text-white shrink-0 ml-3"
+                            onClick={() => {
+                              if (selectedMealSlot) {
+                                saveMealToSlot({ name: recipe.name, calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: recipe.fat });
+                              } else {
+                                toast({ description: `✅ ${recipe.name} saved!` });
+                              }
+                              setShowAIRecipeModal(false);
+                            }}
+                          >
+                            Add
+                          </Button>
+                        </div>
+                        <p className="text-sm text-gray-600 my-2">{recipe.description}</p>
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          <Badge variant="secondary" className="text-xs">{recipe.calories} cal</Badge>
+                          <Badge variant="secondary" className="text-xs">P: {recipe.protein}g</Badge>
+                          <Badge variant="secondary" className="text-xs">C: {recipe.carbs}g</Badge>
+                          <Badge variant="secondary" className="text-xs">F: {recipe.fat}g</Badge>
+                        </div>
+                        {recipe.tags?.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {recipe.tags.map((tag: string, ti: number) => (
+                              <span key={ti} className="text-xs bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full">{tag}</span>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
