@@ -23,8 +23,8 @@ const NutritionMealPlanner = () => {
   const [activeTab, setActiveTab] = useState('planner');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [viewMode, setViewMode] = useState<'day' | 'week' | 'month'>('week');
-  const [mealPlans, setMealPlans] = useState([]);
-  const [groceryList, setGroceryList] = useState([]);
+  const [mealPlans, setMealPlans] = useState<any[]>([]);
+  const [groceryList, setGroceryList] = useState<any[]>([]);
   const [dailyNutrition, setDailyNutrition] = useState<any>(null);
   const [nutritionGoals, setNutritionGoals] = useState<any>(null);
   const [isPremium, setIsPremium] = useState(false);
@@ -55,6 +55,14 @@ const NutritionMealPlanner = () => {
 
   const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
   const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+  const getDateForWeekday = (weekday: string) => {
+    const anchor = new Date(getCurrentWeekAnchor());
+    const index = weekDays.indexOf(weekday);
+    const dayOffset = index >= 0 ? index : 0;
+    anchor.setDate(anchor.getDate() + dayOffset);
+    return anchor.toISOString().split('T')[0];
+  };
 
   const getCurrentWeekAnchor = () => {
     const now = new Date(selectedDate);
@@ -423,8 +431,35 @@ const NutritionMealPlanner = () => {
     setShowAddMealModal(true);
   };
 
-  const saveMealToSlot = (mealData: any) => {
-    if (selectedMealSlot) {
+  const saveMealToSlot = async (mealData: any) => {
+    if (!selectedMealSlot) {
+      setShowAddMealModal(false);
+      return;
+    }
+
+    try {
+      const response = await fetch('/api/meal-planner/week/entry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          date: getDateForWeekday(selectedMealSlot.day),
+          mealType: selectedMealSlot.type,
+          name: mealData.name,
+          calories: mealData.calories,
+          protein: mealData.protein,
+          carbs: mealData.carbs,
+          fat: mealData.fat,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to save meal entry');
+      }
+
+      const data = await response.json();
+      const savedMeal = { ...mealData, entryId: data?.entry?.id };
+
       setWeeklyMeals((prev: any) => {
         const existing = prev[selectedMealSlot.day]?.[selectedMealSlot.type];
         // Always store as an array so multiple items per slot work
@@ -433,29 +468,52 @@ const NutritionMealPlanner = () => {
           ...prev,
           [selectedMealSlot.day]: {
             ...prev[selectedMealSlot.day],
-            [selectedMealSlot.type]: [...currentItems, mealData]
+            [selectedMealSlot.type]: [...currentItems, savedMeal]
           }
         };
       });
       toast({ description: "✅ Meal item added!" });
+    } catch (error) {
+      console.error('Error saving meal item:', error);
+      toast({ variant: 'destructive', description: 'Failed to save meal item' });
+    } finally {
+      setShowAddMealModal(false);
+      setSelectedMealSlot(null);
     }
-    setShowAddMealModal(false);
-    setSelectedMealSlot(null);
   };
 
-  const removeMealItem = (day: string, mealType: string, itemIndex: number) => {
-    setWeeklyMeals((prev: any) => {
-      const existing = prev[day]?.[mealType];
-      const items = Array.isArray(existing) ? existing : existing ? [existing] : [];
-      const updated = items.filter((_: any, i: number) => i !== itemIndex);
-      return {
-        ...prev,
-        [day]: {
-          ...prev[day],
-          [mealType]: updated.length > 0 ? updated : undefined
+  const removeMealItem = async (day: string, mealType: string, itemIndex: number) => {
+    const items = getSlotItems(day, mealType);
+    const target = items[itemIndex];
+
+    try {
+      if (target?.entryId) {
+        const response = await fetch(`/api/meal-planner/week/entry/${target.entryId}`, {
+          method: 'DELETE',
+          credentials: 'include',
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to delete meal entry');
         }
-      };
-    });
+      }
+
+      setWeeklyMeals((prev: any) => {
+        const existing = prev[day]?.[mealType];
+        const currentItems = Array.isArray(existing) ? existing : existing ? [existing] : [];
+        const updated = currentItems.filter((_: any, i: number) => i !== itemIndex);
+        return {
+          ...prev,
+          [day]: {
+            ...prev[day],
+            [mealType]: updated.length > 0 ? updated : undefined
+          }
+        };
+      });
+    } catch (error) {
+      console.error('Error removing meal item:', error);
+      toast({ variant: 'destructive', description: 'Failed to remove meal item' });
+    }
   };
 
   // Helper: get items for a slot as an array

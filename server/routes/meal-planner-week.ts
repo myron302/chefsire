@@ -1,4 +1,4 @@
-import express, { type Request, type Response } from "express";
+import express, { type NextFunction, type Request, type Response } from "express";
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
@@ -11,6 +11,30 @@ import {
 import { requireAuth } from "../middleware";
 
 const router = express.Router();
+
+let _mealPlannerWeekSchemaReady: Promise<void> | null = null;
+
+async function ensureMealPlannerWeekSchema() {
+  if (_mealPlannerWeekSchemaReady) return _mealPlannerWeekSchemaReady;
+
+  _mealPlannerWeekSchemaReady = (async () => {
+    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_protein INTEGER;`);
+    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_carbs INTEGER;`);
+    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_fat INTEGER;`);
+  })();
+
+  return _mealPlannerWeekSchemaReady;
+}
+
+router.use(async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    await ensureMealPlannerWeekSchema();
+    next();
+  } catch (error) {
+    console.error("Error ensuring meal planner week schema:", error);
+    res.status(500).json({ message: "Meal planner schema is not ready" });
+  }
+});
 
 type MealType = "breakfast" | "lunch" | "dinner" | "snack";
 
@@ -122,27 +146,29 @@ function mapEntriesToWeeklyMeals(entries: any[]) {
     const dayName = toWeekdayName(new Date(e.date));
     if (!out[dayName]) out[dayName] = {};
 
-    if (e.recipe) {
-      out[dayName][e.mealType] = {
-        name: e.recipe.title,
-        calories: e.recipe.calories || e.customCalories || 0,
-        protein: Number(e.recipe.protein || 0),
-        carbs: Number(e.recipe.carbs || 0),
-        fat: Number(e.recipe.fat || 0),
-        recipeId: e.recipe.id,
-        entryId: e.id,
-      };
-    } else {
-      out[dayName][e.mealType] = {
-        name: e.customName || "Meal",
-        calories: e.customCalories || 0,
-        protein: 0,
-        carbs: 0,
-        fat: 0,
-        recipeId: null,
-        entryId: e.id,
-      };
-    }
+    const mappedMeal = e.recipe
+      ? {
+          name: e.recipe.title,
+          calories: e.recipe.calories || e.customCalories || 0,
+          protein: Number(e.recipe.protein || e.customProtein || 0),
+          carbs: Number(e.recipe.carbs || e.customCarbs || 0),
+          fat: Number(e.recipe.fat || e.customFat || 0),
+          recipeId: e.recipe.id,
+          entryId: e.id,
+        }
+      : {
+          name: e.customName || "Meal",
+          calories: e.customCalories || 0,
+          protein: Number(e.customProtein || 0),
+          carbs: Number(e.customCarbs || 0),
+          fat: Number(e.customFat || 0),
+          recipeId: null,
+          entryId: e.id,
+        };
+
+    const existing = out[dayName][e.mealType];
+    const existingItems = Array.isArray(existing) ? existing : existing ? [existing] : [];
+    out[dayName][e.mealType] = [...existingItems, mappedMeal];
   }
 
   return out;
@@ -221,6 +247,9 @@ router.get("/week", requireAuth, async (req: Request, res: Response) => {
         servings: mealPlanEntries.servings,
         customName: mealPlanEntries.customName,
         customCalories: mealPlanEntries.customCalories,
+        customProtein: mealPlanEntries.customProtein,
+        customCarbs: mealPlanEntries.customCarbs,
+        customFat: mealPlanEntries.customFat,
         recipe: recipes,
       })
       .from(mealPlanEntries)
@@ -345,6 +374,9 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
             servings: servingsInt,
             customName: null,
             customCalories: null,
+            customProtein: null,
+            customCarbs: null,
+            customFat: null,
           });
         } else {
           entriesToInsert.push({
@@ -355,6 +387,9 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
             servings: servingsInt,
             customName: `Meal (${mt})`,
             customCalories: perMealTarget || 0,
+            customProtein: null,
+            customCarbs: null,
+            customFat: null,
           });
         }
       }
@@ -421,6 +456,9 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
         servings: mealPlanEntries.servings,
         customName: mealPlanEntries.customName,
         customCalories: mealPlanEntries.customCalories,
+        customProtein: mealPlanEntries.customProtein,
+        customCarbs: mealPlanEntries.customCarbs,
+        customFat: mealPlanEntries.customFat,
         recipe: recipes,
       })
       .from(mealPlanEntries)
@@ -440,6 +478,132 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
   } catch (error) {
     console.error("Error generating week plan:", error);
     res.status(500).json({ message: "Failed to generate week plan" });
+  }
+});
+
+
+// ============================================================
+// POST /api/meal-planner/week/entry
+// Adds a custom meal entry for a specific day/meal type in the active week plan.
+// ============================================================
+router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { date, mealType, name, calories, protein, carbs, fat } = req.body || {};
+
+    const parsed = date ? new Date(date) : null;
+    if (!parsed || isNaN(parsed.getTime())) {
+      return res.status(400).json({ message: "Invalid date" });
+    }
+
+    const mealTypeStr = String(mealType || "").toLowerCase();
+    if (!["breakfast", "lunch", "dinner", "snack"].includes(mealTypeStr)) {
+      return res.status(400).json({ message: "Invalid meal type" });
+    }
+
+    const mealName = String(name || "").trim();
+    if (!mealName) {
+      return res.status(400).json({ message: "Meal name is required" });
+    }
+
+    const weekStart = startOfWeekMonday(parsed);
+    const weekEnd = endOfDay(addDays(weekStart, 6));
+
+    let [plan] = await db
+      .select()
+      .from(mealPlans)
+      .where(
+        and(
+          eq(mealPlans.userId, userId),
+          lte(mealPlans.startDate, weekEnd),
+          gte(mealPlans.endDate, weekStart),
+          eq(mealPlans.isTemplate, false)
+        )
+      )
+      .orderBy(desc(mealPlans.createdAt))
+      .limit(1);
+
+    if (!plan) {
+      const [createdPlan] = await db
+        .insert(mealPlans)
+        .values({
+          userId,
+          name: `Week of ${fmtISODate(weekStart)}`,
+          startDate: startOfDay(weekStart),
+          endDate: weekEnd,
+          isTemplate: false,
+        })
+        .returning();
+      plan = createdPlan;
+    }
+
+    const toInt = (value: any) => {
+      const num = Number(value);
+      return Number.isFinite(num) ? Math.max(0, Math.round(num)) : 0;
+    };
+
+    const [entry] = await db
+      .insert(mealPlanEntries)
+      .values({
+        mealPlanId: plan.id,
+        recipeId: null,
+        date: startOfDay(parsed),
+        mealType: mealTypeStr,
+        servings: 1,
+        customName: mealName,
+        customCalories: toInt(calories),
+        customProtein: toInt(protein),
+        customCarbs: toInt(carbs),
+        customFat: toInt(fat),
+      })
+      .returning();
+
+    res.status(201).json({
+      entry: {
+        id: entry.id,
+        date: entry.date,
+        mealType: entry.mealType,
+        name: mealName,
+        calories: toInt(calories),
+        protein: toInt(protein),
+        carbs: toInt(carbs),
+        fat: toInt(fat),
+      },
+    });
+  } catch (error) {
+    console.error("Error saving custom meal entry:", error);
+    res.status(500).json({ message: "Failed to save meal entry" });
+  }
+});
+
+// ============================================================
+// DELETE /api/meal-planner/week/entry/:id
+// ============================================================
+router.delete("/week/entry/:id", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const entryId = String(req.params.id || "");
+
+    const [entry] = await db
+      .select({
+        id: mealPlanEntries.id,
+        mealPlanId: mealPlanEntries.mealPlanId,
+      })
+      .from(mealPlanEntries)
+      .innerJoin(mealPlans, eq(mealPlanEntries.mealPlanId, mealPlans.id))
+      .where(and(eq(mealPlanEntries.id, entryId), eq(mealPlans.userId, userId)))
+      .limit(1);
+
+    if (!entry) {
+      return res.status(404).json({ message: "Meal entry not found" });
+    }
+
+    await db.delete(mealPlanEntries).where(eq(mealPlanEntries.id, entryId));
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error deleting custom meal entry:", error);
+    res.status(500).json({ message: "Failed to delete meal entry" });
   }
 });
 
