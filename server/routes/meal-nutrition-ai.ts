@@ -5,17 +5,29 @@ import { requireAuth } from "../middleware";
 
 const router = Router();
 
+// ── Debug route — visit /api/meal-planner/ai/debug-status ────────────────────
+// Use this to confirm the key is loaded in production Plesk environment
+router.get("/ai/debug-status", (_req: Request, res: Response) => {
+  const key = process.env.OPENAI_API_KEY;
+  res.json({
+    hasKey: !!key,
+    keyPrefix: key ? key.substring(0, 7) + "..." : "not set",
+    nodeEnv: process.env.NODE_ENV || "not set",
+    cwd: process.cwd(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 function getOpenAI(): OpenAI | null {
   const key = process.env.OPENAI_API_KEY;
-  if (!key) return null;
-  return new OpenAI({ apiKey: key });
+  if (!key || key.trim() === "") {
+    console.warn("[meal-nutrition-ai] OPENAI_API_KEY is missing — using fallback data");
+    return null;
+  }
+  return new OpenAI({ apiKey: key.trim() });
 }
 
-/**
- * POST /api/meal-planner/ai/nutrition-lookup
- * Body: { mealName: string, servingSize?: string }
- * Returns estimated nutrition for the given meal.
- */
+// POST /api/meal-planner/ai/nutrition-lookup
 router.post("/ai/nutrition-lookup", requireAuth, async (req: Request, res: Response) => {
   const { mealName, servingSize } = req.body as { mealName?: string; servingSize?: string };
 
@@ -26,42 +38,31 @@ router.post("/ai/nutrition-lookup", requireAuth, async (req: Request, res: Respo
   const client = getOpenAI();
 
   if (!client) {
-    // Return realistic fallback data so the UI always works
-    return res.json(buildFallbackNutrition(mealName));
+    const fallback = buildFallbackNutrition(mealName);
+    console.log(`[meal-nutrition-ai] fallback for "${mealName}":`, JSON.stringify(fallback));
+    return res.json(fallback);
   }
 
   const serving = servingSize || "1 standard serving";
-  const prompt = `Give me the estimated nutritional information for: "${mealName.trim()}" (${serving}).
-
-Return ONLY a JSON object with these exact keys (no extra text, no markdown):
-{
-  "calories": number,
-  "protein": number,
-  "carbs": number,
-  "fat": number,
-  "fiber": number,
-  "sugar": number,
-  "servingSize": string
-}
-
-All macro values should be in grams. Be realistic based on common restaurant/home-cooked versions.`;
+  const prompt = `Estimate nutritional information for: "${mealName.trim()}" (${serving}).
+Return ONLY a JSON object, no markdown, no extra text:
+{"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"servingSize":string}`;
 
   try {
+    console.log(`[meal-nutrition-ai] OpenAI lookup for: "${mealName}"`);
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
       max_tokens: 200,
       messages: [
-        {
-          role: "system",
-          content: "You are a registered dietitian and nutrition database. Return only valid JSON, no prose, no markdown.",
-        },
+        { role: "system", content: "You are a nutrition database. Return only valid JSON, no prose, no markdown fences." },
         { role: "user", content: prompt },
       ],
     });
 
     const raw = completion.choices?.[0]?.message?.content?.trim() || "{}";
-    const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+    console.log(`[meal-nutrition-ai] raw response: ${raw}`);
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
     const parsed = JSON.parse(cleaned);
 
     const nutrition = {
@@ -74,84 +75,49 @@ All macro values should be in grams. Be realistic based on common restaurant/hom
       servingSize: String(parsed.servingSize || serving),
     };
 
+    console.log(`[meal-nutrition-ai] sending nutrition:`, JSON.stringify(nutrition));
     return res.json(nutrition);
-  } catch (err) {
-    console.error("[meal-nutrition-ai] lookup error:", err);
+  } catch (err: any) {
+    console.error("[meal-nutrition-ai] OpenAI error:", err?.message || String(err));
     return res.json(buildFallbackNutrition(mealName));
   }
 });
 
-/**
- * POST /api/meal-planner/ai/recipe-suggestions
- * Body: { mealType?: string, calorieGoal?: number, dietaryPreferences?: string[], count?: number }
- * Returns AI-generated recipe suggestions with nutrition.
- */
+// POST /api/meal-planner/ai/recipe-suggestions
 router.post("/ai/recipe-suggestions", requireAuth, async (req: Request, res: Response) => {
-  const {
-    mealType,
-    calorieGoal,
-    dietaryPreferences,
-    count = 4,
-  } = req.body as {
-    mealType?: string;
-    calorieGoal?: number;
-    dietaryPreferences?: string[];
-    count?: number;
+  const { mealType, calorieGoal, dietaryPreferences, count = 4 } = req.body as {
+    mealType?: string; calorieGoal?: number; dietaryPreferences?: string[]; count?: number;
   };
 
   const client = getOpenAI();
-
-  if (!client) {
-    return res.json({ recipes: buildFallbackRecipes(mealType) });
-  }
+  if (!client) return res.json({ recipes: buildFallbackRecipes(mealType) });
 
   const preferences = dietaryPreferences?.length ? dietaryPreferences.join(", ") : "none";
-  const calTarget = calorieGoal ? `around ${calorieGoal} calories per day` : "balanced caloric intake";
+  const calTarget = calorieGoal ? `around ${calorieGoal} calories per day` : "balanced";
   const mealLabel = mealType || "any meal";
 
-  const prompt = `Generate ${count} creative, delicious recipe suggestions for ${mealLabel}.
-Dietary preferences/restrictions: ${preferences}
-Calorie goal: ${calTarget}
-
-Return ONLY a JSON array (no markdown, no prose) with exactly this structure per item:
-[
-  {
-    "name": string,
-    "description": string (1 sentence, appetizing),
-    "calories": number,
-    "protein": number,
-    "carbs": number,
-    "fat": number,
-    "prepTime": string (e.g. "20 min"),
-    "difficulty": "Easy" | "Medium" | "Hard",
-    "tags": string[] (2-3 short tags like "High Protein", "Low Carb", "Quick")
-  }
-]`;
+  const prompt = `Generate ${count} recipe suggestions for ${mealLabel}. Dietary restrictions: ${preferences}. Calorie goal: ${calTarget}.
+Return ONLY a JSON array, no markdown:
+[{"name":string,"description":string,"calories":number,"protein":number,"carbs":number,"fat":number,"prepTime":string,"difficulty":"Easy"|"Medium"|"Hard","tags":string[]}]`;
 
   try {
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.7,
-      max_tokens: 800,
+      max_tokens: 900,
       messages: [
-        {
-          role: "system",
-          content: "You are a creative culinary AI. Return only valid JSON arrays, no markdown, no prose.",
-        },
+        { role: "system", content: "You are a culinary AI. Return only valid JSON arrays, no markdown." },
         { role: "user", content: prompt },
       ],
     });
 
     const raw = completion.choices?.[0]?.message?.content?.trim() || "[]";
-    const cleaned = raw.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/```$/i, "").trim();
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
     const parsed = JSON.parse(cleaned);
-
-    if (!Array.isArray(parsed)) {
-      return res.json({ recipes: buildFallbackRecipes(mealType) });
-    }
+    if (!Array.isArray(parsed)) return res.json({ recipes: buildFallbackRecipes(mealType) });
 
     const recipes = parsed.slice(0, count).map((r: any) => ({
-      name: String(r.name || "Mystery Meal"),
+      name: String(r.name || "Unnamed"),
       description: String(r.description || ""),
       calories: Math.round(Number(r.calories) || 400),
       protein: Math.round(Number(r.protein) || 25),
@@ -163,84 +129,103 @@ Return ONLY a JSON array (no markdown, no prose) with exactly this structure per
     }));
 
     return res.json({ recipes });
-  } catch (err) {
-    console.error("[meal-nutrition-ai] recipe suggestions error:", err);
+  } catch (err: any) {
+    console.error("[meal-nutrition-ai] recipe error:", err?.message || String(err));
     return res.json({ recipes: buildFallbackRecipes(mealType) });
   }
 });
 
 // ── Fallback helpers ──────────────────────────────────────────────────────────
 
+const FOOD_DB: Record<string, { calories: number; protein: number; carbs: number; fat: number; fiber: number; sugar: number; servingSize: string }> = {
+  egg:       { calories: 78,  protein: 6,  carbs: 1,  fat: 5,  fiber: 0, sugar: 0, servingSize: "1 egg" },
+  eggs:      { calories: 156, protein: 12, carbs: 1,  fat: 10, fiber: 0, sugar: 0, servingSize: "2 eggs" },
+  bacon:     { calories: 161, protein: 12, carbs: 0,  fat: 12, fiber: 0, sugar: 0, servingSize: "3 strips" },
+  toast:     { calories: 79,  protein: 3,  carbs: 15, fat: 1,  fiber: 1, sugar: 1, servingSize: "1 slice" },
+  bread:     { calories: 79,  protein: 3,  carbs: 15, fat: 1,  fiber: 1, sugar: 1, servingSize: "1 slice" },
+  oatmeal:   { calories: 158, protein: 5,  carbs: 27, fat: 3,  fiber: 4, sugar: 1, servingSize: "1 cup" },
+  pancakes:  { calories: 350, protein: 9,  carbs: 56, fat: 10, fiber: 2, sugar: 8, servingSize: "3 pancakes" },
+  waffles:   { calories: 310, protein: 8,  carbs: 45, fat: 12, fiber: 1, sugar: 6, servingSize: "2 waffles" },
+  yogurt:    { calories: 150, protein: 17, carbs: 9,  fat: 4,  fiber: 0, sugar: 7, servingSize: "1 cup" },
+  banana:    { calories: 89,  protein: 1,  carbs: 23, fat: 0,  fiber: 3, sugar: 12, servingSize: "1 medium" },
+  apple:     { calories: 72,  protein: 0,  carbs: 19, fat: 0,  fiber: 3, sugar: 14, servingSize: "1 medium" },
+  orange:    { calories: 62,  protein: 1,  carbs: 15, fat: 0,  fiber: 3, sugar: 12, servingSize: "1 medium" },
+  avocado:   { calories: 160, protein: 2,  carbs: 9,  fat: 15, fiber: 7, sugar: 1,  servingSize: "1/2 avocado" },
+  chicken:   { calories: 335, protein: 38, carbs: 0,  fat: 19, fiber: 0, sugar: 0,  servingSize: "1 breast" },
+  salmon:    { calories: 367, protein: 39, carbs: 0,  fat: 22, fiber: 0, sugar: 0,  servingSize: "1 fillet" },
+  beef:      { calories: 350, protein: 30, carbs: 0,  fat: 24, fiber: 0, sugar: 0,  servingSize: "4 oz" },
+  steak:     { calories: 420, protein: 38, carbs: 0,  fat: 28, fiber: 0, sugar: 0,  servingSize: "6 oz" },
+  rice:      { calories: 206, protein: 4,  carbs: 45, fat: 0,  fiber: 1, sugar: 0,  servingSize: "1 cup cooked" },
+  pasta:     { calories: 220, protein: 8,  carbs: 43, fat: 1,  fiber: 3, sugar: 1,  servingSize: "1 cup cooked" },
+  salad:     { calories: 150, protein: 5,  carbs: 12, fat: 8,  fiber: 4, sugar: 3,  servingSize: "1 bowl" },
+  burger:    { calories: 540, protein: 27, carbs: 40, fat: 28, fiber: 2, sugar: 8,  servingSize: "1 burger" },
+  sandwich:  { calories: 350, protein: 18, carbs: 40, fat: 12, fiber: 3, sugar: 4,  servingSize: "1 sandwich" },
+  pizza:     { calories: 570, protein: 23, carbs: 68, fat: 21, fiber: 3, sugar: 6,  servingSize: "2 slices" },
+  soup:      { calories: 180, protein: 8,  carbs: 22, fat: 6,  fiber: 4, sugar: 3,  servingSize: "1.5 cups" },
+  tuna:      { calories: 290, protein: 40, carbs: 0,  fat: 13, fiber: 0, sugar: 0,  servingSize: "1 can" },
+  shrimp:    { calories: 200, protein: 38, carbs: 3,  fat: 3,  fiber: 0, sugar: 0,  servingSize: "4 oz" },
+  broccoli:  { calories: 55,  protein: 4,  carbs: 11, fat: 0,  fiber: 5, sugar: 3,  servingSize: "1 cup" },
+  spinach:   { calories: 41,  protein: 5,  carbs: 7,  fat: 0,  fiber: 4, sugar: 1,  servingSize: "1 cup" },
+  potato:    { calories: 130, protein: 3,  carbs: 30, fat: 0,  fiber: 3, sugar: 1,  servingSize: "1 medium" },
+  milk:      { calories: 149, protein: 8,  carbs: 12, fat: 8,  fiber: 0, sugar: 12, servingSize: "1 cup" },
+  cheese:    { calories: 113, protein: 7,  carbs: 0,  fat: 9,  fiber: 0, sugar: 0,  servingSize: "1 oz" },
+  almonds:   { calories: 164, protein: 6,  carbs: 6,  fat: 14, fiber: 3, sugar: 1,  servingSize: "1 oz" },
+  coffee:    { calories: 5,   protein: 0,  carbs: 1,  fat: 0,  fiber: 0, sugar: 0,  servingSize: "1 cup" },
+  juice:     { calories: 112, protein: 1,  carbs: 26, fat: 0,  fiber: 0, sugar: 22, servingSize: "1 cup" },
+  sausage:   { calories: 290, protein: 17, carbs: 1,  fat: 24, fiber: 0, sugar: 0,  servingSize: "2 links" },
+  ham:       { calories: 130, protein: 17, carbs: 2,  fat: 6,  fiber: 0, sugar: 1,  servingSize: "3 oz" },
+  turkey:    { calories: 220, protein: 30, carbs: 0,  fat: 11, fiber: 0, sugar: 0,  servingSize: "4 oz" },
+  quinoa:    { calories: 222, protein: 8,  carbs: 39, fat: 4,  fiber: 5, sugar: 2,  servingSize: "1 cup" },
+  granola:   { calories: 450, protein: 10, carbs: 66, fat: 18, fiber: 5, sugar: 22, servingSize: "1 cup" },
+  smoothie:  { calories: 280, protein: 8,  carbs: 52, fat: 4,  fiber: 5, sugar: 35, servingSize: "16 oz" },
+};
+
 function buildFallbackNutrition(mealName: string) {
   const name = mealName.toLowerCase();
-  if (name.includes("salad")) {
-    return { calories: 280, protein: 18, carbs: 22, fat: 12, fiber: 5, sugar: 6, servingSize: "1 bowl" };
+
+  // Try splitting "eggs, toast and bacon" into parts
+  const parts = name.split(/[,&+]|\band\b|\bwith\b/).map((s) => s.trim()).filter(Boolean);
+
+  if (parts.length > 1) {
+    let combined = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0, sugar: 0 };
+    let matched = 0;
+    const servings: string[] = [];
+
+    for (const part of parts) {
+      for (const [key, val] of Object.entries(FOOD_DB)) {
+        if (part.includes(key)) {
+          combined.calories += val.calories;
+          combined.protein += val.protein;
+          combined.carbs += val.carbs;
+          combined.fat += val.fat;
+          combined.fiber += val.fiber;
+          combined.sugar += val.sugar;
+          servings.push(val.servingSize);
+          matched++;
+          break;
+        }
+      }
+    }
+
+    if (matched > 0) {
+      return { ...combined, servingSize: servings.join(" + ") };
+    }
   }
-  if (name.includes("chicken")) {
-    return { calories: 420, protein: 42, carbs: 28, fat: 14, fiber: 3, sugar: 2, servingSize: "1 serving" };
+
+  // Single item scan
+  for (const [key, val] of Object.entries(FOOD_DB)) {
+    if (name.includes(key)) return val;
   }
-  if (name.includes("pasta") || name.includes("spaghetti")) {
-    return { calories: 520, protein: 20, carbs: 72, fat: 16, fiber: 4, sugar: 5, servingSize: "1 plate" };
-  }
-  if (name.includes("burger")) {
-    return { calories: 650, protein: 32, carbs: 45, fat: 34, fiber: 2, sugar: 8, servingSize: "1 burger" };
-  }
-  if (name.includes("salmon") || name.includes("fish")) {
-    return { calories: 380, protein: 38, carbs: 12, fat: 18, fiber: 2, sugar: 2, servingSize: "1 fillet" };
-  }
-  if (name.includes("oats") || name.includes("oatmeal")) {
-    return { calories: 310, protein: 12, carbs: 54, fat: 6, fiber: 8, sugar: 10, servingSize: "1 bowl" };
-  }
-  // Generic fallback
-  return { calories: 450, protein: 28, carbs: 45, fat: 16, fiber: 4, sugar: 6, servingSize: "1 serving" };
+
+  return { calories: 400, protein: 25, carbs: 40, fat: 14, fiber: 4, sugar: 5, servingSize: "1 serving" };
 }
 
-function buildFallbackRecipes(mealType?: string) {
+function buildFallbackRecipes(_mealType?: string) {
   return [
-    {
-      name: "Grilled Chicken & Quinoa Bowl",
-      description: "Tender grilled chicken over fluffy quinoa with roasted vegetables and tahini.",
-      calories: 520,
-      protein: 45,
-      carbs: 42,
-      fat: 14,
-      prepTime: "25 min",
-      difficulty: "Easy",
-      tags: ["High Protein", "Gluten Free"],
-    },
-    {
-      name: "Mediterranean Salmon",
-      description: "Herb-crusted salmon with Greek salad, olives, and whole grain pita.",
-      calories: 480,
-      protein: 38,
-      carbs: 30,
-      fat: 22,
-      prepTime: "20 min",
-      difficulty: "Medium",
-      tags: ["Omega-3", "Heart Healthy"],
-    },
-    {
-      name: "Turkey & Sweet Potato Skillet",
-      description: "Lean ground turkey with caramelized sweet potato, kale, and warming spices.",
-      calories: 450,
-      protein: 40,
-      carbs: 48,
-      fat: 10,
-      prepTime: "30 min",
-      difficulty: "Easy",
-      tags: ["High Protein", "Low Fat"],
-    },
-    {
-      name: "Veggie Buddha Bowl",
-      description: "Roasted chickpeas, avocado, brown rice, and a lemon-tahini drizzle.",
-      calories: 420,
-      protein: 16,
-      carbs: 58,
-      fat: 18,
-      prepTime: "15 min",
-      difficulty: "Easy",
-      tags: ["Vegan", "Fiber Rich"],
-    },
+    { name: "Grilled Chicken & Quinoa Bowl", description: "Tender grilled chicken over fluffy quinoa with roasted vegetables and tahini.", calories: 520, protein: 45, carbs: 42, fat: 14, prepTime: "25 min", difficulty: "Easy", tags: ["High Protein", "Gluten Free"] },
+    { name: "Mediterranean Salmon", description: "Herb-crusted salmon with Greek salad, olives, and whole grain pita.", calories: 480, protein: 38, carbs: 30, fat: 22, prepTime: "20 min", difficulty: "Medium", tags: ["Omega-3", "Heart Healthy"] },
+    { name: "Turkey & Sweet Potato Skillet", description: "Lean ground turkey with caramelized sweet potato, kale, and warming spices.", calories: 450, protein: 40, carbs: 48, fat: 10, prepTime: "30 min", difficulty: "Easy", tags: ["High Protein", "Low Fat"] },
+    { name: "Veggie Buddha Bowl", description: "Roasted chickpeas, avocado, brown rice, and a lemon-tahini drizzle.", calories: 420, protein: 16, carbs: 58, fat: 18, prepTime: "15 min", difficulty: "Easy", tags: ["Vegan", "Fiber Rich"] },
   ];
 }
 
