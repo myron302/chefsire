@@ -1073,4 +1073,100 @@ async function checkAchievements(userId: string) {
   }
 }
 
+// ============================================================
+// MISSING GROCERY LIST ROUTES (needed by NutritionMealPlanner)
+// ============================================================
+
+// Toggle purchased status on a grocery item
+// PATCH /api/meal-planner/grocery-list/:id/purchase
+// Body: { toggle?: boolean, actualPrice?: number }
+router.patch("/grocery-list/:id/purchase", requireAuth, async (req: Request, res: Response) => {
+  try {
+    await ensureAdvancedMealPlanningSchema();
+
+    const userId = req.user!.id;
+    const { id } = req.params;
+    const { actualPrice, toggle } = req.body;
+
+    // Fetch current state so we can toggle
+    let purchased = true;
+    if (toggle) {
+      const [current] = await db
+        .select()
+        .from(groceryListItems)
+        .where(and(eq(groceryListItems.id, id), eq(groceryListItems.userId, userId)))
+        .limit(1);
+
+      if (!current) {
+        return res.status(404).json({ message: "Grocery item not found" });
+      }
+      purchased = !current.purchased;
+    }
+
+    const [updated] = await db
+      .update(groceryListItems)
+      .set({
+        purchased,
+        purchasedAt: purchased ? new Date() : null,
+        ...(actualPrice != null ? { actualPrice } : {}),
+      })
+      .where(and(eq(groceryListItems.id, id), eq(groceryListItems.userId, userId)))
+      .returning();
+
+    if (!updated) {
+      return res.status(404).json({ message: "Grocery item not found" });
+    }
+
+    res.json({ item: updated });
+  } catch (error) {
+    console.error("Error toggling grocery item purchase:", error);
+    res.status(500).json({ message: "Failed to update item" });
+  }
+});
+
+// Cross-check grocery list against pantry and mark items already owned
+// POST /api/meal-planner/grocery-list/check-pantry
+router.post("/grocery-list/check-pantry", requireAuth, async (req: Request, res: Response) => {
+  try {
+    await ensureAdvancedMealPlanningSchema();
+
+    const userId = req.user!.id;
+
+    const groceryItems = await db
+      .select()
+      .from(groceryListItems)
+      .where(and(eq(groceryListItems.userId, userId), eq(groceryListItems.purchased, false)));
+
+    const pantry = await db
+      .select()
+      .from(pantryItems)
+      .where(eq(pantryItems.userId, userId));
+
+    let matched = 0;
+
+    for (const grocery of groceryItems) {
+      const gName = (grocery.ingredientName || "").toLowerCase().trim();
+      if (!gName) continue;
+
+      const inPantry = pantry.some((p) => {
+        const pName = (p.name || "").toLowerCase().trim();
+        return pName && (pName.includes(gName) || gName.includes(pName));
+      });
+
+      if (inPantry && !grocery.isPantryItem) {
+        await db
+          .update(groceryListItems)
+          .set({ isPantryItem: true })
+          .where(and(eq(groceryListItems.id, grocery.id), eq(groceryListItems.userId, userId)));
+        matched++;
+      }
+    }
+
+    res.json({ message: "Pantry check complete", matched });
+  } catch (error) {
+    console.error("Error checking pantry against grocery list:", error);
+    res.status(500).json({ message: "Failed to check pantry" });
+  }
+});
+
 export default router;
