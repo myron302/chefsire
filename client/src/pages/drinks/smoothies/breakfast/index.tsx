@@ -83,7 +83,7 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // Enhanced breakfast smoothies data with proper measurements
-const breakfastSmoothies = [
+export const breakfastSmoothies = [
   {
     id: 'overnight-oats-smoothie',
     name: 'Overnight Oats Smoothie',

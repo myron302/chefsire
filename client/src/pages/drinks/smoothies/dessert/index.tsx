@@ -22,7 +22,7 @@ import {
 } from '../../data/smoothies';
 
 // Hardcoded 12 dessert smoothie recipes to ensure they all show up
-const dessertSmoothies = [
+export const dessertSmoothies = [
   {
     id: "1",
     name: "Chocolate Banana Smoothie",

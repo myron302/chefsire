@@ -43,7 +43,7 @@ const scaleAmount = (amt: number | string, factor: number): number | string => {
 };
 
 // Collagen protein shake data - Updated with absorptionTime and leucineContent
-const collagenShakes = [
+export const collagenShakes = [
   {
     id: 'collagen-1',
     name: 'Beauty Boost Berry',

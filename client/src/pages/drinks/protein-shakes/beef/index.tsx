@@ -52,7 +52,7 @@ const proteinSubcategories = [
 ];
 
 // ---------- Data (Beef) - UPDATED WITH ABSORPTION INFO ----------
-const beefProteinShakes = [
+export const beefProteinShakes = [
   {
     id: 'beef-1',
     name: 'Carnivore Power Blast',

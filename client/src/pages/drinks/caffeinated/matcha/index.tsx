@@ -95,7 +95,7 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // ---------- Data ----------
-const matchaDrinks = [
+export const matchaDrinks = [
   {
     id: "classic-matcha-latte",
     name: "Classic Matcha Latte",

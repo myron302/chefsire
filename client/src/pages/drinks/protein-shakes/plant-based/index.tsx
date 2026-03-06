@@ -55,7 +55,7 @@ const scaleAmount = (baseAmount: number | string, servings: number) => {
 };
 
 // ---------- Data ----------
-const plantBasedShakes = [
+export const plantBasedShakes = [
   {
     id: 'plant-1',
     name: 'Pea Power Green Machine',
