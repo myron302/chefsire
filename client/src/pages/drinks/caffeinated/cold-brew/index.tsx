@@ -81,7 +81,7 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // Enhanced cold brew drinks data
-const coldBrewDrinks = [
+export const coldBrewDrinks = [
   {
     id: 'classic-cold-brew',
     name: 'Classic Cold Brew',

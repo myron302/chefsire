@@ -98,7 +98,7 @@ const proteinSubcategories = [
 ]
 
 // Casein protein shake data - ALL 9 RECIPES PRESERVED
-const caseinShakes = [
+export const caseinShakes = [
   {
     id: "casein-1",
     name: "Midnight Muscle Recovery",

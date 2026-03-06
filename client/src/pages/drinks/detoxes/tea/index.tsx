@@ -51,7 +51,7 @@ const toMetric = (unit: string, amount: number) => {
 };
 
 // ---------- Detox Teas Data (with 4 new recipes) ----------
-const detoxTeas = [
+export const detoxTeas = [
   {
     id: 'green-detox-tea',
     name: 'Green Tea Metabolism Boost',

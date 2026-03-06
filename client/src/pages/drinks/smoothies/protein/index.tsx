@@ -78,7 +78,7 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // Enhanced protein smoothies data with proper measurements
-const proteinSmoothies = [
+export const proteinSmoothies = [
   {
     id: 'protein-1',
     name: 'Muscle Builder Max',

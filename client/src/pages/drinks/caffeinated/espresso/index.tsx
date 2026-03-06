@@ -81,7 +81,7 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // Enhanced espresso drinks data
-const espressoDrinks = [
+export const espressoDrinks = [
   {
     id: 'classic-espresso',
     name: 'Classic Espresso Shot',

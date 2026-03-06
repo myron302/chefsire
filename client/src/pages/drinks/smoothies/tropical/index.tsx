@@ -81,7 +81,7 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // Enhanced tropical smoothies data with proper measurements
-const tropicalSmoothies = [
+export const tropicalSmoothies = [
   {
     id: 'tropical-1',
     name: 'Island Paradise',

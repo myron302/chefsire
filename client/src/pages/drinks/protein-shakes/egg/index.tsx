@@ -52,7 +52,7 @@ const proteinSubcategories = [
 ];
 
 // ---------- Data (Egg) - Expanded to 9 recipes ----------
-const eggProteinRecipes = [
+export const eggProteinRecipes = [
   {
     id: 'egg-1',
     name: 'Classic Egg White Power',

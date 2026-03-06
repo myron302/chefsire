@@ -70,7 +70,7 @@ const proteinSubcategories = [
 ];
 
 // ---------- Whey data WITH measured recipes (serves 1) ----------
-const wheyProteinShakes = [
+export const wheyProteinShakes = [
   {
     id: 'whey-1',
     name: 'Classic Vanilla Post-Workout',

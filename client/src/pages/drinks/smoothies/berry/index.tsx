@@ -82,7 +82,7 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // Enhanced berry smoothies data with ALL recipes from both pages
-const berrySmoothies = [
+export const berrySmoothies = [
   {
     id: 'berry-1',
     name: 'Triple Berry Blast',

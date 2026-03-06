@@ -82,7 +82,7 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // Enhanced detox smoothies data - ACTUAL SMOOTHIES with creamy bases
-const detoxSmoothies = [
+export const detoxSmoothies = [
   {
     id: 'detox-green-smoothie',
     name: 'Green Detox Smoothie',

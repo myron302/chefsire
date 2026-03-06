@@ -102,7 +102,7 @@ const detoxTypes = [
 ];
 
 // ---------- Detox Juices Data ----------
-const detoxJuices = [
+export const detoxJuices = [
   {
     id: 'green-detox-1',
     name: 'Green Cleanse Elixir',

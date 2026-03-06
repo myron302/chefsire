@@ -83,7 +83,7 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // Enhanced workout smoothies data with proper measurements
-const workoutSmoothies = [
+export const workoutSmoothies = [
   {
     id: 'workout-1',
     name: 'Pre-Workout Power Blend',
