@@ -1,6 +1,6 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import { db } from "../db/index.js";
-import { eq, and, desc, sql, gte, lte, isNull } from "drizzle-orm";
+import { eq, and, desc, sql, gte, lte, isNull, asc } from "drizzle-orm";
 import {
   mealRecommendations,
   mealPrepSchedules,
@@ -17,6 +17,12 @@ import {
   mealPlans,
   pantryItems,
   familyMembers,
+  mealStreaks,
+  bodyMetrics,
+  mealFavorites,
+  waterLogs,
+  mealPlanEntries,
+  mealPlans,
 } from "../../shared/schema.js";
 import { requireAuth } from "../middleware";
 
@@ -137,6 +143,61 @@ async function ensureAdvancedMealPlanningSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS grocery_list_items_user_idx ON grocery_list_items(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS grocery_list_items_category_idx ON grocery_list_items(category);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS grocery_list_items_purchased_idx ON grocery_list_items(purchased);`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS meal_streaks (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        current_streak INTEGER NOT NULL DEFAULT 0,
+        longest_streak INTEGER NOT NULL DEFAULT 0,
+        last_logged_date DATE,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS body_metrics (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        weight_lbs DECIMAL(8, 2) NOT NULL,
+        body_fat_pct DECIMAL(5, 2),
+        waist_in DECIMAL(6, 2),
+        hip_in DECIMAL(6, 2),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS meal_favorites (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        meal_name TEXT NOT NULL,
+        calories INTEGER,
+        protein INTEGER,
+        carbs INTEGER,
+        fat INTEGER,
+        fiber INTEGER,
+        is_favorite BOOLEAN DEFAULT false,
+        times_logged INTEGER DEFAULT 0,
+        last_used TIMESTAMP
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS water_logs (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        date DATE NOT NULL,
+        glasses_logged INTEGER NOT NULL DEFAULT 0,
+        daily_target INTEGER NOT NULL DEFAULT 8,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS water_logs_user_date_uidx ON water_logs(user_id, date);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS meal_streaks_user_uidx ON meal_streaks(user_id);`);
+    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS source VARCHAR(50);`);
 
     // ---- Patch older deployments that created these tables without newer columns ----
     await db.execute(sql`ALTER TABLE meal_prep_schedules ADD COLUMN IF NOT EXISTS is_running_low BOOLEAN DEFAULT false;`);
@@ -1166,6 +1227,240 @@ router.post("/grocery-list/check-pantry", requireAuth, async (req: Request, res:
   } catch (error) {
     console.error("Error checking pantry against grocery list:", error);
     res.status(500).json({ message: "Failed to check pantry" });
+  }
+});
+
+// ============================================================
+// PREMIUM TRACKING ROUTES
+// ============================================================
+
+router.get("/streak", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const [streak] = await db.select().from(mealStreaks).where(eq(mealStreaks.userId, userId)).limit(1);
+
+    res.json({
+      currentStreak: streak?.currentStreak || 0,
+      longestStreak: streak?.longestStreak || 0,
+      lastLoggedDate: streak?.lastLoggedDate || null,
+    });
+  } catch (error) {
+    console.error("Error fetching streak:", error);
+    res.status(500).json({ message: "Failed to fetch streak" });
+  }
+});
+
+router.post("/streak/log", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const dateRaw = String(req.body?.date || "");
+    const date = new Date(dateRaw);
+    if (!dateRaw || Number.isNaN(date.getTime())) {
+      return res.status(400).json({ message: "Invalid date" });
+    }
+    date.setHours(0,0,0,0);
+
+    const [existing] = await db.select().from(mealStreaks).where(eq(mealStreaks.userId, userId)).limit(1);
+
+    let currentStreak = 1;
+    let longestStreak = 1;
+
+    if (existing) {
+      const last = existing.lastLoggedDate ? new Date(existing.lastLoggedDate) : null;
+      if (last) {
+        last.setHours(0,0,0,0);
+        const diff = Math.round((date.getTime() - last.getTime()) / (1000*60*60*24));
+        if (diff === 0) currentStreak = existing.currentStreak || 0;
+        else if (diff === 1) currentStreak = (existing.currentStreak || 0) + 1;
+        else currentStreak = 1;
+      }
+      longestStreak = Math.max(existing.longestStreak || 0, currentStreak);
+
+      await db.update(mealStreaks).set({
+        currentStreak,
+        longestStreak,
+        lastLoggedDate: date.toISOString().split("T")[0],
+        updatedAt: new Date(),
+      }).where(eq(mealStreaks.id, existing.id));
+    } else {
+      await db.insert(mealStreaks).values({
+        userId,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastLoggedDate: date.toISOString().split("T")[0],
+        updatedAt: new Date(),
+      });
+    }
+
+    res.json({ currentStreak, longestStreak });
+  } catch (error) {
+    console.error("Error logging streak:", error);
+    res.status(500).json({ message: "Failed to log streak" });
+  }
+});
+
+router.get("/body-metrics", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+
+    const metrics = await db
+      .select()
+      .from(bodyMetrics)
+      .where(eq(bodyMetrics.userId, userId))
+      .orderBy(desc(bodyMetrics.date))
+      .limit(limit);
+
+    res.json({ metrics });
+  } catch (error) {
+    console.error("Error fetching body metrics:", error);
+    res.status(500).json({ message: "Failed to fetch body metrics" });
+  }
+});
+
+router.post("/body-metrics", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { date, weightLbs, bodyFatPct, waistIn, hipIn } = req.body || {};
+
+    if (!date || Number.isNaN(new Date(date).getTime())) {
+      return res.status(400).json({ message: "Invalid date" });
+    }
+    const weight = Number(weightLbs);
+    if (!Number.isFinite(weight) || weight <= 0) {
+      return res.status(400).json({ message: "weightLbs is required" });
+    }
+
+    const [metric] = await db.insert(bodyMetrics).values({
+      userId,
+      date: String(date),
+      weightLbs: String(weight),
+      bodyFatPct: bodyFatPct != null ? String(Number(bodyFatPct)) : null,
+      waistIn: waistIn != null ? String(Number(waistIn)) : null,
+      hipIn: hipIn != null ? String(Number(hipIn)) : null,
+      createdAt: new Date(),
+    }).returning();
+
+    res.status(201).json({ metric });
+  } catch (error) {
+    console.error("Error creating body metric:", error);
+    res.status(500).json({ message: "Failed to create body metric" });
+  }
+});
+
+router.get("/history", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const meals = await db
+      .select()
+      .from(mealFavorites)
+      .where(eq(mealFavorites.userId, userId))
+      .orderBy(desc(mealFavorites.isFavorite), desc(mealFavorites.lastUsed))
+      .limit(20);
+
+    res.json({
+      meals: meals.map((m) => ({
+        id: m.id,
+        name: m.mealName,
+        calories: m.calories || 0,
+        protein: m.protein || 0,
+        carbs: m.carbs || 0,
+        fat: m.fat || 0,
+        fiber: m.fiber || 0,
+        isFavorite: Boolean(m.isFavorite),
+        timesLogged: m.timesLogged || 0,
+        lastUsed: m.lastUsed,
+      })),
+    });
+  } catch (error) {
+    console.error("Error fetching meal history:", error);
+    res.status(500).json({ message: "Failed to fetch meal history" });
+  }
+});
+
+router.post("/history/favorite", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const mealName = String(req.body?.mealName || "").trim();
+    const isFavorite = Boolean(req.body?.isFavorite);
+    if (!mealName) return res.status(400).json({ message: "mealName is required" });
+
+    const [existing] = await db.select().from(mealFavorites).where(and(eq(mealFavorites.userId, userId), eq(mealFavorites.mealName, mealName))).limit(1);
+
+    if (existing) {
+      await db.update(mealFavorites).set({ isFavorite }).where(eq(mealFavorites.id, existing.id));
+    } else {
+      await db.insert(mealFavorites).values({ userId, mealName, isFavorite, timesLogged: 0, lastUsed: new Date() });
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error updating favorite status:", error);
+    res.status(500).json({ message: "Failed to update favorite status" });
+  }
+});
+
+router.get("/water", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const date = String(req.query.date || new Date().toISOString().split("T")[0]);
+
+    let [log] = await db.select().from(waterLogs).where(and(eq(waterLogs.userId, userId), eq(waterLogs.date, date))).limit(1);
+
+    if (!log) {
+      const latest = await db.select().from(waterLogs).where(eq(waterLogs.userId, userId)).orderBy(desc(waterLogs.updatedAt)).limit(1);
+      const target = latest[0]?.dailyTarget || 8;
+      [log] = await db.insert(waterLogs).values({ userId, date, glassesLogged: 0, dailyTarget: target, updatedAt: new Date() }).returning();
+    }
+
+    res.json({ date: log.date, glassesLogged: log.glassesLogged, dailyTarget: log.dailyTarget });
+  } catch (error) {
+    console.error("Error fetching water log:", error);
+    res.status(500).json({ message: "Failed to fetch water log" });
+  }
+});
+
+router.post("/water", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const date = String(req.body?.date || "");
+    const glassesLogged = Number(req.body?.glassesLogged || 0);
+    if (!date) return res.status(400).json({ message: "date is required" });
+
+    const [existing] = await db.select().from(waterLogs).where(and(eq(waterLogs.userId, userId), eq(waterLogs.date, date))).limit(1);
+
+    let log;
+    if (existing) {
+      [log] = await db.update(waterLogs).set({ glassesLogged, updatedAt: new Date() }).where(eq(waterLogs.id, existing.id)).returning();
+    } else {
+      const latest = await db.select().from(waterLogs).where(eq(waterLogs.userId, userId)).orderBy(desc(waterLogs.updatedAt)).limit(1);
+      [log] = await db.insert(waterLogs).values({ userId, date, glassesLogged, dailyTarget: latest[0]?.dailyTarget || 8, updatedAt: new Date() }).returning();
+    }
+
+    res.json({ date: log.date, glassesLogged: log.glassesLogged, dailyTarget: log.dailyTarget });
+  } catch (error) {
+    console.error("Error saving water log:", error);
+    res.status(500).json({ message: "Failed to save water log" });
+  }
+});
+
+router.patch("/water/target", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const dailyTarget = Math.max(1, Number(req.body?.dailyTarget || 8));
+
+    await db.update(waterLogs).set({ dailyTarget, updatedAt: new Date() }).where(eq(waterLogs.userId, userId));
+
+    const today = new Date().toISOString().split("T")[0];
+    const [existingToday] = await db.select().from(waterLogs).where(and(eq(waterLogs.userId, userId), eq(waterLogs.date, today))).limit(1);
+    if (!existingToday) {
+      await db.insert(waterLogs).values({ userId, date: today, glassesLogged: 0, dailyTarget, updatedAt: new Date() });
+    }
+
+    res.json({ dailyTarget });
+  } catch (error) {
+    console.error("Error updating water target:", error);
+    res.status(500).json({ message: "Failed to update water target" });
   }
 });
 

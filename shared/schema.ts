@@ -339,6 +339,50 @@ export const mealPlanEntries = pgTable("meal_plan_entries", {
   customProtein: integer("custom_protein"),
   customCarbs: integer("custom_carbs"),
   customFat: integer("custom_fat"),
+  source: varchar("source", { length: 50 }),
+});
+
+export const mealStreaks = pgTable("meal_streaks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  currentStreak: integer("current_streak").notNull().default(0),
+  longestStreak: integer("longest_streak").notNull().default(0),
+  lastLoggedDate: date("last_logged_date"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const bodyMetrics = pgTable("body_metrics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  date: date("date").notNull(),
+  weightLbs: decimal("weight_lbs", { precision: 8, scale: 2 }).notNull(),
+  bodyFatPct: decimal("body_fat_pct", { precision: 5, scale: 2 }),
+  waistIn: decimal("waist_in", { precision: 6, scale: 2 }),
+  hipIn: decimal("hip_in", { precision: 6, scale: 2 }),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const mealFavorites = pgTable("meal_favorites", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  mealName: text("meal_name").notNull(),
+  calories: integer("calories"),
+  protein: integer("protein"),
+  carbs: integer("carbs"),
+  fat: integer("fat"),
+  fiber: integer("fiber"),
+  isFavorite: boolean("is_favorite").default(false),
+  timesLogged: integer("times_logged").default(0),
+  lastUsed: timestamp("last_used"),
+});
+
+export const waterLogs = pgTable("water_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  date: date("date").notNull(),
+  glassesLogged: integer("glasses_logged").notNull().default(0),
+  dailyTarget: integer("daily_target").notNull().default(8),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 /* ===== MEAL PLAN MARKETPLACE ===== */
@@ -1275,6 +1319,23 @@ export const insertMealPlanSchema = createInsertSchema(mealPlans).omit({
 export const insertMealPlanEntrySchema = createInsertSchema(mealPlanEntries).omit({
   id: true,
 });
+export const insertMealStreakSchema = createInsertSchema(mealStreaks).omit({
+  id: true,
+});
+
+export const insertBodyMetricSchema = createInsertSchema(bodyMetrics).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertMealFavoriteSchema = createInsertSchema(mealFavorites).omit({
+  id: true,
+});
+
+export const insertWaterLogSchema = createInsertSchema(waterLogs).omit({
+  id: true,
+});
+
 
 export const insertPantryItemSchema = createInsertSchema(pantryItems).omit({
   id: true,
@@ -1446,6 +1507,14 @@ export type MealPlan = typeof mealPlans.$inferSelect;
 export type InsertMealPlan = z.infer<typeof insertMealPlanSchema>;
 export type MealPlanEntry = typeof mealPlanEntries.$inferSelect;
 export type InsertMealPlanEntry = z.infer<typeof insertMealPlanEntrySchema>;
+export type MealStreak = typeof mealStreaks.$inferSelect;
+export type InsertMealStreak = z.infer<typeof insertMealStreakSchema>;
+export type BodyMetric = typeof bodyMetrics.$inferSelect;
+export type InsertBodyMetric = z.infer<typeof insertBodyMetricSchema>;
+export type MealFavorite = typeof mealFavorites.$inferSelect;
+export type InsertMealFavorite = z.infer<typeof insertMealFavoriteSchema>;
+export type WaterLog = typeof waterLogs.$inferSelect;
+export type InsertWaterLog = z.infer<typeof insertWaterLogSchema>;
 export type MealPlanBlueprint = typeof mealPlanBlueprints.$inferSelect;
 export type BlueprintVersion = typeof blueprintVersions.$inferSelect;
 export type MealPlanPurchase = typeof mealPlanPurchases.$inferSelect;

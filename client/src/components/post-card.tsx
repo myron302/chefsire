@@ -4,7 +4,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import type { PostWithUser, Recipe } from "@shared/schema";
-import { MoreHorizontal, Plus, Minus } from "lucide-react";
+import { MoreHorizontal, Plus, Minus, CalendarDays } from "lucide-react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { shareContent, getPostShareUrl } from "@/lib/share";
 import { Link } from "wouter";
@@ -172,6 +172,9 @@ export default function PostCard({
 
   // Menu state for the More button
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showAddToMealPlan, setShowAddToMealPlan] = useState(false);
+  const [planDay, setPlanDay] = useState('Monday');
+  const [planMealType, setPlanMealType] = useState('dinner');
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -441,6 +444,48 @@ export default function PostCard({
     deleteMutation.mutate();
   };
 
+  const getDateForWeekday = (weekday: string) => {
+    const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const now = new Date();
+    const day = now.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    const monday = new Date(now);
+    monday.setDate(now.getDate() + diff);
+    monday.setHours(0, 0, 0, 0);
+    const idx = weekDays.indexOf(weekday);
+    monday.setDate(monday.getDate() + (idx >= 0 ? idx : 0));
+    return monday.toISOString().split('T')[0];
+  };
+
+  const addRecipeToMealPlan = async () => {
+    if (!post.recipe?.title) return;
+    try {
+      const payload = {
+        date: getDateForWeekday(planDay),
+        mealType: planMealType,
+        name: post.recipe.title,
+        calories: Number(post.recipe.calories || 0),
+        protein: Number(post.recipe.protein || 0),
+        carbs: Number(post.recipe.carbs || 0),
+        fat: Number(post.recipe.fat || 0),
+        source: 'recipe',
+        recipeId: post.recipe.id,
+      };
+
+      const res = await fetch('/api/meal-planner/week/entry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error('Failed');
+      toast({ description: '✅ Recipe added to meal plan!' });
+      setShowAddToMealPlan(false);
+    } catch {
+      toast({ variant: 'destructive', description: 'Could not add recipe to meal plan' });
+    }
+  };
+
   const handleMoreClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     setMenuOpen((s) => !s);
@@ -576,6 +621,12 @@ export default function PostCard({
         {/* Small badges */}
         <div className="mt-2 flex flex-wrap gap-2">
           {post.isRecipe && <Badge variant="secondary">Recipe</Badge>}
+          {post.isRecipe && (
+            <Button size="sm" variant="outline" className="h-6 text-xs" onClick={() => setShowAddToMealPlan(true)}>
+              <CalendarDays className="w-3 h-3 mr-1" />
+              Add to Meal Plan
+            </Button>
+          )}
           {(post.tags || []).slice(0, 3).map((t) => (
             <Badge key={t} variant="outline">
               {t}
@@ -639,6 +690,26 @@ export default function PostCard({
         totalComments={post.commentsCount || 0}
         onViewAll={() => onCardClick?.(post)}
       />
+
+      {showAddToMealPlan && (
+        <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4">
+          <Card className="w-full max-w-sm">
+            <div className="p-4 space-y-3">
+              <h3 className="font-semibold">Add to Meal Plan</h3>
+              <select className="w-full border rounded px-3 py-2 text-sm" value={planDay} onChange={(e) => setPlanDay(e.target.value)}>
+                {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((d) => <option key={d}>{d}</option>)}
+              </select>
+              <select className="w-full border rounded px-3 py-2 text-sm" value={planMealType} onChange={(e) => setPlanMealType(e.target.value)}>
+                {['breakfast','lunch','dinner','snack'].map((m) => <option key={m} value={m}>{m[0].toUpperCase() + m.slice(1)}</option>)}
+              </select>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setShowAddToMealPlan(false)}>Cancel</Button>
+                <Button className="flex-1" onClick={addRecipeToMealPlan}>Add</Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
 
       {/* EDIT MODAL */}
       {isEditing && (
