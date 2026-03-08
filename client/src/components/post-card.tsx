@@ -524,7 +524,7 @@ export default function PostCard({
               </a>
             </Link>
             <p className="text-xs text-muted-foreground">
-              {formatDistanceToNow(new Date(post.createdAt), { addSuffix: true })}
+              {formatDistanceToNow(new Date(post.createdAt ?? Date.now()), { addSuffix: true })}
             </p>
           </div>
         </div>
