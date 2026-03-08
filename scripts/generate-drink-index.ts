@@ -2,8 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { drinkRouteRegistry, type DrinkRouteRegistryEntry } from "../client/src/data/drinks";
+import { slugifyDrinkName } from "../client/src/data/drinks/types";
 
-type DrinkIndexEntry = { name: string; route: string };
+type DrinkIndexEntry = {
+  name: string;
+  route: string;
+  sourceRoute: string;
+  slug: string;
+};
 type DrinkRoute = { route: string; title: string };
 type DuplicateEntry = {
   key: string;
@@ -37,6 +43,35 @@ function writeAtomically(filePath: string, contents: string) {
   fs.renameSync(tempPath, filePath);
 }
 
+function buildCanonicalSlug(name: string, sourceRoute: string, usedSlugs: Set<string>): string {
+  const baseSlug = slugifyDrinkName(name);
+  if (!baseSlug) {
+    return "drink-recipe";
+  }
+
+  if (!usedSlugs.has(baseSlug)) {
+    return baseSlug;
+  }
+
+  const routeSuffix = sourceRoute
+    .replace(/^\/drinks\//, "")
+    .split("/")
+    .filter(Boolean)
+    .join("-");
+
+  const routeScopedSlug = slugifyDrinkName(`${baseSlug}-${routeSuffix}`);
+  if (routeScopedSlug && !usedSlugs.has(routeScopedSlug)) {
+    return routeScopedSlug;
+  }
+
+  let suffix = 2;
+  while (usedSlugs.has(`${baseSlug}-${suffix}`)) {
+    suffix += 1;
+  }
+
+  return `${baseSlug}-${suffix}`;
+}
+
 async function loadRouteRecipes(routeEntry: DrinkRouteRegistryEntry): Promise<DrinkRecipeLike[]> {
   const modulePath = path.join(drinksDataDirPath, `${routeEntry.dataModulePath}.ts`);
   const moduleFileUrl = pathToFileURL(modulePath).href;
@@ -59,6 +94,7 @@ async function loadRouteRecipes(routeEntry: DrinkRouteRegistryEntry): Promise<Dr
 async function main() {
   const recipes: Record<string, DrinkIndexEntry> = {};
   const duplicates: DuplicateEntry[] = [];
+  const usedCanonicalSlugs = new Set<string>();
 
   for (const routeEntry of drinkRouteRegistry) {
     const routeRecipes = await loadRouteRecipes(routeEntry);
@@ -71,12 +107,19 @@ async function main() {
       if (!key) continue;
 
       if (!recipes[key]) {
-        recipes[key] = { name, route: routeEntry.route };
-      } else if (recipes[key].route !== routeEntry.route) {
+        const slug = buildCanonicalSlug(name, routeEntry.route, usedCanonicalSlugs);
+        usedCanonicalSlugs.add(slug);
+        recipes[key] = {
+          name,
+          slug,
+          sourceRoute: routeEntry.route,
+          route: `/drinks/recipe/${slug}`
+        };
+      } else if (recipes[key].sourceRoute !== routeEntry.route) {
         duplicates.push({
           key,
           name,
-          keptRoute: recipes[key].route,
+          keptRoute: recipes[key].sourceRoute,
           duplicateRoute: routeEntry.route
         });
       }

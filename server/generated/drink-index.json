@@ -2,1503 +2,2253 @@
   "recipes": {
     "classic cold brew": {
       "name": "Classic Cold Brew",
-      "route": "/drinks/caffeinated/cold-brew"
+      "slug": "classic-cold-brew",
+      "sourceRoute": "/drinks/caffeinated/cold-brew",
+      "route": "/drinks/recipe/classic-cold-brew"
     },
     "vanilla sweet cream cold brew": {
       "name": "Vanilla Sweet Cream Cold Brew",
-      "route": "/drinks/caffeinated/cold-brew"
+      "slug": "vanilla-sweet-cream-cold-brew",
+      "sourceRoute": "/drinks/caffeinated/cold-brew",
+      "route": "/drinks/recipe/vanilla-sweet-cream-cold-brew"
     },
     "nitro cold brew": {
       "name": "Nitro Cold Brew",
-      "route": "/drinks/caffeinated/cold-brew"
+      "slug": "nitro-cold-brew",
+      "sourceRoute": "/drinks/caffeinated/cold-brew",
+      "route": "/drinks/recipe/nitro-cold-brew"
     },
     "salted caramel cold brew": {
       "name": "Salted Caramel Cold Brew",
-      "route": "/drinks/caffeinated/cold-brew"
+      "slug": "salted-caramel-cold-brew",
+      "sourceRoute": "/drinks/caffeinated/cold-brew",
+      "route": "/drinks/recipe/salted-caramel-cold-brew"
     },
     "mocha cold brew": {
       "name": "Mocha Cold Brew",
-      "route": "/drinks/caffeinated/cold-brew"
+      "slug": "mocha-cold-brew",
+      "sourceRoute": "/drinks/caffeinated/cold-brew",
+      "route": "/drinks/recipe/mocha-cold-brew"
     },
     "protein cold brew": {
       "name": "Protein Cold Brew",
-      "route": "/drinks/caffeinated/cold-brew"
+      "slug": "protein-cold-brew",
+      "sourceRoute": "/drinks/caffeinated/cold-brew",
+      "route": "/drinks/recipe/protein-cold-brew"
     },
     "oat milk cold brew": {
       "name": "Oat Milk Cold Brew",
-      "route": "/drinks/caffeinated/cold-brew"
+      "slug": "oat-milk-cold-brew",
+      "sourceRoute": "/drinks/caffeinated/cold-brew",
+      "route": "/drinks/recipe/oat-milk-cold-brew"
     },
     "coconut cream cold brew": {
       "name": "Coconut Cream Cold Brew",
-      "route": "/drinks/caffeinated/cold-brew"
+      "slug": "coconut-cream-cold-brew",
+      "sourceRoute": "/drinks/caffeinated/cold-brew",
+      "route": "/drinks/recipe/coconut-cream-cold-brew"
     },
     "classic energy coffee": {
       "name": "Classic Energy Coffee",
-      "route": "/drinks/caffeinated/energy"
+      "slug": "classic-energy-coffee",
+      "sourceRoute": "/drinks/caffeinated/energy",
+      "route": "/drinks/recipe/classic-energy-coffee"
     },
     "pre-workout coffee": {
       "name": "Pre-Workout Coffee",
-      "route": "/drinks/caffeinated/energy"
+      "slug": "pre-workout-coffee",
+      "sourceRoute": "/drinks/caffeinated/energy",
+      "route": "/drinks/recipe/pre-workout-coffee"
     },
     "guarana coffee": {
       "name": "Guarana Coffee",
-      "route": "/drinks/caffeinated/energy"
+      "slug": "guarana-coffee",
+      "sourceRoute": "/drinks/caffeinated/energy",
+      "route": "/drinks/recipe/guarana-coffee"
     },
     "taurine coffee blend": {
       "name": "Taurine Coffee Blend",
-      "route": "/drinks/caffeinated/energy"
+      "slug": "taurine-coffee-blend",
+      "sourceRoute": "/drinks/caffeinated/energy",
+      "route": "/drinks/recipe/taurine-coffee-blend"
     },
     "green tea energy blend": {
       "name": "Green Tea Energy Blend",
-      "route": "/drinks/caffeinated/energy"
+      "slug": "green-tea-energy-blend",
+      "sourceRoute": "/drinks/caffeinated/energy",
+      "route": "/drinks/recipe/green-tea-energy-blend"
     },
     "bcaa coffee": {
       "name": "BCAA Coffee",
-      "route": "/drinks/caffeinated/energy"
+      "slug": "bcaa-coffee",
+      "sourceRoute": "/drinks/caffeinated/energy",
+      "route": "/drinks/recipe/bcaa-coffee"
     },
     "rocket fuel coffee": {
       "name": "Rocket Fuel Coffee",
-      "route": "/drinks/caffeinated/energy"
+      "slug": "rocket-fuel-coffee",
+      "sourceRoute": "/drinks/caffeinated/energy",
+      "route": "/drinks/recipe/rocket-fuel-coffee"
     },
     "yerba mate coffee": {
       "name": "Yerba Mate Coffee",
-      "route": "/drinks/caffeinated/energy"
+      "slug": "yerba-mate-coffee",
+      "sourceRoute": "/drinks/caffeinated/energy",
+      "route": "/drinks/recipe/yerba-mate-coffee"
     },
     "classic espresso shot": {
       "name": "Classic Espresso Shot",
-      "route": "/drinks/caffeinated/espresso"
+      "slug": "classic-espresso-shot",
+      "sourceRoute": "/drinks/caffeinated/espresso",
+      "route": "/drinks/recipe/classic-espresso-shot"
     },
     "doppio": {
       "name": "Doppio",
-      "route": "/drinks/caffeinated/espresso"
+      "slug": "doppio",
+      "sourceRoute": "/drinks/caffeinated/espresso",
+      "route": "/drinks/recipe/doppio"
     },
     "espresso macchiato": {
       "name": "Espresso Macchiato",
-      "route": "/drinks/caffeinated/espresso"
+      "slug": "espresso-macchiato",
+      "sourceRoute": "/drinks/caffeinated/espresso",
+      "route": "/drinks/recipe/espresso-macchiato"
     },
     "caffè americano": {
       "name": "Caffè Americano",
-      "route": "/drinks/caffeinated/espresso"
+      "slug": "caff-americano",
+      "sourceRoute": "/drinks/caffeinated/espresso",
+      "route": "/drinks/recipe/caff-americano"
     },
     "ristretto": {
       "name": "Ristretto",
-      "route": "/drinks/caffeinated/espresso"
+      "slug": "ristretto",
+      "sourceRoute": "/drinks/caffeinated/espresso",
+      "route": "/drinks/recipe/ristretto"
     },
     "lungo": {
       "name": "Lungo",
-      "route": "/drinks/caffeinated/espresso"
+      "slug": "lungo",
+      "sourceRoute": "/drinks/caffeinated/espresso",
+      "route": "/drinks/recipe/lungo"
     },
     "cortado": {
       "name": "Cortado",
-      "route": "/drinks/caffeinated/espresso"
+      "slug": "cortado",
+      "sourceRoute": "/drinks/caffeinated/espresso",
+      "route": "/drinks/recipe/cortado"
     },
     "affogato": {
       "name": "Affogato",
-      "route": "/drinks/caffeinated/espresso"
+      "slug": "affogato",
+      "sourceRoute": "/drinks/caffeinated/espresso",
+      "route": "/drinks/recipe/affogato"
     },
     "classic iced coffee": {
       "name": "Classic Iced Coffee",
-      "route": "/drinks/caffeinated/iced"
+      "slug": "classic-iced-coffee",
+      "sourceRoute": "/drinks/caffeinated/iced",
+      "route": "/drinks/recipe/classic-iced-coffee"
     },
     "vanilla iced latte": {
       "name": "Vanilla Iced Latte",
-      "route": "/drinks/caffeinated/iced"
+      "slug": "vanilla-iced-latte",
+      "sourceRoute": "/drinks/caffeinated/iced",
+      "route": "/drinks/recipe/vanilla-iced-latte"
     },
     "caramel iced coffee": {
       "name": "Caramel Iced Coffee",
-      "route": "/drinks/caffeinated/iced"
+      "slug": "caramel-iced-coffee",
+      "sourceRoute": "/drinks/caffeinated/iced",
+      "route": "/drinks/recipe/caramel-iced-coffee"
     },
     "mocha iced coffee": {
       "name": "Mocha Iced Coffee",
-      "route": "/drinks/caffeinated/iced"
+      "slug": "mocha-iced-coffee",
+      "sourceRoute": "/drinks/caffeinated/iced",
+      "route": "/drinks/recipe/mocha-iced-coffee"
     },
     "coconut iced coffee": {
       "name": "Coconut Iced Coffee",
-      "route": "/drinks/caffeinated/iced"
+      "slug": "coconut-iced-coffee",
+      "sourceRoute": "/drinks/caffeinated/iced",
+      "route": "/drinks/recipe/coconut-iced-coffee"
     },
     "hazelnut iced latte": {
       "name": "Hazelnut Iced Latte",
-      "route": "/drinks/caffeinated/iced"
+      "slug": "hazelnut-iced-latte",
+      "sourceRoute": "/drinks/caffeinated/iced",
+      "route": "/drinks/recipe/hazelnut-iced-latte"
     },
     "salted caramel iced coffee": {
       "name": "Salted Caramel Iced Coffee",
-      "route": "/drinks/caffeinated/iced"
+      "slug": "salted-caramel-iced-coffee",
+      "sourceRoute": "/drinks/caffeinated/iced",
+      "route": "/drinks/recipe/salted-caramel-iced-coffee"
     },
     "peppermint mocha iced": {
       "name": "Peppermint Mocha Iced",
-      "route": "/drinks/caffeinated/iced"
+      "slug": "peppermint-mocha-iced",
+      "sourceRoute": "/drinks/caffeinated/iced",
+      "route": "/drinks/recipe/peppermint-mocha-iced"
     },
     "classic latte": {
       "name": "Classic Latte",
-      "route": "/drinks/caffeinated/lattes"
+      "slug": "classic-latte",
+      "sourceRoute": "/drinks/caffeinated/lattes",
+      "route": "/drinks/recipe/classic-latte"
     },
     "vanilla latte": {
       "name": "Vanilla Latte",
-      "route": "/drinks/caffeinated/lattes"
+      "slug": "vanilla-latte",
+      "sourceRoute": "/drinks/caffeinated/lattes",
+      "route": "/drinks/recipe/vanilla-latte"
     },
     "caramel latte": {
       "name": "Caramel Latte",
-      "route": "/drinks/caffeinated/lattes"
+      "slug": "caramel-latte",
+      "sourceRoute": "/drinks/caffeinated/lattes",
+      "route": "/drinks/recipe/caramel-latte"
     },
     "hazelnut latte": {
       "name": "Hazelnut Latte",
-      "route": "/drinks/caffeinated/lattes"
+      "slug": "hazelnut-latte",
+      "sourceRoute": "/drinks/caffeinated/lattes",
+      "route": "/drinks/recipe/hazelnut-latte"
     },
     "caffe mocha": {
       "name": "Caffe Mocha",
-      "route": "/drinks/caffeinated/lattes"
+      "slug": "caffe-mocha",
+      "sourceRoute": "/drinks/caffeinated/lattes",
+      "route": "/drinks/recipe/caffe-mocha"
     },
     "cappuccino": {
       "name": "Cappuccino",
-      "route": "/drinks/caffeinated/lattes"
+      "slug": "cappuccino",
+      "sourceRoute": "/drinks/caffeinated/lattes",
+      "route": "/drinks/recipe/cappuccino"
     },
     "pumpkin spice latte": {
       "name": "Pumpkin Spice Latte",
-      "route": "/drinks/caffeinated/lattes"
+      "slug": "pumpkin-spice-latte",
+      "sourceRoute": "/drinks/caffeinated/lattes",
+      "route": "/drinks/recipe/pumpkin-spice-latte"
     },
     "flat white": {
       "name": "Flat White",
-      "route": "/drinks/caffeinated/lattes"
+      "slug": "flat-white",
+      "sourceRoute": "/drinks/caffeinated/lattes",
+      "route": "/drinks/recipe/flat-white"
     },
     "classic matcha latte": {
       "name": "Classic Matcha Latte",
-      "route": "/drinks/caffeinated/matcha"
+      "slug": "classic-matcha-latte",
+      "sourceRoute": "/drinks/caffeinated/matcha",
+      "route": "/drinks/recipe/classic-matcha-latte"
     },
     "iced matcha latte": {
       "name": "Iced Matcha Latte",
-      "route": "/drinks/caffeinated/matcha"
+      "slug": "iced-matcha-latte",
+      "sourceRoute": "/drinks/caffeinated/matcha",
+      "route": "/drinks/recipe/iced-matcha-latte"
     },
     "ceremonial matcha": {
       "name": "Ceremonial Matcha",
-      "route": "/drinks/caffeinated/matcha"
+      "slug": "ceremonial-matcha",
+      "sourceRoute": "/drinks/caffeinated/matcha",
+      "route": "/drinks/recipe/ceremonial-matcha"
     },
     "turkish coffee": {
       "name": "Turkish Coffee",
-      "route": "/drinks/caffeinated/specialty"
+      "slug": "turkish-coffee",
+      "sourceRoute": "/drinks/caffeinated/specialty",
+      "route": "/drinks/recipe/turkish-coffee"
     },
     "vietnamese coffee": {
       "name": "Vietnamese Coffee",
-      "route": "/drinks/caffeinated/specialty"
+      "slug": "vietnamese-coffee",
+      "sourceRoute": "/drinks/caffeinated/specialty",
+      "route": "/drinks/recipe/vietnamese-coffee"
     },
     "red eye": {
       "name": "Red Eye",
-      "route": "/drinks/caffeinated/specialty"
+      "slug": "red-eye",
+      "sourceRoute": "/drinks/caffeinated/specialty",
+      "route": "/drinks/recipe/red-eye"
     },
     "dalgona coffee": {
       "name": "Dalgona Coffee",
-      "route": "/drinks/caffeinated/specialty"
+      "slug": "dalgona-coffee",
+      "sourceRoute": "/drinks/caffeinated/specialty",
+      "route": "/drinks/recipe/dalgona-coffee"
     },
     "café de olla": {
       "name": "Café de Olla",
-      "route": "/drinks/caffeinated/specialty"
+      "slug": "caf-de-olla",
+      "sourceRoute": "/drinks/caffeinated/specialty",
+      "route": "/drinks/recipe/caf-de-olla"
     },
     "classic green tea": {
       "name": "Classic Green Tea",
-      "route": "/drinks/caffeinated/tea"
+      "slug": "classic-green-tea",
+      "sourceRoute": "/drinks/caffeinated/tea",
+      "route": "/drinks/recipe/classic-green-tea"
     },
     "earl grey tea": {
       "name": "Earl Grey Tea",
-      "route": "/drinks/caffeinated/tea"
+      "slug": "earl-grey-tea",
+      "sourceRoute": "/drinks/caffeinated/tea",
+      "route": "/drinks/recipe/earl-grey-tea"
     },
     "chamomile tea": {
       "name": "Chamomile Tea",
-      "route": "/drinks/caffeinated/tea"
+      "slug": "chamomile-tea",
+      "sourceRoute": "/drinks/caffeinated/tea",
+      "route": "/drinks/recipe/chamomile-tea"
     },
     "jasmine tea": {
       "name": "Jasmine Tea",
-      "route": "/drinks/caffeinated/tea"
+      "slug": "jasmine-tea",
+      "sourceRoute": "/drinks/caffeinated/tea",
+      "route": "/drinks/recipe/jasmine-tea"
     },
     "chai tea latte": {
       "name": "Chai Tea Latte",
-      "route": "/drinks/caffeinated/tea"
+      "slug": "chai-tea-latte",
+      "sourceRoute": "/drinks/caffeinated/tea",
+      "route": "/drinks/recipe/chai-tea-latte"
     },
     "peppermint tea": {
       "name": "Peppermint Tea",
-      "route": "/drinks/caffeinated/tea"
+      "slug": "peppermint-tea",
+      "sourceRoute": "/drinks/caffeinated/tea",
+      "route": "/drinks/recipe/peppermint-tea"
     },
     "oolong tea": {
       "name": "Oolong Tea",
-      "route": "/drinks/caffeinated/tea"
+      "slug": "oolong-tea",
+      "sourceRoute": "/drinks/caffeinated/tea",
+      "route": "/drinks/recipe/oolong-tea"
     },
     "english breakfast tea": {
       "name": "English Breakfast Tea",
-      "route": "/drinks/caffeinated/tea"
+      "slug": "english-breakfast-tea",
+      "sourceRoute": "/drinks/caffeinated/tea",
+      "route": "/drinks/recipe/english-breakfast-tea"
     },
     "green cleanse elixir": {
       "name": "Green Cleanse Elixir",
-      "route": "/drinks/detoxes/juice"
+      "slug": "green-cleanse-elixir",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/green-cleanse-elixir"
     },
     "liver flush tonic": {
       "name": "Liver Flush Tonic",
-      "route": "/drinks/detoxes/juice"
+      "slug": "liver-flush-tonic",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/liver-flush-tonic"
     },
     "digestive rescue juice": {
       "name": "Digestive Rescue Juice",
-      "route": "/drinks/detoxes/juice"
+      "slug": "digestive-rescue-juice",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/digestive-rescue-juice"
     },
     "immunity shield booster": {
       "name": "Immunity Shield Booster",
-      "route": "/drinks/detoxes/juice"
+      "slug": "immunity-shield-booster",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/immunity-shield-booster"
     },
     "red radiance cleanse": {
       "name": "Red Radiance Cleanse",
-      "route": "/drinks/detoxes/juice"
+      "slug": "red-radiance-cleanse",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/red-radiance-cleanse"
     },
     "kidney cleanser elixir": {
       "name": "Kidney Cleanser Elixir",
-      "route": "/drinks/detoxes/juice"
+      "slug": "kidney-cleanser-elixir",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/kidney-cleanser-elixir"
     },
     "skin glow elixir": {
       "name": "Skin Glow Elixir",
-      "route": "/drinks/detoxes/juice"
+      "slug": "skin-glow-elixir",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/skin-glow-elixir"
     },
     "adrenal revive tonic": {
       "name": "Adrenal Revive Tonic",
-      "route": "/drinks/detoxes/juice"
+      "slug": "adrenal-revive-tonic",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/adrenal-revive-tonic"
     },
     "heavy metal cleanse": {
       "name": "Heavy Metal Cleanse",
-      "route": "/drinks/detoxes/juice"
+      "slug": "heavy-metal-cleanse",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/heavy-metal-cleanse"
     },
     "morning glory energizer": {
       "name": "Morning Glory Energizer",
-      "route": "/drinks/detoxes/juice"
+      "slug": "morning-glory-energizer",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/morning-glory-energizer"
     },
     "sunset serenity juice": {
       "name": "Sunset Serenity Juice",
-      "route": "/drinks/detoxes/juice"
+      "slug": "sunset-serenity-juice",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/sunset-serenity-juice"
     },
     "gut hero restorer": {
       "name": "Gut Hero Restorer",
-      "route": "/drinks/detoxes/juice"
+      "slug": "gut-hero-restorer",
+      "sourceRoute": "/drinks/detoxes/juice",
+      "route": "/drinks/recipe/gut-hero-restorer"
     },
     "green tea metabolism boost": {
       "name": "Green Tea Metabolism Boost",
-      "route": "/drinks/detoxes/tea"
+      "slug": "green-tea-metabolism-boost",
+      "sourceRoute": "/drinks/detoxes/tea",
+      "route": "/drinks/recipe/green-tea-metabolism-boost"
     },
     "dandelion root cleanse": {
       "name": "Dandelion Root Cleanse",
-      "route": "/drinks/detoxes/tea"
+      "slug": "dandelion-root-cleanse",
+      "sourceRoute": "/drinks/detoxes/tea",
+      "route": "/drinks/recipe/dandelion-root-cleanse"
     },
     "ginger turmeric anti-inflammatory": {
       "name": "Ginger Turmeric Anti-inflammatory",
-      "route": "/drinks/detoxes/tea"
+      "slug": "ginger-turmeric-anti-inflammatory",
+      "sourceRoute": "/drinks/detoxes/tea",
+      "route": "/drinks/recipe/ginger-turmeric-anti-inflammatory"
     },
     "peppermint digestive aid": {
       "name": "Peppermint Digestive Aid",
-      "route": "/drinks/detoxes/tea"
+      "slug": "peppermint-digestive-aid",
+      "sourceRoute": "/drinks/detoxes/tea",
+      "route": "/drinks/recipe/peppermint-digestive-aid"
     },
     "white tea antioxidant boost": {
       "name": "White Tea Antioxidant Boost",
-      "route": "/drinks/detoxes/tea"
+      "slug": "white-tea-antioxidant-boost",
+      "sourceRoute": "/drinks/detoxes/tea",
+      "route": "/drinks/recipe/white-tea-antioxidant-boost"
     },
     "hibiscus liver cleanse": {
       "name": "Hibiscus Liver Cleanse",
-      "route": "/drinks/detoxes/tea"
+      "slug": "hibiscus-liver-cleanse",
+      "sourceRoute": "/drinks/detoxes/tea",
+      "route": "/drinks/recipe/hibiscus-liver-cleanse"
     },
     "chamomile sleep tonic": {
       "name": "Chamomile Sleep Tonic",
-      "route": "/drinks/detoxes/tea"
+      "slug": "chamomile-sleep-tonic",
+      "sourceRoute": "/drinks/detoxes/tea",
+      "route": "/drinks/recipe/chamomile-sleep-tonic"
     },
     "matcha energy elixir": {
       "name": "Matcha Energy Elixir",
-      "route": "/drinks/detoxes/tea"
+      "slug": "matcha-energy-elixir",
+      "sourceRoute": "/drinks/detoxes/tea",
+      "route": "/drinks/recipe/matcha-energy-elixir"
     },
     "rooibos immune defense": {
       "name": "Rooibos Immune Defense",
-      "route": "/drinks/detoxes/tea"
+      "slug": "rooibos-immune-defense",
+      "sourceRoute": "/drinks/detoxes/tea",
+      "route": "/drinks/recipe/rooibos-immune-defense"
     },
     "cucumber mint refresher": {
       "name": "Cucumber Mint Refresher",
-      "route": "/drinks/detoxes/water"
+      "slug": "cucumber-mint-refresher",
+      "sourceRoute": "/drinks/detoxes/water",
+      "route": "/drinks/recipe/cucumber-mint-refresher"
     },
     "strawberry basil bliss": {
       "name": "Strawberry Basil Bliss",
-      "route": "/drinks/detoxes/water"
+      "slug": "strawberry-basil-bliss",
+      "sourceRoute": "/drinks/detoxes/water",
+      "route": "/drinks/recipe/strawberry-basil-bliss"
     },
     "lemon ginger detox": {
       "name": "Lemon Ginger Detox",
-      "route": "/drinks/detoxes/water"
+      "slug": "lemon-ginger-detox",
+      "sourceRoute": "/drinks/detoxes/water",
+      "route": "/drinks/recipe/lemon-ginger-detox"
     },
     "berry blast hydrator": {
       "name": "Berry Blast Hydrator",
-      "route": "/drinks/detoxes/water"
+      "slug": "berry-blast-hydrator",
+      "sourceRoute": "/drinks/detoxes/water",
+      "route": "/drinks/recipe/berry-blast-hydrator"
     },
     "citrus sunrise sparkler": {
       "name": "Citrus Sunrise Sparkler",
-      "route": "/drinks/detoxes/water"
+      "slug": "citrus-sunrise-sparkler",
+      "sourceRoute": "/drinks/detoxes/water",
+      "route": "/drinks/recipe/citrus-sunrise-sparkler"
     },
     "tropical paradise water": {
       "name": "Tropical Paradise Water",
-      "route": "/drinks/detoxes/water"
+      "slug": "tropical-paradise-water",
+      "sourceRoute": "/drinks/detoxes/water",
+      "route": "/drinks/recipe/tropical-paradise-water"
     },
     "apple cinnamon comfort": {
       "name": "Apple Cinnamon Comfort",
-      "route": "/drinks/detoxes/water"
+      "slug": "apple-cinnamon-comfort",
+      "sourceRoute": "/drinks/detoxes/water",
+      "route": "/drinks/recipe/apple-cinnamon-comfort"
     },
     "watermelon lime cooler": {
       "name": "Watermelon Lime Cooler",
-      "route": "/drinks/detoxes/water"
+      "slug": "watermelon-lime-cooler",
+      "sourceRoute": "/drinks/detoxes/water",
+      "route": "/drinks/recipe/watermelon-lime-cooler"
     },
     "lavender lemon calm": {
       "name": "Lavender Lemon Calm",
-      "route": "/drinks/detoxes/water"
+      "slug": "lavender-lemon-calm",
+      "sourceRoute": "/drinks/detoxes/water",
+      "route": "/drinks/recipe/lavender-lemon-calm"
     },
     "green tea peach fusion": {
       "name": "Green Tea Peach Fusion",
-      "route": "/drinks/detoxes/water"
+      "slug": "green-tea-peach-fusion",
+      "sourceRoute": "/drinks/detoxes/water",
+      "route": "/drinks/recipe/green-tea-peach-fusion"
     },
     "carnivore power blast": {
       "name": "Carnivore Power Blast",
-      "route": "/drinks/protein-shakes/beef"
+      "slug": "carnivore-power-blast",
+      "sourceRoute": "/drinks/protein-shakes/beef",
+      "route": "/drinks/recipe/carnivore-power-blast"
     },
     "primal strength formula": {
       "name": "Primal Strength Formula",
-      "route": "/drinks/protein-shakes/beef"
+      "slug": "primal-strength-formula",
+      "sourceRoute": "/drinks/protein-shakes/beef",
+      "route": "/drinks/recipe/primal-strength-formula"
     },
     "paleo performance shake": {
       "name": "Paleo Performance Shake",
-      "route": "/drinks/protein-shakes/beef"
+      "slug": "paleo-performance-shake",
+      "sourceRoute": "/drinks/protein-shakes/beef",
+      "route": "/drinks/recipe/paleo-performance-shake"
     },
     "beef & berry recovery": {
       "name": "Beef & Berry Recovery",
-      "route": "/drinks/protein-shakes/beef"
+      "slug": "beef--berry-recovery",
+      "sourceRoute": "/drinks/protein-shakes/beef",
+      "route": "/drinks/recipe/beef--berry-recovery"
     },
     "coffee beef energizer": {
       "name": "Coffee Beef Energizer",
-      "route": "/drinks/protein-shakes/beef"
+      "slug": "coffee-beef-energizer",
+      "sourceRoute": "/drinks/protein-shakes/beef",
+      "route": "/drinks/recipe/coffee-beef-energizer"
     },
     "tropical beef fusion": {
       "name": "Tropical Beef Fusion",
-      "route": "/drinks/protein-shakes/beef"
+      "slug": "tropical-beef-fusion",
+      "sourceRoute": "/drinks/protein-shakes/beef",
+      "route": "/drinks/recipe/tropical-beef-fusion"
     },
     "midnight muscle recovery": {
       "name": "Midnight Muscle Recovery",
-      "route": "/drinks/protein-shakes/casein"
+      "slug": "midnight-muscle-recovery",
+      "sourceRoute": "/drinks/protein-shakes/casein",
+      "route": "/drinks/recipe/midnight-muscle-recovery"
     },
     "night owl chocolate": {
       "name": "Night Owl Chocolate",
-      "route": "/drinks/protein-shakes/casein"
+      "slug": "night-owl-chocolate",
+      "sourceRoute": "/drinks/protein-shakes/casein",
+      "route": "/drinks/recipe/night-owl-chocolate"
     },
     "strawberry moonlight": {
       "name": "Strawberry Moonlight",
-      "route": "/drinks/protein-shakes/casein"
+      "slug": "strawberry-moonlight",
+      "sourceRoute": "/drinks/protein-shakes/casein",
+      "route": "/drinks/recipe/strawberry-moonlight"
     },
     "cookie dough dreams": {
       "name": "Cookie Dough Dreams",
-      "route": "/drinks/protein-shakes/casein"
+      "slug": "cookie-dough-dreams",
+      "sourceRoute": "/drinks/protein-shakes/casein",
+      "route": "/drinks/recipe/cookie-dough-dreams"
     },
     "banana bedtime blend": {
       "name": "Banana Bedtime Blend",
-      "route": "/drinks/protein-shakes/casein"
+      "slug": "banana-bedtime-blend",
+      "sourceRoute": "/drinks/protein-shakes/casein",
+      "route": "/drinks/recipe/banana-bedtime-blend"
     },
     "coffee shop latte": {
       "name": "Coffee Shop Latte",
-      "route": "/drinks/protein-shakes/casein"
+      "slug": "coffee-shop-latte",
+      "sourceRoute": "/drinks/protein-shakes/casein",
+      "route": "/drinks/recipe/coffee-shop-latte"
     },
     "blueberry serenity": {
       "name": "Blueberry Serenity",
-      "route": "/drinks/protein-shakes/casein"
+      "slug": "blueberry-serenity",
+      "sourceRoute": "/drinks/protein-shakes/casein",
+      "route": "/drinks/recipe/blueberry-serenity"
     },
     "cinnamon swirl delight": {
       "name": "Cinnamon Swirl Delight",
-      "route": "/drinks/protein-shakes/casein"
+      "slug": "cinnamon-swirl-delight",
+      "sourceRoute": "/drinks/protein-shakes/casein",
+      "route": "/drinks/recipe/cinnamon-swirl-delight"
     },
     "peanut butter dream": {
       "name": "Peanut Butter Dream",
-      "route": "/drinks/protein-shakes/casein"
+      "slug": "peanut-butter-dream",
+      "sourceRoute": "/drinks/protein-shakes/casein",
+      "route": "/drinks/recipe/peanut-butter-dream"
     },
     "beauty boost berry": {
       "name": "Beauty Boost Berry",
-      "route": "/drinks/protein-shakes/collagen"
+      "slug": "beauty-boost-berry",
+      "sourceRoute": "/drinks/protein-shakes/collagen",
+      "route": "/drinks/recipe/beauty-boost-berry"
     },
     "joint support vanilla": {
       "name": "Joint Support Vanilla",
-      "route": "/drinks/protein-shakes/collagen"
+      "slug": "joint-support-vanilla",
+      "sourceRoute": "/drinks/protein-shakes/collagen",
+      "route": "/drinks/recipe/joint-support-vanilla"
     },
     "marine glow tropical": {
       "name": "Marine Glow Tropical",
-      "route": "/drinks/protein-shakes/collagen"
+      "slug": "marine-glow-tropical",
+      "sourceRoute": "/drinks/protein-shakes/collagen",
+      "route": "/drinks/recipe/marine-glow-tropical"
     },
     "multi-collagen complete": {
       "name": "Multi-Collagen Complete",
-      "route": "/drinks/protein-shakes/collagen"
+      "slug": "multi-collagen-complete",
+      "sourceRoute": "/drinks/protein-shakes/collagen",
+      "route": "/drinks/recipe/multi-collagen-complete"
     },
     "vegan collagen builder": {
       "name": "Vegan Collagen Builder",
-      "route": "/drinks/protein-shakes/collagen"
+      "slug": "vegan-collagen-builder",
+      "sourceRoute": "/drinks/protein-shakes/collagen",
+      "route": "/drinks/recipe/vegan-collagen-builder"
     },
     "anti-aging gold formula": {
       "name": "Anti-Aging Gold Formula",
-      "route": "/drinks/protein-shakes/collagen"
+      "slug": "anti-aging-gold-formula",
+      "sourceRoute": "/drinks/protein-shakes/collagen",
+      "route": "/drinks/recipe/anti-aging-gold-formula"
     },
     "classic egg white power": {
       "name": "Classic Egg White Power",
-      "route": "/drinks/protein-shakes/egg"
+      "slug": "classic-egg-white-power",
+      "sourceRoute": "/drinks/protein-shakes/egg",
+      "route": "/drinks/recipe/classic-egg-white-power"
     },
     "vanilla egg protein delight": {
       "name": "Vanilla Egg Protein Delight",
-      "route": "/drinks/protein-shakes/egg"
+      "slug": "vanilla-egg-protein-delight",
+      "sourceRoute": "/drinks/protein-shakes/egg",
+      "route": "/drinks/recipe/vanilla-egg-protein-delight"
     },
     "berry egg fusion": {
       "name": "Berry Egg Fusion",
-      "route": "/drinks/protein-shakes/egg"
+      "slug": "berry-egg-fusion",
+      "sourceRoute": "/drinks/protein-shakes/egg",
+      "route": "/drinks/recipe/berry-egg-fusion"
     },
     "chocolate egg power": {
       "name": "Chocolate Egg Power",
-      "route": "/drinks/protein-shakes/egg"
+      "slug": "chocolate-egg-power",
+      "sourceRoute": "/drinks/protein-shakes/egg",
+      "route": "/drinks/recipe/chocolate-egg-power"
     },
     "green egg power smoothie": {
       "name": "Green Egg Power Smoothie",
-      "route": "/drinks/protein-shakes/egg"
+      "slug": "green-egg-power-smoothie",
+      "sourceRoute": "/drinks/protein-shakes/egg",
+      "route": "/drinks/recipe/green-egg-power-smoothie"
     },
     "tropical egg protein": {
       "name": "Tropical Egg Protein",
-      "route": "/drinks/protein-shakes/egg"
+      "slug": "tropical-egg-protein",
+      "sourceRoute": "/drinks/protein-shakes/egg",
+      "route": "/drinks/recipe/tropical-egg-protein"
     },
     "coffee egg energizer": {
       "name": "Coffee Egg Energizer",
-      "route": "/drinks/protein-shakes/egg"
+      "slug": "coffee-egg-energizer",
+      "sourceRoute": "/drinks/protein-shakes/egg",
+      "route": "/drinks/recipe/coffee-egg-energizer"
     },
     "pumpkin spice egg protein": {
       "name": "Pumpkin Spice Egg Protein",
-      "route": "/drinks/protein-shakes/egg"
+      "slug": "pumpkin-spice-egg-protein",
+      "sourceRoute": "/drinks/protein-shakes/egg",
+      "route": "/drinks/recipe/pumpkin-spice-egg-protein"
     },
     "matcha egg green tea": {
       "name": "Matcha Egg Green Tea",
-      "route": "/drinks/protein-shakes/egg"
+      "slug": "matcha-egg-green-tea",
+      "sourceRoute": "/drinks/protein-shakes/egg",
+      "route": "/drinks/recipe/matcha-egg-green-tea"
     },
     "pea power green machine": {
       "name": "Pea Power Green Machine",
-      "route": "/drinks/protein-shakes/plant-based"
+      "slug": "pea-power-green-machine",
+      "sourceRoute": "/drinks/protein-shakes/plant-based",
+      "route": "/drinks/recipe/pea-power-green-machine"
     },
     "hemp heart hero": {
       "name": "Hemp Heart Hero",
-      "route": "/drinks/protein-shakes/plant-based"
+      "slug": "hemp-heart-hero",
+      "sourceRoute": "/drinks/protein-shakes/plant-based",
+      "route": "/drinks/recipe/hemp-heart-hero"
     },
     "rice & quinoa complete": {
       "name": "Rice & Quinoa Complete",
-      "route": "/drinks/protein-shakes/plant-based"
+      "slug": "rice--quinoa-complete",
+      "sourceRoute": "/drinks/protein-shakes/plant-based",
+      "route": "/drinks/recipe/rice--quinoa-complete"
     },
     "soy supreme classic": {
       "name": "Soy Supreme Classic",
-      "route": "/drinks/protein-shakes/plant-based"
+      "slug": "soy-supreme-classic",
+      "sourceRoute": "/drinks/protein-shakes/plant-based",
+      "route": "/drinks/recipe/soy-supreme-classic"
     },
     "pumpkin seed power": {
       "name": "Pumpkin Seed Power",
-      "route": "/drinks/protein-shakes/plant-based"
+      "slug": "pumpkin-seed-power",
+      "sourceRoute": "/drinks/protein-shakes/plant-based",
+      "route": "/drinks/recipe/pumpkin-seed-power"
     },
     "algae omega fusion": {
       "name": "Algae Omega Fusion",
-      "route": "/drinks/protein-shakes/plant-based"
+      "slug": "algae-omega-fusion",
+      "sourceRoute": "/drinks/protein-shakes/plant-based",
+      "route": "/drinks/recipe/algae-omega-fusion"
     },
     "matcha pea energizer": {
       "name": "Matcha Pea Energizer",
-      "route": "/drinks/protein-shakes/plant-based"
+      "slug": "matcha-pea-energizer",
+      "sourceRoute": "/drinks/protein-shakes/plant-based",
+      "route": "/drinks/recipe/matcha-pea-energizer"
     },
     "pb oat recovery": {
       "name": "PB Oat Recovery",
-      "route": "/drinks/protein-shakes/plant-based"
+      "slug": "pb-oat-recovery",
+      "sourceRoute": "/drinks/protein-shakes/plant-based",
+      "route": "/drinks/recipe/pb-oat-recovery"
     },
     "berry antioxidant blend": {
       "name": "Berry Antioxidant Blend",
-      "route": "/drinks/protein-shakes/plant-based"
+      "slug": "berry-antioxidant-blend",
+      "sourceRoute": "/drinks/protein-shakes/plant-based",
+      "route": "/drinks/recipe/berry-antioxidant-blend"
     },
     "golden turmeric hemp": {
       "name": "Golden Turmeric Hemp",
-      "route": "/drinks/protein-shakes/plant-based"
+      "slug": "golden-turmeric-hemp",
+      "sourceRoute": "/drinks/protein-shakes/plant-based",
+      "route": "/drinks/recipe/golden-turmeric-hemp"
     },
     "classic vanilla post-workout": {
       "name": "Classic Vanilla Post-Workout",
-      "route": "/drinks/protein-shakes/whey"
+      "slug": "classic-vanilla-post-workout",
+      "sourceRoute": "/drinks/protein-shakes/whey",
+      "route": "/drinks/recipe/classic-vanilla-post-workout"
     },
     "chocolate peanut butter powerhouse": {
       "name": "Chocolate Peanut Butter Powerhouse",
-      "route": "/drinks/protein-shakes/whey"
+      "slug": "chocolate-peanut-butter-powerhouse",
+      "sourceRoute": "/drinks/protein-shakes/whey",
+      "route": "/drinks/recipe/chocolate-peanut-butter-powerhouse"
     },
     "strawberry lean machine": {
       "name": "Strawberry Lean Machine",
-      "route": "/drinks/protein-shakes/whey"
+      "slug": "strawberry-lean-machine",
+      "sourceRoute": "/drinks/protein-shakes/whey",
+      "route": "/drinks/recipe/strawberry-lean-machine"
     },
     "pre-workout energy blast": {
       "name": "Pre-Workout Energy Blast",
-      "route": "/drinks/protein-shakes/whey"
+      "slug": "pre-workout-energy-blast",
+      "sourceRoute": "/drinks/protein-shakes/whey",
+      "route": "/drinks/recipe/pre-workout-energy-blast"
     },
     "hydrolyzed recovery formula": {
       "name": "Hydrolyzed Recovery Formula",
-      "route": "/drinks/protein-shakes/whey"
+      "slug": "hydrolyzed-recovery-formula",
+      "sourceRoute": "/drinks/protein-shakes/whey",
+      "route": "/drinks/recipe/hydrolyzed-recovery-formula"
     },
     "bedtime casein-whey blend": {
       "name": "Bedtime Casein-Whey Blend",
-      "route": "/drinks/protein-shakes/whey"
+      "slug": "bedtime-casein-whey-blend",
+      "sourceRoute": "/drinks/protein-shakes/whey",
+      "route": "/drinks/recipe/bedtime-casein-whey-blend"
     },
     "triple berry blast": {
       "name": "Triple Berry Blast",
-      "route": "/drinks/smoothies/berry"
+      "slug": "triple-berry-blast",
+      "sourceRoute": "/drinks/smoothies/berry",
+      "route": "/drinks/recipe/triple-berry-blast"
     },
     "strawberry fields": {
       "name": "Strawberry Fields",
-      "route": "/drinks/smoothies/berry"
+      "slug": "strawberry-fields",
+      "sourceRoute": "/drinks/smoothies/berry",
+      "route": "/drinks/recipe/strawberry-fields"
     },
     "blueberry bliss": {
       "name": "Blueberry Bliss",
-      "route": "/drinks/smoothies/berry"
+      "slug": "blueberry-bliss",
+      "sourceRoute": "/drinks/smoothies/berry",
+      "route": "/drinks/recipe/blueberry-bliss"
     },
     "raspberry revival": {
       "name": "Raspberry Revival",
-      "route": "/drinks/smoothies/berry"
+      "slug": "raspberry-revival",
+      "sourceRoute": "/drinks/smoothies/berry",
+      "route": "/drinks/recipe/raspberry-revival"
     },
     "blackberry boost": {
       "name": "Blackberry Boost",
-      "route": "/drinks/smoothies/berry"
+      "slug": "blackberry-boost",
+      "sourceRoute": "/drinks/smoothies/berry",
+      "route": "/drinks/recipe/blackberry-boost"
     },
     "açaí power bowl": {
       "name": "Açaí Power Bowl",
-      "route": "/drinks/smoothies/berry"
+      "slug": "aa-power-bowl",
+      "sourceRoute": "/drinks/smoothies/berry",
+      "route": "/drinks/recipe/aa-power-bowl"
     },
     "berry green fusion": {
       "name": "Berry Green Fusion",
-      "route": "/drinks/smoothies/berry"
+      "slug": "berry-green-fusion",
+      "sourceRoute": "/drinks/smoothies/berry",
+      "route": "/drinks/recipe/berry-green-fusion"
     },
     "strawberry banana classic": {
       "name": "Strawberry Banana Classic",
-      "route": "/drinks/smoothies/berry"
+      "slug": "strawberry-banana-classic",
+      "sourceRoute": "/drinks/smoothies/berry",
+      "route": "/drinks/recipe/strawberry-banana-classic"
     },
     "cranberry citrus zing": {
       "name": "Cranberry Citrus Zing",
-      "route": "/drinks/smoothies/berry"
+      "slug": "cranberry-citrus-zing",
+      "sourceRoute": "/drinks/smoothies/berry",
+      "route": "/drinks/recipe/cranberry-citrus-zing"
     },
     "overnight oats smoothie": {
       "name": "Overnight Oats Smoothie",
-      "route": "/drinks/smoothies/breakfast"
+      "slug": "overnight-oats-smoothie",
+      "sourceRoute": "/drinks/smoothies/breakfast",
+      "route": "/drinks/recipe/overnight-oats-smoothie"
     },
     "green breakfast power": {
       "name": "Green Breakfast Power",
-      "route": "/drinks/smoothies/breakfast"
+      "slug": "green-breakfast-power",
+      "sourceRoute": "/drinks/smoothies/breakfast",
+      "route": "/drinks/recipe/green-breakfast-power"
     },
     "coffee protein shake": {
       "name": "Coffee Protein Shake",
-      "route": "/drinks/smoothies/breakfast"
+      "slug": "coffee-protein-shake",
+      "sourceRoute": "/drinks/smoothies/breakfast",
+      "route": "/drinks/recipe/coffee-protein-shake"
     },
     "berry yogurt breakfast": {
       "name": "Berry Yogurt Breakfast",
-      "route": "/drinks/smoothies/breakfast"
+      "slug": "berry-yogurt-breakfast",
+      "sourceRoute": "/drinks/smoothies/breakfast",
+      "route": "/drinks/recipe/berry-yogurt-breakfast"
     },
     "tropical morning bliss": {
       "name": "Tropical Morning Bliss",
-      "route": "/drinks/smoothies/breakfast"
+      "slug": "tropical-morning-bliss",
+      "sourceRoute": "/drinks/smoothies/breakfast",
+      "route": "/drinks/recipe/tropical-morning-bliss"
     },
     "peanut butter energy": {
       "name": "Peanut Butter Energy",
-      "route": "/drinks/smoothies/breakfast"
+      "slug": "peanut-butter-energy",
+      "sourceRoute": "/drinks/smoothies/breakfast",
+      "route": "/drinks/recipe/peanut-butter-energy"
     },
     "chocolate breakfast treat": {
       "name": "Chocolate Breakfast Treat",
-      "route": "/drinks/smoothies/breakfast"
+      "slug": "chocolate-breakfast-treat",
+      "sourceRoute": "/drinks/smoothies/breakfast",
+      "route": "/drinks/recipe/chocolate-breakfast-treat"
     },
     "sunrise citrus boost": {
       "name": "Sunrise Citrus Boost",
-      "route": "/drinks/smoothies/breakfast"
+      "slug": "sunrise-citrus-boost",
+      "sourceRoute": "/drinks/smoothies/breakfast",
+      "route": "/drinks/recipe/sunrise-citrus-boost"
     },
     "chocolate banana smoothie": {
       "name": "Chocolate Banana Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "chocolate-banana-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/chocolate-banana-smoothie"
     },
     "chocolate mint smoothie": {
       "name": "Chocolate Mint Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "chocolate-mint-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/chocolate-mint-smoothie"
     },
     "chocolate avocado smoothie": {
       "name": "Chocolate Avocado Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "chocolate-avocado-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/chocolate-avocado-smoothie"
     },
     "chocolate cherry smoothie": {
       "name": "Chocolate Cherry Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "chocolate-cherry-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/chocolate-cherry-smoothie"
     },
     "chocolate espresso smoothie": {
       "name": "Chocolate Espresso Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "chocolate-espresso-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/chocolate-espresso-smoothie"
     },
     "chocolate strawberry smoothie": {
       "name": "Chocolate Strawberry Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "chocolate-strawberry-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/chocolate-strawberry-smoothie"
     },
     "mexican hot chocolate smoothie": {
       "name": "Mexican Hot Chocolate Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "mexican-hot-chocolate-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/mexican-hot-chocolate-smoothie"
     },
     "chocolate protein smoothie": {
       "name": "Chocolate Protein Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "chocolate-protein-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/chocolate-protein-smoothie"
     },
     "chocolate matcha smoothie": {
       "name": "Chocolate Matcha Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "chocolate-matcha-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/chocolate-matcha-smoothie"
     },
     "raspberry chocolate smoothie": {
       "name": "Raspberry Chocolate Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "raspberry-chocolate-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/raspberry-chocolate-smoothie"
     },
     "chocolate orange smoothie": {
       "name": "Chocolate Orange Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "chocolate-orange-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/chocolate-orange-smoothie"
     },
     "chocolate peanut butter smoothie": {
       "name": "Chocolate Peanut Butter Smoothie",
-      "route": "/drinks/smoothies/dessert"
+      "slug": "chocolate-peanut-butter-smoothie",
+      "sourceRoute": "/drinks/smoothies/dessert",
+      "route": "/drinks/recipe/chocolate-peanut-butter-smoothie"
     },
     "green detox smoothie": {
       "name": "Green Detox Smoothie",
-      "route": "/drinks/smoothies/detox"
+      "slug": "green-detox-smoothie",
+      "sourceRoute": "/drinks/smoothies/detox",
+      "route": "/drinks/recipe/green-detox-smoothie"
     },
     "golden turmeric smoothie": {
       "name": "Golden Turmeric Smoothie",
-      "route": "/drinks/smoothies/detox"
+      "slug": "golden-turmeric-smoothie",
+      "sourceRoute": "/drinks/smoothies/detox",
+      "route": "/drinks/recipe/golden-turmeric-smoothie"
     },
     "berry cleanse smoothie": {
       "name": "Berry Cleanse Smoothie",
-      "route": "/drinks/smoothies/detox"
+      "slug": "berry-cleanse-smoothie",
+      "sourceRoute": "/drinks/smoothies/detox",
+      "route": "/drinks/recipe/berry-cleanse-smoothie"
     },
     "green tea detox smoothie": {
       "name": "Green Tea Detox Smoothie",
-      "route": "/drinks/smoothies/detox"
+      "slug": "green-tea-detox-smoothie",
+      "sourceRoute": "/drinks/smoothies/detox",
+      "route": "/drinks/recipe/green-tea-detox-smoothie"
     },
     "pineapple ginger smoothie": {
       "name": "Pineapple Ginger Smoothie",
-      "route": "/drinks/smoothies/detox"
+      "slug": "pineapple-ginger-smoothie",
+      "sourceRoute": "/drinks/smoothies/detox",
+      "route": "/drinks/recipe/pineapple-ginger-smoothie"
     },
     "avocado spinach smoothie": {
       "name": "Avocado Spinach Smoothie",
-      "route": "/drinks/smoothies/detox"
+      "slug": "avocado-spinach-smoothie",
+      "sourceRoute": "/drinks/smoothies/detox",
+      "route": "/drinks/recipe/avocado-spinach-smoothie"
     },
     "blueberry spinach smoothie": {
       "name": "Blueberry Spinach Smoothie",
-      "route": "/drinks/smoothies/detox"
+      "slug": "blueberry-spinach-smoothie",
+      "sourceRoute": "/drinks/smoothies/detox",
+      "route": "/drinks/recipe/blueberry-spinach-smoothie"
     },
     "kale pineapple smoothie": {
       "name": "Kale Pineapple Smoothie",
-      "route": "/drinks/smoothies/detox"
+      "slug": "kale-pineapple-smoothie",
+      "sourceRoute": "/drinks/smoothies/detox",
+      "route": "/drinks/recipe/kale-pineapple-smoothie"
     },
     "classic green goddess": {
       "name": "Classic Green Goddess",
-      "route": "/drinks/smoothies/green"
+      "slug": "classic-green-goddess",
+      "sourceRoute": "/drinks/smoothies/green",
+      "route": "/drinks/recipe/classic-green-goddess"
     },
     "tropical green dream": {
       "name": "Tropical Green Dream",
-      "route": "/drinks/smoothies/green"
+      "slug": "tropical-green-dream",
+      "sourceRoute": "/drinks/smoothies/green",
+      "route": "/drinks/recipe/tropical-green-dream"
     },
     "green machine detox": {
       "name": "Green Machine Detox",
-      "route": "/drinks/smoothies/green"
+      "slug": "green-machine-detox",
+      "sourceRoute": "/drinks/smoothies/green",
+      "route": "/drinks/recipe/green-machine-detox"
     },
     "avocado green cream": {
       "name": "Avocado Green Cream",
-      "route": "/drinks/smoothies/green"
+      "slug": "avocado-green-cream",
+      "sourceRoute": "/drinks/smoothies/green",
+      "route": "/drinks/recipe/avocado-green-cream"
     },
     "citrus green zing": {
       "name": "Citrus Green Zing",
-      "route": "/drinks/smoothies/green"
+      "slug": "citrus-green-zing",
+      "sourceRoute": "/drinks/smoothies/green",
+      "route": "/drinks/recipe/citrus-green-zing"
     },
     "green protein power": {
       "name": "Green Protein Power",
-      "route": "/drinks/smoothies/green"
+      "slug": "green-protein-power",
+      "sourceRoute": "/drinks/smoothies/green",
+      "route": "/drinks/recipe/green-protein-power"
     },
     "minty green refresh": {
       "name": "Minty Green Refresh",
-      "route": "/drinks/smoothies/green"
+      "slug": "minty-green-refresh",
+      "sourceRoute": "/drinks/smoothies/green",
+      "route": "/drinks/recipe/minty-green-refresh"
     },
     "muscle builder max": {
       "name": "Muscle Builder Max",
-      "route": "/drinks/smoothies/protein"
+      "slug": "muscle-builder-max",
+      "sourceRoute": "/drinks/smoothies/protein",
+      "route": "/drinks/recipe/muscle-builder-max"
     },
     "chocolate peanut power": {
       "name": "Chocolate Peanut Power",
-      "route": "/drinks/smoothies/protein"
+      "slug": "chocolate-peanut-power",
+      "sourceRoute": "/drinks/smoothies/protein",
+      "route": "/drinks/recipe/chocolate-peanut-power"
     },
     "berry protein blast": {
       "name": "Berry Protein Blast",
-      "route": "/drinks/smoothies/protein"
+      "slug": "berry-protein-blast",
+      "sourceRoute": "/drinks/smoothies/protein",
+      "route": "/drinks/recipe/berry-protein-blast"
     },
     "green protein machine": {
       "name": "Green Protein Machine",
-      "route": "/drinks/smoothies/protein"
+      "slug": "green-protein-machine",
+      "sourceRoute": "/drinks/smoothies/protein",
+      "route": "/drinks/recipe/green-protein-machine"
     },
     "tropical gains": {
       "name": "Tropical Gains",
-      "route": "/drinks/smoothies/protein"
+      "slug": "tropical-gains",
+      "sourceRoute": "/drinks/smoothies/protein",
+      "route": "/drinks/recipe/tropical-gains"
     },
     "coffee protein energizer": {
       "name": "Coffee Protein Energizer",
-      "route": "/drinks/smoothies/protein"
+      "slug": "coffee-protein-energizer",
+      "sourceRoute": "/drinks/smoothies/protein",
+      "route": "/drinks/recipe/coffee-protein-energizer"
     },
     "overnight oats protein": {
       "name": "Overnight Oats Protein",
-      "route": "/drinks/smoothies/protein"
+      "slug": "overnight-oats-protein",
+      "sourceRoute": "/drinks/smoothies/protein",
+      "route": "/drinks/recipe/overnight-oats-protein"
     },
     "pumpkin spice protein": {
       "name": "Pumpkin Spice Protein",
-      "route": "/drinks/smoothies/protein"
+      "slug": "pumpkin-spice-protein",
+      "sourceRoute": "/drinks/smoothies/protein",
+      "route": "/drinks/recipe/pumpkin-spice-protein"
     },
     "island paradise": {
       "name": "Island Paradise",
-      "route": "/drinks/smoothies/tropical"
+      "slug": "island-paradise",
+      "sourceRoute": "/drinks/smoothies/tropical",
+      "route": "/drinks/recipe/island-paradise"
     },
     "piña colada dream": {
       "name": "Piña Colada Dream",
-      "route": "/drinks/smoothies/tropical"
+      "slug": "pia-colada-dream",
+      "sourceRoute": "/drinks/smoothies/tropical",
+      "route": "/drinks/recipe/pia-colada-dream"
     },
     "mango madness": {
       "name": "Mango Madness",
-      "route": "/drinks/smoothies/tropical"
+      "slug": "mango-madness",
+      "sourceRoute": "/drinks/smoothies/tropical",
+      "route": "/drinks/recipe/mango-madness"
     },
     "passionfruit paradise": {
       "name": "Passionfruit Paradise",
-      "route": "/drinks/smoothies/tropical"
+      "slug": "passionfruit-paradise",
+      "sourceRoute": "/drinks/smoothies/tropical",
+      "route": "/drinks/recipe/passionfruit-paradise"
     },
     "hawaiian sunrise": {
       "name": "Hawaiian Sunrise",
-      "route": "/drinks/smoothies/tropical"
+      "slug": "hawaiian-sunrise",
+      "sourceRoute": "/drinks/smoothies/tropical",
+      "route": "/drinks/recipe/hawaiian-sunrise"
     },
     "coconut beach bliss": {
       "name": "Coconut Beach Bliss",
-      "route": "/drinks/smoothies/tropical"
+      "slug": "coconut-beach-bliss",
+      "sourceRoute": "/drinks/smoothies/tropical",
+      "route": "/drinks/recipe/coconut-beach-bliss"
     },
     "dragon fruit delight": {
       "name": "Dragon Fruit Delight",
-      "route": "/drinks/smoothies/tropical"
+      "slug": "dragon-fruit-delight",
+      "sourceRoute": "/drinks/smoothies/tropical",
+      "route": "/drinks/recipe/dragon-fruit-delight"
     },
     "tropical green fusion": {
       "name": "Tropical Green Fusion",
-      "route": "/drinks/smoothies/tropical"
+      "slug": "tropical-green-fusion",
+      "sourceRoute": "/drinks/smoothies/tropical",
+      "route": "/drinks/recipe/tropical-green-fusion"
     },
     "pre-workout power blend": {
       "name": "Pre-Workout Power Blend",
-      "route": "/drinks/smoothies/workout"
+      "slug": "pre-workout-power-blend",
+      "sourceRoute": "/drinks/smoothies/workout",
+      "route": "/drinks/recipe/pre-workout-power-blend"
     },
     "post-workout recovery": {
       "name": "Post-Workout Recovery",
-      "route": "/drinks/smoothies/workout"
+      "slug": "post-workout-recovery",
+      "sourceRoute": "/drinks/smoothies/workout",
+      "route": "/drinks/recipe/post-workout-recovery"
     },
     "hiit energy booster": {
       "name": "HIIT Energy Booster",
-      "route": "/drinks/smoothies/workout"
+      "slug": "hiit-energy-booster",
+      "sourceRoute": "/drinks/smoothies/workout",
+      "route": "/drinks/recipe/hiit-energy-booster"
     },
     "endurance builder": {
       "name": "Endurance Builder",
-      "route": "/drinks/smoothies/workout"
+      "slug": "endurance-builder",
+      "sourceRoute": "/drinks/smoothies/workout",
+      "route": "/drinks/recipe/endurance-builder"
     },
     "strength training fuel": {
       "name": "Strength Training Fuel",
-      "route": "/drinks/smoothies/workout"
+      "slug": "strength-training-fuel",
+      "sourceRoute": "/drinks/smoothies/workout",
+      "route": "/drinks/recipe/strength-training-fuel"
     },
     "cardio crush": {
       "name": "Cardio Crush",
-      "route": "/drinks/smoothies/workout"
+      "slug": "cardio-crush",
+      "sourceRoute": "/drinks/smoothies/workout",
+      "route": "/drinks/recipe/cardio-crush"
     },
     "recovery greens": {
       "name": "Recovery Greens",
-      "route": "/drinks/smoothies/workout"
+      "slug": "recovery-greens",
+      "sourceRoute": "/drinks/smoothies/workout",
+      "route": "/drinks/recipe/recovery-greens"
     },
     "yoga flow blend": {
       "name": "Yoga Flow Blend",
-      "route": "/drinks/smoothies/workout"
+      "slug": "yoga-flow-blend",
+      "sourceRoute": "/drinks/smoothies/workout",
+      "route": "/drinks/recipe/yoga-flow-blend"
     },
     "old fashioned": {
       "name": "Old Fashioned",
-      "route": "/drinks/potent-potables/cocktails"
+      "slug": "old-fashioned",
+      "sourceRoute": "/drinks/potent-potables/cocktails",
+      "route": "/drinks/recipe/old-fashioned"
     },
     "martini": {
       "name": "Martini",
-      "route": "/drinks/potent-potables/cocktails"
+      "slug": "martini",
+      "sourceRoute": "/drinks/potent-potables/cocktails",
+      "route": "/drinks/recipe/martini"
     },
     "manhattan": {
       "name": "Manhattan",
-      "route": "/drinks/potent-potables/cocktails"
+      "slug": "manhattan",
+      "sourceRoute": "/drinks/potent-potables/cocktails",
+      "route": "/drinks/recipe/manhattan"
     },
     "negroni": {
       "name": "Negroni",
-      "route": "/drinks/potent-potables/cocktails"
+      "slug": "negroni",
+      "sourceRoute": "/drinks/potent-potables/cocktails",
+      "route": "/drinks/recipe/negroni"
     },
     "whiskey sour": {
       "name": "Whiskey Sour",
-      "route": "/drinks/potent-potables/cocktails"
+      "slug": "whiskey-sour",
+      "sourceRoute": "/drinks/potent-potables/cocktails",
+      "route": "/drinks/recipe/whiskey-sour"
     },
     "daiquiri": {
       "name": "Daiquiri",
-      "route": "/drinks/potent-potables/cocktails"
+      "slug": "daiquiri",
+      "sourceRoute": "/drinks/potent-potables/cocktails",
+      "route": "/drinks/recipe/daiquiri"
     },
     "sazerac": {
       "name": "Sazerac",
-      "route": "/drinks/potent-potables/cocktails"
+      "slug": "sazerac",
+      "sourceRoute": "/drinks/potent-potables/cocktails",
+      "route": "/drinks/recipe/sazerac"
     },
     "mint julep": {
       "name": "Mint Julep",
-      "route": "/drinks/potent-potables/cocktails"
+      "slug": "mint-julep",
+      "sourceRoute": "/drinks/potent-potables/cocktails",
+      "route": "/drinks/recipe/mint-julep"
     },
     "sidecar": {
       "name": "Sidecar",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "sidecar",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/sidecar"
     },
     "french connection": {
       "name": "French Connection",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "french-connection",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/french-connection"
     },
     "vieux carré": {
       "name": "Vieux Carré",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "vieux-carr",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/vieux-carr"
     },
     "sazerac (cognac)": {
       "name": "Sazerac (Cognac)",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "sazerac-cognac",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/sazerac-cognac"
     },
     "cognac old fashioned": {
       "name": "Cognac Old Fashioned",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "cognac-old-fashioned",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/cognac-old-fashioned"
     },
     "french 75 (cognac)": {
       "name": "French 75 (Cognac)",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "french-75-cognac",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/french-75-cognac"
     },
     "brandy alexander": {
       "name": "Brandy Alexander",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "brandy-alexander",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/brandy-alexander"
     },
     "metropolitan": {
       "name": "Metropolitan",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "metropolitan",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/metropolitan"
     },
     "jack rose": {
       "name": "Jack Rose",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "jack-rose",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/jack-rose"
     },
     "between the sheets": {
       "name": "Between the Sheets",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "between-the-sheets",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/between-the-sheets"
     },
     "cognac sour": {
       "name": "Cognac Sour",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "cognac-sour",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/cognac-sour"
     },
     "corpse reviver no. 1": {
       "name": "Corpse Reviver No. 1",
-      "route": "/drinks/potent-potables/cognac-brandy"
+      "slug": "corpse-reviver-no-1",
+      "sourceRoute": "/drinks/potent-potables/cognac-brandy",
+      "route": "/drinks/recipe/corpse-reviver-no-1"
     },
     "classic daiquiri": {
       "name": "Classic Daiquiri",
-      "route": "/drinks/potent-potables/daiquiri"
+      "slug": "classic-daiquiri",
+      "sourceRoute": "/drinks/potent-potables/daiquiri",
+      "route": "/drinks/recipe/classic-daiquiri"
     },
     "hemingway daiquiri": {
       "name": "Hemingway Daiquiri",
-      "route": "/drinks/potent-potables/daiquiri"
+      "slug": "hemingway-daiquiri",
+      "sourceRoute": "/drinks/potent-potables/daiquiri",
+      "route": "/drinks/recipe/hemingway-daiquiri"
     },
     "strawberry daiquiri (shaken)": {
       "name": "Strawberry Daiquiri (Shaken)",
-      "route": "/drinks/potent-potables/daiquiri"
+      "slug": "strawberry-daiquiri-shaken",
+      "sourceRoute": "/drinks/potent-potables/daiquiri",
+      "route": "/drinks/recipe/strawberry-daiquiri-shaken"
     },
     "frozen strawberry daiquiri": {
       "name": "Frozen Strawberry Daiquiri",
-      "route": "/drinks/potent-potables/daiquiri"
+      "slug": "frozen-strawberry-daiquiri",
+      "sourceRoute": "/drinks/potent-potables/daiquiri",
+      "route": "/drinks/recipe/frozen-strawberry-daiquiri"
     },
     "banana daiquiri": {
       "name": "Banana Daiquiri",
-      "route": "/drinks/potent-potables/daiquiri"
+      "slug": "banana-daiquiri",
+      "sourceRoute": "/drinks/potent-potables/daiquiri",
+      "route": "/drinks/recipe/banana-daiquiri"
     },
     "pineapple daiquiri": {
       "name": "Pineapple Daiquiri",
-      "route": "/drinks/potent-potables/daiquiri"
+      "slug": "pineapple-daiquiri",
+      "sourceRoute": "/drinks/potent-potables/daiquiri",
+      "route": "/drinks/recipe/pineapple-daiquiri"
     },
     "coconut daiquiri": {
       "name": "Coconut Daiquiri",
-      "route": "/drinks/potent-potables/daiquiri"
+      "slug": "coconut-daiquiri",
+      "sourceRoute": "/drinks/potent-potables/daiquiri",
+      "route": "/drinks/recipe/coconut-daiquiri"
     },
     "mulata daiquiri": {
       "name": "Mulata Daiquiri",
-      "route": "/drinks/potent-potables/daiquiri"
+      "slug": "mulata-daiquiri",
+      "sourceRoute": "/drinks/potent-potables/daiquiri",
+      "route": "/drinks/recipe/mulata-daiquiri"
     },
     "frozen mango daiquiri": {
       "name": "Frozen Mango Daiquiri",
-      "route": "/drinks/potent-potables/daiquiri"
+      "slug": "frozen-mango-daiquiri",
+      "sourceRoute": "/drinks/potent-potables/daiquiri",
+      "route": "/drinks/recipe/frozen-mango-daiquiri"
     },
     "chartreuse daiquiri": {
       "name": "Chartreuse Daiquiri",
-      "route": "/drinks/potent-potables/daiquiri"
+      "slug": "chartreuse-daiquiri",
+      "sourceRoute": "/drinks/potent-potables/daiquiri",
+      "route": "/drinks/recipe/chartreuse-daiquiri"
     },
     "gin & tonic": {
       "name": "Gin & Tonic",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "gin--tonic",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/gin--tonic"
     },
     "tom collins": {
       "name": "Tom Collins",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "tom-collins",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/tom-collins"
     },
     "french 75": {
       "name": "French 75",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "french-75",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/french-75"
     },
     "aviation": {
       "name": "Aviation",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "aviation",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/aviation"
     },
     "bee's knees": {
       "name": "Bee's Knees",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "bees-knees",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/bees-knees"
     },
     "gimlet": {
       "name": "Gimlet",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "gimlet",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/gimlet"
     },
     "singapore sling": {
       "name": "Singapore Sling",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "singapore-sling",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/singapore-sling"
     },
     "ramos gin fizz": {
       "name": "Ramos Gin Fizz",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "ramos-gin-fizz",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/ramos-gin-fizz"
     },
     "clover club": {
       "name": "Clover Club",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "clover-club",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/clover-club"
     },
     "corpse reviver no. 2": {
       "name": "Corpse Reviver No. 2",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "corpse-reviver-no-2",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/corpse-reviver-no-2"
     },
     "last word": {
       "name": "Last Word",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "last-word",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/last-word"
     },
     "bramble": {
       "name": "Bramble",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "bramble",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/bramble"
     },
     "southside": {
       "name": "Southside",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "southside",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/southside"
     },
     "ode to rhubarb": {
       "name": "Ode to Rhubarb",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "ode-to-rhubarb",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/ode-to-rhubarb"
     },
     "second ave spritz": {
       "name": "Second Ave Spritz",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "second-ave-spritz",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/second-ave-spritz"
     },
     "glacier peak": {
       "name": "Glacier Peak",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "glacier-peak",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/glacier-peak"
     },
     "israeli sour 2.0": {
       "name": "Israeli Sour 2.0",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "israeli-sour-20",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/israeli-sour-20"
     },
     "sweet promise": {
       "name": "Sweet Promise",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "sweet-promise",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/sweet-promise"
     },
     "tiny dancer": {
       "name": "Tiny Dancer",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "tiny-dancer",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/tiny-dancer"
     },
     "elderflower spritz": {
       "name": "Elderflower Spritz",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "elderflower-spritz",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/elderflower-spritz"
     },
     "cucumber basil smash": {
       "name": "Cucumber Basil Smash",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "cucumber-basil-smash",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/cucumber-basil-smash"
     },
     "lavender gin fizz": {
       "name": "Lavender Gin Fizz",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "lavender-gin-fizz",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/lavender-gin-fizz"
     },
     "pink peppercorn collins": {
       "name": "Pink Peppercorn Collins",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "pink-peppercorn-collins",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/pink-peppercorn-collins"
     },
     "blood orange negroni": {
       "name": "Blood Orange Negroni",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "blood-orange-negroni",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/blood-orange-negroni"
     },
     "strawberry thyme smash": {
       "name": "Strawberry Thyme Smash",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "strawberry-thyme-smash",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/strawberry-thyme-smash"
     },
     "yuzu gin highball": {
       "name": "Yuzu Gin Highball",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "yuzu-gin-highball",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/yuzu-gin-highball"
     },
     "rosemary greyhound": {
       "name": "Rosemary Greyhound",
-      "route": "/drinks/potent-potables/gin"
+      "slug": "rosemary-greyhound",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "route": "/drinks/recipe/rosemary-greyhound"
     },
     "irish coffee": {
       "name": "Irish Coffee",
-      "route": "/drinks/potent-potables/hot-drinks"
+      "slug": "irish-coffee",
+      "sourceRoute": "/drinks/potent-potables/hot-drinks",
+      "route": "/drinks/recipe/irish-coffee"
     },
     "hot toddy": {
       "name": "Hot Toddy",
-      "route": "/drinks/potent-potables/hot-drinks"
+      "slug": "hot-toddy",
+      "sourceRoute": "/drinks/potent-potables/hot-drinks",
+      "route": "/drinks/recipe/hot-toddy"
     },
     "mulled wine": {
       "name": "Mulled Wine",
-      "route": "/drinks/potent-potables/hot-drinks"
+      "slug": "mulled-wine",
+      "sourceRoute": "/drinks/potent-potables/hot-drinks",
+      "route": "/drinks/recipe/mulled-wine"
     },
     "hot buttered rum": {
       "name": "Hot Buttered Rum",
-      "route": "/drinks/potent-potables/hot-drinks"
+      "slug": "hot-buttered-rum",
+      "sourceRoute": "/drinks/potent-potables/hot-drinks",
+      "route": "/drinks/recipe/hot-buttered-rum"
     },
     "tom and jerry": {
       "name": "Tom and Jerry",
-      "route": "/drinks/potent-potables/hot-drinks"
+      "slug": "tom-and-jerry",
+      "sourceRoute": "/drinks/potent-potables/hot-drinks",
+      "route": "/drinks/recipe/tom-and-jerry"
     },
     "café brulot": {
       "name": "Café Brulot",
-      "route": "/drinks/potent-potables/hot-drinks"
+      "slug": "caf-brulot",
+      "sourceRoute": "/drinks/potent-potables/hot-drinks",
+      "route": "/drinks/recipe/caf-brulot"
     },
     "hot apple cider": {
       "name": "Hot Apple Cider",
-      "route": "/drinks/potent-potables/hot-drinks"
+      "slug": "hot-apple-cider",
+      "sourceRoute": "/drinks/potent-potables/hot-drinks",
+      "route": "/drinks/recipe/hot-apple-cider"
     },
     "hot chocolate with rum": {
       "name": "Hot Chocolate with Rum",
-      "route": "/drinks/potent-potables/hot-drinks"
+      "slug": "hot-chocolate-with-rum",
+      "sourceRoute": "/drinks/potent-potables/hot-drinks",
+      "route": "/drinks/recipe/hot-chocolate-with-rum"
     },
     "amaretto sour": {
       "name": "Amaretto Sour",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "amaretto-sour",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/amaretto-sour"
     },
     "grasshopper": {
       "name": "Grasshopper",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "grasshopper",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/grasshopper"
     },
     "b-52": {
       "name": "B-52",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "b-52",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/b-52"
     },
     "midori sour": {
       "name": "Midori Sour",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "midori-sour",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/midori-sour"
     },
     "chambord royale": {
       "name": "Chambord Royale",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "chambord-royale",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/chambord-royale"
     },
     "baileys mudslide": {
       "name": "Baileys Mudslide",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "baileys-mudslide",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/baileys-mudslide"
     },
     "limoncello spritz": {
       "name": "Limoncello Spritz",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "limoncello-spritz",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/limoncello-spritz"
     },
     "frangelico fizz": {
       "name": "Frangelico Fizz",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "frangelico-fizz",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/frangelico-fizz"
     },
     "godfather": {
       "name": "Godfather",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "godfather",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/godfather"
     },
     "cointreau margarita": {
       "name": "Cointreau Margarita",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "cointreau-margarita",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/cointreau-margarita"
     },
     "st. germain cocktail": {
       "name": "St. Germain Cocktail",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "st-germain-cocktail",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/st-germain-cocktail"
     },
     "aperol spritz": {
       "name": "Aperol Spritz",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "aperol-spritz",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/aperol-spritz"
     },
     "drambuie rusty nail": {
       "name": "Drambuie Rusty Nail",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "drambuie-rusty-nail",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/drambuie-rusty-nail"
     },
     "grand marnier sidecar": {
       "name": "Grand Marnier Sidecar",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "grand-marnier-sidecar",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/grand-marnier-sidecar"
     },
     "jägermeister bomb": {
       "name": "Jägermeister Bomb",
-      "route": "/drinks/potent-potables/liqueurs"
+      "slug": "jgermeister-bomb",
+      "sourceRoute": "/drinks/potent-potables/liqueurs",
+      "route": "/drinks/recipe/jgermeister-bomb"
     },
     "classic gin martini": {
       "name": "Classic Gin Martini",
-      "route": "/drinks/potent-potables/martinis"
+      "slug": "classic-gin-martini",
+      "sourceRoute": "/drinks/potent-potables/martinis",
+      "route": "/drinks/recipe/classic-gin-martini"
     },
     "vodka martini": {
       "name": "Vodka Martini",
-      "route": "/drinks/potent-potables/martinis"
+      "slug": "vodka-martini",
+      "sourceRoute": "/drinks/potent-potables/martinis",
+      "route": "/drinks/recipe/vodka-martini"
     },
     "dirty martini": {
       "name": "Dirty Martini",
-      "route": "/drinks/potent-potables/martinis"
+      "slug": "dirty-martini",
+      "sourceRoute": "/drinks/potent-potables/martinis",
+      "route": "/drinks/recipe/dirty-martini"
     },
     "espresso martini": {
       "name": "Espresso Martini",
-      "route": "/drinks/potent-potables/martinis"
+      "slug": "espresso-martini",
+      "sourceRoute": "/drinks/potent-potables/martinis",
+      "route": "/drinks/recipe/espresso-martini"
     },
     "pornstar martini": {
       "name": "Pornstar Martini",
-      "route": "/drinks/potent-potables/martinis"
+      "slug": "pornstar-martini",
+      "sourceRoute": "/drinks/potent-potables/martinis",
+      "route": "/drinks/recipe/pornstar-martini"
     },
     "lychee martini": {
       "name": "Lychee Martini",
-      "route": "/drinks/potent-potables/martinis"
+      "slug": "lychee-martini",
+      "sourceRoute": "/drinks/potent-potables/martinis",
+      "route": "/drinks/recipe/lychee-martini"
     },
     "french martini": {
       "name": "French Martini",
-      "route": "/drinks/potent-potables/martinis"
+      "slug": "french-martini",
+      "sourceRoute": "/drinks/potent-potables/martinis",
+      "route": "/drinks/recipe/french-martini"
     },
     "vesper martini": {
       "name": "Vesper Martini",
-      "route": "/drinks/potent-potables/martinis"
+      "slug": "vesper-martini",
+      "sourceRoute": "/drinks/potent-potables/martinis",
+      "route": "/drinks/recipe/vesper-martini"
     },
     "virgin mojito": {
       "name": "Virgin Mojito",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "virgin-mojito",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/virgin-mojito"
     },
     "shirley temple": {
       "name": "Shirley Temple",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "shirley-temple",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/shirley-temple"
     },
     "cucumber cooler": {
       "name": "Cucumber Cooler",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "cucumber-cooler",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/cucumber-cooler"
     },
     "tropical sunrise": {
       "name": "Tropical Sunrise",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "tropical-sunrise",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/tropical-sunrise"
     },
     "lavender lemonade fizz": {
       "name": "Lavender Lemonade Fizz",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "lavender-lemonade-fizz",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/lavender-lemonade-fizz"
     },
     "watermelon mint smash": {
       "name": "Watermelon Mint Smash",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "watermelon-mint-smash",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/watermelon-mint-smash"
     },
     "ginger spice mule": {
       "name": "Ginger Spice Mule",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "ginger-spice-mule",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/ginger-spice-mule"
     },
     "berry basil smash": {
       "name": "Berry Basil Smash",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "berry-basil-smash",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/berry-basil-smash"
     },
     "pomegranate sparkler": {
       "name": "Pomegranate Sparkler",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "pomegranate-sparkler",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/pomegranate-sparkler"
     },
     "mango chili margarita": {
       "name": "Mango Chili Margarita",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "mango-chili-margarita",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/mango-chili-margarita"
     },
     "pineapple cilantro refresher": {
       "name": "Pineapple Cilantro Refresher",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "pineapple-cilantro-refresher",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/pineapple-cilantro-refresher"
     },
     "espresso martini (mocktail)": {
       "name": "Espresso Martini (Mocktail)",
-      "route": "/drinks/potent-potables/mocktails"
+      "slug": "espresso-martini-mocktail",
+      "sourceRoute": "/drinks/potent-potables/mocktails",
+      "route": "/drinks/recipe/espresso-martini-mocktail"
     },
     "mojito": {
       "name": "Mojito",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "mojito",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/mojito"
     },
     "piña colada": {
       "name": "Piña Colada",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "pia-colada",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/pia-colada"
     },
     "mai tai": {
       "name": "Mai Tai",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "mai-tai",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/mai-tai"
     },
     "dark and stormy": {
       "name": "Dark and Stormy",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "dark-and-stormy",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/dark-and-stormy"
     },
     "zombie": {
       "name": "Zombie",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "zombie",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/zombie"
     },
     "cuba libre": {
       "name": "Cuba Libre",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "cuba-libre",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/cuba-libre"
     },
     "hurricane": {
       "name": "Hurricane",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "hurricane",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/hurricane"
     },
     "ti' punch": {
       "name": "Ti' Punch",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "ti-punch",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/ti-punch"
     },
     "painkiller": {
       "name": "Painkiller",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "painkiller",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/painkiller"
     },
     "jungle bird": {
       "name": "Jungle Bird",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "jungle-bird",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/jungle-bird"
     },
     "rum old fashioned": {
       "name": "Rum Old Fashioned",
-      "route": "/drinks/potent-potables/rum"
+      "slug": "rum-old-fashioned",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "route": "/drinks/recipe/rum-old-fashioned"
     },
     "penicillin": {
       "name": "Penicillin",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "penicillin",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/penicillin"
     },
     "rob roy": {
       "name": "Rob Roy",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "rob-roy",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/rob-roy"
     },
     "blood and sand": {
       "name": "Blood and Sand",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "blood-and-sand",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/blood-and-sand"
     },
     "rusty nail": {
       "name": "Rusty Nail",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "rusty-nail",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/rusty-nail"
     },
     "irish mule": {
       "name": "Irish Mule",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "irish-mule",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/irish-mule"
     },
     "irish old fashioned": {
       "name": "Irish Old Fashioned",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "irish-old-fashioned",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/irish-old-fashioned"
     },
     "tipperary": {
       "name": "Tipperary",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "tipperary",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/tipperary"
     },
     "smoky martini": {
       "name": "Smoky Martini",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "smoky-martini",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/smoky-martini"
     },
     "highland sour": {
       "name": "Highland Sour",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "highland-sour",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/highland-sour"
     },
     "emerald isle": {
       "name": "Emerald Isle",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "emerald-isle",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/emerald-isle"
     },
     "cameron's kick": {
       "name": "Cameron's Kick",
-      "route": "/drinks/potent-potables/scotch-irish-whiskey"
+      "slug": "camerons-kick",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "route": "/drinks/recipe/camerons-kick"
     },
     "peppermint white russian": {
       "name": "Peppermint White Russian",
-      "route": "/drinks/potent-potables/seasonal"
+      "slug": "peppermint-white-russian",
+      "sourceRoute": "/drinks/potent-potables/seasonal",
+      "route": "/drinks/recipe/peppermint-white-russian"
     },
     "elderflower gin fizz": {
       "name": "Elderflower Gin Fizz",
-      "route": "/drinks/potent-potables/seasonal"
+      "slug": "elderflower-gin-fizz",
+      "sourceRoute": "/drinks/potent-potables/seasonal",
+      "route": "/drinks/recipe/elderflower-gin-fizz"
     },
     "lavender lemon drop": {
       "name": "Lavender Lemon Drop",
-      "route": "/drinks/potent-potables/seasonal"
+      "slug": "lavender-lemon-drop",
+      "sourceRoute": "/drinks/potent-potables/seasonal",
+      "route": "/drinks/recipe/lavender-lemon-drop"
     },
     "strawberry basil smash": {
       "name": "Strawberry Basil Smash",
-      "route": "/drinks/potent-potables/seasonal"
+      "slug": "strawberry-basil-smash",
+      "sourceRoute": "/drinks/potent-potables/seasonal",
+      "route": "/drinks/recipe/strawberry-basil-smash"
     },
     "watermelon margarita": {
       "name": "Watermelon Margarita",
-      "route": "/drinks/potent-potables/seasonal"
+      "slug": "watermelon-margarita",
+      "sourceRoute": "/drinks/potent-potables/seasonal",
+      "route": "/drinks/recipe/watermelon-margarita"
     },
     "frozen piña colada": {
       "name": "Frozen Piña Colada",
-      "route": "/drinks/potent-potables/seasonal"
+      "slug": "frozen-pia-colada",
+      "sourceRoute": "/drinks/potent-potables/seasonal",
+      "route": "/drinks/recipe/frozen-pia-colada"
     },
     "cucumber gin & tonic": {
       "name": "Cucumber Gin & Tonic",
-      "route": "/drinks/potent-potables/seasonal"
+      "slug": "cucumber-gin--tonic",
+      "sourceRoute": "/drinks/potent-potables/seasonal",
+      "route": "/drinks/recipe/cucumber-gin--tonic"
     },
     "apple cider bourbon smash": {
       "name": "Apple Cider Bourbon Smash",
-      "route": "/drinks/potent-potables/seasonal"
+      "slug": "apple-cider-bourbon-smash",
+      "sourceRoute": "/drinks/potent-potables/seasonal",
+      "route": "/drinks/recipe/apple-cider-bourbon-smash"
     },
     "pumpkin spice espresso martini": {
       "name": "Pumpkin Spice Espresso Martini",
-      "route": "/drinks/potent-potables/seasonal"
+      "slug": "pumpkin-spice-espresso-martini",
+      "sourceRoute": "/drinks/potent-potables/seasonal",
+      "route": "/drinks/recipe/pumpkin-spice-espresso-martini"
     },
     "cranberry moscow mule": {
       "name": "Cranberry Moscow Mule",
-      "route": "/drinks/potent-potables/seasonal"
+      "slug": "cranberry-moscow-mule",
+      "sourceRoute": "/drinks/potent-potables/seasonal",
+      "route": "/drinks/recipe/cranberry-moscow-mule"
     },
     "classic mimosa": {
       "name": "Classic Mimosa",
-      "route": "/drinks/potent-potables/spritz"
+      "slug": "classic-mimosa",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "route": "/drinks/recipe/classic-mimosa"
     },
     "bellini": {
       "name": "Bellini",
-      "route": "/drinks/potent-potables/spritz"
+      "slug": "bellini",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "route": "/drinks/recipe/bellini"
     },
     "strawberry mimosa": {
       "name": "Strawberry Mimosa",
-      "route": "/drinks/potent-potables/spritz"
+      "slug": "strawberry-mimosa",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "route": "/drinks/recipe/strawberry-mimosa"
     },
     "hugo spritz": {
       "name": "Hugo Spritz",
-      "route": "/drinks/potent-potables/spritz"
+      "slug": "hugo-spritz",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "route": "/drinks/recipe/hugo-spritz"
     },
     "mimosa royale": {
       "name": "Mimosa Royale",
-      "route": "/drinks/potent-potables/spritz"
+      "slug": "mimosa-royale",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "route": "/drinks/recipe/mimosa-royale"
     },
     "campari spritz": {
       "name": "Campari Spritz",
-      "route": "/drinks/potent-potables/spritz"
+      "slug": "campari-spritz",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "route": "/drinks/recipe/campari-spritz"
     },
     "pineapple mimosa": {
       "name": "Pineapple Mimosa",
-      "route": "/drinks/potent-potables/spritz"
+      "slug": "pineapple-mimosa",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "route": "/drinks/recipe/pineapple-mimosa"
     },
     "rossini": {
       "name": "Rossini",
-      "route": "/drinks/potent-potables/spritz"
+      "slug": "rossini",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "route": "/drinks/recipe/rossini"
     },
     "classic margarita": {
       "name": "Classic Margarita",
-      "route": "/drinks/potent-potables/tequila-mezcal"
+      "slug": "classic-margarita",
+      "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
+      "route": "/drinks/recipe/classic-margarita"
     },
     "paloma": {
       "name": "Paloma",
-      "route": "/drinks/potent-potables/tequila-mezcal"
+      "slug": "paloma",
+      "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
+      "route": "/drinks/recipe/paloma"
     },
     "tequila sunrise": {
       "name": "Tequila Sunrise",
-      "route": "/drinks/potent-potables/tequila-mezcal"
+      "slug": "tequila-sunrise",
+      "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
+      "route": "/drinks/recipe/tequila-sunrise"
     },
     "tommy's margarita": {
       "name": "Tommy's Margarita",
-      "route": "/drinks/potent-potables/tequila-mezcal"
+      "slug": "tommys-margarita",
+      "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
+      "route": "/drinks/recipe/tommys-margarita"
     },
     "mezcal margarita": {
       "name": "Mezcal Margarita",
-      "route": "/drinks/potent-potables/tequila-mezcal"
+      "slug": "mezcal-margarita",
+      "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
+      "route": "/drinks/recipe/mezcal-margarita"
     },
     "oaxaca old fashioned": {
       "name": "Oaxaca Old Fashioned",
-      "route": "/drinks/potent-potables/tequila-mezcal"
+      "slug": "oaxaca-old-fashioned",
+      "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
+      "route": "/drinks/recipe/oaxaca-old-fashioned"
     },
     "spicy margarita": {
       "name": "Spicy Margarita",
-      "route": "/drinks/potent-potables/tequila-mezcal"
+      "slug": "spicy-margarita",
+      "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
+      "route": "/drinks/recipe/spicy-margarita"
     },
     "tequila old fashioned": {
       "name": "Tequila Old Fashioned",
-      "route": "/drinks/potent-potables/tequila-mezcal"
+      "slug": "tequila-old-fashioned",
+      "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
+      "route": "/drinks/recipe/tequila-old-fashioned"
     },
     "virgin mary": {
       "name": "Virgin Mary",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "virgin-mary",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/virgin-mary"
     },
     "roy rogers": {
       "name": "Roy Rogers",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "roy-rogers",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/roy-rogers"
     },
     "cucumber mint cooler": {
       "name": "Cucumber Mint Cooler",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "cucumber-mint-cooler",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/cucumber-mint-cooler"
     },
     "grapefruit rosemary spritz": {
       "name": "Grapefruit Rosemary Spritz",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "grapefruit-rosemary-spritz",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/grapefruit-rosemary-spritz"
     },
     "lavender lemonade": {
       "name": "Lavender Lemonade",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "lavender-lemonade",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/lavender-lemonade"
     },
     "watermelon basil refresher": {
       "name": "Watermelon Basil Refresher",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "watermelon-basil-refresher",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/watermelon-basil-refresher"
     },
     "berry blast": {
       "name": "Berry Blast",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "berry-blast",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/berry-blast"
     },
     "pineapple ginger fizz": {
       "name": "Pineapple Ginger Fizz",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "pineapple-ginger-fizz",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/pineapple-ginger-fizz"
     },
     "iced hibiscus tea spritzer": {
       "name": "Iced Hibiscus Tea Spritzer",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "iced-hibiscus-tea-spritzer",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/iced-hibiscus-tea-spritzer"
     },
     "matcha mint cooler": {
       "name": "Matcha Mint Cooler",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "matcha-mint-cooler",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/matcha-mint-cooler"
     },
     "spiced apple cider mocktail": {
       "name": "Spiced Apple Cider Mocktail",
-      "route": "/drinks/potent-potables/virgin-cocktails"
+      "slug": "spiced-apple-cider-mocktail",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "route": "/drinks/recipe/spiced-apple-cider-mocktail"
     },
     "moscow mule": {
       "name": "Moscow Mule",
-      "route": "/drinks/potent-potables/vodka"
+      "slug": "moscow-mule",
+      "sourceRoute": "/drinks/potent-potables/vodka",
+      "route": "/drinks/recipe/moscow-mule"
     },
     "bloody mary": {
       "name": "Bloody Mary",
-      "route": "/drinks/potent-potables/vodka"
+      "slug": "bloody-mary",
+      "sourceRoute": "/drinks/potent-potables/vodka",
+      "route": "/drinks/recipe/bloody-mary"
     },
     "cosmopolitan": {
       "name": "Cosmopolitan",
-      "route": "/drinks/potent-potables/vodka"
+      "slug": "cosmopolitan",
+      "sourceRoute": "/drinks/potent-potables/vodka",
+      "route": "/drinks/recipe/cosmopolitan"
     },
     "white russian": {
       "name": "White Russian",
-      "route": "/drinks/potent-potables/vodka"
+      "slug": "white-russian",
+      "sourceRoute": "/drinks/potent-potables/vodka",
+      "route": "/drinks/recipe/white-russian"
     },
     "vodka tonic": {
       "name": "Vodka Tonic",
-      "route": "/drinks/potent-potables/vodka"
+      "slug": "vodka-tonic",
+      "sourceRoute": "/drinks/potent-potables/vodka",
+      "route": "/drinks/recipe/vodka-tonic"
     },
     "lemon drop": {
       "name": "Lemon Drop",
-      "route": "/drinks/potent-potables/vodka"
+      "slug": "lemon-drop",
+      "sourceRoute": "/drinks/potent-potables/vodka",
+      "route": "/drinks/recipe/lemon-drop"
     },
     "sea breeze": {
       "name": "Sea Breeze",
-      "route": "/drinks/potent-potables/vodka"
+      "slug": "sea-breeze",
+      "sourceRoute": "/drinks/potent-potables/vodka",
+      "route": "/drinks/recipe/sea-breeze"
     },
     "black russian": {
       "name": "Black Russian",
-      "route": "/drinks/potent-potables/vodka"
+      "slug": "black-russian",
+      "sourceRoute": "/drinks/potent-potables/vodka",
+      "route": "/drinks/recipe/black-russian"
     },
     "vodka cranberry": {
       "name": "Vodka Cranberry",
-      "route": "/drinks/potent-potables/vodka"
+      "slug": "vodka-cranberry",
+      "sourceRoute": "/drinks/potent-potables/vodka",
+      "route": "/drinks/recipe/vodka-cranberry"
     },
     "boulevardier": {
       "name": "Boulevardier",
-      "route": "/drinks/potent-potables/whiskey-bourbon"
+      "slug": "boulevardier",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "route": "/drinks/recipe/boulevardier"
     },
     "whiskey highball": {
       "name": "Whiskey Highball",
-      "route": "/drinks/potent-potables/whiskey-bourbon"
+      "slug": "whiskey-highball",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "route": "/drinks/recipe/whiskey-highball"
     },
     "gold rush": {
       "name": "Gold Rush",
-      "route": "/drinks/potent-potables/whiskey-bourbon"
+      "slug": "gold-rush",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "route": "/drinks/recipe/gold-rush"
     },
     "new york sour": {
       "name": "New York Sour",
-      "route": "/drinks/potent-potables/whiskey-bourbon"
+      "slug": "new-york-sour",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "route": "/drinks/recipe/new-york-sour"
     },
     "whiskey smash": {
       "name": "Whiskey Smash",
-      "route": "/drinks/potent-potables/whiskey-bourbon"
+      "slug": "whiskey-smash",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "route": "/drinks/recipe/whiskey-smash"
     },
     "paper plane": {
       "name": "Paper Plane",
-      "route": "/drinks/potent-potables/whiskey-bourbon"
+      "slug": "paper-plane",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "route": "/drinks/recipe/paper-plane"
     }
   },
   "routes": [
@@ -1819,5 +2569,5 @@
       "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
     }
   ],
-  "generatedAt": "2026-03-06T23:20:47.369Z"
+  "generatedAt": "2026-03-08T06:46:28.275Z"
 }
