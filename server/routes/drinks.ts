@@ -1,16 +1,124 @@
 // server/routes/drinks.ts
 import { Router } from "express";
+import { and, desc, eq, gt, sql } from "drizzle-orm";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
+import { db } from "../db";
+import { getCanonicalDrinkBySlug } from "../services/canonical-drinks-index";
 import { 
   insertCustomDrinkSchema, 
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
-  insertDrinkSaveSchema 
+  insertDrinkSaveSchema,
+  drinkEvents
 } from "@shared/schema";
 import { z } from "zod";
 
 const r = Router();
+
+type EventType = "view";
+
+const TRACKABLE_DRINK_EVENTS = new Set<EventType>(["view"]);
+
+function resolveUserId(req: any): string | null {
+  return typeof req?.user?.id === "string" && req.user.id.trim() ? req.user.id : null;
+}
+
+// Track canonical drink recipe events
+r.post("/events", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const slug = typeof req.body?.slug === "string" ? req.body.slug.trim() : "";
+    const eventType = typeof req.body?.eventType === "string" ? req.body.eventType.trim().toLowerCase() : "";
+
+    if (!slug) {
+      return res.status(400).json({ ok: false, error: "slug is required" });
+    }
+
+    if (!TRACKABLE_DRINK_EVENTS.has(eventType as EventType)) {
+      return res.status(400).json({ ok: false, error: "Unsupported event_type" });
+    }
+
+    const canonicalRecipe = getCanonicalDrinkBySlug(slug);
+    if (!canonicalRecipe) {
+      return res.status(404).json({ ok: false, error: "Unknown canonical drink slug" });
+    }
+
+    await db.insert(drinkEvents).values({
+      slug,
+      eventType,
+      userId: resolveUserId(req),
+    });
+
+    return res.status(201).json({ ok: true });
+  } catch (error: any) {
+    console.error("Error logging drink event:", error);
+    return res.status(500).json({ ok: false, error: "Failed to log drink event" });
+  }
+});
+
+// Trending canonical drink recipes
+r.get("/trending", async (_req, res) => {
+  try {
+    if (!db) {
+      return res.json({
+        ok: true,
+        window: "7d",
+        ranking: { formula: "views_last_24h * 2 + views_days_2_to_7" },
+        items: [],
+      });
+    }
+
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const rows = await db
+      .select({
+        slug: drinkEvents.slug,
+        score: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`,
+        views7d: sql<number>`count(*)`,
+        views24h: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`,
+      })
+      .from(drinkEvents)
+      .where(and(eq(drinkEvents.eventType, "view"), gt(drinkEvents.createdAt, sevenDaysAgo)))
+      .groupBy(drinkEvents.slug)
+      .orderBy(desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`), desc(sql`count(*)`))
+      .limit(10);
+
+    const items = rows
+      .map((row) => {
+        const canonicalRecipe = getCanonicalDrinkBySlug(row.slug);
+        if (!canonicalRecipe) return null;
+
+        return {
+          slug: canonicalRecipe.slug,
+          name: canonicalRecipe.name,
+          image: canonicalRecipe.image ?? null,
+          route: canonicalRecipe.route,
+          sourceCategoryRoute: canonicalRecipe.sourceRoute,
+          score: Number(row.score ?? 0),
+          views7d: Number(row.views7d ?? 0),
+          views24h: Number(row.views24h ?? 0),
+        };
+      })
+      .filter(Boolean);
+
+    return res.json({
+      ok: true,
+      window: "7d",
+      ranking: {
+        formula: "views_last_24h * 2 + views_days_2_to_7",
+      },
+      items,
+    });
+  } catch (error: any) {
+    console.error("Error getting trending drinks:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch trending drinks" });
+  }
+});
 
 // Simple mock auth middleware (replace with real auth)
 const authenticateUser = (req: any, _res: any, next: any) => {

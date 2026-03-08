@@ -908,6 +908,23 @@ export const drinkSaves = pgTable(
   })
 );
 
+
+export const drinkEvents = pgTable(
+  "drink_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    slug: text("slug").notNull(),
+    eventType: text("event_type").notNull(),
+    userId: varchar("user_id").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    slugIdx: index("drink_events_slug_idx").on(table.slug),
+    createdAtIdx: index("drink_events_created_at_idx").on(table.createdAt),
+    eventTypeIdx: index("drink_events_event_type_idx").on(table.eventType),
+  })
+);
+
 export const recipeSaves = pgTable(
   "recipe_saves",
   {
@@ -1372,6 +1389,11 @@ export const insertDrinkSaveSchema = createInsertSchema(drinkSaves).omit({
   createdAt: true,
 });
 
+export const insertDrinkEventSchema = createInsertSchema(drinkEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertRecipeSaveSchema = createInsertSchema(recipeSaves).omit({
   id: true,
   createdAt: true,
@@ -1532,6 +1554,8 @@ export type DrinkLike = typeof drinkLikes.$inferSelect;
 export type InsertDrinkLike = z.infer<typeof insertDrinkLikeSchema>;
 export type DrinkSave = typeof drinkSaves.$inferSelect;
 export type InsertDrinkSave = z.infer<typeof insertDrinkSaveSchema>;
+export type DrinkEvent = typeof drinkEvents.$inferSelect;
+export type InsertDrinkEvent = z.infer<typeof insertDrinkEventSchema>;
 export type RecipeSave = typeof recipeSaves.$inferSelect;
 export type InsertRecipeSave = z.infer<typeof insertRecipeSaveSchema>;
 export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
