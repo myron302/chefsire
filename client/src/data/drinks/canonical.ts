@@ -5,6 +5,7 @@ export type CanonicalDrinkRecipeEntry = {
   slug: string;
   name: string;
   sourceRoute: string;
+  sourceTitle: string;
   recipe: DrinkRecipe;
 };
 
@@ -53,6 +54,7 @@ function collectCanonicalDrinkRecipeEntries(
         slug,
         name,
         sourceRoute: routeEntry.route,
+        sourceTitle: routeEntry.title,
         recipe,
       });
     }
