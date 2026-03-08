@@ -8,7 +8,9 @@ type DrinkIndexEntry = {
   name: string;
   route: string;
   sourceRoute: string;
+  sourceTitle: string;
   slug: string;
+  image: string | null;
 };
 type DrinkRoute = { route: string; title: string };
 type DuplicateEntry = {
@@ -20,12 +22,13 @@ type DuplicateEntry = {
 
 type DrinkIndexFile = {
   recipes: Record<string, DrinkIndexEntry>;
+  bySlug: Record<string, DrinkIndexEntry>;
   routes: DrinkRoute[];
   duplicates: DuplicateEntry[];
   generatedAt: string;
 };
 
-type DrinkRecipeLike = { name?: string };
+type DrinkRecipeLike = { name?: string; image?: unknown; imageUrl?: unknown };
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
@@ -93,6 +96,7 @@ async function loadRouteRecipes(routeEntry: DrinkRouteRegistryEntry): Promise<Dr
 
 async function main() {
   const recipes: Record<string, DrinkIndexEntry> = {};
+  const bySlug: Record<string, DrinkIndexEntry> = {};
   const duplicates: DuplicateEntry[] = [];
   const usedCanonicalSlugs = new Set<string>();
 
@@ -113,8 +117,16 @@ async function main() {
           name,
           slug,
           sourceRoute: routeEntry.route,
+          sourceTitle: routeEntry.title,
+          image:
+            typeof recipe.image === "string"
+              ? recipe.image
+              : typeof recipe.imageUrl === "string"
+                ? recipe.imageUrl
+                : null,
           route: `/drinks/recipe/${slug}`
         };
+        bySlug[slug] = recipes[key];
       } else if (recipes[key].sourceRoute !== routeEntry.route) {
         duplicates.push({
           key,
@@ -132,6 +144,7 @@ async function main() {
 
   const output: DrinkIndexFile = {
     recipes,
+    bySlug,
     routes,
     duplicates,
     generatedAt: new Date().toISOString()

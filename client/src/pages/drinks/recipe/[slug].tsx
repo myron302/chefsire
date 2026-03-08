@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import RequireAgeGate from "@/components/RequireAgeGate";
@@ -23,6 +24,22 @@ function asList(value: unknown): string[] {
 
 function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const canonicalRecipe = getCanonicalDrinkRecipeBySlug(slug);
+
+  useEffect(() => {
+    if (!canonicalRecipe?.slug) return;
+
+    fetch("/api/drinks/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        slug: canonicalRecipe.slug,
+        eventType: "view",
+      }),
+    }).catch(() => {
+      // Non-blocking analytics event.
+    });
+  }, [canonicalRecipe?.slug]);
 
   if (!canonicalRecipe) {
     return (
