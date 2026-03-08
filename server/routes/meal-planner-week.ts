@@ -3,8 +3,10 @@ import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
   groceryListItems,
+  mealFavorites,
   mealPlanEntries,
   mealPlans,
+  mealStreaks,
   recipes,
   users,
 } from "../../shared/schema.js";
@@ -21,6 +23,7 @@ async function ensureMealPlannerWeekSchema() {
     await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_protein INTEGER;`);
     await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_carbs INTEGER;`);
     await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_fat INTEGER;`);
+    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS source VARCHAR(50);`);
   })();
 
   return _mealPlannerWeekSchemaReady;
@@ -155,6 +158,7 @@ function mapEntriesToWeeklyMeals(entries: any[]) {
           fat: Number(e.recipe.fat || e.customFat || 0),
           recipeId: e.recipe.id,
           entryId: e.id,
+          source: e.source || null,
         }
       : {
           name: e.customName || "Meal",
@@ -164,6 +168,7 @@ function mapEntriesToWeeklyMeals(entries: any[]) {
           fat: Number(e.customFat || 0),
           recipeId: null,
           entryId: e.id,
+          source: e.source || null,
         };
 
     const existing = out[dayName][e.mealType];
@@ -195,6 +200,28 @@ router.get("/settings", requireAuth, async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching meal planner settings:", error);
     res.status(500).json({ message: "Failed to load settings" });
+  }
+});
+
+router.post("/settings", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const dailyCalorieGoal = Number(req.body?.dailyCalorieGoal || 2000);
+    const macroGoals = req.body?.macroGoals || { protein: 150, carbs: 200, fat: 65 };
+
+    const [updated] = await db
+      .update(users)
+      .set({
+        dailyCalorieGoal,
+        macroGoals,
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    res.json({ settings: { dailyCalorieGoal: updated.dailyCalorieGoal, macroGoals: updated.macroGoals } });
+  } catch (error) {
+    console.error("Error saving meal planner settings:", error);
+    res.status(500).json({ message: "Failed to save settings" });
   }
 });
 
@@ -250,6 +277,7 @@ router.get("/week", requireAuth, async (req: Request, res: Response) => {
         customProtein: mealPlanEntries.customProtein,
         customCarbs: mealPlanEntries.customCarbs,
         customFat: mealPlanEntries.customFat,
+        source: mealPlanEntries.source,
         recipe: recipes,
       })
       .from(mealPlanEntries)
@@ -459,6 +487,7 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
         customProtein: mealPlanEntries.customProtein,
         customCarbs: mealPlanEntries.customCarbs,
         customFat: mealPlanEntries.customFat,
+        source: mealPlanEntries.source,
         recipe: recipes,
       })
       .from(mealPlanEntries)
@@ -489,7 +518,7 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
 router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { date, mealType, name, calories, protein, carbs, fat } = req.body || {};
+    const { date, mealType, name, calories, protein, carbs, fat, fiber, source, recipeId } = req.body || {};
 
     const parsed = date ? new Date(date) : null;
     if (!parsed || isNaN(parsed.getTime())) {
@@ -542,12 +571,14 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
       return Number.isFinite(num) ? Math.max(0, Math.round(num)) : 0;
     };
 
+    const loggedDate = startOfDay(parsed);
+
     const [entry] = await db
       .insert(mealPlanEntries)
       .values({
         mealPlanId: plan.id,
-        recipeId: null,
-        date: startOfDay(parsed),
+        recipeId: recipeId || null,
+        date: loggedDate,
         mealType: mealTypeStr,
         servings: 1,
         customName: mealName,
@@ -555,8 +586,92 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
         customProtein: toInt(protein),
         customCarbs: toInt(carbs),
         customFat: toInt(fat),
+        source: source || null,
       })
       .returning();
+
+    const [existingFavorite] = await db
+      .select()
+      .from(mealFavorites)
+      .where(and(eq(mealFavorites.userId, userId), eq(mealFavorites.mealName, mealName)))
+      .limit(1);
+
+    if (existingFavorite) {
+      await db
+        .update(mealFavorites)
+        .set({
+          calories: toInt(calories),
+          protein: toInt(protein),
+          carbs: toInt(carbs),
+          fat: toInt(fat),
+          fiber: toInt(fiber),
+          timesLogged: (existingFavorite.timesLogged || 0) + 1,
+          lastUsed: new Date(),
+        })
+        .where(eq(mealFavorites.id, existingFavorite.id));
+    } else {
+      await db.insert(mealFavorites).values({
+        userId,
+        mealName,
+        calories: toInt(calories),
+        protein: toInt(protein),
+        carbs: toInt(carbs),
+        fat: toInt(fat),
+        fiber: toInt(fiber),
+        isFavorite: false,
+        timesLogged: 1,
+        lastUsed: new Date(),
+      });
+    }
+
+    const [streak] = await db
+      .select()
+      .from(mealStreaks)
+      .where(eq(mealStreaks.userId, userId))
+      .limit(1);
+
+    const today = new Date(loggedDate);
+    today.setHours(0, 0, 0, 0);
+    let currentStreak = 1;
+    let longestStreak = 1;
+
+    if (streak) {
+      const last = streak.lastLoggedDate ? new Date(streak.lastLoggedDate) : null;
+      if (last) {
+        last.setHours(0, 0, 0, 0);
+        const dayDiff = Math.round((today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
+
+        if (dayDiff === 0) {
+          currentStreak = streak.currentStreak || 0;
+        } else if (dayDiff === 1) {
+          currentStreak = (streak.currentStreak || 0) + 1;
+        } else {
+          currentStreak = 1;
+        }
+      } else {
+        currentStreak = 1;
+      }
+
+      longestStreak = Math.max(streak.longestStreak || 0, currentStreak);
+
+      await db
+        .update(mealStreaks)
+        .set({
+          currentStreak,
+          longestStreak,
+          lastLoggedDate: today.toISOString().split("T")[0],
+          updatedAt: new Date(),
+        })
+        .where(eq(mealStreaks.id, streak.id));
+    } else {
+      await db.insert(mealStreaks).values({
+        userId,
+        currentStreak: 1,
+        longestStreak: 1,
+        lastLoggedDate: today.toISOString().split("T")[0],
+        updatedAt: new Date(),
+      });
+    }
 
     res.status(201).json({
       entry: {
@@ -568,6 +683,8 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
         protein: toInt(protein),
         carbs: toInt(carbs),
         fat: toInt(fat),
+        fiber: toInt(fiber),
+        source: source || null,
       },
     });
   } catch (error) {

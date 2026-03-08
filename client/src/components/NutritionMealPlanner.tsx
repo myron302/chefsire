@@ -3,7 +3,7 @@ import {
   Calendar, Plus, Target, TrendingUp, Clock, Users, ChefHat, Star, Lock, Crown,
   ShoppingCart, CheckCircle, BarChart3, PieChart, Download, Filter, Save,
   AlertCircle, Package, Utensils, CalendarDays, Zap, ListChecks, Settings, Camera,
-  DollarSign, Copy, Sparkles
+  DollarSign, Copy, Sparkles, Flame, Scale, Droplets
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import AdvancedFeaturesPanel from '@/components/meal-planner/AdvancedFeaturesPanel';
 import { exportCSV, exportText } from "@/lib/shoppingExport";
+import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 const NutritionMealPlanner = () => {
   const formatLocalDate = (date: Date) => {
@@ -59,6 +60,15 @@ const NutritionMealPlanner = () => {
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
   const [weekRange, setWeekRange] = useState<{ weekStart: string; weekEnd: string } | null>(null);
   const [isGeneratingWeek, setIsGeneratingWeek] = useState(false);
+  const [streak, setStreak] = useState<{ currentStreak: number; longestStreak: number; lastLoggedDate: string | null }>({ currentStreak: 0, longestStreak: 0, lastLoggedDate: null });
+  const [bodyMetricsLog, setBodyMetricsLog] = useState<any[]>([]);
+  const [bodyForm, setBodyForm] = useState({ date: formatLocalDate(new Date()), weight: '', bodyFatPct: '', waistIn: '', hipIn: '', unit: 'lbs' as 'lbs' | 'kg' });
+  const [water, setWater] = useState<{ date: string; glassesLogged: number; dailyTarget: number }>({ date: formatLocalDate(new Date()), glassesLogged: 0, dailyTarget: 8 });
+  const [mealHistory, setMealHistory] = useState<any[]>([]);
+  const [showRecentMeals, setShowRecentMeals] = useState(true);
+  const [showCalcModal, setShowCalcModal] = useState(false);
+  const [calcForm, setCalcForm] = useState({ age: 30, gender: 'male', heightUnit: 'ft', feet: 5, inches: 10, cm: 178, weightUnit: 'lbs', weight: 180, activity: 'moderately active', goal: 'maintain' });
+  const [calcResult, setCalcResult] = useState<any>(null);
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 });
@@ -95,6 +105,9 @@ const NutritionMealPlanner = () => {
       fetchDailyNutrition();
       fetchGroceryList();
       fetchSavingsReport();
+      fetchStreak();
+      fetchBodyMetrics();
+      fetchWater();
     }
   }, [selectedDate, isPremium, user]);
 
@@ -317,6 +330,115 @@ const NutritionMealPlanner = () => {
     }
   };
 
+  const fetchStreak = async () => {
+    try {
+      const response = await fetch('/api/meal-planner/streak', { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        setStreak(data);
+      }
+    } catch (error) {
+      console.error('Error fetching streak:', error);
+    }
+  };
+
+  const fetchBodyMetrics = async () => {
+    try {
+      const response = await fetch('/api/meal-planner/body-metrics?limit=30', { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        setBodyMetricsLog((data.metrics || []).slice().reverse());
+      }
+    } catch (error) {
+      console.error('Error fetching body metrics:', error);
+    }
+  };
+
+  const saveBodyMetric = async () => {
+    if (!bodyForm.weight) return;
+    const weightLbs = bodyForm.unit === 'kg' ? Number(bodyForm.weight) * 2.20462 : Number(bodyForm.weight);
+    try {
+      const response = await fetch('/api/meal-planner/body-metrics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          date: bodyForm.date,
+          weightLbs,
+          bodyFatPct: bodyForm.bodyFatPct ? Number(bodyForm.bodyFatPct) : null,
+          waistIn: bodyForm.waistIn ? Number(bodyForm.waistIn) : null,
+          hipIn: bodyForm.hipIn ? Number(bodyForm.hipIn) : null,
+        }),
+      });
+      if (!response.ok) throw new Error('Failed to save metric');
+      await fetchBodyMetrics();
+      toast({ description: '✅ Body metrics logged' });
+    } catch (error) {
+      toast({ variant: 'destructive', description: 'Failed to save body metrics' });
+    }
+  };
+
+  const fetchWater = async (date = formatLocalDate(new Date())) => {
+    try {
+      const response = await fetch(`/api/meal-planner/water?date=${date}`, { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        setWater(data);
+      }
+    } catch (error) {
+      console.error('Error fetching water:', error);
+    }
+  };
+
+  const saveWater = async (glassesLogged: number) => {
+    const date = formatLocalDate(new Date());
+    try {
+      const response = await fetch('/api/meal-planner/water', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ date, glassesLogged }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWater(data);
+      }
+    } catch (error) {
+      console.error('Error saving water:', error);
+    }
+  };
+
+  const updateWaterTarget = async () => {
+    const next = Number(prompt('Daily water target (glasses):', String(water.dailyTarget || 8)));
+    if (!Number.isFinite(next) || next <= 0) return;
+    try {
+      const response = await fetch('/api/meal-planner/water/target', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ dailyTarget: next }),
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setWater((prev) => ({ ...prev, dailyTarget: data.dailyTarget }));
+      }
+    } catch (error) {
+      console.error('Error updating water target:', error);
+    }
+  };
+
+  const fetchMealHistory = async () => {
+    try {
+      const response = await fetch('/api/meal-planner/history', { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        setMealHistory(data.meals || []);
+      }
+    } catch (error) {
+      console.error('Error fetching meal history:', error);
+    }
+  };
+
   const startNutritionTrial = async () => {
     if (!user) {
       toast({
@@ -447,6 +569,7 @@ const NutritionMealPlanner = () => {
     setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 });
     setBaseNutrition(null);
     setShowAddMealModal(true);
+    fetchMealHistory();
   };
 
   const saveMealToSlot = async (mealData: any) => {
@@ -468,6 +591,9 @@ const NutritionMealPlanner = () => {
           protein: mealData.protein,
           carbs: mealData.carbs,
           fat: mealData.fat,
+          fiber: mealData.fiber,
+          source: mealData.source || null,
+          recipeId: mealData.recipeId || null,
         }),
       });
 
@@ -476,7 +602,14 @@ const NutritionMealPlanner = () => {
       }
 
       const data = await response.json();
-      const savedMeal = { ...mealData, entryId: data?.entry?.id };
+      await fetch('/api/meal-planner/streak/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ date: getDateForWeekday(selectedMealSlot.day) }),
+      });
+      fetchStreak();
+      const savedMeal = { ...mealData, entryId: data?.entry?.id, source: mealData.source || null };
 
       setWeeklyMeals((prev: any) => {
         const existing = prev[selectedMealSlot.day]?.[selectedMealSlot.type];
@@ -551,6 +684,44 @@ const NutritionMealPlanner = () => {
       fat: acc.fat + (Number(m?.fat) || 0),
     }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
   };
+
+
+  const getNutritionGrade = (meal: any, dailyCalorieGoal: number): string => {
+    let score = 100;
+    const mealCals = Number(meal.calories) || 0;
+    const protein = Number(meal.protein) || 0;
+    const fat = Number(meal.fat) || 0;
+    const fiber = Number(meal.fiber) || 0;
+
+    const proteinDensity = mealCals > 0 ? (protein / mealCals) * 100 : 0;
+    if (proteinDensity < 3) score -= 30;
+    else if (proteinDensity < 5) score -= 15;
+    else if (proteinDensity >= 7) score += 10;
+
+    const fatPct = mealCals > 0 ? ((fat * 9) / mealCals) * 100 : 0;
+    if (fatPct > 50) score -= 20;
+    else if (fatPct > 40) score -= 10;
+
+    if (fiber >= 5) score += 10;
+    else if (fiber >= 3) score += 5;
+    else if (fiber === 0) score -= 10;
+
+    if (dailyCalorieGoal > 0 && mealCals > dailyCalorieGoal * 0.5) score -= 15;
+
+    if (score >= 90) return 'A';
+    if (score >= 75) return 'B';
+    if (score >= 60) return 'C';
+    if (score >= 45) return 'D';
+    return 'F';
+  };
+
+  const gradeClass = (grade: string) => ({
+    A: 'bg-green-100 text-green-700',
+    B: 'bg-blue-100 text-blue-700',
+    C: 'bg-yellow-100 text-yellow-700',
+    D: 'bg-orange-100 text-orange-700',
+    F: 'bg-red-100 text-red-700',
+  }[grade] || 'bg-gray-100 text-gray-700');
 
   const saveTemplate = () => {
     const templateName = prompt('Enter a name for this meal plan template:');
@@ -1112,6 +1283,52 @@ const NutritionMealPlanner = () => {
       }
     : null;
 
+
+  const calculateGoals = () => {
+    const weightKg = calcForm.weightUnit === 'kg' ? Number(calcForm.weight) : Number(calcForm.weight) * 0.453592;
+    const weightLbs = calcForm.weightUnit === 'lbs' ? Number(calcForm.weight) : Number(calcForm.weight) * 2.20462;
+    const heightCm = calcForm.heightUnit === 'cm' ? Number(calcForm.cm) : (Number(calcForm.feet) * 12 + Number(calcForm.inches)) * 2.54;
+    const age = Number(calcForm.age);
+
+    const bmr = calcForm.gender === 'male'
+      ? 10 * weightKg + 6.25 * heightCm - 5 * age + 5
+      : 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
+
+    const activityMap: Record<string, number> = {
+      'sedentary': 1.2,
+      'lightly active': 1.375,
+      'moderately active': 1.55,
+      'very active': 1.725,
+      'extra active': 1.9,
+    };
+
+    const tdee = bmr * (activityMap[calcForm.activity] || 1.55);
+    const targetCalories = calcForm.goal === 'lose weight' ? tdee - 500 : calcForm.goal === 'gain muscle' ? tdee + 300 : tdee;
+    const protein = calcForm.goal === 'lose weight' ? weightLbs * 0.8 : weightLbs * 1;
+    const carbs = (targetCalories * 0.4) / 4;
+    const fat = (targetCalories * 0.3) / 9;
+
+    setCalcResult({ dailyCalorieGoal: Math.round(targetCalories), macroGoals: { protein: Math.round(protein), carbs: Math.round(carbs), fat: Math.round(fat) } });
+  };
+
+  const saveCalculatedGoals = async () => {
+    if (!calcResult) return;
+    try {
+      const response = await fetch('/api/meal-planner/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(calcResult),
+      });
+      if (!response.ok) throw new Error('failed');
+      setNutritionGoals(calcResult);
+      setShowCalcModal(false);
+      toast({ description: '✅ Goals updated' });
+    } catch {
+      toast({ variant: 'destructive', description: 'Failed to save goals' });
+    }
+  };
+
   if (!isPremium) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-50 to-orange-50">
@@ -1220,6 +1437,10 @@ const NutritionMealPlanner = () => {
           <div>
             <h1 className="text-3xl font-bold text-gray-900 mb-2">Nutrition & Meal Planning</h1>
             <p className="text-gray-600">Plan smarter, eat better, reach your goals</p>
+            <p className="text-sm text-orange-600 mt-1 font-medium">
+              <Flame className="w-4 h-4 inline mr-1" />
+              {streak.currentStreak > 0 ? `🔥 ${streak.currentStreak} day streak` : 'Start your streak today.'}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="secondary" className="bg-orange-100 text-orange-800 px-3 py-1">
@@ -1235,7 +1456,7 @@ const NutritionMealPlanner = () => {
 
         {/* Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-8 h-auto">
+          <TabsList className="grid w-full grid-cols-7 mb-8 h-auto">
             <TabsTrigger value="planner" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
               <Calendar className="w-4 h-4" />
               <span className="text-xs sm:text-sm">Planner</span>
@@ -1243,6 +1464,10 @@ const NutritionMealPlanner = () => {
             <TabsTrigger value="nutrition" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
               <Target className="w-4 h-4" />
               <span className="text-xs sm:text-sm">Nutrition</span>
+            </TabsTrigger>
+            <TabsTrigger value="body" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
+              <Scale className="w-4 h-4" />
+              <span className="text-xs sm:text-sm">Body</span>
             </TabsTrigger>
             <TabsTrigger value="grocery" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
               <ShoppingCart className="w-4 h-4" />
@@ -1420,7 +1645,7 @@ const NutritionMealPlanner = () => {
                                   {items.map((item: any, idx: number) => (
                                     <div key={idx} className="flex items-start justify-between gap-1 group">
                                       <div className="flex-1 min-w-0">
-                                        <div className="text-xs font-medium text-gray-900 truncate">{item.name}</div>
+                                        <div className="text-xs font-medium text-gray-900 truncate flex items-center gap-1">{item.name} {item.source === 'recipe' && <ChefHat className="w-3 h-3 text-orange-500" />} <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span></div>
                                         <div className="text-xs text-gray-400">{item.calories} cal · P:{item.protein}g</div>
                                       </div>
                                       <button
@@ -1545,7 +1770,7 @@ const NutritionMealPlanner = () => {
                                 {items.map((item: any, idx: number) => (
                                   <div key={idx} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
                                     <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-gray-900">{item.name}</div>
+                                      <div className="text-sm font-medium text-gray-900 flex items-center gap-1">{item.name} {item.source === 'recipe' && <ChefHat className="w-3.5 h-3.5 text-orange-500" />} <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span></div>
                                       <div className="flex gap-3 mt-0.5">
                                         <span className="text-xs text-gray-500">{item.calories} cal</span>
                                         <span className="text-xs text-blue-500">P: {item.protein}g</span>
@@ -1774,9 +1999,9 @@ const NutritionMealPlanner = () => {
                       <span className="text-sm">Fat</span>
                       <span className="text-sm font-medium">{macroGoals.fat || 65}g</span>
                     </div>
-                    <Button variant="outline" size="sm" className="w-full mt-4">
+                    <Button variant="outline" size="sm" className="w-full mt-4" onClick={() => setShowCalcModal(true)}>
                       <Target className="w-4 h-4 mr-2" />
-                      Adjust Goals
+                      Calculate My Goals
                     </Button>
                   </CardContent>
                 </Card>
@@ -1879,6 +2104,83 @@ const NutritionMealPlanner = () => {
                     </div>
                   </CardContent>
                 </Card>
+
+
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">Water Intake</CardTitle>
+                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={updateWaterTarget}><Settings className="w-4 h-4" /></Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-4 gap-2 mb-3">
+                      {Array.from({ length: water.dailyTarget || 8 }).slice(0, 8).map((_, idx) => {
+                        const filled = idx < water.glassesLogged;
+                        return (
+                          <button key={idx} onClick={() => saveWater(filled ? idx : idx + 1)} className={`p-2 rounded border ${filled ? 'bg-blue-100 border-blue-300' : 'bg-white border-gray-200'}`}>
+                            <Droplets className={`w-5 h-5 mx-auto ${filled ? 'text-blue-600 fill-blue-500' : 'text-gray-300'}`} />
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-sm text-gray-600">{water.glassesLogged} / {water.dailyTarget} glasses</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="body">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Weight Trend</CardTitle>
+                  </CardHeader>
+                  <CardContent className="h-72">
+                    {bodyMetricsLog.length > 0 ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={bodyMetricsLog.map((m: any) => ({ date: m.date, weight: Number(m.weightLbs) }))}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="date" />
+                          <YAxis />
+                          <Tooltip />
+                          <Line type="monotone" dataKey="weight" stroke="#f97316" strokeWidth={2} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="h-full flex items-center justify-center text-sm text-gray-500">No body metrics yet.</div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+              <div className="space-y-6">
+                <Card>
+                  <CardHeader><CardTitle className="text-lg">Log Body Metrics</CardTitle></CardHeader>
+                  <CardContent className="space-y-3">
+                    <input type="date" className="w-full border rounded px-3 py-2 text-sm" value={bodyForm.date} onChange={(e) => setBodyForm((p) => ({ ...p, date: e.target.value }))} />
+                    <div className="flex gap-2">
+                      <input type="number" className="flex-1 border rounded px-3 py-2 text-sm" placeholder={`Weight (${bodyForm.unit})`} value={bodyForm.weight} onChange={(e) => setBodyForm((p) => ({ ...p, weight: e.target.value }))} />
+                      <Button variant="outline" size="sm" onClick={() => setBodyForm((p) => ({ ...p, unit: p.unit === 'lbs' ? 'kg' : 'lbs' }))}>{bodyForm.unit.toUpperCase()}</Button>
+                    </div>
+                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="Body fat %" value={bodyForm.bodyFatPct} onChange={(e) => setBodyForm((p) => ({ ...p, bodyFatPct: e.target.value }))} />
+                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="Waist (in)" value={bodyForm.waistIn} onChange={(e) => setBodyForm((p) => ({ ...p, waistIn: e.target.value }))} />
+                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="Hips (in)" value={bodyForm.hipIn} onChange={(e) => setBodyForm((p) => ({ ...p, hipIn: e.target.value }))} />
+                    <Button className="w-full" onClick={saveBodyMetric}>Save Metric</Button>
+                  </CardContent>
+                </Card>
+                {bodyMetricsLog.length > 0 && (
+                  <Card>
+                    <CardHeader><CardTitle className="text-lg">Latest Entry</CardTitle></CardHeader>
+                    <CardContent>
+                      <p className="text-sm">Weight: <span className="font-semibold">{Number(bodyMetricsLog[bodyMetricsLog.length - 1]?.weightLbs).toFixed(1)} lbs</span></p>
+                      <p className="text-sm">Body Fat: <span className="font-semibold">{bodyMetricsLog[bodyMetricsLog.length - 1]?.bodyFatPct || '-'}%</span></p>
+                      <p className="text-sm">Waist: <span className="font-semibold">{bodyMetricsLog[bodyMetricsLog.length - 1]?.waistIn || '-'} in</span></p>
+                      <p className="text-sm">Hips: <span className="font-semibold">{bodyMetricsLog[bodyMetricsLog.length - 1]?.hipIn || '-'} in</span></p>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
             </div>
           </TabsContent>
@@ -2365,6 +2667,34 @@ const NutritionMealPlanner = () => {
           </TabsContent>
         </Tabs>
 
+        <Dialog open={showCalcModal} onOpenChange={setShowCalcModal}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Calculate My Goals</DialogTitle>
+              <DialogDescription>Use Mifflin-St Jeor to estimate calories and macros.</DialogDescription>
+            </DialogHeader>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <input type="number" className="border rounded px-3 py-2" placeholder="Age" value={calcForm.age} onChange={(e) => setCalcForm((p) => ({ ...p, age: Number(e.target.value) }))} />
+              <select className="border rounded px-3 py-2" value={calcForm.gender} onChange={(e) => setCalcForm((p) => ({ ...p, gender: e.target.value }))}><option value="male">Male</option><option value="female">Female</option></select>
+              <select className="border rounded px-3 py-2" value={calcForm.heightUnit} onChange={(e) => setCalcForm((p) => ({ ...p, heightUnit: e.target.value }))}><option value="ft">ft/in</option><option value="cm">cm</option></select>
+              {calcForm.heightUnit === 'cm' ? (
+                <input type="number" className="border rounded px-3 py-2" placeholder="Height (cm)" value={calcForm.cm} onChange={(e) => setCalcForm((p) => ({ ...p, cm: Number(e.target.value) }))} />
+              ) : (
+                <div className="flex gap-2"><input type="number" className="border rounded px-2 py-2 w-1/2" placeholder="ft" value={calcForm.feet} onChange={(e) => setCalcForm((p) => ({ ...p, feet: Number(e.target.value) }))} /><input type="number" className="border rounded px-2 py-2 w-1/2" placeholder="in" value={calcForm.inches} onChange={(e) => setCalcForm((p) => ({ ...p, inches: Number(e.target.value) }))} /></div>
+              )}
+              <select className="border rounded px-3 py-2" value={calcForm.weightUnit} onChange={(e) => setCalcForm((p) => ({ ...p, weightUnit: e.target.value }))}><option value="lbs">lbs</option><option value="kg">kg</option></select>
+              <input type="number" className="border rounded px-3 py-2" placeholder="Weight" value={calcForm.weight} onChange={(e) => setCalcForm((p) => ({ ...p, weight: Number(e.target.value) }))} />
+              <select className="border rounded px-3 py-2 col-span-2" value={calcForm.activity} onChange={(e) => setCalcForm((p) => ({ ...p, activity: e.target.value }))}><option>sedentary</option><option>lightly active</option><option>moderately active</option><option>very active</option><option>extra active</option></select>
+              <select className="border rounded px-3 py-2 col-span-2" value={calcForm.goal} onChange={(e) => setCalcForm((p) => ({ ...p, goal: e.target.value }))}><option>lose weight</option><option>maintain</option><option>gain muscle</option></select>
+            </div>
+            <div className="flex gap-2 mt-3">
+              <Button variant="outline" className="flex-1" onClick={calculateGoals}>Calculate</Button>
+              <Button className="flex-1" onClick={saveCalculatedGoals} disabled={!calcResult}>Save These Goals</Button>
+            </div>
+            {calcResult && <div className="text-sm bg-gray-50 rounded p-3">{calcResult.dailyCalorieGoal} kcal · P {calcResult.macroGoals.protein}g · C {calcResult.macroGoals.carbs}g · F {calcResult.macroGoals.fat}g</div>}
+          </DialogContent>
+        </Dialog>
+
         {/* Add Meal Modal — AI-powered */}
         {showAddMealModal && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -2404,6 +2734,43 @@ const NutritionMealPlanner = () => {
                       )}
                     </Button>
                   </div>
+                </div>
+
+                <div className="border rounded-lg p-3">
+                  <button className="text-sm font-medium flex items-center justify-between w-full" onClick={() => setShowRecentMeals((v) => !v)}>
+                    <span>Recent & Favorites</span>
+                    <span>{showRecentMeals ? '−' : '+'}</span>
+                  </button>
+                  {showRecentMeals && (
+                    <div className="mt-3 overflow-x-auto">
+                      <div className="flex gap-2 min-w-max">
+                        {mealHistory.map((meal: any) => (
+                          <div key={meal.id} className="flex items-center gap-1">
+                            <button
+                              className="px-3 py-1.5 rounded-full bg-gray-100 hover:bg-orange-100 text-xs"
+                              onClick={() => setMealForm((p) => ({ ...p, name: meal.name, calories: String(meal.calories || ''), protein: String(meal.protein || ''), carbs: String(meal.carbs || ''), fat: String(meal.fat || ''), fiber: String(meal.fiber || '') }))}
+                            >
+                              {meal.isFavorite ? '⭐ ' : ''}{meal.name}
+                            </button>
+                            <button
+                              className="text-yellow-500 text-xs"
+                              onClick={async () => {
+                                await fetch('/api/meal-planner/history/favorite', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  credentials: 'include',
+                                  body: JSON.stringify({ mealName: meal.name, isFavorite: !meal.isFavorite }),
+                                });
+                                fetchMealHistory();
+                              }}
+                            >
+                              {meal.isFavorite ? '★' : '☆'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Serving size + Quantity — shown after lookup */}
