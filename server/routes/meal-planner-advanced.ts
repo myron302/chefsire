@@ -22,7 +22,6 @@ import {
   mealFavorites,
   waterLogs,
   mealPlanEntries,
-  mealPlans,
 } from "../../shared/schema.js";
 import { requireAuth } from "../middleware";
 
@@ -1046,7 +1045,7 @@ router.get("/grocery-list/savings-report", requireAuth, async (req: Request, res
     }, {} as Record<string, { estimated: number; actual: number; saved: number; count: number }>);
 
     const topSavingCategories = Object.entries(categoryStats)
-      .map(([category, stats]) => ({ category, ...stats }))
+      .map(([category, stats]) => ({ category, ...(stats as { estimated: number; actual: number; saved: number; count: number }) }))
       .sort((a, b) => b.saved - a.saved)
       .slice(0, 5);
 
