@@ -97,6 +97,7 @@ import ProteinShakesHub from "@/pages/drinks/protein-shakes";
 import DetoxesHub from "@/pages/drinks/detoxes";
 import PotentPotablesHub from "@/pages/drinks/potent-potables";
 import CaffeinatedDrinksHub from "@/pages/drinks/caffeinated";
+import CanonicalDrinkRecipePage from "@/pages/drinks/recipe";
 
 // ========== CAFFEINATED DRINKS SUBCATEGORY PAGES ==========
 import EspressoDrinks from "@/pages/drinks/caffeinated/espresso";
@@ -315,6 +316,8 @@ function DrinksSection() {
   return (
     <DrinksProvider>
       <Switch>
+        <Route path="/drinks/recipe/:slug" component={CanonicalDrinkRecipePage} />
+
         {/* Category landing + explicit single-segment subcategory routes */}
         <Route path="/drinks/caffeinated">{() => <CaffeinatedSection />}</Route>
         <Route path="/drinks/caffeinated/:subcategory">{() => <CaffeinatedSection />}</Route>
