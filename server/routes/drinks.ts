@@ -66,26 +66,36 @@ r.get("/trending", async (_req, res) => {
     if (!db) {
       return res.json({
         ok: true,
-        window: "7d",
-        ranking: { formula: "views_last_24h * 2 + views_days_2_to_7" },
+        window: "30d",
+        ranking: { formula: "views_last_24h * 3 + views_last_7d * 1 + views_last_30d * 0.3 - hours_since_last_view * 0.05" },
         items: [],
       });
     }
 
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const hotScoreSql = sql<number>`
+      (
+        (sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end) * 3)
+        + (sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end) * 1)
+        + (count(*) * 0.3)
+        - ((extract(epoch from (now() - max(${drinkEvents.createdAt}))) / 3600.0) * 0.05)
+      )
+    `;
 
     const rows = await db
       .select({
         slug: drinkEvents.slug,
-        score: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`,
-        views7d: sql<number>`count(*)`,
+        score: hotScoreSql,
+        views7d: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end)`,
         views24h: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`,
       })
       .from(drinkEvents)
-      .where(and(eq(drinkEvents.eventType, "view"), gt(drinkEvents.createdAt, sevenDaysAgo)))
+      .where(and(eq(drinkEvents.eventType, "view"), gt(drinkEvents.createdAt, thirtyDaysAgo)))
       .groupBy(drinkEvents.slug)
-      .orderBy(desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`), desc(sql`count(*)`))
+      .orderBy(desc(hotScoreSql), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end)`))
       .limit(10);
 
     const items = rows
@@ -108,9 +118,9 @@ r.get("/trending", async (_req, res) => {
 
     return res.json({
       ok: true,
-      window: "7d",
+      window: "30d",
       ranking: {
-        formula: "views_last_24h * 2 + views_days_2_to_7",
+        formula: "views_last_24h * 3 + views_last_7d * 1 + views_last_30d * 0.3 - hours_since_last_view * 0.05",
       },
       items,
     });
@@ -141,18 +151,28 @@ r.get("/trending/by-category", async (req, res) => {
 
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const hotScoreSql = sql<number>`
+      (
+        (sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end) * 3)
+        + (sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end) * 1)
+        + (count(*) * 0.3)
+        - ((extract(epoch from (now() - max(${drinkEvents.createdAt}))) / 3600.0) * 0.05)
+      )
+    `;
 
     const rows = await db
       .select({
         slug: drinkEvents.slug,
-        score: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`,
-        views7d: sql<number>`count(*)`,
+        score: hotScoreSql,
+        views7d: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end)`,
         views24h: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`,
       })
       .from(drinkEvents)
-      .where(and(eq(drinkEvents.eventType, "view"), gt(drinkEvents.createdAt, sevenDaysAgo)))
+      .where(and(eq(drinkEvents.eventType, "view"), gt(drinkEvents.createdAt, thirtyDaysAgo)))
       .groupBy(drinkEvents.slug)
-      .orderBy(desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`), desc(sql`count(*)`));
+      .orderBy(desc(hotScoreSql), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end)`));
 
     const items = rows
       .map((row) => {
