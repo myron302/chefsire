@@ -184,6 +184,88 @@ r.get("/trending/by-category", async (req, res) => {
   }
 });
 
+// Recommended canonical drinks based on recently viewed slugs
+r.get("/recommended", async (req, res) => {
+  try {
+    const recentFromQuery = typeof req.query?.recent === "string" ? req.query.recent : "";
+    const recentFromBody = Array.isArray(req.body?.recent)
+      ? req.body.recent.join(",")
+      : typeof req.body?.recent === "string"
+        ? req.body.recent
+        : "";
+
+    const recentSlugs = (recentFromQuery || recentFromBody)
+      .split(",")
+      .map((slug) => slug.trim())
+      .filter(Boolean);
+
+    const recentSet = new Set(recentSlugs);
+
+    if (!db) {
+      return res.json({ ok: true, items: [] });
+    }
+
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const rows = await db
+      .select({
+        slug: drinkEvents.slug,
+        score: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`,
+        views7d: sql<number>`count(*)`,
+      })
+      .from(drinkEvents)
+      .where(and(eq(drinkEvents.eventType, "view"), gt(drinkEvents.createdAt, sevenDaysAgo)))
+      .groupBy(drinkEvents.slug)
+      .orderBy(desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`), desc(sql`count(*)`));
+
+    const recentCategoryRoutes = new Set(
+      recentSlugs
+        .map((slug) => getCanonicalDrinkBySlug(slug)?.sourceRoute)
+        .filter((route): route is string => Boolean(route))
+    );
+
+    const scopedRows = rows.filter((row) => {
+      if (recentCategoryRoutes.size === 0) return true;
+
+      const canonicalRecipe = getCanonicalDrinkBySlug(row.slug);
+      if (!canonicalRecipe) return false;
+
+      return recentCategoryRoutes.has(canonicalRecipe.sourceRoute);
+    });
+
+    const items = scopedRows
+      .map((row) => {
+        const canonicalRecipe = getCanonicalDrinkBySlug(row.slug);
+        if (!canonicalRecipe || recentSet.has(canonicalRecipe.slug)) return null;
+
+        return {
+          slug: canonicalRecipe.slug,
+          name: canonicalRecipe.name,
+          image: canonicalRecipe.image ?? null,
+          route: canonicalRecipe.route,
+          sourceCategoryRoute: canonicalRecipe.sourceRoute,
+          score: Number(row.score ?? 0),
+          views7d: Number(row.views7d ?? 0),
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 8)
+      .map((item) => ({
+        slug: item.slug,
+        name: item.name,
+        image: item.image,
+        route: item.route,
+        sourceCategoryRoute: item.sourceCategoryRoute,
+      }));
+
+    return res.json({ ok: true, items });
+  } catch (error: any) {
+    console.error("Error getting recommended drinks:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch recommended drinks" });
+  }
+});
+
 // Simple mock auth middleware (replace with real auth)
 const authenticateUser = (req: any, _res: any, next: any) => {
   req.user = { id: "user-123" };
