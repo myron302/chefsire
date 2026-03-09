@@ -13,6 +13,7 @@ import {
   PlayCircle, BookOpen, Share2, Eye, ThumbsUp, MessageCircle,
   X
 } from 'lucide-react';
+import TrendingDrinks from "@/components/drinks/TrendingDrinks";
 
 const drinkCategories = [
   {
@@ -482,6 +483,8 @@ export default function DrinksPage() {
             </div>
           )}
         </div>
+
+        <TrendingDrinks />
 
         {/* Featured Recipes */}
         <div className="mb-12">
