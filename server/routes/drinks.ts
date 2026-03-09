@@ -120,6 +120,70 @@ r.get("/trending", async (_req, res) => {
   }
 });
 
+// Trending canonical drinks scoped to a source category route
+r.get("/trending/by-category", async (req, res) => {
+  try {
+    const sourceCategoryRoute = typeof req.query?.sourceCategoryRoute === "string"
+      ? req.query.sourceCategoryRoute.trim()
+      : "";
+
+    if (!sourceCategoryRoute) {
+      return res.status(400).json({ ok: false, error: "sourceCategoryRoute is required" });
+    }
+
+    if (!db) {
+      return res.json({
+        ok: true,
+        sourceCategoryRoute,
+        items: [],
+      });
+    }
+
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const rows = await db
+      .select({
+        slug: drinkEvents.slug,
+        score: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`,
+        views7d: sql<number>`count(*)`,
+        views24h: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`,
+      })
+      .from(drinkEvents)
+      .where(and(eq(drinkEvents.eventType, "view"), gt(drinkEvents.createdAt, sevenDaysAgo)))
+      .groupBy(drinkEvents.slug)
+      .orderBy(desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`), desc(sql`count(*)`));
+
+    const items = rows
+      .map((row) => {
+        const canonicalRecipe = getCanonicalDrinkBySlug(row.slug);
+        if (!canonicalRecipe || canonicalRecipe.sourceRoute !== sourceCategoryRoute) return null;
+
+        return {
+          slug: canonicalRecipe.slug,
+          name: canonicalRecipe.name,
+          image: canonicalRecipe.image ?? null,
+          route: canonicalRecipe.route,
+          sourceCategoryRoute: canonicalRecipe.sourceRoute,
+          score: Number(row.score ?? 0),
+          views7d: Number(row.views7d ?? 0),
+          views24h: Number(row.views24h ?? 0),
+        };
+      })
+      .filter(Boolean)
+      .slice(0, 6);
+
+    return res.json({
+      ok: true,
+      sourceCategoryRoute,
+      items,
+    });
+  } catch (error: any) {
+    console.error("Error getting category trending drinks:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch category trending drinks" });
+  }
+});
+
 // Simple mock auth middleware (replace with real auth)
 const authenticateUser = (req: any, _res: any, next: any) => {
   req.user = { id: "user-123" };

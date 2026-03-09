@@ -15,6 +15,7 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import TrendingDrinksByCategory from "@/components/drinks/TrendingDrinksByCategory";
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -604,6 +605,12 @@ export default function EspressoDrinksPage() {
             </div>
           </CardContent>
         </Card>
+
+
+        <TrendingDrinksByCategory
+          sourceCategoryRoute="/drinks/caffeinated/espresso"
+          title="Trending Espresso Recipes"
+        />
 
         {/* Espresso Advantages */}
         <Card className="mb-8">

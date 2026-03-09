@@ -13,6 +13,7 @@ import {
 , Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import TrendingDrinksByCategory from "@/components/drinks/TrendingDrinksByCategory";
 import { ginRecipes } from "@/data/drinks/potent-potables/gin";
 
 // ---------- Helpers ----------
@@ -315,7 +316,13 @@ export default function GinCocktailsPage() {
             </CardContent>
           </Card>
 
-          {/* Quick Stats */}
+  
+        <TrendingDrinksByCategory
+          sourceCategoryRoute="/drinks/potent-potables/gin"
+          title="Trending Gin Recipes"
+        />
+
+        {/* Quick Stats */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             <Card>
               <CardContent className="p-4 text-center">
