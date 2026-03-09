@@ -102,6 +102,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const ingredients = asList(recipe?.ingredients ?? userRecipe?.ingredients ?? []);
   const instructionSteps = asList(recipe?.instructions ?? userRecipe?.instructions ?? []);
   const description = recipe?.description ?? userRecipe?.description;
+  const remixSourceSlug = canonicalRecipe?.slug ?? userRecipe?.slug;
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl space-y-6">
@@ -114,6 +115,14 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
         </Link>
         <Badge variant="secondary">{canonicalRecipe ? "Canonical Recipe" : "ChefSire Community Recipe"}</Badge>
       </div>
+
+      {remixSourceSlug ? (
+        <div>
+          <Link href={`/drinks/submit?remix=${encodeURIComponent(remixSourceSlug)}`}>
+            <Button>Remix this drink</Button>
+          </Link>
+        </div>
+      ) : null}
 
       <Card>
         <CardHeader className="space-y-2">
