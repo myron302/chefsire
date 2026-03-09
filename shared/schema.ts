@@ -925,6 +925,38 @@ export const drinkEvents = pgTable(
   })
 );
 
+export const drinkRecipes = pgTable(
+  "drink_recipes",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    slug: varchar("slug", { length: 200 }).notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description"),
+    ingredients: jsonb("ingredients").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    instructions: jsonb("instructions").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    glassware: text("glassware"),
+    method: text("method"),
+    prepTime: integer("prep_time"),
+    servingSize: text("serving_size"),
+    difficulty: text("difficulty"),
+    spiritType: text("spirit_type"),
+    abv: text("abv"),
+    image: text("image"),
+    category: text("category").notNull(),
+    subcategory: text("subcategory"),
+    userId: varchar("user_id").references(() => users.id),
+    source: varchar("source", { length: 50 }).notNull().default("chefsire"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("drink_recipes_slug_idx").on(table.slug),
+    categoryIdx: index("drink_recipes_category_idx").on(table.category),
+    sourceIdx: index("drink_recipes_source_idx").on(table.source),
+    userIdx: index("drink_recipes_user_idx").on(table.userId),
+  })
+);
+
 export const recipeSaves = pgTable(
   "recipe_saves",
   {
@@ -1394,6 +1426,13 @@ export const insertDrinkEventSchema = createInsertSchema(drinkEvents).omit({
   createdAt: true,
 });
 
+export const insertDrinkRecipeSchema = createInsertSchema(drinkRecipes).omit({
+  id: true,
+  source: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertRecipeSaveSchema = createInsertSchema(recipeSaves).omit({
   id: true,
   createdAt: true,
@@ -1556,6 +1595,8 @@ export type DrinkSave = typeof drinkSaves.$inferSelect;
 export type InsertDrinkSave = z.infer<typeof insertDrinkSaveSchema>;
 export type DrinkEvent = typeof drinkEvents.$inferSelect;
 export type InsertDrinkEvent = z.infer<typeof insertDrinkEventSchema>;
+export type DrinkRecipe = typeof drinkRecipes.$inferSelect;
+export type InsertDrinkRecipe = z.infer<typeof insertDrinkRecipeSchema>;
 export type RecipeSave = typeof recipeSaves.$inferSelect;
 export type InsertRecipeSave = z.infer<typeof insertRecipeSaveSchema>;
 export type UserDrinkStats = typeof userDrinkStats.$inferSelect;

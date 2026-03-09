@@ -251,6 +251,11 @@ export default function DrinksPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+      <div className="container mx-auto px-4 pt-6">
+        <Link href="/drinks/submit">
+          <Button className="mb-4">Submit a Drink Recipe</Button>
+        </Link>
+      </div>
       
       {/* Recipe Modal */}
       {selectedRecipe && (

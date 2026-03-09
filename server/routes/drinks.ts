@@ -1,6 +1,6 @@
 // server/routes/drinks.ts
 import { Router } from "express";
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, or, sql } from "drizzle-orm";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
 import { db } from "../db";
@@ -10,7 +10,9 @@ import {
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
   insertDrinkSaveSchema,
-  drinkEvents
+  drinkEvents,
+  drinkRecipes,
+  insertDrinkRecipeSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -23,6 +25,123 @@ const TRACKABLE_DRINK_EVENTS = new Set<EventType>(["view"]);
 function resolveUserId(req: any): string | null {
   return typeof req?.user?.id === "string" && req.user.id.trim() ? req.user.id : null;
 }
+
+function slugifyDrinkRecipeName(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+async function getUserRecipeBySlug(slug: string) {
+  if (!db) return null;
+  const rows = await db.select().from(drinkRecipes).where(eq(drinkRecipes.slug, slug)).limit(1);
+  return rows[0] ?? null;
+}
+
+async function resolveDrinkDetailsBySlug(slug: string) {
+  const canonicalRecipe = getCanonicalDrinkBySlug(slug);
+  if (canonicalRecipe) {
+    return {
+      slug: canonicalRecipe.slug,
+      name: canonicalRecipe.name,
+      image: canonicalRecipe.image ?? null,
+      route: canonicalRecipe.route,
+      sourceCategoryRoute: canonicalRecipe.sourceRoute,
+      source: "chefsire" as const,
+      category: canonicalRecipe.sourceRoute.replace("/drinks/", "").split("/")[0] ?? "",
+      subcategory: canonicalRecipe.sourceRoute.replace("/drinks/", "").split("/")[1] ?? null,
+    };
+  }
+
+  const userRecipe = await getUserRecipeBySlug(slug);
+  if (!userRecipe) return null;
+
+  return {
+    slug: userRecipe.slug,
+    name: userRecipe.name,
+    image: userRecipe.image ?? null,
+    route: `/drinks/recipe/${userRecipe.slug}`,
+    sourceCategoryRoute: `/drinks/${userRecipe.category}${userRecipe.subcategory ? `/${userRecipe.subcategory}` : ""}`,
+    source: "chefsire" as const,
+    category: userRecipe.category,
+    subcategory: userRecipe.subcategory ?? null,
+  };
+}
+
+
+// Submit a user drink recipe
+r.post("/submit", authenticateUser, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const name = String(req.body?.name ?? "").trim();
+    if (!name) {
+      return res.status(400).json({ ok: false, error: "name is required" });
+    }
+
+    const baseSlug = slugifyDrinkRecipeName(name) || "user-drink";
+    let slug = baseSlug;
+    let suffix = 2;
+
+    while (await getUserRecipeBySlug(slug)) {
+      slug = `${baseSlug}-${suffix}`;
+      suffix += 1;
+    }
+
+    const parsed = insertDrinkRecipeSchema.parse({
+      slug,
+      name,
+      description: str(req.body?.description),
+      ingredients: Array.isArray(req.body?.ingredients) ? req.body.ingredients.map((v: unknown) => String(v)).filter(Boolean) : [],
+      instructions: Array.isArray(req.body?.instructions) ? req.body.instructions.map((v: unknown) => String(v)).filter(Boolean) : [],
+      glassware: str(req.body?.glassware),
+      method: str(req.body?.method),
+      prepTime: typeof req.body?.prepTime === "number" ? req.body.prepTime : undefined,
+      servingSize: str(req.body?.servingSize),
+      difficulty: str(req.body?.difficulty),
+      spiritType: str(req.body?.spiritType),
+      abv: str(req.body?.abv),
+      image: str(req.body?.image),
+      category: str(req.body?.category) || "smoothies",
+      subcategory: str(req.body?.subcategory),
+      userId: resolveUserId(req),
+    });
+
+    const rows = await db.insert(drinkRecipes).values({ ...parsed, source: "chefsire" }).returning();
+    return res.status(201).json({ ok: true, recipe: rows[0] });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ ok: false, error: "Invalid drink recipe data", details: error.errors });
+    }
+    console.error("Error submitting drink recipe:", error);
+    return res.status(500).json({ ok: false, error: "Failed to submit drink recipe" });
+  }
+});
+
+// Fetch a user-submitted drink recipe
+r.get("/user/:slug", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+    const slug = String(req.params?.slug ?? "").trim();
+    if (!slug) return res.status(400).json({ ok: false, error: "slug is required" });
+
+    const recipe = await getUserRecipeBySlug(slug);
+    if (!recipe) return res.status(404).json({ ok: false, error: "Recipe not found" });
+
+    return res.json({ ok: true, recipe });
+  } catch (error) {
+    console.error("Error fetching user drink recipe:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch drink recipe" });
+  }
+});
 
 // Track canonical drink recipe events
 r.post("/events", async (req, res) => {
@@ -43,8 +162,9 @@ r.post("/events", async (req, res) => {
     }
 
     const canonicalRecipe = getCanonicalDrinkBySlug(slug);
-    if (!canonicalRecipe) {
-      return res.status(404).json({ ok: false, error: "Unknown canonical drink slug" });
+    const userRecipe = canonicalRecipe ? null : await getUserRecipeBySlug(slug);
+    if (!canonicalRecipe && !userRecipe) {
+      return res.status(404).json({ ok: false, error: "Unknown drink slug" });
     }
 
     await db.insert(drinkEvents).values({
@@ -98,17 +218,19 @@ r.get("/trending", async (_req, res) => {
       .orderBy(desc(hotScoreSql), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end)`))
       .limit(10);
 
-    const items = rows
-      .map((row) => {
-        const canonicalRecipe = getCanonicalDrinkBySlug(row.slug);
-        if (!canonicalRecipe) return null;
+    const resolved = await Promise.all(rows.map((row) => resolveDrinkDetailsBySlug(row.slug)));
 
+    const items = resolved
+      .map((item, index) => {
+        if (!item) return null;
+        const row = rows[index];
         return {
-          slug: canonicalRecipe.slug,
-          name: canonicalRecipe.name,
-          image: canonicalRecipe.image ?? null,
-          route: canonicalRecipe.route,
-          sourceCategoryRoute: canonicalRecipe.sourceRoute,
+          slug: item.slug,
+          name: item.name,
+          image: item.image,
+          route: item.route,
+          sourceCategoryRoute: item.sourceCategoryRoute,
+          source: item.source,
           score: Number(row.score ?? 0),
           views7d: Number(row.views7d ?? 0),
           views24h: Number(row.views24h ?? 0),
@@ -174,17 +296,19 @@ r.get("/trending/by-category", async (req, res) => {
       .groupBy(drinkEvents.slug)
       .orderBy(desc(hotScoreSql), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end)`));
 
-    const items = rows
-      .map((row) => {
-        const canonicalRecipe = getCanonicalDrinkBySlug(row.slug);
-        if (!canonicalRecipe || canonicalRecipe.sourceRoute !== sourceCategoryRoute) return null;
+    const resolved = await Promise.all(rows.map((row) => resolveDrinkDetailsBySlug(row.slug)));
 
+    const items = resolved
+      .map((item, index) => {
+        if (!item || item.sourceCategoryRoute !== sourceCategoryRoute) return null;
+        const row = rows[index];
         return {
-          slug: canonicalRecipe.slug,
-          name: canonicalRecipe.name,
-          image: canonicalRecipe.image ?? null,
-          route: canonicalRecipe.route,
-          sourceCategoryRoute: canonicalRecipe.sourceRoute,
+          slug: item.slug,
+          name: item.name,
+          image: item.image,
+          route: item.route,
+          sourceCategoryRoute: item.sourceCategoryRoute,
+          source: item.source,
           score: Number(row.score ?? 0),
           views7d: Number(row.views7d ?? 0),
           views24h: Number(row.views24h ?? 0),
@@ -239,45 +363,39 @@ r.get("/recommended", async (req, res) => {
       .groupBy(drinkEvents.slug)
       .orderBy(desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`), desc(sql`count(*)`));
 
+    const recentDetails = await Promise.all(recentSlugs.map((slug) => resolveDrinkDetailsBySlug(slug)));
     const recentCategoryRoutes = new Set(
-      recentSlugs
-        .map((slug) => getCanonicalDrinkBySlug(slug)?.sourceRoute)
+      recentDetails
+        .map((entry) => entry?.sourceCategoryRoute)
         .filter((route): route is string => Boolean(route))
     );
 
-    const scopedRows = rows.filter((row) => {
-      if (recentCategoryRoutes.size === 0) return true;
+    const scopedRows: typeof rows = [];
+    for (const row of rows) {
+      if (recentCategoryRoutes.size === 0) {
+        scopedRows.push(row);
+        continue;
+      }
+      const details = await resolveDrinkDetailsBySlug(row.slug);
+      if (details && recentCategoryRoutes.has(details.sourceCategoryRoute)) {
+        scopedRows.push(row);
+      }
+    }
 
-      const canonicalRecipe = getCanonicalDrinkBySlug(row.slug);
-      if (!canonicalRecipe) return false;
-
-      return recentCategoryRoutes.has(canonicalRecipe.sourceRoute);
-    });
-
-    const items = scopedRows
-      .map((row) => {
-        const canonicalRecipe = getCanonicalDrinkBySlug(row.slug);
-        if (!canonicalRecipe || recentSet.has(canonicalRecipe.slug)) return null;
-
-        return {
-          slug: canonicalRecipe.slug,
-          name: canonicalRecipe.name,
-          image: canonicalRecipe.image ?? null,
-          route: canonicalRecipe.route,
-          sourceCategoryRoute: canonicalRecipe.sourceRoute,
-          score: Number(row.score ?? 0),
-          views7d: Number(row.views7d ?? 0),
-        };
-      })
-      .filter(Boolean)
-      .slice(0, 8)
-      .map((item) => ({
+    const mapped = await Promise.all(scopedRows.map(async (row) => {
+      const item = await resolveDrinkDetailsBySlug(row.slug);
+      if (!item || recentSet.has(item.slug)) return null;
+      return {
         slug: item.slug,
         name: item.name,
         image: item.image,
         route: item.route,
         sourceCategoryRoute: item.sourceCategoryRoute,
-      }));
+        source: item.source,
+      };
+    }));
+
+    const items = mapped.filter(Boolean).slice(0, 8);
 
     return res.json({ ok: true, items });
   } catch (error: any) {
@@ -286,11 +404,61 @@ r.get("/recommended", async (req, res) => {
   }
 });
 
+
+
+// Search drinks across canonical + user submissions
+r.get("/search", async (req, res) => {
+  try {
+    const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
+    if (!q) return res.json({ ok: true, items: [] });
+
+    const canonicalMatches = searchDrinks({ q, source: "external", pageSize: 10, offset: 0 });
+
+    let userMatches: any[] = [];
+    if (db) {
+      userMatches = await db
+        .select()
+        .from(drinkRecipes)
+        .where(
+          or(
+            ilike(drinkRecipes.name, `%${q}%`),
+            ilike(drinkRecipes.description, `%${q}%`),
+            ilike(drinkRecipes.category, `%${q}%`),
+            ilike(drinkRecipes.subcategory, `%${q}%`)
+          )
+        )
+        .limit(20);
+    }
+
+    const external = (await canonicalMatches).results.map((item) => ({
+      slug: item.sourceId,
+      name: item.title,
+      image: item.imageUrl ?? null,
+      route: `/drinks/recipe/${item.sourceId}`,
+      source: "external",
+    }));
+
+    const userItems = userMatches.map((item) => ({
+      slug: item.slug,
+      name: item.name,
+      image: item.image ?? null,
+      route: `/drinks/recipe/${item.slug}`,
+      source: "chefsire",
+      sourceCategoryRoute: `/drinks/${item.category}${item.subcategory ? `/${item.subcategory}` : ""}`,
+    }));
+
+    return res.json({ ok: true, items: [...userItems, ...external] });
+  } catch (error) {
+    console.error("Error searching drinks:", error);
+    return res.status(500).json({ ok: false, error: "Failed to search drinks" });
+  }
+});
+
 // Simple mock auth middleware (replace with real auth)
-const authenticateUser = (req: any, _res: any, next: any) => {
+function authenticateUser(req: any, _res: any, next: any) {
   req.user = { id: "user-123" };
   next();
-};
+}
 
 // Helper to coerce query values into strings
 function str(v: unknown): string | undefined {

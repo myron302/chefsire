@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import RequireAgeGate from "@/components/RequireAgeGate";
@@ -7,6 +7,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { addRecentlyViewedDrinkSlug } from "@/components/drinks/RecentlyViewedDrinks";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
+
+type UserDrinkRecipe = {
+  slug: string;
+  name: string;
+  description?: string | null;
+  ingredients: string[];
+  instructions: string[];
+  image?: string | null;
+  category: string;
+  subcategory?: string | null;
+};
 
 function asList(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -25,26 +36,40 @@ function asList(value: unknown): string[] {
 
 function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const canonicalRecipe = getCanonicalDrinkRecipeBySlug(slug);
+  const [userRecipe, setUserRecipe] = useState<UserDrinkRecipe | null>(null);
+  const [userRecipeLoaded, setUserRecipeLoaded] = useState(false);
 
   useEffect(() => {
-    if (!canonicalRecipe?.slug) return;
+    if (canonicalRecipe) return;
 
-    addRecentlyViewedDrinkSlug(canonicalRecipe.slug);
+    fetch(`/api/drinks/user/${encodeURIComponent(slug)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        setUserRecipe(payload?.recipe ?? null);
+      })
+      .catch(() => setUserRecipe(null))
+      .finally(() => setUserRecipeLoaded(true));
+  }, [canonicalRecipe, slug]);
+
+  useEffect(() => {
+    if (!slug) return;
+
+    addRecentlyViewedDrinkSlug(slug);
 
     fetch("/api/drinks/events", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
-        slug: canonicalRecipe.slug,
+        slug,
         eventType: "view",
       }),
     }).catch(() => {
       // Non-blocking analytics event.
     });
-  }, [canonicalRecipe?.slug]);
+  }, [slug]);
 
-  if (!canonicalRecipe) {
+  if (!canonicalRecipe && !userRecipe && userRecipeLoaded) {
     return (
       <div className="container mx-auto px-4 py-10 max-w-3xl">
         <Card>
@@ -64,10 +89,19 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
     );
   }
 
-  const { recipe, name, sourceRoute, sourceTitle } = canonicalRecipe;
-  const imageUrl = typeof recipe.image === "string" ? recipe.image : typeof recipe.imageUrl === "string" ? recipe.imageUrl : "";
-  const ingredients = asList(recipe.ingredients);
-  const instructionSteps = asList(recipe.instructions);
+  if (!canonicalRecipe && !userRecipe) {
+    return <div className="container mx-auto px-4 py-10 max-w-3xl text-muted-foreground">Loading recipe...</div>;
+  }
+
+  const displayName = canonicalRecipe?.name ?? userRecipe?.name ?? "Drink Recipe";
+  const sourceRoute = canonicalRecipe?.sourceRoute ?? `/drinks/${userRecipe?.category ?? "smoothies"}`;
+  const sourceTitle = canonicalRecipe?.sourceTitle ?? "Community Recipes";
+
+  const recipe = canonicalRecipe?.recipe;
+  const imageUrl = (typeof recipe?.image === "string" ? recipe.image : typeof recipe?.imageUrl === "string" ? recipe.imageUrl : "") || userRecipe?.image || "";
+  const ingredients = asList(recipe?.ingredients ?? userRecipe?.ingredients ?? []);
+  const instructionSteps = asList(recipe?.instructions ?? userRecipe?.instructions ?? []);
+  const description = recipe?.description ?? userRecipe?.description;
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl space-y-6">
@@ -78,13 +112,13 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
             Back to category
           </Button>
         </Link>
-        <Badge variant="secondary">Canonical Recipe</Badge>
+        <Badge variant="secondary">{canonicalRecipe ? "Canonical Recipe" : "ChefSire Community Recipe"}</Badge>
       </div>
 
       <Card>
         <CardHeader className="space-y-2">
-          <CardTitle className="text-3xl">{name}</CardTitle>
-          {recipe.description ? <p className="text-muted-foreground">{recipe.description}</p> : null}
+          <CardTitle className="text-3xl">{displayName}</CardTitle>
+          {description ? <p className="text-muted-foreground">{description}</p> : null}
           <div className="text-sm text-muted-foreground">
             Category:{" "}
             <Link href={sourceRoute} className="underline underline-offset-2">
@@ -96,7 +130,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
           {imageUrl ? (
             <img
               src={imageUrl}
-              alt={name}
+              alt={displayName}
               className="w-full max-h-[360px] object-cover rounded-lg border"
               loading="lazy"
             />
