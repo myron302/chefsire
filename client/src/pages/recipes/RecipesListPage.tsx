@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Loader2, Clock, Users, ExternalLink, LayoutGrid, List } from "lucide-react";
 import { SpoonRating } from "@/components/SpoonRating";
 import { RecipeReviews } from "@/components/RecipeReviews";
+import { CONTENT_SOURCE_LABELS, type ContentSourceFilter } from "@shared/content-source";
 
 /** Very permissive shape — we'll normalize on the client */
 type RecipeItem = {
@@ -42,7 +43,7 @@ type RecipeItem = {
   sourceURL?: string | null;
   source_link?: string | null;
   url?: string | null;
-  source?: string | null; // sometimes a URL, sometimes just a label
+  source?: "all" | "chefsire" | "external" | string | null; // sometimes a URL, sometimes just a label
 };
 
 type SearchOk = { ok: true; total?: number; source?: string; items: RecipeItem[]; hasMore?: boolean };
@@ -150,6 +151,7 @@ function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boo
           <div className="flex flex-wrap gap-2 mb-4">
             {r.cuisine && <Badge variant="secondary">{r.cuisine}</Badge>}
             {r.mealType && <Badge variant="outline">{r.mealType}</Badge>}
+            <Badge variant="secondary">{r.source === "chefsire" ? "ChefSire" : "External"}</Badge>
             {(r.dietTags || []).map((t) => (
               <Badge key={t} variant="outline" className="capitalize">
                 {t}
@@ -231,6 +233,7 @@ function RecipeCard({ r, onCardClick }: { r: RecipeItem; onCardClick: (recipe: R
         <div className="flex flex-wrap gap-1">
           {r.cuisine ? <Badge variant="secondary">{r.cuisine}</Badge> : null}
           {r.mealType ? <Badge variant="outline">{r.mealType}</Badge> : null}
+          <Badge variant="secondary">{r.source === "chefsire" ? "ChefSire" : "External"}</Badge>
           {(r.dietTags || []).slice(0, 3).map((t) => (
             <Badge key={t} variant="outline" className="capitalize">
               {t}
@@ -250,6 +253,7 @@ function RecipeCard({ r, onCardClick }: { r: RecipeItem; onCardClick: (recipe: R
 
 export default function RecipesListPage() {
   const [q, setQ] = React.useState("");
+  const [sourceFilter, setSourceFilter] = React.useState<ContentSourceFilter>("all");
   const [loading, setLoading] = React.useState(false);
   const [isFetchingNext, setIsFetchingNext] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
@@ -263,18 +267,25 @@ export default function RecipesListPage() {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlQuery = params.get("q");
+    const sourceFromUrl = params.get("source");
+    if (sourceFromUrl === "chefsire" || sourceFromUrl === "external" || sourceFromUrl === "all") {
+      setSourceFilter(sourceFromUrl);
+    }
     if (urlQuery) {
       setQ(urlQuery);
-      startNewSearch(urlQuery);
+      startNewSearch(urlQuery, (sourceFromUrl === "chefsire" || sourceFromUrl === "external" || sourceFromUrl === "all") ? sourceFromUrl : "all");
     } else {
-      startRandom(); // initial random
+      startRandom((sourceFromUrl === "chefsire" || sourceFromUrl === "external" || sourceFromUrl === "all") ? sourceFromUrl : "all"); // initial random
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ---- API helpers
-  async function fetchRandom(count = 24) {
-    const res = await fetch(`/api/recipes/random?count=${count}`);
+  async function fetchRandom(count = 24, source: ContentSourceFilter = sourceFilter) {
+    const params = new URLSearchParams();
+    params.set("count", String(count));
+    params.set("source", source);
+    const res = await fetch(`/api/recipes/random?${params.toString()}`);
     const json = (await res.json()) as SearchResponse;
     if (!res.ok || !("ok" in json) || json.ok === false) {
       const msg = (json as any)?.error || (await res.text()) || `Request failed (${res.status})`;
@@ -283,11 +294,12 @@ export default function RecipesListPage() {
     return json.items || [];
   }
 
-  async function fetchSearch(term: string, pageOffset: number, pageSize = 24) {
+  async function fetchSearch(term: string, pageOffset: number, pageSize = 24, source: ContentSourceFilter = sourceFilter) {
     const params = new URLSearchParams();
     params.set("q", term.trim());
     params.set("pageSize", String(pageSize));
     params.set("offset", String(pageOffset));
+    params.set("source", source);
     const res = await fetch(`/api/recipes/search?${params.toString()}`);
     const json = (await res.json()) as SearchResponse;
     if (!res.ok || !("ok" in json) || json.ok === false) {
@@ -298,7 +310,7 @@ export default function RecipesListPage() {
   }
 
   // ---- mode runners
-  async function startRandom() {
+  async function startRandom(source: ContentSourceFilter = sourceFilter) {
     if (loading) return;
     setLoading(true);
     setErr(null);
@@ -306,7 +318,7 @@ export default function RecipesListPage() {
     setHasMore(true);
     setOffset(0);
     try {
-      const first = await fetchRandom(24);
+      const first = await fetchRandom(24, source);
       setItems(first);
       // always allow more in random mode (you can cap if you want)
       setHasMore(true);
@@ -319,7 +331,7 @@ export default function RecipesListPage() {
     }
   }
 
-  async function startNewSearch(term: string) {
+  async function startNewSearch(term: string, source: ContentSourceFilter = sourceFilter) {
     if (loading) return;
     setLoading(true);
     setErr(null);
@@ -327,7 +339,7 @@ export default function RecipesListPage() {
     setHasMore(true);
     setOffset(0);
     try {
-      const first = await fetchSearch(term, 0, 24);
+      const first = await fetchSearch(term, 0, 24, source);
       setItems(first);
       setOffset(first.length);
       setHasMore(first.length === 24);
@@ -346,7 +358,7 @@ export default function RecipesListPage() {
     if (!q.trim()) {
       try {
         setIsFetchingNext(true);
-        const next = await fetchRandom(24);
+        const next = await fetchRandom(24, sourceFilter);
         setItems((prev) => [...prev, ...next]);
         // keep hasMore true for endless random; cap if desired
       } catch (e: any) {
@@ -359,7 +371,7 @@ export default function RecipesListPage() {
     // SEARCH mode => use offset pagination
     try {
       setIsFetchingNext(true);
-      const next = await fetchSearch(q, offset, 24);
+      const next = await fetchSearch(q, offset, 24, sourceFilter);
       setItems((prev) => [...prev, ...next]);
       setOffset((prev) => prev + next.length);
       setHasMore(next.length === 24);
@@ -389,7 +401,7 @@ export default function RecipesListPage() {
     return () => obs.disconnect();
     // Include only flags that change the fetchability, not offset (random ignores offset)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMore, loading, isFetchingNext, q]);
+  }, [hasMore, loading, isFetchingNext, q, sourceFilter]);
 
   // ---- Handlers
   const handleSearchClick = () => {
@@ -431,6 +443,26 @@ export default function RecipesListPage() {
           <Link href="/recipes/filters">
             <Button variant="ghost" className="whitespace-nowrap">Advanced filters</Button>
           </Link>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-sm text-muted-foreground">Source:</span>
+          {(["all", "chefsire", "external"] as ContentSourceFilter[]).map((source) => (
+            <Button
+              key={source}
+              size="sm"
+              variant={sourceFilter === source ? "default" : "outline"}
+              onClick={() => {
+                setSourceFilter(source);
+                if (q.trim()) {
+                  startNewSearch(q, source);
+                } else {
+                  startRandom(source);
+                }
+              }}
+            >
+              {CONTENT_SOURCE_LABELS[source]}
+            </Button>
+          ))}
         </div>
       </div>
 

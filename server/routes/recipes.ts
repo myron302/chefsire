@@ -4,6 +4,7 @@ import { z } from "zod";
 import { searchRecipes } from "../services/recipes-service";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
+import { parseContentSourceFilter } from "@shared/content-source";
 
 const router = Router();
 
@@ -234,6 +235,7 @@ router.get("/search", async (req, res) => {
     const cuisines = parseList(req.query.cuisines);
     const diets = parseList(req.query.diets);
     const mealTypes = parseList(req.query.mealTypes);
+    const source = parseContentSourceFilter(req.query.source);
 
     const pageSize =
       typeof req.query.pageSize === "string"
@@ -254,6 +256,7 @@ router.get("/search", async (req, res) => {
       cuisines,
       diets,
       mealTypes,
+      source,
       pageSize: Number.isFinite(pageSize) ? pageSize : 24,
       offset: Number.isFinite(offset) ? offset : 0,
     });
@@ -271,10 +274,11 @@ router.get("/search", async (req, res) => {
  * GET /api/recipes/random
  * Returns a random page of recipes (fresh each request)
  */
-router.get("/random", async (_req, res) => {
+router.get("/random", async (req, res) => {
   noStore(res);
   try {
-    const result = await searchRecipes({ pageSize: 24 });
+    const source = parseContentSourceFilter(req.query.source);
+    const result = await searchRecipes({ pageSize: 24, source });
     const { results, ...rest } = result;
     res.json({ ok: true, ...rest, items: results });
   } catch (err: any) {

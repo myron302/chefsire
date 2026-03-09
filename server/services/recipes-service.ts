@@ -1,6 +1,7 @@
 // server/services/recipes-service.ts
 import { RecipeService } from "./recipe.service";
 import { db } from "../db";
+import { ContentSourceFilter } from "@shared/content-source";
 
 type SearchParams = {
   q?: string;
@@ -9,6 +10,7 @@ type SearchParams = {
   mealTypes?: string[];
   pageSize?: number;
   offset?: number;
+  source?: ContentSourceFilter;
 };
 
 // Fisher-Yates shuffle algorithm for randomizing arrays
@@ -43,11 +45,13 @@ export type RecipeItem = {
   ratingSpoons: number | null;
   cookTime: number | null;
   servings: number | null;
-  source: "mealdb";
+  source: "chefsire" | "external";
+  externalProvider?: "mealdb";
   averageRating?: string | number | null;
 };
 
-const SOURCE: "mealdb" = "mealdb";
+const EXTERNAL_PROVIDER: "mealdb" = "mealdb";
+const EXTERNAL_RECIPES_ENABLED = process.env.DISABLE_EXTERNAL_RECIPE_CONTENT !== "true";
 
 async function fetchJSON<T>(url: string, timeoutMs = 10000): Promise<T> {
   const ctrl = new AbortController();
@@ -79,7 +83,8 @@ function mapMealDB(m: MealDBMeal): RecipeItem {
     ratingSpoons: null,
     cookTime: null,
     servings: null,
-    source: SOURCE,
+    source: "external",
+    externalProvider: EXTERNAL_PROVIDER,
   };
 }
 
@@ -145,27 +150,36 @@ async function getRandomMeals(target = 24): Promise<MealDBMeal[]> {
 
 export async function searchRecipes(params: SearchParams): Promise<{
   total: number;
-  source: typeof SOURCE;
+  source: ContentSourceFilter;
   results: RecipeItem[];
 }> {
   const pageSize = Math.min(Math.max(params.pageSize ?? 24, 1), 60);
   const offset = Math.max(params.offset ?? 0, 0);
 
+  const sourceFilter = params.source ?? "all";
+  const includeChefsire = sourceFilter === "all" || sourceFilter === "chefsire";
+  const includeExternal = EXTERNAL_RECIPES_ENABLED && (sourceFilter === "all" || sourceFilter === "external");
+
   // Empty query => serve a fresh random page every request (original behavior)
   if (!params.q || params.q.trim() === "") {
-    // Fetch random meals from TheMealDB
-    const randomMeals = await getRandomMeals(pageSize + offset);
-    const filtered = filterMeals(randomMeals, {
-      cuisines: params.cuisines ?? [],
-      diets: params.diets ?? [],
-      mealTypes: params.mealTypes ?? [],
-    });
+    let filtered: MealDBMeal[] = [];
+    let results: RecipeItem[] = [];
 
-    const page = filtered.slice(offset, offset + pageSize);
-    let results = page.map(mapMealDB);
+    if (includeExternal) {
+      // Fetch random meals from TheMealDB
+      const randomMeals = await getRandomMeals(pageSize + offset);
+      filtered = filterMeals(randomMeals, {
+        cuisines: params.cuisines ?? [],
+        diets: params.diets ?? [],
+        mealTypes: params.mealTypes ?? [],
+      });
+
+      const page = filtered.slice(offset, offset + pageSize);
+      results = page.map(mapMealDB);
+    }
 
     // On FIRST page only, mix in a few local recipes with images
-    if (offset === 0) {
+    if (offset === 0 && includeChefsire) {
       try {
         const localRecipes = await RecipeService.searchLocalRecipes(db, {
           cuisines: params.cuisines,
@@ -196,13 +210,17 @@ export async function searchRecipes(params: SearchParams): Promise<{
             ratingSpoons: recipe.averageRating ? Number(recipe.averageRating) : null,
             cookTime: recipe.cookTime,
             servings: recipe.servings,
-            source: SOURCE,
+            source: "chefsire",
             averageRating: recipe.averageRating,
           }));
 
-          // Mix: first 3 local recipes, then enough random to reach pageSize
-          const randomNeeded = pageSize - localResults.length;
-          results = [...localResults, ...results.slice(0, randomNeeded)];
+          // Mix: first ChefSire recipes, then enough external to reach pageSize
+          if (includeExternal) {
+            const randomNeeded = pageSize - localResults.length;
+            results = [...localResults, ...results.slice(0, randomNeeded)];
+          } else {
+            results = localResults;
+          }
         }
       } catch (error) {
         console.error("Error fetching local recipes for mixing:", error);
@@ -211,7 +229,8 @@ export async function searchRecipes(params: SearchParams): Promise<{
     }
 
     // Return total that indicates more recipes available (for infinite scroll)
-    return { total: filtered.length + 1000, source: SOURCE, results };
+    const total = includeExternal ? filtered.length + 1000 : results.length;
+    return { total, source: sourceFilter, results };
   }
 
   // Named search - prioritize local results
@@ -239,29 +258,36 @@ export async function searchRecipes(params: SearchParams): Promise<{
     ratingSpoons: recipe.averageRating ? Number(recipe.averageRating) : null,
     cookTime: recipe.cookTime,
     servings: recipe.servings,
-    source: SOURCE,
+    source: "chefsire",
     averageRating: recipe.averageRating,
   }));
 
-  // Search external API
-  const url = `https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(q)}`;
-  const json = await fetchJSON<{ meals: MealDBMeal[] | null }>(url, 12000);
-  const meals = json.meals ?? [];
+  let externalResults: RecipeItem[] = [];
 
-  const filtered = filterMeals(meals, {
-    cuisines: params.cuisines ?? [],
-    diets: params.diets ?? [],
-    mealTypes: params.mealTypes ?? [],
-  });
+  if (includeExternal) {
+    const url = `https://www.themealdb.com/api/json/v1/1/search.php?s=${encodeURIComponent(q)}`;
+    const json = await fetchJSON<{ meals: MealDBMeal[] | null }>(url, 12000);
+    const meals = json.meals ?? [];
 
-  const externalResults = filtered.map(mapMealDB);
+    const filtered = filterMeals(meals, {
+      cuisines: params.cuisines ?? [],
+      diets: params.diets ?? [],
+      mealTypes: params.mealTypes ?? [],
+    });
 
-  // Merge: local recipes first, then external
-  const merged = deduplicateRecipes([...localResults, ...externalResults]);
+    externalResults = filtered.map(mapMealDB);
+  }
+
+  const mergedBase = includeChefsire
+    ? [...localResults, ...externalResults]
+    : externalResults;
+
+  // Merge: ChefSire recipes first, then external
+  const merged = deduplicateRecipes(mergedBase);
   const total = merged.length;
   const page = merged.slice(offset, offset + pageSize);
 
-  return { total, source: SOURCE, results: page };
+  return { total, source: sourceFilter, results: page };
 }
 
 /**

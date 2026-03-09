@@ -4,7 +4,8 @@
 export type DrinkItem = {
   id: string;            // "cocktaildb:<idDrink>"
   sourceId: string;      // <idDrink>
-  source: "cocktaildb";
+  source: "chefsire" | "external";
+  externalProvider?: "cocktaildb";
   title: string;
   imageUrl?: string | null;
   instructions?: string | null;
@@ -16,6 +17,7 @@ export type DrinkItem = {
 
 export type DrinksSearchParams = {
   q?: string;
+  source?: "all" | "chefsire" | "external";
   ingredient?: string;
   category?: string;
   alcoholic?: string;
@@ -42,7 +44,8 @@ function parseDrink(d: any): DrinkItem {
   return {
     id: `cocktaildb:${d.idDrink}`,
     sourceId: String(d.idDrink),
-    source: "cocktaildb",
+    source: "external",
+    externalProvider: "cocktaildb",
     title: String(d.strDrink || "").trim(),
     imageUrl: d.strDrinkThumb || null,
     instructions: d.strInstructions || null,
@@ -93,9 +96,14 @@ export async function listMeta() {
 
 export async function searchDrinks(
   params: DrinksSearchParams
-): Promise<{ results: DrinkItem[]; total: number; params: DrinksSearchParams }> {
+ ): Promise<{ results: DrinkItem[]; total: number; params: DrinksSearchParams }> {
   const pageSize = clamp(params.pageSize ?? 12, 1, 30);
   const offset = Math.max(0, params.offset ?? 0);
+  const sourceFilter = params.source ?? "all";
+
+  if (sourceFilter === "chefsire") {
+    return { results: [], total: 0, params };
+  }
 
   let list: any[] = [];
   let mode: "search" | "filter" | "none" = "none";
