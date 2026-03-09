@@ -9,6 +9,7 @@ import { searchDrinks } from "../services/drinks-service";
 import { db } from "../db";
 import { posts, users } from "@shared/schema";
 import { and, desc, eq, ilike } from "drizzle-orm";
+import { parseContentSourceFilter } from "@shared/content-source";
 
 const router = Router();
 
@@ -100,6 +101,7 @@ router.get("/autocomplete", async (req, res) => {
 
     const trimmedQuery = query.trim();
     const qLower = trimmedQuery.toLowerCase();
+    const source = parseContentSourceFilter(req.query.source);
     const drinkIndex = loadDrinkIndex();
 
     // --- Static site categories (drinks + pet food) ---
@@ -245,7 +247,7 @@ router.get("/autocomplete", async (req, res) => {
         )
         .catch(() => []),
 
-      searchRecipes({ q: trimmedQuery, pageSize: 5, offset: 0 })
+      searchRecipes({ q: trimmedQuery, pageSize: 5, offset: 0, source })
         .then((result) =>
           result.results.map((recipe) => ({
             id: recipe.id,
@@ -258,7 +260,7 @@ router.get("/autocomplete", async (req, res) => {
         )
         .catch(() => []),
 
-      searchDrinks({ q: trimmedQuery, pageSize: 5, offset: 0 })
+      searchDrinks({ q: trimmedQuery, pageSize: 5, offset: 0, source })
         .then(({ results }) =>
           results.slice(0, 5).map((d) => ({
             id: d.id,
@@ -267,7 +269,8 @@ router.get("/autocomplete", async (req, res) => {
             category: d.category || undefined,
             route: bestDrinkRoute || `/drinks?q=${encodeURIComponent(trimmedQuery)}`,
             type: "drink" as const,
-            matchKind: "external" as const
+            matchKind: "external" as const,
+            source: d.source
           }))
         )
         .catch(() => []),
@@ -319,6 +322,7 @@ router.get("/autocomplete", async (req, res) => {
     });
 
     res.json({
+      source,
       users: foundUsers,
       recipes: recipesResult,
       drinks: mergedDrinks,

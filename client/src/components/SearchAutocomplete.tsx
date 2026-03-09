@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef, FormEvent } from "react";
 import { useLocation } from "wouter";
 import { Search, User, ChefHat, Utensils, Star, PawPrint } from "lucide-react";
+import { CONTENT_SOURCE_LABELS, type ContentSourceFilter } from "@shared/content-source";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
@@ -22,7 +23,7 @@ interface AutocompleteResult {
     title: string;
     imageUrl?: string;
     cookTime?: number;
-    source: string;
+    source: "chefsire" | "external" | string;
     type: "recipe";
   }>;
   drinks: Array<{
@@ -32,6 +33,7 @@ interface AutocompleteResult {
     category?: string;
     route?: string;
     matchKind?: "recipe-exact" | "category" | "external";
+    source?: "chefsire" | "external" | string;
     type: "drink";
   }>;
   reviews: Array<{
@@ -62,6 +64,7 @@ export default function SearchAutocomplete() {
   const [results, setResults] = useState<AutocompleteResult | null>(null);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [sourceFilter, setSourceFilter] = useState<ContentSourceFilter>("all");
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -110,7 +113,7 @@ export default function SearchAutocomplete() {
       setIsLoading(true);
       try {
         const response = await fetch(
-          `/api/search/autocomplete?q=${encodeURIComponent(searchText.trim())}`
+          `/api/search/autocomplete?q=${encodeURIComponent(searchText.trim())}&source=${encodeURIComponent(sourceFilter)}`
         );
         const data = await response.json();
         setResults(data);
@@ -128,7 +131,7 @@ export default function SearchAutocomplete() {
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [searchText]);
+  }, [searchText, sourceFilter]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -334,6 +337,21 @@ export default function SearchAutocomplete() {
             </div>
           ) : hasResults ? (
             <div className="py-2">
+              <div className="px-3 py-2 flex items-center gap-2 border-b border-border mb-2">
+                <span className="text-xs text-muted-foreground">Source:</span>
+                {(["all", "chefsire", "external"] as ContentSourceFilter[]).map((source) => (
+                  <button
+                    key={source}
+                    onClick={() => setSourceFilter(source)}
+                    className={cn(
+                      "px-2 py-1 text-xs rounded border",
+                      sourceFilter === source ? "bg-primary text-primary-foreground" : "bg-background"
+                    )}
+                  >
+                    {CONTENT_SOURCE_LABELS[source]}
+                  </button>
+                ))}
+              </div>
               {/* Users Section */}
               {results!.users.length > 0 && (
                 <div className="mb-2">
@@ -403,6 +421,7 @@ export default function SearchAutocomplete() {
                         )}
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{recipe.title}</div>
+                          <div className="text-xs text-muted-foreground">{recipe.source === "chefsire" ? "ChefSire" : "External"}</div>
                           {recipe.cookTime ? (
                             <div className="text-sm text-muted-foreground">
                               {recipe.cookTime} min
@@ -476,6 +495,9 @@ export default function SearchAutocomplete() {
                         ) : null}
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{drink.name}</div>
+                          {drink.source ? (
+                            <div className="text-xs text-muted-foreground">{drink.source === "chefsire" ? "ChefSire" : "External"}</div>
+                          ) : null}
                           {drink.category ? (
                             <div className="text-sm text-muted-foreground capitalize">
                               {String(drink.category).replace(/-/g, " ")}
