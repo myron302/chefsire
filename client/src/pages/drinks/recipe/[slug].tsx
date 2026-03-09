@@ -5,6 +5,7 @@ import RequireAgeGate from "@/components/RequireAgeGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { addRecentlyViewedDrinkSlug } from "@/components/drinks/RecentlyViewedDrinks";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
 
 function asList(value: unknown): string[] {
@@ -27,6 +28,8 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
 
   useEffect(() => {
     if (!canonicalRecipe?.slug) return;
+
+    addRecentlyViewedDrinkSlug(canonicalRecipe.slug);
 
     fetch("/api/drinks/events", {
       method: "POST",

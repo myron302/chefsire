@@ -14,6 +14,7 @@ import {
   X
 } from 'lucide-react';
 import TrendingDrinks from "@/components/drinks/TrendingDrinks";
+import RecentlyViewedDrinks from "@/components/drinks/RecentlyViewedDrinks";
 
 const drinkCategories = [
   {
@@ -485,6 +486,7 @@ export default function DrinksPage() {
         </div>
 
         <TrendingDrinks />
+        <RecentlyViewedDrinks />
 
         {/* Featured Recipes */}
         <div className="mb-12">
