@@ -8,6 +8,8 @@ import React, {
 } from 'react';
 import { Button } from "@/components/ui/button";
 import { Clipboard, Check, X, Share2, RotateCcw } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { addItemsToShoppingList } from '@/lib/shopping-list';
 
 // ---------- Public Types ----------
 export type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -166,6 +168,7 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
   const [selectedIngredients, setSelectedIngredients] = useState<Set<number>>(new Set());
 
   const [internalOpen, setInternalOpen] = useState<boolean>(false);
+  const { toast } = useToast();
   const isControlled = typeof controlledOpen === 'boolean';
   const open = isControlled ? controlledOpen! : internalOpen;
 
@@ -263,65 +266,55 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
     });
   };
 
-  const addSelectedToShoppingList = () => {
-    console.log('🛒 RecipeKit: Adding to shopping list...');
-    console.log('🛒 RecipeKit: Selected ingredient indices:', Array.from(selectedIngredients));
-    const selected = scaled.filter((_, idx) => selectedIngredients.has(idx));
-    console.log('🛒 RecipeKit: Selected ingredients:', selected);
+  const getShoppingListItems = (measurements: typeof scaled) => measurements
+    .filter((ing) => ing.item && typeof ing.item === 'string' && ing.item.trim().length > 0)
+    .map((ing) => {
+      const amount = useMetric && typeof ing.amountScaledNum === 'number'
+        ? toMetric(ing.unit, ing.amountScaledNum).amount
+        : ing.amountScaled;
+      const unit = useMetric && typeof ing.amountScaledNum === 'number'
+        ? toMetric(ing.unit, ing.amountScaledNum).unit
+        : ing.unit;
 
-    if (selected.length === 0) {
-      alert('Please select at least one ingredient to add to your shopping list.');
-      return;
-    }
+      return {
+        name: ing.item.trim(),
+        quantity: typeof amount === 'number' ? amount : parseFloat(String(amount)) || 1,
+        unit,
+        note: ing.note,
+      };
+    });
 
-    // Format ingredients for shopping list
-    const shoppingItems = selected
-      .filter((ing) => {
-        // Filter out ingredients without valid names
-        const hasValidName = ing.item && typeof ing.item === 'string' && ing.item.trim().length > 0;
-        if (!hasValidName) {
-          console.warn('⚠️ RecipeKit: Skipping ingredient with empty name:', ing);
-        }
-        return hasValidName;
-      })
-      .map((ing) => {
-        const amount = useMetric && typeof ing.amountScaledNum === 'number'
-          ? toMetric(ing.unit, ing.amountScaledNum).amount
-          : ing.amountScaled;
-        const unit = useMetric && typeof ing.amountScaledNum === 'number'
-          ? toMetric(ing.unit, ing.amountScaledNum).unit
-          : ing.unit;
-
-        return {
-          name: ing.item.trim(),
-          quantity: typeof amount === 'number' ? amount : parseFloat(String(amount)) || 1,
-          unit: unit,
-          note: ing.note
-        };
-      });
-
-    console.log('🛒 RecipeKit: Formatted shopping items:', shoppingItems);
-
+  const addIngredientsToShoppingList = async (measurements: typeof scaled, label: string) => {
+    const shoppingItems = getShoppingListItems(measurements);
     if (shoppingItems.length === 0) {
-      alert('No valid ingredients to add to shopping list.');
+      toast({ title: 'No valid ingredients to add.', variant: 'destructive' });
       return;
     }
 
-    // Store in localStorage for the Pantry to pick up
-    try {
-      const existingRaw = localStorage.getItem('pendingShoppingListItems');
-      console.log('🛒 RecipeKit: Existing localStorage value:', existingRaw);
-      const existing = JSON.parse(existingRaw || '[]');
-      const combined = [...existing, ...shoppingItems];
-      console.log('🛒 RecipeKit: Combined items to save:', combined);
-      localStorage.setItem('pendingShoppingListItems', JSON.stringify(combined));
-      console.log('✅ RecipeKit: Saved to localStorage');
-      alert(`Added ${shoppingItems.length} ingredient${shoppingItems.length > 1 ? 's' : ''} to shopping list! Go to Pantry page → Shopping List tab to view.`);
-      setSelectedIngredients(new Set()); // Clear selections
-    } catch (err) {
-      console.error('❌ RecipeKit: Error adding to shopping list:', err);
-      alert('Unable to add to shopping list.');
+    const result = await addItemsToShoppingList(shoppingItems);
+    if (result.addedCount > 0) {
+      toast({ title: `${label}: added ${result.addedCount} ingredient${result.addedCount === 1 ? '' : 's'} to shopping list.` });
+    } else {
+      toast({ title: 'Ingredients already in shopping list.' });
     }
+
+    if (measurements.length === scaled.length) {
+      setSelectedIngredients(new Set());
+    }
+  };
+
+  const addSelectedToShoppingList = async () => {
+    const selected = scaled.filter((_, idx) => selectedIngredients.has(idx));
+    if (selected.length === 0) {
+      toast({ title: 'Please select at least one ingredient.', variant: 'destructive' });
+      return;
+    }
+
+    await addIngredientsToShoppingList(selected, 'Selected ingredients');
+  };
+
+  const addAllToShoppingList = async () => {
+    await addIngredientsToShoppingList(scaled, 'All ingredients');
   };
 
   const shouldRenderPreview = !isControlled && recipeMeasurements.length > 0;
@@ -472,8 +465,17 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
               ))}
             </ul>
 
-            {selectedIngredients.size > 0 && (
-              <div className="mt-3">
+            <div className="mt-3 space-y-2">
+              <Button
+                variant="outline"
+                className="w-full bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300"
+                onClick={addAllToShoppingList}
+              >
+                <Check className="h-4 w-4 mr-2" />
+                Add All Ingredients to Shopping List
+              </Button>
+
+              {selectedIngredients.size > 0 && (
                 <Button
                   variant="outline"
                   className="w-full bg-green-50 hover:bg-green-100 text-green-700 border-green-300"
@@ -482,8 +484,8 @@ const RecipeKit = forwardRef<RecipeKitHandle, RecipeKitProps>(function RecipeKit
                   <Check className="h-4 w-4 mr-2" />
                   Add {selectedIngredients.size} Selected to Shopping List
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
 
             {recipeDirections.length > 0 && (
               <div className="mt-4">

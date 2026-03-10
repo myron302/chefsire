@@ -94,11 +94,11 @@ export default function TrendingDrinks() {
                 : "Trending now";
 
               return (
-                <Link
+                <div
                   key={drink.slug}
-                  href={getCanonicalRoute(drink.slug)}
-                  className="block rounded-xl border bg-white/90 p-3 transition hover:shadow-md hover:-translate-y-0.5"
+                  className="rounded-xl border bg-white/90 p-3 transition hover:shadow-md hover:-translate-y-0.5"
                 >
+                  <Link href={getCanonicalRoute(drink.slug)} className="block">
                     <div className="flex gap-3 items-start">
                       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
                         {drink.image ? (
@@ -127,7 +127,17 @@ export default function TrendingDrinks() {
                         </p>
                       </div>
                     </div>
-                </Link>
+                  </Link>
+                  <div className="mt-3 flex gap-2">
+                    <Link href={getCanonicalRoute(drink.slug)} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
+                      Open canonical recipe page
+                    </Link>
+                    <span className="text-muted-foreground text-xs">•</span>
+                    <Link href={`/drinks/submit?remix=${encodeURIComponent(drink.slug)}`} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
+                      Remix
+                    </Link>
+                  </div>
+                </div>
               );
             })}
           </div>
