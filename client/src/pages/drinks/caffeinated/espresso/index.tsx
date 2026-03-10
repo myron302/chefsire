@@ -771,6 +771,7 @@ export default function EspressoDrinksPage() {
               {filteredDrinks.map(drink => {
                 const useMetric = !!metricFlags[drink.id];
                 const servings = servingsById[drink.id] ?? (drink.recipe?.servings || 1);
+              const canonicalSlug = String(drink.slug ?? '').trim() || null;
 
                 return (
                   <Card key={drink.id} onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }} className="hover:shadow-lg transition-shadow cursor-pointer">
@@ -974,6 +975,17 @@ export default function EspressoDrinksPage() {
                           Make Drink (+25 XP)
                         </Button>
                       </div>
+                      {canonicalSlug ? (
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
+                            Canonical recipe
+                          </Link>
+                          <span>•</span>
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
+                            Remix
+                          </Link>
+                        </div>
+                      ) : null}
                     </CardContent>
                   </Card>
                 );

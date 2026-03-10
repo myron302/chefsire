@@ -765,6 +765,7 @@ export default function DetoxJuicesPage() {
               {filteredJuices.map(juice => {
                 const useMetric = !!metricFlags[juice.id];
                 const servings = servingsById[juice.id] ?? (juice.recipe?.servings || 1);
+              const canonicalSlug = String(juice.slug ?? '').trim() || null;
 
                 return (
                   <Card key={juice.id} onClick={(e) => { e.stopPropagation(); openRecipeModal(juice); }} className="hover:shadow-lg transition-shadow cursor-pointer">
@@ -1038,6 +1039,17 @@ export default function DetoxJuicesPage() {
                         Explore {type.name}
                       </Button>
                     </div>
+                    {canonicalSlug ? (
+                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
+                          Canonical recipe
+                        </Link>
+                        <span>•</span>
+                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
+                          Remix
+                        </Link>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               );
