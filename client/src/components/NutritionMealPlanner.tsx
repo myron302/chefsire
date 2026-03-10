@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import AdvancedFeaturesPanel from '@/components/meal-planner/AdvancedFeaturesPanel';
 import { exportCSV, exportText } from "@/lib/shoppingExport";
+import { normalizeShoppingListItem } from '@/lib/shopping-list';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 
 const NutritionMealPlanner = () => {
@@ -272,17 +273,25 @@ const NutritionMealPlanner = () => {
         const data = await response.json();
         console.log('Grocery list API response:', data);
         // Map API response to component state format
-        const mappedItems = data.items.map((item: any) => ({
+        const mappedItems = data.items.map((item: any) => {
+          const normalized = normalizeShoppingListItem({
+            name: item.ingredientName,
+            note: item.notes,
+          });
+
+          return ({
           id: item.id,
-          item: item.ingredientName,
-          name: item.ingredientName,
+          item: normalized.name,
+          name: normalized.name,
           amount: item.quantity && item.unit ? `${item.quantity} ${item.unit}` : item.quantity || '',
           category: item.category || 'Other',
           checked: item.purchased || false,
-          notes: item.notes,
+          notes: normalized.note,
+          optional: normalized.optional,
           isPantryItem: item.isPantryItem || item.is_pantry_item || false,
           estimatedPrice: item.estimatedPrice || item.estimated_price || 0,
-        }));
+          });
+        });
         console.log('Mapped grocery items:', mappedItems);
         setGroceryList(mappedItems);
 
@@ -300,7 +309,7 @@ const NutritionMealPlanner = () => {
                   ingredientName: item.name,
                   quantity: item.quantity,
                   unit: item.unit,
-                  category: 'From Recipe',
+                  category: item.category || 'From Recipe',
                   notes: item.note,
                 }),
               });
@@ -2245,7 +2254,10 @@ const NutritionMealPlanner = () => {
                             <div key={item.id} className="flex items-center gap-3 p-2.5 bg-white rounded-lg border border-green-100">
                               <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
                               <div className="flex-1 min-w-0">
-                                <span className="text-sm font-medium text-gray-800">{item.name || item.item}</span>
+                                <span className="text-sm font-medium text-gray-800">
+                                  {item.name || item.item}
+                                  {item.optional ? <span className="text-xs text-gray-500"> (optional)</span> : null}
+                                </span>
                                 {item.notes && <p className="text-xs text-gray-400 truncate">{item.notes}</p>}
                               </div>
                               {item.amount && <span className="text-xs text-gray-500 shrink-0">{item.amount}</span>}
@@ -2354,6 +2366,7 @@ const NutritionMealPlanner = () => {
                                         <div className="flex-1 min-w-0">
                                           <span className={`text-sm font-medium ${item.checked ? 'line-through text-gray-400' : 'text-gray-900'}`}>
                                             {item.name || item.item}
+                                            {item.optional ? <span className="text-xs text-gray-500"> (optional)</span> : null}
                                           </span>
                                           {item.notes && (
                                             <p className="text-xs text-gray-400 truncate mt-0.5">{item.notes}</p>

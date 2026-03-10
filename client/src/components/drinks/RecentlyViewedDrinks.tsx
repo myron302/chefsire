@@ -86,39 +86,50 @@ export default function RecentlyViewedDrinks() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {items.map((item) => {
               const image = recipeImage(item);
+              const canonicalRoute = `/drinks/recipe/${item.slug}`;
 
               return (
-                <Link
+                <div
                   key={item.slug}
-                  href={`/drinks/recipe/${item.slug}`}
-                  className="block rounded-xl border bg-white/90 p-3 transition hover:shadow-md hover:-translate-y-0.5"
+                  className="rounded-xl border bg-white/90 p-3 transition hover:shadow-md hover:-translate-y-0.5"
                 >
-                  <div className="flex gap-3 items-start">
-                    <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
-                      {image ? (
-                        <img
-                          src={image}
-                          alt={item.name}
-                          className="h-full w-full object-cover"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">
-                          No image
-                        </div>
-                      )}
-                    </div>
+                  <Link href={canonicalRoute} className="block">
+                    <div className="flex gap-3 items-start">
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
+                        {image ? (
+                          <img
+                            src={image}
+                            alt={item.name}
+                            className="h-full w-full object-cover"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="h-full w-full flex items-center justify-center text-xs text-muted-foreground">
+                            No image
+                          </div>
+                        )}
+                      </div>
 
-                    <div className="min-w-0 flex-1">
-                      <p className="font-semibold leading-tight line-clamp-2">{item.name}</p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <Badge variant="outline" className="text-[10px]">
-                          {item.sourceTitle}
-                        </Badge>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold leading-tight line-clamp-2">{item.name}</p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <Badge variant="outline" className="text-[10px]">
+                            {item.sourceTitle}
+                          </Badge>
+                        </div>
                       </div>
                     </div>
+                  </Link>
+                  <div className="mt-3 flex gap-2">
+                    <Link href={canonicalRoute} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
+                      Canonical recipe
+                    </Link>
+                    <span className="text-muted-foreground text-xs">•</span>
+                    <Link href={`/drinks/submit?remix=${encodeURIComponent(item.slug)}`} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
+                      Remix
+                    </Link>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>
