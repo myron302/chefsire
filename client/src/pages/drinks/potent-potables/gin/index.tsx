@@ -15,6 +15,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import TrendingDrinksByCategory from "@/components/drinks/TrendingDrinksByCategory";
 import { ginRecipes } from "@/data/drinks/potent-potables/gin";
+import { resolveCanonicalDrinkSlug } from "@/data/drinks/canonical";
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -453,10 +454,15 @@ export default function GinCocktailsPage() {
             {filteredCocktails.map(cocktail => {
               const useMetric = !!metricFlags[cocktail.id];
               const servings = servingsById[cocktail.id] ?? (cocktail.recipe?.servings || 1);
+              const canonicalSlug = resolveCanonicalDrinkSlug({
+                slug: cocktail.slug,
+                name: cocktail.name,
+                sourceRoute: "/drinks/potent-potables/gin",
+              });
 
               return (
-                <Card 
-                  key={cocktail.id} 
+              <Card 
+                key={cocktail.id}
                   className="hover:shadow-lg transition-all cursor-pointer bg-white border-blue-100 hover:border-blue-300"
                   onClick={(e) => { e.stopPropagation(); openRecipeModal(cocktail); }}
                 >
@@ -686,6 +692,17 @@ export default function GinCocktailsPage() {
                         <Share2 className="h-4 w-4" />
                       </Button>
                     </div>
+                    {canonicalSlug ? (
+                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
+                          Canonical recipe
+                        </Link>
+                        <span>•</span>
+                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
+                          Remix
+                        </Link>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               );

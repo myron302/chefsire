@@ -74,3 +74,31 @@ export const canonicalDrinkRecipeBySlug: Record<string, CanonicalDrinkRecipeEntr
 export function getCanonicalDrinkRecipeBySlug(slug: string): CanonicalDrinkRecipeEntry | null {
   return canonicalDrinkRecipeBySlug[slug] ?? null;
 }
+
+type ResolveCanonicalDrinkSlugInput = {
+  slug?: string | null;
+  name?: string | null;
+  sourceRoute?: string | null;
+};
+
+export function resolveCanonicalDrinkSlug({ slug, name, sourceRoute }: ResolveCanonicalDrinkSlugInput): string | null {
+  const slugValue = String(slug ?? "").trim();
+  if (slugValue && canonicalDrinkRecipeBySlug[slugValue]) return slugValue;
+
+  const normalizedName = String(name ?? "").trim().toLowerCase();
+  if (!normalizedName) return null;
+
+  const normalizedSourceRoute = String(sourceRoute ?? "").trim();
+
+  const exactMatch = canonicalDrinkRecipeEntries.find((entry) =>
+    entry.name.trim().toLowerCase() === normalizedName &&
+    (!normalizedSourceRoute || entry.sourceRoute === normalizedSourceRoute)
+  );
+  if (exactMatch) return exactMatch.slug;
+
+  const fallbackNameMatch = canonicalDrinkRecipeEntries.find(
+    (entry) => entry.name.trim().toLowerCase() === normalizedName
+  );
+
+  return fallbackNameMatch?.slug ?? null;
+}

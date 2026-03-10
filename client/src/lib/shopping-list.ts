@@ -4,6 +4,7 @@ export type ShoppingListItemInput = {
   unit?: string;
   category?: string;
   note?: string;
+  optional?: boolean;
 };
 
 type GroceryListResponse = {
@@ -24,6 +25,33 @@ function normalizeQuantity(quantity: ShoppingListItemInput["quantity"]): string 
   return "1";
 }
 
+const OPTIONAL_SUFFIX_RE = /\s*\((optional[^)]*)\)\s*$/i;
+
+export function normalizeShoppingListItem(item: ShoppingListItemInput): ShoppingListItemInput {
+  const originalName = String(item.name ?? "").trim();
+  const optionalInName = OPTIONAL_SUFFIX_RE.exec(originalName);
+  const normalizedName = optionalInName
+    ? originalName.replace(OPTIONAL_SUFFIX_RE, "").trim()
+    : originalName;
+
+  const hasOptionalNote = /\boptional\b/i.test(String(item.note ?? ""));
+  const optional = Boolean(item.optional || optionalInName || hasOptionalNote);
+  const note = item.note?.trim();
+
+  return {
+    ...item,
+    name: normalizedName || originalName,
+    optional,
+    note: optional
+      ? note
+        ? /\boptional\b/i.test(note)
+          ? note
+          : `${note} (optional)`
+        : "optional"
+      : note,
+  };
+}
+
 function parsePending(): ShoppingListItemInput[] {
   if (typeof window === "undefined") return [];
   try {
@@ -42,12 +70,18 @@ function savePending(items: ShoppingListItemInput[]) {
 
 export async function addItemsToShoppingList(items: ShoppingListItemInput[]) {
   const cleaned = items
-    .map((item) => ({
-      name: item.name?.trim(),
-      quantity: normalizeQuantity(item.quantity),
-      unit: (item.unit ?? "").trim(),
-      category: item.category ?? "Other",
-    }))
+    .map((rawItem) => {
+      const item = normalizeShoppingListItem(rawItem);
+
+      return {
+        name: item.name?.trim(),
+        quantity: normalizeQuantity(item.quantity),
+        unit: (item.unit ?? "").trim(),
+        category: item.category ?? "Other",
+        note: item.note,
+        optional: item.optional,
+      };
+    })
     .filter((item) => Boolean(item.name));
 
   const dedupedMap = new Map<string, (typeof cleaned)[number]>();
@@ -88,6 +122,7 @@ export async function addItemsToShoppingList(items: ShoppingListItemInput[]) {
           quantity: item.quantity,
           unit: item.unit,
           category: item.category,
+          notes: item.note,
         }),
       });
 
