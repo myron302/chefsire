@@ -87,12 +87,18 @@ export default function RecommendedDrinks() {
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {items.map((item) => (
-              <Link
+            {items.map((item) => {
+              const canonicalRoute = `/drinks/recipe/${item.slug}`;
+
+              return (
+              <div
                 key={item.slug}
-                href={item.route || `/drinks/recipe/${item.slug}`}
-                className="block rounded-xl border bg-white/90 p-3 transition hover:shadow-md hover:-translate-y-0.5"
+                className="rounded-xl border bg-white/90 p-3 transition hover:shadow-md hover:-translate-y-0.5"
               >
+                <Link
+                  href={item.route || canonicalRoute}
+                  className="block"
+                >
                 <div className="flex gap-3 items-start">
                   <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
                     {item.image ? (
@@ -118,8 +124,18 @@ export default function RecommendedDrinks() {
                     </div>
                   </div>
                 </div>
-              </Link>
-            ))}
+                </Link>
+                <div className="mt-3 flex gap-2">
+                  <Link href={canonicalRoute} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
+                    Canonical recipe
+                  </Link>
+                  <span className="text-muted-foreground text-xs">•</span>
+                  <Link href={`/drinks/submit?remix=${encodeURIComponent(item.slug)}`} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
+                    Remix
+                  </Link>
+                </div>
+              </div>
+            );})}
           </div>
         )}
       </CardContent>

@@ -5,6 +5,8 @@ import RequireAgeGate from "@/components/RequireAgeGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { addItemsToShoppingList } from "@/lib/shopping-list";
 import { addRecentlyViewedDrinkSlug } from "@/components/drinks/RecentlyViewedDrinks";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
 
@@ -35,6 +37,7 @@ function asList(value: unknown): string[] {
 }
 
 function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
+  const { toast } = useToast();
   const canonicalRecipe = getCanonicalDrinkRecipeBySlug(slug);
   const [userRecipe, setUserRecipe] = useState<UserDrinkRecipe | null>(null);
   const [userRecipeLoaded, setUserRecipeLoaded] = useState(false);
@@ -104,6 +107,25 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const description = recipe?.description ?? userRecipe?.description;
   const remixSourceSlug = canonicalRecipe?.slug ?? userRecipe?.slug;
 
+  const addAllIngredients = async () => {
+    const payload = ingredients
+      .map((ingredient) => ({ name: ingredient, quantity: "1", unit: "", category: "From Recipe" }))
+      .filter((item) => item.name.trim().length > 0);
+
+    if (payload.length === 0) {
+      toast({ title: "No ingredients found to add.", variant: "destructive" });
+      return;
+    }
+
+    const result = await addItemsToShoppingList(payload);
+    if (result.addedCount > 0) {
+      toast({ title: `Added ${result.addedCount} ingredient${result.addedCount === 1 ? "" : "s"} to shopping list.` });
+      return;
+    }
+
+    toast({ title: "Ingredients are already in your shopping list." });
+  };
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -117,10 +139,13 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
       </div>
 
       {remixSourceSlug ? (
-        <div>
+        <div className="flex flex-wrap gap-2">
           <Link href={`/drinks/submit?remix=${encodeURIComponent(remixSourceSlug)}`}>
             <Button>Remix this drink</Button>
           </Link>
+          <Button variant="outline" onClick={addAllIngredients}>
+            Add Ingredients to Shopping List
+          </Button>
         </div>
       ) : null}
 
