@@ -9,6 +9,7 @@ import { Martini, Clock, Heart, Target, Sparkles, Wine, Search, Share2, ArrowLef
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { martinis } from "@/data/drinks/potent-potables/martinis";
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -473,6 +474,7 @@ export default function MartinisPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredMartinis.map(martini => {
               const useMetric = !!metricFlags[martini.id];
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: martini.slug, name: martini.name, sourceRoute: '/drinks/potent-potables/martinis' });
               const servings = servingsById[martini.id] ?? (martini.recipe?.servings || 1);
 
               return (
@@ -707,6 +709,18 @@ export default function MartinisPage() {
                         <Share2 className="h-4 w-4" />
                       </Button>
                     </div>
+
+                    {canonicalSlug ? (
+                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
+                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          Canonical recipe
+                        </Link>
+                        <span>•</span>
+                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          Remix
+                        </Link>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               );

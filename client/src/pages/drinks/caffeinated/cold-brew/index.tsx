@@ -15,6 +15,7 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -783,6 +784,7 @@ export default function ColdBrewDrinksPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredDrinks.map(drink => {
                 const useMetric = !!metricFlags[drink.id];
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: drink.slug, name: drink.name, sourceRoute: '/drinks/caffeinated/cold-brew' });
                 const servings = servingsById[drink.id] ?? (drink.recipe?.servings || 1);
 
                 return (
@@ -1019,6 +1021,18 @@ export default function ColdBrewDrinksPage() {
                     <Button className="w-full bg-rose-400 hover:bg-rose-500 text-white" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
+
+                    {canonicalSlug ? (
+                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
+                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          Canonical recipe
+                        </Link>
+                        <span>•</span>
+                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          Remix
+                        </Link>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               );

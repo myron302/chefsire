@@ -34,6 +34,7 @@ import { useDrinks } from "@/contexts/DrinksContext"
 import UniversalSearch from "@/components/UniversalSearch"
 import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
 import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
 // ---------- Helpers ----------
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
@@ -1036,6 +1037,7 @@ export default function CaseinProteinPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredShakes.map((shake) => {
                 const useMetric = !!metricFlags[shake.id]
+                const canonicalSlug = resolveCanonicalDrinkSlug({ slug: shake.slug, name: shake.name, sourceRoute: '/drinks/protein-shakes/casein' });
                 const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1)
 
                 return (
@@ -1276,7 +1278,19 @@ export default function CaseinProteinPage() {
                           Make Shake (+30 XP)
                         </Button>
                       </div>
-                    </CardContent>
+                    
+                      {canonicalSlug ? (
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                            Canonical recipe
+                          </Link>
+                          <span>•</span>
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                            Remix
+                          </Link>
+                        </div>
+                      ) : null}
+</CardContent>
                   </Card>
                 )
               })}
@@ -1338,6 +1352,8 @@ export default function CaseinProteinPage() {
                         Explore {type.name}
                       </Button>
                     </div>
+
+                    
                   </CardContent>
                 </Card>
               )
@@ -1413,6 +1429,7 @@ export default function CaseinProteinPage() {
         {activeTab === "featured" && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredShakes.map((shake) => {
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: shake.slug, name: shake.name, sourceRoute: '/drinks/protein-shakes/casein' });
               const useMetric = !!metricFlags[shake.id]
               const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1)
 

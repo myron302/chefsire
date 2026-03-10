@@ -9,6 +9,7 @@ import { Snowflake, Sun, Leaf, Flower2, Clock, Heart, Target, Sparkles, Wine, Se
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { seasonalCocktails } from "@/data/drinks/potent-potables/seasonal";
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -399,6 +400,18 @@ export default function SeasonalCocktailsPage() {
                     <p className="text-xs text-gray-500 mb-4">{season.months}</p>
                     <div className="text-2xl font-bold text-gray-900">{seasonCocktails.length}</div>
                     <div className="text-sm text-gray-600">Cocktails</div>
+
+                    {canonicalSlug ? (
+                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
+                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          Canonical recipe
+                        </Link>
+                        <span>•</span>
+                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          Remix
+                        </Link>
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               );
@@ -456,6 +469,7 @@ export default function SeasonalCocktailsPage() {
               const seasonData = seasons.find(s => s.name === cocktail.season);
               const SeasonIcon = seasonData?.icon || Sparkles;
               const useMetric = !!metricFlags[cocktail.id];
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: cocktail.slug, name: cocktail.name, sourceRoute: '/drinks/potent-potables/seasonal' });
               const servings = servingsById[cocktail.id] ?? (cocktail.recipe?.servings || 1);
               
               return (
