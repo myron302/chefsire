@@ -63,15 +63,26 @@ function collectCanonicalDrinkRecipeEntries(
   return entries;
 }
 
-export const canonicalDrinkRecipeEntries = collectCanonicalDrinkRecipeEntries(drinkRouteRegistry);
+export const canonicalDrinkRecipeEntries: CanonicalDrinkRecipeEntry[] = [];
 
-export const canonicalDrinkRecipeBySlug: Record<string, CanonicalDrinkRecipeEntry> =
-  canonicalDrinkRecipeEntries.reduce<Record<string, CanonicalDrinkRecipeEntry>>((acc, entry) => {
-    acc[entry.slug] = entry;
-    return acc;
-  }, {});
+export const canonicalDrinkRecipeBySlug: Record<string, CanonicalDrinkRecipeEntry> = {};
+
+let canonicalDrinkRecipesInitialized = false;
+
+function ensureCanonicalDrinkRecipesLoaded() {
+  if (canonicalDrinkRecipesInitialized) return;
+  canonicalDrinkRecipesInitialized = true;
+
+  const entries = collectCanonicalDrinkRecipeEntries(drinkRouteRegistry);
+  canonicalDrinkRecipeEntries.push(...entries);
+
+  for (const entry of entries) {
+    canonicalDrinkRecipeBySlug[entry.slug] = entry;
+  }
+}
 
 export function getCanonicalDrinkRecipeBySlug(slug: string): CanonicalDrinkRecipeEntry | null {
+  ensureCanonicalDrinkRecipesLoaded();
   return canonicalDrinkRecipeBySlug[slug] ?? null;
 }
 
@@ -82,6 +93,7 @@ type ResolveCanonicalDrinkSlugInput = {
 };
 
 export function resolveCanonicalDrinkSlug({ slug, name, sourceRoute }: ResolveCanonicalDrinkSlugInput): string | null {
+  ensureCanonicalDrinkRecipesLoaded();
   const slugValue = String(slug ?? "").trim();
   if (slugValue && canonicalDrinkRecipeBySlug[slugValue]) return slugValue;
 

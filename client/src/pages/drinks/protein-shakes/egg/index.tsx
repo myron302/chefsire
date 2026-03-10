@@ -11,6 +11,7 @@ import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
 import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
 // ---------- Helpers ----------
 type Nutrition = { calories?: number; protein?: number; carbs?: number; fat?: number; fiber?: number };
@@ -682,6 +683,7 @@ export default function EggProteinPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredRecipes.map((recipe) => {
             const useMetric = !!metricFlags[recipe.id];
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: recipe.slug, name: recipe.name, sourceRoute: '/drinks/protein-shakes/egg' });
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
 
             return (
@@ -935,7 +937,19 @@ export default function EggProteinPage() {
                     <Dumbbell className="h-4 w-4 mr-1" />
                     Make Shake (+100 XP)
                   </Button>
-                </CardContent>
+                
+                      {canonicalSlug ? (
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                            Canonical recipe
+                          </Link>
+                          <span>•</span>
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                            Remix
+                          </Link>
+                        </div>
+                      ) : null}
+</CardContent>
               </Card>
             );
           })}

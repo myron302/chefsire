@@ -8,6 +8,7 @@ import { Martini, Clock, Heart, Star, Target, Sparkles, Leaf, Wine, Search, Shar
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { mocktails } from "@/data/drinks/potent-potables/mocktails";
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -444,6 +445,7 @@ export default function MocktailsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredMocktails.map(mocktail => {
             const useMetric = !!metricFlags[mocktail.id];
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: mocktail.slug, name: mocktail.name, sourceRoute: '/drinks/potent-potables/mocktails' });
             const servings = servingsById[mocktail.id] ?? (mocktail.recipe?.servings || 1);
 
             return (
@@ -671,7 +673,19 @@ export default function MocktailsPage() {
                       <Share2 className="h-4 w-4" />
                     </Button>
                   </div>
-                </CardContent>
+                
+                  {canonicalSlug ? (
+                    <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
+                      <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        Canonical recipe
+                      </Link>
+                      <span>•</span>
+                      <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        Remix
+                      </Link>
+                    </div>
+                  ) : null}
+</CardContent>
               </Card>
             );
           })}

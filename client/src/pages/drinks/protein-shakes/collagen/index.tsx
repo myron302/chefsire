@@ -16,6 +16,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
 import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
 // Navigation data
 const otherDrinkHubs = [
@@ -901,6 +902,7 @@ export default function CollagenProteinPage() {
             {/* Results */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredShakes.map(shake => {
+                const canonicalSlug = resolveCanonicalDrinkSlug({ slug: shake.slug, name: shake.name, sourceRoute: '/drinks/protein-shakes/collagen' });
                 const servings = getServings(shake);
                 const factor = (servings || 1) / (shake.recipe?.servings || 1);
 
@@ -1040,7 +1042,19 @@ export default function CollagenProteinPage() {
                         <Sparkles className="h-4 w-4 mr-2" />
                         Make Shake (+35 XP)
                       </Button>
-                    </CardContent>
+                    
+                      {canonicalSlug ? (
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                            Canonical recipe
+                          </Link>
+                          <span>•</span>
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                            Remix
+                          </Link>
+                        </div>
+                      ) : null}
+</CardContent>
                   </Card>
                 );
               })}
@@ -1110,6 +1124,8 @@ export default function CollagenProteinPage() {
                         Explore {type.name}
                       </Button>
                     </div>
+
+                    
                   </CardContent>
                 </Card>
               );
@@ -1251,7 +1267,9 @@ export default function CollagenProteinPage() {
         {/* Featured Tab */}
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {featuredShakes.map(shake => (
+            {featuredShakes.map(shake => {
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: shake.slug, name: shake.name, sourceRoute: '/drinks/protein-shakes/collagen' });
+              return (
               <Card
                 key={shake.id}
                 className="overflow-hidden hover:shadow-xl transition-shadow cursor-pointer"
@@ -1377,9 +1395,21 @@ export default function CollagenProteinPage() {
                     <Sparkles className="h-4 w-4 mr-2" />
                     Make Shake (+35 XP)
                   </Button>
-                </CardContent>
+                
+                  {canonicalSlug ? (
+                    <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
+                      <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        Canonical recipe
+                      </Link>
+                      <span>•</span>
+                      <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        Remix
+                      </Link>
+                    </div>
+                  ) : null}
+</CardContent>
               </Card>
-            ))}
+            )})}
           </div>
         )}
 

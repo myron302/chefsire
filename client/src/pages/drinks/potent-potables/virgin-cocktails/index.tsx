@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import { virginDrinks } from "@/data/drinks/potent-potables/virgin-cocktails";
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
 
 
@@ -324,7 +326,9 @@ export default function VirginDrinksPage() {
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredDrinks.map((drink) => (
+            {filteredDrinks.map((drink) => {
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: drink.slug, name: drink.name, sourceRoute: '/drinks/potent-potables/virgin-cocktails' });
+              return (
               <Card key={drink.id} className="hover:shadow-lg transition-all duration-300 overflow-hidden group">
                 <div className="relative bg-gradient-to-br from-green-100 to-emerald-100 p-6 h-48 flex items-center justify-center">
                   <Sparkles className="w-20 h-20 text-emerald-600 group-hover:scale-110 transition-transform" />
@@ -464,9 +468,20 @@ export default function VirginDrinksPage() {
                       <Share2 className="w-4 h-4" />
                     </Button>
                   </div>
+                  {canonicalSlug ? (
+                    <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                      <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
+                        Canonical recipe
+                      </Link>
+                      <span>•</span>
+                      <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
+                        Remix
+                      </Link>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
-            ))}
+            )})}
           </div>
 
           <Card className="mt-12 bg-gradient-to-br from-green-50 to-emerald-50 border-emerald-200">
