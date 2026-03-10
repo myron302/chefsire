@@ -787,6 +787,7 @@ export default function BerrySmoothiesPage() {
               {filteredSmoothies.map(smoothie => {
                 const useMetric = !!metricFlags[smoothie.id];
                 const servings = servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
+              const canonicalSlug = String(smoothie.slug ?? '').trim() || null;
 
                 return (
                   <Card key={smoothie.id} onClick={() => openRecipeModal(smoothie)} className="hover:shadow-lg transition-shadow cursor-pointer">
@@ -1007,6 +1008,17 @@ export default function BerrySmoothiesPage() {
                           Make Smoothie (+25 XP)
                         </Button>
                       </div>
+                      {canonicalSlug ? (
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
+                            Canonical recipe
+                          </Link>
+                          <span>•</span>
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
+                            Remix
+                          </Link>
+                        </div>
+                      ) : null}
                     </CardContent>
                   </Card>
                 );

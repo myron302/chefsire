@@ -722,6 +722,7 @@ export default function WheyProteinShakesPage() {
               {filteredShakes.map(shake => {
                 const useMetric = !!metricFlags[shake.id];
                 const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1);
+                const canonicalSlug = String(shake.slug ?? '').trim() || null;
 
                 return (
                   <Card
@@ -968,6 +969,17 @@ export default function WheyProteinShakesPage() {
                           Make Shake (+25 XP)
                         </Button>
                       </div>
+                      {canonicalSlug ? (
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
+                            Canonical recipe
+                          </Link>
+                          <span>•</span>
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
+                            Remix
+                          </Link>
+                        </div>
+                      ) : null}
                     </CardContent>
                   </Card>
                 );
