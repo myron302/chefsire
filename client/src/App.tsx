@@ -384,7 +384,8 @@ export default function App() {
                   )}
                 </Route>
 
-                {/* Pet Food (explicit subcategory match) */}
+                {/* Pet Food (canonical recipe pages + category pages) */}
+                <Route path="/pet-food/recipe/:slug" component={PetFoodRecipePage} />
                 <Route path="/pet-food/:subcategory">{() => <PetFoodSection />}</Route>
                 <Route path="/pet-food" component={PetFoodHub} />
 
