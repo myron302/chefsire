@@ -11,120 +11,94 @@ import Layout from "@/components/layout";
 
 import { UserProvider } from "@/contexts/UserContext";
 
-// Auth Pages
-import Signup from "@/pages/auth/signup";
-import Login from "@/pages/auth/login";
-import VerifyEmailPage from "@/pages/auth/verify-email";
-import VerifySuccessPage from "@/pages/auth/verify-success";
-
-// Social Pages
-import Feed from "@/pages/social/feed";
-import Profile from "@/pages/social/profile";
-import CreatePost from "@/pages/social/create-post";
-import ReviewsPage from "@/pages/social/reviews";
-
-// 🔔 DMs (NEW)
-import DMInboxPage from "@/pages/dm/InboxPage";
-import DMThreadPage from "@/pages/dm/ThreadPage";
-
-// Service Pages
-import CateringMarketplace from "@/pages/services/catering";
-import WeddingPlanning from "@/pages/services/wedding-planning";
-import WeddingPlanningBudgetPage from "@/pages/services/wedding-planning/budget";
-import WeddingPlanningCalendarPage from "@/pages/services/wedding-planning/calendar";
-import WeddingPlanningChecklistPage from "@/pages/services/wedding-planning/checklist";
-import WeddingPlanningInvitationsPage from "@/pages/services/wedding-planning/invitations";
-import WeddingPlanningRegistryPage from "@/pages/services/wedding-planning/registry";
-import WeddingPlanningVendorsPage from "@/pages/services/wedding-planning/vendors";
-import WeddingVendorMap from "@/pages/services/wedding-map";
-import PublicRegistryPage from "@/pages/services/public-registry";
-import VendorListingPage from "@/pages/services/vendor-listing";
-
 // Other Pages
-import ExplorePage from "@/pages/explore/ExplorePage";
-import RecipesListPage from "@/pages/recipes/RecipesListPage";
-import RecipesFiltersPage from "@/pages/recipes/RecipesFiltersPage";
 import { RecipesFiltersProvider } from "@/pages/recipes/useRecipesFilters";
-import ImportPaprikaPage from "@/pages/ImportPaprikaPage";
-import Pantry from "@/pages/pantry";
-import RecipeMatches from "@/pages/pantry/recipe-matches";
-import HouseholdPantry from "@/pages/pantry/household";
-import PantryScanner from "@/pages/pantry/scanner";
-import ShoppingListPage from "@/pages/pantry/shopping-list";
-import AllergiesDashboard from "@/pages/allergies";
-import NutritionPage from "@/pages/nutrition";
-import MealPlanCreator from "@/pages/nutrition/MealPlanCreator";
-import MealPlanMarketplace from "@/pages/nutrition/MealPlanMarketplace";
-import CreatorAnalytics from "@/pages/nutrition/CreatorAnalytics";
-import MealPlanDetailsPage from "@/pages/nutrition/MealPlanDetailsPage";
-import MyPurchasesPage from "@/pages/nutrition/MyPurchasesPage";
-import ClubsPage from "@/pages/clubs";
-import ClubDetailPage from "@/pages/clubs/[id]";
-import NotFound from "@/pages/not-found";
-import SubstitutionsPage from "@/pages/substitutions/SubstitutionsPage";
-
-// Store pages - ALL IN pages/store/
-import Marketplace from "@/pages/store/Marketplace";
-import StoreViewer from "@/pages/store/StoreViewer";
-import StoreDashboard from "@/pages/store/StoreDashboard";
-import SellerDashboard from "@/pages/store/SellerDashboard";
-import StoreCreatePage from "@/pages/store/StoreCreatePage";
-import ProductFormPage from "@/pages/store/ProductFormPage";
-
-// Checkout & Products
-import CheckoutPage from "@/pages/checkout/CheckoutPage";
-import ProductPage from "@/pages/marketplace/ProductPage";
-
-// Settings page
-import Settings from "@/pages/settings";
-
-// BiteMap page
-import BiteMapPage from "@/pages/bitemap/index.tsx";
-
-// ========== BABY FOOD PAGES ==========
-import BabyFoodHub from "@/pages/recipes/baby-food";
-import BabyFoodPurees from "@/pages/recipes/baby-food/purees";
-import BabyFoodMashed from "@/pages/recipes/baby-food/mashed";
-import BabyFoodFingerFoods from "@/pages/recipes/baby-food/finger-foods";
-import BabyFoodToddler from "@/pages/recipes/baby-food/toddler";
-
-
-// ========== PET FOOD PAGES ==========
-import PetFoodHub from "@/pages/pet-food";
-import DogsPage from "@/pages/pet-food/dogs";
-import CatsPage from "@/pages/pet-food/cats";
-import BirdsPage from "@/pages/pet-food/birds";
-import SmallPetsPage from "@/pages/pet-food/small-pets";
 
 // Utilities
 import ErrorBoundary from "@/components/ErrorBoundary";
 import DebugConsole, { shouldShowDebugConsole } from "@/components/DebugConsole";
 
-// Competitions
-import CreateCompetitionPage from "@/pages/competitions/CreateCompetitionPage";
-import CompetitionRoomPage from "@/pages/competitions/CompetitionRoomPage";
-import CompetitionLibraryPage from "@/pages/competitions/CompetitionLibraryPage";
-
-// Leaderboards
-import LeaderboardPage from "@/pages/leaderboard/LeaderboardPage";
-
-// ⚡ Phase 1: Daily Addiction Features
-import QuestsPage from "@/pages/QuestsPage";
-import RemixesPage from "@/pages/RemixesPage";
-import SuggestionsPage from "@/pages/SuggestionsPage";
-
-// ⚡ Phase 2: Social Explosion Features
-import CookTogetherPage from "@/pages/social/cook-together";
-import DuetsPage from "@/pages/social/duets";
-import EventsPage from "@/pages/social/events";
-
-// 📊 Phase 3: Power User Features
-import AnalyticsPage from "@/pages/analytics/AnalyticsPage";
+const Signup = React.lazy(() => import("@/pages/auth/signup"));
+const Login = React.lazy(() => import("@/pages/auth/login"));
+const VerifyEmailPage = React.lazy(() => import("@/pages/auth/verify-email"));
+const VerifySuccessPage = React.lazy(() => import("@/pages/auth/verify-success"));
+const Feed = React.lazy(() => import("@/pages/social/feed"));
+const Profile = React.lazy(() => import("@/pages/social/profile"));
+const CreatePost = React.lazy(() => import("@/pages/social/create-post"));
+const ReviewsPage = React.lazy(() => import("@/pages/social/reviews"));
+const CookTogetherPage = React.lazy(() => import("@/pages/social/cook-together"));
+const DuetsPage = React.lazy(() => import("@/pages/social/duets"));
+const EventsPage = React.lazy(() => import("@/pages/social/events"));
+const DMInboxPage = React.lazy(() => import("@/pages/dm/InboxPage"));
+const DMThreadPage = React.lazy(() => import("@/pages/dm/ThreadPage"));
+const ExplorePage = React.lazy(() => import("@/pages/explore/ExplorePage"));
+const Pantry = React.lazy(() => import("@/pages/pantry"));
+const RecipeMatches = React.lazy(() => import("@/pages/pantry/recipe-matches"));
+const HouseholdPantry = React.lazy(() => import("@/pages/pantry/household"));
+const PantryScanner = React.lazy(() => import("@/pages/pantry/scanner"));
+const ShoppingListPage = React.lazy(() => import("@/pages/pantry/shopping-list"));
+const AllergiesDashboard = React.lazy(() => import("@/pages/allergies"));
+const NutritionPage = React.lazy(() => import("@/pages/nutrition"));
+const MealPlanCreator = React.lazy(() => import("@/pages/nutrition/MealPlanCreator"));
+const MealPlanMarketplace = React.lazy(() => import("@/pages/nutrition/MealPlanMarketplace"));
+const CreatorAnalytics = React.lazy(() => import("@/pages/nutrition/CreatorAnalytics"));
+const MealPlanDetailsPage = React.lazy(() => import("@/pages/nutrition/MealPlanDetailsPage"));
+const MyPurchasesPage = React.lazy(() => import("@/pages/nutrition/MyPurchasesPage"));
+const AnalyticsPage = React.lazy(() => import("@/pages/analytics/AnalyticsPage"));
+const CateringMarketplace = React.lazy(() => import("@/pages/services/catering"));
+const WeddingPlanning = React.lazy(() => import("@/pages/services/wedding-planning"));
+const WeddingPlanningBudgetPage = React.lazy(() => import("@/pages/services/wedding-planning/budget"));
+const WeddingPlanningCalendarPage = React.lazy(() => import("@/pages/services/wedding-planning/calendar"));
+const WeddingPlanningChecklistPage = React.lazy(() => import("@/pages/services/wedding-planning/checklist"));
+const WeddingPlanningInvitationsPage = React.lazy(() => import("@/pages/services/wedding-planning/invitations"));
+const WeddingPlanningRegistryPage = React.lazy(() => import("@/pages/services/wedding-planning/registry"));
+const WeddingPlanningVendorsPage = React.lazy(() => import("@/pages/services/wedding-planning/vendors"));
+const WeddingVendorMap = React.lazy(() => import("@/pages/services/wedding-map"));
+const PublicRegistryPage = React.lazy(() => import("@/pages/services/public-registry"));
+const VendorListingPage = React.lazy(() => import("@/pages/services/vendor-listing"));
+const Marketplace = React.lazy(() => import("@/pages/store/Marketplace"));
+const StoreViewer = React.lazy(() => import("@/pages/store/StoreViewer"));
+const StoreDashboard = React.lazy(() => import("@/pages/store/StoreDashboard"));
+const SellerDashboard = React.lazy(() => import("@/pages/store/SellerDashboard"));
+const StoreCreatePage = React.lazy(() => import("@/pages/store/StoreCreatePage"));
+const ProductFormPage = React.lazy(() => import("@/pages/store/ProductFormPage"));
+const CheckoutPage = React.lazy(() => import("@/pages/checkout/CheckoutPage"));
+const ProductPage = React.lazy(() => import("@/pages/marketplace/ProductPage"));
+const CreateCompetitionPage = React.lazy(() => import("@/pages/competitions/CreateCompetitionPage"));
+const CompetitionRoomPage = React.lazy(() => import("@/pages/competitions/CompetitionRoomPage"));
+const CompetitionLibraryPage = React.lazy(() => import("@/pages/competitions/CompetitionLibraryPage"));
+const PetFoodHub = React.lazy(() => import("@/pages/pet-food"));
+const DogsPage = React.lazy(() => import("@/pages/pet-food/dogs"));
+const CatsPage = React.lazy(() => import("@/pages/pet-food/cats"));
+const BirdsPage = React.lazy(() => import("@/pages/pet-food/birds"));
+const SmallPetsPage = React.lazy(() => import("@/pages/pet-food/small-pets"));
+const RecipesListPage = React.lazy(() => import("@/pages/recipes/RecipesListPage"));
+const RecipesFiltersPage = React.lazy(() => import("@/pages/recipes/RecipesFiltersPage"));
+const ImportPaprikaPage = React.lazy(() => import("@/pages/ImportPaprikaPage"));
+const BabyFoodHub = React.lazy(() => import("@/pages/recipes/baby-food"));
+const BabyFoodPurees = React.lazy(() => import("@/pages/recipes/baby-food/purees"));
+const BabyFoodMashed = React.lazy(() => import("@/pages/recipes/baby-food/mashed"));
+const BabyFoodFingerFoods = React.lazy(() => import("@/pages/recipes/baby-food/finger-foods"));
+const BabyFoodToddler = React.lazy(() => import("@/pages/recipes/baby-food/toddler"));
+const ClubsPage = React.lazy(() => import("@/pages/clubs"));
+const ClubDetailPage = React.lazy(() => import("@/pages/clubs/[id]"));
+const SubstitutionsPage = React.lazy(() => import("@/pages/substitutions/SubstitutionsPage"));
+const Settings = React.lazy(() => import("@/pages/settings"));
+const BiteMapPage = React.lazy(() => import("@/pages/bitemap/index.tsx"));
+const LeaderboardPage = React.lazy(() => import("@/pages/leaderboard/LeaderboardPage"));
+const QuestsPage = React.lazy(() => import("@/pages/QuestsPage"));
+const RemixesPage = React.lazy(() => import("@/pages/RemixesPage"));
+const SuggestionsPage = React.lazy(() => import("@/pages/SuggestionsPage"));
+const NotFound = React.lazy(() => import("@/pages/not-found"));
 
 const DrinksRoutes = React.lazy(() => import("@/pages/drinks/DrinksRoutes"));
 
 function DrinksRoutesFallback() {
   return <div className="p-4 text-sm text-muted-foreground">Loading drink recipes...</div>;
+}
+
+function AppRouteFallback() {
+  return <div className="p-4 text-sm text-muted-foreground">Loading page...</div>;
 }
 
 function Redirect({ to }: { to: string }) {
@@ -182,7 +156,8 @@ export default function App() {
         <UserProvider>
           <Layout>
             <ErrorBoundary>
-              <Switch>
+              <React.Suspense fallback={<AppRouteFallback />}>
+                <Switch>
                 {/* Shortlinks (optional nice-to-have) */}
                 <Route path="/daiquiri">
                   <Redirect to="/drinks/potent-potables/daiquiri" />
@@ -412,7 +387,8 @@ export default function App() {
                 <Route path="/pet-food" component={PetFoodHub} />
 
                 <Route component={NotFound} />
-              </Switch>
+                </Switch>
+              </React.Suspense>
             </ErrorBoundary>
             <Toaster />
             {shouldShowDebugConsole() && <DebugConsole />}
