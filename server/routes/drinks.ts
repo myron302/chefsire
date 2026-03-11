@@ -18,9 +18,9 @@ import { z } from "zod";
 
 const r = Router();
 
-type EventType = "view";
+type EventType = "view" | "remix" | "grocery_add";
 
-const TRACKABLE_DRINK_EVENTS = new Set<EventType>(["view"]);
+const TRACKABLE_DRINK_EVENTS = new Set<EventType>(["view", "remix", "grocery_add"]);
 
 function resolveUserId(req: any): string | null {
   return typeof req?.user?.id === "string" && req.user.id.trim() ? req.user.id : null;
@@ -186,36 +186,38 @@ r.get("/trending", async (_req, res) => {
     if (!db) {
       return res.json({
         ok: true,
-        window: "30d",
-        ranking: { formula: "views_last_24h * 3 + views_last_7d * 1 + views_last_30d * 0.3 - hours_since_last_view * 0.05" },
+        window: "7d",
+        ranking: { formula: "views_last_24h * 3 + views_days_2_to_7 * 1 + remix_events * 4 + shopping_list_adds * 2" },
         items: [],
       });
     }
 
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
-
-    const hotScoreSql = sql<number>`
-      (
-        (sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end) * 3)
-        + (sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end) * 1)
-        + (count(*) * 0.3)
-        - ((extract(epoch from (now() - max(${drinkEvents.createdAt}))) / 3600.0) * 0.05)
-      )
-    `;
+    const views24hSql = sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} > ${oneDayAgo})`;
+    const views7dSql = sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`;
+    const remixesSql = sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'remix' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`;
+    const groceryAddsSql = sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'grocery_add' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`;
+    const scoreSql = sql<number>`(
+      (${views24hSql} * 3)
+      + (greatest(${views7dSql} - ${views24hSql}, 0) * 1)
+      + (${remixesSql} * 4)
+      + (${groceryAddsSql} * 2)
+    )`;
 
     const rows = await db
       .select({
         slug: drinkEvents.slug,
-        score: hotScoreSql,
-        views7d: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end)`,
-        views24h: sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`,
+        score: scoreSql,
+        views24h: views24hSql,
+        views7d: views7dSql,
+        remixes: remixesSql,
+        groceryAdds: groceryAddsSql,
       })
       .from(drinkEvents)
-      .where(and(eq(drinkEvents.eventType, "view"), gt(drinkEvents.createdAt, thirtyDaysAgo)))
+      .where(gt(drinkEvents.createdAt, sevenDaysAgo))
       .groupBy(drinkEvents.slug)
-      .orderBy(desc(hotScoreSql), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 1 else 0 end)`), desc(sql`sum(case when ${drinkEvents.createdAt} >= ${sevenDaysAgo} then 1 else 0 end)`))
+      .orderBy(desc(scoreSql), desc(views24hSql), desc(remixesSql), desc(groceryAddsSql), desc(views7dSql))
       .limit(10);
 
     const resolved = await Promise.all(rows.map((row) => resolveDrinkDetailsBySlug(row.slug)));
@@ -234,15 +236,17 @@ r.get("/trending", async (_req, res) => {
           score: Number(row.score ?? 0),
           views7d: Number(row.views7d ?? 0),
           views24h: Number(row.views24h ?? 0),
+          remixes: Number(row.remixes ?? 0),
+          groceryAdds: Number(row.groceryAdds ?? 0),
         };
       })
       .filter(Boolean);
 
     return res.json({
       ok: true,
-      window: "30d",
+      window: "7d",
       ranking: {
-        formula: "views_last_24h * 3 + views_last_7d * 1 + views_last_30d * 0.3 - hours_since_last_view * 0.05",
+        formula: "views_last_24h * 3 + views_days_2_to_7 * 1 + remix_events * 4 + shopping_list_adds * 2",
       },
       items,
     });

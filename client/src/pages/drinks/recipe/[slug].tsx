@@ -36,6 +36,18 @@ function asList(value: unknown): string[] {
   return [];
 }
 
+
+function logDrinkEvent(slug: string, eventType: "view" | "remix" | "grocery_add") {
+  return fetch("/api/drinks/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ slug, eventType }),
+  }).catch(() => {
+    // Non-blocking analytics event.
+  });
+}
+
 function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const { toast } = useToast();
   const canonicalRecipe = getCanonicalDrinkRecipeBySlug(slug);
@@ -59,17 +71,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
 
     addRecentlyViewedDrinkSlug(slug);
 
-    fetch("/api/drinks/events", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        slug,
-        eventType: "view",
-      }),
-    }).catch(() => {
-      // Non-blocking analytics event.
-    });
+    logDrinkEvent(slug, "view");
   }, [slug]);
 
   if (!canonicalRecipe && !userRecipe && userRecipeLoaded) {
@@ -119,6 +121,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
 
     const result = await addItemsToShoppingList(payload);
     if (result.addedCount > 0) {
+      logDrinkEvent(slug, "grocery_add");
       toast({ title: `Added ${result.addedCount} ingredient${result.addedCount === 1 ? "" : "s"} to shopping list.` });
       return;
     }
@@ -140,7 +143,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
 
       {remixSourceSlug ? (
         <div className="flex flex-wrap gap-2">
-          <Link href={`/drinks/submit?remix=${encodeURIComponent(remixSourceSlug)}`}>
+          <Link href={`/drinks/submit?remix=${encodeURIComponent(remixSourceSlug)}`} onClick={() => void logDrinkEvent(slug, "remix")}>
             <Button>Remix this drink</Button>
           </Link>
           <Button variant="outline" onClick={addAllIngredients}>

@@ -13,6 +13,8 @@ type TrendingDrink = {
   score?: number;
   views7d?: number;
   views24h?: number;
+  remixes?: number;
+  groceryAdds?: number;
 };
 
 type TrendingApiResponse = {
@@ -89,9 +91,8 @@ export default function TrendingDrinks() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {topItems.map((drink, index) => {
               const sourceLabel = sourceRouteToLabel(drink.sourceCategoryRoute);
-              const metricText = drink.views7d
-                ? `${drink.views7d.toLocaleString()} views in last 7 days`
-                : "Trending now";
+              const viewsToday = Number(drink.views24h ?? 0);
+              const remixes = Number(drink.remixes ?? 0);
 
               return (
                 <div
@@ -123,8 +124,10 @@ export default function TrendingDrinks() {
                         <p className="font-semibold leading-tight line-clamp-2">{drink.name}</p>
                         <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
                           <Flame className="h-3 w-3 text-orange-500" />
-                          {metricText}
+                          🔥 Trending now
                         </p>
+                        <p className="mt-1 text-xs text-muted-foreground">👀 {viewsToday.toLocaleString()} views today</p>
+                        <p className="mt-1 text-xs text-muted-foreground">🔁 {remixes.toLocaleString()} remixes</p>
                       </div>
                     </div>
                   </Link>
