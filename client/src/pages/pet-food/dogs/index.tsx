@@ -51,7 +51,7 @@ const sisterPetFoodPages = [
 ];
 
 // Dog recipes - 9 total with images
-const dogRecipes = [
+export const dogRecipes = [
   {
     id: 'dog-1',
     name: 'Puppy Growth Formula',

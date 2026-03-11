@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/components/ui/use-toast";
+import { resolveCanonicalPetFoodSlug } from "@/data/pet-food/canonical";
 
 interface AutocompleteResult {
   users: Array<{
@@ -46,6 +47,7 @@ interface AutocompleteResult {
     id: string;
     name: string;
     route: string;
+    matchKind?: "recipe-exact" | "category";
     type: "pet-food";
   }>;
   query: string;
@@ -194,6 +196,12 @@ export default function SearchAutocomplete() {
         return;
       }
       setLocation(`/reviews?q=${safeQ}`);
+      return;
+    }
+
+    const exactPetFoodSlug = resolveCanonicalPetFoodSlug(q);
+    if (exactPetFoodSlug) {
+      setLocation(`/pet-food/recipe/${exactPetFoodSlug}`);
       return;
     }
 
