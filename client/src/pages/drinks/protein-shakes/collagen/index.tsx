@@ -10,8 +10,7 @@ import {
   CheckCircle, Target, Flame, Droplets, Leaf, Apple, Gem,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift,
   Search, Filter, Shuffle, Camera, Share2, ArrowLeft,
-  Activity, BarChart3, Crown, Dumbbell, Eye, Bone, Moon, Wine, ArrowRight, X, Check
-, Coffee} from 'lucide-react';
+  Activity, BarChart3, Crown, Dumbbell, Eye, Bone, Moon, Wine, ArrowRight, X, Check, Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
