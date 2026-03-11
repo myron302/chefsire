@@ -49,7 +49,7 @@ const sisterPetFoodPages = [
 ];
 
 // Bird recipes - 9 total with images
-const birdRecipes = [
+export const birdRecipes = [
   {
     id: 'bird-1',
     name: 'Parrot Power Mix',

@@ -49,7 +49,7 @@ const sisterPetFoodPages = [
 ];
 
 // Small Pet recipes - 9 total with images
-const smallPetRecipes = [
+export const smallPetRecipes = [
   {
     id: 'small-1',
     name: 'Rabbit Premium Hay Mix',

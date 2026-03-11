@@ -72,6 +72,7 @@ const DogsPage = React.lazy(() => import("@/pages/pet-food/dogs"));
 const CatsPage = React.lazy(() => import("@/pages/pet-food/cats"));
 const BirdsPage = React.lazy(() => import("@/pages/pet-food/birds"));
 const SmallPetsPage = React.lazy(() => import("@/pages/pet-food/small-pets"));
+const PetFoodRecipePage = React.lazy(() => import("@/pages/pet-food/recipe/[slug]"));
 const RecipesListPage = React.lazy(() => import("@/pages/recipes/RecipesListPage"));
 const RecipesFiltersPage = React.lazy(() => import("@/pages/recipes/RecipesFiltersPage"));
 const ImportPaprikaPage = React.lazy(() => import("@/pages/ImportPaprikaPage"));
@@ -141,6 +142,7 @@ function PetFoodSection() {
       <Route path="/pet-food/cats" component={CatsPage} />
       <Route path="/pet-food/birds" component={BirdsPage} />
       <Route path="/pet-food/small-pets" component={SmallPetsPage} />
+      <Route path="/pet-food/recipe/:slug" component={PetFoodRecipePage} />
       <Route path="/pet-food" component={PetFoodHub} />
       <Route>
         <Redirect to="/pet-food" />

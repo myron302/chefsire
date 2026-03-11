@@ -51,7 +51,7 @@ const sisterPetFoodPages = [
 ];
 
 // Cat recipes - 9 total with images
-const catRecipes = [
+export const catRecipes = [
   {
     id: 'cat-1',
     name: 'Kitten Growth Formula',
