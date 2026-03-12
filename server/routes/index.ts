@@ -11,6 +11,7 @@ import pantryRouter from "./pantry";
 import marketplaceRouter from "./marketplace";
 import substitutionsRouter from "./substitutions";
 import drinksRouter from "./drinks";
+import petFoodRouter from "./pet-food";
 import allergiesRouter from "./allergies";
 import searchRouter from "./search";
 import nutritionRouter from "./nutrition";
@@ -119,6 +120,9 @@ r.use("/search", searchRouter);
 
 // Drinks - prefixed
 r.use("/drinks", drinksRouter);
+
+// Pet Food - prefixed
+r.use("/pet-food", petFoodRouter);
 
 // Allergies - prefixed
 r.use("/allergies", allergiesRouter);

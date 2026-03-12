@@ -10,6 +10,8 @@ import {
   Search, Share2, ArrowLeft, Home, Sparkles, Award,
   Crown, ChevronRight, Star, Leaf, TrendingUp, Trophy, Flame
 } from 'lucide-react';
+import TrendingPetFood from '@/components/pet-food/TrendingPetFood';
+import RecentlyViewedPetFood from '@/components/pet-food/RecentlyViewedPetFood';
 
 const petCategories = [
   {
@@ -228,6 +230,9 @@ export default function PetFoodHub() {
             />
           </div>
         </div>
+
+        <TrendingPetFood />
+        <RecentlyViewedPetFood />
 
         {/* PET CATEGORIES */}
         <div className="mb-16">
