@@ -182,6 +182,12 @@ export default function VodkaCocktailsPage() {
   };
 
   const openRecipeModal = (recipe: any) => {
+    const canonicalSlug = String(recipe?.slug ?? '').trim();
+    if (canonicalSlug && typeof window !== 'undefined') {
+      window.location.href = `/drinks/recipe/${encodeURIComponent(canonicalSlug)}`;
+      return;
+    }
+
     setSelectedRecipe(recipe);
     setShowKit(true);
   };

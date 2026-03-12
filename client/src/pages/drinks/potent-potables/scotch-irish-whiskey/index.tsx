@@ -169,6 +169,16 @@ export default function ScotchIrishWhiskeyPage() {
   };
 
   const openRecipeModal = (recipe: any) => {
+    const canonicalSlug = resolveCanonicalDrinkSlug({
+      slug: recipe?.slug,
+      name: recipe?.name,
+    });
+
+    if (canonicalSlug && typeof window !== 'undefined') {
+      window.location.href = `/drinks/recipe/${encodeURIComponent(canonicalSlug)}`;
+      return;
+    }
+
     setSelectedRecipe(recipe);
     setShowKit(true);
   };
