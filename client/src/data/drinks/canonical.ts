@@ -9,6 +9,55 @@ export type CanonicalDrinkRecipeEntry = {
   recipe: DrinkRecipe;
 };
 
+function asStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(/\r?\n|\.(?=\s|$)/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function normalizeRecipe(recipe: DrinkRecipe, sourceTitle: string): DrinkRecipe {
+  const nestedRecipe = recipe?.recipe;
+  const nestedMeasurements = Array.isArray(nestedRecipe?.measurements)
+    ? nestedRecipe.measurements
+        .map((measurement: any) => {
+          const amount = String(measurement?.amount ?? "").trim();
+          const unit = String(measurement?.unit ?? "").trim();
+          const item = String(measurement?.item ?? "").trim();
+          const note = String(measurement?.note ?? "").trim();
+          const line = [amount, unit, item].filter(Boolean).join(" ").trim();
+          if (!line) return "";
+          return note ? `${line} (${note})` : line;
+        })
+        .filter(Boolean)
+    : [];
+
+  const normalizedIngredients = asStringList(recipe?.ingredients);
+  const normalizedInstructions = asStringList(recipe?.instructions);
+  const fallbackIngredients = nestedMeasurements;
+  const fallbackInstructions = asStringList(nestedRecipe?.directions ?? recipe?.steps ?? recipe?.method);
+  const defaultInstruction = `Follow the preparation method shown on the ${sourceTitle} card and serve immediately.`;
+
+  return {
+    ...recipe,
+    ingredients: normalizedIngredients.length > 0 ? normalizedIngredients : fallbackIngredients,
+    instructions:
+      normalizedInstructions.length > 0
+        ? normalizedInstructions
+        : fallbackInstructions.length > 0
+          ? fallbackInstructions
+          : [defaultInstruction],
+  };
+}
+
 function buildSlug(baseName: string, existingSlugs: Set<string>, sourceRoute: string): string {
   const baseSlug = slugifyDrinkName(baseName);
   if (!baseSlug) return "drink-recipe";
@@ -47,6 +96,8 @@ function collectCanonicalDrinkRecipeEntries(
       const name = String(recipe?.name ?? "").trim();
       if (!name) continue;
 
+      const normalizedRecipe = normalizeRecipe(recipe, routeEntry.title);
+
       const slug = buildSlug(name, usedSlugs, routeEntry.route);
       usedSlugs.add(slug);
 
@@ -55,7 +106,7 @@ function collectCanonicalDrinkRecipeEntries(
         name,
         sourceRoute: routeEntry.route,
         sourceTitle: routeEntry.title,
-        recipe,
+        recipe: normalizedRecipe,
       });
     }
   }

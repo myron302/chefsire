@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { vodkaCocktails } from "@/data/drinks/potent-potables/vodka";
 
 // ---------- Helpers ----------
@@ -182,7 +183,11 @@ export default function VodkaCocktailsPage() {
   };
 
   const openRecipeModal = (recipe: any) => {
-    const canonicalSlug = String(recipe?.slug ?? '').trim();
+    const canonicalSlug = resolveCanonicalDrinkSlug({
+      slug: recipe?.slug,
+      name: recipe?.name,
+      sourceRoute: '/drinks/potent-potables/vodka',
+    });
     if (canonicalSlug && typeof window !== 'undefined') {
       window.location.href = `/drinks/recipe/${encodeURIComponent(canonicalSlug)}`;
       return;
