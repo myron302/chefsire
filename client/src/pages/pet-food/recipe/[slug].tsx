@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCanonicalPetFoodRecipeBySlug } from "@/data/pet-food/canonical";
 import { addRecentlyViewedPetFoodSlug } from "@/components/pet-food/RecentlyViewedPetFood";
+import { postEngagementEvent } from "@/lib/engagement-events";
 
 export default function PetFoodRecipePage() {
   const [, params] = useRoute("/pet-food/recipe/:slug");
@@ -17,11 +18,7 @@ export default function PetFoodRecipePage() {
 
     addRecentlyViewedPetFoodSlug(slug);
 
-    void fetch("/api/pet-food/events", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slug, eventType: "view" }),
-    }).catch(() => undefined);
+    void postEngagementEvent("/api/pet-food/events", { slug, eventType: "view" });
   }, [slug, recipe]);
 
   if (!recipe) {

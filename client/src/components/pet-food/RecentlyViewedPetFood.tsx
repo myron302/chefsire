@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { addRecentlyViewedSlug, readRecentlyViewedSlugs } from "@/lib/recently-viewed-storage";
 import {
   canonicalPetFoodRecipeBySlug,
   type CanonicalPetFoodRecipeEntry,
@@ -12,36 +13,11 @@ export const RECENTLY_VIEWED_PET_FOOD_STORAGE_KEY = "chefsire:pet-food:recently-
 const MAX_RECENTLY_VIEWED_PET_FOOD = 10;
 
 export function readRecentlyViewedPetFoodSlugs(): string[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = window.localStorage.getItem(RECENTLY_VIEWED_PET_FOOD_STORAGE_KEY);
-    if (!raw) return [];
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
-  } catch {
-    return [];
-  }
+  return readRecentlyViewedSlugs(RECENTLY_VIEWED_PET_FOOD_STORAGE_KEY);
 }
 
 export function addRecentlyViewedPetFoodSlug(slug: string) {
-  if (typeof window === "undefined") return;
-
-  const normalizedSlug = String(slug || "").trim();
-  if (!normalizedSlug) return;
-
-  const existing = readRecentlyViewedPetFoodSlugs();
-  const deduped = [normalizedSlug, ...existing.filter((item) => item !== normalizedSlug)];
-  const limited = deduped.slice(0, MAX_RECENTLY_VIEWED_PET_FOOD);
-
-  try {
-    window.localStorage.setItem(RECENTLY_VIEWED_PET_FOOD_STORAGE_KEY, JSON.stringify(limited));
-  } catch {
-    // Ignore storage write failures.
-  }
+  addRecentlyViewedSlug(RECENTLY_VIEWED_PET_FOOD_STORAGE_KEY, slug, MAX_RECENTLY_VIEWED_PET_FOOD);
 }
 
 function recipeImage(entry: CanonicalPetFoodRecipeEntry): string | null {
