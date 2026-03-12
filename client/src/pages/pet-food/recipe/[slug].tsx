@@ -1,15 +1,28 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Link, useRoute } from "wouter";
 import { ArrowLeft, Clock, Star } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCanonicalPetFoodRecipeBySlug } from "@/data/pet-food/canonical";
+import { addRecentlyViewedPetFoodSlug } from "@/components/pet-food/RecentlyViewedPetFood";
 
 export default function PetFoodRecipePage() {
   const [, params] = useRoute("/pet-food/recipe/:slug");
   const slug = params?.slug ?? "";
   const recipe = getCanonicalPetFoodRecipeBySlug(slug);
+
+  useEffect(() => {
+    if (!slug || !recipe) return;
+
+    addRecentlyViewedPetFoodSlug(slug);
+
+    void fetch("/api/pet-food/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ slug, eventType: "view" }),
+    }).catch(() => undefined);
+  }, [slug, recipe]);
 
   if (!recipe) {
     return (

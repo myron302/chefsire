@@ -1,0 +1,293 @@
+{
+  "bySlug": {
+    "puppy-growth-formula": {
+      "slug": "puppy-growth-formula",
+      "name": "Puppy Growth Formula",
+      "image": "https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800",
+      "route": "/pet-food/recipe/puppy-growth-formula",
+      "sourceRoute": "/pet-food/dogs",
+      "sourceTitle": "Dog Food"
+    },
+    "adult-maintenance-bowl": {
+      "slug": "adult-maintenance-bowl",
+      "name": "Adult Maintenance Bowl",
+      "image": "https://images.unsplash.com/photo-1558788353-f76d92427f16?w=800",
+      "route": "/pet-food/recipe/adult-maintenance-bowl",
+      "sourceRoute": "/pet-food/dogs",
+      "sourceTitle": "Dog Food"
+    },
+    "senior-gentle-digest": {
+      "slug": "senior-gentle-digest",
+      "name": "Senior Gentle Digest",
+      "image": "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800",
+      "route": "/pet-food/recipe/senior-gentle-digest",
+      "sourceRoute": "/pet-food/dogs",
+      "sourceTitle": "Dog Food"
+    },
+    "grain-free-salmon-power": {
+      "slug": "grain-free-salmon-power",
+      "name": "Grain-Free Salmon Power",
+      "image": "https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=800",
+      "route": "/pet-food/recipe/grain-free-salmon-power",
+      "sourceRoute": "/pet-food/dogs",
+      "sourceTitle": "Dog Food"
+    },
+    "lean-and-green-weight-loss": {
+      "slug": "lean-and-green-weight-loss",
+      "name": "Lean & Green Weight Loss",
+      "image": "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=800",
+      "route": "/pet-food/recipe/lean-and-green-weight-loss",
+      "sourceRoute": "/pet-food/dogs",
+      "sourceTitle": "Dog Food"
+    },
+    "allergy-friendly-lamb": {
+      "slug": "allergy-friendly-lamb",
+      "name": "Allergy-Friendly Lamb",
+      "image": "https://images.unsplash.com/photo-1546527868-ccb7ee7dfa6a?w=800",
+      "route": "/pet-food/recipe/allergy-friendly-lamb",
+      "sourceRoute": "/pet-food/dogs",
+      "sourceTitle": "Dog Food"
+    },
+    "athlete-performance-fuel": {
+      "slug": "athlete-performance-fuel",
+      "name": "Athlete Performance Fuel",
+      "image": "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=800",
+      "route": "/pet-food/recipe/athlete-performance-fuel",
+      "sourceRoute": "/pet-food/dogs",
+      "sourceTitle": "Dog Food"
+    },
+    "dental-health-crunch": {
+      "slug": "dental-health-crunch",
+      "name": "Dental Health Crunch",
+      "image": "https://images.unsplash.com/photo-1534351450181-ea9f78427fe8?w=800",
+      "route": "/pet-food/recipe/dental-health-crunch",
+      "sourceRoute": "/pet-food/dogs",
+      "sourceTitle": "Dog Food"
+    },
+    "digestive-support-chicken": {
+      "slug": "digestive-support-chicken",
+      "name": "Digestive Support Chicken",
+      "image": "https://images.unsplash.com/photo-1477884213360-7e9d7dcc1e48?w=800",
+      "route": "/pet-food/recipe/digestive-support-chicken",
+      "sourceRoute": "/pet-food/dogs",
+      "sourceTitle": "Dog Food"
+    },
+    "kitten-growth-formula": {
+      "slug": "kitten-growth-formula",
+      "name": "Kitten Growth Formula",
+      "image": "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=800",
+      "route": "/pet-food/recipe/kitten-growth-formula",
+      "sourceRoute": "/pet-food/cats",
+      "sourceTitle": "Cat Food"
+    },
+    "adult-salmon-and-tuna-bowl": {
+      "slug": "adult-salmon-and-tuna-bowl",
+      "name": "Adult Salmon & Tuna Bowl",
+      "image": "https://images.unsplash.com/photo-1606214174585-fe31582dc6ee?w=800",
+      "route": "/pet-food/recipe/adult-salmon-and-tuna-bowl",
+      "sourceRoute": "/pet-food/cats",
+      "sourceTitle": "Cat Food"
+    },
+    "senior-gentle-turkey-care": {
+      "slug": "senior-gentle-turkey-care",
+      "name": "Senior Gentle Turkey Care",
+      "image": "https://images.unsplash.com/photo-1574158622682-e40e69881006?w=800",
+      "route": "/pet-food/recipe/senior-gentle-turkey-care",
+      "sourceRoute": "/pet-food/cats",
+      "sourceTitle": "Cat Food"
+    },
+    "high-protein-beef-power": {
+      "slug": "high-protein-beef-power",
+      "name": "High Protein Beef Power",
+      "image": "https://images.unsplash.com/photo-1495360010541-f48722b34f7d?w=800",
+      "route": "/pet-food/recipe/high-protein-beef-power",
+      "sourceRoute": "/pet-food/cats",
+      "sourceTitle": "Cat Food"
+    },
+    "low-carb-chicken-medley": {
+      "slug": "low-carb-chicken-medley",
+      "name": "Low Carb Chicken Medley",
+      "image": "https://images.unsplash.com/photo-1615789591457-74a63395c990?w=800",
+      "route": "/pet-food/recipe/low-carb-chicken-medley",
+      "sourceRoute": "/pet-food/cats",
+      "sourceTitle": "Cat Food"
+    },
+    "hairball-control-formula": {
+      "slug": "hairball-control-formula",
+      "name": "Hairball Control Formula",
+      "image": "https://images.unsplash.com/photo-1513360371669-4adf3dd7dff8?w=800",
+      "route": "/pet-food/recipe/hairball-control-formula",
+      "sourceRoute": "/pet-food/cats",
+      "sourceTitle": "Cat Food"
+    },
+    "urinary-health-support": {
+      "slug": "urinary-health-support",
+      "name": "Urinary Health Support",
+      "image": "https://images.unsplash.com/photo-1526336024174-e58f5cdd8e13?w=800",
+      "route": "/pet-food/recipe/urinary-health-support",
+      "sourceRoute": "/pet-food/cats",
+      "sourceTitle": "Cat Food"
+    },
+    "sensitive-stomach-soother": {
+      "slug": "sensitive-stomach-soother",
+      "name": "Sensitive Stomach Soother",
+      "image": "https://images.unsplash.com/photo-1543852786-1cf6624b9987?w=800",
+      "route": "/pet-food/recipe/sensitive-stomach-soother",
+      "sourceRoute": "/pet-food/cats",
+      "sourceTitle": "Cat Food"
+    },
+    "complete-balance-fish-feast": {
+      "slug": "complete-balance-fish-feast",
+      "name": "Complete Balance Fish Feast",
+      "image": "https://images.unsplash.com/photo-1517331156700-3c241d2b4d83?w=800",
+      "route": "/pet-food/recipe/complete-balance-fish-feast",
+      "sourceRoute": "/pet-food/cats",
+      "sourceTitle": "Cat Food"
+    },
+    "parrot-power-mix": {
+      "slug": "parrot-power-mix",
+      "name": "Parrot Power Mix",
+      "image": "https://images.unsplash.com/photo-1552728089-57bdde30beb3?w=800",
+      "route": "/pet-food/recipe/parrot-power-mix",
+      "sourceRoute": "/pet-food/birds",
+      "sourceTitle": "Bird Food"
+    },
+    "canary-premium-seed-blend": {
+      "slug": "canary-premium-seed-blend",
+      "name": "Canary Premium Seed Blend",
+      "image": "https://images.unsplash.com/photo-1550670256-6d2e5e8d6f28?w=800",
+      "route": "/pet-food/recipe/canary-premium-seed-blend",
+      "sourceRoute": "/pet-food/birds",
+      "sourceTitle": "Bird Food"
+    },
+    "finch-fruit-and-seed-delight": {
+      "slug": "finch-fruit-and-seed-delight",
+      "name": "Finch Fruit & Seed Delight",
+      "image": "https://images.unsplash.com/photo-1582845512747-e42001c95638?w=800",
+      "route": "/pet-food/recipe/finch-fruit-and-seed-delight",
+      "sourceRoute": "/pet-food/birds",
+      "sourceTitle": "Bird Food"
+    },
+    "budgie-veggie-garden-bowl": {
+      "slug": "budgie-veggie-garden-bowl",
+      "name": "Budgie Veggie Garden Bowl",
+      "image": "https://images.unsplash.com/photo-1589666564459-93cdd3ab856a?w=800",
+      "route": "/pet-food/recipe/budgie-veggie-garden-bowl",
+      "sourceRoute": "/pet-food/birds",
+      "sourceTitle": "Bird Food"
+    },
+    "cockatiel-morning-feast": {
+      "slug": "cockatiel-morning-feast",
+      "name": "Cockatiel Morning Feast",
+      "image": "https://images.unsplash.com/photo-1563281746-3e5c80b1cd19?w=800",
+      "route": "/pet-food/recipe/cockatiel-morning-feast",
+      "sourceRoute": "/pet-food/birds",
+      "sourceTitle": "Bird Food"
+    },
+    "lovebird-tropical-paradise": {
+      "slug": "lovebird-tropical-paradise",
+      "name": "Lovebird Tropical Paradise",
+      "image": "https://images.unsplash.com/photo-1444464666168-49d633b86797?w=800",
+      "route": "/pet-food/recipe/lovebird-tropical-paradise",
+      "sourceRoute": "/pet-food/birds",
+      "sourceTitle": "Bird Food"
+    },
+    "conure-energy-blend": {
+      "slug": "conure-energy-blend",
+      "name": "Conure Energy Blend",
+      "image": "https://images.unsplash.com/photo-1580156783729-1e93a8e90b78?w=800",
+      "route": "/pet-food/recipe/conure-energy-blend",
+      "sourceRoute": "/pet-food/birds",
+      "sourceTitle": "Bird Food"
+    },
+    "macaw-mega-nut-mix": {
+      "slug": "macaw-mega-nut-mix",
+      "name": "Macaw Mega Nut Mix",
+      "image": "https://images.unsplash.com/photo-1559827260-dc66d52bef19?w=800",
+      "route": "/pet-food/recipe/macaw-mega-nut-mix",
+      "sourceRoute": "/pet-food/birds",
+      "sourceTitle": "Bird Food"
+    },
+    "universal-pellet-topper": {
+      "slug": "universal-pellet-topper",
+      "name": "Universal Pellet Topper",
+      "image": "https://images.unsplash.com/photo-1568390811907-0ca2f0eff400?w=800",
+      "route": "/pet-food/recipe/universal-pellet-topper",
+      "sourceRoute": "/pet-food/birds",
+      "sourceTitle": "Bird Food"
+    },
+    "rabbit-premium-hay-mix": {
+      "slug": "rabbit-premium-hay-mix",
+      "name": "Rabbit Premium Hay Mix",
+      "image": "https://images.unsplash.com/photo-1585110396000-c9ffd4e4b308?w=800",
+      "route": "/pet-food/recipe/rabbit-premium-hay-mix",
+      "sourceRoute": "/pet-food/small-pets",
+      "sourceTitle": "Small Pets"
+    },
+    "guinea-pig-vitamin-c-feast": {
+      "slug": "guinea-pig-vitamin-c-feast",
+      "name": "Guinea Pig Vitamin C Feast",
+      "image": "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=800",
+      "route": "/pet-food/recipe/guinea-pig-vitamin-c-feast",
+      "sourceRoute": "/pet-food/small-pets",
+      "sourceTitle": "Small Pets"
+    },
+    "hamster-wholesome-seed-blend": {
+      "slug": "hamster-wholesome-seed-blend",
+      "name": "Hamster Wholesome Seed Blend",
+      "image": "https://images.unsplash.com/photo-1425082661705-1834bfd09dca?w=800",
+      "route": "/pet-food/recipe/hamster-wholesome-seed-blend",
+      "sourceRoute": "/pet-food/small-pets",
+      "sourceTitle": "Small Pets"
+    },
+    "gerbil-complete-nutrition-mix": {
+      "slug": "gerbil-complete-nutrition-mix",
+      "name": "Gerbil Complete Nutrition Mix",
+      "image": "https://images.unsplash.com/photo-1612540448025-ae3523b7d937?w=800",
+      "route": "/pet-food/recipe/gerbil-complete-nutrition-mix",
+      "sourceRoute": "/pet-food/small-pets",
+      "sourceTitle": "Small Pets"
+    },
+    "rabbit-garden-harvest-bowl": {
+      "slug": "rabbit-garden-harvest-bowl",
+      "name": "Rabbit Garden Harvest Bowl",
+      "image": "https://images.unsplash.com/photo-1535241749838-299277b6305f?w=800",
+      "route": "/pet-food/recipe/rabbit-garden-harvest-bowl",
+      "sourceRoute": "/pet-food/small-pets",
+      "sourceTitle": "Small Pets"
+    },
+    "guinea-pig-fortified-pellet-mix": {
+      "slug": "guinea-pig-fortified-pellet-mix",
+      "name": "Guinea Pig Fortified Pellet Mix",
+      "image": "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=800",
+      "route": "/pet-food/recipe/guinea-pig-fortified-pellet-mix",
+      "sourceRoute": "/pet-food/small-pets",
+      "sourceTitle": "Small Pets"
+    },
+    "hamster-protein-power-mix": {
+      "slug": "hamster-protein-power-mix",
+      "name": "Hamster Protein Power Mix",
+      "image": "https://images.unsplash.com/photo-1452857297128-d9c29adba80b?w=800",
+      "route": "/pet-food/recipe/hamster-protein-power-mix",
+      "sourceRoute": "/pet-food/small-pets",
+      "sourceTitle": "Small Pets"
+    },
+    "chinchilla-safe-treat-mix": {
+      "slug": "chinchilla-safe-treat-mix",
+      "name": "Chinchilla Safe Treat Mix",
+      "image": "https://images.unsplash.com/photo-1553990872-7e4587f7b7f1?w=800",
+      "route": "/pet-food/recipe/chinchilla-safe-treat-mix",
+      "sourceRoute": "/pet-food/small-pets",
+      "sourceTitle": "Small Pets"
+    },
+    "multi-small-pet-veggie-delight": {
+      "slug": "multi-small-pet-veggie-delight",
+      "name": "Multi-Small Pet Veggie Delight",
+      "image": "https://images.unsplash.com/photo-1589656966895-2f33e7653819?w=800",
+      "route": "/pet-food/recipe/multi-small-pet-veggie-delight",
+      "sourceRoute": "/pet-food/small-pets",
+      "sourceTitle": "Small Pets"
+    }
+  },
+  "generatedAt": "2026-03-12T11:46:22.122Z"
+}
