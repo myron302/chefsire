@@ -3,6 +3,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import "./index.css";
+import { clearChunkReloadGuard, isChunkLoadError, reloadForChunkError } from "@/lib/chunkLoadError";
 
 /** A minimal, production-safe error boundary so the app never shows a dead white page */
 class GlobalErrorBoundary extends React.Component<
@@ -19,6 +20,10 @@ class GlobalErrorBoundary extends React.Component<
   componentDidCatch(error: any, info: any) {
     // You can POST this to your server for logging if you want
     console.error("GlobalErrorBoundary caught:", error, info);
+
+    if (isChunkLoadError(error)) {
+      reloadForChunkError();
+    }
   }
   render() {
     if (this.state.hasError) {
@@ -50,6 +55,24 @@ class GlobalErrorBoundary extends React.Component<
     }
     return this.props.children;
   }
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("load", () => {
+    clearChunkReloadGuard();
+  });
+
+  window.addEventListener("error", (event) => {
+    if (isChunkLoadError(event.error)) {
+      reloadForChunkError();
+    }
+  });
+
+  window.addEventListener("unhandledrejection", (event) => {
+    if (isChunkLoadError(event.reason)) {
+      reloadForChunkError();
+    }
+  });
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(

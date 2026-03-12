@@ -2,6 +2,7 @@ import React from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, RefreshCw, Home } from "lucide-react";
+import { isChunkLoadError, reloadForChunkError } from "@/lib/chunkLoadError";
 
 type Props = {
   children: React.ReactNode;
@@ -19,6 +20,11 @@ export default class ErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: any, info: any) {
     console.error("ErrorBoundary caught:", error, info);
+
+    if (isChunkLoadError(error)) {
+      reloadForChunkError();
+      return;
+    }
 
     // Call custom error handler if provided
     this.props.onError?.(error, info);
@@ -111,6 +117,10 @@ export class SectionErrorBoundary extends React.Component<
 
   componentDidCatch(error: any, info: any) {
     console.error(`SectionErrorBoundary (${this.props.sectionName || 'Unknown'}) caught:`, error, info);
+
+    if (isChunkLoadError(error)) {
+      reloadForChunkError();
+    }
   }
 
   resetError = () => {
