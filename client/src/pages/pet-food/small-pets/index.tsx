@@ -374,6 +374,12 @@ export default function SmallPetsPage() {
   }, [searchQuery, selectedCategory, sortBy]);
 
   const openRecipeModal = (recipe: any) => {
+    const canonicalSlug = resolveCanonicalPetFoodSlug(recipe?.name || '');
+    if (canonicalSlug && typeof window !== 'undefined') {
+      window.location.href = `/pet-food/recipe/${encodeURIComponent(canonicalSlug)}`;
+      return;
+    }
+
     setSelectedRecipe(recipe);
     setShowKit(true);
   };
