@@ -3,15 +3,12 @@ import { desc, gt, sql } from "drizzle-orm";
 import { db } from "../db";
 import { petFoodEvents } from "@shared/schema";
 import { getCanonicalPetFoodBySlug } from "../services/canonical-pet-food-index";
+import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
 
 const r = Router();
 
 type EventType = "view";
 const TRACKABLE_PET_FOOD_EVENTS = new Set<EventType>(["view"]);
-
-function resolveUserId(req: any): string | null {
-  return typeof req?.user?.id === "string" && req.user.id.trim() ? req.user.id : null;
-}
 
 function resolvePetFoodDetailsBySlug(slug: string) {
   const canonicalRecipe = getCanonicalPetFoodBySlug(slug);
@@ -33,16 +30,12 @@ r.post("/events", async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
 
-    const slug = typeof req.body?.slug === "string" ? req.body.slug.trim() : "";
-    const eventType = typeof req.body?.eventType === "string" ? req.body.eventType.trim().toLowerCase() : "";
-
-    if (!slug) {
-      return res.status(400).json({ ok: false, error: "slug is required" });
+    const parsed = parseTrackedEventBody(req.body, TRACKABLE_PET_FOOD_EVENTS);
+    if (!parsed.ok) {
+      return res.status(parsed.status).json({ ok: false, error: parsed.error });
     }
 
-    if (!TRACKABLE_PET_FOOD_EVENTS.has(eventType as EventType)) {
-      return res.status(400).json({ ok: false, error: "Unsupported event_type" });
-    }
+    const { slug, eventType } = parsed;
 
     const canonicalRecipe = getCanonicalPetFoodBySlug(slug);
     if (!canonicalRecipe) {
@@ -52,7 +45,7 @@ r.post("/events", async (req, res) => {
     await db.insert(petFoodEvents).values({
       slug,
       eventType,
-      userId: resolveUserId(req),
+      userId: resolveEngagementUserId(req),
     });
 
     return res.status(201).json({ ok: true });

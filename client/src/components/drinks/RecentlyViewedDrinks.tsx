@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { addRecentlyViewedSlug, readRecentlyViewedSlugs } from "@/lib/recently-viewed-storage";
 import {
   canonicalDrinkRecipeBySlug,
   type CanonicalDrinkRecipeEntry,
@@ -12,36 +13,11 @@ export const RECENTLY_VIEWED_DRINKS_STORAGE_KEY = "chefsire:drinks:recently-view
 const MAX_RECENTLY_VIEWED_DRINKS = 10;
 
 export function readRecentlyViewedDrinkSlugs(): string[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = window.localStorage.getItem(RECENTLY_VIEWED_DRINKS_STORAGE_KEY);
-    if (!raw) return [];
-
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed.filter((item): item is string => typeof item === "string" && item.length > 0);
-  } catch {
-    return [];
-  }
+  return readRecentlyViewedSlugs(RECENTLY_VIEWED_DRINKS_STORAGE_KEY);
 }
 
 export function addRecentlyViewedDrinkSlug(slug: string) {
-  if (typeof window === "undefined") return;
-
-  const normalizedSlug = String(slug || "").trim();
-  if (!normalizedSlug) return;
-
-  const existing = readRecentlyViewedDrinkSlugs();
-  const deduped = [normalizedSlug, ...existing.filter((item) => item !== normalizedSlug)];
-  const limited = deduped.slice(0, MAX_RECENTLY_VIEWED_DRINKS);
-
-  try {
-    window.localStorage.setItem(RECENTLY_VIEWED_DRINKS_STORAGE_KEY, JSON.stringify(limited));
-  } catch {
-    // Ignore storage write failures.
-  }
+  addRecentlyViewedSlug(RECENTLY_VIEWED_DRINKS_STORAGE_KEY, slug, MAX_RECENTLY_VIEWED_DRINKS);
 }
 
 function recipeImage(entry: CanonicalDrinkRecipeEntry): string | null {

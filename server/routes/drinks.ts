@@ -15,16 +15,13 @@ import {
   insertDrinkRecipeSchema
 } from "@shared/schema";
 import { z } from "zod";
+import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
 
 const r = Router();
 
 type EventType = "view" | "remix" | "grocery_add";
 
 const TRACKABLE_DRINK_EVENTS = new Set<EventType>(["view", "remix", "grocery_add"]);
-
-function resolveUserId(req: any): string | null {
-  return typeof req?.user?.id === "string" && req.user.id.trim() ? req.user.id : null;
-}
 
 function slugifyDrinkRecipeName(value: string): string {
   return value
@@ -110,7 +107,7 @@ r.post("/submit", authenticateUser, async (req, res) => {
       image: str(req.body?.image),
       category: str(req.body?.category) || "smoothies",
       subcategory: str(req.body?.subcategory),
-      userId: resolveUserId(req),
+      userId: resolveEngagementUserId(req),
     });
 
     const rows = await db.insert(drinkRecipes).values({ ...parsed, source: "chefsire" }).returning();
@@ -150,16 +147,12 @@ r.post("/events", async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
 
-    const slug = typeof req.body?.slug === "string" ? req.body.slug.trim() : "";
-    const eventType = typeof req.body?.eventType === "string" ? req.body.eventType.trim().toLowerCase() : "";
-
-    if (!slug) {
-      return res.status(400).json({ ok: false, error: "slug is required" });
+    const parsed = parseTrackedEventBody(req.body, TRACKABLE_DRINK_EVENTS);
+    if (!parsed.ok) {
+      return res.status(parsed.status).json({ ok: false, error: parsed.error });
     }
 
-    if (!TRACKABLE_DRINK_EVENTS.has(eventType as EventType)) {
-      return res.status(400).json({ ok: false, error: "Unsupported event_type" });
-    }
+    const { slug, eventType } = parsed;
 
     const canonicalRecipe = getCanonicalDrinkBySlug(slug);
     const userRecipe = canonicalRecipe ? null : await getUserRecipeBySlug(slug);
@@ -170,7 +163,7 @@ r.post("/events", async (req, res) => {
     await db.insert(drinkEvents).values({
       slug,
       eventType,
-      userId: resolveUserId(req),
+      userId: resolveEngagementUserId(req),
     });
 
     return res.status(201).json({ ok: true });

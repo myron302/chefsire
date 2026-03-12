@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { addItemsToShoppingList } from "@/lib/shopping-list";
 import { addRecentlyViewedDrinkSlug } from "@/components/drinks/RecentlyViewedDrinks";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
+import { postEngagementEvent } from "@/lib/engagement-events";
 
 type UserDrinkRecipe = {
   slug: string;
@@ -38,14 +39,11 @@ function asList(value: unknown): string[] {
 
 
 function logDrinkEvent(slug: string, eventType: "view" | "remix" | "grocery_add") {
-  return fetch("/api/drinks/events", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ slug, eventType }),
-  }).catch(() => {
-    // Non-blocking analytics event.
-  });
+  return postEngagementEvent(
+    "/api/drinks/events",
+    { slug, eventType },
+    true
+  );
 }
 
 function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
