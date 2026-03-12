@@ -9,6 +9,7 @@ import {
   Search, Share2, ArrowLeft, Check, Clipboard, RotateCcw, Award, ArrowRight, Home, Crown, Leaf, Target
 } from 'lucide-react';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import { resolveCanonicalPetFoodSlug } from '@/data/pet-food/canonical';
 
 // Helpers
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -584,6 +585,7 @@ export default function BirdsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredRecipes.map(recipe => {
             const useMetric = !!metricFlags[recipe.id];
+            const canonicalSlug = resolveCanonicalPetFoodSlug(recipe.name);
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
 
             return (
@@ -701,6 +703,14 @@ export default function BirdsPage() {
                       Make Recipe (+40 XP)
                     </Button>
                   </div>
+
+                  {canonicalSlug ? (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      <Link href={`/pet-food/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
+                        Canonical Recipe
+                      </Link>
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             );
