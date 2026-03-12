@@ -14,6 +14,7 @@ import {
 import { useDrinks } from "@/contexts/DrinksContext";
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
 // ---------- Helpers (mirror Egg page) ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -407,7 +408,11 @@ export default function WheyProteinShakesPage() {
   };
 
   const openRecipeModal = (recipe: any) => {
-    const canonicalSlug = String(recipe?.slug ?? '').trim();
+    const canonicalSlug = resolveCanonicalDrinkSlug({
+      slug: recipe?.slug,
+      name: recipe?.name,
+      sourceRoute: '/drinks/protein-shakes/whey',
+    });
     if (canonicalSlug && typeof window !== 'undefined') {
       window.location.href = `/drinks/recipe/${encodeURIComponent(canonicalSlug)}`;
       return;

@@ -14,6 +14,7 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import TrendingDrinksByCategory from "@/components/drinks/TrendingDrinksByCategory";
 
 // ---------- Helpers ----------
@@ -411,7 +412,11 @@ export default function BerrySmoothiesPage() {
   };
 
   const openRecipeModal = (recipe: any) => {
-    const canonicalSlug = String(recipe?.slug ?? '').trim();
+    const canonicalSlug = resolveCanonicalDrinkSlug({
+      slug: recipe?.slug,
+      name: recipe?.name,
+      sourceRoute: '/drinks/smoothies/berry',
+    });
     if (canonicalSlug && typeof window !== 'undefined') {
       window.location.href = `/drinks/recipe/${encodeURIComponent(canonicalSlug)}`;
       return;

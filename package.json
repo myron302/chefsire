@@ -42,7 +42,8 @@
     "generate:drink-index": "tsx scripts/generate-drink-index.ts",
     "predev": "npm run generate:drink-index && npm run generate:pet-food-index",
     "verify:drink-index": "node --input-type=module -e \"import fs from 'node:fs'; import path from 'node:path'; import { fileURLToPath } from 'node:url'; const cwdPath = path.join(process.cwd(), 'server', 'generated', 'drink-index.json'); const searchPath = path.join(path.dirname(fileURLToPath(new URL('./server/routes/search.ts', import.meta.url))), '..', 'generated', 'drink-index.json'); const distPath = path.join(path.dirname(fileURLToPath(new URL('./server/dist/index.js', import.meta.url))), '..', 'generated', 'drink-index.json'); const inspect = (p) => ({ path: p, exists: fs.existsSync(p), size: fs.existsSync(p) ? fs.statSync(p).size : 0 }); const report = { cwd: process.cwd(), cwdPath: inspect(cwdPath), searchPath: inspect(searchPath), distPath: inspect(distPath) }; const primary = report.searchPath.exists ? report.searchPath.path : report.cwdPath.path; if (fs.existsSync(primary)) { try { const parsed = JSON.parse(fs.readFileSync(primary, 'utf8')); report.recipes = parsed?.recipes ? Object.keys(parsed.recipes).length : 0; report.routes = Array.isArray(parsed?.routes) ? parsed.routes.length : 0; } catch (err) { report.parseError = String(err?.message ?? err); } } console.log(JSON.stringify(report, null, 2)); \"",
-    "generate:pet-food-index": "tsx scripts/generate-pet-food-index.ts"
+    "generate:pet-food-index": "tsx scripts/generate-pet-food-index.ts",
+    "audit:drink-canonical": "tsx scripts/audit-drink-canonical.ts"
   },
   "dependencies": {
     "@craftjs/core": "^0.2.12",
