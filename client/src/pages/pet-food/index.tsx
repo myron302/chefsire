@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import TrendingPetFood from '@/components/pet-food/TrendingPetFood';
 import RecentlyViewedPetFood from '@/components/pet-food/RecentlyViewedPetFood';
+import ForYouPetFood from '@/components/pet-food/ForYouPetFood';
 
 const petCategories = [
   {
@@ -233,6 +234,7 @@ export default function PetFoodHub() {
 
         <TrendingPetFood />
         <RecentlyViewedPetFood />
+        <ForYouPetFood />
 
         {/* PET CATEGORIES */}
         <div className="mb-16">
