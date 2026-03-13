@@ -10,6 +10,7 @@ import { useDrinks } from "@/contexts/DrinksContext";
 import RecipeKit from "@/components/recipes/RecipeKit";
 import { daiquiris } from "@/data/drinks/potent-potables/daiquiri";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
 
 // -------- Helpers --------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -138,8 +139,7 @@ export default function DaiquiriPage() {
       name: recipe?.name,
     });
 
-    if (canonicalSlug && typeof window !== 'undefined') {
-      window.location.href = `/drinks/recipe/${encodeURIComponent(canonicalSlug)}`;
+    if (redirectToCanonicalRecipe(canonicalSlug, '/drinks/recipe')) {
       return;
     }
 
@@ -656,7 +656,7 @@ export default function DaiquiriPage() {
                     {canonicalSlug ? (
                       <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
                         <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
-                          Canonical recipe
+                          Canonical Recipe
                         </Link>
                         <span>•</span>
                         <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 

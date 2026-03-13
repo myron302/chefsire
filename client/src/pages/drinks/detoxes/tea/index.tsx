@@ -1,12 +1,13 @@
 // client/src/pages/drinks/detoxes/tea/index.tsx
 import React, { useMemo, useState } from 'react';
+import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { 
+import {
   Coffee, Clock, Heart, Star, Target, Flame, Leaf, Sparkles,
   Search, Share2, ArrowLeft, Zap, Camera, Droplets,
   Apple, FlaskConical, GlassWater, Waves, X, Check, Clipboard, RotateCcw
@@ -344,8 +345,7 @@ export default function DetoxTeasPage() {
       name: recipe?.name,
     });
 
-    if (canonicalSlug && typeof window !== 'undefined') {
-      window.location.href = `/drinks/recipe/${encodeURIComponent(canonicalSlug)}`;
+    if (redirectToCanonicalRecipe(canonicalSlug, '/drinks/recipe')) {
       return;
     }
 
@@ -966,7 +966,7 @@ export default function DetoxTeasPage() {
                   {canonicalSlug ? (
                     <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
                       <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
-                        Canonical recipe
+                        Canonical Recipe
                       </Link>
                       <span>•</span>
                       <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
