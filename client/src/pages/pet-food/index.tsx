@@ -95,7 +95,8 @@ const featuredRecipes = [
     prepTime: '25 min',
     difficulty: 'Easy',
     rating: 4.9,
-    calories: 425
+    calories: 425,
+    path: '/pet-food/dogs'
   },
   {
     id: 2,
@@ -106,7 +107,8 @@ const featuredRecipes = [
     prepTime: '25 min',
     difficulty: 'Easy',
     rating: 4.8,
-    calories: 360
+    calories: 360,
+    path: '/pet-food/cats'
   },
   {
     id: 3,
@@ -117,7 +119,8 @@ const featuredRecipes = [
     prepTime: '15 min',
     difficulty: 'Easy',
     rating: 4.9,
-    calories: 180
+    calories: 180,
+    path: '/pet-food/birds'
   },
   {
     id: 4,
@@ -128,7 +131,8 @@ const featuredRecipes = [
     prepTime: '15 min',
     difficulty: 'Easy',
     rating: 4.8,
-    calories: 180
+    calories: 180,
+    path: '/pet-food/small-pets'
   }
 ];
 
@@ -343,15 +347,18 @@ export default function PetFoodHub() {
               <h2 className="text-4xl font-bold text-gray-900 mb-2">Featured Recipes</h2>
               <p className="text-lg text-gray-600">Popular picks across all pet categories</p>
             </div>
-            <Button variant="outline" className="gap-2">
-              <Star className="h-4 w-4" />
-              View All
-            </Button>
+            <Link href="/pet-food/dogs">
+              <Button variant="outline" className="gap-2">
+                <Star className="h-4 w-4" />
+                View All
+              </Button>
+            </Link>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {featuredRecipes.map((recipe) => (
-              <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden">
+              <Link key={recipe.id} href={recipe.path}>
+              <Card className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden cursor-pointer">
                 <div className="relative h-40 overflow-hidden">
                   <img 
                     src={recipe.image} 
@@ -388,6 +395,7 @@ export default function PetFoodHub() {
                   </div>
                 </CardContent>
               </Card>
+              </Link>
             ))}
           </div>
         </div>

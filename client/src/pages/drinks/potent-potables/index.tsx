@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -312,8 +313,7 @@ export default function PotentPotablesPage() {
       name: recipe?.name,
     });
 
-    if (canonicalSlug && typeof window !== 'undefined') {
-      window.location.href = `/drinks/recipe/${encodeURIComponent(canonicalSlug)}`;
+    if (redirectToCanonicalRecipe(canonicalSlug, '/drinks/recipe')) {
       return;
     }
 

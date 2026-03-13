@@ -1292,7 +1292,7 @@ export default function CaseinProteinPage() {
                       {canonicalSlug ? (
                         <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
                           <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
-                            Canonical recipe
+                            Canonical Recipe
                           </Link>
                           <span>•</span>
                           <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 

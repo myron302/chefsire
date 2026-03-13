@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -386,8 +387,7 @@ export default function CatsPage() {
 
   const openRecipeModal = (recipe: any) => {
     const canonicalSlug = resolveCanonicalPetFoodSlug(recipe?.name || '');
-    if (canonicalSlug && typeof window !== 'undefined') {
-      window.location.href = `/pet-food/recipe/${encodeURIComponent(canonicalSlug)}`;
+    if (redirectToCanonicalRecipe(canonicalSlug, '/pet-food/recipe')) {
       return;
     }
 
@@ -725,7 +725,7 @@ export default function CatsPage() {
                   <div className="mt-3">
                     <Button className="w-full bg-purple-600 hover:bg-purple-700" onClick={() => openRecipeModal(recipe)}>
                       <Cat className="h-4 w-4 mr-2" />
-                      Make Recipe (+40 XP)
+                      View Recipe
                     </Button>
                   </div>
 

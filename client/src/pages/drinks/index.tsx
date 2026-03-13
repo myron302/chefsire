@@ -499,10 +499,12 @@ export default function DrinksPage() {
         <div className="mb-12">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-3xl font-bold">Featured Recipes</h2>
-            <Button variant="outline" className="flex items-center gap-2">
-              <PlayCircle className="h-4 w-4" />
-              View All
-            </Button>
+            <Link href="/drinks/smoothies">
+              <Button variant="outline" className="flex items-center gap-2">
+                <PlayCircle className="h-4 w-4" />
+                View All
+              </Button>
+            </Link>
           </div>
 
           {filteredFeatured.length === 0 ? (

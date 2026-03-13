@@ -15,9 +15,7 @@ function getAllLeafDrinkPages(rootDir: string): string[] {
       } else if (entry.isFile() && entry.name === "index.tsx") {
         const relative = path.relative(rootDir, fullPath).replaceAll(path.sep, "/");
         const segments = relative.split("/");
-        if (segments.length === 3 && segments[0] !== "recipe") {
-          pages.push(relative);
-        }
+        if (segments.length === 3 && segments[0] !== "recipe") pages.push(relative);
       }
     }
   }
@@ -27,17 +25,8 @@ function getAllLeafDrinkPages(rootDir: string): string[] {
 }
 
 function asList(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
-  }
-
-  if (typeof value === "string") {
-    return value
-      .split(/\r?\n|\.(?=\s|$)/)
-      .map((item) => item.trim())
-      .filter(Boolean);
-  }
-
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === "string") return value.split(/\r?\n|\.(?=\s|$)/).map((item) => item.trim()).filter(Boolean);
   return [];
 }
 
@@ -48,15 +37,17 @@ const pageFailures: string[] = [];
 for (const page of leafPages) {
   const absPath = path.join(pagesRoot, page);
   const content = fs.readFileSync(absPath, "utf8");
-  const hasCanonicalRouting = content.includes("/drinks/recipe/") && content.includes("resolveCanonicalDrinkSlug");
+
+  const hasCanonicalResolve = content.includes("resolveCanonicalDrinkSlug");
+  const hasCanonicalRouting = content.includes("/drinks/recipe/") || content.includes("redirectToCanonicalRecipe(canonicalSlug, '/drinks/recipe')");
   const hasRemixRouting = content.includes("/drinks/submit?remix=");
 
-  if (!hasCanonicalRouting || !hasRemixRouting) {
-    const missing: string[] = [];
-    if (!hasCanonicalRouting) missing.push("canonical route wiring");
-    if (!hasRemixRouting) missing.push("remix wiring");
-    pageFailures.push(`- ${page}: missing ${missing.join(" and ")}`);
-  }
+  const missing: string[] = [];
+  if (!hasCanonicalResolve || !hasCanonicalRouting) missing.push("canonical route wiring");
+  if (!hasRemixRouting) missing.push("remix wiring");
+
+  if (content.includes("Canonical recipe")) missing.push("non-standard label 'Canonical recipe'");
+  if (missing.length > 0) pageFailures.push(`- ${page}: missing ${missing.join(" and ")}`);
 }
 
 const canonicalFailures: string[] = [];
@@ -64,7 +55,7 @@ for (const routeEntry of drinkRouteRegistry) {
   for (const routeRecipe of routeEntry.recipes ?? []) {
     const slug = getCanonicalDrinkRecipeBySlug(String(routeRecipe?.slug ?? ""))?.slug;
     const byName = canonicalDrinkRecipeEntries.find(
-      (entry) => entry.name.trim().toLowerCase() === String(routeRecipe?.name ?? "").trim().toLowerCase() && entry.sourceRoute === routeEntry.route
+      (entry) => entry.name.trim().toLowerCase() === String(routeRecipe?.name ?? "").trim().toLowerCase() && entry.sourceRoute === routeEntry.route,
     );
     const resolved = (slug ? getCanonicalDrinkRecipeBySlug(slug) : null) ?? byName;
 
@@ -78,14 +69,20 @@ for (const routeEntry of drinkRouteRegistry) {
 
     if (ingredients.length === 0 || instructions.length === 0) {
       canonicalFailures.push(
-        `- ${resolved.slug} (${resolved.name}): ${ingredients.length === 0 ? "missing ingredients" : ""}${ingredients.length === 0 && instructions.length === 0 ? " and " : ""}${instructions.length === 0 ? "missing instructions" : ""}`
+        `- ${resolved.slug} (${resolved.name}): ${ingredients.length === 0 ? "missing ingredients" : ""}${ingredients.length === 0 && instructions.length === 0 ? " and " : ""}${instructions.length === 0 ? "missing instructions" : ""}`,
       );
     }
   }
 }
 
-if (pageFailures.length === 0 && canonicalFailures.length === 0) {
-  console.log(`✅ Drink canonical audit passed.`);
+const hubFailures: string[] = [];
+const drinksHub = fs.readFileSync(path.resolve("client/src/pages/drinks/index.tsx"), "utf8");
+if (!drinksHub.includes('Link href="/drinks/smoothies"') || !drinksHub.includes("View All")) {
+  hubFailures.push("- drinks/index.tsx: Featured 'View All' CTA is not wired to an actual route.");
+}
+
+if (pageFailures.length === 0 && canonicalFailures.length === 0 && hubFailures.length === 0) {
+  console.log("✅ Drink canonical audit passed.");
   console.log(`Checked ${leafPages.length} leaf drink pages and ${canonicalDrinkRecipeEntries.length} canonical entries.`);
   process.exit(0);
 }
@@ -98,5 +95,9 @@ if (pageFailures.length > 0) {
 if (canonicalFailures.length > 0) {
   console.error("\nCanonical recipe data issues:");
   console.error(canonicalFailures.join("\n"));
+}
+if (hubFailures.length > 0) {
+  console.error("\nHub CTA issues:");
+  console.error(hubFailures.join("\n"));
 }
 process.exit(1);

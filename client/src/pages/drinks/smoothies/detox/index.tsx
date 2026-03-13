@@ -1,6 +1,7 @@
 // client/src/pages/drinks/smoothies/detox/index.tsx
 import React, { useMemo, useState } from 'react';
 import { Link } from 'wouter';
+import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -388,8 +389,7 @@ export default function DetoxSmoothiesPage() {
       name: recipe?.name,
     });
 
-    if (canonicalSlug && typeof window !== 'undefined') {
-      window.location.href = `/drinks/recipe/${encodeURIComponent(canonicalSlug)}`;
+    if (redirectToCanonicalRecipe(canonicalSlug, '/drinks/recipe')) {
       return;
     }
 
@@ -945,7 +945,7 @@ export default function DetoxSmoothiesPage() {
                       {canonicalSlug ? (
                         <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
                           <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
-                            Canonical recipe
+                            Canonical Recipe
                           </Link>
                           <span>•</span>
                           <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
