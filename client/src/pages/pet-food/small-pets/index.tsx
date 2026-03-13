@@ -665,10 +665,10 @@ export default function SmallPetsPage() {
 
                   {/* Recipe preview */}
                   {recipe.recipe?.measurements && (
-                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3" onClick={(event) => event.stopPropagation()}>
+                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-sm font-semibold text-gray-900">Recipe (serves {servings})</div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2" onClick={(event) => event.stopPropagation()}>
                           <button className="px-2 py-1 border rounded text-sm" onClick={() => setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? (recipe.recipe?.servings || 1)) - 1) }))}>−</button>
                           <div className="min-w-[2ch] text-center text-sm">{servings}</div>
                           <button className="px-2 py-1 border rounded text-sm" onClick={() => setServingsById(prev => ({ ...prev, [recipe.id]: clamp((prev[recipe.id] ?? (recipe.recipe?.servings || 1)) + 1) }))}>+</button>
@@ -697,7 +697,7 @@ export default function SmallPetsPage() {
                         )}
                       </ul>
 
-                      <div className="flex gap-2 mt-3">
+                      <div className="flex gap-2 mt-3" onClick={(event) => event.stopPropagation()}>
                         <Button variant="outline" size="sm" onClick={async () => {
                           const lines = (recipe.recipe?.measurements || []).map((ing: Measured) => {
                             if (useMetric && typeof ing.amount === 'number') {
