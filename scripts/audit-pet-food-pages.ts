@@ -36,11 +36,8 @@ const leafResults: CheckResult[] = leafPages.map((file) => {
   if (!src.includes("event.key === 'Enter' || event.key === ' '")) {
     issues.push("keyboard card activation is missing");
   }
-  if (!src.includes("View Recipe")) {
-    issues.push("missing visible View Recipe CTA");
-  }
-  if (!src.includes("handleRecipeCardNavigation(recipe);")) {
-    issues.push("View Recipe button does not use canonical-first handler");
+  if (src.includes("View Recipe") || src.includes("Show Recipe")) {
+    issues.push("legacy per-card recipe CTA is still present");
   }
   const hasCanonicalOpenWiring = src.includes("openCanonicalFirstRecipe({") || src.includes("redirectToCanonicalRecipe(canonicalSlug, '/pet-food/recipe')");
   if (!hasCanonicalOpenWiring) {
