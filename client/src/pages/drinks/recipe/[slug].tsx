@@ -142,7 +142,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
       {remixSourceSlug ? (
         <div className="flex flex-wrap gap-2">
           <Link href={`/drinks/submit?remix=${encodeURIComponent(remixSourceSlug)}`} onClick={() => void logDrinkEvent(slug, "remix")}>
-            <Button>Remix this drink</Button>
+            <Button>Remix</Button>
           </Link>
           <Button variant="outline" onClick={addAllIngredients}>
             Add Ingredients to Shopping List

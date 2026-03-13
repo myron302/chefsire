@@ -17,6 +17,12 @@ function readPetPage(file: string): string {
   return fs.readFileSync(path.resolve("client/src/pages/pet-food", file), "utf8");
 }
 
+function asList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === "string") return value.split(/\r?\n|\.(?=\s|$)/).map((item) => item.trim()).filter(Boolean);
+  return [];
+}
+
 const leafResults: CheckResult[] = leafPages.map((file) => {
   const src = readPetPage(file);
   const issues: string[] = [];
@@ -36,8 +42,12 @@ const leafResults: CheckResult[] = leafPages.map((file) => {
   if (!src.includes("handleRecipeCardNavigation(recipe);")) {
     issues.push("View Recipe button does not use canonical-first handler");
   }
-  if (!src.includes("redirectToCanonicalRecipe(canonicalSlug, '/pet-food/recipe')")) {
+  const hasCanonicalOpenWiring = src.includes("openCanonicalFirstRecipe({") || src.includes("redirectToCanonicalRecipe(canonicalSlug, '/pet-food/recipe')");
+  if (!hasCanonicalOpenWiring) {
     issues.push("canonical route redirect fallback is not wired");
+  }
+  if (src.includes("View recipe") || src.includes("Canonical recipe")) {
+    issues.push("non-standard action label casing");
   }
 
   return { file, issues };
@@ -48,7 +58,7 @@ const hubIssues: string[] = [];
 if (!hub.includes('Link href="/pet-food"') || !hub.includes("View All")) {
   hubIssues.push("Featured 'View All' button is not linked to /pet-food");
 }
-if (!hub.includes("const canonicalSlug = resolveCanonicalPetFoodSlug(recipe.name);") || !hub.includes("const targetPath = canonicalSlug ? `/pet-food/recipe/${canonicalSlug}` : recipe.path;")) {
+if (!hub.includes("resolveCanonicalPetFoodSlug") || !hub.includes("/pet-food/recipe") || !hub.includes("targetPath")) {
   hubIssues.push("Featured recipe cards are not canonical-first");
 }
 if (!hub.includes("<Link key={recipe.id} href={targetPath}>")) {
@@ -62,9 +72,21 @@ if (!canonicalPetFoodRecipeEntries.length) {
 for (const entry of canonicalPetFoodRecipeEntries) {
   const bySlug = getCanonicalPetFoodRecipeBySlug(entry.slug);
   const byNameSlug = resolveCanonicalPetFoodSlug(entry.name);
+  const ingredients = asList((entry as any).ingredients ?? entry.recipe?.ingredients);
+  const instructions = asList((entry as any).instructions ?? entry.recipe?.instructions);
+  const measurements = Array.isArray(entry.recipe?.measurements) ? entry.recipe.measurements.length : 0;
+  const directions = Array.isArray(entry.recipe?.directions) ? entry.recipe.directions.length : 0;
 
   if (!bySlug) canonicalIssues.push(`${entry.slug}: not retrievable by slug`);
   if (byNameSlug !== entry.slug) canonicalIssues.push(`${entry.name}: name-to-slug resolution mismatch (${byNameSlug ?? "null"})`);
+
+  const hasIngredients = ingredients.length > 0 || measurements > 0;
+  const hasInstructions = instructions.length > 0 || directions > 0;
+  if (!hasIngredients || !hasInstructions) {
+    canonicalIssues.push(
+      `${entry.slug} (${entry.name}): ${!hasIngredients ? "missing ingredients/measurements" : ""}${!hasIngredients && !hasInstructions ? " and " : ""}${!hasInstructions ? "missing instructions/directions" : ""}`,
+    );
+  }
 }
 
 const failedLeaf = leafResults.filter((r) => r.issues.length > 0);
