@@ -13,6 +13,7 @@ import {
 import TrendingPetFood from '@/components/pet-food/TrendingPetFood';
 import RecentlyViewedPetFood from '@/components/pet-food/RecentlyViewedPetFood';
 import ForYouPetFood from '@/components/pet-food/ForYouPetFood';
+import { resolveCanonicalPetFoodSlug } from '@/data/pet-food/canonical';
 
 const petCategories = [
   {
@@ -347,7 +348,7 @@ export default function PetFoodHub() {
               <h2 className="text-4xl font-bold text-gray-900 mb-2">Featured Recipes</h2>
               <p className="text-lg text-gray-600">Popular picks across all pet categories</p>
             </div>
-            <Link href="/pet-food/dogs">
+            <Link href="/pet-food">
               <Button variant="outline" className="gap-2">
                 <Star className="h-4 w-4" />
                 View All
@@ -356,9 +357,13 @@ export default function PetFoodHub() {
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {featuredRecipes.map((recipe) => (
-              <Link key={recipe.id} href={recipe.path}>
-              <Card className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden cursor-pointer">
+            {featuredRecipes.map((recipe) => {
+              const canonicalSlug = resolveCanonicalPetFoodSlug(recipe.name);
+              const targetPath = canonicalSlug ? `/pet-food/recipe/${canonicalSlug}` : recipe.path;
+
+              return (
+                <Link key={recipe.id} href={targetPath}>
+                  <Card className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden cursor-pointer">
                 <div className="relative h-40 overflow-hidden">
                   <img 
                     src={recipe.image} 
@@ -394,9 +399,10 @@ export default function PetFoodHub() {
                     <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
                   </div>
                 </CardContent>
-              </Card>
-              </Link>
-            ))}
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
         </div>
 
