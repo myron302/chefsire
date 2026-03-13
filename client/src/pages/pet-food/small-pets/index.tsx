@@ -384,6 +384,10 @@ export default function SmallPetsPage() {
     setShowKit(true);
   };
 
+  const handleRecipeCardNavigation = (recipe: any) => {
+    openRecipeModal(recipe);
+  };
+
   const handleCompleteRecipe = () => {
     setShowKit(false);
     setSelectedRecipe(null);
@@ -595,7 +599,19 @@ export default function SmallPetsPage() {
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
 
             return (
-              <Card key={recipe.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+              <Card
+                key={recipe.id}
+                className="hover:shadow-lg transition-shadow overflow-hidden cursor-pointer"
+                role="link"
+                tabIndex={0}
+                onClick={() => handleRecipeCardNavigation(recipe)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    handleRecipeCardNavigation(recipe);
+                  }
+                }}
+              >
                 {/* Recipe Image */}
                 {recipe.image && (
                   <div className="relative h-48 overflow-hidden">
@@ -647,7 +663,7 @@ export default function SmallPetsPage() {
 
                   {/* Recipe preview */}
                   {recipe.recipe?.measurements && (
-                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3" onClick={(event) => event.stopPropagation()}>
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-sm font-semibold text-gray-900">Recipe (serves {servings})</div>
                         <div className="flex items-center gap-2">
@@ -672,7 +688,10 @@ export default function SmallPetsPage() {
                           );
                         })}
                         {recipe.recipe.measurements.length > 4 && (
-                          <li className="text-xs text-gray-600">…plus {recipe.recipe.measurements.length - 4} more • <button type="button" onClick={() => openRecipeModal(recipe)} className="underline underline-offset-2">Show more</button></li>
+                          <li className="text-xs text-gray-600">…plus {recipe.recipe.measurements.length - 4} more • <button type="button" onClick={(event) => {
+                      event.stopPropagation();
+                      handleRecipeCardNavigation(recipe);
+                    }} className="underline underline-offset-2">Show more</button></li>
                         )}
                       </ul>
 
@@ -704,7 +723,10 @@ export default function SmallPetsPage() {
 
                   {/* Action - RABBIT ICON instead of Zap */}
                   <div className="mt-3">
-                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={() => openRecipeModal(recipe)}>
+                    <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={(event) => {
+                      event.stopPropagation();
+                      handleRecipeCardNavigation(recipe);
+                    }}>
                       <Rabbit className="h-4 w-4 mr-2" />
                       View Recipe
                     </Button>
