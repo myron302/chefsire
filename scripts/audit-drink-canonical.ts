@@ -39,14 +39,14 @@ for (const page of leafPages) {
   const content = fs.readFileSync(absPath, "utf8");
 
   const hasCanonicalResolve = content.includes("resolveCanonicalDrinkSlug");
-  const hasCanonicalRouting = content.includes("/drinks/recipe/") || content.includes("redirectToCanonicalRecipe(canonicalSlug, '/drinks/recipe')");
+  const hasCanonicalRouting = content.includes("/drinks/recipe/") || content.includes("redirectToCanonicalRecipe(canonicalSlug, '/drinks/recipe')") || content.includes("openCanonicalFirstRecipe({");
   const hasRemixRouting = content.includes("/drinks/submit?remix=");
 
   const missing: string[] = [];
   if (!hasCanonicalResolve || !hasCanonicalRouting) missing.push("canonical route wiring");
   if (!hasRemixRouting) missing.push("remix wiring");
 
-  if (content.includes("Canonical recipe")) missing.push("non-standard label 'Canonical recipe'");
+  if (content.includes("Canonical recipe") || content.includes("View recipe") || content.includes("Remix this drink")) missing.push("non-standard action label text");
   if (missing.length > 0) pageFailures.push(`- ${page}: missing ${missing.join(" and ")}`);
 }
 
@@ -79,6 +79,9 @@ const hubFailures: string[] = [];
 const drinksHub = fs.readFileSync(path.resolve("client/src/pages/drinks/index.tsx"), "utf8");
 if (!drinksHub.includes('Link href="/drinks/smoothies"') || !drinksHub.includes("View All")) {
   hubFailures.push("- drinks/index.tsx: Featured 'View All' CTA is not wired to an actual route.");
+}
+if (!drinksHub.includes("featured") && !drinksHub.includes("Featured")) {
+  hubFailures.push("- drinks/index.tsx: Featured section appears missing or static audit markers not found.");
 }
 
 if (pageFailures.length === 0 && canonicalFailures.length === 0 && hubFailures.length === 0) {

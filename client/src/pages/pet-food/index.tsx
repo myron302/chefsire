@@ -14,6 +14,7 @@ import TrendingPetFood from '@/components/pet-food/TrendingPetFood';
 import RecentlyViewedPetFood from '@/components/pet-food/RecentlyViewedPetFood';
 import ForYouPetFood from '@/components/pet-food/ForYouPetFood';
 import { resolveCanonicalPetFoodSlug } from '@/data/pet-food/canonical';
+import { getCanonicalFirstPath } from '@/lib/recipe-interactions';
 
 const petCategories = [
   {
@@ -358,8 +359,12 @@ export default function PetFoodHub() {
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {featuredRecipes.map((recipe) => {
-              const canonicalSlug = resolveCanonicalPetFoodSlug(recipe.name);
-              const targetPath = canonicalSlug ? `/pet-food/recipe/${canonicalSlug}` : recipe.path;
+              const targetPath = getCanonicalFirstPath({
+                recipeName: recipe.name,
+                fallbackPath: recipe.path,
+                resolveCanonicalSlug: resolveCanonicalPetFoodSlug,
+                recipeBasePath: '/pet-food/recipe',
+              });
 
               return (
                 <Link key={recipe.id} href={targetPath}>

@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
+import { openCanonicalFirstRecipe } from '@/lib/recipe-interactions';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -375,13 +375,15 @@ export default function BirdsPage() {
   }, [searchQuery, selectedCategory, sortBy]);
 
   const openRecipeModal = (recipe: any) => {
-    const canonicalSlug = resolveCanonicalPetFoodSlug(recipe?.name || '');
-    if (redirectToCanonicalRecipe(canonicalSlug, '/pet-food/recipe')) {
-      return;
-    }
-
-    setSelectedRecipe(recipe);
-    setShowKit(true);
+    openCanonicalFirstRecipe({
+      recipeName: recipe?.name || '',
+      resolveCanonicalSlug: resolveCanonicalPetFoodSlug,
+      recipeBasePath: '/pet-food/recipe',
+      onFallback: () => {
+        setSelectedRecipe(recipe);
+        setShowKit(true);
+      },
+    });
   };
 
   const handleRecipeCardNavigation = (recipe: any) => {
