@@ -723,17 +723,6 @@ export default function BirdsPage() {
                     ))}
                   </div>
 
-                  {/* Action - BIRD ICON */}
-                  <div className="mt-3">
-                    <Button className="w-full bg-cyan-600 hover:bg-cyan-700" onClick={(event) => {
-                      event.stopPropagation();
-                      handleRecipeCardNavigation(recipe);
-                    }}>
-                      <Bird className="h-4 w-4 mr-2" />
-                      View Recipe
-                    </Button>
-                  </div>
-
                   {canonicalSlug ? (
                     <div className="mt-2 text-xs text-muted-foreground">
                       <Link href={`/pet-food/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
