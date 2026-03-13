@@ -3732,8 +3732,7 @@ const displaySmartTips = useMemo(() => {
                   <CardTitle className="text-base">Checklist & Progress</CardTitle>
                   <CardDescription>{completedTasks}/{planningTasks.length} tasks complete</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  <Progress value={planningProgress} />
+                <CardContent>
                   <Link href="/services/wedding-planning/checklist"><Button className="w-full">Open Checklist</Button></Link>
                 </CardContent>
               </Card>
