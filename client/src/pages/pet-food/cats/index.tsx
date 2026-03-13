@@ -633,11 +633,6 @@ export default function CatsPage() {
                       alt={recipe.name}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                     />
-                    <div className="absolute top-3 right-3 flex flex-col gap-2">
-                      {recipe.badges.slice(0, 2).map((badge: string) => (
-                        <Badge key={badge} className="bg-purple-600 text-white text-xs">{badge}</Badge>
-                      ))}
-                    </div>
                   </div>
                 )}
 
@@ -657,6 +652,12 @@ export default function CatsPage() {
                 </CardHeader>
 
                 <CardContent>
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {recipe.badges.slice(0, 2).map((badge: string) => (
+                      <Badge key={`top-${badge}`} className="bg-purple-600 text-white text-xs">{badge}</Badge>
+                    ))}
+                  </div>
+
                   {/* Taurine Badge */}
                   <div className="bg-pink-50 border border-pink-200 rounded-lg p-2 mb-3">
                     <div className="flex items-center justify-center gap-2 text-sm">

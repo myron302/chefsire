@@ -622,11 +622,6 @@ export default function DogsPage() {
                       alt={recipe.name}
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                     />
-                    <div className="absolute top-3 right-3 flex gap-2">
-                      {recipe.badges.slice(0, 2).map((badge: string) => (
-                        <Badge key={badge} className="bg-amber-600 text-white text-xs">{badge}</Badge>
-                      ))}
-                    </div>
                   </div>
                 )}
 
@@ -646,6 +641,11 @@ export default function DogsPage() {
                 </CardHeader>
 
                 <CardContent>
+                  <div className="flex flex-wrap gap-1 mb-3">
+                    {recipe.badges.slice(0, 2).map((badge: string) => (
+                      <Badge key={`top-${badge}`} className="bg-amber-600 text-white text-xs">{badge}</Badge>
+                    ))}
+                  </div>
                   {/* Nutrition Grid */}
                   <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                     <div><div className="font-bold text-amber-600">{recipe.nutrition?.protein ?? '—'}{recipe.nutrition?.protein ? 'g' : ''}</div><div className="text-gray-500">Protein</div></div>
