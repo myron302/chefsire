@@ -606,7 +606,19 @@ export default function CatsPage() {
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
 
             return (
-              <Card key={recipe.id} className="hover:shadow-lg transition-shadow overflow-hidden">
+              <Card
+                key={recipe.id}
+                className="cursor-pointer hover:shadow-lg transition-shadow overflow-hidden"
+                onClick={() => openRecipeModal(recipe)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    openRecipeModal(recipe);
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+              >
                 {/* Recipe Image */}
                 {recipe.image && (
                   <div className="relative h-48 overflow-hidden">
@@ -666,7 +678,7 @@ export default function CatsPage() {
 
                   {/* Recipe preview */}
                   {recipe.recipe?.measurements && (
-                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3">
+                    <div className="mb-4 bg-gray-50 border border-gray-200 rounded-lg p-3" onClick={(event) => event.stopPropagation()}>
                       <div className="flex items-center justify-between mb-2">
                         <div className="text-sm font-semibold text-gray-900">Recipe (serves {servings})</div>
                         <div className="flex items-center gap-2">
@@ -725,7 +737,7 @@ export default function CatsPage() {
                   <div className="mt-3">
                     <Button className="w-full bg-purple-600 hover:bg-purple-700" onClick={() => openRecipeModal(recipe)}>
                       <Cat className="h-4 w-4 mr-2" />
-                      Make Recipe (+40 XP)
+                      View Recipe
                     </Button>
                   </div>
 
