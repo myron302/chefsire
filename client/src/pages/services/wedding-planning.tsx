@@ -3585,8 +3585,8 @@ const displaySmartTips = useMemo(() => {
               </div>
             </div>
 
-            {/* Optional user notes/reminders (simple, no dialog) */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pt-1">
+            {/* Optional user notes/reminders (simple, no dialog) — hidden on hub to avoid visual clutter */}
+            {mode !== "hub" && <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 pt-1">
               <div className="rounded-xl border p-3 md:p-4">
                 <div className="flex items-start justify-between gap-2 mb-3">
                   <div>
@@ -3713,7 +3713,7 @@ const displaySmartTips = useMemo(() => {
                   </div>
                 )}
               </div>
-            </div>
+            </div>}
           </CardContent>
         </Card>
         </>
