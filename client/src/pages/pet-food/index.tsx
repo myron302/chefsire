@@ -13,6 +13,7 @@ import {
 import TrendingPetFood from '@/components/pet-food/TrendingPetFood';
 import RecentlyViewedPetFood from '@/components/pet-food/RecentlyViewedPetFood';
 import ForYouPetFood from '@/components/pet-food/ForYouPetFood';
+import { resolveCanonicalPetFoodSlug } from '@/data/pet-food/canonical';
 
 const petCategories = [
   {
@@ -89,6 +90,7 @@ const featuredRecipes = [
   {
     id: 1,
     name: 'Puppy Growth Formula',
+    route: '/pet-food/dogs',
     category: 'Dogs',
     categoryColor: 'amber',
     image: 'https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=800',
@@ -100,6 +102,7 @@ const featuredRecipes = [
   {
     id: 2,
     name: 'Adult Salmon & Tuna Bowl',
+    route: '/pet-food/cats',
     category: 'Cats',
     categoryColor: 'purple',
     image: 'https://images.unsplash.com/photo-1606214174585-fe31582dc6ee?w=800',
@@ -111,6 +114,7 @@ const featuredRecipes = [
   {
     id: 3,
     name: 'Parrot Power Mix',
+    route: '/pet-food/birds',
     category: 'Birds',
     categoryColor: 'cyan',
     image: 'https://images.unsplash.com/photo-1552728089-57bdde30beb3?w=800',
@@ -122,6 +126,7 @@ const featuredRecipes = [
   {
     id: 4,
     name: 'Guinea Pig Vitamin C Feast',
+    route: '/pet-food/small-pets',
     category: 'Small Pets',
     categoryColor: 'emerald',
     image: 'https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=800',
@@ -343,52 +348,61 @@ export default function PetFoodHub() {
               <h2 className="text-4xl font-bold text-gray-900 mb-2">Featured Recipes</h2>
               <p className="text-lg text-gray-600">Popular picks across all pet categories</p>
             </div>
-            <Button variant="outline" className="gap-2">
-              <Star className="h-4 w-4" />
-              View All
-            </Button>
+            <Link href="/pet-food/dogs">
+              <Button variant="outline" className="gap-2">
+                <Star className="h-4 w-4" />
+                View All
+              </Button>
+            </Link>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {featuredRecipes.map((recipe) => (
-              <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden">
-                <div className="relative h-40 overflow-hidden">
-                  <img 
-                    src={recipe.image} 
-                    alt={recipe.name}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                  />
-                  <div className="absolute top-3 right-3">
-                    <Badge className={`bg-${recipe.categoryColor}-600 text-white`}>
-                      {recipe.category}
-                    </Badge>
-                  </div>
-                </div>
-                
-                <CardContent className="p-4">
-                  <h3 className="font-bold text-lg text-gray-900 mb-2">{recipe.name}</h3>
-                  
-                  <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-4 w-4" />
-                      {recipe.prepTime}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
-                      {recipe.rating}
-                    </span>
-                  </div>
+            {featuredRecipes.map((recipe) => {
+              const canonicalSlug = resolveCanonicalPetFoodSlug(recipe.name);
+              const href = canonicalSlug ? `/pet-food/recipe/${canonicalSlug}` : recipe.route;
 
-                  <div className="flex items-center justify-between">
-                    <div className="text-sm">
-                      <span className="text-gray-500">Calories:</span>
-                      <span className="font-bold text-gray-900 ml-1">{recipe.calories}</span>
+              return (
+                <Link key={recipe.id} href={href}>
+                  <Card className="group cursor-pointer hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden">
+                    <div className="relative h-40 overflow-hidden">
+                      <img 
+                        src={recipe.image} 
+                        alt={recipe.name}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
+                      />
+                      <div className="absolute top-3 right-3">
+                        <Badge className={`bg-${recipe.categoryColor}-600 text-white`}>
+                          {recipe.category}
+                        </Badge>
+                      </div>
                     </div>
-                    <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+
+                    <CardContent className="p-4">
+                      <h3 className="font-bold text-lg text-gray-900 mb-2">{recipe.name}</h3>
+
+                      <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-4 w-4" />
+                          {recipe.prepTime}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                          {recipe.rating}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm">
+                          <span className="text-gray-500">Calories:</span>
+                          <span className="font-bold text-gray-900 ml-1">{recipe.calories}</span>
+                        </div>
+                        <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
           </div>
         </div>
 
