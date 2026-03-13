@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -55,13 +55,12 @@ export default function ForYouDrinks() {
   const [items, setItems] = useState<ForYouDrink[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const recentSlugs = useMemo(() => readRecentlyViewedDrinkSlugs(), []);
-
   useEffect(() => {
     let active = true;
 
     const load = async () => {
       setLoading(true);
+      const recentSlugs = readRecentlyViewedDrinkSlugs();
 
       // ensure canonical index is hydrated
       getCanonicalDrinkRecipeBySlug("__init__");
@@ -71,28 +70,73 @@ export default function ForYouDrinks() {
         .map((slug) => getCanonicalDrinkRecipeBySlug(slug))
         .filter((entry): entry is CanonicalDrinkRecipeEntry => Boolean(entry));
 
-      const primary = recentEntries[0] ?? null;
       const selected = new Map<string, ForYouDrink>();
 
-      for (const entry of recentEntries.slice(1)) {
-        if (entry.slug === primary?.slug || selected.has(entry.slug)) continue;
-        selected.set(entry.slug, mapCanonical(entry, "From your recent views"));
-        if (selected.size >= MAX_ITEMS) break;
+      const sectionCounts = new Map<string, number>();
+      const sourceRouteCounts = new Map<string, number>();
+      const recipeTypeCounts = new Map<string, number>();
+
+      const bump = (map: Map<string, number>, key: string | null | undefined) => {
+        const normalized = String(key ?? "").trim().toLowerCase();
+        if (!normalized) return;
+        map.set(normalized, (map.get(normalized) ?? 0) + 1);
+      };
+
+      const routeSection = (route: string) => route.split("/").filter(Boolean)[1] ?? "";
+
+      const entryRecipeTypes = (entry: CanonicalDrinkRecipeEntry): string[] => {
+        const tags = Array.isArray(entry.recipe.tags)
+          ? entry.recipe.tags.map((tag) => String(tag).trim())
+          : [];
+
+        const fromSourceTitle = entry.sourceTitle
+          .split(/[^a-z0-9]+/i)
+          .map((part) => part.trim())
+          .filter((part) => part.length >= 4);
+
+        return [...tags, ...fromSourceTitle].slice(0, 12);
+      };
+
+      for (const entry of recentEntries) {
+        bump(sectionCounts, routeSection(entry.sourceRoute));
+        bump(sourceRouteCounts, entry.sourceRoute);
+        for (const recipeType of entryRecipeTypes(entry)) bump(recipeTypeCounts, recipeType);
       }
 
-      if (selected.size < MAX_ITEMS && primary) {
+      const orderedSections = [...sectionCounts.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => key);
+      const orderedSourceRoutes = [...sourceRouteCounts.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => key);
+      const recipeTypes = new Set([...recipeTypeCounts.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => key));
+
+      if (selected.size < MAX_ITEMS) {
+        for (const section of orderedSections) {
+          for (const entry of canonicalDrinkRecipeEntries) {
+            if (routeSection(entry.sourceRoute) !== section) continue;
+            if (viewedSet.has(entry.slug) || selected.has(entry.slug)) continue;
+            selected.set(entry.slug, mapCanonical(entry, `Because you browse ${section} drinks`));
+            if (selected.size >= MAX_ITEMS) break;
+          }
+          if (selected.size >= MAX_ITEMS) break;
+        }
+      }
+
+      if (selected.size < MAX_ITEMS && recipeTypes.size > 0) {
         for (const entry of canonicalDrinkRecipeEntries) {
-          if (entry.sourceRoute !== primary.sourceRoute) continue;
-          if (viewedSet.has(entry.slug) || entry.slug === primary.slug || selected.has(entry.slug)) continue;
-          selected.set(entry.slug, mapCanonical(entry, `More from ${primary.sourceTitle}`));
+          if (viewedSet.has(entry.slug) || selected.has(entry.slug)) continue;
+          const hasRelatedType = entryRecipeTypes(entry).some((type) => recipeTypes.has(type.toLowerCase()));
+          if (!hasRelatedType) continue;
+          selected.set(entry.slug, mapCanonical(entry, "Similar recipe type"));
           if (selected.size >= MAX_ITEMS) break;
         }
       }
 
       if (selected.size < MAX_ITEMS) {
-        for (const entry of canonicalDrinkRecipeEntries) {
-          if (viewedSet.has(entry.slug) || entry.slug === primary?.slug || selected.has(entry.slug)) continue;
-          selected.set(entry.slug, mapCanonical(entry, "Popular picks you may like"));
+        for (const sourceRoute of orderedSourceRoutes) {
+          for (const entry of canonicalDrinkRecipeEntries) {
+            if (entry.sourceRoute !== sourceRoute) continue;
+            if (viewedSet.has(entry.slug) || selected.has(entry.slug)) continue;
+            selected.set(entry.slug, mapCanonical(entry, `More from ${entry.sourceTitle}`));
+            if (selected.size >= MAX_ITEMS) break;
+          }
           if (selected.size >= MAX_ITEMS) break;
         }
       }
@@ -103,7 +147,7 @@ export default function ForYouDrinks() {
           if (response.ok) {
             const payload = (await response.json()) as TrendingApiResponse;
             for (const trend of payload.items ?? []) {
-              if (!trend.slug || viewedSet.has(trend.slug) || trend.slug === primary?.slug || selected.has(trend.slug)) continue;
+              if (!trend.slug || viewedSet.has(trend.slug) || selected.has(trend.slug)) continue;
               const canonical = getCanonicalDrinkRecipeBySlug(trend.slug);
               if (canonical) {
                 selected.set(
@@ -138,7 +182,7 @@ export default function ForYouDrinks() {
     return () => {
       active = false;
     };
-  }, [recentSlugs]);
+  }, []);
 
   return (
     <Card className="mb-12 border-purple-200 bg-gradient-to-br from-white to-purple-50/40">
