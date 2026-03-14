@@ -8,6 +8,7 @@ type TrendingPetFoodItem = {
   route?: string;
   sourceCategoryRoute?: string | null;
   score?: number;
+  views24h?: number;
   views7d?: number;
 };
 
@@ -60,8 +61,14 @@ export default function TrendingPetFood() {
       emptyMessage="No trending pet food recipes yet. Check back soon for the hottest recipes."
       getCanonicalRoute={(item) => getCanonicalRoute(item.slug)}
       renderStats={(petFood) => {
+        const viewsToday = Number(petFood.views24h ?? 0);
         const views7d = Number(petFood.views7d ?? 0);
-        return <p className="mt-1 text-xs text-muted-foreground">👀 {views7d.toLocaleString()} views this week</p>;
+        return (
+          <>
+            <p className="mt-1 text-xs text-muted-foreground">👀 {viewsToday.toLocaleString()} views today</p>
+            <p className="mt-1 text-xs text-muted-foreground">📈 {views7d.toLocaleString()} views this week</p>
+          </>
+        );
       }}
     />
   );
