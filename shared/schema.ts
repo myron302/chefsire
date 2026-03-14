@@ -960,6 +960,7 @@ export const drinkRecipes = pgTable(
     image: text("image"),
     category: text("category").notNull(),
     subcategory: text("subcategory"),
+    remixedFromSlug: varchar("remixed_from_slug", { length: 200 }),
     userId: varchar("user_id").references(() => users.id),
     source: varchar("source", { length: 50 }).notNull().default("chefsire"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -968,6 +969,7 @@ export const drinkRecipes = pgTable(
   (table) => ({
     slugIdx: uniqueIndex("drink_recipes_slug_idx").on(table.slug),
     categoryIdx: index("drink_recipes_category_idx").on(table.category),
+    remixedFromSlugIdx: index("drink_recipes_remixed_from_slug_idx").on(table.remixedFromSlug),
     sourceIdx: index("drink_recipes_source_idx").on(table.source),
     userIdx: index("drink_recipes_user_idx").on(table.userId),
   })

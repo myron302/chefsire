@@ -20,6 +20,16 @@ type UserDrinkRecipe = {
   image?: string | null;
   category: string;
   subcategory?: string | null;
+  remixedFromSlug?: string | null;
+};
+
+type DrinkRemixItem = {
+  slug: string;
+  name: string;
+  image?: string | null;
+  creatorName?: string | null;
+  createdAt?: string | null;
+  route: string;
 };
 
 function asList(value: unknown): string[] {
@@ -51,6 +61,8 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const canonicalRecipe = getCanonicalDrinkRecipeBySlug(slug);
   const [userRecipe, setUserRecipe] = useState<UserDrinkRecipe | null>(null);
   const [userRecipeLoaded, setUserRecipeLoaded] = useState(false);
+  const [remixes, setRemixes] = useState<DrinkRemixItem[]>([]);
+  const [remixesLoading, setRemixesLoading] = useState(false);
 
   useEffect(() => {
     if (canonicalRecipe) return;
@@ -71,6 +83,23 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
 
     logDrinkEvent(slug, "view");
   }, [slug]);
+
+  useEffect(() => {
+    if (!canonicalRecipe?.slug) {
+      setRemixes([]);
+      setRemixesLoading(false);
+      return;
+    }
+
+    setRemixesLoading(true);
+    fetch(`/api/drinks/remixes/${encodeURIComponent(canonicalRecipe.slug)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload) => {
+        setRemixes(Array.isArray(payload?.items) ? payload.items : []);
+      })
+      .catch(() => setRemixes([]))
+      .finally(() => setRemixesLoading(false));
+  }, [canonicalRecipe?.slug]);
 
   if (!canonicalRecipe && !userRecipe && userRecipeLoaded) {
     return (
@@ -190,6 +219,56 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                   <li key={`${step}-${index}`}>{step}</li>
                 ))}
               </ol>
+            </section>
+          ) : null}
+
+          {canonicalRecipe ? (
+            <section className="space-y-3">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <h2 className="font-semibold text-lg">Remixes of this drink</h2>
+                {!remixesLoading ? (
+                  <span className="text-sm text-muted-foreground">{remixes.length} remix{remixes.length === 1 ? "" : "es"}</span>
+                ) : null}
+              </div>
+
+              {remixesLoading ? <p className="text-sm text-muted-foreground">Loading remixes...</p> : null}
+
+              {!remixesLoading && remixes.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No remixes yet. Be the first to remix this drink.</p>
+              ) : null}
+
+              {!remixesLoading && remixes.length > 0 ? (
+                <div className="grid gap-3 md:grid-cols-2">
+                  {remixes.map((remix) => {
+                    const createdAtLabel = remix.createdAt
+                      ? new Date(remix.createdAt).toLocaleDateString()
+                      : null;
+
+                    return (
+                      <Link key={remix.slug} href={remix.route}>
+                        <Card className="h-full hover:border-primary/40 transition-colors cursor-pointer">
+                          <CardContent className="p-4 space-y-2">
+                            {remix.image ? (
+                              <img
+                                src={remix.image}
+                                alt={remix.name}
+                                className="w-full h-36 object-cover rounded-md border"
+                                loading="lazy"
+                              />
+                            ) : null}
+                            <p className="font-medium">{remix.name}</p>
+                            <p className="text-xs text-muted-foreground">Remixed from {displayName}</p>
+                            <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+                              {remix.creatorName ? <span>By @{remix.creatorName}</span> : null}
+                              {createdAtLabel ? <span>{createdAtLabel}</span> : null}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      </Link>
+                    );
+                  })}
+                </div>
+              ) : null}
             </section>
           ) : null}
         </CardContent>

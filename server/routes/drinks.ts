@@ -12,7 +12,8 @@ import {
   insertDrinkSaveSchema,
   drinkEvents,
   drinkRecipes,
-  insertDrinkRecipeSchema
+  insertDrinkRecipeSchema,
+  users,
 } from "@shared/schema";
 import { z } from "zod";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
@@ -107,6 +108,7 @@ r.post("/submit", authenticateUser, async (req, res) => {
       image: str(req.body?.image),
       category: str(req.body?.category) || "smoothies",
       subcategory: str(req.body?.subcategory),
+      remixedFromSlug: str(req.body?.remixedFromSlug),
       userId: resolveEngagementUserId(req),
     });
 
@@ -118,6 +120,49 @@ r.post("/submit", authenticateUser, async (req, res) => {
     }
     console.error("Error submitting drink recipe:", error);
     return res.status(500).json({ ok: false, error: "Failed to submit drink recipe" });
+  }
+});
+
+// Fetch remixes linked to a source canonical drink slug
+r.get("/remixes/:slug", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const sourceSlug = String(req.params?.slug ?? "").trim();
+    if (!sourceSlug) {
+      return res.status(400).json({ ok: false, error: "slug is required" });
+    }
+
+    const remixes = await db
+      .select({
+        slug: drinkRecipes.slug,
+        name: drinkRecipes.name,
+        image: drinkRecipes.image,
+        createdAt: drinkRecipes.createdAt,
+        creatorUsername: users.username,
+      })
+      .from(drinkRecipes)
+      .leftJoin(users, eq(drinkRecipes.userId, users.id))
+      .where(eq(drinkRecipes.remixedFromSlug, sourceSlug))
+      .orderBy(desc(drinkRecipes.createdAt))
+      .limit(24);
+
+    const items = remixes.map((entry) => ({
+      slug: entry.slug,
+      name: entry.name,
+      image: entry.image ?? null,
+      creatorName: entry.creatorUsername ?? null,
+      createdAt: entry.createdAt,
+      route: `/drinks/recipe/${entry.slug}`,
+      remixedFromSlug: sourceSlug,
+    }));
+
+    return res.json({ ok: true, slug: sourceSlug, count: items.length, items });
+  } catch (error) {
+    console.error("Error fetching drink remixes:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch drink remixes" });
   }
 });
 

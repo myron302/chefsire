@@ -353,6 +353,7 @@ export default function SubmitDrinkRecipePage() {
 
     const payload = {
       ...form,
+      remixedFromSlug: remixSlug || undefined,
       prepTime: form.prepTime ? Number(form.prepTime) : undefined,
       ingredients: form.ingredients.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
       instructions: form.instructions.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
