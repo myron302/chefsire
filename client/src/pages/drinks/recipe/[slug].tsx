@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useRoute } from "wouter";
+import { Link, useLocation, useRoute } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import { Badge } from "@/components/ui/badge";
@@ -58,6 +58,7 @@ function logDrinkEvent(slug: string, eventType: "view" | "remix" | "grocery_add"
 
 function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const canonicalRecipe = getCanonicalDrinkRecipeBySlug(slug);
   const [userRecipe, setUserRecipe] = useState<UserDrinkRecipe | null>(null);
   const [userRecipeLoaded, setUserRecipeLoaded] = useState(false);
@@ -262,9 +263,16 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                             </Link>
                           ) : null}
                           <div className="space-y-2">
-                            <Link href={remixRoute} className="font-medium underline underline-offset-2 hover:text-primary">
+                            <a
+                              href={remixRoute}
+                              className="font-medium underline underline-offset-2 hover:text-primary"
+                              onClick={(event) => {
+                                event.preventDefault();
+                                setLocation(remixRoute);
+                              }}
+                            >
                               {remix.name}
-                            </Link>
+                            </a>
                             <p className="text-xs text-muted-foreground">Remixed from {displayName}</p>
                             <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
                               {remix.creatorName ? <span>By @{remix.creatorName}</span> : null}
@@ -272,9 +280,14 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                             </div>
                           </div>
                           <div>
-                            <Link href={remixRoute}>
-                              <Button size="sm" variant="outline">View Remix</Button>
-                            </Link>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setLocation(remixRoute)}
+                            >
+                              View Remix
+                            </Button>
                           </div>
                         </CardContent>
                       </Card>
