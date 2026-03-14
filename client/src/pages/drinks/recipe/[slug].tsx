@@ -240,12 +240,16 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
               {!remixesLoading && remixes.length > 0 ? (
                 <div className="grid gap-3 md:grid-cols-2">
                   {remixes.map((remix) => {
+                    const remixRoute =
+                      typeof remix.route === "string" && remix.route.trim().length > 0
+                        ? remix.route
+                        : `/drinks/recipe/${encodeURIComponent(remix.slug)}`;
                     const createdAtLabel = remix.createdAt
                       ? new Date(remix.createdAt).toLocaleDateString()
                       : null;
 
                     return (
-                      <Link key={remix.slug} href={remix.route}>
+                      <Link key={remix.slug} href={remixRoute} className="block h-full">
                         <Card className="h-full hover:border-primary/40 transition-colors cursor-pointer">
                           <CardContent className="p-4 space-y-2">
                             {remix.image ? (
