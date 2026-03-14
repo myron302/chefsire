@@ -34,6 +34,12 @@ function slugifyDrinkRecipeName(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
+function normalizeSlug(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const cleaned = value.trim().toLowerCase();
+  return cleaned.length ? cleaned : undefined;
+}
+
 async function getUserRecipeBySlug(slug: string) {
   if (!db) return null;
   const rows = await db.select().from(drinkRecipes).where(eq(drinkRecipes.slug, slug)).limit(1);
@@ -108,7 +114,7 @@ r.post("/submit", authenticateUser, async (req, res) => {
       image: str(req.body?.image),
       category: str(req.body?.category) || "smoothies",
       subcategory: str(req.body?.subcategory),
-      remixedFromSlug: str(req.body?.remixedFromSlug),
+      remixedFromSlug: normalizeSlug(req.body?.remixedFromSlug),
       userId: resolveEngagementUserId(req),
     });
 
@@ -130,7 +136,7 @@ r.get("/remixes/:slug", async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
 
-    const sourceSlug = String(req.params?.slug ?? "").trim();
+    const sourceSlug = normalizeSlug(req.params?.slug);
     if (!sourceSlug) {
       return res.status(400).json({ ok: false, error: "slug is required" });
     }
