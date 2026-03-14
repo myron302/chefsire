@@ -105,6 +105,11 @@ function toLineItems(value: unknown): string[] {
     .filter(Boolean);
 }
 
+function normalizeRemixSlug(value: string): string | undefined {
+  const normalized = value.trim().toLowerCase();
+  return normalized.length ? normalized : undefined;
+}
+
 function isAlcoholIngredient(item: string) {
   const normalized = item.toLowerCase();
   return ALCOHOL_TOKENS.some((token) => normalized.includes(token));
@@ -353,11 +358,15 @@ export default function SubmitDrinkRecipePage() {
 
     const payload = {
       ...form,
-      remixedFromSlug: remixSlug || undefined,
+      remixedFromSlug: normalizeRemixSlug(remixSlug),
       prepTime: form.prepTime ? Number(form.prepTime) : undefined,
       ingredients: form.ingredients.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
       instructions: form.instructions.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
     };
+
+    if (import.meta.env.DEV) {
+      console.info("[drink-submit] submitting payload", payload);
+    }
 
     const res = await fetch("/api/drinks/submit", {
       method: "POST",
@@ -368,7 +377,17 @@ export default function SubmitDrinkRecipePage() {
 
     const json = await res.json().catch(() => ({}));
     if (!res.ok || !json?.recipe?.slug) {
-      setError(json?.error ?? "Unable to submit recipe");
+      const serverReason = typeof json?.error === "string" && json.error.trim() ? json.error : "Unable to submit recipe";
+      if (import.meta.env.DEV) {
+        console.error("[drink-submit] submit failed", {
+          status: res.status,
+          statusText: res.statusText,
+          response: json,
+          payload,
+        });
+      }
+
+      setError(import.meta.env.DEV ? `${serverReason} (HTTP ${res.status})` : serverReason);
       setSubmitting(false);
       return;
     }
