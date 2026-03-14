@@ -509,12 +509,6 @@ r.get("/search", async (req, res) => {
   }
 });
 
-// Simple mock auth middleware used by legacy custom drink routes
-function authenticateUser(req: any, _res: any, next: any) {
-  req.user = { id: "user-123" };
-  next();
-}
-
 // Helper to coerce query values into strings
 function str(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
@@ -525,7 +519,7 @@ function str(v: unknown): string | undefined {
 // ========================================
 
 // Get user's custom drinks
-r.get("/custom-drinks/user/:userId", authenticateUser, async (req, res) => {
+r.get("/custom-drinks/user/:userId", requireAuth, async (req, res) => {
   try {
     const { userId } = req.params;
     const { category } = req.query;
@@ -571,7 +565,7 @@ r.get("/custom-drinks/public", async (req, res) => {
 });
 
 // Create custom drink
-r.post("/custom-drinks", authenticateUser, async (req, res) => {
+r.post("/custom-drinks", requireAuth, async (req, res) => {
   try {
     const drinkData = insertCustomDrinkSchema.parse({
       ...req.body,
@@ -594,7 +588,7 @@ r.post("/custom-drinks", authenticateUser, async (req, res) => {
 });
 
 // Update custom drink
-r.patch("/custom-drinks/:id", authenticateUser, async (req, res) => {
+r.patch("/custom-drinks/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -616,7 +610,7 @@ r.patch("/custom-drinks/:id", authenticateUser, async (req, res) => {
 });
 
 // Delete custom drink
-r.delete("/custom-drinks/:id", authenticateUser, async (req, res) => {
+r.delete("/custom-drinks/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -646,7 +640,7 @@ r.delete("/custom-drinks/:id", authenticateUser, async (req, res) => {
 // ========================================
 
 // Upload drink photo
-r.post("/custom-drinks/:id/photo", authenticateUser, async (req, res) => {
+r.post("/custom-drinks/:id/photo", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     
@@ -699,7 +693,7 @@ r.get("/custom-drinks/:id/photos", async (req, res) => {
 });
 
 // Delete drink photo
-r.delete("/drink-photos/:id", authenticateUser, async (req, res) => {
+r.delete("/drink-photos/:id", requireAuth, async (req, res) => {
   try {
     const success = await storage.deleteDrinkPhoto(req.params.id);
     if (success) {
@@ -718,7 +712,7 @@ r.delete("/drink-photos/:id", authenticateUser, async (req, res) => {
 // ========================================
 
 // Like a drink
-r.post("/custom-drinks/:id/like", authenticateUser, async (req, res) => {
+r.post("/custom-drinks/:id/like", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const like = await storage.likeDrink(req.user.id, id);
@@ -730,7 +724,7 @@ r.post("/custom-drinks/:id/like", authenticateUser, async (req, res) => {
 });
 
 // Unlike a drink
-r.delete("/custom-drinks/:id/like", authenticateUser, async (req, res) => {
+r.delete("/custom-drinks/:id/like", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const success = await storage.unlikeDrink(req.user.id, id);
@@ -746,7 +740,7 @@ r.delete("/custom-drinks/:id/like", authenticateUser, async (req, res) => {
 });
 
 // Check if drink is liked
-r.get("/custom-drinks/:id/liked", authenticateUser, async (req, res) => {
+r.get("/custom-drinks/:id/liked", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const isLiked = await storage.isDrinkLiked(req.user.id, id);
@@ -762,7 +756,7 @@ r.get("/custom-drinks/:id/liked", authenticateUser, async (req, res) => {
 // ========================================
 
 // Save a drink
-r.post("/custom-drinks/:id/save", authenticateUser, async (req, res) => {
+r.post("/custom-drinks/:id/save", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const save = await storage.saveDrink(req.user.id, id);
@@ -774,7 +768,7 @@ r.post("/custom-drinks/:id/save", authenticateUser, async (req, res) => {
 });
 
 // Unsave a drink
-r.delete("/custom-drinks/:id/save", authenticateUser, async (req, res) => {
+r.delete("/custom-drinks/:id/save", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const success = await storage.unsaveDrink(req.user.id, id);
@@ -790,7 +784,7 @@ r.delete("/custom-drinks/:id/save", authenticateUser, async (req, res) => {
 });
 
 // Check if drink is saved
-r.get("/custom-drinks/:id/saved", authenticateUser, async (req, res) => {
+r.get("/custom-drinks/:id/saved", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const isSaved = await storage.isDrinkSaved(req.user.id, id);
@@ -802,7 +796,7 @@ r.get("/custom-drinks/:id/saved", authenticateUser, async (req, res) => {
 });
 
 // Get user's saved drinks
-r.get("/custom-drinks/saved/:userId", authenticateUser, async (req, res) => {
+r.get("/custom-drinks/saved/:userId", requireAuth, async (req, res) => {
   try {
     const { userId } = req.params;
     const { category } = req.query;
@@ -833,7 +827,7 @@ r.get("/user-drink-stats/:userId", async (req, res) => {
 });
 
 // Update user stats
-r.patch("/user-drink-stats/:userId", authenticateUser, async (req, res) => {
+r.patch("/user-drink-stats/:userId", requireAuth, async (req, res) => {
   try {
     const { userId } = req.params;
     
@@ -850,7 +844,7 @@ r.patch("/user-drink-stats/:userId", authenticateUser, async (req, res) => {
 });
 
 // Award badge to user
-r.post("/user-drink-stats/:userId/badge", authenticateUser, async (req, res) => {
+r.post("/user-drink-stats/:userId/badge", requireAuth, async (req, res) => {
   try {
     const { userId } = req.params;
     const { badge } = req.body;
