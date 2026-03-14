@@ -17,6 +17,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
+import { requireAuth } from "../middleware";
 
 const r = Router();
 
@@ -78,7 +79,7 @@ async function resolveDrinkDetailsBySlug(slug: string) {
 
 
 // Submit a user drink recipe
-r.post("/submit", authenticateUser, async (req, res) => {
+r.post("/submit", requireAuth, async (req, res) => {
   try {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
@@ -124,8 +125,14 @@ r.post("/submit", authenticateUser, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ ok: false, error: "Invalid drink recipe data", details: error.errors });
     }
+
     console.error("Error submitting drink recipe:", error);
-    return res.status(500).json({ ok: false, error: "Failed to submit drink recipe" });
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({
+      ok: false,
+      error: process.env.NODE_ENV === "production" ? "Failed to submit drink recipe" : `Failed to submit drink recipe: ${errorMessage}`,
+    });
   }
 });
 
@@ -501,12 +508,6 @@ r.get("/search", async (req, res) => {
     return res.status(500).json({ ok: false, error: "Failed to search drinks" });
   }
 });
-
-// Simple mock auth middleware (replace with real auth)
-function authenticateUser(req: any, _res: any, next: any) {
-  req.user = { id: "user-123" };
-  next();
-}
 
 // Helper to coerce query values into strings
 function str(v: unknown): string | undefined {
