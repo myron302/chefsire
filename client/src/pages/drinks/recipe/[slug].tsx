@@ -249,26 +249,35 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                       : null;
 
                     return (
-                      <Link key={remix.slug} href={remixRoute} className="block h-full">
-                        <Card className="h-full hover:border-primary/40 transition-colors cursor-pointer">
-                          <CardContent className="p-4 space-y-2">
-                            {remix.image ? (
+                      <Card key={remix.slug} className="h-full hover:border-primary/40 transition-colors">
+                        <CardContent className="p-4 space-y-3">
+                          {remix.image ? (
+                            <Link href={remixRoute} className="block">
                               <img
                                 src={remix.image}
                                 alt={remix.name}
                                 className="w-full h-36 object-cover rounded-md border"
                                 loading="lazy"
                               />
-                            ) : null}
-                            <p className="font-medium">{remix.name}</p>
+                            </Link>
+                          ) : null}
+                          <div className="space-y-2">
+                            <Link href={remixRoute} className="font-medium underline underline-offset-2 hover:text-primary">
+                              {remix.name}
+                            </Link>
                             <p className="text-xs text-muted-foreground">Remixed from {displayName}</p>
                             <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
                               {remix.creatorName ? <span>By @{remix.creatorName}</span> : null}
                               {createdAtLabel ? <span>{createdAtLabel}</span> : null}
                             </div>
-                          </CardContent>
-                        </Card>
-                      </Link>
+                          </div>
+                          <div>
+                            <Link href={remixRoute}>
+                              <Button size="sm" variant="outline">View Remix</Button>
+                            </Link>
+                          </div>
+                        </CardContent>
+                      </Card>
                     );
                   })}
                 </div>
