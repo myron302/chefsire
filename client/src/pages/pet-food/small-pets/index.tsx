@@ -597,7 +597,6 @@ export default function SmallPetsPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredRecipes.map(recipe => {
             const useMetric = !!metricFlags[recipe.id];
-            const canonicalSlug = resolveCanonicalPetFoodSlug(recipe.name);
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
 
             return (
@@ -723,13 +722,6 @@ export default function SmallPetsPage() {
                     ))}
                   </div>
 
-                  {canonicalSlug ? (
-                    <div className="mt-2 text-xs text-muted-foreground">
-                      <Link href={`/pet-food/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
-                        Canonical Recipe
-                      </Link>
-                    </div>
-                  ) : null}
                 </CardContent>
               </Card>
             );
