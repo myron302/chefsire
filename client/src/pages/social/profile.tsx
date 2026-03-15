@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams, useLocation } from "wouter";
+import { Link, useParams, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -848,10 +848,17 @@ export default function Profile() {
             <div className="text-center py-12">Loading drinks...</div>
           ) : drinksData && drinksData.drinks.length > 0 ? (
             <>
-              <h2 className="text-xl font-semibold mb-4">Custom Drink Creations</h2>
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-xl font-semibold">Custom Drink Creations</h2>
+                {isOwnProfile ? (
+                  <Link href="/profile/drinks">
+                    <Button variant="outline" size="sm">Open Drink Creator Dashboard</Button>
+                  </Link>
+                ) : null}
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {drinksData.drinks.map((d) => (
-                  <Card key={d.id} className="overflow-hidden cursor-pointer hover:shadow-lg transition-shadow">
+                  <Card key={d.id} className="overflow-hidden hover:shadow-lg transition-shadow">
                     <div className="aspect-video overflow-hidden">
                       <img src={d.imageUrl} alt={d.name} className="w-full h-full object-cover" />
                     </div>

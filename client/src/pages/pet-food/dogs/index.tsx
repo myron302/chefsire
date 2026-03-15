@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { openCanonicalFirstRecipe } from '@/lib/recipe-interactions';
+import { getCanonicalFirstPath, openCanonicalFirstRecipe } from '@/lib/recipe-interactions';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -388,9 +388,6 @@ export default function DogsPage() {
     });
   };
 
-  const handleRecipeCardNavigation = (recipe: any) => {
-    openRecipeModal(recipe);
-  };
 
   const handleCompleteRecipe = () => {
     setShowKit(false);
@@ -598,20 +595,17 @@ export default function DogsPage() {
           {filteredRecipes.map(recipe => {
             const useMetric = !!metricFlags[recipe.id];
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
+            const recipeRoute = getCanonicalFirstPath({
+              recipeName: recipe.name,
+              fallbackPath: '/pet-food/dogs',
+              resolveCanonicalSlug: resolveCanonicalPetFoodSlug,
+              recipeBasePath: '/pet-food/recipe',
+            });
 
             return (
               <Card
                 key={recipe.id}
-                className="hover:shadow-lg transition-shadow overflow-hidden cursor-pointer"
-                role="link"
-                tabIndex={0}
-                onClick={() => handleRecipeCardNavigation(recipe)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    handleRecipeCardNavigation(recipe);
-                  }
-                }}
+                className="hover:shadow-lg transition-shadow overflow-hidden"
               >
                 {/* Recipe Image */}
                 {recipe.image && (
@@ -627,7 +621,11 @@ export default function DogsPage() {
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex-1">
-                      <CardTitle className="text-lg mb-1">{recipe.name}</CardTitle>
+                      <CardTitle className="text-lg mb-1">
+                        <Link href={recipeRoute} className="hover:underline underline-offset-2">
+                          {recipe.name}
+                        </Link>
+                      </CardTitle>
                       <div className="flex items-center gap-2 mb-2">
                         <Badge variant="outline" className="text-xs">{recipe.category}</Badge>
                         <div className="flex items-center gap-1 text-sm text-gray-600">
@@ -717,6 +715,12 @@ export default function DogsPage() {
                     {recipe.badges.map((tag: string) => (
                       <Badge key={tag} variant="secondary" className="text-xs bg-amber-100 text-amber-800 hover:bg-amber-200">{tag}</Badge>
                     ))}
+                  </div>
+
+                  <div className="flex justify-end" onClick={(event) => event.stopPropagation()}>
+                    <Link href={recipeRoute}>
+                      <Button size="sm">View Recipe</Button>
+                    </Link>
                   </div>
 
                 </CardContent>

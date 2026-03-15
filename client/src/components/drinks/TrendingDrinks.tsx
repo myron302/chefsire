@@ -75,11 +75,11 @@ export default function TrendingDrinks() {
       renderFooter={(drink) => (
         <>
           <Link href={getCanonicalRoute(drink.slug)} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
-            Open canonical recipe page
+            View recipe
           </Link>
           <span className="text-muted-foreground text-xs">•</span>
           <Link href={`/drinks/submit?remix=${encodeURIComponent(drink.slug)}`} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
-            Remix
+            Create remix
           </Link>
         </>
       )}

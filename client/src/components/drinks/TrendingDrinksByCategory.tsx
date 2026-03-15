@@ -131,11 +131,11 @@ export default function TrendingDrinksByCategory({
                   </Link>
                   <div className="mt-3 flex gap-2">
                     <Link href={canonicalRoute} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
-                      Canonical recipe
+                      View recipe
                     </Link>
                     <span className="text-muted-foreground text-xs">•</span>
                     <Link href={`/drinks/submit?remix=${encodeURIComponent(drink.slug)}`} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
-                      Remix
+                      Create remix
                     </Link>
                   </div>
                 </div>

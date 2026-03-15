@@ -98,11 +98,11 @@ export default function RecentlyViewedDrinks() {
                   </Link>
                   <div className="mt-3 flex gap-2">
                     <Link href={canonicalRoute} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
-                      Canonical recipe
+                      View recipe
                     </Link>
                     <span className="text-muted-foreground text-xs">•</span>
                     <Link href={`/drinks/submit?remix=${encodeURIComponent(item.slug)}`} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
-                      Remix
+                      Create remix
                     </Link>
                   </div>
                 </div>

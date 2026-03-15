@@ -104,6 +104,15 @@ export default function CreatorDashboardPage() {
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
       <div className="flex flex-col gap-2">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <Link href="/drinks" className="underline underline-offset-2 text-muted-foreground hover:text-foreground">
+            ← Back to Drinks Hub
+          </Link>
+          <span className="text-muted-foreground">•</span>
+          <Link href="/drinks/submit" className="underline underline-offset-2 text-muted-foreground hover:text-foreground">
+            Submit a Drink
+          </Link>
+        </div>
         <h1 className="text-3xl font-bold">Drink Creator Dashboard</h1>
         <p className="text-muted-foreground">Track how your submitted drinks and remixes are performing.</p>
       </div>

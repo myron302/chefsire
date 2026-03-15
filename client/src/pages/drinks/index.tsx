@@ -516,8 +516,7 @@ export default function DrinksPage() {
               {filteredFeatured.map((recipe) => (
                 <Card 
                   key={recipe.id} 
-                  className="group cursor-pointer hover:shadow-xl transition-all duration-300 hover:-translate-y-2 overflow-hidden"
-                  onClick={() => setSelectedRecipe(recipe)}
+                  className="group hover:shadow-xl transition-all duration-300 hover:-translate-y-2 overflow-hidden"
                 >
                   <div className="relative h-48 overflow-hidden">
                     <img 
@@ -557,6 +556,11 @@ export default function DrinksPage() {
                           {tag}
                         </Badge>
                       ))}
+                    </div>
+                    <div className="mt-4 flex justify-end">
+                      <Button size="sm" variant="outline" onClick={() => setSelectedRecipe(recipe)}>
+                        Quick preview
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>

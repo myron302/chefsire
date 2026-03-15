@@ -153,6 +153,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const instructionSteps = asList(recipe?.instructions ?? userRecipe?.instructions ?? []);
   const description = recipe?.description ?? userRecipe?.description;
   const remixSourceSlug = canonicalRecipe?.slug ?? userRecipe?.slug;
+  const remixedFromSlug = !canonicalRecipe && userRecipe?.remixedFromSlug ? String(userRecipe.remixedFromSlug) : null;
 
   const addAllIngredients = async () => {
     const payload = ingredients
@@ -183,7 +184,12 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
             Back to category
           </Button>
         </Link>
-        <Badge variant="secondary">{canonicalRecipe ? "Canonical Recipe" : "ChefSire Community Recipe"}</Badge>
+        <div className="flex items-center gap-2">
+          <Link href="/profile/drinks">
+            <Button variant="ghost" size="sm">Creator Dashboard</Button>
+          </Link>
+          <Badge variant="secondary">{canonicalRecipe ? "Canonical Recipe" : "ChefSire Community Recipe"}</Badge>
+        </div>
       </div>
 
       {remixSourceSlug ? (
@@ -194,6 +200,11 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
           <Button variant="outline" onClick={addAllIngredients}>
             Add Ingredients to Shopping List
           </Button>
+          {remixedFromSlug ? (
+            <Link href={`/drinks/recipe/${encodeURIComponent(remixedFromSlug)}`}>
+              <Button variant="outline">View Original Recipe</Button>
+            </Link>
+          ) : null}
         </div>
       ) : null}
 
