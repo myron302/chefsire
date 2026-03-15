@@ -23,6 +23,8 @@ interface CreatorDrinkMetricsItem {
 }
 
 interface CreatorDrinkSummary {
+  creatorRank: number | null;
+  creatorScore: number;
   totalCreated: number;
   totalRemixesCreated: number;
   totalViews7d: number;
@@ -34,6 +36,13 @@ interface CreatorDrinkSummary {
     name: string;
     image: string | null;
     score: number;
+  } | null;
+  mostRemixedDrink: {
+    id: string;
+    slug: string;
+    name: string;
+    image: string | null;
+    remixesCount: number;
   } | null;
 }
 
@@ -117,7 +126,13 @@ export default function CreatorDashboardPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardDescription>Creator Rank</CardDescription>
+            <CardTitle>{summary.creatorRank ? `#${metricNumber(summary.creatorRank)}` : "—"}</CardTitle>
+          </CardHeader>
+        </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Created</CardDescription>
@@ -155,10 +170,35 @@ export default function CreatorDashboardPage() {
           <CardTitle>Top Performing Drink</CardTitle>
           <CardDescription>
             {summary.topPerformingDrink
-              ? `${summary.topPerformingDrink.name} • Score ${metricNumber(summary.topPerformingDrink.score)}`
+              ? `${summary.topPerformingDrink.name} • Score ${metricNumber(summary.topPerformingDrink.score)} • Creator Score ${metricNumber(Math.round(summary.creatorScore))}`
               : "No drinks with performance data yet."}
           </CardDescription>
         </CardHeader>
+        {summary.topPerformingDrink ? (
+          <CardContent>
+            <Link href={`/drinks/recipe/${encodeURIComponent(summary.topPerformingDrink.slug)}`} className="underline underline-offset-2 text-sm">
+              View {summary.topPerformingDrink.name}
+            </Link>
+          </CardContent>
+        ) : null}
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Most Remixed Drink</CardTitle>
+          <CardDescription>
+            {summary.mostRemixedDrink
+              ? `${summary.mostRemixedDrink.name} • ${metricNumber(summary.mostRemixedDrink.remixesCount)} remixes received`
+              : "No remixes received yet."}
+          </CardDescription>
+        </CardHeader>
+        {summary.mostRemixedDrink ? (
+          <CardContent>
+            <Link href={`/drinks/recipe/${encodeURIComponent(summary.mostRemixedDrink.slug)}`} className="underline underline-offset-2 text-sm">
+              Open remix leader
+            </Link>
+          </CardContent>
+        ) : null}
       </Card>
 
       <Card>
