@@ -168,7 +168,7 @@ r.get("/remixes/:slug", async (req, res) => {
       image: entry.image ?? null,
       creatorName: entry.creatorUsername ?? null,
       createdAt: entry.createdAt,
-      route: `/drinks/recipe/${entry.slug}`,
+      route: `/drinks/recipe/${entry.slug}?community=1`,
       remixedFromSlug: sourceSlug,
     }));
 
