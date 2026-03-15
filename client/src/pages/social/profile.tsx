@@ -85,7 +85,6 @@ export default function Profile() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const profileUserId = userId || currentUser?.id;
-  const isOwnProfile = profileUserId === currentUser?.id;
   const [selectedPost, setSelectedPost] = useState<PostWithUser | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [editingPost, setEditingPost] = useState<PostWithUser | null>(null);
@@ -140,6 +139,9 @@ export default function Profile() {
     },
     enabled: !!profileUserId,
   });
+
+  const resolvedProfileUserId = user?.id;
+  const isOwnProfile = resolvedProfileUserId === currentUser?.id;
 
   // Fetch user posts from API
   const { data: posts, isLoading: postsLoading } = useQuery<PostWithUser[]>({
@@ -284,23 +286,27 @@ export default function Profile() {
 
   // Check if current user is following this profile
   const { data: followData } = useQuery({
-    queryKey: ["/api/follows/status", profileUserId],
+    queryKey: ["/api/follows/status", resolvedProfileUserId],
     queryFn: async () => {
-      const response = await fetch(`/api/follows/status/${profileUserId}`, {
+      const response = await fetch(`/api/follows/status/${resolvedProfileUserId}`, {
         credentials: "include",
       });
       if (!response.ok) return { isFollowing: false, isRequested: false, isPrivate: false };
       return response.json();
     },
-    enabled: !!currentUser?.id && !!profileUserId && !isOwnProfile,
+    enabled: !!currentUser?.id && !!resolvedProfileUserId && !isOwnProfile,
   });
 
   // Follow/Unfollow mutation
   const followMutation = useMutation({
     mutationFn: async ({ isFollowing }: { isFollowing: boolean }) => {
+      if (!resolvedProfileUserId) {
+        throw new Error("User not found");
+      }
+
       if (isFollowing) {
         // Unfollow or cancel request
-        const response = await fetch(`/api/follows/${profileUserId}`, {
+        const response = await fetch(`/api/follows/${resolvedProfileUserId}`, {
           method: "DELETE",
           credentials: "include",
         });
@@ -312,7 +318,7 @@ export default function Profile() {
         return response.json();
       } else {
         // Follow or request to follow
-        const response = await fetch(`/api/follows/${profileUserId}`, {
+        const response = await fetch(`/api/follows/${resolvedProfileUserId}`, {
           method: "POST",
           credentials: "include",
         });
@@ -325,7 +331,7 @@ export default function Profile() {
       }
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/follows/status", profileUserId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/follows/status", resolvedProfileUserId] });
       const message =
         data.status === "following" ? "Following!" :
         data.status === "requested" ? "Follow request sent" :
