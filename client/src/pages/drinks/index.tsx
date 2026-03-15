@@ -253,13 +253,19 @@ export default function DrinksPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
       <div className="container mx-auto px-4 pt-6">
-        <div className="mb-4 flex flex-wrap gap-2">
-          <Link href="/drinks/submit">
-            <Button>Submit a Drink Recipe</Button>
-          </Link>
-          <Link href="/drinks/following">
-            <Button variant="outline">Following Feed</Button>
-          </Link>
+        <div className="mb-6 rounded-xl border bg-white/70 p-3 shadow-sm backdrop-blur-sm">
+          <p className="mb-3 text-sm font-medium text-muted-foreground">Quick actions</p>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/drinks/submit">
+              <Button>Submit a Drink Recipe</Button>
+            </Link>
+            <Link href="/drinks/following">
+              <Button variant="outline">Following Feed</Button>
+            </Link>
+            <Link href="/drinks/creator-dashboard">
+              <Button variant="outline">Creator Dashboard</Button>
+            </Link>
+          </div>
         </div>
       </div>
       

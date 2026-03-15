@@ -107,10 +107,41 @@ export default function FollowingDrinksFeedPage() {
             <CardTitle>No drinks in your Following feed yet</CardTitle>
             <CardDescription>
               {followingCount === 0
-                ? "You are not following any creators yet. Follow a creator to populate this feed."
-                : "Creators you follow have not shared any drink recipes yet."}
+                ? "You are not following any creators yet, so there are no updates to show."
+                : "You are following creators, but none of them have posted drinks yet."}
             </CardDescription>
           </CardHeader>
+          <CardContent>
+            {followingCount === 0 ? (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Discover creators from the Drinks Hub leaderboard, then follow them to populate this feed.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Link href="/drinks">
+                    <Button size="sm">Find Top Creators on Drinks Hub</Button>
+                  </Link>
+                  <Link href="/drinks/submit">
+                    <Button variant="outline" size="sm">Submit a Drink Recipe</Button>
+                  </Link>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  Check back soon for new uploads, or head back to the Drinks Hub to discover more active creators.
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Link href="/drinks">
+                    <Button size="sm">Back to Drinks Hub</Button>
+                  </Link>
+                  <Link href="/drinks/creator-dashboard">
+                    <Button variant="outline" size="sm">Open Creator Dashboard</Button>
+                  </Link>
+                </div>
+              </div>
+            )}
+          </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4">

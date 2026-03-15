@@ -86,7 +86,20 @@ export default function TopDrinkCreators() {
         {loading ? (
           <p className="text-sm text-muted-foreground">Loading top creators...</p>
         ) : leaderboard.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No creator leaderboard data yet.</p>
+          <div className="space-y-3 rounded-lg border border-dashed p-4">
+            <p className="text-sm font-medium">Top creators will appear here soon.</p>
+            <p className="text-sm text-muted-foreground">
+              No leaderboard data is available yet. Be one of the first to publish drinks and build momentum.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/drinks/submit">
+                <Button size="sm">Submit a Drink Recipe</Button>
+              </Link>
+              <Link href="/drinks/creator-dashboard">
+                <Button size="sm" variant="outline">Open Creator Dashboard</Button>
+              </Link>
+            </div>
+          </div>
         ) : (
           <div className="space-y-3">
             {leaderboard.map((creator, index) => (
