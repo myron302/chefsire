@@ -12,6 +12,7 @@ import {
   insertDrinkSaveSchema,
   drinkEvents,
   drinkRecipes,
+  follows,
   insertDrinkRecipeSchema,
   users,
 } from "@shared/schema";
@@ -84,6 +85,8 @@ type RemixChainNode = {
   route: string;
   isCanonical: boolean;
   remixedFromSlug: string | null;
+  creatorId?: string | null;
+  creatorUsername?: string | null;
 };
 
 function toRemixChainNodeFromCanonical(slug: string): RemixChainNode | null {
@@ -108,6 +111,22 @@ function toRemixChainNodeFromUserRecipe(recipe: typeof drinkRecipes.$inferSelect
     route: `/drinks/recipe/${recipe.slug}`,
     isCanonical: false,
     remixedFromSlug: recipe.remixedFromSlug ?? null,
+    creatorId: recipe.userId ?? null,
+  };
+}
+
+async function hydrateRemixNodeCreator(node: RemixChainNode): Promise<RemixChainNode> {
+  if (!db || node.isCanonical || !node.creatorId) return node;
+
+  const creator = await db
+    .select({ username: users.username })
+    .from(users)
+    .where(eq(users.id, node.creatorId))
+    .limit(1);
+
+  return {
+    ...node,
+    creatorUsername: creator[0]?.username ?? null,
   };
 }
 
@@ -129,6 +148,7 @@ type CreatorLeaderboardRow = {
   totalViews7d: number;
   totalRemixesReceived: number;
   totalGroceryAdds: number;
+  followerCount?: number;
   topDrink: {
     slug: string;
     name: string;
@@ -181,7 +201,7 @@ async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboar
     .groupBy(drinkRecipes.remixedFromSlug);
 
   const profiles = await db
-    .select({ id: users.id, username: users.username, avatar: users.avatar })
+    .select({ id: users.id, username: users.username, avatar: users.avatar, followersCount: users.followersCount })
     .from(users)
     .where(inArray(users.id, creatorIds));
 
@@ -201,7 +221,11 @@ async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboar
       .map((row) => [row.remixedFromSlug, Number(row.remixesCount ?? 0)])
   );
 
-  const profileById = new Map(profiles.map((profile) => [profile.id, { username: profile.username, avatar: profile.avatar }]));
+  const profileById = new Map(profiles.map((profile) => [profile.id, {
+    username: profile.username,
+    avatar: profile.avatar,
+    followersCount: Number(profile.followersCount ?? 0),
+  }]));
 
   const recipesByCreator = new Map<string, Array<typeof creatorRecipes[number]>>();
   for (const recipe of creatorRecipes) {
@@ -257,6 +281,7 @@ async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboar
       totalViews7d: totals.totalViews7d,
       totalRemixesReceived: totals.totalRemixesReceived,
       totalGroceryAdds: totals.totalGroceryAdds,
+      followerCount: creatorProfile?.followersCount ?? 0,
       topDrink: totals.topDrink,
     };
   });
@@ -344,6 +369,7 @@ r.get("/remixes/:slug", async (req, res) => {
         image: drinkRecipes.image,
         createdAt: drinkRecipes.createdAt,
         creatorUsername: users.username,
+        creatorId: drinkRecipes.userId,
       })
       .from(drinkRecipes)
       .leftJoin(users, eq(drinkRecipes.userId, users.id))
@@ -356,6 +382,7 @@ r.get("/remixes/:slug", async (req, res) => {
       name: entry.name,
       image: entry.image ?? null,
       creatorName: entry.creatorUsername ?? null,
+      creatorId: entry.creatorId ?? null,
       createdAt: entry.createdAt,
       route: `/drinks/recipe/${entry.slug}?community=1`,
       remixedFromSlug: sourceSlug,
@@ -380,10 +407,12 @@ r.get("/remix-chain/:slug", async (req, res) => {
       return res.status(400).json({ ok: false, error: "slug is required" });
     }
 
-    const current = await resolveRemixChainNode(slug);
-    if (!current) {
+    const currentNode = await resolveRemixChainNode(slug);
+    if (!currentNode) {
       return res.status(404).json({ ok: false, error: "Recipe not found" });
     }
+
+    const current = await hydrateRemixNodeCreator(currentNode);
 
     const ancestors: RemixChainNode[] = [];
     const ancestorSeen = new Set<string>([current.slug]);
@@ -393,7 +422,7 @@ r.get("/remix-chain/:slug", async (req, res) => {
       ancestorSeen.add(parentSlug);
       const parentNode = await resolveRemixChainNode(parentSlug);
       if (!parentNode) break;
-      ancestors.push(parentNode);
+      ancestors.push(await hydrateRemixNodeCreator(parentNode));
       parentSlug = parentNode.remixedFromSlug;
     }
 
@@ -416,7 +445,7 @@ r.get("/remix-chain/:slug", async (req, res) => {
         if (descendantSeen.has(row.slug)) continue;
         descendantSeen.add(row.slug);
         descendants.push({
-          ...toRemixChainNodeFromUserRecipe(row),
+          ...(await hydrateRemixNodeCreator(toRemixChainNodeFromUserRecipe(row))),
           parentSlug: row.remixedFromSlug ?? current.slug,
           depth,
         });
@@ -455,7 +484,18 @@ r.get("/user/:slug", async (req, res) => {
     const recipe = await getUserRecipeBySlug(slug);
     if (!recipe) return res.status(404).json({ ok: false, error: "Recipe not found" });
 
-    return res.json({ ok: true, recipe });
+    const creator = recipe.userId
+      ? await db.select({ username: users.username }).from(users).where(eq(users.id, recipe.userId)).limit(1)
+      : [];
+
+    return res.json({
+      ok: true,
+      recipe: {
+        ...recipe,
+        creatorId: recipe.userId ?? null,
+        creatorUsername: creator[0]?.username ?? null,
+      },
+    });
   } catch (error) {
     console.error("Error fetching user drink recipe:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch drink recipe" });
@@ -679,8 +719,40 @@ r.get("/recommended", async (req, res) => {
       })
       .from(drinkEvents)
       .where(and(eq(drinkEvents.eventType, "view"), gt(drinkEvents.createdAt, sevenDaysAgo)))
-      .groupBy(drinkEvents.slug)
-      .orderBy(desc(sql`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`), desc(sql`count(*)`));
+      .groupBy(drinkEvents.slug);
+
+    const viewerId = resolveEngagementUserId(req);
+    const followedCreatorIds = viewerId
+      ? (await db
+          .select({ followingId: follows.followingId })
+          .from(follows)
+          .where(eq(follows.followerId, viewerId)))
+          .map((row) => row.followingId)
+      : [];
+
+    const followedCreatorSet = new Set(followedCreatorIds);
+    const recipeCreators = await db
+      .select({ slug: drinkRecipes.slug, userId: drinkRecipes.userId })
+      .from(drinkRecipes)
+      .where(inArray(drinkRecipes.slug, rows.map((row) => row.slug)));
+
+    const creatorBySlug = new Map(
+      recipeCreators
+        .filter((row): row is { slug: string; userId: string } => Boolean(row.slug) && Boolean(row.userId))
+        .map((row) => [row.slug, row.userId])
+    );
+
+    const rankedRows = rows
+      .map((row) => {
+        const creatorId = creatorBySlug.get(row.slug);
+        const followedBoost = creatorId && followedCreatorSet.has(creatorId) ? 8 : 0;
+        return {
+          ...row,
+          rankScore: Number(row.score ?? 0) + followedBoost,
+          isFollowedCreator: followedBoost > 0,
+        };
+      })
+      .sort((a, b) => b.rankScore - a.rankScore || Number(b.score ?? 0) - Number(a.score ?? 0) || Number(b.views7d ?? 0) - Number(a.views7d ?? 0));
 
     const recentDetails = await Promise.all(recentSlugs.map((slug) => resolveDrinkDetailsBySlug(slug)));
     const recentCategoryRoutes = new Set(
@@ -689,8 +761,8 @@ r.get("/recommended", async (req, res) => {
         .filter((route): route is string => Boolean(route))
     );
 
-    const scopedRows: typeof rows = [];
-    for (const row of rows) {
+    const scopedRows: typeof rankedRows = [];
+    for (const row of rankedRows) {
       if (recentCategoryRoutes.size === 0) {
         scopedRows.push(row);
         continue;
@@ -790,6 +862,8 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
           totalGroceryAdds: 0,
           topPerformingDrink: null,
           mostRemixedDrink: null,
+          followerCount: Number((await db.select({ followersCount: users.followersCount }).from(users).where(eq(users.id, requestedUserId)).limit(1))[0]?.followersCount ?? 0),
+          isFollowing: false,
         },
         items: [],
       });
@@ -888,6 +962,8 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
             remixesCount: mostRemixedDrink.remixesCount,
           }
           : null,
+        followerCount: Number((await db.select({ followersCount: users.followersCount }).from(users).where(eq(users.id, requestedUserId)).limit(1))[0]?.followersCount ?? 0),
+        isFollowing: false,
       },
       items,
     });
@@ -897,6 +973,95 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
   }
 });
 
+
+
+r.post("/creators/:userId/follow", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const creatorId = String(req.params?.userId ?? "").trim();
+    const viewerId = req.user.id;
+
+    if (!creatorId) return res.status(400).json({ ok: false, error: "userId is required" });
+    if (creatorId === viewerId) return res.status(400).json({ ok: false, error: "You cannot follow yourself" });
+
+    const creator = await db.select({ id: users.id }).from(users).where(eq(users.id, creatorId)).limit(1);
+    if (!creator[0]) return res.status(404).json({ ok: false, error: "Creator not found" });
+
+    try {
+      await storage.followUser(viewerId, creatorId);
+    } catch {
+      // ignore duplicate follows
+    }
+
+    const isFollowing = await storage.isFollowing(viewerId, creatorId);
+    const creatorProfile = await db
+      .select({ followersCount: users.followersCount })
+      .from(users)
+      .where(eq(users.id, creatorId))
+      .limit(1);
+
+    return res.json({ ok: true, isFollowing, followerCount: Number(creatorProfile[0]?.followersCount ?? 0) });
+  } catch (error) {
+    console.error("Error following drink creator:", error);
+    return res.status(500).json({ ok: false, error: "Failed to follow creator" });
+  }
+});
+
+r.delete("/creators/:userId/follow", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const creatorId = String(req.params?.userId ?? "").trim();
+    const viewerId = req.user.id;
+
+    if (!creatorId) return res.status(400).json({ ok: false, error: "userId is required" });
+    if (creatorId === viewerId) return res.status(400).json({ ok: false, error: "Invalid creator" });
+
+    await storage.unfollowUser(viewerId, creatorId);
+
+    const isFollowing = await storage.isFollowing(viewerId, creatorId);
+    const creatorProfile = await db
+      .select({ followersCount: users.followersCount })
+      .from(users)
+      .where(eq(users.id, creatorId))
+      .limit(1);
+
+    return res.json({ ok: true, isFollowing, followerCount: Number(creatorProfile[0]?.followersCount ?? 0) });
+  } catch (error) {
+    console.error("Error unfollowing drink creator:", error);
+    return res.status(500).json({ ok: false, error: "Failed to unfollow creator" });
+  }
+});
+
+r.get("/creators/:userId/follow-status", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const creatorId = String(req.params?.userId ?? "").trim();
+    const viewerId = req.user.id;
+
+    if (!creatorId) return res.status(400).json({ ok: false, error: "userId is required" });
+
+    const isFollowing = creatorId === viewerId ? false : await storage.isFollowing(viewerId, creatorId);
+    const creatorProfile = await db
+      .select({ followersCount: users.followersCount })
+      .from(users)
+      .where(eq(users.id, creatorId))
+      .limit(1);
+
+    return res.json({ ok: true, isFollowing, followerCount: Number(creatorProfile[0]?.followersCount ?? 0) });
+  } catch (error) {
+    console.error("Error checking drink creator follow status:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch follow status" });
+  }
+});
 
 
 // Search drinks across canonical + user submissions

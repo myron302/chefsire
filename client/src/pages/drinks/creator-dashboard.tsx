@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
 
 interface CreatorDrinkMetricsItem {
   id: string;
@@ -44,6 +45,8 @@ interface CreatorDrinkSummary {
     image: string | null;
     remixesCount: number;
   } | null;
+  followerCount?: number;
+  isFollowing?: boolean;
 }
 
 interface CreatorDrinkMetricsResponse {
@@ -116,6 +119,10 @@ export default function CreatorDashboardPage() {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold">Drink Creator Dashboard</h1>
         <p className="text-muted-foreground">Track how your submitted drinks and remixes are performing.</p>
+        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          <span>{metricNumber(summary.followerCount ?? 0)} followers</span>
+          <CreatorFollowButton creatorId={user.id} />
+        </div>
         <div className="flex flex-wrap gap-2 pt-1">
           <Link href="/drinks">
             <Button variant="outline" size="sm">Back to Drinks Hub</Button>
