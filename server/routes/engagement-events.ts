@@ -9,7 +9,7 @@ export function parseTrackedEventBody(
   | { ok: true; slug: string; eventType: string }
   | { ok: false; status: number; error: string } {
   const payload = body as Record<string, unknown> | null | undefined;
-  const slug = typeof payload?.slug === "string" ? payload.slug.trim() : "";
+  const slug = typeof payload?.slug === "string" ? payload.slug.trim().toLowerCase() : "";
   const eventType = typeof payload?.eventType === "string" ? payload.eventType.trim().toLowerCase() : "";
 
   if (!slug) {
