@@ -417,9 +417,12 @@ export default function Profile() {
               </p>
             </div>
             {isOwnProfile ? (
-              <div className="flex gap-2 mt-3 sm:mt-0">
+              <div className="flex flex-wrap gap-2 mt-3 sm:mt-0">
                 <Button variant="outline" onClick={() => setLocation("/settings")}>
                   Settings
+                </Button>
+                <Button variant="outline" onClick={() => setLocation("/profile/drinks")}>
+                  Drink Creator Dashboard
                 </Button>
                 <Button onClick={() => setLocation("/post/new")} data-testid="button-create-post">
                   <Plus className="w-4 h-4 mr-2" />
