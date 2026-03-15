@@ -188,7 +188,15 @@ export default function CreatorDashboardPage() {
                         <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                           <Badge variant="secondary">{item.slug}</Badge>
                           {item.remixedFromSlug ? (
-                            <Badge variant="outline">Remixed from: {item.remixedFromSlug}</Badge>
+                            <Badge variant="outline">
+                              Remix of {" "}
+                              <Link
+                                href={`/drinks/recipe/${encodeURIComponent(item.remixedFromSlug)}`}
+                                className="underline underline-offset-2"
+                              >
+                                {item.remixedFromSlug}
+                              </Link>
+                            </Badge>
                           ) : null}
                           {item.remixesCount > 0 ? (
                             <Badge variant="outline">{metricNumber(item.remixesCount)} remixes received</Badge>
