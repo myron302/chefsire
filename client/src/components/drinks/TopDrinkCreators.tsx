@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
 
 type CreatorLeaderboardItem = {
   userId: string;
@@ -16,6 +17,7 @@ type CreatorLeaderboardItem = {
   totalViews7d: number;
   totalRemixesReceived: number;
   totalGroceryAdds: number;
+  followerCount?: number;
   topDrink: {
     slug: string;
     name: string;
@@ -103,7 +105,7 @@ export default function TopDrinkCreators() {
                     </div>
 
                     <p className="text-xs text-muted-foreground">
-                      {metricNumber(creator.totalCreated)} drinks • {metricNumber(creator.totalViews7d)} views (7d) • {metricNumber(creator.totalRemixesReceived)} remixes • {metricNumber(creator.totalGroceryAdds)} grocery adds
+                      {metricNumber(creator.totalCreated)} drinks • {metricNumber(creator.totalViews7d)} views (7d) • {metricNumber(creator.totalRemixesReceived)} remixes • {metricNumber(creator.totalGroceryAdds)} grocery adds • {metricNumber(creator.followerCount ?? 0)} followers
                     </p>
 
                     {creator.topDrink ? (
@@ -114,12 +116,15 @@ export default function TopDrinkCreators() {
                   </div>
                 </div>
 
-                <Link href={`/profile/${encodeURIComponent(creator.userId)}`}>
-                  <Button variant="outline" size="sm" className="gap-1">
-                    <Users className="h-4 w-4" />
-                    Profile
-                  </Button>
-                </Link>
+                <div className="flex items-center gap-2">
+                  <CreatorFollowButton creatorId={creator.userId} />
+                  <Link href={`/profile/${encodeURIComponent(creator.userId)}`}>
+                    <Button variant="outline" size="sm" className="gap-1">
+                      <Users className="h-4 w-4" />
+                      Profile
+                    </Button>
+                  </Link>
+                </div>
               </div>
             ))}
           </div>

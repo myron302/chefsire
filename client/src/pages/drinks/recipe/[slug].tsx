@@ -10,6 +10,7 @@ import { addItemsToShoppingList } from "@/lib/shopping-list";
 import { addRecentlyViewedDrinkSlug } from "@/components/drinks/RecentlyViewedDrinks";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
 import { postEngagementEvent } from "@/lib/engagement-events";
+import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
 
 type UserDrinkRecipe = {
   slug: string;
@@ -21,6 +22,8 @@ type UserDrinkRecipe = {
   category: string;
   subcategory?: string | null;
   remixedFromSlug?: string | null;
+  creatorId?: string | null;
+  creatorUsername?: string | null;
 };
 
 type DrinkRemixItem = {
@@ -28,6 +31,7 @@ type DrinkRemixItem = {
   name: string;
   image?: string | null;
   creatorName?: string | null;
+  creatorId?: string | null;
   createdAt?: string | null;
   route: string;
 };
@@ -39,6 +43,8 @@ type RemixChainNode = {
   route: string;
   isCanonical: boolean;
   remixedFromSlug?: string | null;
+  creatorId?: string | null;
+  creatorUsername?: string | null;
 };
 
 type RemixChainDescendant = RemixChainNode & {
@@ -261,6 +267,12 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
               {sourceTitle}
             </Link>
           </div>
+          {userRecipe?.creatorUsername ? (
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+              <span>By @{userRecipe.creatorUsername}</span>
+              <CreatorFollowButton creatorId={userRecipe.creatorId ?? null} />
+            </div>
+          ) : null}
         </CardHeader>
         <CardContent className="space-y-6">
           {imageUrl ? (
@@ -309,10 +321,12 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                 <p className="text-sm text-muted-foreground">Remixed from:</p>
                 <ul className="space-y-1 text-sm">
                   {[...remixChainAncestors].reverse().map((ancestor) => (
-                    <li key={ancestor.slug}>
+                    <li key={ancestor.slug} className="flex flex-wrap items-center gap-2">
                       <Link href={resolveRecipeRoute(ancestor)} className="underline underline-offset-2 hover:text-primary">
                         {ancestor.name}
                       </Link>
+                      {ancestor.creatorUsername ? <span className="text-muted-foreground">by @{ancestor.creatorUsername}</span> : null}
+                      <CreatorFollowButton creatorId={ancestor.creatorId ?? null} />
                     </li>
                   ))}
                 </ul>
@@ -324,10 +338,12 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                 <p className="text-sm text-muted-foreground">Inspired {remixChainChildren.length} remix{remixChainChildren.length === 1 ? "" : "es"}:</p>
                 <ul className="space-y-1 text-sm">
                   {remixChainChildren.map((child) => (
-                    <li key={child.slug}>
+                    <li key={child.slug} className="flex flex-wrap items-center gap-2">
                       <Link href={resolveRecipeRoute(child)} className="underline underline-offset-2 hover:text-primary">
                         {child.name}
                       </Link>
+                      {child.creatorUsername ? <span className="text-muted-foreground">by @{child.creatorUsername}</span> : null}
+                      <CreatorFollowButton creatorId={child.creatorId ?? null} />
                     </li>
                   ))}
                 </ul>
@@ -389,6 +405,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                             <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
                               {remix.creatorName ? <span>By @{remix.creatorName}</span> : null}
                               {createdAtLabel ? <span>{createdAtLabel}</span> : null}
+                              <CreatorFollowButton creatorId={remix.creatorId ?? null} />
                             </div>
                           </div>
                           <div>
