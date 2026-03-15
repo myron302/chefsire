@@ -92,13 +92,15 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
       .finally(() => setUserRecipeLoaded(true));
   }, [canonicalRecipe, slug]);
 
+  const trackedDrinkSlug = canonicalRecipe?.slug ?? userRecipe?.slug ?? "";
+
   useEffect(() => {
-    if (!slug) return;
+    if (!trackedDrinkSlug) return;
 
-    addRecentlyViewedDrinkSlug(slug);
+    addRecentlyViewedDrinkSlug(trackedDrinkSlug);
 
-    logDrinkEvent(slug, "view");
-  }, [slug]);
+    void logDrinkEvent(trackedDrinkSlug, "view");
+  }, [trackedDrinkSlug]);
 
   useEffect(() => {
     if (!canonicalRecipe?.slug) {
@@ -164,7 +166,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
 
     const result = await addItemsToShoppingList(payload);
     if (result.addedCount > 0) {
-      logDrinkEvent(slug, "grocery_add");
+      void logDrinkEvent(trackedDrinkSlug, "grocery_add");
       toast({ title: `Added ${result.addedCount} ingredient${result.addedCount === 1 ? "" : "s"} to shopping list.` });
       return;
     }
@@ -186,7 +188,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
 
       {remixSourceSlug ? (
         <div className="flex flex-wrap gap-2">
-          <Link href={`/drinks/submit?remix=${encodeURIComponent(remixSourceSlug)}`} onClick={() => void logDrinkEvent(slug, "remix")}>
+          <Link href={`/drinks/submit?remix=${encodeURIComponent(remixSourceSlug)}`} onClick={() => void logDrinkEvent(trackedDrinkSlug, "remix")}>
             <Button>Remix</Button>
           </Link>
           <Button variant="outline" onClick={addAllIngredients}>
