@@ -32,6 +32,29 @@ type DrinkRemixItem = {
   route: string;
 };
 
+type RemixChainNode = {
+  slug: string;
+  name: string;
+  image?: string | null;
+  route: string;
+  isCanonical: boolean;
+  remixedFromSlug?: string | null;
+};
+
+type RemixChainDescendant = RemixChainNode & {
+  parentSlug: string;
+  depth: number;
+};
+
+type RemixChainResponse = {
+  ok: boolean;
+  current?: RemixChainNode;
+  parent?: RemixChainNode | null;
+  children?: RemixChainNode[];
+  ancestors?: RemixChainNode[];
+  descendants?: RemixChainDescendant[];
+};
+
 function resolveRemixDestination(remix: DrinkRemixItem): string {
   const fallback = `/drinks/recipe/${encodeURIComponent(remix.slug)}?community=1`;
   if (typeof remix.route !== "string") return fallback;
@@ -45,6 +68,14 @@ function resolveRemixDestination(remix: DrinkRemixItem): string {
 
   return trimmed;
 }
+function resolveRecipeRoute(node: { slug: string; route?: string | null }): string {
+  const fallback = `/drinks/recipe/${encodeURIComponent(node.slug)}`;
+  const candidate = typeof node.route === "string" ? node.route.trim() : "";
+  if (!candidate || !candidate.startsWith("/")) return fallback;
+  if (candidate.startsWith("/drinks/recipe/")) return candidate;
+  return fallback;
+}
+
 
 function asList(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -79,6 +110,8 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const [userRecipeLoaded, setUserRecipeLoaded] = useState(false);
   const [remixes, setRemixes] = useState<DrinkRemixItem[]>([]);
   const [remixesLoading, setRemixesLoading] = useState(false);
+  const [remixChain, setRemixChain] = useState<RemixChainResponse | null>(null);
+  const [remixChainLoading, setRemixChainLoading] = useState(false);
 
   useEffect(() => {
     if (canonicalRecipe) return;
@@ -119,6 +152,23 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
       .finally(() => setRemixesLoading(false));
   }, [canonicalRecipe?.slug]);
 
+  useEffect(() => {
+    if (!trackedDrinkSlug) {
+      setRemixChain(null);
+      setRemixChainLoading(false);
+      return;
+    }
+
+    setRemixChainLoading(true);
+    fetch(`/api/drinks/remix-chain/${encodeURIComponent(trackedDrinkSlug)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((payload: RemixChainResponse | null) => {
+        setRemixChain(payload && payload.ok ? payload : null);
+      })
+      .catch(() => setRemixChain(null))
+      .finally(() => setRemixChainLoading(false));
+  }, [trackedDrinkSlug]);
+
   if (!canonicalRecipe && !userRecipe && userRecipeLoaded) {
     return (
       <div className="container mx-auto px-4 py-10 max-w-3xl">
@@ -153,6 +203,10 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const instructionSteps = asList(recipe?.instructions ?? userRecipe?.instructions ?? []);
   const description = recipe?.description ?? userRecipe?.description;
   const remixSourceSlug = canonicalRecipe?.slug ?? userRecipe?.slug;
+  const remixChainAncestors = Array.isArray(remixChain?.ancestors) ? remixChain.ancestors : [];
+  const remixChainChildren = Array.isArray(remixChain?.children) ? remixChain.children : [];
+  const remixChainDescendants = Array.isArray(remixChain?.descendants) ? remixChain.descendants : [];
+  const hasLineage = remixChainAncestors.length > 0 || remixChainChildren.length > 0;
 
   const addAllIngredients = async () => {
     const payload = ingredients
@@ -240,6 +294,57 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
             </section>
           ) : null}
 
+          <section className="space-y-3">
+            <div className="flex flex-wrap items-baseline gap-2">
+              <h2 className="font-semibold text-lg">Remix Lineage</h2>
+              {!remixChainLoading && hasLineage ? (
+                <span className="text-sm text-muted-foreground">Part of a remix chain</span>
+              ) : null}
+            </div>
+
+            {remixChainLoading ? <p className="text-sm text-muted-foreground">Loading remix lineage...</p> : null}
+
+            {!remixChainLoading && remixChainAncestors.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Remixed from:</p>
+                <ul className="space-y-1 text-sm">
+                  {[...remixChainAncestors].reverse().map((ancestor) => (
+                    <li key={ancestor.slug}>
+                      <Link href={resolveRecipeRoute(ancestor)} className="underline underline-offset-2 hover:text-primary">
+                        {ancestor.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {!remixChainLoading && remixChainChildren.length > 0 ? (
+              <div className="space-y-2">
+                <p className="text-sm text-muted-foreground">Inspired {remixChainChildren.length} remix{remixChainChildren.length === 1 ? "" : "es"}:</p>
+                <ul className="space-y-1 text-sm">
+                  {remixChainChildren.map((child) => (
+                    <li key={child.slug}>
+                      <Link href={resolveRecipeRoute(child)} className="underline underline-offset-2 hover:text-primary">
+                        {child.name}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
+            {!remixChainLoading && remixChainDescendants.some((desc) => desc.depth > 1) ? (
+              <p className="text-xs text-muted-foreground">
+                Total downstream remixes: {remixChainDescendants.length}
+              </p>
+            ) : null}
+
+            {!remixChainLoading && !hasLineage ? (
+              <p className="text-sm text-muted-foreground">No remix lineage yet. Be the first to remix this drink.</p>
+            ) : null}
+          </section>
+
           {canonicalRecipe ? (
             <section className="space-y-3">
               <div className="flex flex-wrap items-baseline gap-2">
@@ -277,9 +382,9 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                             </Link>
                           ) : null}
                           <div className="space-y-2">
-                            <a href={remixRoute} className="font-medium underline underline-offset-2 hover:text-primary">
+                            <Link href={remixRoute} className="font-medium underline underline-offset-2 hover:text-primary">
                               {remix.name}
-                            </a>
+                            </Link>
                             <p className="text-xs text-muted-foreground">Remixed from {displayName}</p>
                             <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
                               {remix.creatorName ? <span>By @{remix.creatorName}</span> : null}

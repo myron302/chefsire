@@ -77,6 +77,49 @@ async function resolveDrinkDetailsBySlug(slug: string) {
   };
 }
 
+type RemixChainNode = {
+  slug: string;
+  name: string;
+  image: string | null;
+  route: string;
+  isCanonical: boolean;
+  remixedFromSlug: string | null;
+};
+
+function toRemixChainNodeFromCanonical(slug: string): RemixChainNode | null {
+  const canonicalRecipe = getCanonicalDrinkBySlug(slug);
+  if (!canonicalRecipe) return null;
+
+  return {
+    slug: canonicalRecipe.slug,
+    name: canonicalRecipe.name,
+    image: canonicalRecipe.image ?? null,
+    route: canonicalRecipe.route,
+    isCanonical: true,
+    remixedFromSlug: null,
+  };
+}
+
+function toRemixChainNodeFromUserRecipe(recipe: typeof drinkRecipes.$inferSelect): RemixChainNode {
+  return {
+    slug: recipe.slug,
+    name: recipe.name,
+    image: recipe.image ?? null,
+    route: `/drinks/recipe/${recipe.slug}`,
+    isCanonical: false,
+    remixedFromSlug: recipe.remixedFromSlug ?? null,
+  };
+}
+
+async function resolveRemixChainNode(slug: string): Promise<RemixChainNode | null> {
+  const canonicalNode = toRemixChainNodeFromCanonical(slug);
+  if (canonicalNode) return canonicalNode;
+
+  const userRecipe = await getUserRecipeBySlug(slug);
+  if (!userRecipe) return null;
+  return toRemixChainNodeFromUserRecipe(userRecipe);
+}
+
 
 // Submit a user drink recipe
 r.post("/submit", requireAuth, async (req, res) => {
@@ -176,6 +219,81 @@ r.get("/remixes/:slug", async (req, res) => {
   } catch (error) {
     console.error("Error fetching drink remixes:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch drink remixes" });
+  }
+});
+
+// Fetch remix lineage for a canonical or community drink recipe
+r.get("/remix-chain/:slug", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const slug = normalizeSlug(req.params?.slug);
+    if (!slug) {
+      return res.status(400).json({ ok: false, error: "slug is required" });
+    }
+
+    const current = await resolveRemixChainNode(slug);
+    if (!current) {
+      return res.status(404).json({ ok: false, error: "Recipe not found" });
+    }
+
+    const ancestors: RemixChainNode[] = [];
+    const ancestorSeen = new Set<string>([current.slug]);
+    let parentSlug = current.remixedFromSlug;
+
+    while (parentSlug && !ancestorSeen.has(parentSlug) && ancestors.length < 16) {
+      ancestorSeen.add(parentSlug);
+      const parentNode = await resolveRemixChainNode(parentSlug);
+      if (!parentNode) break;
+      ancestors.push(parentNode);
+      parentSlug = parentNode.remixedFromSlug;
+    }
+
+    const descendants: Array<RemixChainNode & { parentSlug: string; depth: number }> = [];
+    const descendantSeen = new Set<string>([current.slug]);
+    let frontier = [current.slug];
+    let depth = 1;
+
+    while (frontier.length > 0 && depth <= 6 && descendants.length < 200) {
+      const rows = await db
+        .select()
+        .from(drinkRecipes)
+        .where(inArray(drinkRecipes.remixedFromSlug, frontier))
+        .orderBy(desc(drinkRecipes.createdAt));
+
+      if (rows.length === 0) break;
+
+      const nextFrontier: string[] = [];
+      for (const row of rows) {
+        if (descendantSeen.has(row.slug)) continue;
+        descendantSeen.add(row.slug);
+        descendants.push({
+          ...toRemixChainNodeFromUserRecipe(row),
+          parentSlug: row.remixedFromSlug ?? current.slug,
+          depth,
+        });
+        nextFrontier.push(row.slug);
+      }
+
+      frontier = nextFrontier;
+      depth += 1;
+    }
+
+    const children = descendants.filter((entry) => entry.depth === 1);
+
+    return res.json({
+      ok: true,
+      current,
+      parent: ancestors[0] ?? null,
+      children,
+      ancestors,
+      descendants,
+    });
+  } catch (error) {
+    console.error("Error fetching drink remix chain:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch drink remix chain" });
   }
 });
 
