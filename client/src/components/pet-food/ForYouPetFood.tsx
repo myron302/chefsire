@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -28,7 +28,14 @@ type ForYouPetFoodItem = {
   reason: string;
 };
 
+type RankedPetFoodCandidate = {
+  entry: CanonicalPetFoodRecipeEntry;
+  score: number;
+  reason: string;
+};
+
 const MAX_ITEMS = 6;
+const DUPLICATE_TRENDING_CUTOFF = 6;
 
 function mapCanonical(entry: CanonicalPetFoodRecipeEntry, reason: string): ForYouPetFoodItem {
   return {
@@ -40,109 +47,140 @@ function mapCanonical(entry: CanonicalPetFoodRecipeEntry, reason: string): ForYo
   };
 }
 
+function animalCategory(route: string) {
+  return route.split("/").filter(Boolean)[1] ?? "";
+}
+
 export default function ForYouPetFood() {
   const [items, setItems] = useState<ForYouPetFoodItem[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const load = useCallback(async () => {
+    setLoading(true);
+
+    const recentSlugs = readRecentlyViewedPetFoodSlugs();
+
+    // ensure canonical index is hydrated
+    getCanonicalPetFoodRecipeBySlug("__init__");
+
+    const viewedSet = new Set(recentSlugs);
+    const recentEntries = recentSlugs
+      .map((slug) => getCanonicalPetFoodRecipeBySlug(slug))
+      .filter((entry): entry is CanonicalPetFoodRecipeEntry => Boolean(entry));
+
+    let trendingItems: TrendingPetFood[] = [];
+    try {
+      const response = await fetch("/api/pet-food/trending");
+      if (response.ok) {
+        const payload = (await response.json()) as TrendingPetFoodApiResponse;
+        trendingItems = Array.isArray(payload.items) ? payload.items : [];
+      }
+    } catch {
+      trendingItems = [];
+    }
+
+    const excludedSlugs = new Set(viewedSet);
+    for (const trend of trendingItems.slice(0, DUPLICATE_TRENDING_CUTOFF)) {
+      if (trend.slug) excludedSlugs.add(trend.slug);
+    }
+
+    const animalWeights = new Map<string, number>();
+    const sourceRouteWeights = new Map<string, number>();
+
+    const bump = (map: Map<string, number>, key: string, weight: number) => {
+      const normalized = key.trim().toLowerCase();
+      if (!normalized) return;
+      map.set(normalized, (map.get(normalized) ?? 0) + weight);
+    };
+
+    recentEntries.forEach((entry, index) => {
+      const recencyWeight = Math.max(recentEntries.length - index, 1);
+      bump(animalWeights, animalCategory(entry.sourceRoute), recencyWeight);
+      bump(sourceRouteWeights, entry.sourceRoute, recencyWeight);
+    });
+
+    const rankedCandidates: RankedPetFoodCandidate[] = [];
+    for (const entry of canonicalPetFoodRecipeEntries) {
+      if (excludedSlugs.has(entry.slug)) continue;
+
+      const animalScore = (animalWeights.get(animalCategory(entry.sourceRoute)) ?? 0) * 14;
+      const sourceRouteScore = (sourceRouteWeights.get(entry.sourceRoute.toLowerCase()) ?? 0) * 7;
+      const recencyBias = recentEntries.length > 0 ? 2 : 0;
+      const score = animalScore + sourceRouteScore + recencyBias;
+      if (score <= 0) continue;
+
+      let reason = "Recommended for your pets";
+      if (animalScore > 0 && animalScore >= sourceRouteScore) {
+        reason = `Because you browse ${animalCategory(entry.sourceRoute)} recipes`;
+      } else if (sourceRouteScore > 0) {
+        reason = `More from ${entry.sourceTitle}`;
+      }
+
+      rankedCandidates.push({ entry, score, reason });
+    }
+
+    rankedCandidates.sort((a, b) => b.score - a.score || a.entry.name.localeCompare(b.entry.name));
+
+    const selected = new Map<string, ForYouPetFoodItem>();
+    for (const candidate of rankedCandidates) {
+      if (selected.size >= MAX_ITEMS) break;
+      selected.set(candidate.entry.slug, mapCanonical(candidate.entry, candidate.reason));
+    }
+
+    if (selected.size < MAX_ITEMS) {
+      for (const trend of trendingItems) {
+        if (!trend.slug || excludedSlugs.has(trend.slug) || selected.has(trend.slug)) continue;
+
+        const canonical = getCanonicalPetFoodRecipeBySlug(trend.slug);
+        if (canonical) {
+          selected.set(canonical.slug, mapCanonical(canonical, "Trending now"));
+        } else {
+          selected.set(trend.slug, {
+            slug: trend.slug,
+            name: trend.name,
+            image: trend.image,
+            sourceTitle: "Trending",
+            reason: "Trending now",
+          });
+        }
+
+        if (selected.size >= MAX_ITEMS) break;
+      }
+    }
+
+    if (selected.size < MAX_ITEMS) {
+      for (const entry of canonicalPetFoodRecipeEntries) {
+        if (viewedSet.has(entry.slug) || selected.has(entry.slug)) continue;
+        selected.set(entry.slug, mapCanonical(entry, "Explore more recipes"));
+        if (selected.size >= MAX_ITEMS) break;
+      }
+    }
+
+    setItems(Array.from(selected.values()).slice(0, MAX_ITEMS));
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
-    let active = true;
+    void load();
 
-    const load = async () => {
-      setLoading(true);
-      const recentSlugs = readRecentlyViewedPetFoodSlugs();
+    const handleFocus = () => {
+      void load();
+    };
 
-      // ensure canonical index is hydrated
-      getCanonicalPetFoodRecipeBySlug("__init__");
-
-      const viewedSet = new Set(recentSlugs);
-      const recentEntries = recentSlugs
-        .map((slug) => getCanonicalPetFoodRecipeBySlug(slug))
-        .filter((entry): entry is CanonicalPetFoodRecipeEntry => Boolean(entry));
-
-      const selected = new Map<string, ForYouPetFoodItem>();
-
-      const animalCounts = new Map<string, number>();
-      const sourceRouteCounts = new Map<string, number>();
-
-      const bump = (map: Map<string, number>, key: string | null | undefined) => {
-        const normalized = String(key ?? "").trim().toLowerCase();
-        if (!normalized) return;
-        map.set(normalized, (map.get(normalized) ?? 0) + 1);
-      };
-
-      const animalCategory = (route: string) => route.split("/").filter(Boolean)[1] ?? "";
-
-      for (const entry of recentEntries) {
-        bump(animalCounts, animalCategory(entry.sourceRoute));
-        bump(sourceRouteCounts, entry.sourceRoute);
-      }
-
-      const orderedAnimals = [...animalCounts.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => key);
-      const orderedSourceRoutes = [...sourceRouteCounts.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => key);
-
-      if (selected.size < MAX_ITEMS) {
-        for (const animal of orderedAnimals) {
-          for (const entry of canonicalPetFoodRecipeEntries) {
-            if (animalCategory(entry.sourceRoute) !== animal) continue;
-            if (viewedSet.has(entry.slug) || selected.has(entry.slug)) continue;
-            selected.set(entry.slug, mapCanonical(entry, `Because you browse ${animal} recipes`));
-            if (selected.size >= MAX_ITEMS) break;
-          }
-          if (selected.size >= MAX_ITEMS) break;
-        }
-      }
-
-      if (selected.size < MAX_ITEMS) {
-        for (const sourceRoute of orderedSourceRoutes) {
-          for (const entry of canonicalPetFoodRecipeEntries) {
-            if (entry.sourceRoute !== sourceRoute) continue;
-            if (viewedSet.has(entry.slug) || selected.has(entry.slug)) continue;
-            selected.set(entry.slug, mapCanonical(entry, `More from ${entry.sourceTitle}`));
-            if (selected.size >= MAX_ITEMS) break;
-          }
-          if (selected.size >= MAX_ITEMS) break;
-        }
-      }
-
-      if (selected.size < MAX_ITEMS) {
-        try {
-          const response = await fetch("/api/pet-food/trending");
-          if (response.ok) {
-            const payload = (await response.json()) as TrendingPetFoodApiResponse;
-            for (const trend of payload.items ?? []) {
-              if (!trend.slug || viewedSet.has(trend.slug) || selected.has(trend.slug)) continue;
-              const canonical = getCanonicalPetFoodRecipeBySlug(trend.slug);
-              if (canonical) {
-                selected.set(canonical.slug, mapCanonical(canonical, "Trending now"));
-              } else {
-                selected.set(trend.slug, {
-                  slug: trend.slug,
-                  name: trend.name,
-                  image: trend.image,
-                  sourceTitle: "Trending",
-                  reason: "Trending now",
-                });
-              }
-              if (selected.size >= MAX_ITEMS) break;
-            }
-          }
-        } catch {
-          // graceful fallback handled by currently selected items
-        }
-      }
-
-      if (active) {
-        setItems(Array.from(selected.values()).slice(0, MAX_ITEMS));
-        setLoading(false);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") {
+        void load();
       }
     };
 
-    load();
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
-      active = false;
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibility);
     };
-  }, []);
+  }, [load]);
 
   return (
     <Card className="mb-12 border-purple-200 bg-gradient-to-br from-white to-purple-50/40">
