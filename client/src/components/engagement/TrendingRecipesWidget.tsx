@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Flame, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
 export type BaseTrendingItem = {
   slug: string;
@@ -68,8 +69,7 @@ export default function TrendingRecipesWidget<T extends BaseTrendingItem>({
 
               return (
                 <div key={item.slug} className="rounded-xl border bg-white/90 p-3 transition hover:shadow-md hover:-translate-y-0.5">
-                  <Link href={canonicalRoute} className="block">
-                    <div className="flex gap-3 items-start">
+                  <div className="flex gap-3 items-start">
                       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
                         {item.image ? (
                           <img src={item.image} alt={item.name} className="h-full w-full object-cover" loading="lazy" />
@@ -83,7 +83,9 @@ export default function TrendingRecipesWidget<T extends BaseTrendingItem>({
                           <Badge variant="secondary" className="text-[10px]">#{index + 1}</Badge>
                           {sourceLabel && <Badge variant="outline" className="text-[10px]">{sourceLabel}</Badge>}
                         </div>
-                        <p className="font-semibold leading-tight line-clamp-2">{item.name}</p>
+                        <Link href={canonicalRoute} className="font-semibold leading-tight line-clamp-2 underline underline-offset-2 hover:text-foreground">
+                          {item.name}
+                        </Link>
                         <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
                           <Flame className="h-3 w-3 text-orange-500" />
                           🔥 Trending now
@@ -91,8 +93,15 @@ export default function TrendingRecipesWidget<T extends BaseTrendingItem>({
                         {renderStats(item)}
                       </div>
                     </div>
-                  </Link>
-                  {renderFooter ? <div className="mt-3 flex gap-2">{renderFooter(item)}</div> : null}
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {renderFooter ? (
+                      renderFooter(item)
+                    ) : (
+                      <Link href={canonicalRoute}>
+                        <Button size="sm" variant="outline">View Recipe</Button>
+                      </Link>
+                    )}
+                  </div>
                 </div>
               );
             })}

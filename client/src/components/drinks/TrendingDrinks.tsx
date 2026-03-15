@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import TrendingRecipesWidget from "@/components/engagement/TrendingRecipesWidget";
+import { Button } from "@/components/ui/button";
 
 type TrendingDrink = {
   slug: string;
@@ -74,12 +75,11 @@ export default function TrendingDrinks() {
       }}
       renderFooter={(drink) => (
         <>
-          <Link href={getCanonicalRoute(drink.slug)} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
-            Open canonical recipe page
+          <Link href={getCanonicalRoute(drink.slug)}>
+            <Button size="sm" variant="outline">View Recipe</Button>
           </Link>
-          <span className="text-muted-foreground text-xs">•</span>
-          <Link href={`/drinks/submit?remix=${encodeURIComponent(drink.slug)}`} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
-            Remix
+          <Link href={`/drinks/submit?remix=${encodeURIComponent(drink.slug)}`}>
+            <Button size="sm" variant="ghost">Create Remix</Button>
           </Link>
         </>
       )}

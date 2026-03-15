@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { addRecentlyViewedSlug, readRecentlyViewedSlugs } from "@/lib/recently-viewed-storage";
 import {
@@ -66,8 +67,7 @@ export default function RecentlyViewedPetFood() {
                   key={item.slug}
                   className="rounded-xl border bg-white/90 p-3 transition hover:shadow-md hover:-translate-y-0.5"
                 >
-                  <Link href={canonicalRoute} className="block">
-                    <div className="flex gap-3 items-start">
+                  <div className="flex gap-3 items-start">
                       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
                         {image ? (
                           <img
@@ -84,7 +84,9 @@ export default function RecentlyViewedPetFood() {
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold leading-tight line-clamp-2">{item.name}</p>
+                        <Link href={canonicalRoute} className="font-semibold leading-tight line-clamp-2 underline underline-offset-2 hover:text-foreground">
+                          {item.name}
+                        </Link>
                         <div className="mt-2 flex items-center gap-2">
                           <Badge variant="outline" className="text-[10px]">
                             {item.sourceTitle}
@@ -92,7 +94,11 @@ export default function RecentlyViewedPetFood() {
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Link href={canonicalRoute}>
+                      <Button size="sm" variant="outline">View Recipe</Button>
+                    </Link>
+                  </div>
                 </div>
               );
             })}

@@ -252,12 +252,12 @@ export default function PetFoodHub() {
             {petCategories.map((category) => {
               const Icon = category.icon;
               return (
-                <Link key={category.id} href={category.path}>
-                  <Card
-                    className={`cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}
-                    onMouseEnter={() => setHoveredCard(category.id)}
-                    onMouseLeave={() => setHoveredCard(null)}
-                  >
+                <Card
+                  key={category.id}
+                  className={`transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}
+                  onMouseEnter={() => setHoveredCard(category.id)}
+                  onMouseLeave={() => setHoveredCard(null)}
+                >
                     <div className="relative h-48 overflow-hidden">
                       {category.image && (
                         <img
@@ -297,7 +297,9 @@ export default function PetFoodHub() {
 
                     <CardHeader>
                       <CardTitle className="text-xl flex items-center justify-between">
-                        {category.name}
+                        <Link href={category.path} className="underline underline-offset-2 hover:text-foreground">
+                          {category.name}
+                        </Link>
                         <Badge variant="outline">{category.recipeCount} recipes</Badge>
                       </CardTitle>
                       <p className="text-gray-600">{category.description}</p>
@@ -334,9 +336,14 @@ export default function PetFoodHub() {
                         <Target className={`h-4 w-4 ${category.textColor}`} />
                         <span className="text-sm font-medium">{category.topBenefit}</span>
                       </div>
+
+                      <div className="mt-4">
+                        <Link href={category.path}>
+                          <Button variant="outline" size="sm">View Recipes</Button>
+                        </Link>
+                      </div>
                     </CardContent>
                   </Card>
-                </Link>
               );
             })}
           </div>
@@ -367,8 +374,7 @@ export default function PetFoodHub() {
               });
 
               return (
-                <Link key={recipe.id} href={targetPath}>
-                  <Card className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden cursor-pointer">
+                <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden">
                 <div className="relative h-40 overflow-hidden">
                   <img 
                     src={recipe.image} 
@@ -383,7 +389,7 @@ export default function PetFoodHub() {
                 </div>
                 
                 <CardContent className="p-4">
-                  <h3 className="font-bold text-lg text-gray-900 mb-2">{recipe.name}</h3>
+                  <h3 className="font-bold text-lg text-gray-900 mb-2"><Link href={targetPath} className="underline underline-offset-2 hover:text-foreground">{recipe.name}</Link></h3>
                   
                   <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
                     <span className="flex items-center gap-1">
@@ -402,10 +408,12 @@ export default function PetFoodHub() {
                       <span className="font-bold text-gray-900 ml-1">{recipe.calories}</span>
                     </div>
                     <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
+                    <Link href={targetPath}>
+                      <Button variant="outline" size="sm">View Recipe</Button>
+                    </Link>
                   </div>
                 </CardContent>
                   </Card>
-                </Link>
               );
             })}
           </div>

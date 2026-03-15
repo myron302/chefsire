@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useUser } from "@/contexts/UserContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface CreatorDrinkMetricsItem {
@@ -106,6 +107,14 @@ export default function CreatorDashboardPage() {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold">Drink Creator Dashboard</h1>
         <p className="text-muted-foreground">Track how your submitted drinks and remixes are performing.</p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Link href="/drinks">
+            <Button variant="outline" size="sm">Back to Drinks Hub</Button>
+          </Link>
+          <Link href="/drinks/submit">
+            <Button size="sm">Submit a Drink Recipe</Button>
+          </Link>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">

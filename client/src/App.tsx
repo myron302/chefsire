@@ -182,6 +182,9 @@ export default function App() {
                 <Route path="/verify-email" component={VerifyEmailPage} />
                 <Route path="/verify/success" component={VerifySuccessPage} />
 
+                <Route path="/profile/drinks">
+                  <Redirect to="/drinks/creator-dashboard" />
+                </Route>
                 <Route path="/profile/:userId?" component={Profile} />
                 <Route path="/settings" component={Settings} />
                 <Route path="/" component={Feed} />
