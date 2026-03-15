@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { readRecentlyViewedDrinkSlugs } from "@/components/drinks/RecentlyViewedDrinks";
 import {
@@ -243,8 +244,7 @@ export default function ForYouDrinks() {
                   key={item.slug}
                   className="rounded-xl border bg-white/90 p-3 transition hover:shadow-md hover:-translate-y-0.5"
                 >
-                  <Link href={canonicalRoute} className="block">
-                    <div className="flex gap-3 items-start">
+                  <div className="flex gap-3 items-start">
                       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-md bg-muted">
                         {item.image ? (
                           <img src={item.image} alt={item.name} className="h-full w-full object-cover" loading="lazy" />
@@ -254,14 +254,23 @@ export default function ForYouDrinks() {
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <p className="font-semibold leading-tight line-clamp-2">{item.name}</p>
+                        <Link href={canonicalRoute} className="font-semibold leading-tight line-clamp-2 underline underline-offset-2 hover:text-foreground">
+                          {item.name}
+                        </Link>
                         <div className="mt-2 flex items-center gap-2">
                           <Badge variant="outline" className="text-[10px]">{item.sourceTitle}</Badge>
                           <span className="text-[10px] text-muted-foreground">{item.reason}</span>
                         </div>
                       </div>
                     </div>
-                  </Link>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Link href={canonicalRoute}>
+                      <Button size="sm" variant="outline">View Recipe</Button>
+                    </Link>
+                    <Link href={`/drinks/submit?remix=${encodeURIComponent(item.slug)}`}>
+                      <Button size="sm" variant="ghost">Create Remix</Button>
+                    </Link>
+                  </div>
                 </div>
               );
             })}

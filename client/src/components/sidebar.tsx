@@ -56,6 +56,7 @@ const NAV: NavItem[] = [
     hasSubmenu: true,
     submenu: [
       { name: "🥤 Drinks Hub", href: "/drinks" },
+      { name: "📊 Creator Dashboard", href: "/profile/drinks" },
       {
         name: "🍎 Smoothies & Bowls",
         href: "/drinks/smoothies",
