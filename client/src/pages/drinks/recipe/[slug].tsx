@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, useLocation, useRoute } from "wouter";
+import { Link, useRoute } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,20 @@ type DrinkRemixItem = {
   route: string;
 };
 
+function resolveRemixDestination(remix: DrinkRemixItem): string {
+  const fallback = `/drinks/recipe/${encodeURIComponent(remix.slug)}?community=1`;
+  if (typeof remix.route !== "string") return fallback;
+  const trimmed = remix.route.trim();
+  if (!trimmed) return fallback;
+  if (!trimmed.startsWith("/")) return fallback;
+
+  if (trimmed.startsWith("/drinks/recipe/")) {
+    return trimmed.includes("?") ? trimmed : `${trimmed}?community=1`;
+  }
+
+  return trimmed;
+}
+
 function asList(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.map((item) => String(item)).filter(Boolean);
@@ -58,8 +72,9 @@ function logDrinkEvent(slug: string, eventType: "view" | "remix" | "grocery_add"
 
 function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
-  const canonicalRecipe = getCanonicalDrinkRecipeBySlug(slug);
+  const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const forceCommunityRoute = searchParams?.get("community") === "1";
+  const canonicalRecipe = forceCommunityRoute ? null : getCanonicalDrinkRecipeBySlug(slug);
   const [userRecipe, setUserRecipe] = useState<UserDrinkRecipe | null>(null);
   const [userRecipeLoaded, setUserRecipeLoaded] = useState(false);
   const [remixes, setRemixes] = useState<DrinkRemixItem[]>([]);
@@ -241,10 +256,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
               {!remixesLoading && remixes.length > 0 ? (
                 <div className="grid gap-3 md:grid-cols-2">
                   {remixes.map((remix) => {
-                    const remixRoute =
-                      typeof remix.route === "string" && remix.route.trim().length > 0
-                        ? remix.route
-                        : `/drinks/recipe/${encodeURIComponent(remix.slug)}`;
+                    const remixRoute = resolveRemixDestination(remix);
                     const createdAtLabel = remix.createdAt
                       ? new Date(remix.createdAt).toLocaleDateString()
                       : null;
@@ -263,14 +275,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                             </Link>
                           ) : null}
                           <div className="space-y-2">
-                            <a
-                              href={remixRoute}
-                              className="font-medium underline underline-offset-2 hover:text-primary"
-                              onClick={(event) => {
-                                event.preventDefault();
-                                setLocation(remixRoute);
-                              }}
-                            >
+                            <a href={remixRoute} className="font-medium underline underline-offset-2 hover:text-primary">
                               {remix.name}
                             </a>
                             <p className="text-xs text-muted-foreground">Remixed from {displayName}</p>
@@ -284,11 +289,16 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                               type="button"
                               size="sm"
                               variant="outline"
-                              onClick={() => setLocation(remixRoute)}
+                              onClick={() => {
+                                window.location.assign(remixRoute);
+                              }}
                             >
                               View Remix
                             </Button>
                           </div>
+                          {import.meta.env.DEV ? (
+                            <p className="text-[11px] text-muted-foreground break-all">Permalink: {remixRoute}</p>
+                          ) : null}
                         </CardContent>
                       </Card>
                     );
