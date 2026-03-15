@@ -120,6 +120,152 @@ async function resolveRemixChainNode(slug: string): Promise<RemixChainNode | nul
   return toRemixChainNodeFromUserRecipe(userRecipe);
 }
 
+type CreatorLeaderboardRow = {
+  userId: string;
+  username: string | null;
+  avatar: string | null;
+  creatorScore: number;
+  totalCreated: number;
+  totalViews7d: number;
+  totalRemixesReceived: number;
+  totalGroceryAdds: number;
+  topDrink: {
+    slug: string;
+    name: string;
+    image: string | null;
+    route: string;
+    score: number;
+  } | null;
+};
+
+async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboardRow[]> {
+  if (!db) return [];
+
+  const safeLimit = Math.max(1, Math.min(limit, 50));
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  const createdRows = await db
+    .select({ userId: drinkRecipes.userId, totalCreated: sql<number>`count(*)` })
+    .from(drinkRecipes)
+    .where(sql`${drinkRecipes.userId} is not null`)
+    .groupBy(drinkRecipes.userId);
+
+  if (createdRows.length === 0) return [];
+
+  const creatorIds = createdRows.map((row) => row.userId).filter((userId): userId is string => Boolean(userId));
+  if (creatorIds.length === 0) return [];
+
+  const creatorRecipes = await db
+    .select({ slug: drinkRecipes.slug, name: drinkRecipes.name, image: drinkRecipes.image, userId: drinkRecipes.userId })
+    .from(drinkRecipes)
+    .where(inArray(drinkRecipes.userId, creatorIds));
+
+  if (creatorRecipes.length === 0) return [];
+
+  const recipeSlugs = creatorRecipes.map((recipe) => recipe.slug);
+
+  const eventRows = await db
+    .select({
+      slug: drinkEvents.slug,
+      views7d: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view')`,
+      groceryAdds7d: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'grocery_add')`,
+    })
+    .from(drinkEvents)
+    .where(and(inArray(drinkEvents.slug, recipeSlugs), gt(drinkEvents.createdAt, sevenDaysAgo)))
+    .groupBy(drinkEvents.slug);
+
+  const remixedByOthersRows = await db
+    .select({ remixedFromSlug: drinkRecipes.remixedFromSlug, remixesCount: sql<number>`count(*)` })
+    .from(drinkRecipes)
+    .where(inArray(drinkRecipes.remixedFromSlug, recipeSlugs))
+    .groupBy(drinkRecipes.remixedFromSlug);
+
+  const profiles = await db
+    .select({ id: users.id, username: users.username, avatar: users.avatar })
+    .from(users)
+    .where(inArray(users.id, creatorIds));
+
+  const createdByUser = new Map(
+    createdRows
+      .filter((row): row is { userId: string; totalCreated: number } => Boolean(row.userId))
+      .map((row) => [row.userId, Number(row.totalCreated ?? 0)])
+  );
+
+  const eventsBySlug = new Map(
+    eventRows.map((row) => [row.slug, { views7d: Number(row.views7d ?? 0), groceryAdds7d: Number(row.groceryAdds7d ?? 0) }])
+  );
+
+  const remixesBySlug = new Map(
+    remixedByOthersRows
+      .filter((row): row is { remixedFromSlug: string; remixesCount: number } => Boolean(row.remixedFromSlug))
+      .map((row) => [row.remixedFromSlug, Number(row.remixesCount ?? 0)])
+  );
+
+  const profileById = new Map(profiles.map((profile) => [profile.id, { username: profile.username, avatar: profile.avatar }]));
+
+  const recipesByCreator = new Map<string, Array<typeof creatorRecipes[number]>>();
+  for (const recipe of creatorRecipes) {
+    if (!recipe.userId) continue;
+    const current = recipesByCreator.get(recipe.userId) ?? [];
+    current.push(recipe);
+    recipesByCreator.set(recipe.userId, current);
+  }
+
+  const rows: CreatorLeaderboardRow[] = creatorIds.map((creatorId) => {
+    const creatorRecipeRows = recipesByCreator.get(creatorId) ?? [];
+    const totals = creatorRecipeRows.reduce((acc, recipe) => {
+      const metrics = eventsBySlug.get(recipe.slug) ?? { views7d: 0, groceryAdds7d: 0 };
+      const remixesCount = remixesBySlug.get(recipe.slug) ?? 0;
+      const recipeScore = metrics.views7d + (remixesCount * 4) + (metrics.groceryAdds7d * 2);
+
+      if (!acc.topDrink || recipeScore > acc.topDrink.score) {
+        acc.topDrink = {
+          slug: recipe.slug,
+          name: recipe.name,
+          image: recipe.image ?? null,
+          route: `/drinks/recipe/${recipe.slug}`,
+          score: recipeScore,
+        };
+      }
+
+      acc.totalViews7d += metrics.views7d;
+      acc.totalRemixesReceived += remixesCount;
+      acc.totalGroceryAdds += metrics.groceryAdds7d;
+      return acc;
+    }, {
+      totalViews7d: 0,
+      totalRemixesReceived: 0,
+      totalGroceryAdds: 0,
+      topDrink: null as CreatorLeaderboardRow["topDrink"],
+    });
+
+    const totalCreated = createdByUser.get(creatorId) ?? creatorRecipeRows.length;
+    const creatorScore =
+      (totals.totalViews7d * 1) +
+      (totals.totalRemixesReceived * 4) +
+      (totals.totalGroceryAdds * 2) +
+      (totalCreated * 0.5);
+
+    const creatorProfile = profileById.get(creatorId);
+
+    return {
+      userId: creatorId,
+      username: creatorProfile?.username ?? null,
+      avatar: creatorProfile?.avatar ?? null,
+      creatorScore,
+      totalCreated,
+      totalViews7d: totals.totalViews7d,
+      totalRemixesReceived: totals.totalRemixesReceived,
+      totalGroceryAdds: totals.totalGroceryAdds,
+      topDrink: totals.topDrink,
+    };
+  });
+
+  return rows
+    .sort((a, b) => b.creatorScore - a.creatorScore || b.totalViews7d - a.totalViews7d || b.totalRemixesReceived - a.totalRemixesReceived)
+    .slice(0, safeLimit);
+}
+
 
 // Submit a user drink recipe
 r.post("/submit", requireAuth, async (req, res) => {
@@ -577,6 +723,23 @@ r.get("/recommended", async (req, res) => {
   }
 });
 
+r.get("/creators/leaderboard", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const limitParam = Number(req.query?.limit);
+    const limit = Number.isFinite(limitParam) ? limitParam : 10;
+    const leaderboard = await getDrinkCreatorLeaderboard(limit);
+
+    return res.json({ ok: true, leaderboard, count: leaderboard.length });
+  } catch (error) {
+    console.error("Error fetching drink creator leaderboard:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch drink creator leaderboard" });
+  }
+});
+
 // Creator dashboard metrics for a user's submitted/remixed drink recipes
 r.get("/creator/:userId", requireAuth, async (req, res) => {
   try {
@@ -609,17 +772,24 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
       .where(eq(drinkRecipes.userId, requestedUserId))
       .orderBy(desc(drinkRecipes.createdAt));
 
+    const creatorLeaderboard = await getDrinkCreatorLeaderboard(250);
+    const creatorRank = creatorLeaderboard.findIndex((entry) => entry.userId === requestedUserId) + 1;
+    const creatorLeaderboardEntry = creatorLeaderboard.find((entry) => entry.userId === requestedUserId) ?? null;
+
     if (recipes.length === 0) {
       return res.json({
         ok: true,
         userId: requestedUserId,
         summary: {
+          creatorRank: creatorRank > 0 ? creatorRank : null,
+          creatorScore: creatorLeaderboardEntry?.creatorScore ?? 0,
           totalCreated: 0,
           totalRemixesCreated: 0,
           totalViews7d: 0,
           totalRemixesReceived: 0,
           totalGroceryAdds: 0,
           topPerformingDrink: null,
+          mostRemixedDrink: null,
         },
         items: [],
       });
@@ -687,11 +857,14 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
     const totalRemixesReceived = items.reduce((sum, item) => sum + item.remixesCount, 0);
     const totalGroceryAdds = items.reduce((sum, item) => sum + item.groceryAdds, 0);
     const [topPerformingDrink] = [...items].sort((a, b) => b.score - a.score || b.views7d - a.views7d || b.remixesCount - a.remixesCount);
+    const [mostRemixedDrink] = [...items].sort((a, b) => b.remixesCount - a.remixesCount || b.score - a.score || b.views7d - a.views7d);
 
     return res.json({
       ok: true,
       userId: requestedUserId,
       summary: {
+        creatorRank: creatorRank > 0 ? creatorRank : null,
+        creatorScore: creatorLeaderboardEntry?.creatorScore ?? 0,
         totalCreated,
         totalRemixesCreated,
         totalViews7d,
@@ -704,6 +877,15 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
             name: topPerformingDrink.name,
             image: topPerformingDrink.image,
             score: topPerformingDrink.score,
+          }
+          : null,
+        mostRemixedDrink: mostRemixedDrink
+          ? {
+            id: mostRemixedDrink.id,
+            slug: mostRemixedDrink.slug,
+            name: mostRemixedDrink.name,
+            image: mostRemixedDrink.image,
+            remixesCount: mostRemixedDrink.remixesCount,
           }
           : null,
       },

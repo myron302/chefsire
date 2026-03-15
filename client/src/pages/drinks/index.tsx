@@ -16,6 +16,7 @@ import {
 import TrendingDrinks from "@/components/drinks/TrendingDrinks";
 import RecentlyViewedDrinks from "@/components/drinks/RecentlyViewedDrinks";
 import ForYouDrinks from "@/components/drinks/ForYouDrinks";
+import TopDrinkCreators from "@/components/drinks/TopDrinkCreators";
 
 const drinkCategories = [
   {
@@ -494,6 +495,9 @@ export default function DrinksPage() {
         <TrendingDrinks />
         <RecentlyViewedDrinks />
         <ForYouDrinks />
+        <div className="mb-12">
+          <TopDrinkCreators />
+        </div>
 
         {/* Featured Recipes */}
         <div className="mb-12">
