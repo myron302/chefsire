@@ -1,6 +1,6 @@
 // server/routes/drinks.ts
 import { Router } from "express";
-import { and, desc, eq, gt, ilike, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
 import { db } from "../db";
@@ -456,6 +456,144 @@ r.get("/recommended", async (req, res) => {
   } catch (error: any) {
     console.error("Error getting recommended drinks:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch recommended drinks" });
+  }
+});
+
+// Creator dashboard metrics for a user's submitted/remixed drink recipes
+r.get("/creator/:userId", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const requestedUserId = String(req.params?.userId ?? "").trim();
+    if (!requestedUserId) {
+      return res.status(400).json({ ok: false, error: "userId is required" });
+    }
+
+    if (requestedUserId !== req.user.id) {
+      return res.status(403).json({ ok: false, error: "Not authorized" });
+    }
+
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const recipes = await db
+      .select({
+        id: drinkRecipes.id,
+        slug: drinkRecipes.slug,
+        name: drinkRecipes.name,
+        image: drinkRecipes.image,
+        createdAt: drinkRecipes.createdAt,
+        remixedFromSlug: drinkRecipes.remixedFromSlug,
+      })
+      .from(drinkRecipes)
+      .where(eq(drinkRecipes.userId, requestedUserId))
+      .orderBy(desc(drinkRecipes.createdAt));
+
+    if (recipes.length === 0) {
+      return res.json({
+        ok: true,
+        userId: requestedUserId,
+        summary: {
+          totalCreated: 0,
+          totalRemixesCreated: 0,
+          totalViews7d: 0,
+          totalRemixesReceived: 0,
+          totalGroceryAdds: 0,
+          topPerformingDrink: null,
+        },
+        items: [],
+      });
+    }
+
+    const recipeSlugs = recipes.map((recipe) => recipe.slug);
+
+    const eventRows = await db
+      .select({
+        slug: drinkEvents.slug,
+        views24h: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} > ${oneDayAgo})`,
+        views7d: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`,
+        groceryAdds: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'grocery_add' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`,
+      })
+      .from(drinkEvents)
+      .where(and(inArray(drinkEvents.slug, recipeSlugs), gt(drinkEvents.createdAt, sevenDaysAgo)))
+      .groupBy(drinkEvents.slug);
+
+    const remixedByOthersRows = await db
+      .select({
+        remixedFromSlug: drinkRecipes.remixedFromSlug,
+        remixesCount: sql<number>`count(*)`,
+      })
+      .from(drinkRecipes)
+      .where(inArray(drinkRecipes.remixedFromSlug, recipeSlugs))
+      .groupBy(drinkRecipes.remixedFromSlug);
+
+    const eventsBySlug = new Map(
+      eventRows.map((row) => [row.slug, {
+        views24h: Number(row.views24h ?? 0),
+        views7d: Number(row.views7d ?? 0),
+        groceryAdds: Number(row.groceryAdds ?? 0),
+      }])
+    );
+
+    const remixesBySlug = new Map(
+      remixedByOthersRows
+        .filter((row): row is { remixedFromSlug: string; remixesCount: number } => Boolean(row.remixedFromSlug))
+        .map((row) => [row.remixedFromSlug, Number(row.remixesCount ?? 0)])
+    );
+
+    const items = recipes.map((recipe) => {
+      const metrics = eventsBySlug.get(recipe.slug) ?? { views24h: 0, views7d: 0, groceryAdds: 0 };
+      const remixesCount = remixesBySlug.get(recipe.slug) ?? 0;
+      const score = (metrics.views24h * 3) + (Math.max(metrics.views7d - metrics.views24h, 0) * 1) + (remixesCount * 4) + (metrics.groceryAdds * 2);
+
+      return {
+        id: recipe.id,
+        slug: recipe.slug,
+        name: recipe.name,
+        image: recipe.image ?? null,
+        createdAt: recipe.createdAt,
+        remixedFromSlug: recipe.remixedFromSlug ?? null,
+        views7d: metrics.views7d,
+        views24h: metrics.views24h,
+        remixesCount,
+        groceryAdds: metrics.groceryAdds,
+        score,
+      };
+    });
+
+    const totalCreated = items.length;
+    const totalRemixesCreated = items.filter((item) => Boolean(item.remixedFromSlug)).length;
+    const totalViews7d = items.reduce((sum, item) => sum + item.views7d, 0);
+    const totalRemixesReceived = items.reduce((sum, item) => sum + item.remixesCount, 0);
+    const totalGroceryAdds = items.reduce((sum, item) => sum + item.groceryAdds, 0);
+    const [topPerformingDrink] = [...items].sort((a, b) => b.score - a.score || b.views7d - a.views7d || b.remixesCount - a.remixesCount);
+
+    return res.json({
+      ok: true,
+      userId: requestedUserId,
+      summary: {
+        totalCreated,
+        totalRemixesCreated,
+        totalViews7d,
+        totalRemixesReceived,
+        totalGroceryAdds,
+        topPerformingDrink: topPerformingDrink
+          ? {
+            id: topPerformingDrink.id,
+            slug: topPerformingDrink.slug,
+            name: topPerformingDrink.name,
+            image: topPerformingDrink.image,
+            score: topPerformingDrink.score,
+          }
+          : null,
+      },
+      items,
+    });
+  } catch (error) {
+    console.error("Error fetching creator drink metrics:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch creator drink metrics" });
   }
 });
 
