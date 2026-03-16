@@ -1213,6 +1213,8 @@ r.get("/creators/:userId", async (req, res) => {
         totalRemixesReceived: 0,
         totalGroceryAdds: 0,
         topDrink: null,
+        mostRemixedDrinks: [],
+        recentRemixActivity: [],
         recentItems: [],
       });
     }
@@ -1272,6 +1274,63 @@ r.get("/creators/:userId", async (req, res) => {
     const totalGroceryAdds = items.reduce((sum, item) => sum + item.groceryAdds7d, 0);
     const [topDrink] = [...items].sort((a, b) => b.score - a.score || b.views7d - a.views7d || b.remixesCount - a.remixesCount);
 
+    const mostRemixedDrinks = [...items]
+      .sort((a, b) => b.remixesCount - a.remixesCount || b.views7d - a.views7d || b.score - a.score)
+      .slice(0, 8)
+      .map((item) => ({
+        slug: item.slug,
+        name: item.name,
+        image: item.image,
+        route: item.route,
+        remixesCount: item.remixesCount,
+        views7d: item.views7d,
+      }));
+
+    const remixesReceivedRows = await db
+      .select({
+        slug: drinkRecipes.slug,
+        name: drinkRecipes.name,
+        remixedFromSlug: drinkRecipes.remixedFromSlug,
+        createdAt: drinkRecipes.createdAt,
+        creatorUsername: users.username,
+      })
+      .from(drinkRecipes)
+      .leftJoin(users, eq(drinkRecipes.userId, users.id))
+      .where(inArray(drinkRecipes.remixedFromSlug, recipeSlugs))
+      .orderBy(desc(drinkRecipes.createdAt))
+      .limit(20);
+
+    const creatorPublishedRemixes = recipes
+      .filter((recipe) => Boolean(recipe.remixedFromSlug))
+      .slice(0, 20);
+
+    const recentRemixActivity = [
+      ...remixesReceivedRows.map((row) => ({
+        type: "received_remix" as const,
+        slug: row.slug,
+        name: row.name,
+        createdAt: row.createdAt,
+        route: `/drinks/recipe/${row.slug}`,
+        remixedFromSlug: row.remixedFromSlug ?? null,
+        creatorUsername: row.creatorUsername ?? null,
+      })),
+      ...creatorPublishedRemixes.map((recipe) => ({
+        type: "creator_published_remix" as const,
+        slug: recipe.slug,
+        name: recipe.name,
+        createdAt: recipe.createdAt,
+        route: `/drinks/recipe/${recipe.slug}`,
+        remixedFromSlug: recipe.remixedFromSlug ?? null,
+        creatorUsername: profile[0].username ?? null,
+      })),
+    ]
+      .sort((a, b) => {
+        const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return bTime - aTime;
+      })
+      .slice(0, 16);
+
     return res.json({
       ok: true,
       userId: creatorId,
@@ -1291,6 +1350,8 @@ r.get("/creators/:userId", async (req, res) => {
           score: topDrink.score,
         }
         : null,
+      mostRemixedDrinks,
+      recentRemixActivity,
       recentItems: items
         .slice(0, 24)
         .map(({ groceryAdds7d, score, ...item }) => item),

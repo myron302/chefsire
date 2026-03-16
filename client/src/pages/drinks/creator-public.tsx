@@ -21,6 +21,25 @@ interface PublicCreatorDrinkItem {
   remixesCount: number;
 }
 
+interface PublicCreatorRemixActivityItem {
+  type: "received_remix" | "creator_published_remix";
+  slug: string;
+  name: string;
+  createdAt: string;
+  route: string;
+  remixedFromSlug: string | null;
+  creatorUsername: string | null;
+}
+
+interface PublicCreatorMostRemixedDrinkItem {
+  slug: string;
+  name: string;
+  image: string | null;
+  route: string;
+  remixesCount: number;
+  views7d?: number;
+}
+
 interface PublicCreatorResponse {
   ok: boolean;
   userId: string;
@@ -38,6 +57,8 @@ interface PublicCreatorResponse {
     route: string;
     score: number;
   } | null;
+  mostRemixedDrinks: PublicCreatorMostRemixedDrinkItem[];
+  recentRemixActivity: PublicCreatorRemixActivityItem[];
   recentItems: PublicCreatorDrinkItem[];
 }
 
@@ -54,6 +75,34 @@ function formatDate(value: string): string {
 function initials(username: string | null): string {
   if (!username) return "CR";
   return username.trim().slice(0, 2).toUpperCase();
+}
+
+
+function creatorMixHeadline(data: PublicCreatorResponse): string {
+  if (data.totalCreated === 0) return "New creator";
+
+  const remixCreatedCount = data.recentItems.filter((item) => Boolean(item.remixedFromSlug)).length;
+  const remixCreatedRatio = remixCreatedCount / Math.max(data.recentItems.length, 1);
+
+  if (data.totalRemixesReceived >= Math.max(8, data.totalCreated * 1.5)) {
+    return "Popular through remixes received";
+  }
+
+  if (remixCreatedRatio >= 0.6) {
+    return "Remix-heavy creator";
+  }
+
+  return "Original-creator leaning";
+}
+
+function remixActivityLabel(item: PublicCreatorRemixActivityItem): string {
+  if (item.type === "received_remix") {
+    return item.creatorUsername
+      ? `@${item.creatorUsername} remixed this creator's drink`
+      : "Someone remixed this creator's drink";
+  }
+
+  return "Creator published a remix";
 }
 
 export default function PublicDrinkCreatorPage() {
@@ -118,6 +167,7 @@ export default function PublicDrinkCreatorPage() {
                 <CardDescription>
                   {number(data.followerCount)} followers • {number(data.totalCreated)} published drinks/remixes
                 </CardDescription>
+                <Badge variant="outline" className="w-fit">{creatorMixHeadline(data)}</Badge>
               </div>
             </div>
             {user?.id !== data.userId ? <CreatorFollowButton creatorId={data.userId} /> : null}
@@ -139,6 +189,80 @@ export default function PublicDrinkCreatorPage() {
           )}
         </CardContent>
       </Card>
+
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-semibold">Most Remixed Drinks</h2>
+          <span className="text-sm text-muted-foreground">{data.mostRemixedDrinks.length} items</span>
+        </div>
+
+        {data.mostRemixedDrinks.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              No remix performance data available yet.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {data.mostRemixedDrinks.map((item) => (
+              <Card key={item.slug}>
+                <CardContent className="p-4 space-y-3">
+                  <Link href={item.route} className="block">
+                    <img
+                      src={item.image ?? "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=640&h=360&fit=crop"}
+                      alt={item.name}
+                      className="h-36 w-full rounded-md object-cover"
+                    />
+                  </Link>
+                  <div className="space-y-2">
+                    <Link href={item.route} className="block font-medium underline-offset-2 hover:underline">
+                      {item.name}
+                    </Link>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <Badge variant="outline">{number(item.remixesCount)} remixes</Badge>
+                      {typeof item.views7d === "number" ? <Badge variant="outline">{number(item.views7d)} views (7d)</Badge> : null}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-semibold">Recent Remix Activity</h2>
+          <span className="text-sm text-muted-foreground">{data.recentRemixActivity.length} items</span>
+        </div>
+
+        {data.recentRemixActivity.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              Remix activity will appear here when this creator participates in or receives remixes.
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="space-y-2">
+            {data.recentRemixActivity.map((item) => (
+              <Card key={`${item.type}-${item.slug}-${item.createdAt}`}>
+                <CardContent className="p-4 space-y-2">
+                  <p className="text-xs text-muted-foreground">{remixActivityLabel(item)}</p>
+                  <p>
+                    <Link href={item.route} className="font-medium underline underline-offset-2">{item.name}</Link>
+                  </p>
+                  {item.remixedFromSlug ? (
+                    <p className="text-xs text-muted-foreground">
+                      From lineage: <Link href={`/drinks/recipe/${encodeURIComponent(item.remixedFromSlug)}`} className="underline underline-offset-2">{item.remixedFromSlug}</Link>
+                    </p>
+                  ) : null}
+                  <p className="text-xs text-muted-foreground">{formatDate(item.createdAt)}</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </section>
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
