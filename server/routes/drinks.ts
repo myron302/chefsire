@@ -147,6 +147,30 @@ function normalizeRemixDiscoverySort(value: unknown): RemixDiscoverySort {
   return normalized === "popular" ? "popular" : "recent";
 }
 
+type MostRemixedDrinkItem = {
+  slug: string;
+  name: string;
+  image: string | null;
+  route: string;
+  sourceCategoryRoute: string | null;
+  remixCount: number;
+  views7d: number;
+  lastRemixAt: Date | null;
+};
+
+function canonicalRouteForUserRecipe(recipe: { category: string; subcategory: string | null }): string {
+  return `/drinks/${recipe.category}${recipe.subcategory ? `/${recipe.subcategory}` : ""}`;
+}
+
+function resolveMostRemixedTieBreaker(a: MostRemixedDrinkItem, b: MostRemixedDrinkItem): number {
+  return (
+    b.remixCount - a.remixCount ||
+    b.views7d - a.views7d ||
+    ((b.lastRemixAt?.getTime() ?? 0) - (a.lastRemixAt?.getTime() ?? 0)) ||
+    a.slug.localeCompare(b.slug)
+  );
+}
+
 type CreatorLeaderboardRow = {
   userId: string;
   username: string | null;
@@ -443,6 +467,103 @@ r.get("/remixes", async (req, res) => {
   } catch (error) {
     console.error("Error fetching remix discovery feed:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch remix discovery feed" });
+  }
+});
+
+// Fetch canonical/original drinks ranked by remix activity.
+r.get("/most-remixed", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const limitValue = Number(req.query?.limit);
+    const limit = Number.isFinite(limitValue) ? Math.max(1, Math.min(limitValue, 100)) : 24;
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const remixAggregateRows = await db
+      .select({
+        slug: drinkRecipes.remixedFromSlug,
+        remixCount: sql<number>`count(*)`,
+        lastRemixAt: sql<Date>`max(${drinkRecipes.createdAt})`,
+      })
+      .from(drinkRecipes)
+      .where(sql`${drinkRecipes.remixedFromSlug} is not null`)
+      .groupBy(drinkRecipes.remixedFromSlug);
+
+    const sourceSlugs = remixAggregateRows
+      .map((row) => row.slug)
+      .filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
+
+    if (sourceSlugs.length === 0) {
+      return res.json({ ok: true, count: 0, items: [] });
+    }
+
+    const viewRows = await db
+      .select({
+        slug: drinkEvents.slug,
+        views7d: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`,
+      })
+      .from(drinkEvents)
+      .where(inArray(drinkEvents.slug, sourceSlugs))
+      .groupBy(drinkEvents.slug);
+
+    const userSourceRows = await db
+      .select({
+        slug: drinkRecipes.slug,
+        name: drinkRecipes.name,
+        image: drinkRecipes.image,
+        category: drinkRecipes.category,
+        subcategory: drinkRecipes.subcategory,
+      })
+      .from(drinkRecipes)
+      .where(inArray(drinkRecipes.slug, sourceSlugs));
+
+    const views7dBySlug = new Map(viewRows.map((row) => [row.slug, Number(row.views7d ?? 0)]));
+    const userSourceBySlug = new Map(userSourceRows.map((row) => [row.slug, row]));
+
+    const rankedItems: MostRemixedDrinkItem[] = remixAggregateRows
+      .filter((row): row is { slug: string; remixCount: number; lastRemixAt: Date | null } => Boolean(row.slug))
+      .map((row) => {
+        const canonical = getCanonicalDrinkBySlug(row.slug);
+        const userSource = userSourceBySlug.get(row.slug);
+
+        const route = canonical?.route ?? `/drinks/recipe/${row.slug}`;
+        const sourceCategoryRoute = canonical?.sourceRoute ?? (userSource ? canonicalRouteForUserRecipe({
+          category: userSource.category,
+          subcategory: userSource.subcategory ?? null,
+        }) : null);
+
+        return {
+          slug: row.slug,
+          name: canonical?.name ?? userSource?.name ?? row.slug,
+          image: canonical?.image ?? userSource?.image ?? null,
+          route,
+          sourceCategoryRoute,
+          remixCount: Number(row.remixCount ?? 0),
+          views7d: views7dBySlug.get(row.slug) ?? 0,
+          lastRemixAt: row.lastRemixAt ? new Date(row.lastRemixAt) : null,
+        };
+      })
+      .sort(resolveMostRemixedTieBreaker)
+      .slice(0, limit);
+
+    return res.json({
+      ok: true,
+      count: rankedItems.length,
+      items: rankedItems.map((item) => ({
+        slug: item.slug,
+        name: item.name,
+        image: item.image,
+        route: item.route,
+        sourceCategoryRoute: item.sourceCategoryRoute,
+        remixCount: item.remixCount,
+        views7d: item.views7d,
+      })),
+    });
+  } catch (error) {
+    console.error("Error fetching most remixed drinks:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch most remixed drinks" });
   }
 });
 
