@@ -269,7 +269,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
           </div>
           {userRecipe?.creatorUsername ? (
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-              <span>By @{userRecipe.creatorUsername}</span>
+              <span>By <Link href={`/drinks/creator/${encodeURIComponent(userRecipe.creatorId ?? "")}`} className="underline underline-offset-2">@{userRecipe.creatorUsername}</Link></span>
               <CreatorFollowButton creatorId={userRecipe.creatorId ?? null} />
             </div>
           ) : null}
@@ -325,7 +325,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                       <Link href={resolveRecipeRoute(ancestor)} className="underline underline-offset-2 hover:text-primary">
                         {ancestor.name}
                       </Link>
-                      {ancestor.creatorUsername ? <span className="text-muted-foreground">by @{ancestor.creatorUsername}</span> : null}
+                      {ancestor.creatorUsername ? <span className="text-muted-foreground">by <Link href={`/drinks/creator/${encodeURIComponent(ancestor.creatorId ?? "")}`} className="underline underline-offset-2">@{ancestor.creatorUsername}</Link></span> : null}
                       <CreatorFollowButton creatorId={ancestor.creatorId ?? null} />
                     </li>
                   ))}
@@ -342,7 +342,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                       <Link href={resolveRecipeRoute(child)} className="underline underline-offset-2 hover:text-primary">
                         {child.name}
                       </Link>
-                      {child.creatorUsername ? <span className="text-muted-foreground">by @{child.creatorUsername}</span> : null}
+                      {child.creatorUsername ? <span className="text-muted-foreground">by <Link href={`/drinks/creator/${encodeURIComponent(child.creatorId ?? "")}`} className="underline underline-offset-2">@{child.creatorUsername}</Link></span> : null}
                       <CreatorFollowButton creatorId={child.creatorId ?? null} />
                     </li>
                   ))}
@@ -403,7 +403,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
                             </Link>
                             <p className="text-xs text-muted-foreground">Remixed from {displayName}</p>
                             <div className="text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
-                              {remix.creatorName ? <span>By @{remix.creatorName}</span> : null}
+                              {remix.creatorName ? <span>By <Link href={`/drinks/creator/${encodeURIComponent(remix.creatorId ?? "")}`} className="underline underline-offset-2">@{remix.creatorName}</Link></span> : null}
                               {createdAtLabel ? <span>{createdAtLabel}</span> : null}
                               <CreatorFollowButton creatorId={remix.creatorId ?? null} />
                             </div>

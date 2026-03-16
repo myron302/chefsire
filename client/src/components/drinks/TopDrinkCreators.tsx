@@ -113,7 +113,7 @@ export default function TopDrinkCreators() {
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">#{index + 1}</span>
-                      <span>{creator.username ?? "Unnamed creator"}</span>
+                      <Link href={`/drinks/creator/${encodeURIComponent(creator.userId)}`} className="underline underline-offset-2 hover:text-primary">{creator.username ?? "Unnamed creator"}</Link>
                       <Badge variant="secondary">Score {metricNumber(Math.round(creator.creatorScore))}</Badge>
                     </div>
 
@@ -131,10 +131,10 @@ export default function TopDrinkCreators() {
 
                 <div className="flex items-center gap-2">
                   <CreatorFollowButton creatorId={creator.userId} />
-                  <Link href={`/profile/${encodeURIComponent(creator.userId)}`}>
+                  <Link href={`/drinks/creator/${encodeURIComponent(creator.userId)}`}>
                     <Button variant="outline" size="sm" className="gap-1">
                       <Users className="h-4 w-4" />
-                      Profile
+                      Creator
                     </Button>
                   </Link>
                 </div>

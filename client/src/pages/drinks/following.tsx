@@ -164,7 +164,7 @@ export default function FollowingDrinksFeedPage() {
                         <AvatarFallback>{avatarFallback(item.creatorUsername)}</AvatarFallback>
                       </Avatar>
                       <span className="text-sm text-muted-foreground">
-                        By <span className="font-medium text-foreground">@{item.creatorUsername}</span>
+                        By <Link href={`/drinks/creator/${encodeURIComponent(item.userId)}`} className="font-medium text-foreground underline underline-offset-2 hover:text-primary">@{item.creatorUsername}</Link>
                       </span>
                       <Badge variant="outline">{formatDate(item.createdAt)}</Badge>
                     </div>
