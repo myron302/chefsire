@@ -190,6 +190,11 @@ type CreatorLeaderboardRow = {
   } | null;
 };
 
+type TrendingCreatorRow = CreatorLeaderboardRow & {
+  recentCreatedCount: number;
+  publicRoute: string;
+};
+
 async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboardRow[]> {
   if (!db) return [];
 
@@ -320,6 +325,152 @@ async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboar
 
   return rows
     .sort((a, b) => b.creatorScore - a.creatorScore || b.totalViews7d - a.totalViews7d || b.totalRemixesReceived - a.totalRemixesReceived)
+    .slice(0, safeLimit);
+}
+
+async function getTrendingDrinkCreators(limit = 25): Promise<TrendingCreatorRow[]> {
+  if (!db) return [];
+
+  const safeLimit = Math.max(1, Math.min(limit, 100));
+  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+  const createdRows = await db
+    .select({
+      userId: drinkRecipes.userId,
+      totalCreated: sql<number>`count(*)`,
+      recentCreatedCount: sql<number>`count(*) filter (where ${drinkRecipes.createdAt} > ${sevenDaysAgo})`,
+    })
+    .from(drinkRecipes)
+    .where(sql`${drinkRecipes.userId} is not null`)
+    .groupBy(drinkRecipes.userId);
+
+  if (createdRows.length === 0) return [];
+
+  const creatorIds = createdRows.map((row) => row.userId).filter((userId): userId is string => Boolean(userId));
+  if (creatorIds.length === 0) return [];
+
+  const creatorRecipes = await db
+    .select({ slug: drinkRecipes.slug, name: drinkRecipes.name, image: drinkRecipes.image, userId: drinkRecipes.userId })
+    .from(drinkRecipes)
+    .where(inArray(drinkRecipes.userId, creatorIds));
+
+  if (creatorRecipes.length === 0) return [];
+
+  const recipeSlugs = creatorRecipes.map((recipe) => recipe.slug);
+
+  const eventRows = await db
+    .select({
+      slug: drinkEvents.slug,
+      views7d: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view')`,
+      groceryAdds7d: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'grocery_add')`,
+    })
+    .from(drinkEvents)
+    .where(and(inArray(drinkEvents.slug, recipeSlugs), gt(drinkEvents.createdAt, sevenDaysAgo)))
+    .groupBy(drinkEvents.slug);
+
+  const remixedByOthersRows = await db
+    .select({ remixedFromSlug: drinkRecipes.remixedFromSlug, remixesCount: sql<number>`count(*)` })
+    .from(drinkRecipes)
+    .where(and(inArray(drinkRecipes.remixedFromSlug, recipeSlugs), gt(drinkRecipes.createdAt, sevenDaysAgo)))
+    .groupBy(drinkRecipes.remixedFromSlug);
+
+  const profiles = await db
+    .select({ id: users.id, username: users.username, avatar: users.avatar, followersCount: users.followersCount })
+    .from(users)
+    .where(inArray(users.id, creatorIds));
+
+  const createdByUser = new Map(
+    createdRows
+      .filter((row): row is { userId: string; totalCreated: number; recentCreatedCount: number } => Boolean(row.userId))
+      .map((row) => [row.userId, {
+        totalCreated: Number(row.totalCreated ?? 0),
+        recentCreatedCount: Number(row.recentCreatedCount ?? 0),
+      }])
+  );
+
+  const eventsBySlug = new Map(
+    eventRows.map((row) => [row.slug, { views7d: Number(row.views7d ?? 0), groceryAdds7d: Number(row.groceryAdds7d ?? 0) }])
+  );
+
+  const remixesBySlug = new Map(
+    remixedByOthersRows
+      .filter((row): row is { remixedFromSlug: string; remixesCount: number } => Boolean(row.remixedFromSlug))
+      .map((row) => [row.remixedFromSlug, Number(row.remixesCount ?? 0)])
+  );
+
+  const profileById = new Map(profiles.map((profile) => [profile.id, {
+    username: profile.username,
+    avatar: profile.avatar,
+    followersCount: Number(profile.followersCount ?? 0),
+  }]));
+
+  const recipesByCreator = new Map<string, Array<typeof creatorRecipes[number]>>();
+  for (const recipe of creatorRecipes) {
+    if (!recipe.userId) continue;
+    const current = recipesByCreator.get(recipe.userId) ?? [];
+    current.push(recipe);
+    recipesByCreator.set(recipe.userId, current);
+  }
+
+  const rows: TrendingCreatorRow[] = creatorIds.map((creatorId) => {
+    const creatorRecipeRows = recipesByCreator.get(creatorId) ?? [];
+    const totals = creatorRecipeRows.reduce((acc, recipe) => {
+      const metrics = eventsBySlug.get(recipe.slug) ?? { views7d: 0, groceryAdds7d: 0 };
+      const remixesCount = remixesBySlug.get(recipe.slug) ?? 0;
+      const recipeScore = metrics.views7d + (remixesCount * 4) + (metrics.groceryAdds7d * 2);
+
+      if (!acc.topDrink || recipeScore > acc.topDrink.score) {
+        acc.topDrink = {
+          slug: recipe.slug,
+          name: recipe.name,
+          image: recipe.image ?? null,
+          route: `/drinks/recipe/${recipe.slug}`,
+          score: recipeScore,
+        };
+      }
+
+      acc.totalViews7d += metrics.views7d;
+      acc.totalRemixesReceived += remixesCount;
+      acc.totalGroceryAdds += metrics.groceryAdds7d;
+      return acc;
+    }, {
+      totalViews7d: 0,
+      totalRemixesReceived: 0,
+      totalGroceryAdds: 0,
+      topDrink: null as CreatorLeaderboardRow["topDrink"],
+    });
+
+    const createdStats = createdByUser.get(creatorId) ?? { totalCreated: creatorRecipeRows.length, recentCreatedCount: 0 };
+    const creatorScore =
+      (totals.totalViews7d * 1) +
+      (totals.totalRemixesReceived * 4) +
+      (totals.totalGroceryAdds * 2) +
+      (createdStats.recentCreatedCount * 1);
+
+    const creatorProfile = profileById.get(creatorId);
+    return {
+      userId: creatorId,
+      username: creatorProfile?.username ?? null,
+      avatar: creatorProfile?.avatar ?? null,
+      creatorScore,
+      totalCreated: createdStats.totalCreated,
+      recentCreatedCount: createdStats.recentCreatedCount,
+      totalViews7d: totals.totalViews7d,
+      totalRemixesReceived: totals.totalRemixesReceived,
+      totalGroceryAdds: totals.totalGroceryAdds,
+      followerCount: creatorProfile?.followersCount ?? 0,
+      topDrink: totals.topDrink,
+      publicRoute: `/drinks/creator/${encodeURIComponent(creatorId)}`,
+    };
+  });
+
+  return rows
+    .sort((a, b) =>
+      b.creatorScore - a.creatorScore ||
+      b.totalViews7d - a.totalViews7d ||
+      b.totalRemixesReceived - a.totalRemixesReceived ||
+      b.recentCreatedCount - a.recentCreatedCount
+    )
     .slice(0, safeLimit);
 }
 
@@ -1129,6 +1280,28 @@ r.get("/creators/leaderboard", async (req, res) => {
   } catch (error) {
     console.error("Error fetching drink creator leaderboard:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch drink creator leaderboard" });
+  }
+});
+
+r.get("/creators/trending", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const limitParam = Number(req.query?.limit);
+    const limit = Number.isFinite(limitParam) ? limitParam : 25;
+    const creators = await getTrendingDrinkCreators(limit);
+
+    return res.json({
+      ok: true,
+      creators,
+      count: creators.length,
+      rankingFormula: "score = totalViews7d*1 + totalRemixesReceived*4 + totalGroceryAdds*2 + recentCreatedCount*1",
+    });
+  } catch (error) {
+    console.error("Error fetching trending drink creators:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch trending drink creators" });
   }
 });
 

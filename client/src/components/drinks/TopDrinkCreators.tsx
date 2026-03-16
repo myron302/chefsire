@@ -74,10 +74,15 @@ export default function TopDrinkCreators() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2">
           <Trophy className="h-5 w-5 text-amber-500" />
           Top Drink Creators
-        </CardTitle>
+          </CardTitle>
+          <Link href="/drinks/creators/trending">
+            <Button size="sm" variant="outline">View trending creators</Button>
+          </Link>
+        </div>
         <CardDescription>
           Rising creators ranked by 7-day views, remixes, grocery adds, and drink output.
         </CardDescription>
