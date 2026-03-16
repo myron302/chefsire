@@ -30,6 +30,15 @@ interface FollowingFeedResponse {
   items: FollowingFeedItem[];
 }
 
+function metricNumber(value: number | null | undefined): string {
+  return new Intl.NumberFormat().format(Number(value ?? 0));
+}
+
+function readErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
@@ -47,11 +56,12 @@ export default function FollowingDrinksFeedPage() {
     queryKey: ["/api/drinks/following-feed"],
     queryFn: async () => {
       const response = await fetch("/api/drinks/following-feed", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Failed to fetch following drinks");
+        const message = payload?.error || payload?.message || `Failed to fetch following drinks (${response.status})`;
+        throw new Error(String(message));
       }
-      return response.json();
+      return payload as FollowingFeedResponse;
     },
     enabled: Boolean(user?.id),
   });
@@ -77,17 +87,21 @@ export default function FollowingDrinksFeedPage() {
     return <div className="container mx-auto p-6">Loading drinks from followed creators...</div>;
   }
 
+  const queryErrorMessage = query.isError ? readErrorMessage(query.error, "Unknown following feed error") : "";
+
   if (query.isError || !query.data) {
     return (
       <div className="container mx-auto p-6 space-y-3">
         <h1 className="text-3xl font-bold">Following Feed</h1>
         <p className="text-destructive">Unable to load your following feed right now.</p>
+        {import.meta.env.DEV ? <p className="text-xs text-muted-foreground break-all">{queryErrorMessage}</p> : null}
         <DrinksPlatformNav current="following" />
       </div>
     );
   }
 
   const { followingCount, items } = query.data;
+  const safeItems = Array.isArray(items) ? items : [];
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-following-feed">
@@ -106,7 +120,7 @@ export default function FollowingDrinksFeedPage() {
 
       <DrinksPlatformNav current="following" />
 
-      {items.length === 0 ? (
+      {safeItems.length === 0 ? (
         <Card>
           <CardHeader>
             <CardTitle>No drinks in your Following feed yet</CardTitle>
@@ -150,7 +164,7 @@ export default function FollowingDrinksFeedPage() {
         </Card>
       ) : (
         <div className="grid gap-4">
-          {items.map((item) => (
+          {safeItems.map((item) => (
             <Card key={item.id}>
               <CardContent className="p-4 sm:p-5">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
@@ -191,8 +205,8 @@ export default function FollowingDrinksFeedPage() {
                     ) : null}
 
                     <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                      <Badge variant="secondary">{item.views7d} views (7d)</Badge>
-                      <Badge variant="secondary">🔥 {item.remixesCount} remixes</Badge>
+                      <Badge variant="secondary">{metricNumber(item.views7d)} views (7d)</Badge>
+                      <Badge variant="secondary">🔥 {metricNumber(item.remixesCount)} remixes</Badge>
                     </div>
 
                     <div className="flex flex-wrap gap-2 pt-1">

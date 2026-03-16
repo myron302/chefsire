@@ -1744,26 +1744,30 @@ r.get("/following-feed", requireAuth, async (req, res) => {
       return res.json({ ok: true, followingCount: followedCreatorIds.length, items: [] });
     }
 
-    const recipeSlugs = recipeRows.map((row) => row.slug);
+    const recipeSlugs = recipeRows.map((row) => row.slug).filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    const viewRows = await db
-      .select({ slug: drinkEvents.slug, views7d: sql<number>`count(*)` })
-      .from(drinkEvents)
-      .where(
-        and(
-          inArray(drinkEvents.slug, recipeSlugs),
-          eq(drinkEvents.eventType, "view"),
-          gt(drinkEvents.createdAt, sevenDaysAgo),
-        )
-      )
-      .groupBy(drinkEvents.slug);
+    const viewRows = recipeSlugs.length > 0
+      ? await db
+          .select({ slug: drinkEvents.slug, views7d: sql<number>`count(*)` })
+          .from(drinkEvents)
+          .where(
+            and(
+              inArray(drinkEvents.slug, recipeSlugs),
+              eq(drinkEvents.eventType, "view"),
+              gt(drinkEvents.createdAt, sevenDaysAgo),
+            )
+          )
+          .groupBy(drinkEvents.slug)
+      : [];
 
-    const remixRows = await db
-      .select({ remixedFromSlug: drinkRecipes.remixedFromSlug, remixesCount: sql<number>`count(*)` })
-      .from(drinkRecipes)
-      .where(inArray(drinkRecipes.remixedFromSlug, recipeSlugs))
-      .groupBy(drinkRecipes.remixedFromSlug);
+    const remixRows = recipeSlugs.length > 0
+      ? await db
+          .select({ remixedFromSlug: drinkRecipes.remixedFromSlug, remixesCount: sql<number>`count(*)` })
+          .from(drinkRecipes)
+          .where(inArray(drinkRecipes.remixedFromSlug, recipeSlugs))
+          .groupBy(drinkRecipes.remixedFromSlug)
+      : [];
 
     const viewsBySlug = new Map(viewRows.map((row) => [row.slug, Number(row.views7d ?? 0)]));
     const remixesBySlug = new Map(
@@ -1803,7 +1807,8 @@ r.get("/following-feed", requireAuth, async (req, res) => {
     return res.json({ ok: true, followingCount: followedCreatorIds.length, items });
   } catch (error) {
     console.error("Error loading following drinks feed:", error);
-    return res.status(500).json({ ok: false, error: "Failed to fetch following drinks feed" });
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ ok: false, error: process.env.NODE_ENV === "production" ? "Failed to fetch following drinks feed" : `Failed to fetch following drinks feed: ${message}` });
   }
 });
 
@@ -1934,7 +1939,7 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
         type: "trending_creator",
         createdAt: new Date(Date.now() - (index * 5 * 60 * 1000)).toISOString(),
         title: `${creator.username ? `@${creator.username}` : "A creator"} is trending`,
-        subtitle: `Trending creator this week with ${creator.totalRemixesReceived.toLocaleString()} remixes received.`,
+        subtitle: `Trending creator this week with ${Number(creator.totalRemixesReceived ?? 0).toLocaleString()} remixes received.`,
         image: creator.avatar ?? creator.topDrink?.image ?? null,
         route: creator.publicRoute,
         relatedUserId: creator.userId,
@@ -2106,27 +2111,31 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
       });
     }
 
-    const recipeSlugs = recipes.map((recipe) => recipe.slug);
+    const recipeSlugs = recipes.map((recipe) => recipe.slug).filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
 
-    const eventRows = await db
-      .select({
-        slug: drinkEvents.slug,
-        views24h: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} > ${oneDayAgo})`,
-        views7d: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`,
-        groceryAdds: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'grocery_add' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`,
-      })
-      .from(drinkEvents)
-      .where(and(inArray(drinkEvents.slug, recipeSlugs), gt(drinkEvents.createdAt, sevenDaysAgo)))
-      .groupBy(drinkEvents.slug);
+    const eventRows = recipeSlugs.length > 0
+      ? await db
+          .select({
+            slug: drinkEvents.slug,
+            views24h: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} > ${oneDayAgo})`,
+            views7d: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`,
+            groceryAdds: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'grocery_add' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`,
+          })
+          .from(drinkEvents)
+          .where(and(inArray(drinkEvents.slug, recipeSlugs), gt(drinkEvents.createdAt, sevenDaysAgo)))
+          .groupBy(drinkEvents.slug)
+      : [];
 
-    const remixedByOthersRows = await db
-      .select({
-        remixedFromSlug: drinkRecipes.remixedFromSlug,
-        remixesCount: sql<number>`count(*)`,
-      })
-      .from(drinkRecipes)
-      .where(inArray(drinkRecipes.remixedFromSlug, recipeSlugs))
-      .groupBy(drinkRecipes.remixedFromSlug);
+    const remixedByOthersRows = recipeSlugs.length > 0
+      ? await db
+          .select({
+            remixedFromSlug: drinkRecipes.remixedFromSlug,
+            remixesCount: sql<number>`count(*)`,
+          })
+          .from(drinkRecipes)
+          .where(inArray(drinkRecipes.remixedFromSlug, recipeSlugs))
+          .groupBy(drinkRecipes.remixedFromSlug)
+      : [];
 
     const eventsBySlug = new Map(
       eventRows.map((row) => [row.slug, {
@@ -2206,7 +2215,8 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
     });
   } catch (error) {
     console.error("Error fetching creator drink metrics:", error);
-    return res.status(500).json({ ok: false, error: "Failed to fetch creator drink metrics" });
+    const message = error instanceof Error ? error.message : String(error);
+    return res.status(500).json({ ok: false, error: process.env.NODE_ENV === "production" ? "Failed to fetch creator drink metrics" : `Failed to fetch creator drink metrics: ${message}` });
   }
 });
 
@@ -2236,7 +2246,7 @@ r.get("/creator/:userId/activity", requireAuth, async (req, res) => {
       .from(drinkRecipes)
       .where(eq(drinkRecipes.userId, requestedUserId));
 
-    const recipeSlugs = recipes.map((recipe) => recipe.slug);
+    const recipeSlugs = recipes.map((recipe) => recipe.slug).filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
     const recipeNameBySlug = new Map(recipes.map((recipe) => [recipe.slug, recipe.name]));
 
     const activityItems: CreatorActivityItem[] = [];
@@ -2576,7 +2586,7 @@ r.get("/creators/:userId", async (req, res) => {
       });
     }
 
-    const recipeSlugs = recipes.map((recipe) => recipe.slug);
+    const recipeSlugs = recipes.map((recipe) => recipe.slug).filter((slug): slug is string => typeof slug === "string" && slug.length > 0);
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     const eventRows = await db

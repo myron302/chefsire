@@ -13,7 +13,8 @@ type MostRemixedDrinkItem = {
   image: string | null;
   route: string;
   sourceCategoryRoute: string | null;
-  remixCount: number;
+  remixCount?: number;
+  remixesCount?: number;
   views7d?: number;
 };
 
@@ -22,6 +23,10 @@ type MostRemixedResponse = {
   count?: number;
   items?: MostRemixedDrinkItem[];
 };
+
+function metricNumber(value: number | null | undefined): string {
+  return new Intl.NumberFormat().format(Number(value ?? 0));
+}
 
 export default function MostRemixedDrinksPage() {
   const [items, setItems] = useState<MostRemixedDrinkItem[]>([]);
@@ -85,7 +90,10 @@ export default function MostRemixedDrinksPage() {
             ) : null}
 
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {items.map((item, index) => (
+              {items.map((item, index) => {
+                const remixCount = Number(item.remixCount ?? item.remixesCount ?? 0);
+                const views7d = Number(item.views7d ?? 0);
+                return (
                 <Card key={item.slug} className="overflow-hidden border">
                   <div className="aspect-video bg-slate-100">
                     {item.image ? (
@@ -97,14 +105,14 @@ export default function MostRemixedDrinksPage() {
                   <CardContent className="space-y-3 p-4">
                     <div className="flex items-center justify-between gap-2">
                       <Badge variant="secondary">#{index + 1}</Badge>
-                      <Badge className="gap-1"><Flame className="h-3 w-3" /> {item.remixCount.toLocaleString()} remixes</Badge>
+                      <Badge className="gap-1"><Flame className="h-3 w-3" /> {metricNumber(remixCount)} remixes</Badge>
                     </div>
 
                     <h2 className="line-clamp-2 text-lg font-semibold">{item.name}</h2>
 
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <span>{item.slug}</span>
-                      <span className="inline-flex items-center gap-1"><Eye className="h-3 w-3" /> {Number(item.views7d ?? 0).toLocaleString()} views (7d)</span>
+                      <span className="inline-flex items-center gap-1"><Eye className="h-3 w-3" /> {metricNumber(views7d)} views (7d)</span>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -123,7 +131,8 @@ export default function MostRemixedDrinksPage() {
                     ) : null}
                   </CardContent>
                 </Card>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>

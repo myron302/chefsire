@@ -30,7 +30,12 @@ type RemixDiscoveryResponse = {
   sort?: RemixSort;
   count?: number;
   items?: RemixDiscoveryItem[];
+  data?: RemixDiscoveryItem[];
 };
+
+function metricNumber(value: number | null | undefined): string {
+  return new Intl.NumberFormat().format(Number(value ?? 0));
+}
 
 function formatWhen(value: string) {
   const date = new Date(value);
@@ -55,10 +60,13 @@ export default function DrinksRemixDiscoveryPage() {
       setLoadError("");
       try {
         const response = await fetch(`/api/drinks/remixes?sort=${sort}`);
-        if (!response.ok) throw new Error("Unable to fetch remixes");
-        const data = (await response.json()) as RemixDiscoveryResponse;
+        const data = (await response.json().catch(() => null)) as RemixDiscoveryResponse | null;
+        if (!response.ok) {
+          throw new Error(String(data && typeof data === "object" && "error" in data ? (data as any).error : "Unable to fetch remixes"));
+        }
         if (!active) return;
-        setItems(Array.isArray(data.items) ? data.items : []);
+        const nextItems = Array.isArray(data?.items) ? data.items : Array.isArray(data?.data) ? data.data : [];
+        setItems(nextItems);
       } catch (error) {
         if (active) {
           setItems([]);
@@ -151,8 +159,8 @@ export default function DrinksRemixDiscoveryPage() {
                     ) : null}
 
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span>{Number(item.views7d ?? 0).toLocaleString()} views (7d)</span>
-                      <Badge variant="secondary">🔥 {Number(item.remixesCount ?? 0).toLocaleString()} remixes</Badge>
+                      <span>{metricNumber(item.views7d)} views (7d)</span>
+                      <Badge variant="secondary">🔥 {metricNumber(item.remixesCount)} remixes</Badge>
                     </div>
 
                     <div className="flex items-center gap-2">

@@ -90,8 +90,8 @@ function formatDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
-function metricNumber(value: number): string {
-  return new Intl.NumberFormat().format(value);
+function metricNumber(value: number | null | undefined): string {
+  return new Intl.NumberFormat().format(Number(value ?? 0));
 }
 
 function formatDateTime(value: string): string {
@@ -114,6 +114,11 @@ function activityBadgeLabel(type: CreatorActivityType): string {
   }
 }
 
+function readErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  return fallback;
+}
+
 export default function CreatorDashboardPage() {
   const { user, loading: userLoading } = useUser();
 
@@ -124,12 +129,14 @@ export default function CreatorDashboardPage() {
         credentials: "include",
       });
 
+      const payload = await response.json().catch(() => null);
+
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Failed to load creator dashboard");
+        const message = payload?.error || payload?.message || `Failed to load creator dashboard (${response.status})`;
+        throw new Error(String(message));
       }
 
-      return response.json();
+      return payload as CreatorDrinkMetricsResponse;
     },
     enabled: Boolean(user?.id),
   });
@@ -141,12 +148,14 @@ export default function CreatorDashboardPage() {
         credentials: "include",
       });
 
+      const payload = await response.json().catch(() => null);
+
       if (!response.ok) {
-        const message = await response.text();
-        throw new Error(message || "Failed to load creator activity");
+        const message = payload?.error || payload?.message || `Failed to load creator activity (${response.status})`;
+        throw new Error(String(message));
       }
 
-      return response.json();
+      return payload as CreatorActivityResponse;
     },
     enabled: Boolean(user?.id),
   });
@@ -169,11 +178,14 @@ export default function CreatorDashboardPage() {
     return <div className="container mx-auto p-6">Loading creator metrics...</div>;
   }
 
+  const queryErrorMessage = query.isError ? readErrorMessage(query.error, "Unknown creator dashboard error") : "";
+
   if (query.isError || !query.data) {
     return (
       <div className="container mx-auto p-6 space-y-3">
         <h1 className="text-2xl font-bold">Drink Creator Dashboard</h1>
         <p className="text-destructive">Unable to load your dashboard right now.</p>
+        {import.meta.env.DEV ? <p className="text-xs text-muted-foreground break-all">{queryErrorMessage}</p> : null}
         <DrinksPlatformNav current="dashboard" />
       </div>
     );
@@ -181,13 +193,28 @@ export default function CreatorDashboardPage() {
 
   const { summary, items } = query.data;
 
+  const safeSummary: CreatorDrinkSummary = {
+    creatorRank: summary?.creatorRank ?? null,
+    creatorScore: Number(summary?.creatorScore ?? 0),
+    totalCreated: Number(summary?.totalCreated ?? 0),
+    totalRemixesCreated: Number(summary?.totalRemixesCreated ?? 0),
+    totalViews7d: Number(summary?.totalViews7d ?? 0),
+    totalRemixesReceived: Number(summary?.totalRemixesReceived ?? 0),
+    totalGroceryAdds: Number(summary?.totalGroceryAdds ?? 0),
+    topPerformingDrink: summary?.topPerformingDrink ?? null,
+    mostRemixedDrink: summary?.mostRemixedDrink ?? null,
+    followerCount: Number(summary?.followerCount ?? 0),
+    isFollowing: Boolean(summary?.isFollowing ?? false),
+  };
+  const safeItems = Array.isArray(items) ? items : [];
+
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-bold">Drink Creator Dashboard</h1>
         <p className="text-muted-foreground">Track how your submitted drinks and remixes are performing.</p>
         <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <span>{metricNumber(summary.followerCount ?? 0)} followers</span>
+          <span>{metricNumber(safeSummary.followerCount ?? 0)} followers</span>
           <Badge variant="secondary">Your creator profile</Badge>
         </div>
         <div className="flex flex-wrap gap-2 pt-1">
@@ -206,37 +233,37 @@ export default function CreatorDashboardPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Creator Rank</CardDescription>
-            <CardTitle>{summary.creatorRank ? `#${metricNumber(summary.creatorRank)}` : "—"}</CardTitle>
+            <CardTitle>{safeSummary.creatorRank ? `#${metricNumber(safeSummary.creatorRank)}` : "—"}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Total Created</CardDescription>
-            <CardTitle>{metricNumber(summary.totalCreated)}</CardTitle>
+            <CardTitle>{metricNumber(safeSummary.totalCreated)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Remixes Created</CardDescription>
-            <CardTitle>{metricNumber(summary.totalRemixesCreated)}</CardTitle>
+            <CardTitle>{metricNumber(safeSummary.totalRemixesCreated)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Views (7d)</CardDescription>
-            <CardTitle>{metricNumber(summary.totalViews7d)}</CardTitle>
+            <CardTitle>{metricNumber(safeSummary.totalViews7d)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Remixes Received</CardDescription>
-            <CardTitle>{metricNumber(summary.totalRemixesReceived)}</CardTitle>
+            <CardTitle>{metricNumber(safeSummary.totalRemixesReceived)}</CardTitle>
           </CardHeader>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardDescription>Grocery Adds</CardDescription>
-            <CardTitle>{metricNumber(summary.totalGroceryAdds)}</CardTitle>
+            <CardTitle>{metricNumber(safeSummary.totalGroceryAdds)}</CardTitle>
           </CardHeader>
         </Card>
       </div>
@@ -245,15 +272,15 @@ export default function CreatorDashboardPage() {
         <CardHeader>
           <CardTitle>Top Performing Drink</CardTitle>
           <CardDescription>
-            {summary.topPerformingDrink
-              ? `${summary.topPerformingDrink.name} • Score ${metricNumber(summary.topPerformingDrink.score)} • Creator Score ${metricNumber(Math.round(summary.creatorScore))}`
+            {safeSummary.topPerformingDrink
+              ? `${safeSummary.topPerformingDrink.name} • Score ${metricNumber(safeSummary.topPerformingDrink.score)} • Creator Score ${metricNumber(Math.round(safeSummary.creatorScore))}`
               : "No drinks with performance data yet."}
           </CardDescription>
         </CardHeader>
-        {summary.topPerformingDrink ? (
+        {safeSummary.topPerformingDrink ? (
           <CardContent>
-            <Link href={`/drinks/recipe/${encodeURIComponent(summary.topPerformingDrink.slug)}`} className="underline underline-offset-2 text-sm">
-              View {summary.topPerformingDrink.name}
+            <Link href={`/drinks/recipe/${encodeURIComponent(safeSummary.topPerformingDrink.slug)}`} className="underline underline-offset-2 text-sm">
+              View {safeSummary.topPerformingDrink.name}
             </Link>
           </CardContent>
         ) : null}
@@ -263,14 +290,14 @@ export default function CreatorDashboardPage() {
         <CardHeader>
           <CardTitle>Most Remixed Drink</CardTitle>
           <CardDescription>
-            {summary.mostRemixedDrink
-              ? `${summary.mostRemixedDrink.name} • ${metricNumber(summary.mostRemixedDrink.remixesCount)} remixes received`
+            {safeSummary.mostRemixedDrink
+              ? `${safeSummary.mostRemixedDrink.name} • ${metricNumber(safeSummary.mostRemixedDrink.remixesCount)} remixes received`
               : "No remixes received yet."}
           </CardDescription>
         </CardHeader>
-        {summary.mostRemixedDrink ? (
+        {safeSummary.mostRemixedDrink ? (
           <CardContent>
-            <Link href={`/drinks/recipe/${encodeURIComponent(summary.mostRemixedDrink.slug)}`} className="underline underline-offset-2 text-sm">
+            <Link href={`/drinks/recipe/${encodeURIComponent(safeSummary.mostRemixedDrink.slug)}`} className="underline underline-offset-2 text-sm">
               Open remix leader
             </Link>
           </CardContent>
@@ -285,7 +312,7 @@ export default function CreatorDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {items.length === 0 ? (
+          {safeItems.length === 0 ? (
             <div className="text-sm text-muted-foreground">
               You have not submitted any drinks yet. <Link href="/drinks/submit" className="underline">Submit your first drink</Link>.
             </div>
@@ -303,7 +330,7 @@ export default function CreatorDashboardPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {items.map((item) => (
+                {safeItems.map((item) => (
                   <TableRow key={item.id}>
                     <TableCell>
                       <div className="space-y-1">
@@ -356,7 +383,12 @@ export default function CreatorDashboardPage() {
           ) : null}
 
           {activityQuery.isError ? (
-            <p className="text-sm text-destructive">Unable to load activity right now.</p>
+            <div className="space-y-1">
+              <p className="text-sm text-destructive">Unable to load activity right now.</p>
+              {import.meta.env.DEV ? (
+                <p className="text-xs text-muted-foreground break-all">{readErrorMessage(activityQuery.error, "Unknown activity error")}</p>
+              ) : null}
+            </div>
           ) : null}
 
           {activityQuery.data ? (

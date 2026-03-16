@@ -713,7 +713,7 @@ export default function CaffeinatedDrinksPage() {
                 <div className="flex items-center gap-4 text-sm">
                   <span className="flex items-center gap-1">
                     <Users className="w-4 h-4" />
-                    {dailyChallenge.participants.toLocaleString()} participating
+                    {Number(dailyChallenge.participants ?? 0).toLocaleString()} participating
                   </span>
                   <span className="flex items-center gap-1">
                     <Clock className="w-4 h-4" />

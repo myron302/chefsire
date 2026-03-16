@@ -118,6 +118,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const [userRecipeLoaded, setUserRecipeLoaded] = useState(false);
   const [remixes, setRemixes] = useState<DrinkRemixItem[]>([]);
   const [remixesLoading, setRemixesLoading] = useState(false);
+  const [remixesError, setRemixesError] = useState("");
   const [remixChain, setRemixChain] = useState<RemixChainResponse | null>(null);
   const [remixChainLoading, setRemixChainLoading] = useState(false);
 
@@ -151,12 +152,27 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
     }
 
     setRemixesLoading(true);
+    setRemixesError("");
     fetch(`/api/drinks/remixes/${encodeURIComponent(canonicalRecipe.slug)}`)
-      .then((res) => (res.ok ? res.json() : null))
-      .then((payload) => {
-        setRemixes(Array.isArray(payload?.items) ? payload.items : []);
+      .then(async (res) => {
+        const payload = await res.json().catch(() => null);
+        if (!res.ok) {
+          throw new Error(payload?.error || `Failed to fetch remixes (${res.status})`);
+        }
+        return payload;
       })
-      .catch(() => setRemixes([]))
+      .then((payload) => {
+        const items = Array.isArray(payload?.items)
+          ? payload.items
+          : Array.isArray(payload?.remixes)
+            ? payload.remixes
+            : [];
+        setRemixes(items);
+      })
+      .catch((error) => {
+        setRemixes([]);
+        setRemixesError(error instanceof Error ? error.message : "Failed to fetch remixes");
+      })
       .finally(() => setRemixesLoading(false));
   }, [canonicalRecipe?.slug]);
 
@@ -381,8 +397,14 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
               </div>
 
               {remixesLoading ? <p className="text-sm text-muted-foreground">Loading remixes...</p> : null}
+              {!remixesLoading && remixesError ? (
+                <p className="text-sm text-destructive">Unable to fetch remixes right now.</p>
+              ) : null}
+              {!remixesLoading && remixesError && import.meta.env.DEV ? (
+                <p className="text-xs text-muted-foreground break-all">{remixesError}</p>
+              ) : null}
 
-              {!remixesLoading && remixes.length === 0 ? (
+              {!remixesLoading && !remixesError && remixes.length === 0 ? (
                 <p className="text-sm text-muted-foreground">No remixes yet. Be the first to remix this drink.</p>
               ) : null}
 

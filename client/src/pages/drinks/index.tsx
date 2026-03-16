@@ -406,7 +406,7 @@ export default function DrinksPage() {
               <Card className="bg-white/10 backdrop-blur border-white/20 hover:bg-white/20 transition-all">
                 <CardContent className="p-4 text-center">
                   <Eye className="h-8 w-8 mx-auto mb-2 text-purple-300" />
-                  <div className="text-2xl font-bold">{userStats.totalViews.toLocaleString()}</div>
+                  <div className="text-2xl font-bold">{Number(userStats.totalViews ?? 0).toLocaleString()}</div>
                   <div className="text-sm text-blue-100">Recipe Views</div>
                 </CardContent>
               </Card>

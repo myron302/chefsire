@@ -404,7 +404,7 @@ export default function VirginDrinksPage() {
                       ))}
                     </div>
                     <span className="text-sm font-semibold">{drink.rating}</span>
-                    <span className="text-sm text-gray-500">({drink.reviews.toLocaleString()})</span>
+                    <span className="text-sm text-gray-500">({Number(drink.reviews ?? 0).toLocaleString()})</span>
                   </div>
 
                   <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">

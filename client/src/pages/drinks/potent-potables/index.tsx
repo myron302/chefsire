@@ -626,7 +626,7 @@ export default function PotentPotablesPage() {
                     <p className="text-sm text-gray-600 mb-3">{cocktail.description}</p>
                     <div className="flex items-center gap-4 text-sm text-gray-600 mb-3">
                       <div className="flex items-center gap-1"><Clock className="w-4 h-4" /><span>{cocktail.time}</span></div>
-                      <div className="flex items-center gap-1"><Users className="w-4 h-4" /><span>{cocktail.reviews.toLocaleString()}</span></div>
+                      <div className="flex items-center gap-1"><Users className="w-4 h-4" /><span>{Number(cocktail.reviews ?? 0).toLocaleString()}</span></div>
                       <Badge variant="outline">{cocktail.difficulty}</Badge>
                     </div>
                     <div className="flex flex-wrap gap-1 mb-3">
