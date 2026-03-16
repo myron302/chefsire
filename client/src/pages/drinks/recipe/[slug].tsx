@@ -248,6 +248,11 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
 
       {remixSourceSlug ? (
         <div className="flex flex-wrap gap-2">
+          {canonicalRecipe && !remixesLoading ? (
+            <Badge variant="secondary" className="px-3">
+              {remixes.length} remix{remixes.length === 1 ? "" : "es"}
+            </Badge>
+          ) : null}
           <Link href={`/drinks/submit?remix=${encodeURIComponent(remixSourceSlug)}`} onClick={() => void logDrinkEvent(trackedDrinkSlug, "remix")}>
             <Button>Remix</Button>
           </Link>
