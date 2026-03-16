@@ -187,7 +187,7 @@ export default function FollowingDrinksFeedPage() {
 
                     <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                       <Badge variant="secondary">{item.views7d} views (7d)</Badge>
-                      <Badge variant="secondary">{item.remixesCount} remixes</Badge>
+                      <Badge variant="secondary">🔥 {item.remixesCount} remixes</Badge>
                     </div>
 
                     <div className="flex flex-wrap gap-2 pt-1">

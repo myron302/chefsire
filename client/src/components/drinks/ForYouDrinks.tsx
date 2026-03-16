@@ -22,6 +22,14 @@ type TrendingApiResponse = {
   items?: TrendingDrink[];
 };
 
+type RecommendedApiItem = {
+  slug: string;
+};
+
+type RecommendedApiResponse = {
+  items?: RecommendedApiItem[];
+};
+
 type ForYouDrink = {
   slug: string;
   name: string;
@@ -99,6 +107,7 @@ export default function ForYouDrinks() {
       .filter((entry): entry is CanonicalDrinkRecipeEntry => Boolean(entry));
 
     let trendingItems: TrendingDrink[] = [];
+    let recommendedItems: RecommendedApiItem[] = [];
     try {
       const response = await fetch("/api/drinks/trending");
       if (response.ok) {
@@ -109,6 +118,19 @@ export default function ForYouDrinks() {
       trendingItems = [];
     }
 
+    try {
+      const query = recentSlugs.length > 0
+        ? `?recent=${encodeURIComponent(recentSlugs.join(","))}`
+        : "";
+      const response = await fetch(`/api/drinks/recommended${query}`);
+      if (response.ok) {
+        const payload = (await response.json()) as RecommendedApiResponse;
+        recommendedItems = Array.isArray(payload.items) ? payload.items : [];
+      }
+    } catch {
+      recommendedItems = [];
+    }
+
     const excludedSlugs = new Set(viewedSet);
     for (const trend of trendingItems.slice(0, DUPLICATE_TRENDING_CUTOFF)) {
       if (trend.slug) excludedSlugs.add(trend.slug);
@@ -117,6 +139,7 @@ export default function ForYouDrinks() {
     const sectionWeights = new Map<string, number>();
     const tokenWeights = new Map<string, number>();
     const sourceRouteWeights = new Map<string, number>();
+    const backendBoostBySlug = new Map<string, number>();
 
     const bump = (map: Map<string, number>, key: string, weight: number) => {
       const normalized = key.trim().toLowerCase();
@@ -131,6 +154,12 @@ export default function ForYouDrinks() {
       for (const token of entryTokens(entry)) bump(tokenWeights, token, recencyWeight);
     });
 
+    recommendedItems.forEach((item, index) => {
+      const slug = String(item?.slug ?? "").trim();
+      if (!slug) return;
+      backendBoostBySlug.set(slug, Math.max(0, (recommendedItems.length - index) * 3));
+    });
+
     const rankedCandidates: RankedDrinkCandidate[] = [];
     for (const entry of canonicalDrinkRecipeEntries) {
       if (excludedSlugs.has(entry.slug)) continue;
@@ -139,7 +168,8 @@ export default function ForYouDrinks() {
       const sourceRouteScore = (sourceRouteWeights.get(entry.sourceRoute.toLowerCase()) ?? 0) * 5;
       const tokenScore = entryTokens(entry).reduce((total, token) => total + (tokenWeights.get(token) ?? 0), 0) * 8;
       const recencyBias = recentEntries.length > 0 ? 2 : 0;
-      const score = sectionScore + tokenScore + sourceRouteScore + recencyBias;
+      const backendBoostScore = backendBoostBySlug.get(entry.slug) ?? 0;
+      const score = sectionScore + tokenScore + sourceRouteScore + recencyBias + backendBoostScore;
       if (score <= 0) continue;
 
       let reason = "Recommended for your tastes";
@@ -149,6 +179,8 @@ export default function ForYouDrinks() {
         reason = "Similar recipe type";
       } else if (sourceRouteScore > 0) {
         reason = `More from ${entry.sourceTitle}`;
+      } else if (backendBoostScore > 0) {
+        reason = "Popular with creators you follow";
       }
 
       rankedCandidates.push({ entry, score, reason });

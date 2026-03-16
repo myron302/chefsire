@@ -219,7 +219,7 @@ export default function PublicDrinkCreatorPage() {
                       {item.name}
                     </Link>
                     <div className="flex flex-wrap gap-2 text-xs">
-                      <Badge variant="outline">{number(item.remixesCount)} remixes</Badge>
+                      <Badge variant="secondary">🔥 {number(item.remixesCount)} remixes</Badge>
                       {typeof item.views7d === "number" ? <Badge variant="outline">{number(item.views7d)} views (7d)</Badge> : null}
                     </div>
                   </div>
@@ -311,7 +311,7 @@ export default function PublicDrinkCreatorPage() {
 
                     <div className="flex flex-wrap gap-2 text-xs">
                       <Badge variant="outline">{number(item.views7d)} views (7d)</Badge>
-                      <Badge variant="outline">{number(item.remixesCount)} remixes</Badge>
+                      <Badge variant="secondary">🔥 {number(item.remixesCount)} remixes</Badge>
                     </div>
                   </div>
                 </CardContent>

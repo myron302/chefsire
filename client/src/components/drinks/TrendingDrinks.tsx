@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import TrendingRecipesWidget from "@/components/engagement/TrendingRecipesWidget";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 
 type TrendingDrink = {
   slug: string;
@@ -13,6 +14,7 @@ type TrendingDrink = {
   views7d?: number;
   views24h?: number;
   remixes?: number;
+  remixesCount?: number;
   groceryAdds?: number;
 };
 
@@ -65,11 +67,11 @@ export default function TrendingDrinks() {
       getCanonicalRoute={(item) => getCanonicalRoute(item.slug)}
       renderStats={(drink) => {
         const viewsToday = Number(drink.views24h ?? 0);
-        const remixes = Number(drink.remixes ?? 0);
+        const remixes = Number(drink.remixesCount ?? drink.remixes ?? 0);
         return (
           <>
             <p className="mt-1 text-xs text-muted-foreground">👀 {viewsToday.toLocaleString()} views today</p>
-            <p className="mt-1 text-xs text-muted-foreground">🔁 {remixes.toLocaleString()} remixes</p>
+            <Badge variant="secondary" className="mt-2">🔥 {remixes.toLocaleString()} remixes</Badge>
           </>
         );
       }}

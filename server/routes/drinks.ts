@@ -187,6 +187,7 @@ type CreatorLeaderboardRow = {
     image: string | null;
     route: string;
     score: number;
+    remixesCount: number;
   } | null;
 };
 
@@ -286,6 +287,7 @@ async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboar
           image: recipe.image ?? null,
           route: `/drinks/recipe/${recipe.slug}`,
           score: recipeScore,
+          remixesCount,
         };
       }
 
@@ -426,6 +428,7 @@ async function getTrendingDrinkCreators(limit = 25): Promise<TrendingCreatorRow[
           image: recipe.image ?? null,
           route: `/drinks/recipe/${recipe.slug}`,
           score: recipeScore,
+          remixesCount,
         };
       }
 
@@ -960,6 +963,7 @@ r.get("/trending", async (_req, res) => {
           views7d: Number(row.views7d ?? 0),
           views24h: Number(row.views24h ?? 0),
           remixes: Number(row.remixes ?? 0),
+          remixesCount: Number(row.remixes ?? 0),
           groceryAdds: Number(row.groceryAdds ?? 0),
         };
       })
@@ -1113,10 +1117,14 @@ r.get("/recommended", async (req, res) => {
     const rankedRows = rows
       .map((row) => {
         const creatorId = creatorBySlug.get(row.slug);
-        const followedBoost = creatorId && followedCreatorSet.has(creatorId) ? 8 : 0;
+        const baseScore = Number(row.score ?? 0);
+        const followedBoost = creatorId && followedCreatorSet.has(creatorId)
+          ? Math.min(6, Math.max(1.5, baseScore * 0.2))
+          : 0;
         return {
           ...row,
-          rankScore: Number(row.score ?? 0) + followedBoost,
+          rankScore: baseScore + followedBoost,
+          followedBoost,
           isFollowedCreator: followedBoost > 0,
         };
       })
@@ -1141,7 +1149,23 @@ r.get("/recommended", async (req, res) => {
       }
     }
 
-    const mapped = await Promise.all(scopedRows.map(async (row) => {
+    const recommendationPool = scopedRows.length > 0 ? scopedRows : rankedRows;
+
+    const remixesCountRows = recommendationPool.length > 0
+      ? await db
+          .select({ remixedFromSlug: drinkRecipes.remixedFromSlug, remixesCount: sql<number>`count(*)` })
+          .from(drinkRecipes)
+          .where(inArray(drinkRecipes.remixedFromSlug, recommendationPool.map((row) => row.slug)))
+          .groupBy(drinkRecipes.remixedFromSlug)
+      : [];
+
+    const remixesCountBySlug = new Map(
+      remixesCountRows
+        .filter((row): row is { remixedFromSlug: string; remixesCount: number } => Boolean(row.remixedFromSlug))
+        .map((row) => [row.remixedFromSlug, Number(row.remixesCount ?? 0)])
+    );
+
+    const mapped = await Promise.all(recommendationPool.map(async (row) => {
       const item = await resolveDrinkDetailsBySlug(row.slug);
       if (!item || recentSet.has(item.slug)) return null;
       return {
@@ -1151,6 +1175,8 @@ r.get("/recommended", async (req, res) => {
         route: item.route,
         sourceCategoryRoute: item.sourceCategoryRoute,
         source: item.source,
+        remixesCount: remixesCountBySlug.get(item.slug) ?? 0,
+        isFollowedCreator: row.isFollowedCreator,
       };
     }));
 
