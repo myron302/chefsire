@@ -71,7 +71,11 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
       return res.status(401).json({ error: "Unauthorized", code: "BAD_TOKEN" });
     }
 
-    req.user = { id: decoded.id, email: decoded.email, username: decoded.username };
+    req.user = {
+      id: String(decoded.id),
+      email: decoded.email,
+      username: decoded.username,
+    };
 
     // Check and expire nutrition trial if needed
     // Load full user data to check trial status
@@ -136,7 +140,11 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
 
     const decoded = jwt.verify(token, JWT_SECRET) as JwtPayload;
     if (decoded && decoded.id) {
-      req.user = { id: decoded.id, email: decoded.email, username: decoded.username };
+      req.user = {
+        id: String(decoded.id),
+        email: decoded.email,
+        username: decoded.username,
+      };
     }
 
     next();
