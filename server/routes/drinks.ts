@@ -897,6 +897,7 @@ r.get("/following-feed", requireAuth, async (req, res) => {
   }
 });
 
+
 r.get("/creators/leaderboard", async (req, res) => {
   try {
     if (!db) {
@@ -1162,6 +1163,141 @@ r.get("/creators/:userId/follow-status", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Error checking drink creator follow status:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch follow status" });
+  }
+});
+
+
+r.get("/creators/:userId", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const creatorId = String(req.params?.userId ?? "").trim();
+    if (!creatorId) {
+      return res.status(400).json({ ok: false, error: "userId is required" });
+    }
+
+    const profile = await db
+      .select({ id: users.id, username: users.username, avatar: users.avatar, followersCount: users.followersCount })
+      .from(users)
+      .where(eq(users.id, creatorId))
+      .limit(1);
+
+    if (!profile[0]) {
+      return res.status(404).json({ ok: false, error: "Creator not found" });
+    }
+
+    const recipes = await db
+      .select({
+        id: drinkRecipes.id,
+        slug: drinkRecipes.slug,
+        name: drinkRecipes.name,
+        image: drinkRecipes.image,
+        createdAt: drinkRecipes.createdAt,
+        remixedFromSlug: drinkRecipes.remixedFromSlug,
+      })
+      .from(drinkRecipes)
+      .where(eq(drinkRecipes.userId, creatorId))
+      .orderBy(desc(drinkRecipes.createdAt));
+
+    if (recipes.length === 0) {
+      return res.json({
+        ok: true,
+        userId: creatorId,
+        username: profile[0].username ?? null,
+        avatar: profile[0].avatar ?? null,
+        followerCount: Number(profile[0].followersCount ?? 0),
+        totalCreated: 0,
+        totalViews7d: 0,
+        totalRemixesReceived: 0,
+        totalGroceryAdds: 0,
+        topDrink: null,
+        recentItems: [],
+      });
+    }
+
+    const recipeSlugs = recipes.map((recipe) => recipe.slug);
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const eventRows = await db
+      .select({
+        slug: drinkEvents.slug,
+        views7d: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`,
+        groceryAdds7d: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'grocery_add' and ${drinkEvents.createdAt} > ${sevenDaysAgo})`,
+      })
+      .from(drinkEvents)
+      .where(and(inArray(drinkEvents.slug, recipeSlugs), gt(drinkEvents.createdAt, sevenDaysAgo)))
+      .groupBy(drinkEvents.slug);
+
+    const remixedByOthersRows = await db
+      .select({ remixedFromSlug: drinkRecipes.remixedFromSlug, remixesCount: sql<number>`count(*)` })
+      .from(drinkRecipes)
+      .where(inArray(drinkRecipes.remixedFromSlug, recipeSlugs))
+      .groupBy(drinkRecipes.remixedFromSlug);
+
+    const eventsBySlug = new Map(
+      eventRows.map((row) => [row.slug, { views7d: Number(row.views7d ?? 0), groceryAdds7d: Number(row.groceryAdds7d ?? 0) }])
+    );
+
+    const remixesBySlug = new Map(
+      remixedByOthersRows
+        .filter((row): row is { remixedFromSlug: string; remixesCount: number } => Boolean(row.remixedFromSlug))
+        .map((row) => [row.remixedFromSlug, Number(row.remixesCount ?? 0)])
+    );
+
+    const items = recipes.map((recipe) => {
+      const metrics = eventsBySlug.get(recipe.slug) ?? { views7d: 0, groceryAdds7d: 0 };
+      const remixesCount = remixesBySlug.get(recipe.slug) ?? 0;
+      const score = metrics.views7d + (remixesCount * 4) + (metrics.groceryAdds7d * 2);
+
+      return {
+        id: recipe.id,
+        slug: recipe.slug,
+        name: recipe.name,
+        image: recipe.image ?? null,
+        createdAt: recipe.createdAt,
+        remixedFromSlug: recipe.remixedFromSlug ?? null,
+        route: `/drinks/recipe/${recipe.slug}`,
+        views7d: metrics.views7d,
+        remixesCount,
+        groceryAdds7d: metrics.groceryAdds7d,
+        score,
+      };
+    });
+
+    const totalCreated = items.length;
+    const totalViews7d = items.reduce((sum, item) => sum + item.views7d, 0);
+    const totalRemixesReceived = items.reduce((sum, item) => sum + item.remixesCount, 0);
+    const totalGroceryAdds = items.reduce((sum, item) => sum + item.groceryAdds7d, 0);
+    const [topDrink] = [...items].sort((a, b) => b.score - a.score || b.views7d - a.views7d || b.remixesCount - a.remixesCount);
+
+    return res.json({
+      ok: true,
+      userId: creatorId,
+      username: profile[0].username ?? null,
+      avatar: profile[0].avatar ?? null,
+      followerCount: Number(profile[0].followersCount ?? 0),
+      totalCreated,
+      totalViews7d,
+      totalRemixesReceived,
+      totalGroceryAdds,
+      topDrink: topDrink
+        ? {
+          slug: topDrink.slug,
+          name: topDrink.name,
+          image: topDrink.image,
+          route: topDrink.route,
+          score: topDrink.score,
+        }
+        : null,
+      recentItems: items
+        .slice(0, 24)
+        .map(({ groceryAdds7d, score, ...item }) => item),
+    });
+  } catch (error) {
+    console.error("Error fetching public drink creator profile:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch creator profile" });
   }
 });
 
