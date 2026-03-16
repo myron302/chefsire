@@ -262,6 +262,9 @@ export default function DrinksPage() {
             <Link href="/drinks/following">
               <Button variant="outline">Following Feed</Button>
             </Link>
+            <Link href="/drinks/whats-new">
+              <Button variant="outline">What's New</Button>
+            </Link>
             <Link href="/drinks/creator-dashboard">
               <Button variant="outline">Creator Dashboard</Button>
             </Link>

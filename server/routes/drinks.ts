@@ -18,7 +18,7 @@ import {
 } from "@shared/schema";
 import { z } from "zod";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
-import { requireAuth } from "../middleware";
+import { optionalAuth, requireAuth } from "../middleware";
 
 const r = Router();
 
@@ -209,6 +209,25 @@ type CreatorActivityItem = {
   message: string;
   count?: number;
   uniqueActors?: number;
+};
+
+type WhatsNewFeedType =
+  | "remix"
+  | "trending_drink"
+  | "trending_creator"
+  | "followed_creator_post"
+  | "most_remixed_highlight";
+
+type WhatsNewFeedItem = {
+  type: WhatsNewFeedType;
+  createdAt: string;
+  title: string;
+  subtitle: string;
+  image: string | null;
+  route: string;
+  relatedUserId: string | null;
+  relatedUsername: string | null;
+  relatedDrinkSlug: string | null;
 };
 
 function toActivityDateKey(value: Date | null | undefined): string {
@@ -1313,6 +1332,207 @@ r.get("/following-feed", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Error loading following drinks feed:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch following drinks feed" });
+  }
+});
+
+r.get("/whats-new", optionalAuth, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const limitParam = Number(req.query?.limit);
+    const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 80)) : 40;
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const viewerId = req.user?.id ?? null;
+
+    const recentRemixRows = await db
+      .select({
+        slug: drinkRecipes.slug,
+        name: drinkRecipes.name,
+        image: drinkRecipes.image,
+        createdAt: drinkRecipes.createdAt,
+        remixedFromSlug: drinkRecipes.remixedFromSlug,
+        userId: drinkRecipes.userId,
+        username: users.username,
+      })
+      .from(drinkRecipes)
+      .leftJoin(users, eq(drinkRecipes.userId, users.id))
+      .where(sql`${drinkRecipes.remixedFromSlug} is not null`)
+      .orderBy(desc(drinkRecipes.createdAt))
+      .limit(20);
+
+    const trendingDrinkRows = await db
+      .select({
+        remixedFromSlug: drinkRecipes.remixedFromSlug,
+        remixesCount: sql<number>`count(*)`,
+        lastRemixAt: sql<Date>`max(${drinkRecipes.createdAt})`,
+      })
+      .from(drinkRecipes)
+      .where(and(sql`${drinkRecipes.remixedFromSlug} is not null`, gt(drinkRecipes.createdAt, sevenDaysAgo)))
+      .groupBy(drinkRecipes.remixedFromSlug)
+      .orderBy(desc(sql`count(*)`))
+      .limit(12);
+
+    const trendingCreators = await getTrendingDrinkCreators(8);
+    const mostRemixedRows = await db
+      .select({
+        remixedFromSlug: drinkRecipes.remixedFromSlug,
+        remixesCount: sql<number>`count(*)`,
+      })
+      .from(drinkRecipes)
+      .where(sql`${drinkRecipes.remixedFromSlug} is not null`)
+      .groupBy(drinkRecipes.remixedFromSlug)
+      .orderBy(desc(sql`count(*)`))
+      .limit(6);
+
+    let followedRows: Array<{
+      slug: string;
+      name: string;
+      image: string | null;
+      createdAt: Date;
+      userId: string | null;
+      username: string | null;
+    }> = [];
+
+    if (viewerId) {
+      const followedCreatorRows = await db
+        .select({ followingId: follows.followingId })
+        .from(follows)
+        .where(eq(follows.followerId, viewerId));
+
+      const followedCreatorIds = followedCreatorRows.map((row) => row.followingId).filter(Boolean);
+      if (followedCreatorIds.length > 0) {
+        followedRows = await db
+          .select({
+            slug: drinkRecipes.slug,
+            name: drinkRecipes.name,
+            image: drinkRecipes.image,
+            createdAt: drinkRecipes.createdAt,
+            userId: drinkRecipes.userId,
+            username: users.username,
+          })
+          .from(drinkRecipes)
+          .innerJoin(users, eq(drinkRecipes.userId, users.id))
+          .where(inArray(drinkRecipes.userId, followedCreatorIds))
+          .orderBy(desc(drinkRecipes.createdAt))
+          .limit(20);
+      }
+    }
+
+    const items: WhatsNewFeedItem[] = [];
+
+    for (const row of recentRemixRows) {
+      const sourceSlug = row.remixedFromSlug ?? null;
+      const canonicalSource = sourceSlug ? getCanonicalDrinkBySlug(sourceSlug) : null;
+      const sourceName = canonicalSource?.name ?? sourceSlug ?? "another drink";
+      items.push({
+        type: "remix",
+        createdAt: (row.createdAt ? new Date(row.createdAt) : new Date()).toISOString(),
+        title: `New remix of ${sourceName}`,
+        subtitle: row.username
+          ? `@${row.username} shared \"${row.name}\" as a remix.`
+          : `A community creator shared \"${row.name}\" as a remix.`,
+        image: row.image ?? canonicalSource?.image ?? null,
+        route: `/drinks/recipe/${row.slug}?community=1`,
+        relatedUserId: row.userId ?? null,
+        relatedUsername: row.username ?? null,
+        relatedDrinkSlug: sourceSlug,
+      });
+    }
+
+    for (const row of trendingDrinkRows) {
+      if (!row.remixedFromSlug) continue;
+      const canonicalDrink = getCanonicalDrinkBySlug(row.remixedFromSlug);
+      const drinkName = canonicalDrink?.name ?? row.remixedFromSlug;
+      items.push({
+        type: "trending_drink",
+        createdAt: (row.lastRemixAt ? new Date(row.lastRemixAt) : new Date()).toISOString(),
+        title: `${drinkName} is trending this week`,
+        subtitle: `${Number(row.remixesCount ?? 0).toLocaleString()} new remixes in the last 7 days.`,
+        image: canonicalDrink?.image ?? null,
+        route: canonicalDrink?.route ?? `/drinks/recipe/${row.remixedFromSlug}`,
+        relatedUserId: null,
+        relatedUsername: null,
+        relatedDrinkSlug: row.remixedFromSlug,
+      });
+    }
+
+    for (const [index, creator] of trendingCreators.entries()) {
+      items.push({
+        type: "trending_creator",
+        createdAt: new Date(Date.now() - (index * 5 * 60 * 1000)).toISOString(),
+        title: `${creator.username ? `@${creator.username}` : "A creator"} is trending`,
+        subtitle: `Trending creator this week with ${creator.totalRemixesReceived.toLocaleString()} remixes received.`,
+        image: creator.avatar ?? creator.topDrink?.image ?? null,
+        route: creator.publicRoute,
+        relatedUserId: creator.userId,
+        relatedUsername: creator.username ?? null,
+        relatedDrinkSlug: creator.topDrink?.slug ?? null,
+      });
+    }
+
+    for (const row of followedRows) {
+      if (!row.userId) continue;
+      items.push({
+        type: "followed_creator_post",
+        createdAt: (row.createdAt ? new Date(row.createdAt) : new Date()).toISOString(),
+        title: "A creator you follow posted a new drink",
+        subtitle: row.username
+          ? `@${row.username} published \"${row.name}\".`
+          : `A followed creator published \"${row.name}\".`,
+        image: row.image ?? null,
+        route: `/drinks/recipe/${row.slug}`,
+        relatedUserId: row.userId,
+        relatedUsername: row.username ?? null,
+        relatedDrinkSlug: row.slug,
+      });
+    }
+
+    for (const row of mostRemixedRows) {
+      if (!row.remixedFromSlug) continue;
+      const canonicalDrink = getCanonicalDrinkBySlug(row.remixedFromSlug);
+      const name = canonicalDrink?.name ?? row.remixedFromSlug;
+      items.push({
+        type: "most_remixed_highlight",
+        createdAt: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+        title: `${name} is one of the most remixed drinks`,
+        subtitle: `${Number(row.remixesCount ?? 0).toLocaleString()} total remixes so far.`,
+        image: canonicalDrink?.image ?? null,
+        route: "/drinks/most-remixed",
+        relatedUserId: null,
+        relatedUsername: null,
+        relatedDrinkSlug: row.remixedFromSlug,
+      });
+    }
+
+    const unique = new Set<string>();
+    const deduped = items.filter((item) => {
+      const key = `${item.type}:${item.route}:${item.relatedUserId ?? "none"}:${item.relatedDrinkSlug ?? "none"}`;
+      if (unique.has(key)) return false;
+      unique.add(key);
+      return true;
+    });
+
+    const mixed = deduped
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit);
+
+    return res.json({
+      ok: true,
+      count: mixed.length,
+      itemTypes: [
+        "remix",
+        "trending_drink",
+        "trending_creator",
+        "followed_creator_post",
+        "most_remixed_highlight",
+      ],
+      items: mixed,
+    });
+  } catch (error) {
+    console.error("Error loading drinks what's new feed:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch drinks what's new feed" });
   }
 });
 
