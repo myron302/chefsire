@@ -41,6 +41,14 @@ interface PublicCreatorMostRemixedDrinkItem {
   views7d?: number;
 }
 
+interface PublicCollection {
+  id: string;
+  name: string;
+  description?: string | null;
+  isPublic: boolean;
+  itemsCount: number;
+}
+
 interface PublicCreatorResponse {
   ok: boolean;
   userId: string;
@@ -120,6 +128,20 @@ export default function PublicDrinkCreatorPage() {
       if (!response.ok) {
         const message = await response.text();
         throw new Error(message || "Failed to load creator profile");
+      }
+      return response.json();
+    },
+    enabled: Boolean(creatorId),
+  });
+
+  const publicCollectionsQuery = useQuery<{ ok: boolean; collections: PublicCollection[] }>({
+    queryKey: ["/api/drinks/collections/public", creatorId],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/collections/public/${encodeURIComponent(creatorId)}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to load public collections");
       }
       return response.json();
     },
@@ -266,6 +288,41 @@ export default function PublicDrinkCreatorPage() {
             ))}
           </div>
         )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-semibold">Public Collections</h2>
+          <span className="text-sm text-muted-foreground">{publicCollectionsQuery.data?.collections?.length ?? 0} items</span>
+        </div>
+
+        {publicCollectionsQuery.isLoading ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">Loading public collections...</CardContent>
+          </Card>
+        ) : null}
+
+        {!publicCollectionsQuery.isLoading && (publicCollectionsQuery.data?.collections?.length ?? 0) === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">No public collections featured yet.</CardContent>
+          </Card>
+        ) : null}
+
+        {!publicCollectionsQuery.isLoading && (publicCollectionsQuery.data?.collections?.length ?? 0) > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {publicCollectionsQuery.data?.collections?.map((collection) => (
+              <Card key={collection.id}>
+                <CardContent className="p-4 space-y-2">
+                  <Link href={`/drinks/collections/${encodeURIComponent(collection.id)}`} className="font-medium underline underline-offset-2">
+                    {collection.name}
+                  </Link>
+                  {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
+                  <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : null}
       </section>
 
       <section className="space-y-3">

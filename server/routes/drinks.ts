@@ -10,9 +10,12 @@ import {
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
   insertDrinkSaveSchema,
+  drinkCollectionItems,
+  drinkCollections,
   drinkEvents,
   drinkRecipes,
   follows,
+  insertDrinkCollectionSchema,
   insertDrinkRecipeSchema,
   users,
 } from "@shared/schema";
@@ -140,6 +143,51 @@ async function resolveRemixChainNode(slug: string): Promise<RemixChainNode | nul
 }
 
 type RemixDiscoverySort = "recent" | "popular";
+
+
+const createDrinkCollectionItemBodySchema = z.object({
+  drinkSlug: z.string().trim().min(1).max(200).transform((value) => value.toLowerCase()),
+});
+
+const updateDrinkCollectionBodySchema = z.object({
+  name: z.string().trim().min(1).max(160).optional(),
+  description: z.string().trim().max(2000).nullable().optional(),
+  isPublic: z.boolean().optional(),
+}).refine((value) => value.name !== undefined || value.description !== undefined || value.isPublic !== undefined, {
+  message: "At least one field must be provided",
+});
+
+function normalizeCollectionDescription(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim();
+  return cleaned.length ? cleaned : null;
+}
+
+async function resolveCollectionWithItems(collection: typeof drinkCollections.$inferSelect) {
+  if (!db) return null;
+
+  const itemRows = await db
+    .select({
+      drinkSlug: drinkCollectionItems.drinkSlug,
+      addedAt: drinkCollectionItems.addedAt,
+    })
+    .from(drinkCollectionItems)
+    .where(eq(drinkCollectionItems.collectionId, collection.id));
+
+  const items = await Promise.all(
+    itemRows.map(async (row) => ({
+      drinkSlug: row.drinkSlug,
+      addedAt: row.addedAt,
+      drink: await resolveDrinkDetailsBySlug(row.drinkSlug),
+    }))
+  );
+
+  return {
+    ...collection,
+    itemsCount: itemRows.length,
+    items,
+  };
+}
 
 function normalizeRemixDiscoverySort(value: unknown): RemixDiscoverySort {
   if (typeof value !== "string") return "recent";
@@ -2293,6 +2341,208 @@ r.get("/search", async (req, res) => {
 function str(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
+
+// ========================================
+// DRINK COLLECTIONS
+// ========================================
+
+r.post("/collections", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const parsed = insertDrinkCollectionSchema.safeParse({
+      userId: req.user.id,
+      name: req.body?.name,
+      description: normalizeCollectionDescription(req.body?.description),
+      isPublic: Boolean(req.body?.isPublic),
+    });
+
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid collection payload", details: parsed.error.flatten() });
+    }
+
+    const createdRows = await db.insert(drinkCollections).values(parsed.data).returning();
+    const created = createdRows[0];
+    return res.status(201).json({ ok: true, collection: { ...created, itemsCount: 0, items: [] } });
+  } catch (error) {
+    console.error("Error creating drink collection:", error);
+    return res.status(500).json({ ok: false, error: "Failed to create collection" });
+  }
+});
+
+r.get("/collections/mine", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const rows = await db
+      .select()
+      .from(drinkCollections)
+      .where(eq(drinkCollections.userId, req.user.id))
+      .orderBy(desc(drinkCollections.updatedAt));
+
+    const collections = await Promise.all(rows.map((row) => resolveCollectionWithItems(row)));
+    return res.json({ ok: true, collections: collections.filter(Boolean) });
+  } catch (error) {
+    console.error("Error loading user collections:", error);
+    return res.status(500).json({ ok: false, error: "Failed to load collections" });
+  }
+});
+
+r.get("/collections/public/:userId", async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const rows = await db
+      .select()
+      .from(drinkCollections)
+      .where(and(eq(drinkCollections.userId, req.params.userId), eq(drinkCollections.isPublic, true)))
+      .orderBy(desc(drinkCollections.updatedAt));
+
+    const collections = await Promise.all(rows.map((row) => resolveCollectionWithItems(row)));
+    return res.json({ ok: true, collections: collections.filter(Boolean) });
+  } catch (error) {
+    console.error("Error loading public collections:", error);
+    return res.status(500).json({ ok: false, error: "Failed to load public collections" });
+  }
+});
+
+r.get("/collections/:id", optionalAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const collection = rows[0];
+
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+
+    const isOwner = req.user?.id && req.user.id === collection.userId;
+    if (!collection.isPublic && !isOwner) {
+      return res.status(403).json({ ok: false, error: "Collection is private" });
+    }
+
+    const hydrated = await resolveCollectionWithItems(collection);
+    return res.json({ ok: true, collection: hydrated });
+  } catch (error) {
+    console.error("Error loading collection:", error);
+    return res.status(500).json({ ok: false, error: "Failed to load collection" });
+  }
+});
+
+r.patch("/collections/:id", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const existing = existingRows[0];
+    if (!existing) return res.status(404).json({ ok: false, error: "Collection not found" });
+    if (existing.userId !== req.user.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    const parsed = updateDrinkCollectionBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid collection update", details: parsed.error.flatten() });
+    }
+
+    const updatedRows = await db
+      .update(drinkCollections)
+      .set({
+        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+        ...(parsed.data.description !== undefined ? { description: normalizeCollectionDescription(parsed.data.description) } : {}),
+        ...(parsed.data.isPublic !== undefined ? { isPublic: parsed.data.isPublic } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkCollections.id, req.params.id))
+      .returning();
+
+    const hydrated = await resolveCollectionWithItems(updatedRows[0]);
+    return res.json({ ok: true, collection: hydrated });
+  } catch (error) {
+    console.error("Error updating collection:", error);
+    return res.status(500).json({ ok: false, error: "Failed to update collection" });
+  }
+});
+
+r.delete("/collections/:id", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const existing = existingRows[0];
+    if (!existing) return res.status(404).json({ ok: false, error: "Collection not found" });
+    if (existing.userId !== req.user.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    await db.delete(drinkCollections).where(eq(drinkCollections.id, req.params.id));
+    return res.json({ ok: true, message: "Collection deleted" });
+  } catch (error) {
+    console.error("Error deleting collection:", error);
+    return res.status(500).json({ ok: false, error: "Failed to delete collection" });
+  }
+});
+
+r.post("/collections/:id/items", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const existing = existingRows[0];
+    if (!existing) return res.status(404).json({ ok: false, error: "Collection not found" });
+    if (existing.userId !== req.user.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    const parsed = createDrinkCollectionItemBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid collection item payload", details: parsed.error.flatten() });
+    }
+
+    const drink = await resolveDrinkDetailsBySlug(parsed.data.drinkSlug);
+    if (!drink) return res.status(404).json({ ok: false, error: "Drink slug not found" });
+
+    await db
+      .insert(drinkCollectionItems)
+      .values({ collectionId: req.params.id, drinkSlug: parsed.data.drinkSlug })
+      .onConflictDoNothing();
+
+    await db
+      .update(drinkCollections)
+      .set({ updatedAt: new Date() })
+      .where(eq(drinkCollections.id, req.params.id));
+
+    const refreshedRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const hydrated = await resolveCollectionWithItems(refreshedRows[0]);
+    return res.status(201).json({ ok: true, collection: hydrated });
+  } catch (error) {
+    console.error("Error adding item to collection:", error);
+    return res.status(500).json({ ok: false, error: "Failed to add item" });
+  }
+});
+
+r.delete("/collections/:id/items/:slug", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const existing = existingRows[0];
+    if (!existing) return res.status(404).json({ ok: false, error: "Collection not found" });
+    if (existing.userId !== req.user.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    const slug = normalizeSlug(req.params.slug);
+    if (!slug) return res.status(400).json({ ok: false, error: "Invalid slug" });
+
+    await db
+      .delete(drinkCollectionItems)
+      .where(and(eq(drinkCollectionItems.collectionId, req.params.id), eq(drinkCollectionItems.drinkSlug, slug)));
+
+    await db
+      .update(drinkCollections)
+      .set({ updatedAt: new Date() })
+      .where(eq(drinkCollections.id, req.params.id));
+
+    const refreshedRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const hydrated = await resolveCollectionWithItems(refreshedRows[0]);
+    return res.json({ ok: true, collection: hydrated });
+  } catch (error) {
+    console.error("Error removing collection item:", error);
+    return res.status(500).json({ ok: false, error: "Failed to remove item" });
+  }
+});
 
 // ========================================
 // CUSTOM DRINKS API ROUTES (NEW)
