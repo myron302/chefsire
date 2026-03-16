@@ -1129,8 +1129,17 @@ r.get("/remixes", async (req, res) => {
 
     return res.json({ ok: true, sort, count: items.length, limit, offset, items });
   } catch (error) {
-    console.error("Error fetching remix discovery feed:", error);
-    return res.status(500).json({ ok: false, error: "Failed to fetch remix discovery feed" });
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[drinks/remixes] Error fetching remix discovery feed:", {
+      sort: normalizeRemixDiscoverySort(req.query?.sort),
+      query: req.query,
+      error,
+      message,
+    });
+    return res.status(500).json({
+      ok: false,
+      error: process.env.NODE_ENV === "production" ? "Failed to fetch remix discovery feed" : `Failed to fetch remix discovery feed: ${message}`,
+    });
   }
 });
 
@@ -1711,7 +1720,10 @@ r.get("/following-feed", requireAuth, async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
 
-    const viewerId = req.user.id;
+    const viewerId = String(req.user.id ?? "").trim();
+    if (!viewerId) {
+      return res.status(401).json({ ok: false, error: "Unauthorized", code: "NO_USER" });
+    }
     const followedCreatorRows = await db
       .select({ followingId: follows.followingId })
       .from(follows)
@@ -1806,7 +1818,7 @@ r.get("/following-feed", requireAuth, async (req, res) => {
 
     return res.json({ ok: true, followingCount: followedCreatorIds.length, items });
   } catch (error) {
-    console.error("Error loading following drinks feed:", error);
+    console.error("[drinks/following-feed] Error loading following drinks feed:", { viewerId: req.user?.id, error });
     const message = error instanceof Error ? error.message : String(error);
     return res.status(500).json({ ok: false, error: process.env.NODE_ENV === "production" ? "Failed to fetch following drinks feed" : `Failed to fetch following drinks feed: ${message}` });
   }
@@ -2066,7 +2078,8 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "userId is required" });
     }
 
-    if (requestedUserId !== req.user.id) {
+    const authUserId = String(req.user.id ?? "").trim();
+    if (!authUserId || requestedUserId !== authUserId) {
       return res.status(403).json({ ok: false, error: "Not authorized" });
     }
 
@@ -2214,7 +2227,7 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
       items,
     });
   } catch (error) {
-    console.error("Error fetching creator drink metrics:", error);
+    console.error("[drinks/creator/:userId] Error fetching creator drink metrics:", { requestedUserId: req.params?.userId, authUserId: req.user?.id, error });
     const message = error instanceof Error ? error.message : String(error);
     return res.status(500).json({ ok: false, error: process.env.NODE_ENV === "production" ? "Failed to fetch creator drink metrics" : `Failed to fetch creator drink metrics: ${message}` });
   }
@@ -2233,7 +2246,8 @@ r.get("/creator/:userId/activity", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "userId is required" });
     }
 
-    if (requestedUserId !== req.user.id) {
+    const authUserId = String(req.user.id ?? "").trim();
+    if (!authUserId || requestedUserId !== authUserId) {
       return res.status(403).json({ ok: false, error: "Not authorized" });
     }
 
