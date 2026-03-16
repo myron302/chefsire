@@ -373,6 +373,7 @@ export default function SearchAutocomplete() {
                       <button
                         key={user.id}
                         onClick={() => handleResultClick(user)}
+                        onMouseEnter={() => setSelectedIndex(globalIndex)}
                         className={cn(
                           "w-full px-3 py-2 flex items-center space-x-3 hover:bg-muted transition-colors text-left",
                           selectedIndex === globalIndex && "bg-muted"
@@ -415,6 +416,7 @@ export default function SearchAutocomplete() {
                       <button
                         key={String(recipe.id)}
                         onClick={() => handleResultClick(recipe)}
+                        onMouseEnter={() => setSelectedIndex(globalIndex)}
                         className={cn(
                           "w-full px-3 py-2 flex items-center space-x-3 hover:bg-muted transition-colors text-left",
                           selectedIndex === globalIndex && "bg-muted"
@@ -456,6 +458,7 @@ export default function SearchAutocomplete() {
                       <button
                         key={review.id}
                         onClick={() => handleResultClick(review)}
+                        onMouseEnter={() => setSelectedIndex(globalIndex)}
                         className={cn(
                           "w-full px-3 py-2 flex items-center space-x-3 hover:bg-muted transition-colors text-left",
                           selectedIndex === globalIndex && "bg-muted"
@@ -489,6 +492,7 @@ export default function SearchAutocomplete() {
                       <button
                         key={`${drink.id}-${index}`}
                         onClick={() => handleResultClick(drink)}
+                        onMouseEnter={() => setSelectedIndex(globalIndex)}
                         className={cn(
                           "w-full px-3 py-2 flex items-center space-x-3 hover:bg-muted transition-colors text-left",
                           selectedIndex === globalIndex && "bg-muted"
@@ -540,6 +544,7 @@ export default function SearchAutocomplete() {
                       <button
                         key={pf.id}
                         onClick={() => handleResultClick(pf)}
+                        onMouseEnter={() => setSelectedIndex(globalIndex)}
                         className={cn(
                           "w-full px-3 py-2 flex items-center space-x-3 hover:bg-muted transition-colors text-left",
                           selectedIndex === globalIndex && "bg-muted"
@@ -562,6 +567,22 @@ export default function SearchAutocomplete() {
               No results found for "{searchText}"
             </div>
           )}
+          {/* Footer: keyboard hint */}
+          <div className="border-t border-border px-3 py-2 flex items-center justify-between bg-muted/30">
+            <span className="text-[10px] text-muted-foreground">
+              <kbd className="font-sans border border-border px-1 rounded bg-background">↑</kbd>{" "}
+              <kbd className="font-sans border border-border px-1 rounded bg-background">↓</kbd>{" "}
+              to navigate &nbsp;·&nbsp;{" "}
+              <kbd className="font-sans border border-border px-1 rounded bg-background">Enter</kbd>{" "}
+              to select &nbsp;·&nbsp;{" "}
+              <kbd className="font-sans border border-border px-1 rounded bg-background">Esc</kbd>{" "}
+              to close
+            </span>
+            <div className="flex gap-2 text-[10px] text-muted-foreground">
+              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-400 inline-block" /> Recipes</span>
+              <span className="flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-blue-400 inline-block" /> Drinks</span>
+            </div>
+          </div>
         </div>
       )}
     </div>
