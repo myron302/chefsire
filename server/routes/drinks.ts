@@ -139,6 +139,14 @@ async function resolveRemixChainNode(slug: string): Promise<RemixChainNode | nul
   return toRemixChainNodeFromUserRecipe(userRecipe);
 }
 
+type RemixDiscoverySort = "recent" | "popular";
+
+function normalizeRemixDiscoverySort(value: unknown): RemixDiscoverySort {
+  if (typeof value !== "string") return "recent";
+  const normalized = value.trim().toLowerCase();
+  return normalized === "popular" ? "popular" : "recent";
+}
+
 type CreatorLeaderboardRow = {
   userId: string;
   username: string | null;
@@ -347,6 +355,94 @@ r.post("/submit", requireAuth, async (req, res) => {
       ok: false,
       error: process.env.NODE_ENV === "production" ? "Failed to submit drink recipe" : `Failed to submit drink recipe: ${errorMessage}`,
     });
+  }
+});
+
+// Fetch remixes linked to a source canonical drink slug
+r.get("/remixes", async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const sort = normalizeRemixDiscoverySort(req.query?.sort);
+    const limitValue = Number(req.query?.limit);
+    const limit = Number.isFinite(limitValue) ? Math.max(1, Math.min(limitValue, 60)) : 30;
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    const remixRows = await db
+      .select({
+        id: drinkRecipes.id,
+        slug: drinkRecipes.slug,
+        name: drinkRecipes.name,
+        image: drinkRecipes.image,
+        createdAt: drinkRecipes.createdAt,
+        userId: drinkRecipes.userId,
+        creatorUsername: users.username,
+        creatorAvatar: users.avatar,
+        remixedFromSlug: drinkRecipes.remixedFromSlug,
+        views7d: sql<number>`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`,
+      })
+      .from(drinkRecipes)
+      .leftJoin(users, eq(drinkRecipes.userId, users.id))
+      .leftJoin(drinkEvents, eq(drinkEvents.slug, drinkRecipes.slug))
+      .where(sql`${drinkRecipes.remixedFromSlug} is not null`)
+      .groupBy(
+        drinkRecipes.id,
+        drinkRecipes.slug,
+        drinkRecipes.name,
+        drinkRecipes.image,
+        drinkRecipes.createdAt,
+        drinkRecipes.userId,
+        users.username,
+        users.avatar,
+        drinkRecipes.remixedFromSlug
+      )
+      .orderBy(sort === "popular"
+        ? [desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`), desc(drinkRecipes.createdAt)]
+        : [desc(drinkRecipes.createdAt)])
+      .limit(limit);
+    const remixSlugs = remixRows.map((row) => row.slug);
+    const remixesCountRows = remixSlugs.length
+      ? await db
+          .select({ remixedFromSlug: drinkRecipes.remixedFromSlug, remixesCount: sql<number>`count(*)` })
+          .from(drinkRecipes)
+          .where(inArray(drinkRecipes.remixedFromSlug, remixSlugs))
+          .groupBy(drinkRecipes.remixedFromSlug)
+      : [];
+
+    const remixesCountBySlug = new Map(
+      remixesCountRows
+        .filter((row): row is { remixedFromSlug: string; remixesCount: number } => Boolean(row.remixedFromSlug))
+        .map((row) => [row.remixedFromSlug, Number(row.remixesCount ?? 0)])
+    );
+
+    const items = remixRows.map((entry) => {
+      const sourceSlug = entry.remixedFromSlug ?? null;
+      const canonicalSource = sourceSlug ? getCanonicalDrinkBySlug(sourceSlug) : null;
+      const sourceRoute = canonicalSource?.route ?? (sourceSlug ? `/drinks/recipe/${sourceSlug}` : null);
+
+      return {
+        id: entry.id,
+        slug: entry.slug,
+        name: entry.name,
+        image: entry.image ?? null,
+        createdAt: entry.createdAt,
+        userId: entry.userId ?? null,
+        creatorUsername: entry.creatorUsername ?? null,
+        creatorAvatar: entry.creatorAvatar ?? null,
+        remixedFromSlug: sourceSlug,
+        route: `/drinks/recipe/${entry.slug}?community=1`,
+        sourceRoute,
+        views7d: Number(entry.views7d ?? 0),
+        remixesCount: remixesCountBySlug.get(entry.slug) ?? 0,
+      };
+    });
+
+    return res.json({ ok: true, sort, count: items.length, items });
+  } catch (error) {
+    console.error("Error fetching remix discovery feed:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch remix discovery feed" });
   }
 });
 
