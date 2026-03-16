@@ -201,12 +201,21 @@ export const comments = pgTable(
 );
 
 
-export const follows = pgTable("follows", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  followerId: varchar("follower_id").references(() => users.id).notNull(),
-  followingId: varchar("following_id").references(() => users.id).notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+export const follows = pgTable(
+  "follows",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    followerId: varchar("follower_id").references(() => users.id).notNull(),
+    followingId: varchar("following_id").references(() => users.id).notNull(),
+    createdAt: timestamp("created_at").defaultNow(),
+  },
+  (table) => ({
+    followerIdx: index("follows_follower_id_idx").on(table.followerId),
+    followingIdx: index("follows_following_id_idx").on(table.followingId),
+    followerCreatedAtIdx: index("follows_follower_created_at_idx").on(table.followerId, table.createdAt),
+    followingCreatedAtIdx: index("follows_following_created_at_idx").on(table.followingId, table.createdAt),
+  })
+);
 
 export const followRequests = pgTable("follow_requests", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -922,6 +931,9 @@ export const drinkEvents = pgTable(
     slugIdx: index("drink_events_slug_idx").on(table.slug),
     createdAtIdx: index("drink_events_created_at_idx").on(table.createdAt),
     eventTypeIdx: index("drink_events_event_type_idx").on(table.eventType),
+    eventTypeCreatedAtIdx: index("drink_events_event_type_created_at_idx").on(table.eventType, table.createdAt),
+    slugCreatedAtIdx: index("drink_events_slug_created_at_idx").on(table.slug, table.createdAt),
+    slugEventTypeCreatedAtIdx: index("drink_events_slug_event_type_created_at_idx").on(table.slug, table.eventType, table.createdAt),
   })
 );
 
@@ -974,6 +986,8 @@ export const drinkRecipes = pgTable(
     challengeSlugIdx: index("drink_recipes_challenge_slug_idx").on(table.challengeSlug),
     sourceIdx: index("drink_recipes_source_idx").on(table.source),
     userIdx: index("drink_recipes_user_idx").on(table.userId),
+    userCreatedAtIdx: index("drink_recipes_user_created_at_idx").on(table.userId, table.createdAt),
+    remixedFromSlugCreatedAtIdx: index("drink_recipes_remixed_from_slug_created_at_idx").on(table.remixedFromSlug, table.createdAt),
   })
 );
 
@@ -991,6 +1005,8 @@ export const drinkCollections = pgTable(
   (table) => ({
     userIdx: index("drink_collections_user_idx").on(table.userId),
     publicIdx: index("drink_collections_public_idx").on(table.isPublic),
+    userUpdatedAtIdx: index("drink_collections_user_updated_at_idx").on(table.userId, table.updatedAt),
+    publicUpdatedAtIdx: index("drink_collections_public_updated_at_idx").on(table.isPublic, table.updatedAt),
   })
 );
 

@@ -30,6 +30,27 @@ const r = Router();
 
 type EventType = "view" | "remix" | "grocery_add";
 
+type DrinkDetails = {
+  slug: string;
+  name: string;
+  image: string | null;
+  route: string;
+  sourceCategoryRoute: string;
+  source: "chefsire";
+  category: string;
+  subcategory: string | null;
+};
+
+type DiscoveryDrinkCard = {
+  slug: string;
+  name: string;
+  image: string | null;
+  route: string;
+  creatorUsername: string | null;
+  remixesCount: number;
+  views7d: number;
+};
+
 const TRACKABLE_DRINK_EVENTS = new Set<EventType>(["view", "remix", "grocery_add"]);
 
 function slugifyDrinkRecipeName(value: string): string {
@@ -54,7 +75,45 @@ async function getUserRecipeBySlug(slug: string) {
   return rows[0] ?? null;
 }
 
-async function resolveDrinkDetailsBySlug(slug: string) {
+function toDrinkRoute(slug: string, community = false): string {
+  return community ? `/drinks/recipe/${slug}?community=1` : `/drinks/recipe/${slug}`;
+}
+
+function toDiscoveryDrinkCard(input: {
+  slug: string;
+  name: string;
+  image?: string | null;
+  route?: string;
+  creatorUsername?: string | null;
+  remixesCount?: number;
+  views7d?: number;
+}): DiscoveryDrinkCard {
+  return {
+    slug: input.slug,
+    name: input.name,
+    image: input.image ?? null,
+    route: input.route ?? toDrinkRoute(input.slug),
+    creatorUsername: input.creatorUsername ?? null,
+    remixesCount: Number(input.remixesCount ?? 0),
+    views7d: Number(input.views7d ?? 0),
+  };
+}
+
+function parseLimitOffset(
+  query: Record<string, unknown>,
+  defaults: { limit: number; maxLimit: number; offset?: number },
+) {
+  const limitValue = Number(query.limit);
+  const limit = Number.isFinite(limitValue)
+    ? Math.max(1, Math.min(limitValue, defaults.maxLimit))
+    : defaults.limit;
+
+  const offsetValue = Number(query.offset);
+  const offset = Number.isFinite(offsetValue) ? Math.max(0, offsetValue) : (defaults.offset ?? 0);
+  return { limit, offset };
+}
+
+async function resolveDrinkDetailsBySlug(slug: string): Promise<DrinkDetails | null> {
   const canonicalRecipe = getCanonicalDrinkBySlug(slug);
   if (canonicalRecipe) {
     return {
@@ -82,6 +141,60 @@ async function resolveDrinkDetailsBySlug(slug: string) {
     category: userRecipe.category,
     subcategory: userRecipe.subcategory ?? null,
   };
+}
+
+async function resolveDrinkDetailsMapBySlugs(slugs: string[]): Promise<Map<string, DrinkDetails>> {
+  const uniqueSlugs = [...new Set(slugs.filter(Boolean))];
+  if (uniqueSlugs.length === 0) return new Map();
+
+  const detailsBySlug = new Map<string, DrinkDetails>();
+  const unresolved: string[] = [];
+
+  for (const slug of uniqueSlugs) {
+    const canonical = getCanonicalDrinkBySlug(slug);
+    if (canonical) {
+      detailsBySlug.set(slug, {
+        slug: canonical.slug,
+        name: canonical.name,
+        image: canonical.image ?? null,
+        route: canonical.route,
+        sourceCategoryRoute: canonical.sourceRoute,
+        source: "chefsire",
+        category: canonical.sourceRoute.replace("/drinks/", "").split("/")[0] ?? "",
+        subcategory: canonical.sourceRoute.replace("/drinks/", "").split("/")[1] ?? null,
+      });
+    } else {
+      unresolved.push(slug);
+    }
+  }
+
+  if (!db || unresolved.length === 0) return detailsBySlug;
+
+  const userRecipes = await db
+    .select({
+      slug: drinkRecipes.slug,
+      name: drinkRecipes.name,
+      image: drinkRecipes.image,
+      category: drinkRecipes.category,
+      subcategory: drinkRecipes.subcategory,
+    })
+    .from(drinkRecipes)
+    .where(inArray(drinkRecipes.slug, unresolved));
+
+  for (const recipe of userRecipes) {
+    detailsBySlug.set(recipe.slug, {
+      slug: recipe.slug,
+      name: recipe.name,
+      image: recipe.image ?? null,
+      route: toDrinkRoute(recipe.slug),
+      sourceCategoryRoute: `/drinks/${recipe.category}${recipe.subcategory ? `/${recipe.subcategory}` : ""}`,
+      source: "chefsire",
+      category: recipe.category,
+      subcategory: recipe.subcategory ?? null,
+    });
+  }
+
+  return detailsBySlug;
 }
 
 type RemixChainNode = {
@@ -177,13 +290,13 @@ async function resolveCollectionWithItems(collection: typeof drinkCollections.$i
     .from(drinkCollectionItems)
     .where(eq(drinkCollectionItems.collectionId, collection.id));
 
-  const items = await Promise.all(
-    itemRows.map(async (row) => ({
-      drinkSlug: row.drinkSlug,
-      addedAt: row.addedAt,
-      drink: await resolveDrinkDetailsBySlug(row.drinkSlug),
-    }))
-  );
+  const detailsBySlug = await resolveDrinkDetailsMapBySlugs(itemRows.map((row) => row.drinkSlug));
+
+  const items = itemRows.map((row) => ({
+    drinkSlug: row.drinkSlug,
+    addedAt: row.addedAt,
+    drink: detailsBySlug.get(row.drinkSlug) ?? null,
+  }));
 
   return {
     ...collection,
@@ -442,7 +555,7 @@ async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboar
           slug: recipe.slug,
           name: recipe.name,
           image: recipe.image ?? null,
-          route: `/drinks/recipe/${recipe.slug}`,
+          route: toDrinkRoute(recipe.slug),
           score: recipeScore,
           remixesCount,
         };
@@ -735,6 +848,8 @@ r.get("/challenges/:slug/submissions", async (req, res) => {
     const challenge = challengeRows[0];
     if (!challenge) return res.status(404).json({ ok: false, error: "Challenge not found" });
 
+    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 50, maxLimit: 100 });
+
     const rows = await db
       .select({
         id: drinkChallengeSubmissions.id,
@@ -749,9 +864,12 @@ r.get("/challenges/:slug/submissions", async (req, res) => {
       .leftJoin(users, eq(users.id, drinkChallengeSubmissions.userId))
       .where(eq(drinkChallengeSubmissions.challengeId, challenge.id))
       .orderBy(desc(drinkChallengeSubmissions.createdAt))
-      .limit(50);
+      .limit(limit)
+      .offset(offset);
 
-    const submissions = await Promise.all(rows.map(async (row) => ({
+    const detailsBySlug = await resolveDrinkDetailsMapBySlugs(rows.map((row) => row.drinkSlug));
+
+    const submissions = rows.map((row) => ({
       id: row.id,
       challengeId: row.challengeId,
       userId: row.userId,
@@ -759,10 +877,17 @@ r.get("/challenges/:slug/submissions", async (req, res) => {
       createdAt: row.createdAt,
       creatorUsername: row.username ?? null,
       creatorAvatar: row.avatar ?? null,
-      drink: await resolveDrinkDetailsBySlug(row.drinkSlug),
-    })));
+      drink: detailsBySlug.get(row.drinkSlug) ?? null,
+    }));
 
-    return res.json({ ok: true, challenge: { ...challenge, isActive: challengeIsActiveNow(challenge) }, count: submissions.length, submissions });
+    return res.json({
+      ok: true,
+      challenge: { ...challenge, isActive: challengeIsActiveNow(challenge) },
+      count: submissions.length,
+      limit,
+      offset,
+      submissions,
+    });
   } catch (error) {
     console.error("Error loading challenge submissions:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch challenge submissions" });
@@ -929,8 +1054,7 @@ r.get("/remixes", async (req, res) => {
     }
 
     const sort = normalizeRemixDiscoverySort(req.query?.sort);
-    const limitValue = Number(req.query?.limit);
-    const limit = Number.isFinite(limitValue) ? Math.max(1, Math.min(limitValue, 60)) : 30;
+    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 30, maxLimit: 60 });
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     const remixRows = await db
@@ -964,7 +1088,8 @@ r.get("/remixes", async (req, res) => {
       .orderBy(sort === "popular"
         ? [desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`), desc(drinkRecipes.createdAt)]
         : [desc(drinkRecipes.createdAt)])
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
     const remixSlugs = remixRows.map((row) => row.slug);
     const remixesCountRows = remixSlugs.length
       ? await db
@@ -995,14 +1120,14 @@ r.get("/remixes", async (req, res) => {
         creatorUsername: entry.creatorUsername ?? null,
         creatorAvatar: entry.creatorAvatar ?? null,
         remixedFromSlug: sourceSlug,
-        route: `/drinks/recipe/${entry.slug}?community=1`,
+        route: toDrinkRoute(entry.slug, true),
         sourceRoute,
         views7d: Number(entry.views7d ?? 0),
         remixesCount: remixesCountBySlug.get(entry.slug) ?? 0,
       };
     });
 
-    return res.json({ ok: true, sort, count: items.length, items });
+    return res.json({ ok: true, sort, count: items.length, limit, offset, items });
   } catch (error) {
     console.error("Error fetching remix discovery feed:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch remix discovery feed" });
@@ -1016,8 +1141,7 @@ r.get("/most-remixed", async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
 
-    const limitValue = Number(req.query?.limit);
-    const limit = Number.isFinite(limitValue) ? Math.max(1, Math.min(limitValue, 100)) : 24;
+    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 24, maxLimit: 100 });
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
     const remixAggregateRows = await db
@@ -1085,7 +1209,7 @@ r.get("/most-remixed", async (req, res) => {
         };
       })
       .sort(resolveMostRemixedTieBreaker)
-      .slice(0, limit);
+      .slice(offset, offset + limit);
 
     return res.json({
       ok: true,
@@ -1096,9 +1220,11 @@ r.get("/most-remixed", async (req, res) => {
         image: item.image,
         route: item.route,
         sourceCategoryRoute: item.sourceCategoryRoute,
-        remixCount: item.remixCount,
+        remixesCount: item.remixCount,
         views7d: item.views7d,
       })),
+      limit,
+      offset,
     });
   } catch (error) {
     console.error("Error fetching most remixed drinks:", error);
@@ -1447,6 +1573,7 @@ r.get("/trending/by-category", async (req, res) => {
 // Recommended canonical drinks based on recently viewed slugs
 r.get("/recommended", async (req, res) => {
   try {
+    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 8, maxLimit: 24 });
     const recentFromQuery = typeof req.query?.recent === "string" ? req.query.recent : "";
     const recentFromBody = Array.isArray(req.body?.recent)
       ? req.body.recent.join(",")
@@ -1476,7 +1603,9 @@ r.get("/recommended", async (req, res) => {
       })
       .from(drinkEvents)
       .where(and(eq(drinkEvents.eventType, "view"), gt(drinkEvents.createdAt, sevenDaysAgo)))
-      .groupBy(drinkEvents.slug);
+      .groupBy(drinkEvents.slug)
+      .orderBy(desc(sql<number>`sum(case when ${drinkEvents.createdAt} >= ${oneDayAgo} then 2 else 1 end)`), desc(sql<number>`count(*)`))
+      .limit(300);
 
     const viewerId = resolveEngagementUserId(req);
     const followedCreatorIds = viewerId
@@ -1515,26 +1644,25 @@ r.get("/recommended", async (req, res) => {
       })
       .sort((a, b) => b.rankScore - a.rankScore || Number(b.score ?? 0) - Number(a.score ?? 0) || Number(b.views7d ?? 0) - Number(a.views7d ?? 0));
 
-    const recentDetails = await Promise.all(recentSlugs.map((slug) => resolveDrinkDetailsBySlug(slug)));
+    const detailsBySlug = await resolveDrinkDetailsMapBySlugs([
+      ...recentSlugs,
+      ...rankedRows.map((row) => row.slug),
+    ]);
+
     const recentCategoryRoutes = new Set(
-      recentDetails
-        .map((entry) => entry?.sourceCategoryRoute)
+      recentSlugs
+        .map((slug) => detailsBySlug.get(slug)?.sourceCategoryRoute)
         .filter((route): route is string => Boolean(route))
     );
 
-    const scopedRows: typeof rankedRows = [];
-    for (const row of rankedRows) {
-      if (recentCategoryRoutes.size === 0) {
-        scopedRows.push(row);
-        continue;
-      }
-      const details = await resolveDrinkDetailsBySlug(row.slug);
-      if (details && recentCategoryRoutes.has(details.sourceCategoryRoute)) {
-        scopedRows.push(row);
-      }
-    }
+    const scopedRows: typeof rankedRows = recentCategoryRoutes.size === 0
+      ? rankedRows
+      : rankedRows.filter((row) => {
+          const details = detailsBySlug.get(row.slug);
+          return Boolean(details && recentCategoryRoutes.has(details.sourceCategoryRoute));
+        });
 
-    const recommendationPool = scopedRows.length > 0 ? scopedRows : rankedRows;
+    const recommendationPool = (scopedRows.length > 0 ? scopedRows : rankedRows).slice(0, 240);
 
     const remixesCountRows = recommendationPool.length > 0
       ? await db
@@ -1550,24 +1678,27 @@ r.get("/recommended", async (req, res) => {
         .map((row) => [row.remixedFromSlug, Number(row.remixesCount ?? 0)])
     );
 
-    const mapped = await Promise.all(recommendationPool.map(async (row) => {
-      const item = await resolveDrinkDetailsBySlug(row.slug);
+    const mapped = recommendationPool.map((row) => {
+      const item = detailsBySlug.get(row.slug);
       if (!item || recentSet.has(item.slug)) return null;
       return {
-        slug: item.slug,
-        name: item.name,
-        image: item.image,
-        route: item.route,
+        ...toDiscoveryDrinkCard({
+          slug: item.slug,
+          name: item.name,
+          image: item.image,
+          route: item.route,
+          remixesCount: remixesCountBySlug.get(item.slug) ?? 0,
+          views7d: Number(row.views7d ?? 0),
+        }),
         sourceCategoryRoute: item.sourceCategoryRoute,
         source: item.source,
-        remixesCount: remixesCountBySlug.get(item.slug) ?? 0,
         isFollowedCreator: row.isFollowedCreator,
       };
-    }));
+    });
 
-    const items = mapped.filter(Boolean).slice(0, 8);
+    const items = mapped.filter((item): item is NonNullable<typeof item> => Boolean(item)).slice(offset, offset + limit);
 
-    return res.json({ ok: true, items });
+    return res.json({ ok: true, limit, offset, items });
   } catch (error: any) {
     console.error("Error getting recommended drinks:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch recommended drinks" });
@@ -1682,8 +1813,7 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
 
-    const limitParam = Number(req.query?.limit);
-    const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 80)) : 40;
+    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 40, maxLimit: 80 });
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
     const viewerId = req.user?.id ?? null;
 
@@ -1823,7 +1953,7 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
           ? `@${row.username} published \"${row.name}\".`
           : `A followed creator published \"${row.name}\".`,
         image: row.image ?? null,
-        route: `/drinks/recipe/${row.slug}`,
+        route: toDrinkRoute(row.slug),
         relatedUserId: row.userId,
         relatedUsername: row.username ?? null,
         relatedDrinkSlug: row.slug,
@@ -1857,7 +1987,7 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
 
     const mixed = deduped
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-      .slice(0, limit);
+      .slice(offset, offset + limit);
 
     return res.json({
       ok: true,
@@ -1869,6 +1999,8 @@ r.get("/whats-new", optionalAuth, async (req, res) => {
         "followed_creator_post",
         "most_remixed_highlight",
       ],
+      limit,
+      offset,
       items: mixed,
     });
   } catch (error) {
@@ -2407,6 +2539,8 @@ r.get("/creators/:userId", async (req, res) => {
       return res.status(404).json({ ok: false, error: "Creator not found" });
     }
 
+    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 24, maxLimit: 100 });
+
     const recipes = await db
       .select({
         id: drinkRecipes.id,
@@ -2418,7 +2552,9 @@ r.get("/creators/:userId", async (req, res) => {
       })
       .from(drinkRecipes)
       .where(eq(drinkRecipes.userId, creatorId))
-      .orderBy(desc(drinkRecipes.createdAt));
+      .orderBy(desc(drinkRecipes.createdAt))
+      .limit(limit)
+      .offset(offset);
 
     if (recipes.length === 0) {
       return res.json({
@@ -2435,6 +2571,8 @@ r.get("/creators/:userId", async (req, res) => {
         mostRemixedDrinks: [],
         recentRemixActivity: [],
         recentItems: [],
+        limit,
+        offset,
       });
     }
 
@@ -2479,7 +2617,7 @@ r.get("/creators/:userId", async (req, res) => {
         image: recipe.image ?? null,
         createdAt: recipe.createdAt,
         remixedFromSlug: recipe.remixedFromSlug ?? null,
-        route: `/drinks/recipe/${recipe.slug}`,
+        route: toDrinkRoute(recipe.slug),
         views7d: metrics.views7d,
         remixesCount,
         groceryAdds7d: metrics.groceryAdds7d,
@@ -2572,8 +2710,10 @@ r.get("/creators/:userId", async (req, res) => {
       mostRemixedDrinks,
       recentRemixActivity,
       recentItems: items
-        .slice(0, 24)
+        .slice(0, limit)
         .map(({ groceryAdds7d, score, ...item }) => item),
+      limit,
+      offset,
     });
   } catch (error) {
     console.error("Error fetching public drink creator profile:", error);
@@ -2667,14 +2807,18 @@ r.get("/collections/mine", requireAuth, async (req, res) => {
   try {
     if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
 
+    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 20, maxLimit: 100 });
+
     const rows = await db
       .select()
       .from(drinkCollections)
       .where(eq(drinkCollections.userId, req.user.id))
-      .orderBy(desc(drinkCollections.updatedAt));
+      .orderBy(desc(drinkCollections.updatedAt))
+      .limit(limit)
+      .offset(offset);
 
     const collections = await Promise.all(rows.map((row) => resolveCollectionWithItems(row)));
-    return res.json({ ok: true, collections: collections.filter(Boolean) });
+    return res.json({ ok: true, limit, offset, collections: collections.filter(Boolean) });
   } catch (error) {
     console.error("Error loading user collections:", error);
     return res.status(500).json({ ok: false, error: "Failed to load collections" });
@@ -2685,14 +2829,18 @@ r.get("/collections/public/:userId", async (req, res) => {
   try {
     if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
 
+    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 20, maxLimit: 100 });
+
     const rows = await db
       .select()
       .from(drinkCollections)
       .where(and(eq(drinkCollections.userId, req.params.userId), eq(drinkCollections.isPublic, true)))
-      .orderBy(desc(drinkCollections.updatedAt));
+      .orderBy(desc(drinkCollections.updatedAt))
+      .limit(limit)
+      .offset(offset);
 
     const collections = await Promise.all(rows.map((row) => resolveCollectionWithItems(row)));
-    return res.json({ ok: true, collections: collections.filter(Boolean) });
+    return res.json({ ok: true, limit, offset, collections: collections.filter(Boolean) });
   } catch (error) {
     console.error("Error loading public collections:", error);
     return res.status(500).json({ ok: false, error: "Failed to load public collections" });
