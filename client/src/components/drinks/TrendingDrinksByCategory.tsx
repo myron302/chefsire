@@ -89,8 +89,8 @@ export default function TrendingDrinksByCategory({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {topItems.map((drink, index) => {
-              const metricText = drink.views7d
-                ? `${drink.views7d.toLocaleString()} views in last 7 days`
+              const metricText = Number(drink.views7d ?? 0) > 0
+                ? `${Number(drink.views7d ?? 0).toLocaleString()} views in last 7 days`
                 : "Trending now";
 
               const canonicalRoute = getCanonicalRoute(drink.slug);

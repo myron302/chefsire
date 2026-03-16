@@ -31,6 +31,7 @@ export default function DrinkCollectionDetailPage() {
   const collectionId = matched ? String(params.id ?? "") : "";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [statusCode, setStatusCode] = useState<number | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
 
   useEffect(() => {
@@ -38,11 +39,13 @@ export default function DrinkCollectionDetailPage() {
 
     setLoading(true);
     setError("");
+    setStatusCode(null);
     fetch(`/api/drinks/collections/${encodeURIComponent(collectionId)}`, { credentials: "include" })
       .then(async (res) => {
         if (!res.ok) {
           const payload = await res.json().catch(() => null);
-          throw new Error(payload?.error || "Failed to load collection");
+          setStatusCode(res.status);
+          throw new Error(payload?.error || `Failed to load collection (${res.status})`);
         }
         return res.json();
       })
@@ -59,7 +62,12 @@ export default function DrinkCollectionDetailPage() {
       <DrinksPlatformNav current="collections" />
 
       {loading ? <p className="text-muted-foreground">Loading collection…</p> : null}
-      {!loading && error ? <p className="text-destructive">{error}</p> : null}
+      {!loading && error ? (
+        <p className="text-destructive">
+          {statusCode === 404 ? "Collection not found." : statusCode === 401 ? "Please sign in to view this collection." : error}
+        </p>
+      ) : null}
+      {!loading && error && import.meta.env.DEV ? <p className="text-xs text-muted-foreground break-all">{error}</p> : null}
 
       {!loading && !error && collection ? (
         <Card>

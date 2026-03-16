@@ -31,6 +31,7 @@ type Collection = {
 export default function DrinkCollectionsPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
+  const [isAuthRequired, setIsAuthRequired] = useState(false);
   const [saving, setSaving] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [name, setName] = useState("");
@@ -38,14 +39,22 @@ export default function DrinkCollectionsPage() {
 
   const loadCollections = async () => {
     setLoading(true);
+    setIsAuthRequired(false);
     try {
       const res = await fetch("/api/drinks/collections/mine", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load collections");
+      if (!res.ok) {
+        if (res.status === 401) {
+          setIsAuthRequired(true);
+          setCollections([]);
+          return;
+        }
+        throw new Error(`Failed to load collections (${res.status})`);
+      }
       const payload = await res.json();
       setCollections(Array.isArray(payload?.collections) ? payload.collections : []);
     } catch (error) {
       setCollections([]);
-      toast({ title: "Could not load collections", variant: "destructive" });
+      toast({ title: "Could not load collections", description: import.meta.env.DEV ? (error instanceof Error ? error.message : "Unknown error") : undefined, variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -120,7 +129,8 @@ export default function DrinkCollectionsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           {loading ? <p className="text-sm text-muted-foreground">Loading collections…</p> : null}
-          {!loading && collections.length === 0 ? <p className="text-sm text-muted-foreground">No collections yet.</p> : null}
+          {!loading && isAuthRequired ? <p className="text-sm text-muted-foreground">Sign in to view and manage your collections.</p> : null}
+          {!loading && !isAuthRequired && collections.length === 0 ? <p className="text-sm text-muted-foreground">No collections yet.</p> : null}
 
           {collections.map((collection) => (
             <Card key={collection.id}>

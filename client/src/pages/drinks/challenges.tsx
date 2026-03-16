@@ -55,7 +55,7 @@ export default function DrinkChallengesPage() {
               <p className="text-sm text-muted-foreground">{item.description}</p>
               <div className="text-xs text-muted-foreground">
                 <p>{new Date(item.startsAt).toLocaleDateString()} - {new Date(item.endsAt).toLocaleDateString()}</p>
-                <p>{item.submissionsCount.toLocaleString()} submissions</p>
+                <p>{Number(item.submissionsCount ?? 0).toLocaleString()} submissions</p>
               </div>
               <Link href={`/drinks/challenges/${encodeURIComponent(item.slug)}`}>
                 <Button size="sm">View challenge</Button>

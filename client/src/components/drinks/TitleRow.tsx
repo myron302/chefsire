@@ -113,7 +113,7 @@ export default function TitleRow({
                   variant={gradient ? "default" : "outline"}
                   className={gradient ? "bg-white/15 backdrop-blur text-white border-white/20" : ""}
                 >
-                  {xp.toLocaleString()} XP
+                  {Number(xp ?? 0).toLocaleString()} XP
                 </Badge>
               )}
             </div>
