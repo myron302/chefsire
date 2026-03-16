@@ -24,6 +24,7 @@ type CreatorLeaderboardItem = {
     image: string | null;
     route: string;
     score: number;
+    remixesCount: number;
   } | null;
 };
 
@@ -127,9 +128,12 @@ export default function TopDrinkCreators() {
                     </p>
 
                     {creator.topDrink ? (
-                      <p className="text-xs text-muted-foreground">
-                        Top drink: <Link className="underline" href={creator.topDrink.route}>{creator.topDrink.name}</Link>
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <span>
+                          Top drink: <Link className="underline" href={creator.topDrink.route}>{creator.topDrink.name}</Link>
+                        </span>
+                        <Badge variant="secondary">🔥 {metricNumber(creator.topDrink.remixesCount)} remixes</Badge>
+                      </div>
                     ) : null}
                   </div>
                 </div>

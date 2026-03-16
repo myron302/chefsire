@@ -139,7 +139,7 @@ export default function DrinksRemixDiscoveryPage() {
 
                     <div className="flex items-center gap-3 text-xs text-muted-foreground">
                       <span>{Number(item.views7d ?? 0).toLocaleString()} views (7d)</span>
-                      <span>{Number(item.remixesCount ?? 0).toLocaleString()} remixes</span>
+                      <Badge variant="secondary">🔥 {Number(item.remixesCount ?? 0).toLocaleString()} remixes</Badge>
                     </div>
 
                     <div className="flex items-center gap-2">
