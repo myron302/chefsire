@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 
 interface FollowingFeedItem {
   id: string;
@@ -64,6 +65,7 @@ export default function FollowingDrinksFeedPage() {
       <div className="container mx-auto p-6 space-y-3">
         <h1 className="text-3xl font-bold">Following Feed</h1>
         <p className="text-muted-foreground">Sign in to see drinks from creators you follow.</p>
+        <DrinksPlatformNav current="following" />
         <Link href="/drinks">
           <Button variant="outline" size="sm">Back to Drinks Hub</Button>
         </Link>
@@ -80,6 +82,7 @@ export default function FollowingDrinksFeedPage() {
       <div className="container mx-auto p-6 space-y-3">
         <h1 className="text-3xl font-bold">Following Feed</h1>
         <p className="text-destructive">Unable to load your following feed right now.</p>
+        <DrinksPlatformNav current="following" />
       </div>
     );
   }
@@ -100,6 +103,8 @@ export default function FollowingDrinksFeedPage() {
           </Link>
         </div>
       </div>
+
+      <DrinksPlatformNav current="following" />
 
       {items.length === 0 ? (
         <Card>

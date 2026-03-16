@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 
 interface CreatorDrinkMetricsItem {
   id: string;
@@ -159,6 +160,7 @@ export default function CreatorDashboardPage() {
       <div className="container mx-auto p-6 space-y-3">
         <h1 className="text-2xl font-bold">Drink Creator Dashboard</h1>
         <p className="text-muted-foreground">Please sign in to view your creator metrics.</p>
+        <DrinksPlatformNav current="dashboard" />
       </div>
     );
   }
@@ -172,6 +174,7 @@ export default function CreatorDashboardPage() {
       <div className="container mx-auto p-6 space-y-3">
         <h1 className="text-2xl font-bold">Drink Creator Dashboard</h1>
         <p className="text-destructive">Unable to load your dashboard right now.</p>
+        <DrinksPlatformNav current="dashboard" />
       </div>
     );
   }
@@ -196,6 +199,8 @@ export default function CreatorDashboardPage() {
           </Link>
         </div>
       </div>
+
+      <DrinksPlatformNav current="dashboard" />
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <Card>

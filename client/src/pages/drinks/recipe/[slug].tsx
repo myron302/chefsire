@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { addItemsToShoppingList } from "@/lib/shopping-list";
 import { addRecentlyViewedDrinkSlug } from "@/components/drinks/RecentlyViewedDrinks";
+import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
 import { postEngagementEvent } from "@/lib/engagement-events";
 import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
@@ -236,6 +237,8 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl space-y-6">
+      <DrinksPlatformNav current="recipe" />
+
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <Link href={sourceRoute}>
           <Button variant="outline" size="sm">

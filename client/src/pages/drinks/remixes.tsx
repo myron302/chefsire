@@ -5,6 +5,7 @@ import { ArrowUpRight, Clock3, Flame, GitBranchPlus, UserRound } from "lucide-re
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 
 type RemixSort = "recent" | "popular";
 
@@ -44,20 +45,25 @@ export default function DrinksRemixDiscoveryPage() {
   const [items, setItems] = useState<RemixDiscoveryItem[]>([]);
   const [sort, setSort] = useState<RemixSort>("recent");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let active = true;
 
     const run = async () => {
       setLoading(true);
+      setLoadError("");
       try {
         const response = await fetch(`/api/drinks/remixes?sort=${sort}`);
         if (!response.ok) throw new Error("Unable to fetch remixes");
         const data = (await response.json()) as RemixDiscoveryResponse;
         if (!active) return;
         setItems(Array.isArray(data.items) ? data.items : []);
-      } catch {
-        if (active) setItems([]);
+      } catch (error) {
+        if (active) {
+          setItems([]);
+          setLoadError(error instanceof Error ? error.message : "Unable to fetch remixes right now.");
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -91,12 +97,19 @@ export default function DrinksRemixDiscoveryPage() {
           </div>
         </div>
 
+        <div className="mb-6">
+          <DrinksPlatformNav current="remixes" />
+        </div>
+
         <Card className="mb-6">
           <CardHeader>
             <CardTitle>{title}</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? <p className="text-sm text-muted-foreground">Loading remixes...</p> : null}
+            {!loading && loadError ? (
+              <p className="text-sm text-destructive">{loadError} Try refreshing or explore related drinks pages below.</p>
+            ) : null}
             {!loading && items.length === 0 ? (
               <p className="text-sm text-muted-foreground">No public remixes yet. Be the first to remix a drink.</p>
             ) : null}

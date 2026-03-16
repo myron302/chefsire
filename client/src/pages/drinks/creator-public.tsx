@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 
 interface PublicCreatorDrinkItem {
   id: string;
@@ -136,6 +137,7 @@ export default function PublicDrinkCreatorPage() {
       <div className="container mx-auto p-6 space-y-3">
         <h1 className="text-3xl font-bold">Creator Profile</h1>
         <p className="text-destructive">Unable to load this creator right now.</p>
+        <DrinksPlatformNav current="creator" />
         <Link href="/drinks">
           <Button variant="outline" size="sm">Back to Drinks Hub</Button>
         </Link>
@@ -153,6 +155,8 @@ export default function PublicDrinkCreatorPage() {
           <Button variant="outline" size="sm">Back to Drinks Hub</Button>
         </Link>
       </div>
+
+      <DrinksPlatformNav current="creator" />
 
       <Card>
         <CardHeader>

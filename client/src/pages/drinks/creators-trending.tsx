@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 
 type TrendingCreatorItem = {
   userId: string;
@@ -48,11 +49,13 @@ export default function TrendingCreatorsPage() {
   const [items, setItems] = useState<TrendingCreatorItem[]>([]);
   const [rankingFormula, setRankingFormula] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let active = true;
 
     const load = async () => {
+      setLoadError("");
       try {
         const response = await fetch("/api/drinks/creators/trending?limit=30");
         if (!response.ok) throw new Error("Unable to load trending creators");
@@ -62,10 +65,11 @@ export default function TrendingCreatorsPage() {
 
         setItems(Array.isArray(data.creators) ? data.creators : []);
         setRankingFormula(data.rankingFormula ?? "");
-      } catch {
+      } catch (error) {
         if (active) {
           setItems([]);
           setRankingFormula("");
+          setLoadError(error instanceof Error ? error.message : "Unable to load trending creators right now.");
         }
       } finally {
         if (active) setLoading(false);
@@ -90,6 +94,10 @@ export default function TrendingCreatorsPage() {
           </p>
         </div>
 
+        <div className="mb-6">
+          <DrinksPlatformNav current="trending-creators" />
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><TrendingUp className="h-5 w-5 text-orange-500" /> Public creator leaderboard</CardTitle>
@@ -99,6 +107,7 @@ export default function TrendingCreatorsPage() {
           </CardHeader>
           <CardContent className="space-y-4">
             {loading ? <p className="text-sm text-muted-foreground">Loading trending creators...</p> : null}
+            {!loading && loadError ? <p className="text-sm text-destructive">{loadError}</p> : null}
             {!loading && creators.length === 0 ? (
               <p className="text-sm text-muted-foreground">No creators are trending yet. Publish a drink remix to get on the board.</p>
             ) : null}
