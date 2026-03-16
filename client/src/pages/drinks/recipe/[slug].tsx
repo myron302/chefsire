@@ -12,6 +12,7 @@ import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
 import { postEngagementEvent } from "@/lib/engagement-events";
 import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
+import SaveToCollectionDialog from "@/components/drinks/SaveToCollectionDialog";
 
 type UserDrinkRecipe = {
   slug: string;
@@ -262,6 +263,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
           <Button variant="outline" onClick={addAllIngredients}>
             Add Ingredients to Shopping List
           </Button>
+          <SaveToCollectionDialog drinkSlug={trackedDrinkSlug} />
         </div>
       ) : null}
 

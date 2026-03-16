@@ -975,6 +975,38 @@ export const drinkRecipes = pgTable(
   })
 );
 
+export const drinkCollections = pgTable(
+  "drink_collections",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    description: text("description"),
+    isPublic: boolean("is_public").default(false).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("drink_collections_user_idx").on(table.userId),
+    publicIdx: index("drink_collections_public_idx").on(table.isPublic),
+  })
+);
+
+export const drinkCollectionItems = pgTable(
+  "drink_collection_items",
+  {
+    collectionId: varchar("collection_id")
+      .references(() => drinkCollections.id, { onDelete: "cascade" })
+      .notNull(),
+    drinkSlug: varchar("drink_slug", { length: 200 }).notNull(),
+    addedAt: timestamp("added_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    collectionDrinkIdx: uniqueIndex("drink_collection_items_collection_drink_idx").on(table.collectionId, table.drinkSlug),
+    slugIdx: index("drink_collection_items_slug_idx").on(table.drinkSlug),
+  })
+);
+
 export const recipeSaves = pgTable(
   "recipe_saves",
   {
@@ -1456,6 +1488,16 @@ export const insertDrinkRecipeSchema = createInsertSchema(drinkRecipes).omit({
   updatedAt: true,
 });
 
+export const insertDrinkCollectionSchema = createInsertSchema(drinkCollections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertDrinkCollectionItemSchema = createInsertSchema(drinkCollectionItems).omit({
+  addedAt: true,
+});
+
 export const insertRecipeSaveSchema = createInsertSchema(recipeSaves).omit({
   id: true,
   createdAt: true,
@@ -1622,6 +1664,10 @@ export type PetFoodEvent = typeof petFoodEvents.$inferSelect;
 export type InsertPetFoodEvent = z.infer<typeof insertPetFoodEventSchema>;
 export type DrinkRecipe = typeof drinkRecipes.$inferSelect;
 export type InsertDrinkRecipe = z.infer<typeof insertDrinkRecipeSchema>;
+export type DrinkCollection = typeof drinkCollections.$inferSelect;
+export type InsertDrinkCollection = z.infer<typeof insertDrinkCollectionSchema>;
+export type DrinkCollectionItem = typeof drinkCollectionItems.$inferSelect;
+export type InsertDrinkCollectionItem = z.infer<typeof insertDrinkCollectionItemSchema>;
 export type RecipeSave = typeof recipeSaves.$inferSelect;
 export type InsertRecipeSave = z.infer<typeof insertRecipeSaveSchema>;
 export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
