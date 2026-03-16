@@ -271,6 +271,9 @@ export default function DrinksPage() {
             <Link href="/drinks/collections">
               <Button variant="outline">Collections</Button>
             </Link>
+            <Link href="/drinks/challenges">
+              <Button variant="outline">Active Challenges</Button>
+            </Link>
             <Link href="/drinks/remixes">
               <Button variant="ghost">Discover Remixes</Button>
             </Link>
