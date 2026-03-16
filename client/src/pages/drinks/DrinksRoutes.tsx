@@ -21,6 +21,8 @@ import TrendingCreatorsPage from "@/pages/drinks/creators-trending";
 import DrinksWhatsNewPage from "@/pages/drinks/whats-new";
 import DrinkCollectionsPage from "@/pages/drinks/collections";
 import DrinkCollectionDetailPage from "@/pages/drinks/collection-detail";
+import DrinkChallengesPage from "@/pages/drinks/challenges";
+import DrinkChallengeDetailPage from "@/pages/drinks/challenge-detail";
 
 import EspressoDrinks from "@/pages/drinks/caffeinated/espresso";
 import ColdBrewDrinks from "@/pages/drinks/caffeinated/cold-brew";
@@ -187,6 +189,8 @@ export default function DrinksRoutes() {
         <Route path="/drinks/whats-new" component={DrinksWhatsNewPage} />
         <Route path="/drinks/collections" component={DrinkCollectionsPage} />
         <Route path="/drinks/collections/:id" component={DrinkCollectionDetailPage} />
+        <Route path="/drinks/challenges" component={DrinkChallengesPage} />
+        <Route path="/drinks/challenges/:slug" component={DrinkChallengeDetailPage} />
 
         <Route path="/drinks/caffeinated">{() => <CaffeinatedSection />}</Route>
         <Route path="/drinks/caffeinated/:subcategory">{() => <CaffeinatedSection />}</Route>

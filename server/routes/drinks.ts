@@ -12,10 +12,13 @@ import {
   insertDrinkSaveSchema,
   drinkCollectionItems,
   drinkCollections,
+  drinkChallengeSubmissions,
+  drinkChallenges,
   drinkEvents,
   drinkRecipes,
   follows,
   insertDrinkCollectionSchema,
+  insertDrinkChallengeSchema,
   insertDrinkRecipeSchema,
   users,
 } from "@shared/schema";
@@ -193,6 +196,68 @@ function normalizeRemixDiscoverySort(value: unknown): RemixDiscoverySort {
   if (typeof value !== "string") return "recent";
   const normalized = value.trim().toLowerCase();
   return normalized === "popular" ? "popular" : "recent";
+}
+
+function challengeIsActiveNow(challenge: typeof drinkChallenges.$inferSelect, now = new Date()): boolean {
+  if (!challenge.isActive) return false;
+  return challenge.startsAt.getTime() <= now.getTime() && challenge.endsAt.getTime() >= now.getTime();
+}
+
+const challengeSubmissionBodySchema = z.object({
+  drinkSlug: z.string().trim().min(1).max(200).optional(),
+});
+
+const CHALLENGE_SEEDS: Array<{
+  slug: string;
+  title: string;
+  description: string;
+  theme: string;
+  originalDrinkSlug?: string;
+  challengeType: string;
+  startsAt: Date;
+  endsAt: Date;
+  isActive: boolean;
+}> = [
+  {
+    slug: "remix-a-tom-collins",
+    title: "Remix a Tom Collins",
+    description: "Put your spin on the classic Tom Collins. Keep it bright, balanced, and summer-ready.",
+    theme: "Classic Remix",
+    originalDrinkSlug: "tom-collins",
+    challengeType: "remix",
+    startsAt: new Date("2026-05-01T00:00:00.000Z"),
+    endsAt: new Date("2026-06-15T23:59:59.000Z"),
+    isActive: true,
+  },
+  {
+    slug: "best-summer-spritz",
+    title: "Best Summer Spritz",
+    description: "Craft a light and refreshing spritz for hot weather hangouts.",
+    theme: "Seasonal",
+    challengeType: "open",
+    startsAt: new Date("2026-05-15T00:00:00.000Z"),
+    endsAt: new Date("2026-08-31T23:59:59.000Z"),
+    isActive: true,
+  },
+  {
+    slug: "zero-proof-week",
+    title: "Zero-Proof Week",
+    description: "Showcase alcohol-free creativity with mindful, flavor-forward builds.",
+    theme: "Zero-Proof",
+    challengeType: "zero-proof",
+    startsAt: new Date("2026-06-01T00:00:00.000Z"),
+    endsAt: new Date("2026-06-08T23:59:59.000Z"),
+    isActive: true,
+  },
+];
+
+async function seedDrinkChallengesIfEmpty() {
+  if (!db) return;
+
+  const existing = await db.select({ id: drinkChallenges.id }).from(drinkChallenges).limit(1);
+  if (existing.length > 0) return;
+
+  await db.insert(drinkChallenges).values(CHALLENGE_SEEDS);
 }
 
 type MostRemixedDrinkItem = {
@@ -570,6 +635,216 @@ async function getTrendingDrinkCreators(limit = 25): Promise<TrendingCreatorRow[
 }
 
 
+r.get("/challenges", async (_req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    await seedDrinkChallengesIfEmpty();
+
+    const rows = await db
+      .select({
+        id: drinkChallenges.id,
+        slug: drinkChallenges.slug,
+        title: drinkChallenges.title,
+        description: drinkChallenges.description,
+        theme: drinkChallenges.theme,
+        originalDrinkSlug: drinkChallenges.originalDrinkSlug,
+        challengeType: drinkChallenges.challengeType,
+        startsAt: drinkChallenges.startsAt,
+        endsAt: drinkChallenges.endsAt,
+        isActive: drinkChallenges.isActive,
+        createdAt: drinkChallenges.createdAt,
+        submissionsCount: sql<number>`count(${drinkChallengeSubmissions.id})`,
+      })
+      .from(drinkChallenges)
+      .leftJoin(drinkChallengeSubmissions, eq(drinkChallengeSubmissions.challengeId, drinkChallenges.id))
+      .groupBy(
+        drinkChallenges.id,
+        drinkChallenges.slug,
+        drinkChallenges.title,
+        drinkChallenges.description,
+        drinkChallenges.theme,
+        drinkChallenges.originalDrinkSlug,
+        drinkChallenges.challengeType,
+        drinkChallenges.startsAt,
+        drinkChallenges.endsAt,
+        drinkChallenges.isActive,
+        drinkChallenges.createdAt,
+      )
+      .orderBy(desc(drinkChallenges.startsAt));
+
+    const items = rows.map((row) => ({
+      ...row,
+      isActive: challengeIsActiveNow(row),
+      submissionsCount: Number(row.submissionsCount ?? 0),
+    }));
+
+    return res.json({ ok: true, count: items.length, items });
+  } catch (error) {
+    console.error("Error loading drink challenges:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch drink challenges" });
+  }
+});
+
+r.get("/challenges/:slug", async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    await seedDrinkChallengesIfEmpty();
+
+    const slug = normalizeSlug(req.params.slug);
+    if (!slug) return res.status(400).json({ ok: false, error: "Invalid challenge slug" });
+
+    const rows = await db.select().from(drinkChallenges).where(eq(drinkChallenges.slug, slug)).limit(1);
+    const challenge = rows[0];
+    if (!challenge) return res.status(404).json({ ok: false, error: "Challenge not found" });
+
+    const canonicalDrink = challenge.originalDrinkSlug ? getCanonicalDrinkBySlug(challenge.originalDrinkSlug) : null;
+
+    return res.json({
+      ok: true,
+      challenge: {
+        ...challenge,
+        isActive: challengeIsActiveNow(challenge),
+      },
+      canonicalDrink: canonicalDrink
+        ? {
+            slug: canonicalDrink.slug,
+            name: canonicalDrink.name,
+            route: canonicalDrink.route,
+            image: canonicalDrink.image ?? null,
+          }
+        : null,
+    });
+  } catch (error) {
+    console.error("Error loading drink challenge:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch drink challenge" });
+  }
+});
+
+r.get("/challenges/:slug/submissions", async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    await seedDrinkChallengesIfEmpty();
+
+    const slug = normalizeSlug(req.params.slug);
+    if (!slug) return res.status(400).json({ ok: false, error: "Invalid challenge slug" });
+
+    const challengeRows = await db.select().from(drinkChallenges).where(eq(drinkChallenges.slug, slug)).limit(1);
+    const challenge = challengeRows[0];
+    if (!challenge) return res.status(404).json({ ok: false, error: "Challenge not found" });
+
+    const rows = await db
+      .select({
+        id: drinkChallengeSubmissions.id,
+        challengeId: drinkChallengeSubmissions.challengeId,
+        userId: drinkChallengeSubmissions.userId,
+        drinkSlug: drinkChallengeSubmissions.drinkSlug,
+        createdAt: drinkChallengeSubmissions.createdAt,
+        username: users.username,
+        avatar: users.avatar,
+      })
+      .from(drinkChallengeSubmissions)
+      .leftJoin(users, eq(users.id, drinkChallengeSubmissions.userId))
+      .where(eq(drinkChallengeSubmissions.challengeId, challenge.id))
+      .orderBy(desc(drinkChallengeSubmissions.createdAt))
+      .limit(50);
+
+    const submissions = await Promise.all(rows.map(async (row) => ({
+      id: row.id,
+      challengeId: row.challengeId,
+      userId: row.userId,
+      drinkSlug: row.drinkSlug,
+      createdAt: row.createdAt,
+      creatorUsername: row.username ?? null,
+      creatorAvatar: row.avatar ?? null,
+      drink: await resolveDrinkDetailsBySlug(row.drinkSlug),
+    })));
+
+    return res.json({ ok: true, challenge: { ...challenge, isActive: challengeIsActiveNow(challenge) }, count: submissions.length, submissions });
+  } catch (error) {
+    console.error("Error loading challenge submissions:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch challenge submissions" });
+  }
+});
+
+r.post("/challenges/:slug/join", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const slug = normalizeSlug(req.params.slug);
+    if (!slug) return res.status(400).json({ ok: false, error: "Invalid challenge slug" });
+
+    const rows = await db.select().from(drinkChallenges).where(eq(drinkChallenges.slug, slug)).limit(1);
+    const challenge = rows[0];
+    if (!challenge) return res.status(404).json({ ok: false, error: "Challenge not found" });
+    if (!challengeIsActiveNow(challenge)) {
+      return res.status(400).json({ ok: false, error: "Challenge is not currently active" });
+    }
+
+    const body = challengeSubmissionBodySchema.parse(req.body ?? {});
+    const userId = resolveEngagementUserId(req);
+    if (!userId) return res.status(401).json({ ok: false, error: "Authentication required" });
+
+    if (!body.drinkSlug) {
+      return res.json({
+        ok: true,
+        challenge,
+        submitRoute: `/drinks/submit?remix=${encodeURIComponent(challenge.originalDrinkSlug || "")}&challenge=${encodeURIComponent(challenge.slug)}`,
+      });
+    }
+
+    const normalizedDrinkSlug = normalizeSlug(body.drinkSlug);
+    if (!normalizedDrinkSlug) return res.status(400).json({ ok: false, error: "Invalid drink slug" });
+
+    const drink = await resolveDrinkDetailsBySlug(normalizedDrinkSlug);
+    if (!drink) return res.status(404).json({ ok: false, error: "Drink not found" });
+
+    const inserted = await db
+      .insert(drinkChallengeSubmissions)
+      .values({
+        challengeId: challenge.id,
+        userId,
+        drinkSlug: normalizedDrinkSlug,
+      })
+      .onConflictDoNothing()
+      .returning();
+
+    return res.status(inserted.length > 0 ? 201 : 200).json({
+      ok: true,
+      challengeId: challenge.id,
+      challengeSlug: challenge.slug,
+      joined: inserted.length > 0,
+      submission: inserted[0] ?? null,
+    });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ ok: false, error: "Invalid join request", details: error.errors });
+    }
+
+    console.error("Error joining challenge:", error);
+    return res.status(500).json({ ok: false, error: "Failed to join challenge" });
+  }
+});
+
+r.post("/challenges", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const parsed = insertDrinkChallengeSchema.parse(req.body ?? {});
+    const inserted = await db.insert(drinkChallenges).values(parsed).returning();
+    return res.status(201).json({ ok: true, challenge: inserted[0] });
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ ok: false, error: "Invalid challenge payload", details: error.errors });
+    }
+
+    console.error("Error creating challenge:", error);
+    return res.status(500).json({ ok: false, error: "Failed to create challenge" });
+  }
+});
+
 // Submit a user drink recipe
 r.post("/submit", requireAuth, async (req, res) => {
   try {
@@ -608,10 +883,28 @@ r.post("/submit", requireAuth, async (req, res) => {
       category: str(req.body?.category) || "smoothies",
       subcategory: str(req.body?.subcategory),
       remixedFromSlug: normalizeSlug(req.body?.remixedFromSlug),
+      challengeSlug: normalizeSlug(req.body?.challengeSlug),
       userId: resolveEngagementUserId(req),
     });
 
     const rows = await db.insert(drinkRecipes).values({ ...parsed, source: "chefsire" }).returning();
+
+    const challengeSlug = normalizeSlug(req.body?.challengeSlug);
+    if (challengeSlug && rows[0]?.slug && parsed.userId) {
+      const challengeRows = await db.select().from(drinkChallenges).where(eq(drinkChallenges.slug, challengeSlug)).limit(1);
+      const challenge = challengeRows[0];
+      if (challenge) {
+        await db
+          .insert(drinkChallengeSubmissions)
+          .values({
+            challengeId: challenge.id,
+            userId: parsed.userId,
+            drinkSlug: rows[0].slug,
+          })
+          .onConflictDoNothing();
+      }
+    }
+
     return res.status(201).json({ ok: true, recipe: rows[0] });
   } catch (error) {
     if (error instanceof z.ZodError) {

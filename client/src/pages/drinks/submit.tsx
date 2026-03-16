@@ -275,6 +275,11 @@ export default function SubmitDrinkRecipePage() {
     return new URLSearchParams(window.location.search).get("remix")?.trim() ?? "";
   }, [location]);
 
+  const challengeSlug = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("challenge")?.trim() ?? "";
+  }, [location]);
+
   const [sourceDrink, setSourceDrink] = useState<RemixSource | null>(null);
   const [remixMode, setRemixMode] = useState<RemixMode>("custom");
   const [remixNotes, setRemixNotes] = useState<string[]>([]);
@@ -360,6 +365,7 @@ export default function SubmitDrinkRecipePage() {
     const payload = {
       ...form,
       remixedFromSlug: normalizeRemixSlug(remixSlug),
+      challengeSlug: normalizeRemixSlug(challengeSlug),
       prepTime: form.prepTime ? Number(form.prepTime) : undefined,
       ingredients: form.ingredients.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
       instructions: form.instructions.split(/\r?\n/).map((s) => s.trim()).filter(Boolean),
@@ -400,13 +406,14 @@ export default function SubmitDrinkRecipePage() {
     <div className="container mx-auto px-4 py-8 max-w-3xl space-y-6">
       <DrinksPlatformNav current="submit" />
 
-      {remixSlug ? (
+      {remixSlug || challengeSlug ? (
         <Card>
           <CardHeader>
             <CardTitle>Remix Drink</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">Source slug: <span className="font-mono">{remixSlug}</span></p>
+            <p className="text-sm text-muted-foreground">Source slug: <span className="font-mono">{remixSlug || "none"}</span></p>
+            {challengeSlug ? <p className="text-sm text-muted-foreground">Challenge: <span className="font-mono">{challengeSlug}</span></p> : null}
             {sourceDrink ? (
               <>
                 <div>

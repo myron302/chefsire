@@ -961,6 +961,7 @@ export const drinkRecipes = pgTable(
     category: text("category").notNull(),
     subcategory: text("subcategory"),
     remixedFromSlug: varchar("remixed_from_slug", { length: 200 }),
+    challengeSlug: varchar("challenge_slug", { length: 200 }),
     userId: varchar("user_id").references(() => users.id),
     source: varchar("source", { length: 50 }).notNull().default("chefsire"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -970,6 +971,7 @@ export const drinkRecipes = pgTable(
     slugIdx: uniqueIndex("drink_recipes_slug_idx").on(table.slug),
     categoryIdx: index("drink_recipes_category_idx").on(table.category),
     remixedFromSlugIdx: index("drink_recipes_remixed_from_slug_idx").on(table.remixedFromSlug),
+    challengeSlugIdx: index("drink_recipes_challenge_slug_idx").on(table.challengeSlug),
     sourceIdx: index("drink_recipes_source_idx").on(table.source),
     userIdx: index("drink_recipes_user_idx").on(table.userId),
   })
@@ -1004,6 +1006,47 @@ export const drinkCollectionItems = pgTable(
   (table) => ({
     collectionDrinkIdx: uniqueIndex("drink_collection_items_collection_drink_idx").on(table.collectionId, table.drinkSlug),
     slugIdx: index("drink_collection_items_slug_idx").on(table.drinkSlug),
+  })
+);
+
+export const drinkChallenges = pgTable(
+  "drink_challenges",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    slug: varchar("slug", { length: 200 }).notNull().unique(),
+    title: text("title").notNull(),
+    description: text("description").notNull(),
+    theme: text("theme"),
+    originalDrinkSlug: varchar("original_drink_slug", { length: 200 }),
+    challengeType: text("challenge_type"),
+    startsAt: timestamp("starts_at").notNull(),
+    endsAt: timestamp("ends_at").notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    slugIdx: uniqueIndex("drink_challenges_slug_idx").on(table.slug),
+    activeIdx: index("drink_challenges_active_idx").on(table.isActive),
+    startsAtIdx: index("drink_challenges_starts_at_idx").on(table.startsAt),
+    endsAtIdx: index("drink_challenges_ends_at_idx").on(table.endsAt),
+    originalDrinkSlugIdx: index("drink_challenges_original_drink_slug_idx").on(table.originalDrinkSlug),
+  })
+);
+
+export const drinkChallengeSubmissions = pgTable(
+  "drink_challenge_submissions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    challengeId: varchar("challenge_id").references(() => drinkChallenges.id, { onDelete: "cascade" }).notNull(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    drinkSlug: varchar("drink_slug", { length: 200 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    challengeIdx: index("drink_challenge_submissions_challenge_idx").on(table.challengeId),
+    userIdx: index("drink_challenge_submissions_user_idx").on(table.userId),
+    drinkSlugIdx: index("drink_challenge_submissions_drink_slug_idx").on(table.drinkSlug),
+    uniqueEntryIdx: uniqueIndex("drink_challenge_submissions_unique_entry_idx").on(table.challengeId, table.userId, table.drinkSlug),
   })
 );
 
@@ -1498,6 +1541,16 @@ export const insertDrinkCollectionItemSchema = createInsertSchema(drinkCollectio
   addedAt: true,
 });
 
+export const insertDrinkChallengeSchema = createInsertSchema(drinkChallenges).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertDrinkChallengeSubmissionSchema = createInsertSchema(drinkChallengeSubmissions).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertRecipeSaveSchema = createInsertSchema(recipeSaves).omit({
   id: true,
   createdAt: true,
@@ -1668,6 +1721,10 @@ export type DrinkCollection = typeof drinkCollections.$inferSelect;
 export type InsertDrinkCollection = z.infer<typeof insertDrinkCollectionSchema>;
 export type DrinkCollectionItem = typeof drinkCollectionItems.$inferSelect;
 export type InsertDrinkCollectionItem = z.infer<typeof insertDrinkCollectionItemSchema>;
+export type DrinkChallenge = typeof drinkChallenges.$inferSelect;
+export type InsertDrinkChallenge = z.infer<typeof insertDrinkChallengeSchema>;
+export type DrinkChallengeSubmission = typeof drinkChallengeSubmissions.$inferSelect;
+export type InsertDrinkChallengeSubmission = z.infer<typeof insertDrinkChallengeSubmissionSchema>;
 export type RecipeSave = typeof recipeSaves.$inferSelect;
 export type InsertRecipeSave = z.infer<typeof insertRecipeSaveSchema>;
 export type UserDrinkStats = typeof userDrinkStats.$inferSelect;
