@@ -55,6 +55,34 @@ interface CreatorDrinkMetricsResponse {
   items: CreatorDrinkMetricsItem[];
 }
 
+type CreatorActivityType = "view" | "remix" | "grocery_add" | "follow";
+
+interface CreatorActivityItem {
+  type: CreatorActivityType;
+  createdAt: string;
+  actorUserId: string | null;
+  actorUsername: string | null;
+  targetDrinkSlug: string | null;
+  targetDrinkName: string | null;
+  route: string | null;
+  message: string;
+  count?: number;
+  uniqueActors?: number;
+}
+
+interface CreatorActivityResponse {
+  ok: boolean;
+  userId: string;
+  generatedAt: string;
+  items: CreatorActivityItem[];
+  summary: {
+    totalItems: number;
+    typeCounts: Record<CreatorActivityType, number>;
+    windowDays: number;
+    summarized: string[];
+  };
+}
+
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
@@ -63,6 +91,26 @@ function formatDate(value: string): string {
 
 function metricNumber(value: number): string {
   return new Intl.NumberFormat().format(value);
+}
+
+function formatDateTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function activityBadgeLabel(type: CreatorActivityType): string {
+  switch (type) {
+    case "remix":
+      return "Remix";
+    case "follow":
+      return "Follower";
+    case "grocery_add":
+      return "Grocery Add";
+    case "view":
+    default:
+      return "View";
+  }
 }
 
 export default function CreatorDashboardPage() {
@@ -78,6 +126,23 @@ export default function CreatorDashboardPage() {
       if (!response.ok) {
         const message = await response.text();
         throw new Error(message || "Failed to load creator dashboard");
+      }
+
+      return response.json();
+    },
+    enabled: Boolean(user?.id),
+  });
+
+  const activityQuery = useQuery<CreatorActivityResponse>({
+    queryKey: ["/api/drinks/creator/activity", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/creator/${encodeURIComponent(user?.id ?? "")}/activity`, {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        const message = await response.text();
+        throw new Error(message || "Failed to load creator activity");
       }
 
       return response.json();
@@ -270,6 +335,68 @@ export default function CreatorDashboardPage() {
               </TableBody>
             </Table>
           )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Recent Activity</CardTitle>
+          <CardDescription>
+            Notifications from the last {metricNumber(activityQuery.data?.summary.windowDays ?? 30)} days across views, remixes, grocery adds, and follows.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {activityQuery.isLoading ? (
+            <p className="text-sm text-muted-foreground">Loading activity…</p>
+          ) : null}
+
+          {activityQuery.isError ? (
+            <p className="text-sm text-destructive">Unable to load activity right now.</p>
+          ) : null}
+
+          {activityQuery.data ? (
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <Badge variant="outline">Remixes {metricNumber(activityQuery.data.summary.typeCounts.remix ?? 0)}</Badge>
+                <Badge variant="outline">Follows {metricNumber(activityQuery.data.summary.typeCounts.follow ?? 0)}</Badge>
+                <Badge variant="outline">Views {metricNumber(activityQuery.data.summary.typeCounts.view ?? 0)}</Badge>
+                <Badge variant="outline">Grocery Adds {metricNumber(activityQuery.data.summary.typeCounts.grocery_add ?? 0)}</Badge>
+              </div>
+
+              {activityQuery.data.items.length === 0 ? (
+                <div className="text-sm text-muted-foreground">
+                  No activity yet. Share your drink pages and publish remixes to start receiving notifications.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {activityQuery.data.items.map((item, index) => (
+                    <div
+                      key={`${item.type}-${item.createdAt}-${index}`}
+                      className="rounded-lg border p-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant={item.type === "remix" || item.type === "follow" ? "default" : "secondary"}>
+                            {activityBadgeLabel(item.type)}
+                          </Badge>
+                          {item.count && item.count > 1 ? (
+                            <span className="text-xs text-muted-foreground">{metricNumber(item.count)} events</span>
+                          ) : null}
+                        </div>
+                        <p className="text-sm">{item.message}</p>
+                        {item.route ? (
+                          <Link href={item.route} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
+                            Open related page
+                          </Link>
+                        ) : null}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>

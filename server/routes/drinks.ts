@@ -196,6 +196,31 @@ type TrendingCreatorRow = CreatorLeaderboardRow & {
   publicRoute: string;
 };
 
+type CreatorActivityType = "view" | "grocery_add" | "remix" | "follow";
+
+type CreatorActivityItem = {
+  type: CreatorActivityType;
+  createdAt: string;
+  actorUserId: string | null;
+  actorUsername: string | null;
+  targetDrinkSlug: string | null;
+  targetDrinkName: string | null;
+  route: string | null;
+  message: string;
+  count?: number;
+  uniqueActors?: number;
+};
+
+function toActivityDateKey(value: Date | null | undefined): string {
+  if (!value) return "unknown";
+  return value.toISOString().slice(0, 10);
+}
+
+function toReadableDay(value: Date | null | undefined): string {
+  if (!value) return "recently";
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(value);
+}
+
 async function getDrinkCreatorLeaderboard(limit = 10): Promise<CreatorLeaderboardRow[]> {
   if (!db) return [];
 
@@ -1489,6 +1514,223 @@ r.get("/creator/:userId", requireAuth, async (req, res) => {
   } catch (error) {
     console.error("Error fetching creator drink metrics:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch creator drink metrics" });
+  }
+});
+
+
+// Lightweight creator activity feed derived from drink events/remixes/follows
+r.get("/creator/:userId/activity", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const requestedUserId = String(req.params?.userId ?? "").trim();
+    if (!requestedUserId) {
+      return res.status(400).json({ ok: false, error: "userId is required" });
+    }
+
+    if (requestedUserId !== req.user.id) {
+      return res.status(403).json({ ok: false, error: "Not authorized" });
+    }
+
+    const limitParam = Number(req.query?.limit);
+    const limit = Number.isFinite(limitParam) ? Math.max(10, Math.min(limitParam, 200)) : 80;
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+    const recipes = await db
+      .select({ slug: drinkRecipes.slug, name: drinkRecipes.name })
+      .from(drinkRecipes)
+      .where(eq(drinkRecipes.userId, requestedUserId));
+
+    const recipeSlugs = recipes.map((recipe) => recipe.slug);
+    const recipeNameBySlug = new Map(recipes.map((recipe) => [recipe.slug, recipe.name]));
+
+    const activityItems: CreatorActivityItem[] = [];
+
+    if (recipeSlugs.length > 0) {
+      const recentEvents = await db
+        .select({
+          slug: drinkEvents.slug,
+          eventType: drinkEvents.eventType,
+          createdAt: drinkEvents.createdAt,
+          actorUserId: drinkEvents.userId,
+          actorUsername: users.username,
+        })
+        .from(drinkEvents)
+        .leftJoin(users, eq(users.id, drinkEvents.userId))
+        .where(
+          and(
+            inArray(drinkEvents.slug, recipeSlugs),
+            inArray(drinkEvents.eventType, ["view", "grocery_add"]),
+            gt(drinkEvents.createdAt, thirtyDaysAgo),
+          ),
+        )
+        .orderBy(desc(drinkEvents.createdAt))
+        .limit(600);
+
+      type DailyAggregate = {
+        slug: string;
+        eventType: "view" | "grocery_add";
+        dateKey: string;
+        createdAt: Date;
+        totalCount: number;
+        actorIds: Set<string>;
+      };
+
+      const dailyEventSummary = new Map<string, DailyAggregate>();
+      for (const event of recentEvents) {
+        if (!event.createdAt) continue;
+        const normalizedEventType = event.eventType === "grocery_add" ? "grocery_add" : "view";
+        const dateKey = toActivityDateKey(event.createdAt);
+        const key = `${event.slug}:${normalizedEventType}:${dateKey}`;
+        const existing = dailyEventSummary.get(key);
+        if (existing) {
+          existing.totalCount += 1;
+          if (event.actorUserId) existing.actorIds.add(event.actorUserId);
+        } else {
+          dailyEventSummary.set(key, {
+            slug: event.slug,
+            eventType: normalizedEventType,
+            dateKey,
+            createdAt: event.createdAt,
+            totalCount: 1,
+            actorIds: new Set(event.actorUserId ? [event.actorUserId] : []),
+          });
+        }
+      }
+
+      for (const item of dailyEventSummary.values()) {
+        const targetDrinkName = recipeNameBySlug.get(item.slug) ?? item.slug;
+        const readableDay = toReadableDay(item.createdAt);
+        const uniqueActors = item.actorIds.size;
+
+        if (item.eventType === "view") {
+          activityItems.push({
+            type: "view",
+            createdAt: item.createdAt.toISOString(),
+            actorUserId: null,
+            actorUsername: null,
+            targetDrinkSlug: item.slug,
+            targetDrinkName,
+            route: `/drinks/recipe/${item.slug}`,
+            message: `Your drink ${targetDrinkName} got ${item.totalCount} view${item.totalCount === 1 ? "" : "s"} on ${readableDay}`,
+            count: item.totalCount,
+            uniqueActors,
+          });
+        } else {
+          activityItems.push({
+            type: "grocery_add",
+            createdAt: item.createdAt.toISOString(),
+            actorUserId: null,
+            actorUsername: null,
+            targetDrinkSlug: item.slug,
+            targetDrinkName,
+            route: `/drinks/recipe/${item.slug}`,
+            message: `Your drink ${targetDrinkName} was added to shopping lists ${item.totalCount} time${item.totalCount === 1 ? "" : "s"} on ${readableDay}`,
+            count: item.totalCount,
+            uniqueActors,
+          });
+        }
+      }
+
+      const remixRows = await db
+        .select({
+          slug: drinkRecipes.slug,
+          name: drinkRecipes.name,
+          remixedFromSlug: drinkRecipes.remixedFromSlug,
+          createdAt: drinkRecipes.createdAt,
+          actorUserId: drinkRecipes.userId,
+          actorUsername: users.username,
+        })
+        .from(drinkRecipes)
+        .leftJoin(users, eq(users.id, drinkRecipes.userId))
+        .where(
+          and(
+            inArray(drinkRecipes.remixedFromSlug, recipeSlugs),
+            gt(drinkRecipes.createdAt, thirtyDaysAgo),
+          ),
+        )
+        .orderBy(desc(drinkRecipes.createdAt))
+        .limit(250);
+
+      for (const remix of remixRows) {
+        const parentSlug = remix.remixedFromSlug;
+        if (!parentSlug) continue;
+        const parentName = recipeNameBySlug.get(parentSlug) ?? parentSlug;
+        const remixName = remix.name ?? remix.slug;
+        const actorIsCreator = remix.actorUserId === requestedUserId;
+        const actorUsername = actorIsCreator ? null : remix.actorUsername ?? null;
+        const actorUserId = actorIsCreator ? null : remix.actorUserId ?? null;
+        const actorPrefix = actorUsername ? `@${actorUsername}` : "Someone";
+
+        activityItems.push({
+          type: "remix",
+          createdAt: remix.createdAt.toISOString(),
+          actorUserId,
+          actorUsername,
+          targetDrinkSlug: parentSlug,
+          targetDrinkName: parentName,
+          route: `/drinks/recipe/${remix.slug}`,
+          message: `${actorPrefix} remixed your drink ${parentName} into ${remixName}`,
+        });
+      }
+    }
+
+    const followerRows = await db
+      .select({
+        createdAt: follows.createdAt,
+        actorUserId: follows.followerId,
+        actorUsername: users.username,
+      })
+      .from(follows)
+      .leftJoin(users, eq(users.id, follows.followerId))
+      .where(and(eq(follows.followingId, requestedUserId), gt(follows.createdAt, thirtyDaysAgo)))
+      .orderBy(desc(follows.createdAt))
+      .limit(100);
+
+    for (const row of followerRows) {
+      const actorUsername = row.actorUsername ?? null;
+      const actorPrefix = actorUsername ? `@${actorUsername}` : "Someone";
+      activityItems.push({
+        type: "follow",
+        createdAt: row.createdAt.toISOString(),
+        actorUserId: row.actorUserId ?? null,
+        actorUsername,
+        targetDrinkSlug: null,
+        targetDrinkName: null,
+        route: `/drinks/creator/${requestedUserId}`,
+        message: `${actorPrefix} started following you`,
+      });
+    }
+
+    const sorted = activityItems
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+      .slice(0, limit);
+
+    const typeCounts = sorted.reduce(
+      (acc, item) => {
+        acc[item.type] += 1;
+        return acc;
+      },
+      { view: 0, grocery_add: 0, remix: 0, follow: 0 } as Record<CreatorActivityType, number>,
+    );
+
+    return res.json({
+      ok: true,
+      userId: requestedUserId,
+      generatedAt: new Date().toISOString(),
+      items: sorted,
+      summary: {
+        totalItems: sorted.length,
+        typeCounts,
+        windowDays: 30,
+        summarized: ["view", "grocery_add"],
+      },
+    });
+  } catch (error) {
+    console.error("Error loading creator activity feed:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch creator activity" });
   }
 });
 
