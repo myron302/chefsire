@@ -77,6 +77,9 @@ import weddingVendorQuotesRouter from "./wedding-vendor-quotes";
 import weddingVendorListingsRouter from "./wedding-vendor-listings";
 import weddingInsightsRouter from "./wedding-insights";
 
+// Catering marketplace
+import cateringRouter from "./catering";
+
 // Recipe imports (Paprika / AnyList / Plan to Eat / URL import)
 import importPaprikaRouter from "./import-paprika";
 
@@ -192,6 +195,9 @@ r.use("/payouts", payoutsRouter);
 // File uploads
 r.use("/upload", uploadRouter);
 
+// Catering
+r.use("/catering", cateringRouter);
+
 // Wedding Planning — subscription management (must come before other /wedding mounts so routes resolve)
 r.use("/wedding", weddingSubscriptionRouter);
 r.use("/vendors", vendorSubscriptionRouter);
@@ -246,7 +252,8 @@ if (process.env.NODE_ENV !== "production") {
         "/orders/*",        // 💰 Monetization
         "/payments/*",      // 💰 Square payments
         "/payouts/*",       // 💰 Seller payouts
-        "/wedding/*",       // 💍 Wedding Planning + Subscription
+        "/catering/*",       // 🍽️ Catering marketplace
+        "/wedding/*",        // 💍 Wedding Planning + Subscription
         "/vendors/*",       // 🏪 Vendor Subscriptions
       ],
     });
