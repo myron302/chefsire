@@ -5,6 +5,7 @@ import { ArrowUpRight, Flame, Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 
 type MostRemixedDrinkItem = {
   slug: string;
@@ -25,20 +26,25 @@ type MostRemixedResponse = {
 export default function MostRemixedDrinksPage() {
   const [items, setItems] = useState<MostRemixedDrinkItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let active = true;
 
     const run = async () => {
       setLoading(true);
+      setLoadError("");
       try {
         const response = await fetch("/api/drinks/most-remixed");
         if (!response.ok) throw new Error("Unable to fetch most remixed drinks");
         const data = (await response.json()) as MostRemixedResponse;
         if (!active) return;
         setItems(Array.isArray(data.items) ? data.items : []);
-      } catch {
-        if (active) setItems([]);
+      } catch (error) {
+        if (active) {
+          setItems([]);
+          setLoadError(error instanceof Error ? error.message : "Unable to fetch most remixed drinks right now.");
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -61,12 +67,19 @@ export default function MostRemixedDrinksPage() {
           </p>
         </div>
 
+        <div className="mb-6">
+          <DrinksPlatformNav current="most-remixed" />
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle>Top original drinks by remix count</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? <p className="text-sm text-muted-foreground">Loading most remixed drinks...</p> : null}
+            {!loading && loadError ? (
+              <p className="text-sm text-destructive">{loadError} You can still use the platform links above to continue exploring.</p>
+            ) : null}
             {!loading && items.length === 0 ? (
               <p className="text-sm text-muted-foreground">No remix activity yet.</p>
             ) : null}

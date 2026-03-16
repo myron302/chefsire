@@ -5,6 +5,7 @@ import { ArrowUpRight, Sparkles, TrendingUp, Users, GitBranchPlus, Star } from "
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 
 type WhatsNewItemType =
   | "remix"
@@ -61,20 +62,25 @@ function itemBadge(itemType: WhatsNewItemType) {
 export default function DrinksWhatsNewPage() {
   const [items, setItems] = useState<WhatsNewItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let active = true;
 
     const run = async () => {
       setLoading(true);
+      setLoadError("");
       try {
         const response = await fetch("/api/drinks/whats-new");
         if (!response.ok) throw new Error("Unable to fetch what's new feed");
         const data = (await response.json()) as WhatsNewResponse;
         if (!active) return;
         setItems(Array.isArray(data.items) ? data.items : []);
-      } catch {
-        if (active) setItems([]);
+      } catch (error) {
+        if (active) {
+          setItems([]);
+          setLoadError(error instanceof Error ? error.message : "Unable to fetch the What's New feed right now.");
+        }
       } finally {
         if (active) setLoading(false);
       }
@@ -99,12 +105,19 @@ export default function DrinksWhatsNewPage() {
           </p>
         </div>
 
+        <div className="mb-6">
+          <DrinksPlatformNav current="whats-new" />
+        </div>
+
         <Card>
           <CardHeader>
             <CardTitle>Fresh activity</CardTitle>
           </CardHeader>
           <CardContent>
             {loading ? <p className="text-sm text-muted-foreground">Loading activity...</p> : null}
+            {!loading && loadError ? (
+              <p className="text-sm text-destructive">{loadError} You can continue from the navigation links above while this feed recovers.</p>
+            ) : null}
 
             {!loading && !hasItems ? (
               <div className="rounded-md border border-dashed bg-white p-6 text-sm text-muted-foreground">
