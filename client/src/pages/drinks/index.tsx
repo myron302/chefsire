@@ -271,6 +271,9 @@ export default function DrinksPage() {
             <Link href="/drinks/most-remixed">
               <Button variant="ghost">Most Remixed Drinks</Button>
             </Link>
+            <Link href="/drinks/creators/trending">
+              <Button variant="ghost">Trending Creators</Button>
+            </Link>
           </div>
         </div>
       </div>
