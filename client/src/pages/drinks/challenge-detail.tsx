@@ -35,6 +35,8 @@ export default function DrinkChallengeDetailPage() {
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [canonicalDrink, setCanonicalDrink] = useState<{ name: string; route: string } | null>(null);
   const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [isJoining, setIsJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!slug) return;
@@ -59,6 +61,36 @@ export default function DrinkChallengeDetailPage() {
 
     return `/drinks/submit?challenge=${encodeURIComponent(challenge.slug)}`;
   }, [challenge]);
+
+  async function handleJoinChallenge() {
+    if (!challenge || !remixRoute || isJoining) return;
+
+    setIsJoining(true);
+    setJoinError(null);
+
+    try {
+      const response = await fetch(`/api/drinks/challenges/${encodeURIComponent(challenge.slug)}/join`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const errorMessage = typeof payload?.error === "string" ? payload.error : "Unable to join challenge.";
+        throw new Error(errorMessage);
+      }
+
+      setLocation(typeof payload?.submitRoute === "string" ? payload.submitRoute : remixRoute);
+    } catch (error) {
+      setJoinError(error instanceof Error ? error.message : "Unable to join challenge.");
+    } finally {
+      setIsJoining(false);
+    }
+  }
 
   if (!challenge) {
     return (
@@ -91,8 +123,9 @@ export default function DrinkChallengeDetailPage() {
             </p>
           ) : null}
           {remixRoute ? (
-            <Button onClick={() => setLocation(remixRoute)}>Join / Remix</Button>
+            <Button onClick={handleJoinChallenge} disabled={isJoining}>{isJoining ? "Joining..." : "Join / Remix"}</Button>
           ) : null}
+          {joinError ? <p className="text-sm text-destructive">{joinError}</p> : null}
         </CardContent>
       </Card>
 
