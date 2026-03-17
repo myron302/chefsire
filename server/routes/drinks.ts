@@ -361,6 +361,49 @@ function collectionDbErrorResponse(error: unknown, fallback: string) {
   };
 }
 
+let _drinkCollectionsSchemaReady: Promise<void> | null = null;
+
+async function ensureDrinkCollectionsSchema() {
+  if (_drinkCollectionsSchemaReady) return _drinkCollectionsSchemaReady;
+
+  _drinkCollectionsSchemaReady = (async () => {
+    if (!db) {
+      throw new Error("Database is not configured (missing DATABASE_URL)");
+    }
+
+    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_collections (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name varchar(160) NOT NULL,
+        description text,
+        is_public boolean NOT NULL DEFAULT false,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_collection_items (
+        collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
+        drink_slug varchar(200) NOT NULL,
+        added_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT drink_collection_items_collection_drink_idx UNIQUE (collection_id, drink_slug)
+      );
+    `);
+
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_idx ON drink_collections(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_public_idx ON drink_collections(is_public);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_updated_at_idx ON drink_collections(user_id, updated_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_public_updated_at_idx ON drink_collections(is_public, updated_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_items_slug_idx ON drink_collection_items(drink_slug);`);
+  })();
+
+  return _drinkCollectionsSchemaReady;
+}
+
 async function resolveCollectionWithItems(collection: typeof drinkCollections.$inferSelect) {
   if (!db) return null;
 
@@ -3565,6 +3608,8 @@ r.post("/collections", optionalAuth, async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
     }
 
+    await ensureDrinkCollectionsSchema();
+
     const parsed = insertDrinkCollectionSchema.safeParse({
       userId: req.user.id,
       name: req.body?.name,
@@ -3595,6 +3640,8 @@ r.get("/collections/mine", optionalAuth, async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
     }
 
+    await ensureDrinkCollectionsSchema();
+
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 20, maxLimit: 100 });
 
     const rows = await db
@@ -3622,6 +3669,8 @@ r.get("/collections/public/:userId", async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
     }
 
+    await ensureDrinkCollectionsSchema();
+
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 20, maxLimit: 100 });
 
     const rows = await db
@@ -3647,6 +3696,8 @@ r.get("/collections/explore", async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
     }
 
+    await ensureDrinkCollectionsSchema();
+
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 24, maxLimit: 100 });
 
     const rows = await db
@@ -3671,6 +3722,8 @@ r.get("/collections/featured", async (req, res) => {
       logCollectionDbUnavailable("/featured", req);
       return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
     }
+
+    await ensureDrinkCollectionsSchema();
 
     const { limit } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 8, maxLimit: 24 });
 
@@ -3701,6 +3754,8 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
   try {
     if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
 
+    await ensureDrinkCollectionsSchema();
+
     const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
     const collection = rows[0];
 
@@ -3726,6 +3781,8 @@ r.patch("/collections/:id", optionalAuth, async (req, res) => {
       logCollectionDbUnavailable("/:id", req);
       return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
     }
+
+    await ensureDrinkCollectionsSchema();
 
     const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
     const existing = existingRows[0];
@@ -3766,6 +3823,8 @@ r.delete("/collections/:id", optionalAuth, async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
     }
 
+    await ensureDrinkCollectionsSchema();
+
     const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
     const existing = existingRows[0];
     if (!existing) return res.status(404).json({ ok: false, error: "Collection not found" });
@@ -3788,6 +3847,8 @@ r.post("/collections/:id/items", optionalAuth, async (req, res) => {
       logCollectionDbUnavailable("/:id/items", req);
       return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
     }
+
+    await ensureDrinkCollectionsSchema();
 
     const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
     const existing = existingRows[0];
@@ -3830,6 +3891,8 @@ r.delete("/collections/:id/items/:slug", optionalAuth, async (req, res) => {
       logCollectionDbUnavailable("/:id/items/:slug", req);
       return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
     }
+
+    await ensureDrinkCollectionsSchema();
 
     const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
     const existing = existingRows[0];
