@@ -296,10 +296,68 @@ function logCollectionRouteError(route: string, req: any, error: unknown) {
   return message;
 }
 
+function logCollectionDbUnavailable(route: string, req: any) {
+  console.error(`[drinks/collections${route}] Database unavailable`, {
+    method: req.method,
+    path: req.originalUrl,
+    userId: req.user?.id ?? null,
+  });
+}
+
 function collectionServerError(message: string, fallback: string) {
   return {
     ok: false,
     error: process.env.NODE_ENV === "production" ? fallback : `${fallback}: ${message}`,
+  };
+}
+
+function collectionAuthRequired(res: any) {
+  return res.status(401).json({ ok: false, error: "Authentication required", code: "AUTH_REQUIRED" });
+}
+
+type CollectionErrorDetails = {
+  status: number;
+  fallback: string;
+  code: string;
+  debug: string;
+};
+
+function classifyCollectionError(error: unknown, defaultFallback: string): CollectionErrorDetails {
+  const message = error instanceof Error ? error.message : String(error);
+  const pgCode = typeof error === "object" && error !== null && "code" in error ? String((error as { code: unknown }).code ?? "") : "";
+
+  if (pgCode === "42P01") {
+    return {
+      status: 503,
+      fallback: "Collections storage is not initialized",
+      code: "COLLECTIONS_TABLE_MISSING",
+      debug: message,
+    };
+  }
+
+  if (pgCode === "42703") {
+    return {
+      status: 503,
+      fallback: "Collections schema is out of date",
+      code: "COLLECTIONS_SCHEMA_MISMATCH",
+      debug: message,
+    };
+  }
+
+  return {
+    status: 500,
+    fallback: defaultFallback,
+    code: "COLLECTIONS_QUERY_FAILED",
+    debug: message,
+  };
+}
+
+function collectionDbErrorResponse(error: unknown, fallback: string) {
+  const details = classifyCollectionError(error, fallback);
+  return {
+    ok: false,
+    error: process.env.NODE_ENV === "production" ? details.fallback : `${details.fallback}: ${details.debug}`,
+    code: details.code,
   };
 }
 
@@ -3499,9 +3557,13 @@ function str(v: unknown): string | undefined {
 // DRINK COLLECTIONS
 // ========================================
 
-r.post("/collections", requireAuth, async (req, res) => {
+r.post("/collections", optionalAuth, async (req, res) => {
   try {
-    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    if (!req.user?.id) return collectionAuthRequired(res);
+    if (!db) {
+      logCollectionDbUnavailable("", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
 
     const parsed = insertDrinkCollectionSchema.safeParse({
       userId: req.user.id,
@@ -3518,14 +3580,20 @@ r.post("/collections", requireAuth, async (req, res) => {
     const created = createdRows[0];
     return res.status(201).json({ ok: true, collection: { ...created, itemsCount: 0, items: [] } });
   } catch (error) {
-    const message = logCollectionRouteError("", req, error);
-    return res.status(500).json(collectionServerError(message, "Failed to create collection"));
+    logCollectionRouteError("", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to create collection");
+    const status = classifyCollectionError(error, "Failed to create collection").status;
+    return res.status(status).json(payload);
   }
 });
 
-r.get("/collections/mine", requireAuth, async (req, res) => {
+r.get("/collections/mine", optionalAuth, async (req, res) => {
   try {
-    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    if (!req.user?.id) return collectionAuthRequired(res);
+    if (!db) {
+      logCollectionDbUnavailable("/mine", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
 
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 20, maxLimit: 100 });
 
@@ -3540,8 +3608,10 @@ r.get("/collections/mine", requireAuth, async (req, res) => {
     const collections = await Promise.all(rows.map((row) => resolveCollectionWithItems(row)));
     return res.json({ ok: true, limit, offset, collections: collections.filter(Boolean) });
   } catch (error) {
-    const message = logCollectionRouteError("/mine", req, error);
-    return res.status(500).json(collectionServerError(message, "Failed to load collections"));
+    logCollectionRouteError("/mine", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to load collections");
+    const status = classifyCollectionError(error, "Failed to load collections").status;
+    return res.status(status).json(payload);
   }
 });
 
@@ -3640,9 +3710,13 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
   }
 });
 
-r.patch("/collections/:id", requireAuth, async (req, res) => {
+r.patch("/collections/:id", optionalAuth, async (req, res) => {
   try {
-    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    if (!req.user?.id) return collectionAuthRequired(res);
+    if (!db) {
+      logCollectionDbUnavailable("/:id", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
 
     const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
     const existing = existingRows[0];
@@ -3668,14 +3742,20 @@ r.patch("/collections/:id", requireAuth, async (req, res) => {
     const hydrated = await resolveCollectionWithItems(updatedRows[0]);
     return res.json({ ok: true, collection: hydrated });
   } catch (error) {
-    const message = logCollectionRouteError("/:id", req, error);
-    return res.status(500).json(collectionServerError(message, "Failed to update collection"));
+    logCollectionRouteError("/:id", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to update collection");
+    const status = classifyCollectionError(error, "Failed to update collection").status;
+    return res.status(status).json(payload);
   }
 });
 
-r.delete("/collections/:id", requireAuth, async (req, res) => {
+r.delete("/collections/:id", optionalAuth, async (req, res) => {
   try {
-    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    if (!req.user?.id) return collectionAuthRequired(res);
+    if (!db) {
+      logCollectionDbUnavailable("/:id", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
 
     const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
     const existing = existingRows[0];
@@ -3685,14 +3765,20 @@ r.delete("/collections/:id", requireAuth, async (req, res) => {
     await db.delete(drinkCollections).where(eq(drinkCollections.id, req.params.id));
     return res.json({ ok: true, message: "Collection deleted" });
   } catch (error) {
-    const message = logCollectionRouteError("/:id", req, error);
-    return res.status(500).json(collectionServerError(message, "Failed to delete collection"));
+    logCollectionRouteError("/:id", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to delete collection");
+    const status = classifyCollectionError(error, "Failed to delete collection").status;
+    return res.status(status).json(payload);
   }
 });
 
-r.post("/collections/:id/items", requireAuth, async (req, res) => {
+r.post("/collections/:id/items", optionalAuth, async (req, res) => {
   try {
-    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    if (!req.user?.id) return collectionAuthRequired(res);
+    if (!db) {
+      logCollectionDbUnavailable("/:id/items", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
 
     const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
     const existing = existingRows[0];
@@ -3721,14 +3807,20 @@ r.post("/collections/:id/items", requireAuth, async (req, res) => {
     const hydrated = await resolveCollectionWithItems(refreshedRows[0]);
     return res.status(201).json({ ok: true, collection: hydrated });
   } catch (error) {
-    const message = logCollectionRouteError("/:id/items", req, error);
-    return res.status(500).json(collectionServerError(message, "Failed to add item"));
+    logCollectionRouteError("/:id/items", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to add item");
+    const status = classifyCollectionError(error, "Failed to add item").status;
+    return res.status(status).json(payload);
   }
 });
 
-r.delete("/collections/:id/items/:slug", requireAuth, async (req, res) => {
+r.delete("/collections/:id/items/:slug", optionalAuth, async (req, res) => {
   try {
-    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    if (!req.user?.id) return collectionAuthRequired(res);
+    if (!db) {
+      logCollectionDbUnavailable("/:id/items/:slug", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
 
     const existingRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
     const existing = existingRows[0];
@@ -3751,8 +3843,10 @@ r.delete("/collections/:id/items/:slug", requireAuth, async (req, res) => {
     const hydrated = await resolveCollectionWithItems(refreshedRows[0]);
     return res.json({ ok: true, collection: hydrated });
   } catch (error) {
-    const message = logCollectionRouteError("/:id/items/:slug", req, error);
-    return res.status(500).json(collectionServerError(message, "Failed to remove item"));
+    logCollectionRouteError("/:id/items/:slug", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to remove item");
+    const status = classifyCollectionError(error, "Failed to remove item").status;
+    return res.status(status).json(payload);
   }
 });
 
