@@ -35,6 +35,7 @@ type DrinkDetails = {
   name: string;
   image: string | null;
   route: string;
+  remixedFromSlug?: string | null;
   sourceCategoryRoute: string;
   source: "chefsire";
   category: string;
@@ -175,6 +176,7 @@ async function resolveDrinkDetailsMapBySlugs(slugs: string[]): Promise<Map<strin
       slug: drinkRecipes.slug,
       name: drinkRecipes.name,
       image: drinkRecipes.image,
+      remixedFromSlug: drinkRecipes.remixedFromSlug,
       category: drinkRecipes.category,
       subcategory: drinkRecipes.subcategory,
     })
@@ -187,6 +189,7 @@ async function resolveDrinkDetailsMapBySlugs(slugs: string[]): Promise<Map<strin
       name: recipe.name,
       image: recipe.image ?? null,
       route: toDrinkRoute(recipe.slug),
+      remixedFromSlug: recipe.remixedFromSlug ?? null,
       sourceCategoryRoute: `/drinks/${recipe.category}${recipe.subcategory ? `/${recipe.subcategory}` : ""}`,
       source: "chefsire",
       category: recipe.category,
@@ -303,6 +306,17 @@ function collectionServerError(message: string, fallback: string) {
 async function resolveCollectionWithItems(collection: typeof drinkCollections.$inferSelect) {
   if (!db) return null;
 
+  const creatorRows = await db
+    .select({
+      username: users.username,
+      avatar: users.avatar,
+    })
+    .from(users)
+    .where(eq(users.id, collection.userId))
+    .limit(1);
+
+  const creator = creatorRows[0];
+
   const itemRows = await db
     .select({
       drinkSlug: drinkCollectionItems.drinkSlug,
@@ -314,16 +328,41 @@ async function resolveCollectionWithItems(collection: typeof drinkCollections.$i
   const detailsBySlug = await resolveDrinkDetailsMapBySlugs(itemRows.map((row) => row.drinkSlug));
 
   const items = itemRows.map((row) => ({
+    id: `${collection.id}:${row.drinkSlug}`,
     drinkSlug: row.drinkSlug,
+    drinkName: detailsBySlug.get(row.drinkSlug)?.name ?? row.drinkSlug,
+    image: detailsBySlug.get(row.drinkSlug)?.image ?? null,
+    route: detailsBySlug.get(row.drinkSlug)?.route ?? `/drinks/recipe/${encodeURIComponent(row.drinkSlug)}`,
+    remixedFromSlug: detailsBySlug.get(row.drinkSlug)?.remixedFromSlug ?? null,
     addedAt: row.addedAt,
     drink: detailsBySlug.get(row.drinkSlug) ?? null,
   }));
 
+  const coverImage = items[0]?.image ?? null;
+
   return {
     ...collection,
+    creatorUsername: creator?.username ?? null,
+    creatorAvatar: creator?.avatar ?? null,
+    route: `/drinks/collections/${collection.id}`,
+    coverImage,
     itemsCount: itemRows.length,
     items,
   };
+}
+
+async function resolvePublicCollectionCards(inputRows: Array<typeof drinkCollections.$inferSelect>) {
+  const collections = await Promise.all(inputRows.map((row) => resolveCollectionWithItems(row)));
+  return collections.filter(Boolean);
+}
+
+function featuredCollectionScore(collection: {
+  itemsCount: number;
+  updatedAt: Date;
+}): number {
+  const recencyHours = Math.max(0, (Date.now() - new Date(collection.updatedAt).getTime()) / (1000 * 60 * 60));
+  const recencyPoints = Math.max(0, 240 - recencyHours);
+  return Number(collection.itemsCount) * 100 + recencyPoints;
 }
 
 function normalizeRemixDiscoverySort(value: unknown): RemixDiscoverySort {
@@ -3520,11 +3559,62 @@ r.get("/collections/public/:userId", async (req, res) => {
       .limit(limit)
       .offset(offset);
 
-    const collections = await Promise.all(rows.map((row) => resolveCollectionWithItems(row)));
+    const collections = await resolvePublicCollectionCards(rows);
     return res.json({ ok: true, limit, offset, collections: collections.filter(Boolean) });
   } catch (error) {
     const message = logCollectionRouteError("/public/:userId", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load public collections"));
+  }
+});
+
+r.get("/collections/explore", async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 24, maxLimit: 100 });
+
+    const rows = await db
+      .select()
+      .from(drinkCollections)
+      .where(eq(drinkCollections.isPublic, true))
+      .orderBy(desc(drinkCollections.updatedAt))
+      .limit(limit)
+      .offset(offset);
+
+    const collections = await resolvePublicCollectionCards(rows);
+    return res.json({ ok: true, limit, offset, collections });
+  } catch (error) {
+    const message = logCollectionRouteError("/explore", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load collections explore"));
+  }
+});
+
+r.get("/collections/featured", async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    const { limit } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 8, maxLimit: 24 });
+
+    const rows = await db
+      .select()
+      .from(drinkCollections)
+      .where(eq(drinkCollections.isPublic, true))
+      .orderBy(desc(drinkCollections.updatedAt))
+      .limit(100);
+
+    const hydrated = await resolvePublicCollectionCards(rows);
+    const featured = hydrated
+      .sort((a, b) => featuredCollectionScore(b) - featuredCollectionScore(a))
+      .slice(0, limit);
+
+    return res.json({
+      ok: true,
+      ranking: "Featured score = (public collection itemsCount × 100) + recency bonus from updatedAt.",
+      collections: featured,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/featured", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load featured collections"));
   }
 });
 

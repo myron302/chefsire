@@ -58,9 +58,9 @@ const discoverLinks: DiscoverLink[] = [
     icon: Trophy,
   },
   {
-    title: "Collections",
-    description: "Curated drink lists for goals, moods, and occasions.",
-    href: "/drinks/collections",
+    title: "Public Collections",
+    description: "Browse featured and public drink collections from the community.",
+    href: "/drinks/collections/explore",
     icon: Layers,
   },
 ];
