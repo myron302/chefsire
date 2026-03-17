@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { Link } from "wouter";
-import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search } from "lucide-react";
+import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell } from "lucide-react";
 
 import { useUser } from "@/contexts/UserContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -92,7 +92,7 @@ export default function DrinksDiscoverPage() {
         </div>
 
         {user && (
-          <div className="mb-8 grid gap-4 md:grid-cols-2">
+          <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -123,6 +123,24 @@ export default function DrinksDiscoverPage() {
                 <Link href="/drinks/creator-dashboard">
                   <Button variant="outline" className="w-full justify-between">
                     Open Creator Dashboard
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Bell className="h-5 w-5 text-blue-600" />
+                  Notifications Center
+                </CardTitle>
+                <CardDescription>Review your creator updates in one unified feed.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/drinks/notifications">
+                  <Button variant="outline" className="w-full justify-between">
+                    Open Notifications
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>

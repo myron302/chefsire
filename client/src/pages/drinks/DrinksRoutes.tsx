@@ -25,6 +25,7 @@ import DrinkChallengesPage from "@/pages/drinks/challenges";
 import DrinkChallengeDetailPage from "@/pages/drinks/challenge-detail";
 import DrinksDiscoverPage from "@/pages/drinks/discover";
 import DrinksCommunitySearchPage from "@/pages/drinks/search";
+import DrinksNotificationsPage from "@/pages/drinks/notifications";
 
 import EspressoDrinks from "@/pages/drinks/caffeinated/espresso";
 import ColdBrewDrinks from "@/pages/drinks/caffeinated/cold-brew";
@@ -182,6 +183,7 @@ export default function DrinksRoutes() {
       <Switch>
         <Route path="/drinks/discover" component={DrinksDiscoverPage} />
         <Route path="/drinks/search" component={DrinksCommunitySearchPage} />
+        <Route path="/drinks/notifications" component={DrinksNotificationsPage} />
         <Route path="/drinks/recipe/:slug" component={CanonicalDrinkRecipePage} />
         <Route path="/drinks/submit" component={SubmitDrinkRecipePage} />
         <Route path="/drinks/creator/:userId" component={PublicDrinkCreatorPage} />
