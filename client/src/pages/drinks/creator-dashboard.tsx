@@ -96,6 +96,13 @@ interface CreatorBadge {
   progress: { current: number; target: number; label: string } | null;
 }
 
+interface CreatorCollectionItem {
+  id: string;
+  isPublic: boolean;
+  isPremium: boolean;
+  priceCents: number;
+}
+
 interface CreatorBadgesResponse {
   ok: boolean;
   userId: string;
@@ -204,6 +211,21 @@ export default function CreatorDashboardPage() {
     enabled: Boolean(user?.id),
   });
 
+
+  const collectionsQuery = useQuery<{ ok: boolean; collections: CreatorCollectionItem[] }>({
+    queryKey: ["/api/drinks/collections/mine", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/collections/mine`, { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error || payload?.message || `Failed to load collections (${response.status})`;
+        throw new Error(String(message));
+      }
+      return payload as { ok: boolean; collections: CreatorCollectionItem[] };
+    },
+    enabled: Boolean(user?.id),
+  });
+
   if (userLoading) {
     return <div className="container mx-auto p-6">Loading dashboard...</div>;
   }
@@ -251,6 +273,9 @@ export default function CreatorDashboardPage() {
     isFollowing: Boolean(summary?.isFollowing ?? false),
   };
   const safeItems = Array.isArray(items) ? items : [];
+  const creatorCollections = collectionsQuery.data?.collections ?? [];
+  const publicCollectionsCount = creatorCollections.filter((collection) => collection.isPublic).length;
+  const premiumCollections = creatorCollections.filter((collection) => collection.isPremium);
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
@@ -320,6 +345,25 @@ export default function CreatorDashboardPage() {
               ) : null}
             </>
           ) : null}
+        </CardContent>
+      </Card>
+
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Collections Monetization</CardTitle>
+          <CardDescription>Subtle monetization signals for your public profile.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <p className="text-sm text-muted-foreground">{metricNumber(publicCollectionsCount)} public collections</p>
+          {premiumCollections.length > 0 ? (
+            <p className="text-sm text-muted-foreground">{metricNumber(premiumCollections.length)} premium collections live. View your public creator page to see support messaging.</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">No premium collections yet. Mark a collection premium to add a support path without blocking browsing.</p>
+          )}
+          <Link href="/drinks/collections">
+            <Button variant="outline" size="sm">Manage collections</Button>
+          </Link>
         </CardContent>
       </Card>
 

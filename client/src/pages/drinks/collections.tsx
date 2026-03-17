@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 
 type CollectionItem = {
@@ -24,6 +25,8 @@ type Collection = {
   name: string;
   description?: string | null;
   isPublic: boolean;
+  isPremium: boolean;
+  priceCents: number;
   itemsCount: number;
   items: CollectionItem[];
 };
@@ -42,6 +45,8 @@ export default function DrinkCollectionsPage() {
   const [collections, setCollections] = useState<Collection[]>([]);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [isPremium, setIsPremium] = useState(false);
+  const [price, setPrice] = useState("4.99");
 
   const loadCollections = async () => {
     setLoading(true);
@@ -97,7 +102,13 @@ export default function DrinkCollectionsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ name: name.trim(), description: description.trim() || null, isPublic: false }),
+        body: JSON.stringify({
+          name: name.trim(),
+          description: description.trim() || null,
+          isPublic: false,
+          isPremium,
+          priceCents: isPremium ? Math.max(1, Math.round(Number(price || 0) * 100)) : 0,
+        }),
       });
 
       if (!res.ok) {
@@ -111,12 +122,36 @@ export default function DrinkCollectionsPage() {
       }
       setName("");
       setDescription("");
+      setIsPremium(false);
+      setPrice("4.99");
       await loadCollections();
       toast({ title: "Collection created" });
     } catch (error) {
       toast({ title: "Could not create collection", description: import.meta.env.DEV ? (error instanceof Error ? error.message : "Unknown error") : undefined, variant: "destructive" });
     } finally {
       setSaving(false);
+    }
+  };
+
+
+  const togglePremium = async (collection: Collection) => {
+    try {
+      const nextIsPremium = !collection.isPremium;
+      const res = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          isPremium: nextIsPremium,
+          priceCents: nextIsPremium ? Math.max(1, collection.priceCents || 499) : 0,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to update premium settings");
+      await loadCollections();
+      toast({ title: nextIsPremium ? "Collection marked premium" : "Collection set to free" });
+    } catch {
+      toast({ title: "Could not update premium settings", variant: "destructive" });
     }
   };
 
@@ -158,6 +193,19 @@ export default function DrinkCollectionsPage() {
               <Label htmlFor="description">Description (optional)</Label>
               <Input id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What this collection is for" />
             </div>
+            <div className="flex items-center justify-between rounded-md border p-3">
+              <div>
+                <p className="text-sm font-medium">Premium collection</p>
+                <p className="text-xs text-muted-foreground">Add a subtle premium badge and price on public pages.</p>
+              </div>
+              <Switch checked={isPremium} onCheckedChange={setIsPremium} />
+            </div>
+            {isPremium ? (
+              <div className="space-y-2">
+                <Label htmlFor="price">Price (USD)</Label>
+                <Input id="price" type="number" min="0.5" step="0.5" value={price} onChange={(event) => setPrice(event.target.value)} />
+              </div>
+            ) : null}
             <Button onClick={createCollection} disabled={saving || !name.trim() || backendUnavailable}>
               Create collection
             </Button>
@@ -185,10 +233,16 @@ export default function DrinkCollectionsPage() {
                   </Link>
                   <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
                   <Badge variant="outline">{collection.isPublic ? "Public" : "Private"}</Badge>
+                  {collection.isPremium ? <Badge>Premium Collection · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => void togglePremium(collection)}>
+                    {collection.isPremium ? "Mark as free" : "Mark as premium"}
+                  </Button>
+                </div>
                 {collection.items.length === 0 ? <p className="text-sm text-muted-foreground">No drinks in this collection yet.</p> : null}
                 {collection.items.slice(0, 4).map((item) => (
                   <div key={`${collection.id}-${item.drinkSlug}`} className="flex items-center justify-between gap-2 text-sm">

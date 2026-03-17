@@ -20,6 +20,8 @@ interface PublicCollection {
   name: string;
   description: string | null;
   isPublic: boolean;
+  isPremium: boolean;
+  priceCents: number;
   userId: string;
   creatorUsername: string | null;
   creatorAvatar: string | null;
@@ -64,6 +66,7 @@ export default function DrinkCollectionsExplorePage() {
 
   const featuredCountLabel = featuredQuery.isSuccess ? `${featuredCollections.length} featured` : "—";
   const exploreCountLabel = exploreQuery.isSuccess ? `${exploreCollections.length} collections` : "—";
+  const premiumCollections = exploreCollections.filter((collection) => collection.isPremium);
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8">
@@ -112,8 +115,42 @@ export default function DrinkCollectionsExplorePage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
+                    {collection.isPremium ? <Badge>Premium · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
                     <Badge variant="outline">Updated {new Date(collection.updatedAt).toLocaleDateString()}</Badge>
                   </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-semibold">Premium Collections</h2>
+          <span className="text-sm text-muted-foreground">{premiumCollections.length} premium</span>
+        </div>
+
+        {exploreQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading premium collections…</p> : null}
+        {exploreQuery.isSuccess && premiumCollections.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">No premium collections yet. Check back as creators publish more.</CardContent>
+          </Card>
+        ) : null}
+
+        {premiumCollections.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {premiumCollections.slice(0, 6).map((collection) => (
+              <Card key={`premium-${collection.id}`}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">
+                    <Link href={collection.route} className="underline underline-offset-2">{collection.name}</Link>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p className="text-sm text-muted-foreground">by {collection.creatorUsername ? `@${collection.creatorUsername}` : "a creator"}</p>
+                  <Badge>Premium Collection · ${(collection.priceCents / 100).toFixed(2)}</Badge>
                 </CardContent>
               </Card>
             ))}
@@ -148,6 +185,7 @@ export default function DrinkCollectionsExplorePage() {
                 <CardContent className="space-y-2">
                   <p className="text-xs text-muted-foreground">Creator: {collection.creatorUsername ? `@${collection.creatorUsername}` : "Unknown"}</p>
                   <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
+                    {collection.isPremium ? <Badge>Premium · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
                 </CardContent>
               </Card>
             ))}

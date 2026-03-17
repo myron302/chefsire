@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { Link } from "wouter";
-import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell } from "lucide-react";
+import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem } from "lucide-react";
 
 import { useUser } from "@/contexts/UserContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -73,6 +73,13 @@ const discoverLinks: DiscoverLink[] = [
     href: "/drinks/collections/explore",
     icon: Layers,
     activityHint: "Recently popular",
+  },
+  {
+    title: "Premium Collections",
+    description: "Find creator premium collections and support makers without paywalls on recipes.",
+    href: "/drinks/collections/explore",
+    icon: Gem,
+    activityHint: "New",
   },
 ];
 
