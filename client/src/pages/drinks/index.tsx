@@ -259,6 +259,9 @@ export default function DrinksPage() {
             <Link href="/drinks/submit">
               <Button>Submit a Drink Recipe</Button>
             </Link>
+            <Link href="/drinks/discover">
+              <Button variant="secondary">Explore the Drinks Community</Button>
+            </Link>
             <Link href="/drinks/following">
               <Button variant="outline">Following Feed</Button>
             </Link>
