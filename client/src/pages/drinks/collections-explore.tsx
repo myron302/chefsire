@@ -67,6 +67,7 @@ export default function DrinkCollectionsExplorePage() {
   const featuredCountLabel = featuredQuery.isSuccess ? `${featuredCollections.length} featured` : "—";
   const exploreCountLabel = exploreQuery.isSuccess ? `${exploreCollections.length} collections` : "—";
   const premiumCollections = exploreCollections.filter((collection) => collection.isPremium);
+  const freeCollections = exploreCollections.filter((collection) => !collection.isPremium);
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8">
@@ -75,6 +76,11 @@ export default function DrinkCollectionsExplorePage() {
       <section className="space-y-2">
         <h1 className="text-3xl font-bold">Explore Public Collections</h1>
         <p className="text-sm text-muted-foreground">Discover featured collection picks and browse what creators are curating publicly.</p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          <Link href="/drinks/discover" className="text-sm underline underline-offset-2">Back to discover</Link>
+          <span className="text-muted-foreground">·</span>
+          <Link href="/drinks/creators/trending" className="text-sm underline underline-offset-2">Support creators</Link>
+        </div>
       </section>
 
       <section className="space-y-3">
@@ -160,7 +166,7 @@ export default function DrinkCollectionsExplorePage() {
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-xl font-semibold">All Public Collections</h2>
+          <h2 className="text-xl font-semibold">Free / Public Collections</h2>
           <span className="text-sm text-muted-foreground">{exploreCountLabel}</span>
         </div>
 
@@ -174,7 +180,7 @@ export default function DrinkCollectionsExplorePage() {
 
         {exploreQuery.isSuccess && exploreCollections.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {exploreCollections.map((collection) => (
+            {freeCollections.map((collection) => (
               <Card key={collection.id}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg">
@@ -185,7 +191,10 @@ export default function DrinkCollectionsExplorePage() {
                 <CardContent className="space-y-2">
                   <p className="text-xs text-muted-foreground">Creator: {collection.creatorUsername ? `@${collection.creatorUsername}` : "Unknown"}</p>
                   <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
-                    {collection.isPremium ? <Badge>Premium · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="outline">Public</Badge>
+                    <Link href={`/drinks/creator/${encodeURIComponent(collection.userId)}`} className="text-xs underline underline-offset-2">View creator collections</Link>
+                  </div>
                 </CardContent>
               </Card>
             ))}

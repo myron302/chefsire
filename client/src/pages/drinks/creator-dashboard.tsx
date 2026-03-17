@@ -276,6 +276,7 @@ export default function CreatorDashboardPage() {
   const creatorCollections = collectionsQuery.data?.collections ?? [];
   const publicCollectionsCount = creatorCollections.filter((collection) => collection.isPublic).length;
   const premiumCollections = creatorCollections.filter((collection) => collection.isPremium);
+  const freeCollectionsCount = creatorCollections.filter((collection) => collection.isPublic && !collection.isPremium).length;
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
@@ -351,19 +352,40 @@ export default function CreatorDashboardPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Collections Monetization</CardTitle>
-          <CardDescription>Subtle monetization signals for your public profile.</CardDescription>
+          <CardTitle>Creator Storefront Summary</CardTitle>
+          <CardDescription>Your collections storefront and lightweight monetization setup.</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-2">
-          <p className="text-sm text-muted-foreground">{metricNumber(publicCollectionsCount)} public collections</p>
+        <CardContent className="space-y-3">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Public collections</p>
+              <p className="text-xl font-semibold">{metricNumber(publicCollectionsCount)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
+              <p className="text-xl font-semibold">{metricNumber(premiumCollections.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Free collections</p>
+              <p className="text-xl font-semibold">{metricNumber(freeCollectionsCount)}</p>
+            </div>
+          </div>
           {premiumCollections.length > 0 ? (
-            <p className="text-sm text-muted-foreground">{metricNumber(premiumCollections.length)} premium collections live. View your public creator page to see support messaging.</p>
+            <p className="text-sm text-muted-foreground">{metricNumber(premiumCollections.length)} premium collections live. Your public creator page now highlights paid vs free collections for storefront clarity.</p>
           ) : (
             <p className="text-sm text-muted-foreground">No premium collections yet. Mark a collection premium to add a support path without blocking browsing.</p>
           )}
-          <Link href="/drinks/collections">
-            <Button variant="outline" size="sm">Manage collections</Button>
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/drinks/collections">
+              <Button variant="outline" size="sm">Manage collections</Button>
+            </Link>
+            <Link href={`/drinks/creator/${encodeURIComponent(user?.id ?? "")}`}>
+              <Button variant="outline" size="sm">View creator storefront</Button>
+            </Link>
+            <Link href="/drinks/collections/explore">
+              <Button size="sm">Browse premium collections</Button>
+            </Link>
+          </div>
         </CardContent>
       </Card>
 

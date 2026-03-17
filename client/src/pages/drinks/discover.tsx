@@ -81,6 +81,13 @@ const discoverLinks: DiscoverLink[] = [
     icon: Gem,
     activityHint: "New",
   },
+  {
+    title: "Support Creators",
+    description: "Discover creators, visit storefront collections, and follow makers you want to support.",
+    href: "/drinks/creators/trending",
+    icon: Users,
+    activityHint: "New",
+  },
 ];
 
 export default function DrinksDiscoverPage() {

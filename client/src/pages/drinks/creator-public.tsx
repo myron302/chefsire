@@ -201,6 +201,7 @@ export default function PublicDrinkCreatorPage() {
   const data = query.data;
   const creatorCollections = publicCollectionsQuery.data?.collections ?? [];
   const premiumCollections = creatorCollections.filter((collection) => collection.isPremium);
+  const freeCollections = creatorCollections.filter((collection) => !collection.isPremium);
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-public-creator-page">
@@ -254,16 +255,24 @@ export default function PublicDrinkCreatorPage() {
             ) : null}
           </div>
 
-          <div className="rounded-md border bg-muted/30 p-3 text-sm">
-            <p className="font-medium">{creatorCollections.length} public collections</p>
+          <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-2">
+            <p className="font-medium">Creator storefront · {creatorCollections.length} public collections</p>
             {premiumCollections.length > 0 ? (
               <p className="text-muted-foreground">Premium collections available · browse and support this creator.</p>
             ) : (
               <p className="text-muted-foreground">Support this creator by following and exploring their collections.</p>
             )}
-            {premiumCollections.length > 0 ? (
-              <Link href="/drinks/collections/explore" className="underline underline-offset-2">Browse premium collections</Link>
-            ) : null}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Link href="#creator-collections">
+                <Button size="sm" variant="outline">View creator collections</Button>
+              </Link>
+              {premiumCollections.length > 0 ? (
+                <Link href="/drinks/collections/explore">
+                  <Button size="sm">Browse premium collections</Button>
+                </Link>
+              ) : null}
+              {user?.id !== data.userId ? <CreatorFollowButton creatorId={data.userId} /> : null}
+            </div>
           </div>
 
           {data.topDrink ? (
@@ -350,9 +359,9 @@ export default function PublicDrinkCreatorPage() {
         )}
       </section>
 
-      <section className="space-y-3">
+      <section id="creator-collections" className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-xl font-semibold">Public Collections</h2>
+          <h2 className="text-xl font-semibold">Collections by this creator</h2>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <span>{creatorCollections.length} items</span>
             {premiumCollections.length > 0 ? <span>{premiumCollections.length} premium</span>  : null}
@@ -373,22 +382,58 @@ export default function PublicDrinkCreatorPage() {
         ) : null}
 
         {!publicCollectionsQuery.isLoading && (publicCollectionsQuery.data?.collections?.length ?? 0) > 0 ? (
-          <div className="grid gap-3 md:grid-cols-2">
-            {publicCollectionsQuery.data?.collections?.map((collection) => (
-              <Card key={collection.id}>
-                <CardContent className="p-4 space-y-2">
-                  <Link href={`/drinks/collections/${encodeURIComponent(collection.id)}`} className="font-medium underline underline-offset-2">
-                    {collection.name}
-                  </Link>
-                  {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
-                    {collection.isPremium ? <Badge>Premium · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
-                  </div>
-                  {collection.isPremium ? <p className="text-xs text-muted-foreground">Support this creator by browsing premium collections.</p> : null}
-                </CardContent>
-              </Card>
-            ))}
+          <div className="space-y-5">
+            {premiumCollections.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Premium collections</h3>
+                  <span className="text-xs text-muted-foreground">Support this creator</span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {premiumCollections.map((collection) => (
+                    <Card key={collection.id}>
+                      <CardContent className="p-4 space-y-2">
+                        <Link href={`/drinks/collections/${encodeURIComponent(collection.id)}`} className="font-medium underline underline-offset-2">
+                          {collection.name}
+                        </Link>
+                        {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
+                          <Badge>Premium · ${(collection.priceCents / 100).toFixed(2)}</Badge>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Link href="/drinks/collections/explore" className="text-xs underline underline-offset-2">Browse premium collections</Link>
+                          <Link href={`/drinks/creator/${encodeURIComponent(data.userId)}`} className="text-xs underline underline-offset-2">Support this creator</Link>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Free / public collections</h3>
+                <span className="text-xs text-muted-foreground">Browse without paywalls</span>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                {freeCollections.map((collection) => (
+                  <Card key={collection.id}>
+                    <CardContent className="p-4 space-y-2">
+                      <Link href={`/drinks/collections/${encodeURIComponent(collection.id)}`} className="font-medium underline underline-offset-2">
+                        {collection.name}
+                      </Link>
+                      {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
+                      <div className="flex flex-wrap gap-2">
+                        <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
+                        <Badge variant="outline">Public</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
           </div>
         ) : null}
       </section>
