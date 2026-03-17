@@ -224,6 +224,9 @@ export default function CreatorDashboardPage() {
           <Link href="/drinks/submit">
             <Button size="sm">Submit a Drink Recipe</Button>
           </Link>
+          <Link href="/drinks/notifications">
+            <Button variant="outline" size="sm">Notifications Center</Button>
+          </Link>
         </div>
       </div>
 

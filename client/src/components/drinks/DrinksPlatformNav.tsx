@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 
 type DrinksPlatformNavProps = {
-  current?: "hub" | "submit" | "dashboard" | "following" | "creator" | "remixes" | "most-remixed" | "trending-creators" | "whats-new" | "recipe" | "collections" | "challenges" | "search";
+  current?: "hub" | "submit" | "dashboard" | "following" | "creator" | "remixes" | "most-remixed" | "trending-creators" | "whats-new" | "recipe" | "collections" | "challenges" | "search" | "notifications";
 };
 
 const NAV_ITEMS = [
@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { key: "most-remixed", href: "/drinks/most-remixed", label: "Most Remixed" },
   { key: "trending-creators", href: "/drinks/creators/trending", label: "Trending Creators" },
   { key: "following", href: "/drinks/following", label: "Following Feed" },
+  { key: "notifications", href: "/drinks/notifications", label: "Notifications" },
   { key: "collections", href: "/drinks/collections", label: "Collections" },
   { key: "challenges", href: "/drinks/challenges", label: "Challenges" },
   { key: "dashboard", href: "/drinks/creator-dashboard", label: "Creator Dashboard" },
