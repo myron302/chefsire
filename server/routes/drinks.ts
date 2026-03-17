@@ -3617,7 +3617,10 @@ r.get("/collections/mine", optionalAuth, async (req, res) => {
 
 r.get("/collections/public/:userId", async (req, res) => {
   try {
-    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    if (!db) {
+      logCollectionDbUnavailable("/public/:userId", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
 
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 20, maxLimit: 100 });
 
@@ -3639,7 +3642,10 @@ r.get("/collections/public/:userId", async (req, res) => {
 
 r.get("/collections/explore", async (req, res) => {
   try {
-    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    if (!db) {
+      logCollectionDbUnavailable("/explore", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
 
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 24, maxLimit: 100 });
 
@@ -3661,7 +3667,10 @@ r.get("/collections/explore", async (req, res) => {
 
 r.get("/collections/featured", async (req, res) => {
   try {
-    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    if (!db) {
+      logCollectionDbUnavailable("/featured", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
 
     const { limit } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 8, maxLimit: 24 });
 
