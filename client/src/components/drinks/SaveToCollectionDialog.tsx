@@ -26,6 +26,10 @@ type Props = {
   drinkSlug: string;
 };
 
+function isAuthFailureStatus(status: number): boolean {
+  return status === 401 || status === 403;
+}
+
 export default function SaveToCollectionDialog({ drinkSlug }: Props) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -50,7 +54,7 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
     try {
       const res = await fetch("/api/drinks/collections/mine", { credentials: "include" });
       if (!res.ok) {
-        if (res.status === 401) {
+        if (isAuthFailureStatus(res.status)) {
           setIsAuthRequired(true);
           setCollections([]);
           return;
@@ -60,6 +64,14 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
       }
 
       const payload = await res.json();
+      if (payload?.ok === false) {
+        throw new Error(payload?.error || "Unable to load collections");
+      }
+
+      if (import.meta.env.DEV && !Array.isArray(payload?.collections)) {
+        console.warn("[drinks/save-to-collection] Unexpected collections payload shape", payload);
+      }
+
       const nextCollections = Array.isArray(payload?.collections) ? payload.collections : [];
       setCollections(nextCollections);
       setSelectedCollectionId((current) => (current ? current : nextCollections[0]?.id ?? ""));
@@ -83,7 +95,7 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
     });
 
     if (!res.ok) {
-      if (res.status === 401) throw new Error("AUTH_REQUIRED");
+      if (isAuthFailureStatus(res.status)) throw new Error("AUTH_REQUIRED");
       const payload = await res.json().catch(() => null);
       throw new Error(payload?.error || "Unable to save drink");
     }
@@ -137,7 +149,7 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
       });
 
       if (!createRes.ok) {
-        if (createRes.status === 401) throw new Error("AUTH_REQUIRED");
+        if (isAuthFailureStatus(createRes.status)) throw new Error("AUTH_REQUIRED");
         const payload = await createRes.json().catch(() => null);
         throw new Error(payload?.error || "Unable to create collection");
       }
