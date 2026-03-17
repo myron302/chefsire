@@ -2823,6 +2823,181 @@ r.get("/search", async (req, res) => {
   }
 });
 
+// Unified drinks community search (drinks, remixes, creators, challenges)
+r.get("/community-search", async (req, res) => {
+  try {
+    const q = typeof req.query?.q === "string" ? req.query.q.trim() : "";
+    if (!q) {
+      return res.json({
+        ok: true,
+        query: "",
+        results: {
+          drinks: [],
+          remixes: [],
+          creators: [],
+          challenges: [],
+        },
+      });
+    }
+
+    const canonicalMatches = await searchDrinks({ q, source: "external", pageSize: 8, offset: 0 });
+    const queryLike = `%${q}%`;
+
+    let userRecipeMatches: Array<{
+      slug: string;
+      name: string;
+      image: string | null;
+      category: string;
+      subcategory: string | null;
+      remixedFromSlug: string | null;
+      creatorUsername: string | null;
+    }> = [];
+
+    let creators: Array<{
+      userId: string;
+      username: string;
+      avatar: string | null;
+      followerCount: number;
+      route: string;
+    }> = [];
+
+    let challenges: Array<{
+      slug: string;
+      title: string;
+      description: string;
+      route: string;
+      isActive: boolean;
+    }> = [];
+
+    if (db) {
+      userRecipeMatches = await db
+        .select({
+          slug: drinkRecipes.slug,
+          name: drinkRecipes.name,
+          image: drinkRecipes.image,
+          category: drinkRecipes.category,
+          subcategory: drinkRecipes.subcategory,
+          remixedFromSlug: drinkRecipes.remixedFromSlug,
+          creatorUsername: users.username,
+        })
+        .from(drinkRecipes)
+        .leftJoin(users, eq(users.id, drinkRecipes.userId))
+        .where(
+          or(
+            ilike(drinkRecipes.name, queryLike),
+            ilike(drinkRecipes.description, queryLike),
+            ilike(drinkRecipes.category, queryLike),
+            ilike(drinkRecipes.subcategory, queryLike),
+            ilike(users.username, queryLike),
+          ),
+        )
+        .orderBy(desc(drinkRecipes.createdAt))
+        .limit(24);
+
+      creators = await db
+        .select({
+          userId: users.id,
+          username: users.username,
+          avatar: users.avatar,
+          followerCount: users.followersCount,
+        })
+        .from(users)
+        .where(
+          and(
+            or(ilike(users.username, queryLike), ilike(users.displayName, queryLike), ilike(users.bio, queryLike)),
+            sql`exists (select 1 from ${drinkRecipes} dr where dr.user_id = ${users.id})`,
+          ),
+        )
+        .limit(8)
+        .then((rows) =>
+          rows.map((row) => ({
+            userId: row.userId,
+            username: row.username,
+            avatar: row.avatar ?? null,
+            followerCount: Number(row.followerCount ?? 0),
+            route: `/drinks/creator/${row.userId}`,
+          })),
+        );
+
+      challenges = await db
+        .select({
+          slug: drinkChallenges.slug,
+          title: drinkChallenges.title,
+          description: drinkChallenges.description,
+          isActive: drinkChallenges.isActive,
+          startsAt: drinkChallenges.startsAt,
+          endsAt: drinkChallenges.endsAt,
+        })
+        .from(drinkChallenges)
+        .where(
+          or(
+            ilike(drinkChallenges.slug, queryLike),
+            ilike(drinkChallenges.title, queryLike),
+            ilike(drinkChallenges.description, queryLike),
+            ilike(drinkChallenges.theme, queryLike),
+          ),
+        )
+        .orderBy(desc(drinkChallenges.createdAt))
+        .limit(8)
+        .then((rows) =>
+          rows.map((row) => ({
+            slug: row.slug,
+            title: row.title,
+            description: row.description,
+            route: `/drinks/challenges/${row.slug}`,
+            isActive:
+              row.isActive &&
+              row.startsAt.getTime() <= Date.now() &&
+              row.endsAt.getTime() >= Date.now(),
+          })),
+        );
+    }
+
+    const canonicalDrinkResults = canonicalMatches.results.map((item) => ({
+      slug: item.sourceId,
+      name: item.title,
+      image: item.imageUrl ?? null,
+      route: `/drinks/recipe/${item.sourceId}`,
+      sourceCategoryRoute: null,
+    }));
+
+    const userDrinkResults = userRecipeMatches
+      .filter((recipe) => !recipe.remixedFromSlug)
+      .map((recipe) => ({
+        slug: recipe.slug,
+        name: recipe.name,
+        image: recipe.image ?? null,
+        route: `/drinks/recipe/${recipe.slug}`,
+        sourceCategoryRoute: `/drinks/${recipe.category}${recipe.subcategory ? `/${recipe.subcategory}` : ""}`,
+      }));
+
+    const remixResults = userRecipeMatches
+      .filter((recipe) => Boolean(recipe.remixedFromSlug))
+      .map((recipe) => ({
+        slug: recipe.slug,
+        name: recipe.name,
+        image: recipe.image ?? null,
+        route: `/drinks/recipe/${recipe.slug}`,
+        remixedFromSlug: recipe.remixedFromSlug,
+        creatorUsername: recipe.creatorUsername ?? null,
+      }));
+
+    return res.json({
+      ok: true,
+      query: q,
+      results: {
+        drinks: [...userDrinkResults, ...canonicalDrinkResults].slice(0, 12),
+        remixes: remixResults.slice(0, 12),
+        creators,
+        challenges,
+      },
+    });
+  } catch (error) {
+    console.error("Error searching drinks community:", error);
+    return res.status(500).json({ ok: false, error: "Failed to search drinks community" });
+  }
+});
+
 // Helper to coerce query values into strings
 function str(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
