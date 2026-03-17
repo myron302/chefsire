@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useRoute } from "wouter";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Share2 } from "lucide-react";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { addItemsToShoppingList } from "@/lib/shopping-list";
 import { addRecentlyViewedDrinkSlug } from "@/components/drinks/RecentlyViewedDrinks";
+import { recordDrinkViewActivity } from "@/lib/drinks-activity";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
 import { postEngagementEvent } from "@/lib/engagement-events";
@@ -140,9 +141,14 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
     if (!trackedDrinkSlug) return;
 
     addRecentlyViewedDrinkSlug(trackedDrinkSlug);
+    recordDrinkViewActivity({
+      slug: trackedDrinkSlug,
+      sourceRoute,
+      creatorUsername: userRecipe?.creatorUsername ?? null,
+    });
 
     void logDrinkEvent(trackedDrinkSlug, "view");
-  }, [trackedDrinkSlug]);
+  }, [trackedDrinkSlug, sourceRoute, userRecipe?.creatorUsername]);
 
   useEffect(() => {
     if (!canonicalRecipe?.slug) {
@@ -232,6 +238,18 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   const remixChainDescendants = Array.isArray(remixChain?.descendants) ? remixChain.descendants : [];
   const hasLineage = remixChainAncestors.length > 0 || remixChainChildren.length > 0;
 
+  const shareRecipe = async () => {
+    const shareUrl = `${window.location.origin}/drinks/recipe/${encodeURIComponent(trackedDrinkSlug)}`;
+    const shareText = `Check out this drink on ChefSire: ${shareUrl}`;
+
+    try {
+      await navigator.clipboard.writeText(shareText);
+      toast({ title: "Link copied" });
+    } catch {
+      toast({ title: "Unable to copy link", variant: "destructive" });
+    }
+  };
+
   const addAllIngredients = async () => {
     const payload = ingredients
       .map((ingredient) => ({ name: ingredient, quantity: "1", unit: "", category: "From Recipe" }))
@@ -282,6 +300,10 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
             Add Ingredients to Shopping List
           </Button>
           <SaveToCollectionDialog drinkSlug={trackedDrinkSlug} />
+          <Button variant="outline" onClick={shareRecipe}>
+            <Share2 className="h-4 w-4 mr-2" />
+            Share
+          </Button>
         </div>
       ) : null}
 

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
+import { recordDrinkRemixActivity } from "@/lib/drinks-activity";
 
 type RemixSource = {
   name?: string;
@@ -399,6 +400,11 @@ export default function SubmitDrinkRecipePage() {
       return;
     }
 
+    recordDrinkRemixActivity({
+      slug: json.recipe.slug,
+      remixedFromSlug: normalizeRemixSlug(remixSlug) ?? null,
+      category: form.category,
+    });
     setLocation(`/drinks/recipe/${json.recipe.slug}`);
   }
 
