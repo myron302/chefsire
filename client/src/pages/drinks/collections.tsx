@@ -28,6 +28,10 @@ type Collection = {
   items: CollectionItem[];
 };
 
+function isAuthFailureStatus(status: number): boolean {
+  return status === 401 || status === 403;
+}
+
 export default function DrinkCollectionsPage() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
@@ -45,7 +49,7 @@ export default function DrinkCollectionsPage() {
     try {
       const res = await fetch("/api/drinks/collections/mine", { credentials: "include" });
       if (!res.ok) {
-        if (res.status === 401) {
+        if (isAuthFailureStatus(res.status)) {
           setIsAuthRequired(true);
           setCollections([]);
           return;
@@ -53,6 +57,14 @@ export default function DrinkCollectionsPage() {
         throw new Error(`Failed to load collections (${res.status})`);
       }
       const payload = await res.json();
+      if (payload?.ok === false) {
+        throw new Error(payload?.error || "Failed to load collections");
+      }
+
+      if (import.meta.env.DEV && !Array.isArray(payload?.collections)) {
+        console.warn("[drinks/collections] Unexpected collections payload shape", payload);
+      }
+
       setCollections(Array.isArray(payload?.collections) ? payload.collections : []);
     } catch (error) {
       setCollections([]);
@@ -81,7 +93,7 @@ export default function DrinkCollectionsPage() {
       });
 
       if (!res.ok) {
-        if (res.status === 401) {
+        if (isAuthFailureStatus(res.status)) {
           setIsAuthRequired(true);
           toast({ title: "Sign in required", description: "Please sign in to create collections." });
           return;
@@ -107,7 +119,7 @@ export default function DrinkCollectionsPage() {
         credentials: "include",
       });
       if (!res.ok) {
-        if (res.status === 401) {
+        if (isAuthFailureStatus(res.status)) {
           setIsAuthRequired(true);
           toast({ title: "Sign in required", description: "Please sign in to remove drinks from collections." });
           return;
