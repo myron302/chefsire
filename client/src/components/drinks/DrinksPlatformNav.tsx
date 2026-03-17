@@ -3,12 +3,13 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 
 type DrinksPlatformNavProps = {
-  current?: "hub" | "submit" | "dashboard" | "following" | "creator" | "remixes" | "most-remixed" | "trending-creators" | "whats-new" | "recipe" | "collections" | "challenges";
+  current?: "hub" | "submit" | "dashboard" | "following" | "creator" | "remixes" | "most-remixed" | "trending-creators" | "whats-new" | "recipe" | "collections" | "challenges" | "search";
 };
 
 const NAV_ITEMS = [
   { key: "hub", href: "/drinks", label: "Drinks Hub" },
   { key: "whats-new", href: "/drinks/whats-new", label: "What's New" },
+  { key: "search", href: "/drinks/search", label: "Community Search" },
   { key: "remixes", href: "/drinks/remixes", label: "Discover Remixes" },
   { key: "most-remixed", href: "/drinks/most-remixed", label: "Most Remixed" },
   { key: "trending-creators", href: "/drinks/creators/trending", label: "Trending Creators" },

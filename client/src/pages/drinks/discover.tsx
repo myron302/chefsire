@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { Link } from "wouter";
-import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard } from "lucide-react";
+import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search } from "lucide-react";
 
 import { useUser } from "@/contexts/UserContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,12 @@ type DiscoverLink = {
 };
 
 const discoverLinks: DiscoverLink[] = [
+  {
+    title: "Community Search",
+    description: "Search drinks, remixes, creators, and challenges from one page.",
+    href: "/drinks/search",
+    icon: Search,
+  },
   {
     title: "Trending Drinks",
     description: "What people are viewing and interacting with now.",
