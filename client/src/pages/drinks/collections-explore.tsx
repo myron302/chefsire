@@ -59,6 +59,12 @@ export default function DrinkCollectionsExplorePage() {
     },
   });
 
+  const featuredCollections = featuredQuery.data?.collections ?? [];
+  const exploreCollections = exploreQuery.data?.collections ?? [];
+
+  const featuredCountLabel = featuredQuery.isSuccess ? `${featuredCollections.length} featured` : "—";
+  const exploreCountLabel = exploreQuery.isSuccess ? `${exploreCollections.length} collections` : "—";
+
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8">
       <DrinksPlatformNav current="collections" />
@@ -71,20 +77,22 @@ export default function DrinkCollectionsExplorePage() {
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-xl font-semibold">Featured Collections</h2>
-          <span className="text-sm text-muted-foreground">{featuredQuery.data?.collections?.length ?? 0} featured</span>
+          <span className="text-sm text-muted-foreground">{featuredCountLabel}</span>
         </div>
 
         {featuredQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading featured collections…</p> : null}
 
-        {!featuredQuery.isLoading && (featuredQuery.data?.collections?.length ?? 0) === 0 ? (
+        {featuredQuery.isError ? <p className="text-sm text-destructive">Could not load featured collections right now.</p> : null}
+
+        {featuredQuery.isSuccess && featuredCollections.length === 0 ? (
           <Card>
             <CardContent className="p-4 text-sm text-muted-foreground">No featured public collections yet.</CardContent>
           </Card>
         ) : null}
 
-        {(featuredQuery.data?.collections?.length ?? 0) > 0 ? (
+        {featuredQuery.isSuccess && featuredCollections.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2">
-            {featuredQuery.data?.collections?.map((collection) => (
+            {featuredCollections.map((collection) => (
               <Card key={`featured-${collection.id}`}>
                 <CardHeader className="pb-3">
                   <CardTitle>
@@ -116,15 +124,20 @@ export default function DrinkCollectionsExplorePage() {
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-xl font-semibold">All Public Collections</h2>
-          <span className="text-sm text-muted-foreground">{exploreQuery.data?.collections?.length ?? 0} collections</span>
+          <span className="text-sm text-muted-foreground">{exploreCountLabel}</span>
         </div>
 
         {exploreQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading public collections…</p> : null}
         {exploreQuery.isError ? <p className="text-sm text-destructive">Could not load public collections right now.</p> : null}
+        {exploreQuery.isSuccess && exploreCollections.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">No public collections published yet.</CardContent>
+          </Card>
+        ) : null}
 
-        {(exploreQuery.data?.collections?.length ?? 0) > 0 ? (
+        {exploreQuery.isSuccess && exploreCollections.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {exploreQuery.data?.collections?.map((collection) => (
+            {exploreCollections.map((collection) => (
               <Card key={collection.id}>
                 <CardHeader className="pb-2">
                   <CardTitle className="text-lg">
