@@ -84,6 +84,33 @@ interface CreatorActivityResponse {
   };
 }
 
+interface CreatorBadge {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  isPublic: boolean;
+  isEarned: boolean;
+  earnedAt: string | null;
+  progress: { current: number; target: number; label: string } | null;
+}
+
+interface CreatorBadgesResponse {
+  ok: boolean;
+  userId: string;
+  visibility: "private" | "public";
+  badges: CreatorBadge[];
+  earnedCount: number;
+  totalCount: number;
+  nextMilestones: Array<{
+    id: string;
+    title: string;
+    icon: string;
+    description: string;
+    progress: { current: number; target: number; label: string } | null;
+  }>;
+}
+
 function formatDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
@@ -160,6 +187,22 @@ export default function CreatorDashboardPage() {
     enabled: Boolean(user?.id),
   });
 
+  const badgesQuery = useQuery<CreatorBadgesResponse>({
+    queryKey: ["/api/drinks/creator/badges", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/creator/${encodeURIComponent(user?.id ?? "")}/badges`, {
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error || payload?.message || `Failed to load creator badges (${response.status})`;
+        throw new Error(String(message));
+      }
+      return payload as CreatorBadgesResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
   if (userLoading) {
     return <div className="container mx-auto p-6">Loading dashboard...</div>;
   }
@@ -231,6 +274,50 @@ export default function CreatorDashboardPage() {
       </div>
 
       <DrinksPlatformNav current="dashboard" />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Creator Milestones & Badges</CardTitle>
+          <CardDescription>
+            {badgesQuery.data
+              ? `${metricNumber(badgesQuery.data.earnedCount)} earned badges`
+              : "Progress markers for your creator journey."}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {badgesQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading badges…</p> : null}
+          {badgesQuery.isError ? <p className="text-sm text-destructive">Unable to load badges right now.</p> : null}
+          {badgesQuery.data ? (
+            <>
+              {badgesQuery.data.badges.filter((badge) => badge.isEarned).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No badges earned yet. Publish and remix drinks to unlock your first milestone.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {badgesQuery.data.badges.filter((badge) => badge.isEarned).map((badge) => (
+                    <Badge key={badge.id} variant="secondary" className="py-1">
+                      <span className="mr-1" aria-hidden>{badge.icon}</span>{badge.title}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {badgesQuery.data.nextMilestones.length > 0 ? (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Next milestones</p>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {badgesQuery.data.nextMilestones.map((badge) => (
+                      <div key={badge.id} className="rounded-md border p-2 text-sm">
+                        <div className="font-medium"><span className="mr-1">{badge.icon}</span>{badge.title}</div>
+                        {badge.progress ? <div className="text-xs text-muted-foreground mt-1">{metricNumber(badge.progress.current)} / {metricNumber(badge.progress.target)} {badge.progress.label.toLowerCase()}</div> : null}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <Card>
