@@ -279,6 +279,27 @@ function normalizeCollectionDescription(value: string | null | undefined): strin
   return cleaned.length ? cleaned : null;
 }
 
+function logCollectionRouteError(route: string, req: any, error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  console.error(`[drinks/collections${route}] Request failed`, {
+    method: req.method,
+    path: req.originalUrl,
+    userId: req.user?.id ?? null,
+    params: req.params,
+    query: req.query,
+    message,
+    error,
+  });
+  return message;
+}
+
+function collectionServerError(message: string, fallback: string) {
+  return {
+    ok: false,
+    error: process.env.NODE_ENV === "production" ? fallback : `${fallback}: ${message}`,
+  };
+}
+
 async function resolveCollectionWithItems(collection: typeof drinkCollections.$inferSelect) {
   if (!db) return null;
 
@@ -1057,7 +1078,7 @@ r.get("/remixes", async (req, res) => {
     const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 30, maxLimit: 60 });
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
 
-    const remixRows = await db
+    const remixRowsQuery = db
       .select({
         id: drinkRecipes.id,
         slug: drinkRecipes.slug,
@@ -1084,12 +1105,20 @@ r.get("/remixes", async (req, res) => {
         users.username,
         users.avatar,
         drinkRecipes.remixedFromSlug
-      )
-      .orderBy(sort === "popular"
-        ? [desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`), desc(drinkRecipes.createdAt)]
-        : [desc(drinkRecipes.createdAt)])
-      .limit(limit)
-      .offset(offset);
+      );
+
+    const remixRows = await (sort === "popular"
+      ? remixRowsQuery
+          .orderBy(
+            desc(sql`count(${drinkEvents.id}) filter (where ${drinkEvents.eventType} = 'view' and ${drinkEvents.createdAt} >= ${sevenDaysAgo})`),
+            desc(drinkRecipes.createdAt)
+          )
+          .limit(limit)
+          .offset(offset)
+      : remixRowsQuery
+          .orderBy(desc(drinkRecipes.createdAt))
+          .limit(limit)
+          .offset(offset));
     const remixSlugs = remixRows.map((row) => row.slug);
     const remixesCountRows = remixSlugs.length
       ? await db
@@ -2822,8 +2851,8 @@ r.post("/collections", requireAuth, async (req, res) => {
     const created = createdRows[0];
     return res.status(201).json({ ok: true, collection: { ...created, itemsCount: 0, items: [] } });
   } catch (error) {
-    console.error("Error creating drink collection:", error);
-    return res.status(500).json({ ok: false, error: "Failed to create collection" });
+    const message = logCollectionRouteError("", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create collection"));
   }
 });
 
@@ -2844,8 +2873,8 @@ r.get("/collections/mine", requireAuth, async (req, res) => {
     const collections = await Promise.all(rows.map((row) => resolveCollectionWithItems(row)));
     return res.json({ ok: true, limit, offset, collections: collections.filter(Boolean) });
   } catch (error) {
-    console.error("Error loading user collections:", error);
-    return res.status(500).json({ ok: false, error: "Failed to load collections" });
+    const message = logCollectionRouteError("/mine", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load collections"));
   }
 });
 
@@ -2866,8 +2895,8 @@ r.get("/collections/public/:userId", async (req, res) => {
     const collections = await Promise.all(rows.map((row) => resolveCollectionWithItems(row)));
     return res.json({ ok: true, limit, offset, collections: collections.filter(Boolean) });
   } catch (error) {
-    console.error("Error loading public collections:", error);
-    return res.status(500).json({ ok: false, error: "Failed to load public collections" });
+    const message = logCollectionRouteError("/public/:userId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load public collections"));
   }
 });
 
@@ -2888,8 +2917,8 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
     const hydrated = await resolveCollectionWithItems(collection);
     return res.json({ ok: true, collection: hydrated });
   } catch (error) {
-    console.error("Error loading collection:", error);
-    return res.status(500).json({ ok: false, error: "Failed to load collection" });
+    const message = logCollectionRouteError("/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load collection"));
   }
 });
 
@@ -2921,8 +2950,8 @@ r.patch("/collections/:id", requireAuth, async (req, res) => {
     const hydrated = await resolveCollectionWithItems(updatedRows[0]);
     return res.json({ ok: true, collection: hydrated });
   } catch (error) {
-    console.error("Error updating collection:", error);
-    return res.status(500).json({ ok: false, error: "Failed to update collection" });
+    const message = logCollectionRouteError("/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update collection"));
   }
 });
 
@@ -2938,8 +2967,8 @@ r.delete("/collections/:id", requireAuth, async (req, res) => {
     await db.delete(drinkCollections).where(eq(drinkCollections.id, req.params.id));
     return res.json({ ok: true, message: "Collection deleted" });
   } catch (error) {
-    console.error("Error deleting collection:", error);
-    return res.status(500).json({ ok: false, error: "Failed to delete collection" });
+    const message = logCollectionRouteError("/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete collection"));
   }
 });
 
@@ -2974,8 +3003,8 @@ r.post("/collections/:id/items", requireAuth, async (req, res) => {
     const hydrated = await resolveCollectionWithItems(refreshedRows[0]);
     return res.status(201).json({ ok: true, collection: hydrated });
   } catch (error) {
-    console.error("Error adding item to collection:", error);
-    return res.status(500).json({ ok: false, error: "Failed to add item" });
+    const message = logCollectionRouteError("/:id/items", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to add item"));
   }
 });
 
@@ -3004,8 +3033,8 @@ r.delete("/collections/:id/items/:slug", requireAuth, async (req, res) => {
     const hydrated = await resolveCollectionWithItems(refreshedRows[0]);
     return res.json({ ok: true, collection: hydrated });
   } catch (error) {
-    console.error("Error removing collection item:", error);
-    return res.status(500).json({ ok: false, error: "Failed to remove item" });
+    const message = logCollectionRouteError("/:id/items/:slug", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to remove item"));
   }
 });
 
