@@ -2,11 +2,17 @@ import { useEffect, useState } from "react";
 import { Link, useRoute } from "wouter";
 
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type CollectionItem = {
+  id: string;
   drinkSlug: string;
+  drinkName: string;
+  image?: string | null;
+  route: string;
+  remixedFromSlug?: string | null;
   addedAt: string;
   drink?: {
     slug: string;
@@ -22,9 +28,16 @@ type Collection = {
   description?: string | null;
   isPublic: boolean;
   userId: string;
+  creatorUsername?: string | null;
+  creatorAvatar?: string | null;
   itemsCount: number;
   items: CollectionItem[];
 };
+
+function initials(value: string | null | undefined): string {
+  if (!value) return "DR";
+  return value.slice(0, 2).toUpperCase();
+}
 
 export default function DrinkCollectionDetailPage() {
   const [matched, params] = useRoute<{ id: string }>("/drinks/collections/:id");
@@ -71,21 +84,38 @@ export default function DrinkCollectionDetailPage() {
 
       {!loading && !error && collection ? (
         <Card>
-          <CardHeader>
+          <CardHeader className="space-y-3">
             <CardTitle className="text-2xl flex flex-wrap items-center gap-2">
               {collection.name}
               <Badge variant="outline">{collection.isPublic ? "Public" : "Private"}</Badge>
               <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
             </CardTitle>
             {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Avatar className="h-6 w-6">
+                <AvatarImage src={collection.creatorAvatar ?? undefined} alt={collection.creatorUsername ?? "creator"} />
+                <AvatarFallback>{initials(collection.creatorUsername)}</AvatarFallback>
+              </Avatar>
+              <span>Created by {collection.creatorUsername ? `@${collection.creatorUsername}` : "a creator"}</span>
+              {collection.isPublic ? (
+                <Link href={`/drinks/creator/${encodeURIComponent(collection.userId)}`} className="underline underline-offset-2">
+                  View creator
+                </Link>
+              ) : null}
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {collection.items.length === 0 ? <p className="text-sm text-muted-foreground">No drinks in this collection yet.</p> : null}
+            {collection.items.length === 0 ? <p className="text-sm text-muted-foreground">This public collection is empty right now. Check back soon for added drinks.</p> : null}
             {collection.items.map((item) => (
-              <div key={`${collection.id}-${item.drinkSlug}`} className="border rounded-md p-3">
-                <Link href={item.drink?.route ?? `/drinks/recipe/${encodeURIComponent(item.drinkSlug)}`} className="font-medium underline underline-offset-2">
-                  {item.drink?.name ?? item.drinkSlug}
+              <div key={item.id || `${collection.id}-${item.drinkSlug}`} className="border rounded-md p-3 space-y-1">
+                <Link href={item.route ?? item.drink?.route ?? `/drinks/recipe/${encodeURIComponent(item.drinkSlug)}`} className="font-medium underline underline-offset-2">
+                  {item.drinkName ?? item.drink?.name ?? item.drinkSlug}
                 </Link>
+                {item.remixedFromSlug ? (
+                  <p className="text-xs text-muted-foreground">
+                    Remix lineage: <Link href={`/drinks/recipe/${encodeURIComponent(item.remixedFromSlug)}`} className="underline underline-offset-2">{item.remixedFromSlug}</Link>
+                  </p>
+                ) : null}
                 <p className="text-xs text-muted-foreground">Added {new Date(item.addedAt).toLocaleDateString()}</p>
               </div>
             ))}

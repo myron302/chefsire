@@ -20,6 +20,7 @@ import MostRemixedDrinksPage from "@/pages/drinks/most-remixed";
 import TrendingCreatorsPage from "@/pages/drinks/creators-trending";
 import DrinksWhatsNewPage from "@/pages/drinks/whats-new";
 import DrinkCollectionsPage from "@/pages/drinks/collections";
+import DrinkCollectionsExplorePage from "@/pages/drinks/collections-explore";
 import DrinkCollectionDetailPage from "@/pages/drinks/collection-detail";
 import DrinkChallengesPage from "@/pages/drinks/challenges";
 import DrinkChallengeDetailPage from "@/pages/drinks/challenge-detail";
@@ -193,6 +194,7 @@ export default function DrinksRoutes() {
         <Route path="/drinks/most-remixed" component={MostRemixedDrinksPage} />
         <Route path="/drinks/creators/trending" component={TrendingCreatorsPage} />
         <Route path="/drinks/whats-new" component={DrinksWhatsNewPage} />
+        <Route path="/drinks/collections/explore" component={DrinkCollectionsExplorePage} />
         <Route path="/drinks/collections" component={DrinkCollectionsPage} />
         <Route path="/drinks/collections/:id" component={DrinkCollectionDetailPage} />
         <Route path="/drinks/challenges" component={DrinkChallengesPage} />

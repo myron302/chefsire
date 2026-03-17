@@ -337,7 +337,10 @@ export default function PublicDrinkCreatorPage() {
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-xl font-semibold">Public Collections</h2>
-          <span className="text-sm text-muted-foreground">{publicCollectionsQuery.data?.collections?.length ?? 0} items</span>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span>{publicCollectionsQuery.data?.collections?.length ?? 0} items</span>
+            <Link href="/drinks/collections/explore" className="underline underline-offset-2">Explore all</Link>
+          </div>
         </div>
 
         {publicCollectionsQuery.isLoading ? (
