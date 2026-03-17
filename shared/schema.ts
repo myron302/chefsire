@@ -999,6 +999,8 @@ export const drinkCollections = pgTable(
     name: varchar("name", { length: 160 }).notNull(),
     description: text("description"),
     isPublic: boolean("is_public").default(false).notNull(),
+    isPremium: boolean("is_premium").default(false).notNull(),
+    priceCents: integer("price_cents").default(0).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

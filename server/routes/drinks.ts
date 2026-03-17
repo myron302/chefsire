@@ -272,8 +272,16 @@ const updateDrinkCollectionBodySchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
   isPublic: z.boolean().optional(),
-}).refine((value) => value.name !== undefined || value.description !== undefined || value.isPublic !== undefined, {
+  isPremium: z.boolean().optional(),
+  priceCents: z.number().int().min(0).max(500000).optional(),
+}).refine((value) => value.name !== undefined || value.description !== undefined || value.isPublic !== undefined || value.isPremium !== undefined || value.priceCents !== undefined, {
   message: "At least one field must be provided",
+}).refine((value) => {
+  if (value.isPremium === true && (value.priceCents ?? 0) <= 0) return false;
+  if (value.isPremium === false && value.priceCents !== undefined && value.priceCents !== 0) return false;
+  return true;
+}, {
+  message: "Premium collections require a positive price and free collections must use a price of 0",
 });
 
 function normalizeCollectionDescription(value: string | null | undefined): string | null {
@@ -380,9 +388,21 @@ async function ensureDrinkCollectionsSchema() {
         name varchar(160) NOT NULL,
         description text,
         is_public boolean NOT NULL DEFAULT false,
+        is_premium boolean NOT NULL DEFAULT false,
+        price_cents integer NOT NULL DEFAULT 0,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       );
+    `);
+
+    await db.execute(sql`
+      ALTER TABLE drink_collections
+      ADD COLUMN IF NOT EXISTS is_premium boolean NOT NULL DEFAULT false;
+    `);
+
+    await db.execute(sql`
+      ALTER TABLE drink_collections
+      ADD COLUMN IF NOT EXISTS price_cents integer NOT NULL DEFAULT 0;
     `);
 
     await db.execute(sql`
@@ -3660,11 +3680,20 @@ r.post("/collections", optionalAuth, async (req, res) => {
 
     await ensureDrinkCollectionsSchema();
 
+    const requestedPremium = Boolean(req.body?.isPremium);
+    const requestedPriceCents = Number(req.body?.priceCents ?? 0);
+
+    if (requestedPremium && (!Number.isFinite(requestedPriceCents) || requestedPriceCents <= 0)) {
+      return res.status(400).json({ ok: false, error: "Premium collections require a positive price" });
+    }
+
     const parsed = insertDrinkCollectionSchema.safeParse({
       userId: req.user.id,
       name: req.body?.name,
       description: normalizeCollectionDescription(req.body?.description),
       isPublic: Boolean(req.body?.isPublic),
+      isPremium: requestedPremium,
+      priceCents: requestedPremium ? Math.round(requestedPriceCents) : 0,
     });
 
     if (!parsed.success) {
@@ -3850,6 +3879,9 @@ r.patch("/collections/:id", optionalAuth, async (req, res) => {
         ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
         ...(parsed.data.description !== undefined ? { description: normalizeCollectionDescription(parsed.data.description) } : {}),
         ...(parsed.data.isPublic !== undefined ? { isPublic: parsed.data.isPublic } : {}),
+        ...(parsed.data.isPremium !== undefined ? { isPremium: parsed.data.isPremium } : {}),
+        ...(parsed.data.priceCents !== undefined ? { priceCents: parsed.data.priceCents } : {}),
+        ...(parsed.data.isPremium === false ? { priceCents: 0 } : {}),
         updatedAt: new Date(),
       })
       .where(eq(drinkCollections.id, req.params.id))

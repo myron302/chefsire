@@ -46,6 +46,8 @@ interface PublicCollection {
   name: string;
   description?: string | null;
   isPublic: boolean;
+  isPremium: boolean;
+  priceCents: number;
   itemsCount: number;
 }
 
@@ -197,6 +199,8 @@ export default function PublicDrinkCreatorPage() {
   }
 
   const data = query.data;
+  const creatorCollections = publicCollectionsQuery.data?.collections ?? [];
+  const premiumCollections = creatorCollections.filter((collection) => collection.isPremium);
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-public-creator-page">
@@ -247,6 +251,18 @@ export default function PublicDrinkCreatorPage() {
                   <Badge key={badge.id} variant="outline"><span className="mr-1">{badge.icon}</span>{badge.title}</Badge>
                 ))}
               </div>
+            ) : null}
+          </div>
+
+          <div className="rounded-md border bg-muted/30 p-3 text-sm">
+            <p className="font-medium">{creatorCollections.length} public collections</p>
+            {premiumCollections.length > 0 ? (
+              <p className="text-muted-foreground">Premium collections available · browse and support this creator.</p>
+            ) : (
+              <p className="text-muted-foreground">Support this creator by following and exploring their collections.</p>
+            )}
+            {premiumCollections.length > 0 ? (
+              <Link href="/drinks/collections/explore" className="underline underline-offset-2">Browse premium collections</Link>
             ) : null}
           </div>
 
@@ -338,7 +354,8 @@ export default function PublicDrinkCreatorPage() {
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-xl font-semibold">Public Collections</h2>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span>{publicCollectionsQuery.data?.collections?.length ?? 0} items</span>
+            <span>{creatorCollections.length} items</span>
+            {premiumCollections.length > 0 ? <span>{premiumCollections.length} premium</span>  : null}
             <Link href="/drinks/collections/explore" className="underline underline-offset-2">Explore all</Link>
           </div>
         </div>
@@ -364,7 +381,11 @@ export default function PublicDrinkCreatorPage() {
                     {collection.name}
                   </Link>
                   {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
-                  <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
+                    {collection.isPremium ? <Badge>Premium · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
+                  </div>
+                  {collection.isPremium ? <p className="text-xs text-muted-foreground">Support this creator by browsing premium collections.</p> : null}
                 </CardContent>
               </Card>
             ))}

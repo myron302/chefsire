@@ -27,6 +27,8 @@ type Collection = {
   name: string;
   description?: string | null;
   isPublic: boolean;
+  isPremium: boolean;
+  priceCents: number;
   userId: string;
   creatorUsername?: string | null;
   creatorAvatar?: string | null;
@@ -89,6 +91,7 @@ export default function DrinkCollectionDetailPage() {
               {collection.name}
               <Badge variant="outline">{collection.isPublic ? "Public" : "Private"}</Badge>
               <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
+              {collection.isPremium ? <Badge>Premium Collection · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
             </CardTitle>
             {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
