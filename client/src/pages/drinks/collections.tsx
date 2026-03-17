@@ -37,6 +37,7 @@ export default function DrinkCollectionsPage() {
   const [loading, setLoading] = useState(true);
   const [isAuthRequired, setIsAuthRequired] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [backendUnavailable, setBackendUnavailable] = useState(false);
   const [saving, setSaving] = useState(false);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [name, setName] = useState("");
@@ -46,15 +47,22 @@ export default function DrinkCollectionsPage() {
     setLoading(true);
     setIsAuthRequired(false);
     setLoadError("");
+    setBackendUnavailable(false);
     try {
       const res = await fetch("/api/drinks/collections/mine", { credentials: "include" });
       if (!res.ok) {
+        const payload = await res.json().catch(() => null);
         if (isAuthFailureStatus(res.status)) {
           setIsAuthRequired(true);
           setCollections([]);
           return;
         }
-        throw new Error(`Failed to load collections (${res.status})`);
+
+        const code = payload?.code as string | undefined;
+        if (code === "DB_UNAVAILABLE" || code === "COLLECTIONS_TABLE_MISSING" || code === "COLLECTIONS_SCHEMA_MISMATCH") {
+          setBackendUnavailable(true);
+        }
+        throw new Error(payload?.error || `Failed to load collections (${res.status})`);
       }
       const payload = await res.json();
       if (payload?.ok === false) {
@@ -150,7 +158,7 @@ export default function DrinkCollectionsPage() {
               <Label htmlFor="description">Description (optional)</Label>
               <Input id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What this collection is for" />
             </div>
-            <Button onClick={createCollection} disabled={saving || !name.trim()}>
+            <Button onClick={createCollection} disabled={saving || !name.trim() || backendUnavailable}>
               Create collection
             </Button>
           </CardContent>
@@ -165,6 +173,7 @@ export default function DrinkCollectionsPage() {
           {loading ? <p className="text-sm text-muted-foreground">Loading collections…</p> : null}
           {!loading && isAuthRequired ? <p className="text-sm text-muted-foreground">Sign in to view and manage your collections.</p> : null}
           {!loading && !isAuthRequired && loadError ? <p className="text-sm text-destructive">{loadError}</p> : null}
+          {!loading && !isAuthRequired && backendUnavailable ? <p className="text-sm text-muted-foreground">Collections are temporarily unavailable on this server.</p> : null}
           {!loading && !isAuthRequired && !loadError && collections.length === 0 ? <p className="text-sm text-muted-foreground">No collections yet.</p> : null}
 
           {collections.map((collection) => (

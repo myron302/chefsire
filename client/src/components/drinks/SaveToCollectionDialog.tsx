@@ -38,6 +38,7 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>("");
   const [isAuthRequired, setIsAuthRequired] = useState(false);
   const [loadError, setLoadError] = useState("");
+  const [backendUnavailable, setBackendUnavailable] = useState(false);
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
   const [newCollectionPublic, setNewCollectionPublic] = useState(false);
@@ -51,15 +52,22 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
     setLoading(true);
     setIsAuthRequired(false);
     setLoadError("");
+    setBackendUnavailable(false);
     try {
       const res = await fetch("/api/drinks/collections/mine", { credentials: "include" });
       if (!res.ok) {
+        const payload = await res.json().catch(() => null);
         if (isAuthFailureStatus(res.status)) {
           setIsAuthRequired(true);
           setCollections([]);
           return;
         }
-        const payload = await res.json().catch(() => null);
+
+        const code = payload?.code as string | undefined;
+        if (code === "DB_UNAVAILABLE" || code === "COLLECTIONS_TABLE_MISSING" || code === "COLLECTIONS_SCHEMA_MISMATCH") {
+          setBackendUnavailable(true);
+        }
+
         throw new Error(payload?.error || "Unable to load collections");
       }
 
@@ -204,6 +212,9 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
           {!loading && !isAuthRequired && loadError ? (
             <p className="text-sm text-destructive">{loadError}</p>
           ) : null}
+          {!loading && !isAuthRequired && backendUnavailable ? (
+            <p className="text-sm text-muted-foreground">Collections are temporarily unavailable on this server.</p>
+          ) : null}
           {!loading && !isAuthRequired && !loadError && collections.length === 0 ? (
             <p className="text-sm text-muted-foreground">No collections yet. Create your first one below.</p>
           ) : null}
@@ -221,7 +232,7 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
         </div>
 
         <DialogFooter className="sm:justify-between gap-2">
-          <Button type="button" variant="secondary" onClick={onSave} disabled={loading || !selectedCollectionId || isAuthRequired}>
+          <Button type="button" variant="secondary" onClick={onSave} disabled={loading || !selectedCollectionId || isAuthRequired || backendUnavailable}>
             Save to Selected
           </Button>
         </DialogFooter>
@@ -250,7 +261,7 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
             <Checkbox checked={newCollectionPublic} onCheckedChange={(value) => setNewCollectionPublic(Boolean(value))} />
             Make this collection public
           </label>
-          <Button type="button" onClick={createAndSave} disabled={loading || !newCollectionName.trim() || isAuthRequired}>
+          <Button type="button" onClick={createAndSave} disabled={loading || !newCollectionName.trim() || isAuthRequired || backendUnavailable}>
             Create + Save Drink
           </Button>
         </div>
