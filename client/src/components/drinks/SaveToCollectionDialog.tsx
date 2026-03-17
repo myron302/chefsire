@@ -32,6 +32,8 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
   const [loading, setLoading] = useState(false);
   const [collections, setCollections] = useState<CollectionItem[]>([]);
   const [selectedCollectionId, setSelectedCollectionId] = useState<string>("");
+  const [isAuthRequired, setIsAuthRequired] = useState(false);
+  const [loadError, setLoadError] = useState("");
   const [newCollectionName, setNewCollectionName] = useState("");
   const [newCollectionDescription, setNewCollectionDescription] = useState("");
   const [newCollectionPublic, setNewCollectionPublic] = useState(false);
@@ -43,10 +45,18 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
 
   const loadCollections = async () => {
     setLoading(true);
+    setIsAuthRequired(false);
+    setLoadError("");
     try {
       const res = await fetch("/api/drinks/collections/mine", { credentials: "include" });
       if (!res.ok) {
-        throw new Error("Unable to load collections");
+        if (res.status === 401) {
+          setIsAuthRequired(true);
+          setCollections([]);
+          return;
+        }
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.error || "Unable to load collections");
       }
 
       const payload = await res.json();
@@ -55,7 +65,10 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
       setSelectedCollectionId((current) => (current ? current : nextCollections[0]?.id ?? ""));
     } catch (error) {
       setCollections([]);
-      toast({ title: "Please sign in to save drinks", variant: "destructive" });
+      setLoadError("Could not load collections right now.");
+      if (import.meta.env.DEV) {
+        console.error("[drinks/save-to-collection] Failed loading collections", error);
+      }
     } finally {
       setLoading(false);
     }
@@ -70,7 +83,9 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
     });
 
     if (!res.ok) {
-      throw new Error("Unable to save drink");
+      if (res.status === 401) throw new Error("AUTH_REQUIRED");
+      const payload = await res.json().catch(() => null);
+      throw new Error(payload?.error || "Unable to save drink");
     }
   };
 
@@ -81,12 +96,20 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
     }
 
     setLoading(true);
+    setIsAuthRequired(false);
+    setLoadError("");
     try {
       await addToCollection(selectedCollectionId);
       toast({ title: `Saved to ${selectedCollection?.name ?? "collection"}` });
       setOpen(false);
     } catch (error) {
-      toast({ title: "Could not save drink", variant: "destructive" });
+      const message = error instanceof Error ? error.message : "Unable to save drink";
+      if (message === "AUTH_REQUIRED") {
+        setIsAuthRequired(true);
+        toast({ title: "Sign in required", description: "Please sign in to save drinks to collections." });
+      } else {
+        toast({ title: "Could not save drink", description: import.meta.env.DEV ? message : undefined, variant: "destructive" });
+      }
     } finally {
       setLoading(false);
     }
@@ -99,6 +122,8 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
     }
 
     setLoading(true);
+    setIsAuthRequired(false);
+    setLoadError("");
     try {
       const createRes = await fetch("/api/drinks/collections", {
         method: "POST",
@@ -111,7 +136,11 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
         }),
       });
 
-      if (!createRes.ok) throw new Error("Unable to create collection");
+      if (!createRes.ok) {
+        if (createRes.status === 401) throw new Error("AUTH_REQUIRED");
+        const payload = await createRes.json().catch(() => null);
+        throw new Error(payload?.error || "Unable to create collection");
+      }
       const createdPayload = await createRes.json();
       const createdId = createdPayload?.collection?.id as string | undefined;
       if (!createdId) throw new Error("No collection id returned");
@@ -123,7 +152,13 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
       setNewCollectionPublic(false);
       setOpen(false);
     } catch (error) {
-      toast({ title: "Could not create collection", variant: "destructive" });
+      const message = error instanceof Error ? error.message : "Unable to create collection";
+      if (message === "AUTH_REQUIRED") {
+        setIsAuthRequired(true);
+        toast({ title: "Sign in required", description: "Please sign in to create collections." });
+      } else {
+        toast({ title: "Could not create collection", description: import.meta.env.DEV ? message : undefined, variant: "destructive" });
+      }
     } finally {
       setLoading(false);
     }
@@ -151,7 +186,13 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
         <div className="space-y-3">
           <p className="text-sm font-medium">Your collections</p>
           {loading ? <p className="text-sm text-muted-foreground">Loading collections…</p> : null}
-          {!loading && collections.length === 0 ? (
+          {!loading && isAuthRequired ? (
+            <p className="text-sm text-muted-foreground">Sign in to save this drink to a collection.</p>
+          ) : null}
+          {!loading && !isAuthRequired && loadError ? (
+            <p className="text-sm text-destructive">{loadError}</p>
+          ) : null}
+          {!loading && !isAuthRequired && !loadError && collections.length === 0 ? (
             <p className="text-sm text-muted-foreground">No collections yet. Create your first one below.</p>
           ) : null}
           {collections.map((collection) => (
@@ -168,7 +209,7 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
         </div>
 
         <DialogFooter className="sm:justify-between gap-2">
-          <Button type="button" variant="secondary" onClick={onSave} disabled={loading || !selectedCollectionId}>
+          <Button type="button" variant="secondary" onClick={onSave} disabled={loading || !selectedCollectionId || isAuthRequired}>
             Save to Selected
           </Button>
         </DialogFooter>
@@ -197,7 +238,7 @@ export default function SaveToCollectionDialog({ drinkSlug }: Props) {
             <Checkbox checked={newCollectionPublic} onCheckedChange={(value) => setNewCollectionPublic(Boolean(value))} />
             Make this collection public
           </label>
-          <Button type="button" onClick={createAndSave} disabled={loading || !newCollectionName.trim()}>
+          <Button type="button" onClick={createAndSave} disabled={loading || !newCollectionName.trim() || isAuthRequired}>
             Create + Save Drink
           </Button>
         </div>

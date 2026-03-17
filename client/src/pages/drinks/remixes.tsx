@@ -51,6 +51,7 @@ export default function DrinksRemixDiscoveryPage() {
   const [sort, setSort] = useState<RemixSort>("recent");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [debugError, setDebugError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -58,6 +59,7 @@ export default function DrinksRemixDiscoveryPage() {
     const run = async () => {
       setLoading(true);
       setLoadError("");
+      setDebugError("");
       try {
         const response = await fetch(`/api/drinks/remixes?sort=${sort}`);
         const data = (await response.json().catch(() => null)) as RemixDiscoveryResponse | null;
@@ -70,7 +72,8 @@ export default function DrinksRemixDiscoveryPage() {
       } catch (error) {
         if (active) {
           setItems([]);
-          setLoadError(error instanceof Error ? error.message : "Unable to fetch remixes right now.");
+          setLoadError("Unable to fetch remixes right now.");
+          setDebugError(error instanceof Error ? error.message : "Unable to fetch remixes right now.");
         }
       } finally {
         if (active) setLoading(false);
@@ -116,9 +119,12 @@ export default function DrinksRemixDiscoveryPage() {
           <CardContent>
             {loading ? <p className="text-sm text-muted-foreground">Loading remixes...</p> : null}
             {!loading && loadError ? (
-              <p className="text-sm text-destructive">{loadError} Try refreshing or explore related drinks pages below.</p>
+              <>
+                <p className="text-sm text-destructive">{loadError} Try refreshing or explore related drinks pages below.</p>
+                {import.meta.env.DEV && debugError ? <p className="text-xs text-muted-foreground break-all">{debugError}</p> : null}
+              </>
             ) : null}
-            {!loading && items.length === 0 ? (
+            {!loading && !loadError && items.length === 0 ? (
               <p className="text-sm text-muted-foreground">No public remixes yet. Be the first to remix a drink.</p>
             ) : null}
 

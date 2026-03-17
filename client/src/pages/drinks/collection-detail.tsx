@@ -64,7 +64,7 @@ export default function DrinkCollectionDetailPage() {
       {loading ? <p className="text-muted-foreground">Loading collection…</p> : null}
       {!loading && error ? (
         <p className="text-destructive">
-          {statusCode === 404 ? "Collection not found." : statusCode === 401 ? "Please sign in to view this collection." : error}
+          {statusCode === 404 ? "Collection not found." : statusCode === 401 ? "Please sign in to view this collection." : statusCode === 403 ? "This collection is private." : error}
         </p>
       ) : null}
       {!loading && error && import.meta.env.DEV ? <p className="text-xs text-muted-foreground break-all">{error}</p> : null}
