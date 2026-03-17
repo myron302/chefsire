@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 
 interface CreatorDrinkMetricsItem {
   id: string;
@@ -260,6 +261,9 @@ export default function CreatorDashboardPage() {
           <span>{metricNumber(safeSummary.followerCount ?? 0)} followers</span>
           <Badge variant="secondary">Your creator profile</Badge>
         </div>
+        <div className="pt-1">
+          <RemixStreakBadge />
+        </div>
         <div className="flex flex-wrap gap-2 pt-1">
           <Link href="/drinks">
             <Button variant="outline" size="sm">Back to Drinks Hub</Button>
@@ -316,6 +320,28 @@ export default function CreatorDashboardPage() {
               ) : null}
             </>
           ) : null}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Creator Momentum</CardTitle>
+          <CardDescription>Lightweight reward signals based on views and remixes.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {(safeSummary.totalRemixesReceived > 0 || safeSummary.totalViews7d >= 100) ? (
+            <>
+              <p className="text-sm font-medium">🔥 Your drink is gaining traction</p>
+              {safeSummary.totalRemixesReceived > 0 ? (
+                <p className="text-sm text-muted-foreground">🎉 {metricNumber(safeSummary.totalRemixesReceived)} people remixed your drink</p>
+              ) : null}
+              {safeSummary.totalViews7d >= 100 ? (
+                <p className="text-sm text-muted-foreground">{metricNumber(safeSummary.totalViews7d)} views in the last 7 days</p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">Publish and share your drinks to unlock traction signals.</p>
+          )}
         </CardContent>
       </Card>
 

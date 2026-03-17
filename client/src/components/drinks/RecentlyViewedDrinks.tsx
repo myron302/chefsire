@@ -51,7 +51,7 @@ export default function RecentlyViewedDrinks() {
       <CardHeader className="pb-3">
         <CardTitle className="text-2xl flex items-center gap-2">
           <History className="h-6 w-6 text-sky-500" />
-          Recently Viewed Drinks
+          Continue where you left off
         </CardTitle>
       </CardHeader>
       <CardContent>

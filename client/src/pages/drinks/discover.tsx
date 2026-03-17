@@ -6,6 +6,8 @@ import { useUser } from "@/contexts/UserContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import BecauseOfYourActivity from "@/components/drinks/BecauseOfYourActivity";
+import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 
 type DiscoverLink = {
   title: string;
@@ -101,7 +103,12 @@ export default function DrinksDiscoverPage() {
         </div>
 
         {user && (
-          <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <>
+            <div className="mb-4">
+              <RemixStreakBadge />
+            </div>
+            <BecauseOfYourActivity />
+            <div className="mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -155,7 +162,8 @@ export default function DrinksDiscoverPage() {
                 </Link>
               </CardContent>
             </Card>
-          </div>
+            </div>
+          </>
         )}
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
