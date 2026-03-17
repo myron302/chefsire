@@ -71,6 +71,21 @@ interface PublicCreatorResponse {
   recentItems: PublicCreatorDrinkItem[];
 }
 
+interface PublicCreatorBadge {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  isEarned: boolean;
+}
+
+interface PublicCreatorBadgesResponse {
+  ok: boolean;
+  userId: string;
+  badges: PublicCreatorBadge[];
+  earnedCount: number;
+}
+
 function number(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
@@ -148,6 +163,20 @@ export default function PublicDrinkCreatorPage() {
     enabled: Boolean(creatorId),
   });
 
+  const publicBadgesQuery = useQuery<PublicCreatorBadgesResponse>({
+    queryKey: ["/api/drinks/creator/public-badges", creatorId],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/creator/${encodeURIComponent(creatorId)}/badges`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to load creator badges");
+      }
+      return response.json();
+    },
+    enabled: Boolean(creatorId),
+  });
+
   if (!matched) return null;
 
   if (query.isLoading) {
@@ -204,6 +233,21 @@ export default function PublicDrinkCreatorPage() {
             <Badge variant="secondary">{number(data.totalViews7d)} views (7d)</Badge>
             <Badge variant="secondary">{number(data.totalRemixesReceived)} remixes received</Badge>
             <Badge variant="secondary">{number(data.totalGroceryAdds)} grocery adds</Badge>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Milestones & badges</p>
+            {publicBadgesQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading badges…</p> : null}
+            {!publicBadgesQuery.isLoading && (publicBadgesQuery.data?.badges?.length ?? 0) === 0 ? (
+              <p className="text-sm text-muted-foreground">No public badges earned yet.</p>
+            ) : null}
+            {(publicBadgesQuery.data?.badges?.length ?? 0) > 0 ? (
+              <div className="flex flex-wrap gap-2">
+                {publicBadgesQuery.data?.badges?.map((badge) => (
+                  <Badge key={badge.id} variant="outline"><span className="mr-1">{badge.icon}</span>{badge.title}</Badge>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           {data.topDrink ? (

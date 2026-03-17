@@ -1,6 +1,6 @@
 // server/routes/drinks.ts
 import { Router } from "express";
-import { and, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
 import { db } from "../db";
@@ -489,6 +489,106 @@ type WhatsNewFeedItem = {
   relatedUsername: string | null;
   relatedDrinkSlug: string | null;
 };
+
+type CreatorBadgeDefinition = {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+  isPublic: boolean;
+};
+
+type CreatorBadgeProgress = {
+  current: number;
+  target: number;
+  label: string;
+};
+
+const CREATOR_BADGE_DEFINITIONS: CreatorBadgeDefinition[] = [
+  { id: "first-drink-published", title: "First Drink Published", description: "Published your first drink recipe.", icon: "🍹", isPublic: true },
+  { id: "first-remix-created", title: "First Remix Created", description: "Shared your first remix.", icon: "🧪", isPublic: true },
+  { id: "first-remix-received", title: "First Remix Received", description: "Another creator remixed one of your drinks.", icon: "🔁", isPublic: true },
+  { id: "100-views", title: "100 Views", description: "Reached 100 total views across your drinks.", icon: "👀", isPublic: true },
+  { id: "10-grocery-adds", title: "10 Grocery Adds", description: "Got added to grocery lists 10 times.", icon: "🛒", isPublic: true },
+  { id: "5-followers", title: "5 Followers", description: "Reached 5 creator followers.", icon: "🤝", isPublic: true },
+  { id: "trending-creator", title: "Trending Creator", description: "Ranked among the top trending drink creators this week.", icon: "📈", isPublic: true },
+  { id: "top-creator", title: "Top Creator", description: "Ranked among the top creators on the leaderboard.", icon: "🏆", isPublic: true },
+];
+
+async function buildCreatorBadges(userId: string) {
+  if (!db) {
+    return {
+      badges: CREATOR_BADGE_DEFINITIONS.map((badge) => ({ ...badge, isEarned: false, earnedAt: null, progress: null as CreatorBadgeProgress | null })),
+    };
+  }
+
+  const [profile] = await db
+    .select({ followersCount: users.followersCount })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  const recipes = await db
+    .select({ slug: drinkRecipes.slug, createdAt: drinkRecipes.createdAt, remixedFromSlug: drinkRecipes.remixedFromSlug })
+    .from(drinkRecipes)
+    .where(eq(drinkRecipes.userId, userId))
+    .orderBy(asc(drinkRecipes.createdAt));
+
+  const recipeSlugs = recipes.map((recipe) => recipe.slug);
+
+  const eventTotals = recipeSlugs.length > 0
+    ? await db
+        .select({
+          totalViews: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'view')`,
+          totalGroceryAdds: sql<number>`count(*) filter (where ${drinkEvents.eventType} = 'grocery_add')`,
+        })
+        .from(drinkEvents)
+        .where(inArray(drinkEvents.slug, recipeSlugs))
+    : [{ totalViews: 0, totalGroceryAdds: 0 }];
+
+  const [firstRemixReceived] = recipeSlugs.length > 0
+    ? await db
+        .select({ createdAt: drinkRecipes.createdAt })
+        .from(drinkRecipes)
+        .where(inArray(drinkRecipes.remixedFromSlug, recipeSlugs))
+        .orderBy(asc(drinkRecipes.createdAt))
+        .limit(1)
+    : [];
+
+  const trendingRows = await getTrendingDrinkCreators(10);
+  const leaderboardRows = await getDrinkCreatorLeaderboard(10);
+
+  const firstDrink = recipes[0] ?? null;
+  const firstRemixCreated = recipes.find((recipe) => Boolean(recipe.remixedFromSlug)) ?? null;
+  const totalViews = Number(eventTotals[0]?.totalViews ?? 0);
+  const totalGroceryAdds = Number(eventTotals[0]?.totalGroceryAdds ?? 0);
+  const followerCount = Number(profile?.followersCount ?? 0);
+  const isTrendingCreator = trendingRows.some((row) => row.userId === userId);
+  const isTopCreator = leaderboardRows.some((row) => row.userId === userId);
+
+  const earnedById = new Map<string, { isEarned: boolean; earnedAt: string | null; progress: CreatorBadgeProgress | null }>([
+    ["first-drink-published", { isEarned: Boolean(firstDrink), earnedAt: firstDrink?.createdAt ? new Date(firstDrink.createdAt).toISOString() : null, progress: null }],
+    ["first-remix-created", { isEarned: Boolean(firstRemixCreated), earnedAt: firstRemixCreated?.createdAt ? new Date(firstRemixCreated.createdAt).toISOString() : null, progress: null }],
+    ["first-remix-received", { isEarned: Boolean(firstRemixReceived), earnedAt: firstRemixReceived?.createdAt ? new Date(firstRemixReceived.createdAt).toISOString() : null, progress: null }],
+    ["100-views", { isEarned: totalViews >= 100, earnedAt: totalViews >= 100 ? new Date().toISOString() : null, progress: { current: totalViews, target: 100, label: "Views" } }],
+    ["10-grocery-adds", { isEarned: totalGroceryAdds >= 10, earnedAt: totalGroceryAdds >= 10 ? new Date().toISOString() : null, progress: { current: totalGroceryAdds, target: 10, label: "Grocery adds" } }],
+    ["5-followers", { isEarned: followerCount >= 5, earnedAt: followerCount >= 5 ? new Date().toISOString() : null, progress: { current: followerCount, target: 5, label: "Followers" } }],
+    ["trending-creator", { isEarned: isTrendingCreator, earnedAt: isTrendingCreator ? new Date().toISOString() : null, progress: null }],
+    ["top-creator", { isEarned: isTopCreator, earnedAt: isTopCreator ? new Date().toISOString() : null, progress: null }],
+  ]);
+
+  return {
+    badges: CREATOR_BADGE_DEFINITIONS.map((definition) => {
+      const computed = earnedById.get(definition.id);
+      return {
+        ...definition,
+        isEarned: computed?.isEarned ?? false,
+        earnedAt: computed?.earnedAt ?? null,
+        progress: computed?.progress ?? null,
+      };
+    }),
+  };
+}
 
 function toActivityDateKey(value: Date | null | undefined): string {
   if (!value) return "unknown";
@@ -2181,6 +2281,56 @@ r.get("/creators/trending", async (req, res) => {
   } catch (error) {
     console.error("Error fetching trending drink creators:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch trending drink creators" });
+  }
+});
+
+r.get("/creator/:userId/badges", optionalAuth, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const requestedUserId = String(req.params?.userId ?? "").trim();
+    if (!requestedUserId) {
+      return res.status(400).json({ ok: false, error: "userId is required" });
+    }
+
+    const badgeData = await buildCreatorBadges(requestedUserId);
+    const isOwnerView = Boolean(req.user?.id && req.user.id === requestedUserId);
+
+    const privateBadges = badgeData.badges;
+    const publicBadges = privateBadges
+      .filter((badge) => badge.isPublic && badge.isEarned)
+      .map((badge) => ({ ...badge, progress: null }));
+
+    return res.json({
+      ok: true,
+      userId: requestedUserId,
+      visibility: isOwnerView ? "private" : "public",
+      badges: isOwnerView ? privateBadges : publicBadges,
+      earnedCount: (isOwnerView ? privateBadges : publicBadges).filter((badge) => badge.isEarned).length,
+      totalCount: isOwnerView ? privateBadges.length : publicBadges.length,
+      nextMilestones: isOwnerView
+        ? privateBadges
+            .filter((badge) => !badge.isEarned && badge.progress)
+            .sort((a, b) => {
+              const ar = a.progress ? (a.progress.current / Math.max(a.progress.target, 1)) : 0;
+              const br = b.progress ? (b.progress.current / Math.max(b.progress.target, 1)) : 0;
+              return br - ar;
+            })
+            .slice(0, 2)
+            .map((badge) => ({
+              id: badge.id,
+              title: badge.title,
+              icon: badge.icon,
+              description: badge.description,
+              progress: badge.progress,
+            }))
+        : [],
+    });
+  } catch (error) {
+    console.error("Error fetching drink creator badges:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch creator badges" });
   }
 });
 
