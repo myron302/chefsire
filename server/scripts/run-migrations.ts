@@ -66,39 +66,55 @@ async function runMigrations() {
   try {
     await ensureLedger();
 
-    const migrationsDir = join(__dirname, "../drizzle"); // matches drizzle.config.ts: out
-    const files = await readdir(migrationsDir);
-    const sqlFiles = files.filter((f) => f.endsWith(".sql")).sort();
+    const migrationSources = [
+      { dir: join(__dirname, "../drizzle"), keyPrefix: "drizzle" }, // matches drizzle.config.ts: out
+      { dir: join(__dirname, "../../migrations"), keyPrefix: "legacy" },
+    ];
+
+    const sqlFiles: Array<{ sourceDir: string; keyPrefix: string; filename: string; ledgerKey: string }> = [];
+    for (const source of migrationSources) {
+      const files = await readdir(source.dir).catch(() => [] as string[]);
+      for (const filename of files.filter((f) => f.endsWith(".sql")).sort()) {
+        sqlFiles.push({
+          sourceDir: source.dir,
+          keyPrefix: source.keyPrefix,
+          filename,
+          ledgerKey: `${source.keyPrefix}:${filename}`,
+        });
+      }
+    }
+
+    sqlFiles.sort((a, b) => a.filename.localeCompare(b.filename));
 
     if (sqlFiles.length === 0) {
-      console.log("✅ No migrations found under server/drizzle.");
+      console.log("✅ No migrations found under server/drizzle or /migrations.");
       return;
     }
 
     for (const file of sqlFiles) {
-      if (await hasApplied(file)) {
-        console.log(`⏭️  Skipping already recorded: ${file}`);
+      if (await hasApplied(file.ledgerKey)) {
+        console.log(`⏭️  Skipping already recorded: ${file.ledgerKey}`);
         continue;
       }
 
-      console.log(`▶️  Running migration: ${file}`);
-      const filePath = join(migrationsDir, file);
+      console.log(`▶️  Running migration: ${file.ledgerKey}`);
+      const filePath = join(file.sourceDir, file.filename);
       const sql = await readFile(filePath, "utf-8");
 
       try {
         // Single-shot execution of the file.
         // If the DB already has the objects, we catch + mark applied.
         await pool.query(sql);
-        await markApplied(file);
-        console.log(`✅ Completed: ${file}\n`);
+        await markApplied(file.ledgerKey);
+        console.log(`✅ Completed: ${file.ledgerKey}\n`);
       } catch (err: any) {
         const code = err?.code as string | undefined;
 
         if (code && DUPLICATE_CODES.has(code)) {
           console.warn(
-            `⚠️  Objects already exist while applying ${file} (code ${code}). Marking as applied and continuing.`
+            `⚠️  Objects already exist while applying ${file.ledgerKey} (code ${code}). Marking as applied and continuing.`
           );
-          await markApplied(file);
+          await markApplied(file.ledgerKey);
           continue;
         }
 
@@ -107,13 +123,13 @@ async function runMigrations() {
         const msg = (err && err.message) || String(err);
         if (/already exists/i.test(msg)) {
           console.warn(
-            `⚠️  Detected "already exists" in ${file}. Marking as applied and continuing.`
+            `⚠️  Detected "already exists" in ${file.ledgerKey}. Marking as applied and continuing.`
           );
-          await markApplied(file);
+          await markApplied(file.ledgerKey);
           continue;
         }
 
-        console.error(`❌ Migration failed in ${file}:`, err);
+        console.error(`❌ Migration failed in ${file.ledgerKey}:`, err);
         throw err;
       }
     }
