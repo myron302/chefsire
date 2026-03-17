@@ -12,6 +12,7 @@ type DiscoverLink = {
   description: string;
   href: string;
   icon: ComponentType<{ className?: string }>;
+  activityHint: "Active now" | "Recently popular" | "New";
 };
 
 const discoverLinks: DiscoverLink[] = [
@@ -20,48 +21,56 @@ const discoverLinks: DiscoverLink[] = [
     description: "Search drinks, remixes, creators, and challenges from one page.",
     href: "/drinks/search",
     icon: Search,
+    activityHint: "Active now",
   },
   {
     title: "Trending Drinks",
     description: "What people are viewing and interacting with now.",
     href: "/drinks",
     icon: Flame,
+    activityHint: "Active now",
   },
   {
     title: "Recent Remixes",
     description: "New twists and fresh takes on classic drinks.",
     href: "/drinks/remixes",
     icon: GitBranch,
+    activityHint: "Recently popular",
   },
   {
     title: "Most Remixed Drinks",
     description: "Original drinks currently inspiring the most creativity.",
     href: "/drinks/most-remixed",
     icon: Repeat2,
+    activityHint: "Recently popular",
   },
   {
     title: "Trending Creators",
     description: "Rising drink creators to follow this week.",
     href: "/drinks/creators/trending",
     icon: TrendingUp,
+    activityHint: "Active now",
   },
   {
     title: "What's New",
     description: "Recent ecosystem activity, launches, and notable updates.",
     href: "/drinks/whats-new",
     icon: Sparkles,
+    activityHint: "New",
   },
   {
     title: "Challenges",
     description: "Active remix prompts, voting, and challenge winners.",
     href: "/drinks/challenges",
     icon: Trophy,
+    activityHint: "Active now",
   },
   {
     title: "Public Collections",
     description: "Browse featured and public drink collections from the community.",
     href: "/drinks/collections/explore",
     icon: Layers,
+    activityHint: "Recently popular",
   },
 ];
 
@@ -156,6 +165,7 @@ export default function DrinksDiscoverPage() {
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <item.icon className="h-5 w-5 text-blue-600" />
                   {item.title}
+                  <Badge variant="outline" className="text-[10px]">{item.activityHint}</Badge>
                 </CardTitle>
                 <CardDescription>{item.description}</CardDescription>
               </CardHeader>

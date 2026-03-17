@@ -270,11 +270,13 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
         <div className="flex flex-wrap gap-2">
           {canonicalRecipe && !remixesLoading ? (
             <Badge variant="secondary" className="px-3">
-              {remixes.length} remix{remixes.length === 1 ? "" : "es"}
+              {remixes.length > 0
+                ? `${remixes.length} people remixed this`
+                : "Be the first to remix this drink"}
             </Badge>
           ) : null}
           <Link href={`/drinks/submit?remix=${encodeURIComponent(remixSourceSlug)}`} onClick={() => void logDrinkEvent(trackedDrinkSlug, "remix")}>
-            <Button>Remix</Button>
+            <Button size="default" className="font-semibold">Remix</Button>
           </Link>
           <Button variant="outline" onClick={addAllIngredients}>
             Add Ingredients to Shopping List
@@ -383,7 +385,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
             ) : null}
 
             {!remixChainLoading && !hasLineage ? (
-              <p className="text-sm text-muted-foreground">No remix lineage yet. Be the first to remix this drink.</p>
+              <p className="text-sm text-muted-foreground">No remix lineage yet. Be the first to remix this drink</p>
             ) : null}
           </section>
 
@@ -405,7 +407,7 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
               ) : null}
 
               {!remixesLoading && !remixesError && remixes.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No remixes yet. Be the first to remix this drink.</p>
+                <p className="text-sm text-muted-foreground">Be the first to remix this drink</p>
               ) : null}
 
               {!remixesLoading && remixes.length > 0 ? (

@@ -7,10 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import DrinkSocialSignals from "@/components/drinks/DrinkSocialSignals";
 
 type CommunitySearchResults = {
-  drinks: Array<{ slug: string; name: string; image: string | null; route: string; sourceCategoryRoute?: string | null }>;
-  remixes: Array<{ slug: string; name: string; image: string | null; route: string; remixedFromSlug: string | null; creatorUsername: string | null }>;
+  drinks: Array<{ slug: string; name: string; image: string | null; route: string; sourceCategoryRoute?: string | null; views7d?: number; remixesCount?: number; isTrending?: boolean }>;
+  remixes: Array<{ slug: string; name: string; image: string | null; route: string; remixedFromSlug: string | null; creatorUsername: string | null; views7d?: number; remixesCount?: number; isTrending?: boolean }>;
   creators: Array<{ userId: string; username: string; avatar: string | null; route: string; followerCount: number }>;
   challenges: Array<{ slug: string; title: string; description: string; route: string; isActive: boolean }>;
 };
@@ -130,6 +131,12 @@ export default function DrinksCommunitySearchPage() {
                     <div className="rounded border p-3 hover:bg-muted/50">
                       <p className="font-semibold">{item.name}</p>
                       <p className="text-xs text-muted-foreground">/{item.slug}</p>
+                      <DrinkSocialSignals
+                        className="mt-2"
+                        isTrending={Boolean(item.isTrending)}
+                        remixesCount={item.remixesCount}
+                        views7d={item.views7d}
+                      />
                     </div>
                   </Link>
                 ))}
@@ -146,6 +153,12 @@ export default function DrinksCommunitySearchPage() {
                     <div className="rounded border p-3 hover:bg-muted/50">
                       <p className="font-semibold">{item.name}</p>
                       <p className="text-xs text-muted-foreground">from {item.remixedFromSlug ?? "original"} · {item.creatorUsername ? `@${item.creatorUsername}` : "community"}</p>
+                      <DrinkSocialSignals
+                        className="mt-2"
+                        isTrending={Boolean(item.isTrending)}
+                        remixesCount={item.remixesCount}
+                        views7d={item.views7d}
+                      />
                     </div>
                   </Link>
                 ))}
