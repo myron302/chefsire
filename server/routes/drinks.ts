@@ -3444,6 +3444,7 @@ r.get("/community-search", async (req, res) => {
       subcategory: string | null;
       remixedFromSlug: string | null;
       creatorUsername: string | null;
+      createdAt: Date;
     }> = [];
 
     let creators: Array<{
@@ -3472,6 +3473,7 @@ r.get("/community-search", async (req, res) => {
           subcategory: drinkRecipes.subcategory,
           remixedFromSlug: drinkRecipes.remixedFromSlug,
           creatorUsername: users.username,
+          createdAt: drinkRecipes.createdAt,
         })
         .from(drinkRecipes)
         .leftJoin(users, eq(users.id, drinkRecipes.userId))
@@ -3546,12 +3548,54 @@ r.get("/community-search", async (req, res) => {
         );
     }
 
+    const allSearchSlugs = [
+      ...canonicalMatches.results.map((item) => item.sourceId),
+      ...userRecipeMatches.map((recipe) => recipe.slug),
+    ];
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const viewsBySlug = new Map<string, number>();
+    const remixesBySlug = new Map<string, number>();
+
+    if (db && allSearchSlugs.length > 0) {
+      const viewRows = await db
+        .select({ slug: drinkEvents.slug, views7d: sql<number>`count(*)` })
+        .from(drinkEvents)
+        .where(
+          and(
+            inArray(drinkEvents.slug, allSearchSlugs),
+            eq(drinkEvents.eventType, "view"),
+            gt(drinkEvents.createdAt, sevenDaysAgo),
+          ),
+        )
+        .groupBy(drinkEvents.slug);
+
+      const remixRows = await db
+        .select({ remixedFromSlug: drinkRecipes.remixedFromSlug, remixesCount: sql<number>`count(*)` })
+        .from(drinkRecipes)
+        .where(inArray(drinkRecipes.remixedFromSlug, allSearchSlugs))
+        .groupBy(drinkRecipes.remixedFromSlug);
+
+      for (const row of viewRows) {
+        viewsBySlug.set(row.slug, Number(row.views7d ?? 0));
+      }
+
+      for (const row of remixRows) {
+        if (row.remixedFromSlug) {
+          remixesBySlug.set(row.remixedFromSlug, Number(row.remixesCount ?? 0));
+        }
+      }
+    }
+
     const canonicalDrinkResults = canonicalMatches.results.map((item) => ({
       slug: item.sourceId,
       name: item.title,
       image: item.imageUrl ?? null,
       route: `/drinks/recipe/${item.sourceId}`,
       sourceCategoryRoute: null,
+      views7d: viewsBySlug.get(item.sourceId) ?? 0,
+      remixesCount: remixesBySlug.get(item.sourceId) ?? 0,
+      isTrending: item.relevanceScore >= 0.85,
     }));
 
     const userDrinkResults = userRecipeMatches
@@ -3562,6 +3606,9 @@ r.get("/community-search", async (req, res) => {
         image: recipe.image ?? null,
         route: `/drinks/recipe/${recipe.slug}`,
         sourceCategoryRoute: `/drinks/${recipe.category}${recipe.subcategory ? `/${recipe.subcategory}` : ""}`,
+        views7d: viewsBySlug.get(recipe.slug) ?? 0,
+        remixesCount: remixesBySlug.get(recipe.slug) ?? 0,
+        isTrending: recipe.createdAt.getTime() >= sevenDaysAgo.getTime(),
       }));
 
     const remixResults = userRecipeMatches
@@ -3573,6 +3620,9 @@ r.get("/community-search", async (req, res) => {
         route: `/drinks/recipe/${recipe.slug}`,
         remixedFromSlug: recipe.remixedFromSlug,
         creatorUsername: recipe.creatorUsername ?? null,
+        views7d: viewsBySlug.get(recipe.slug) ?? 0,
+        remixesCount: remixesBySlug.get(recipe.slug) ?? 0,
+        isTrending: recipe.createdAt.getTime() >= sevenDaysAgo.getTime(),
       }));
 
     return res.json({

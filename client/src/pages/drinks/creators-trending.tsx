@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
+import { useUser } from "@/contexts/UserContext";
 
 type TrendingCreatorItem = {
   userId: string;
@@ -46,6 +48,7 @@ function initials(username: string | null): string {
 }
 
 export default function TrendingCreatorsPage() {
+  const { user } = useUser();
   const [items, setItems] = useState<TrendingCreatorItem[]>([]);
   const [rankingFormula, setRankingFormula] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -151,7 +154,7 @@ export default function TrendingCreatorsPage() {
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex flex-wrap items-start gap-2">
                         <Link href={creator.publicRoute}>
                           <Button size="sm" variant="outline" className="gap-1"><UserRound className="h-4 w-4" />Creator page</Button>
                         </Link>
@@ -160,6 +163,7 @@ export default function TrendingCreatorsPage() {
                             <Button size="sm" className="gap-1">Top drink <ArrowUpRight className="h-3 w-3" /></Button>
                           </Link>
                         ) : null}
+                        {user?.id !== creator.userId ? <CreatorFollowButton creatorId={creator.userId} showNudge /> : null}
                       </div>
                     </div>
                   </CardContent>

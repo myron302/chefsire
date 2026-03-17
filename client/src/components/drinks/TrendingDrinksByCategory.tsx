@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Flame, TrendingUp } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import DrinkSocialSignals from "@/components/drinks/DrinkSocialSignals";
 
 type TrendingDrinkByCategoryItem = {
   slug: string;
@@ -13,6 +14,7 @@ type TrendingDrinkByCategoryItem = {
   score?: number;
   views7d?: number;
   views24h?: number;
+  remixesCount?: number;
 };
 
 type TrendingByCategoryApiResponse = {
@@ -89,9 +91,10 @@ export default function TrendingDrinksByCategory({
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {topItems.map((drink, index) => {
-              const metricText = Number(drink.views7d ?? 0) > 0
-                ? `${Number(drink.views7d ?? 0).toLocaleString()} views in last 7 days`
-                : "Trending now";
+              const views24h = Number(drink.views24h ?? 0);
+              const views7d = Number(drink.views7d ?? 0);
+              const remixesCount = Number(drink.remixesCount ?? 0);
+              const activityHint = views24h >= 20 ? "Active now" : views7d > 0 ? "Recently popular" : "New";
 
               const canonicalRoute = getCanonicalRoute(drink.slug);
 
@@ -124,8 +127,9 @@ export default function TrendingDrinksByCategory({
                       <p className="font-semibold leading-tight line-clamp-2">{drink.name}</p>
                       <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
                         <Flame className="h-3 w-3 text-orange-500" />
-                        {metricText}
+                        {activityHint}
                       </p>
+                      <DrinkSocialSignals className="mt-2" isTrending remixesCount={remixesCount} views7d={views7d} />
                     </div>
                   </div>
                   </Link>

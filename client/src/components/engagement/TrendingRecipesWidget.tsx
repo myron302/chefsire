@@ -88,7 +88,7 @@ export default function TrendingRecipesWidget<T extends BaseTrendingItem>({
                         </Link>
                         <p className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
                           <Flame className="h-3 w-3 text-orange-500" />
-                          🔥 Trending now
+                          🔥 Trending
                         </p>
                         {renderStats(item)}
                       </div>

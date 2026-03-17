@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import DrinkSocialSignals from "@/components/drinks/DrinkSocialSignals";
 
 type RemixSort = "recent" | "popular";
 
@@ -164,10 +165,16 @@ export default function DrinksRemixDiscoveryPage() {
                       </p>
                     ) : null}
 
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                      <span>{metricNumber(item.views7d)} views (7d)</span>
-                      <Badge variant="secondary">🔥 {metricNumber(item.remixesCount)} remixes</Badge>
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="outline" className="text-[10px]">
+                        {new Date(item.createdAt).getTime() >= Date.now() - (3 * 24 * 60 * 60 * 1000) ? "New" : "Recently popular"}
+                      </Badge>
                     </div>
+                    <DrinkSocialSignals
+                      isTrending={sort === "popular"}
+                      remixesCount={item.remixesCount}
+                      views7d={item.views7d}
+                    />
 
                     <div className="flex items-center gap-2">
                       <Link href={item.route}>

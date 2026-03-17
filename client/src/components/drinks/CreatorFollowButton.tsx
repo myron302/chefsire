@@ -13,10 +13,12 @@ export default function CreatorFollowButton({
   creatorId,
   size = "sm",
   className,
+  showNudge = false,
 }: {
   creatorId: string | null | undefined;
   size?: "sm" | "default" | "lg" | "icon";
   className?: string;
+  showNudge?: boolean;
 }) {
   const { user } = useUser();
   const queryClient = useQueryClient();
@@ -66,20 +68,27 @@ export default function CreatorFollowButton({
 
   if (!canRender) return null;
 
+  const isFollowing = Boolean(statusQuery.data?.isFollowing);
+
   return (
-    <Button
-      type="button"
-      variant={statusQuery.data?.isFollowing ? "outline" : "default"}
-      size={size}
-      className={className}
-      onClick={() => toggleMutation.mutate()}
-      disabled={statusQuery.isLoading || toggleMutation.isPending}
-    >
-      {toggleMutation.isPending
-        ? "Saving..."
-        : statusQuery.data?.isFollowing
-          ? "Following"
-          : "Follow"}
-    </Button>
+    <div className="space-y-1">
+      <Button
+        type="button"
+        variant={isFollowing ? "outline" : "default"}
+        size={size}
+        className={className}
+        onClick={() => toggleMutation.mutate()}
+        disabled={statusQuery.isLoading || toggleMutation.isPending}
+      >
+        {toggleMutation.isPending
+          ? "Saving..."
+          : isFollowing
+            ? "Following"
+            : "Follow"}
+      </Button>
+      {showNudge && !statusQuery.isLoading && !isFollowing ? (
+        <p className="text-xs text-muted-foreground">Follow to see more from this creator</p>
+      ) : null}
+    </div>
   );
 }

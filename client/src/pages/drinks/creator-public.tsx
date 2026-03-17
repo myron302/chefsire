@@ -225,7 +225,7 @@ export default function PublicDrinkCreatorPage() {
                 <Badge variant="outline" className="w-fit">{creatorMixHeadline(data)}</Badge>
               </div>
             </div>
-            {user?.id !== data.userId ? <CreatorFollowButton creatorId={data.userId} /> : null}
+            {user?.id !== data.userId ? <CreatorFollowButton creatorId={data.userId} showNudge /> : null}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">

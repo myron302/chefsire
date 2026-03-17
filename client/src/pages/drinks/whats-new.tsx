@@ -42,6 +42,14 @@ function formatWhen(value: string) {
   );
 }
 
+
+function activityHint(item: WhatsNewItem): "Active now" | "Recently popular" | "New" {
+  const ageMs = Date.now() - new Date(item.createdAt).getTime();
+  if (item.type === "trending_drink" || item.type === "trending_creator") return "Active now";
+  if (Number.isFinite(ageMs) && ageMs <= 3 * 24 * 60 * 60 * 1000) return "New";
+  return "Recently popular";
+}
+
 function itemBadge(itemType: WhatsNewItemType) {
   switch (itemType) {
     case "remix":
@@ -141,7 +149,10 @@ export default function DrinksWhatsNewPage() {
                     <CardContent className="space-y-3 p-4">
                       <div className="flex items-center justify-between gap-2">
                         <Badge variant="secondary" className="gap-1"><BadgeIcon className="h-3 w-3" /> {badge.label}</Badge>
-                        <span className="text-xs text-muted-foreground">{formatWhen(item.createdAt)}</span>
+                        <div className="flex items-center gap-2">
+                          <Badge variant="outline" className="text-[10px]">{activityHint(item)}</Badge>
+                          <span className="text-xs text-muted-foreground">{formatWhen(item.createdAt)}</span>
+                        </div>
                       </div>
 
                       <h2 className="line-clamp-2 text-lg font-semibold">{item.title}</h2>

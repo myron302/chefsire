@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 import TrendingRecipesWidget from "@/components/engagement/TrendingRecipesWidget";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import DrinkSocialSignals from "@/components/drinks/DrinkSocialSignals";
 
 type TrendingDrink = {
   slug: string;
@@ -67,11 +67,18 @@ export default function TrendingDrinks() {
       getCanonicalRoute={(item) => getCanonicalRoute(item.slug)}
       renderStats={(drink) => {
         const viewsToday = Number(drink.views24h ?? 0);
+        const views7d = Number(drink.views7d ?? 0);
         const remixes = Number(drink.remixesCount ?? drink.remixes ?? 0);
+        const activityHint = viewsToday >= 20 ? "Active now" : views7d > 0 ? "Recently popular" : "New";
         return (
           <>
-            <p className="mt-1 text-xs text-muted-foreground">👀 {viewsToday.toLocaleString()} views today</p>
-            <Badge variant="secondary" className="mt-2">🔥 {remixes.toLocaleString()} remixes</Badge>
+            <p className="mt-1 text-[11px] text-muted-foreground">{activityHint}</p>
+            <DrinkSocialSignals
+              className="mt-2"
+              isTrending
+              remixesCount={remixes}
+              views7d={views7d}
+            />
           </>
         );
       }}
