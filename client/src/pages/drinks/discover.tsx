@@ -170,14 +170,14 @@ export default function DrinksDiscoverPage() {
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Bell className="h-5 w-5 text-blue-600" />
-                  Notifications Center
+                  Alerts Center
                 </CardTitle>
-                <CardDescription>Review your creator updates in one unified feed.</CardDescription>
+                <CardDescription>Review premium collection promos, price drops, and creator launches in one place.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Link href="/drinks/notifications">
+                <Link href="/drinks/alerts">
                   <Button variant="outline" className="w-full justify-between">
-                    Open Notifications
+                    Open Alerts
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>

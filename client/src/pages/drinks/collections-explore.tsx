@@ -111,6 +111,8 @@ export default function DrinkCollectionsExplorePage() {
         <div className="flex flex-wrap gap-2 pt-1">
           <Link href="/drinks/discover" className="text-sm underline underline-offset-2">Back to discover</Link>
           <span className="text-muted-foreground">·</span>
+          <Link href="/drinks/alerts" className="text-sm underline underline-offset-2">Alerts</Link>
+          <span className="text-muted-foreground">·</span>
           <Link href="/drinks/collections/purchased" className="text-sm underline underline-offset-2">My purchased collections</Link>
           <span className="text-muted-foreground">·</span>
           <Link href="/drinks/collections/wishlist" className="text-sm underline underline-offset-2">Wishlist</Link>

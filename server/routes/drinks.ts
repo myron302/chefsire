@@ -27,6 +27,7 @@ import {
   insertDrinkCollectionSchema,
   insertDrinkChallengeSchema,
   insertDrinkRecipeSchema,
+  notifications,
   users,
 } from "@shared/schema";
 import { z } from "zod";
@@ -34,6 +35,13 @@ import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-eve
 import { optionalAuth, requireAuth } from "../middleware";
 import { WebhooksHelper } from "square";
 import { getSquareClient, getSquareConfigError, requireWebhookKey, squareConfig } from "../lib/square";
+import {
+  DRINK_ALERT_TYPES,
+  sendFollowedCreatorCollectionLaunchAlerts,
+  sendFollowedCreatorPromoAlerts,
+  sendWishlistPriceDropAlerts,
+  sendWishlistPromoAlerts,
+} from "../services/notification-service";
 
 const r = Router();
 
@@ -44,6 +52,7 @@ type DrinkCollectionCheckoutStatus = "pending" | "completed" | "failed" | "cance
 type DrinkCollectionSalesLedgerStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
 type DrinkCollectionEventType = "view";
 type DrinkCollectionPromotionDiscountType = "percent" | "fixed";
+type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
 type DrinkCollectionPromotionRecord = typeof drinkCollectionPromotions.$inferSelect;
@@ -148,6 +157,8 @@ type DiscoveryDrinkCard = {
   remixesCount: number;
   views7d: number;
 };
+
+const DRINK_ALERT_TYPE_VALUES = Object.values(DRINK_ALERT_TYPES) as DrinkAlertType[];
 
 const TRACKABLE_DRINK_EVENTS = new Set<EventType>(["view", "remix", "grocery_add"]);
 const TRACKABLE_COLLECTION_EVENTS = new Set<DrinkCollectionEventType>(["view"]);
@@ -564,6 +575,122 @@ function logWishlistPromoAlertReady(event: {
   wishlistAudienceCount: number;
 }) {
   console.info("[drinks/collections/promo-alert-ready] Wishlist promo alert audience snapshot prepared", event);
+}
+
+async function loadUserBasicProfile(userId: string) {
+  if (!db) return null;
+
+  const rows = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      avatar: users.avatar,
+    })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+function serializeDrinkAlert(notification: typeof notifications.$inferSelect) {
+  const metadata = (notification.metadata ?? {}) as Record<string, any>;
+  return {
+    id: notification.id,
+    userId: notification.userId,
+    type: notification.type,
+    collectionId: typeof metadata.collectionId === "string" ? metadata.collectionId : null,
+    creatorUserId: typeof metadata.creatorUserId === "string" ? metadata.creatorUserId : null,
+    title: notification.title,
+    message: notification.message,
+    isRead: Boolean(notification.read),
+    createdAt: notification.createdAt ? notification.createdAt.toISOString() : new Date().toISOString(),
+    readAt: notification.readAt ? notification.readAt.toISOString() : null,
+    linkUrl: notification.linkUrl ?? null,
+    imageUrl: notification.imageUrl ?? null,
+    metadata,
+  };
+}
+
+async function maybeNotifyFollowersAboutPublishedPremiumCollection(
+  collection: typeof drinkCollections.$inferSelect,
+  previousCollection?: typeof drinkCollections.$inferSelect | null,
+) {
+  if (!collection.isPublic || !collection.isPremium) return;
+
+  const wasAlreadyPublished = previousCollection
+    ? previousCollection.isPublic && previousCollection.isPremium
+    : false;
+  if (wasAlreadyPublished) return;
+
+  const creator = await loadUserBasicProfile(collection.userId);
+  await sendFollowedCreatorCollectionLaunchAlerts({
+    collectionId: collection.id,
+    collectionName: collection.name,
+    creatorUserId: collection.userId,
+    creatorUsername: creator?.username ?? null,
+    creatorAvatar: creator?.avatar ?? null,
+  });
+}
+
+async function maybeNotifyWishlistersAboutPriceDrop(input: {
+  previousCollection: typeof drinkCollections.$inferSelect;
+  nextCollection: typeof drinkCollections.$inferSelect;
+}) {
+  const { previousCollection, nextCollection } = input;
+  if (!nextCollection.isPremium || !nextCollection.isPublic) return;
+
+  const previousPrice = Number(previousCollection.priceCents ?? 0);
+  const nextPrice = Number(nextCollection.priceCents ?? 0);
+  if (nextPrice <= 0 || nextPrice >= previousPrice) return;
+
+  const creator = await loadUserBasicProfile(nextCollection.userId);
+  await sendWishlistPriceDropAlerts({
+    collectionId: nextCollection.id,
+    collectionName: nextCollection.name,
+    creatorUserId: nextCollection.userId,
+    creatorUsername: creator?.username ?? null,
+    creatorAvatar: creator?.avatar ?? null,
+    previousPriceCents: previousPrice,
+    nextPriceCents: nextPrice,
+    currencyCode: squareConfig.currency ?? "USD",
+  });
+}
+
+async function maybeNotifyPromoActivation(input: {
+  collection: typeof drinkCollections.$inferSelect;
+  previousPromotion?: DrinkCollectionPromotionRecord | null;
+  nextPromotion: DrinkCollectionPromotionRecord;
+}) {
+  const { collection, previousPromotion = null, nextPromotion } = input;
+  if (!collection.isPremium || !collection.isPublic) return;
+
+  const wasActive = previousPromotion ? isPromotionCurrentlyValid(previousPromotion) : false;
+  const isActive = isPromotionCurrentlyValid(nextPromotion);
+  if (!isActive || wasActive) return;
+
+  const creator = await loadUserBasicProfile(collection.userId);
+
+  await Promise.all([
+    sendWishlistPromoAlerts({
+      collectionId: collection.id,
+      collectionName: collection.name,
+      creatorUserId: collection.userId,
+      creatorUsername: creator?.username ?? null,
+      creatorAvatar: creator?.avatar ?? null,
+      promotionId: nextPromotion.id,
+      promotionCode: nextPromotion.code,
+    }),
+    sendFollowedCreatorPromoAlerts({
+      collectionId: collection.id,
+      collectionName: collection.name,
+      creatorUserId: collection.userId,
+      creatorUsername: creator?.username ?? null,
+      creatorAvatar: creator?.avatar ?? null,
+      promotionId: nextPromotion.id,
+      promotionCode: nextPromotion.code,
+    }),
+  ]);
 }
 
 function logCollectionRouteError(route: string, req: any, error: unknown) {
@@ -5294,6 +5421,96 @@ r.get("/notifications", requireAuth, async (req, res) => {
   }
 });
 
+r.get("/alerts", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const limitParam = Number(req.query?.limit);
+    const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 100)) : 50;
+
+    const rows = await db
+      .select()
+      .from(notifications)
+      .where(
+        and(
+          eq(notifications.userId, req.user!.id),
+          inArray(notifications.type, DRINK_ALERT_TYPE_VALUES),
+        ),
+      )
+      .orderBy(desc(notifications.createdAt))
+      .limit(limit);
+
+    const alerts = rows.map(serializeDrinkAlert);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      alerts,
+      count: alerts.length,
+      unreadCount: alerts.filter((alert) => !alert.isRead).length,
+      empty: alerts.length === 0,
+    });
+  } catch (error) {
+    console.error("Error loading drinks alerts:", error);
+    return res.status(500).json({ ok: false, error: "Failed to fetch drinks alerts" });
+  }
+});
+
+r.post("/alerts/read-all", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    await db
+      .update(notifications)
+      .set({ read: true, readAt: new Date() })
+      .where(
+        and(
+          eq(notifications.userId, req.user!.id),
+          eq(notifications.read, false),
+          inArray(notifications.type, DRINK_ALERT_TYPE_VALUES),
+        ),
+      );
+
+    return res.json({ ok: true });
+  } catch (error) {
+    console.error("Error marking all drinks alerts read:", error);
+    return res.status(500).json({ ok: false, error: "Failed to update alerts" });
+  }
+});
+
+r.post("/alerts/:id/read", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const rows = await db
+      .update(notifications)
+      .set({ read: true, readAt: new Date() })
+      .where(
+        and(
+          eq(notifications.id, req.params.id),
+          eq(notifications.userId, req.user!.id),
+          inArray(notifications.type, DRINK_ALERT_TYPE_VALUES),
+        ),
+      )
+      .returning();
+
+    const alert = rows[0];
+    if (!alert) {
+      return res.status(404).json({ ok: false, error: "Alert not found" });
+    }
+
+    return res.json({ ok: true, alert: serializeDrinkAlert(alert) });
+  } catch (error) {
+    console.error("Error marking drinks alert read:", error);
+    return res.status(500).json({ ok: false, error: "Failed to update alert" });
+  }
+});
+
 // Lightweight creator activity feed derived from drink events/remixes/follows
 r.get("/creator/:userId/activity", requireAuth, async (req, res) => {
   try {
@@ -6120,6 +6337,9 @@ r.post("/collections", optionalAuth, async (req, res) => {
 
     const createdRows = await db.insert(drinkCollections).values(parsed.data).returning();
     const created = createdRows[0];
+    if (created) {
+      await maybeNotifyFollowersAboutPublishedPremiumCollection(created, null);
+    }
     return res.status(201).json({ ok: true, collection: { ...created, itemsCount: 0, items: [] } });
   } catch (error) {
     logCollectionRouteError("", req, error);
@@ -6654,6 +6874,11 @@ r.post("/creator-dashboard/promotions", requireAuth, async (req, res) => {
         promotionId: promotion.id,
         wishlistAudienceCount,
       });
+      await maybeNotifyPromoActivation({
+        collection,
+        previousPromotion: null,
+        nextPromotion: promotion,
+      });
     }
     return res.status(201).json({ ok: true, promotion, promoAlertReadyAudienceCount: wishlistAudienceCount });
   } catch (error) {
@@ -6721,6 +6946,11 @@ r.patch("/creator-dashboard/promotions/:id", requireAuth, async (req, res) => {
       creatorUserId: req.user!.id,
       promotionId: promotion.id,
       wishlistAudienceCount,
+    });
+    await maybeNotifyPromoActivation({
+      collection,
+      previousPromotion: existing,
+      nextPromotion: promotion,
     });
 
     return res.json({ ok: true, promotion, promoAlertReadyAudienceCount: wishlistAudienceCount });
@@ -7206,6 +7436,15 @@ r.patch("/collections/:id", optionalAuth, async (req, res) => {
       .returning();
 
     const hydrated = await resolveCollectionWithItems(updatedRows[0], req.user?.id ?? null);
+    if (updatedRows[0]) {
+      await Promise.all([
+        maybeNotifyFollowersAboutPublishedPremiumCollection(updatedRows[0], existing),
+        maybeNotifyWishlistersAboutPriceDrop({
+          previousCollection: existing,
+          nextCollection: updatedRows[0],
+        }),
+      ]);
+    }
     return res.json({ ok: true, collection: hydrated });
   } catch (error) {
     logCollectionRouteError("/:id", req, error);

@@ -14,7 +14,7 @@ const NAV_ITEMS = [
   { key: "most-remixed", href: "/drinks/most-remixed", label: "Most Remixed" },
   { key: "trending-creators", href: "/drinks/creators/trending", label: "Trending Creators" },
   { key: "following", href: "/drinks/following", label: "Following Feed" },
-  { key: "notifications", href: "/drinks/notifications", label: "Notifications" },
+  { key: "notifications", href: "/drinks/alerts", label: "Alerts" },
   { key: "collections", href: "/drinks/collections", label: "Collections" },
   { key: "wishlist", href: "/drinks/collections/wishlist", label: "Wishlist" },
   { key: "orders", href: "/drinks/orders", label: "Order History" },
