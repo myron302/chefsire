@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Link, useRoute } from "wouter";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useRoute } from "wouter";
 
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -41,6 +41,17 @@ type Collection = {
   items: CollectionItem[];
 };
 
+type CheckoutStatus = "pending" | "completed" | "failed" | "canceled";
+
+type CheckoutStatusResponse = {
+  ok: boolean;
+  status: CheckoutStatus;
+  owned: boolean;
+  failureReason?: string | null;
+  collectionId: string;
+  checkoutSessionId: string;
+};
+
 function initials(value: string | null | undefined): string {
   if (!value) return "DR";
   return value.slice(0, 2).toUpperCase();
@@ -48,58 +59,210 @@ function initials(value: string | null | undefined): string {
 
 export default function DrinkCollectionDetailPage() {
   const [matched, params] = useRoute<{ id: string }>("/drinks/collections/:id");
+  const [location] = useLocation();
   const collectionId = matched ? String(params.id ?? "") : "";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [statusCode, setStatusCode] = useState<number | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
   const [isUnlocking, setIsUnlocking] = useState(false);
+  const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
+  const [checkoutStatus, setCheckoutStatus] = useState<CheckoutStatus | null>(null);
+  const [checkoutMessage, setCheckoutMessage] = useState("");
+  const [isPollingCheckout, setIsPollingCheckout] = useState(false);
+  const checkoutWindowRef = useRef<Window | null>(null);
+  const pollStartedAtRef = useRef<number | null>(null);
+  const popupClosedNoticeShownRef = useRef(false);
 
-  useEffect(() => {
-    if (!collectionId) return;
+  const queryParams = useMemo(() => {
+    if (typeof window === "undefined") return new URLSearchParams();
+    return new URLSearchParams(window.location.search);
+  }, [location]);
+
+  async function loadCollection(currentCollectionId: string, preserveCheckoutMessage = false) {
+    if (!currentCollectionId) return;
 
     setLoading(true);
     setError("");
     setStatusCode(null);
-    fetch(`/api/drinks/collections/${encodeURIComponent(collectionId)}`, { credentials: "include" })
-      .then(async (res) => {
+
+    try {
+      const res = await fetch(`/api/drinks/collections/${encodeURIComponent(currentCollectionId)}`, {
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        setStatusCode(res.status);
+        throw new Error(payload?.error || `Failed to load collection (${res.status})`);
+      }
+
+      const payload = await res.json();
+      setCollection(payload?.collection ?? null);
+      if (!preserveCheckoutMessage) {
+        setCheckoutStatus(null);
+        setCheckoutMessage("");
+      }
+    } catch (err) {
+      setCollection(null);
+      setError(err instanceof Error ? err.message : "Failed to load collection");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadCollection(collectionId);
+  }, [collectionId]);
+
+  useEffect(() => {
+    const returnedSessionId = queryParams.get("checkoutSessionId")?.trim();
+    if (!returnedSessionId) return;
+
+    setCheckoutSessionId(returnedSessionId);
+    setCheckoutStatus("pending");
+    setCheckoutMessage("Finishing your Square checkout…");
+    setError("");
+    setStatusCode(null);
+
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("checkoutSessionId");
+      url.searchParams.delete("squareCheckout");
+      window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+    }
+  }, [queryParams]);
+
+  useEffect(() => {
+    if (!checkoutSessionId) {
+      setIsPollingCheckout(false);
+      return;
+    }
+
+    let cancelled = false;
+    let intervalId: number | null = null;
+    pollStartedAtRef.current = Date.now();
+    popupClosedNoticeShownRef.current = false;
+    setIsPollingCheckout(true);
+
+    async function pollCheckoutStatus() {
+      try {
+        const res = await fetch(`/api/drinks/collections/checkout-sessions/${encodeURIComponent(checkoutSessionId)}/status`, {
+          credentials: "include",
+        });
+
         if (!res.ok) {
           const payload = await res.json().catch(() => null);
           setStatusCode(res.status);
-          throw new Error(payload?.error || `Failed to load collection (${res.status})`);
+          throw new Error(payload?.error || `Failed to verify checkout (${res.status})`);
         }
-        return res.json();
-      })
-      .then((payload) => setCollection(payload?.collection ?? null))
-      .catch((err) => {
-        setCollection(null);
-        setError(err instanceof Error ? err.message : "Failed to load collection");
-      })
-      .finally(() => setLoading(false));
-  }, [collectionId]);
+
+        const payload = (await res.json()) as CheckoutStatusResponse;
+        if (cancelled) return;
+
+        setCheckoutStatus(payload.status);
+
+        if (payload.status === "completed" && payload.owned) {
+          setCheckoutMessage("Payment verified. Your premium collection is now unlocked.");
+          setCheckoutSessionId(null);
+          setIsPollingCheckout(false);
+          checkoutWindowRef.current?.close();
+          checkoutWindowRef.current = null;
+          await loadCollection(collectionId, true);
+          return;
+        }
+
+        if (payload.status === "failed") {
+          setCheckoutMessage(payload.failureReason || "Square reported that the payment failed.");
+          setCheckoutSessionId(null);
+          setIsPollingCheckout(false);
+          return;
+        }
+
+        if (payload.status === "canceled") {
+          setCheckoutMessage(payload.failureReason || "Checkout was canceled before payment completed.");
+          setCheckoutSessionId(null);
+          setIsPollingCheckout(false);
+          return;
+        }
+
+        const popupClosed = Boolean(checkoutWindowRef.current && checkoutWindowRef.current.closed);
+        const pollAgeMs = pollStartedAtRef.current ? Date.now() - pollStartedAtRef.current : 0;
+        if (popupClosed && !popupClosedNoticeShownRef.current && pollAgeMs > 1500) {
+          popupClosedNoticeShownRef.current = true;
+          setCheckoutMessage("Square checkout was closed before payment was verified. If you completed payment, keep this page open while we confirm it.");
+        }
+
+        if (pollAgeMs > 60_000) {
+          setCheckoutMessage("Square checkout did not complete in time. The collection remains locked until payment is verified.");
+          setCheckoutSessionId(null);
+          setIsPollingCheckout(false);
+        }
+      } catch (err) {
+        if (cancelled) return;
+        setCheckoutMessage(err instanceof Error ? err.message : "Failed to verify checkout");
+        setCheckoutSessionId(null);
+        setIsPollingCheckout(false);
+      }
+    }
+
+    void pollCheckoutStatus();
+    intervalId = window.setInterval(() => {
+      void pollCheckoutStatus();
+    }, 2500);
+
+    return () => {
+      cancelled = true;
+      if (intervalId !== null) window.clearInterval(intervalId);
+    };
+  }, [checkoutSessionId, collectionId]);
 
   async function unlockCollection() {
     if (!collection) return;
+
     setIsUnlocking(true);
     setError("");
+    setStatusCode(null);
+    setCheckoutStatus("pending");
+    setCheckoutMessage("Creating your Square checkout…");
+
     try {
-      const purchaseRes = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}/purchase`, {
+      const checkoutRes = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}/create-checkout`, {
         method: "POST",
         credentials: "include",
       });
 
-      if (!purchaseRes.ok) {
-        const payload = await purchaseRes.json().catch(() => null);
-        setStatusCode(purchaseRes.status);
-        throw new Error(payload?.error || `Failed to unlock collection (${purchaseRes.status})`);
+      const payload = await checkoutRes.json().catch(() => null);
+      if (!checkoutRes.ok) {
+        setStatusCode(checkoutRes.status);
+        throw new Error(payload?.error || `Failed to start checkout (${checkoutRes.status})`);
       }
 
-      const refreshedRes = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}`, { credentials: "include" });
-      if (!refreshedRes.ok) throw new Error("Collection unlocked, but refresh failed");
-      const refreshedPayload = await refreshedRes.json();
-      setCollection(refreshedPayload?.collection ?? null);
+      if (payload?.owned) {
+        setCheckoutStatus("completed");
+        setCheckoutMessage("You already own this premium collection.");
+        await loadCollection(collection.id, true);
+        return;
+      }
+
+      if (!payload?.checkoutSessionId || !payload?.checkoutUrl) {
+        throw new Error("Square checkout link was not returned by the server.");
+      }
+
+      setCheckoutSessionId(String(payload.checkoutSessionId));
+      setCheckoutMessage("Square checkout opened in a new tab. Complete payment there and we’ll unlock the collection here.");
+
+      const popup = window.open(String(payload.checkoutUrl), "chefsire-square-checkout", "popup,width=520,height=760");
+      checkoutWindowRef.current = popup;
+
+      if (!popup) {
+        setCheckoutMessage("Redirecting to Square checkout…");
+        window.location.assign(String(payload.checkoutUrl));
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to unlock collection");
+      setCheckoutStatus("failed");
+      setCheckoutMessage("");
+      setError(err instanceof Error ? err.message : "Failed to start checkout");
     } finally {
       setIsUnlocking(false);
     }
@@ -147,11 +310,30 @@ export default function DrinkCollectionDetailPage() {
           <CardContent className="space-y-3">
             {isLockedPremium ? (
               <Card>
-                <CardContent className="p-4 space-y-2">
+                <CardContent className="p-4 space-y-3">
                   <p className="text-sm text-muted-foreground">This premium collection is locked. Preview available below.</p>
-                  <Button onClick={unlockCollection} disabled={isUnlocking}>
-                    {isUnlocking ? "Unlocking…" : `Unlock Collection · $${(collection.priceCents / 100).toFixed(2)}`}
-                  </Button>
+                  {checkoutMessage ? (
+                    <p className={`text-sm ${checkoutStatus === "completed" ? "text-emerald-600" : checkoutStatus === "failed" || checkoutStatus === "canceled" ? "text-destructive" : "text-muted-foreground"}`}>
+                      {checkoutMessage}
+                    </p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Button onClick={unlockCollection} disabled={isUnlocking || isPollingCheckout}>
+                      {isUnlocking ? "Opening Square Checkout…" : isPollingCheckout ? "Waiting for Square payment…" : `Unlock Collection · $${(collection.priceCents / 100).toFixed(2)}`}
+                    </Button>
+                    {checkoutSessionId ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setCheckoutStatus("pending");
+                          setCheckoutMessage("Checking your Square payment status…");
+                        }}
+                      >
+                        Check Payment Status
+                      </Button>
+                    ) : null}
+                  </div>
                 </CardContent>
               </Card>
             ) : null}

@@ -1,61 +1,50 @@
-// /httpdocs/server/lib/square.ts
-import "../lib/load-env"; // keeps your existing env loader behavior
+import "../lib/load-env";
 
-import { Client, Environment } from "square";
+import { SquareClient, SquareEnvironment } from "square";
 
-/**
- * Required env vars (set in Plesk → Node.js → Custom environment variables):
- * - SQUARE_ENV                  = "sandbox" | "production"
- * - SQUARE_ACCESS_TOKEN         = (your Square Access Token for that env)
- * - SQUARE_APPLICATION_ID       = (your Square Application ID for that env)
- * - SQUARE_LOCATION_ID          = (your Square Location ID)
- * - SQUARE_WEBHOOK_SIGNATURE_KEY= (for webhook verification; add when we wire webhooks)
- */
-
-const SQUARE_ENV = (process.env.SQUARE_ENV || "sandbox").toLowerCase();
+const SQUARE_ENV = (process.env.SQUARE_ENV || "sandbox").trim().toLowerCase();
 const isSandbox = SQUARE_ENV !== "production";
 
-const ACCESS_TOKEN = process.env.SQUARE_ACCESS_TOKEN?.trim();
-const APPLICATION_ID = process.env.SQUARE_APPLICATION_ID?.trim();
-const LOCATION_ID = process.env.SQUARE_LOCATION_ID?.trim();
-const WEBHOOK_SIGNATURE_KEY = process.env.SQUARE_WEBHOOK_SIGNATURE_KEY?.trim(); // optional until we add webhooks
-
-if (!ACCESS_TOKEN) {
-  throw new Error(
-    "Missing SQUARE_ACCESS_TOKEN. Set it in Plesk → Node.js → Custom environment variables."
-  );
+function cleanedEnv(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
 }
-if (!APPLICATION_ID) {
-  throw new Error(
-    "Missing SQUARE_APPLICATION_ID. Set it in Plesk → Node.js → Custom environment variables."
-  );
-}
-if (!LOCATION_ID) {
-  throw new Error(
-    "Missing SQUARE_LOCATION_ID. Set it in Plesk → Node.js → Custom environment variables."
-  );
-}
-
-export const squareClient = new Client({
-  environment: isSandbox ? Environment.Sandbox : Environment.Production,
-  accessToken: ACCESS_TOKEN,
-});
 
 export const squareConfig = {
   isSandbox,
-  applicationId: APPLICATION_ID,
-  locationId: LOCATION_ID,
-  webhookSignatureKey: WEBHOOK_SIGNATURE_KEY, // may be undefined until you add it
+  environment: isSandbox ? SquareEnvironment.Sandbox : SquareEnvironment.Production,
+  accessToken: cleanedEnv("SQUARE_ACCESS_TOKEN"),
+  applicationId: cleanedEnv("SQUARE_APPLICATION_ID"),
+  locationId: cleanedEnv("SQUARE_LOCATION_ID"),
+  webhookSignatureKey: cleanedEnv("SQUARE_WEBHOOK_SIGNATURE_KEY"),
+  currency: cleanedEnv("SQUARE_CURRENCY") || "USD",
 };
 
-/**
- * Small helper so routes can assert we have the webhook key when needed.
- */
+export function getSquareConfigError(): string | null {
+  if (!squareConfig.accessToken) return "Missing SQUARE_ACCESS_TOKEN.";
+  if (!squareConfig.locationId) return "Missing SQUARE_LOCATION_ID.";
+  return null;
+}
+
+export function isSquareConfigured(): boolean {
+  return !getSquareConfigError();
+}
+
+export function getSquareClient(): SquareClient {
+  const configError = getSquareConfigError();
+  if (configError) {
+    throw new Error(`${configError} Set the required Square environment variables before using premium drink collection checkout.`);
+  }
+
+  return new SquareClient({
+    token: squareConfig.accessToken!,
+    environment: squareConfig.environment,
+  });
+}
+
 export function requireWebhookKey() {
   if (!squareConfig.webhookSignatureKey) {
-    throw new Error(
-      "Missing SQUARE_WEBHOOK_SIGNATURE_KEY. Add it before enabling webhooks."
-    );
+    throw new Error("Missing SQUARE_WEBHOOK_SIGNATURE_KEY. Add it before enabling Square webhooks.");
   }
   return squareConfig.webhookSignatureKey;
 }
