@@ -6,6 +6,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 type CollectionItem = {
   id: string;
@@ -30,6 +32,40 @@ type CollectionCheckoutSnapshot = {
   updatedAt: string;
   verifiedAt?: string | null;
   expiresAt?: string | null;
+  originalAmountCents?: number | null;
+  discountAmountCents?: number | null;
+  promotionCode?: string | null;
+};
+
+type PromoPricing = {
+  promotionId: string;
+  code: string;
+  discountType: "percent" | "fixed";
+  discountValue: number;
+  originalAmountCents: number;
+  discountAmountCents: number;
+  finalAmountCents: number;
+  currencyCode: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  maxRedemptions: number | null;
+  redemptionCount: number;
+};
+
+type ApplyPromoResponse = {
+  ok: boolean;
+  collectionId: string;
+  promo: {
+    id: string;
+    code: string;
+    discountType: "percent" | "fixed";
+    discountValue: number;
+    startsAt: string | null;
+    endsAt: string | null;
+    maxRedemptions: number | null;
+    redemptionCount: number;
+  };
+  pricing: PromoPricing;
 };
 
 type Collection = {
@@ -67,6 +103,13 @@ function initials(value: string | null | undefined): string {
   return value.slice(0, 2).toUpperCase();
 }
 
+function formatCurrency(cents: number | null | undefined, currency = "USD") {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: currency || "USD",
+  }).format(Number(cents ?? 0) / 100);
+}
+
 function messageForCheckoutState(status: CheckoutStatus, failureReason?: string | null) {
   if (status === "completed") return "Payment verified. Your premium collection is now unlocked.";
   if (status === "failed") return failureReason || "Square reported that the payment failed.";
@@ -90,6 +133,11 @@ export default function DrinkCollectionDetailPage() {
   const [checkoutStatus, setCheckoutStatus] = useState<CheckoutStatus | null>(null);
   const [checkoutMessage, setCheckoutMessage] = useState("");
   const [isPollingCheckout, setIsPollingCheckout] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoPricing, setPromoPricing] = useState<PromoPricing | null>(null);
+  const [promoMessage, setPromoMessage] = useState("");
+  const [promoError, setPromoError] = useState("");
+  const [isApplyingPromo, setIsApplyingPromo] = useState(false);
   const checkoutWindowRef = useRef<Window | null>(null);
   const pollStartedAtRef = useRef<number | null>(null);
   const popupClosedNoticeShownRef = useRef(false);
@@ -120,6 +168,10 @@ export default function DrinkCollectionDetailPage() {
       const payload = await res.json();
       const nextCollection = (payload?.collection ?? null) as Collection | null;
       setCollection(nextCollection);
+      setPromoCode("");
+      setPromoPricing(null);
+      setPromoMessage("");
+      setPromoError("");
       if (!preserveCheckoutMessage) {
         const latestCheckout = nextCollection?.checkout ?? null;
         if (nextCollection?.ownedByViewer) {
@@ -282,6 +334,46 @@ export default function DrinkCollectionDetailPage() {
     };
   }, [checkoutSessionId, collectionId]);
 
+  async function applyPromoCode() {
+    if (!collection?.id) return;
+
+    const normalizedCode = promoCode.trim().toUpperCase();
+    if (!normalizedCode) {
+      setPromoPricing(null);
+      setPromoMessage("");
+      setPromoError("Enter a promo code to validate it.");
+      return;
+    }
+
+    setIsApplyingPromo(true);
+    setPromoError("");
+    setPromoMessage("");
+
+    try {
+      const response = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}/apply-promo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ code: normalizedCode }),
+      });
+
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to validate promo (${response.status})`);
+      }
+
+      const result = payload as ApplyPromoResponse;
+      setPromoPricing(result.pricing);
+      setPromoCode(result.pricing.code);
+      setPromoMessage(`Promo ${result.pricing.code} applied. ${formatCurrency(result.pricing.finalAmountCents, result.pricing.currencyCode)} will be sent to Square.`);
+    } catch (err) {
+      setPromoPricing(null);
+      setPromoError(err instanceof Error ? err.message : "Unable to validate promo code right now.");
+    } finally {
+      setIsApplyingPromo(false);
+    }
+  }
+
   async function unlockCollection() {
     if (!collection) return;
 
@@ -290,11 +382,16 @@ export default function DrinkCollectionDetailPage() {
     setStatusCode(null);
     setCheckoutStatus("pending");
     setCheckoutMessage("Creating your Square checkout…");
+    setPromoError("");
 
     try {
       const checkoutRes = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}/create-checkout`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({
+          promoCode: promoPricing?.code ?? (promoCode.trim() ? promoCode.trim().toUpperCase() : undefined),
+        }),
       });
 
       const payload = await checkoutRes.json().catch(() => null);
@@ -312,6 +409,10 @@ export default function DrinkCollectionDetailPage() {
 
       if (!payload?.checkoutSessionId || !payload?.checkoutUrl) {
         throw new Error("Square checkout link was not returned by the server.");
+      }
+
+      if (payload?.promotionCode) {
+        setPromoMessage(`Promo ${payload.promotionCode} carried into Square checkout.`);
       }
 
       setCheckoutSessionId(String(payload.checkoutSessionId));
@@ -334,6 +435,9 @@ export default function DrinkCollectionDetailPage() {
   }
 
   const isLockedPremium = Boolean(collection?.isPremium && collection?.requiresUnlock);
+  const displayedOriginalAmountCents = promoPricing?.originalAmountCents ?? collection?.priceCents ?? 0;
+  const displayedFinalAmountCents = promoPricing?.finalAmountCents ?? collection?.priceCents ?? 0;
+  const displayedDiscountAmountCents = promoPricing?.discountAmountCents ?? 0;
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl space-y-6">
@@ -355,6 +459,7 @@ export default function DrinkCollectionDetailPage() {
               <Badge variant="outline">{collection.isPublic ? "Public" : "Private"}</Badge>
               <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
               {collection.isPremium ? <Badge>Premium Collection · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
+              {promoPricing ? <Badge variant="secondary">Promo {promoPricing.code} · {formatCurrency(displayedFinalAmountCents, promoPricing.currencyCode)}</Badge> : null}
               {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
               {!collection.ownedByViewer && isLockedPremium ? <Badge variant="outline">Locked</Badge> : null}
             </CardTitle>
@@ -380,6 +485,49 @@ export default function DrinkCollectionDetailPage() {
               <Card>
                 <CardContent className="p-4 space-y-3">
                   <p className="text-sm text-muted-foreground">This premium collection is locked. Preview available below.</p>
+                  <div className="rounded-md border border-dashed p-3 space-y-3">
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium">Optional promo code</p>
+                      <p className="text-xs text-muted-foreground">Enter a creator promo for this collection before Square checkout.</p>
+                    </div>
+                    <div className="flex flex-col gap-2 sm:flex-row">
+                      <div className="flex-1 space-y-1">
+                        <Label htmlFor="collection-promo-code" className="text-xs uppercase tracking-wide text-muted-foreground">Promo code</Label>
+                        <Input
+                          id="collection-promo-code"
+                          value={promoCode}
+                          onChange={(event) => {
+                            setPromoCode(event.target.value.toUpperCase());
+                            setPromoPricing(null);
+                            setPromoMessage("");
+                            setPromoError("");
+                          }}
+                          placeholder="SUMMER20"
+                          autoCapitalize="characters"
+                        />
+                      </div>
+                      <div className="sm:self-end">
+                        <Button type="button" variant="outline" onClick={applyPromoCode} disabled={isApplyingPromo}>
+                          {isApplyingPromo ? "Validating…" : "Apply Promo"}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                      <span className={promoPricing ? "text-muted-foreground line-through" : "font-medium"}>
+                        Original {formatCurrency(displayedOriginalAmountCents)}
+                      </span>
+                      {promoPricing ? (
+                        <>
+                          <span className="font-medium text-emerald-600">Discounted {formatCurrency(displayedFinalAmountCents, promoPricing.currencyCode)}</span>
+                          <span className="text-xs text-muted-foreground">You save {formatCurrency(displayedDiscountAmountCents, promoPricing.currencyCode)}</span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No promo applied yet.</span>
+                      )}
+                    </div>
+                    {promoMessage ? <p className="text-sm text-emerald-600">{promoMessage}</p> : null}
+                    {promoError ? <p className="text-sm text-destructive">{promoError}</p> : null}
+                  </div>
                   {collection.checkout?.status === "pending" && !checkoutSessionId ? (
                     <p className="text-xs text-muted-foreground">A previous Square checkout is still pending verification. Use the status button below if you just completed payment.</p>
                   ) : null}
@@ -390,7 +538,7 @@ export default function DrinkCollectionDetailPage() {
                   ) : null}
                   <div className="flex flex-wrap gap-2">
                     <Button onClick={unlockCollection} disabled={isUnlocking || isPollingCheckout}>
-                      {isUnlocking ? "Opening Square Checkout…" : isPollingCheckout ? "Waiting for Square payment…" : `Unlock Collection · $${(collection.priceCents / 100).toFixed(2)}`}
+                      {isUnlocking ? "Opening Square Checkout…" : isPollingCheckout ? "Waiting for Square payment…" : `Unlock Collection · ${formatCurrency(displayedFinalAmountCents, promoPricing?.currencyCode ?? "USD")}`}
                     </Button>
                     {checkoutSessionId ? (
                       <Button

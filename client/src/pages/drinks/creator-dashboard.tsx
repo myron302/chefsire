@@ -1,12 +1,14 @@
 import * as React from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useUser } from "@/contexts/UserContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 
@@ -98,9 +100,31 @@ interface CreatorBadge {
 
 interface CreatorCollectionItem {
   id: string;
+  name?: string;
   isPublic: boolean;
   isPremium: boolean;
   priceCents: number;
+}
+
+interface CreatorPromotionItem {
+  id: string;
+  collectionId: string;
+  collectionName: string;
+  code: string;
+  discountType: "percent" | "fixed";
+  discountValue: number;
+  startsAt: string | null;
+  endsAt: string | null;
+  isActive: boolean;
+  maxRedemptions: number | null;
+  redemptionCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface CreatorPromotionsResponse {
+  ok: boolean;
+  promotions: CreatorPromotionItem[];
 }
 
 interface CreatorSalesCollectionItem {
@@ -139,6 +163,9 @@ interface CreatorFinanceRecentSale {
   collectionName: string;
   purchaseId: string | null;
   checkoutSessionId: string | null;
+  promotionCode?: string | null;
+  originalAmountCents?: number | null;
+  discountAmountCents?: number | null;
   grossAmountCents: number;
   platformFeeCents: number;
   creatorShareCents: number;
@@ -209,6 +236,9 @@ interface CreatorOrderItem {
   collectionId: string;
   collectionName: string;
   collectionRoute: string;
+  promotionCode?: string | null;
+  originalAmountCents?: number | null;
+  discountAmountCents?: number | null;
   grossAmountCents: number;
   currency: string;
   status: string;
@@ -271,6 +301,11 @@ function formatPercent(value: number | null | undefined): string {
   return `${Number(value).toFixed(1)}%`;
 }
 
+function formatPromotionDiscount(discountType: "percent" | "fixed", discountValue: number): string {
+  if (discountType === "percent") return `${metricNumber(discountValue)}% off`;
+  return `${formatCurrency(discountValue)} off`;
+}
+
 function saleStatusLabel(status: string): string {
   switch (status) {
     case "refunded":
@@ -320,6 +355,18 @@ function readErrorMessage(error: unknown, fallback: string): string {
 
 export default function CreatorDashboardPage() {
   const { user, loading: userLoading } = useUser();
+  const queryClient = useQueryClient();
+  const [promotionForm, setPromotionForm] = React.useState({
+    collectionId: "",
+    code: "",
+    discountType: "percent" as "percent" | "fixed",
+    discountValue: "10",
+    startsAt: "",
+    endsAt: "",
+    maxRedemptions: "",
+  });
+  const [promotionMessage, setPromotionMessage] = React.useState("");
+  const [promotionError, setPromotionError] = React.useState("");
 
   const query = useQuery<CreatorDrinkMetricsResponse>({
     queryKey: ["/api/drinks/creator", user?.id ?? ""],
@@ -446,6 +493,73 @@ export default function CreatorDashboardPage() {
     enabled: Boolean(user?.id),
   });
 
+  const promotionsQuery = useQuery<CreatorPromotionsResponse>({
+    queryKey: ["/api/drinks/creator-dashboard/promotions", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/creator-dashboard/promotions", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error || payload?.message || `Failed to load promotions (${response.status})`;
+        throw new Error(String(message));
+      }
+      return payload as CreatorPromotionsResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
+  const createPromotionMutation = useMutation({
+    mutationFn: async (payloadBody: {
+      collectionId: string;
+      code: string;
+      discountType: "percent" | "fixed";
+      discountValue: number;
+      startsAt: string | null;
+      endsAt: string | null;
+      maxRedemptions: number | null;
+    }) => {
+      const response = await fetch("/api/drinks/creator-dashboard/promotions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...payloadBody, isActive: true }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to create promotion (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      setPromotionMessage("Promotion created.");
+      setPromotionError("");
+      setPromotionForm((current) => ({ ...current, code: "", discountValue: current.discountType === "percent" ? "10" : "", startsAt: "", endsAt: "", maxRedemptions: "" }));
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/promotions", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setPromotionError(readErrorMessage(error, "Unable to create promotion right now."));
+      setPromotionMessage("");
+    },
+  });
+
+  const togglePromotionMutation = useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const response = await fetch(`/api/drinks/creator-dashboard/promotions/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ isActive }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to update promotion (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/promotions", user?.id ?? ""] });
+    },
+  });
+
   if (userLoading) {
     return <div className="container mx-auto p-6">Loading dashboard...</div>;
   }
@@ -531,6 +645,13 @@ export default function CreatorDashboardPage() {
   };
   const conversionCollections = conversionsQuery.data?.collections ?? [];
   const recentCreatorOrders = ordersQuery.data?.orders ?? [];
+  const creatorPromotions = promotionsQuery.data?.promotions ?? [];
+  const premiumCollectionOptions = premiumCollections.map((collection) => ({
+    id: collection.id,
+    name: collection.name ?? `Collection ${collection.id.slice(0, 8)}`,
+    priceCents: collection.priceCents,
+  }));
+  const selectedPromotionCollectionId = promotionForm.collectionId || premiumCollectionOptions[0]?.id || "";
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
@@ -640,6 +761,172 @@ export default function CreatorDashboardPage() {
               <Button size="sm">Browse premium collections</Button>
             </Link>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card id="promotions">
+        <CardHeader>
+          <CardTitle>Promotions</CardTitle>
+          <CardDescription>
+            Lightweight promo codes for premium collections. Discounts affect the actual Square checkout amount and revenue reporting.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Active promos</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorPromotions.filter((promo) => promo.isActive).length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Total promos</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorPromotions.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Redeemed uses</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorPromotions.reduce((sum, promo) => sum + Number(promo.redemptionCount ?? 0), 0))}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
+              <p className="text-xl font-semibold">{metricNumber(premiumCollections.length)}</p>
+            </div>
+          </div>
+
+          {premiumCollectionOptions.length === 0 ? (
+            <div className="rounded-md border p-4 text-sm text-muted-foreground">
+              Create a premium collection first, then add creator-managed promo codes here.
+            </div>
+          ) : (
+            <div className="rounded-md border border-dashed p-4 space-y-3">
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                <div className="space-y-1">
+                  <Label htmlFor="promo-collection">Premium collection</Label>
+                  <select
+                    id="promo-collection"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={selectedPromotionCollectionId}
+                    onChange={(event) => setPromotionForm((current) => ({ ...current, collectionId: event.target.value }))}
+                  >
+                    {premiumCollectionOptions.map((collection) => (
+                      <option key={collection.id} value={collection.id}>
+                        {collection.name} · {formatCurrency(collection.priceCents)}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="promo-code">Code</Label>
+                  <Input id="promo-code" value={promotionForm.code} onChange={(event) => setPromotionForm((current) => ({ ...current, collectionId: selectedPromotionCollectionId, code: event.target.value.toUpperCase() }))} placeholder="SPRING15" />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="promo-discount-type">Discount type</Label>
+                  <select
+                    id="promo-discount-type"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={promotionForm.discountType}
+                    onChange={(event) => setPromotionForm((current) => ({ ...current, collectionId: selectedPromotionCollectionId, discountType: event.target.value as "percent" | "fixed", discountValue: event.target.value === "percent" && !current.discountValue ? "10" : current.discountValue }))}
+                  >
+                    <option value="percent">Percent off</option>
+                    <option value="fixed">Fixed amount off</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="promo-discount-value">{promotionForm.discountType === "percent" ? "Percent" : "Amount cents"}</Label>
+                  <Input id="promo-discount-value" type="number" min={1} value={promotionForm.discountValue} onChange={(event) => setPromotionForm((current) => ({ ...current, collectionId: selectedPromotionCollectionId, discountValue: event.target.value }))} placeholder={promotionForm.discountType === "percent" ? "20" : "500"} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="promo-starts-at">Starts at</Label>
+                  <Input id="promo-starts-at" type="datetime-local" value={promotionForm.startsAt} onChange={(event) => setPromotionForm((current) => ({ ...current, collectionId: selectedPromotionCollectionId, startsAt: event.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="promo-ends-at">Ends at</Label>
+                  <Input id="promo-ends-at" type="datetime-local" value={promotionForm.endsAt} onChange={(event) => setPromotionForm((current) => ({ ...current, collectionId: selectedPromotionCollectionId, endsAt: event.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="promo-max-redemptions">Max redemptions</Label>
+                  <Input id="promo-max-redemptions" type="number" min={1} value={promotionForm.maxRedemptions} onChange={(event) => setPromotionForm((current) => ({ ...current, collectionId: selectedPromotionCollectionId, maxRedemptions: event.target.value }))} placeholder="Optional" />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setPromotionError("");
+                    setPromotionMessage("");
+                    createPromotionMutation.mutate({
+                      collectionId: selectedPromotionCollectionId,
+                      code: promotionForm.code.trim().toUpperCase(),
+                      discountType: promotionForm.discountType,
+                      discountValue: Number(promotionForm.discountValue),
+                      startsAt: promotionForm.startsAt ? new Date(promotionForm.startsAt).toISOString() : null,
+                      endsAt: promotionForm.endsAt ? new Date(promotionForm.endsAt).toISOString() : null,
+                      maxRedemptions: promotionForm.maxRedemptions ? Number(promotionForm.maxRedemptions) : null,
+                    });
+                  }}
+                  disabled={createPromotionMutation.isPending || !selectedPromotionCollectionId || !promotionForm.code.trim() || !promotionForm.discountValue}
+                >
+                  {createPromotionMutation.isPending ? "Creating promo…" : "Create promo"}
+                </Button>
+                <p className="text-xs text-muted-foreground">Keep promos lightweight: one collection, one code, one discount.</p>
+              </div>
+              {promotionMessage ? <p className="text-sm text-emerald-600">{promotionMessage}</p> : null}
+              {promotionError ? <p className="text-sm text-destructive">{promotionError}</p> : null}
+            </div>
+          )}
+
+          {promotionsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading creator promos…</p> : null}
+          {promotionsQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(promotionsQuery.error, "Unable to load promotions right now.")}</p> : null}
+
+          {creatorPromotions.length === 0 ? (
+            <div className="rounded-md border p-4 text-sm text-muted-foreground">
+              No promo codes yet. Add a code when you want to run a limited offer on a premium collection.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Code</TableHead>
+                  <TableHead>Collection</TableHead>
+                  <TableHead>Discount</TableHead>
+                  <TableHead>Dates</TableHead>
+                  <TableHead className="text-right">Redemptions</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {creatorPromotions.map((promo) => (
+                  <TableRow key={promo.id}>
+                    <TableCell className="font-medium">{promo.code}</TableCell>
+                    <TableCell>{promo.collectionName}</TableCell>
+                    <TableCell>{formatPromotionDiscount(promo.discountType, promo.discountValue)}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {promo.startsAt ? formatDateTime(promo.startsAt) : "Starts immediately"}
+                      <br />
+                      {promo.endsAt ? `Ends ${formatDateTime(promo.endsAt)}` : "No end date"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {metricNumber(promo.redemptionCount)}
+                      {promo.maxRedemptions ? <span className="text-xs text-muted-foreground"> / {metricNumber(promo.maxRedemptions)}</span> : null}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={promo.isActive ? "secondary" : "outline"}>{promo.isActive ? "Active" : "Disabled"}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => togglePromotionMutation.mutate({ id: promo.id, isActive: !promo.isActive })}
+                        disabled={togglePromotionMutation.isPending}
+                      >
+                        {promo.isActive ? "Disable" : "Enable"}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 
@@ -814,7 +1101,7 @@ export default function CreatorDashboardPage() {
           <div className="space-y-2">
             <div>
               <p className="text-sm font-medium">Recent premium sales activity</p>
-              <p className="text-xs text-muted-foreground">Completed sales stay in revenue totals; refunded and revoked entries are shown separately for audit readiness.</p>
+              <p className="text-xs text-muted-foreground">Completed sales stay in revenue totals at the actual paid amount; list price and promo deltas are shown separately when available.</p>
             </div>
 
             {recentFinanceSales.length === 0 ? (
@@ -827,7 +1114,7 @@ export default function CreatorDashboardPage() {
                   <TableRow>
                     <TableHead>Collection</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Gross sale</TableHead>
+                    <TableHead className="text-right">Paid</TableHead>
                     <TableHead className="text-right">Estimated creator share</TableHead>
                     <TableHead className="text-right">Date</TableHead>
                   </TableRow>
@@ -836,9 +1123,17 @@ export default function CreatorDashboardPage() {
                   {recentFinanceSales.map((sale) => (
                     <TableRow key={sale.id}>
                       <TableCell>
-                        <Link href={sale.route} className="font-medium underline underline-offset-2">
-                          {sale.collectionName}
-                        </Link>
+                        <div className="space-y-1">
+                          <Link href={sale.route} className="font-medium underline underline-offset-2">
+                            {sale.collectionName}
+                          </Link>
+                          {sale.originalAmountCents && sale.originalAmountCents > sale.grossAmountCents ? (
+                            <p className="text-xs text-muted-foreground">
+                              List {formatCurrency(sale.originalAmountCents)} · Discount {formatCurrency(sale.discountAmountCents ?? 0)}
+                              {sale.promotionCode ? ` · ${sale.promotionCode}` : ""}
+                            </p>
+                          ) : null}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <div className="space-y-1">
@@ -917,7 +1212,7 @@ export default function CreatorDashboardPage() {
                   <TableHead>Collection</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Buyer</TableHead>
-                  <TableHead className="text-right">Gross sale</TableHead>
+                  <TableHead className="text-right">Paid</TableHead>
                   <TableHead className="text-right">Purchased</TableHead>
                   <TableHead className="text-right">Updated</TableHead>
                 </TableRow>
@@ -934,6 +1229,12 @@ export default function CreatorDashboardPage() {
                           Order {order.orderId}
                           {order.purchaseId ? ` · Purchase ${order.purchaseId}` : ""}
                         </p>
+                        {order.originalAmountCents && order.originalAmountCents > order.grossAmountCents ? (
+                          <p className="text-xs text-muted-foreground">
+                            List {formatCurrency(order.originalAmountCents, order.currency)} · Discount {formatCurrency(order.discountAmountCents ?? 0, order.currency)}
+                            {order.promotionCode ? ` · ${order.promotionCode}` : ""}
+                          </p>
+                        ) : null}
                       </div>
                     </TableCell>
                     <TableCell>
@@ -964,7 +1265,7 @@ export default function CreatorDashboardPage() {
         <CardHeader>
           <CardTitle>Sales · Premium Collections</CardTitle>
           <CardDescription>
-            Reporting only. Gross sales reflect completed premium collection purchases and do not imply payouts or net earnings.
+            Reporting only. Gross sales reflect completed premium collection purchases at the actual paid amount, not the undiscounted list price.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">

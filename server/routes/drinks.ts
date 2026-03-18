@@ -12,6 +12,7 @@ import {
   insertDrinkSaveSchema,
   drinkCollectionCheckoutSessions,
   drinkCollectionEvents,
+  drinkCollectionPromotions,
   drinkCollectionSalesLedger,
   drinkCollectionSquareWebhookEvents,
   drinkCollectionItems,
@@ -41,13 +42,31 @@ type DrinkCollectionPurchaseStatus = "completed" | "refunded_pending" | "refunde
 type DrinkCollectionCheckoutStatus = "pending" | "completed" | "failed" | "canceled" | "refunded_pending" | "refunded" | "revoked";
 type DrinkCollectionSalesLedgerStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
 type DrinkCollectionEventType = "view";
+type DrinkCollectionPromotionDiscountType = "percent" | "fixed";
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
+type DrinkCollectionPromotionRecord = typeof drinkCollectionPromotions.$inferSelect;
 
 type ResolvedCollectionPurchaseContext = {
   collection: typeof drinkCollections.$inferSelect;
   isOwner: boolean;
   alreadyOwned: boolean;
+  promoPricing: CollectionPromoPricingSnapshot | null;
+};
+
+type CollectionPromoPricingSnapshot = {
+  promotionId: string;
+  code: string;
+  discountType: DrinkCollectionPromotionDiscountType;
+  discountValue: number;
+  originalAmountCents: number;
+  discountAmountCents: number;
+  finalAmountCents: number;
+  currencyCode: string;
+  startsAt: string | null;
+  endsAt: string | null;
+  maxRedemptions: number | null;
+  redemptionCount: number;
 };
 
 type CollectionAccessStatusInput = {
@@ -91,6 +110,9 @@ type CollectionCheckoutSnapshot = {
   updatedAt: string;
   verifiedAt: string | null;
   expiresAt: string | null;
+  originalAmountCents?: number | null;
+  discountAmountCents?: number | null;
+  promotionCode?: string | null;
 };
 
 type SquareWebhookEventBody = {
@@ -345,6 +367,65 @@ const createDrinkCollectionItemBodySchema = z.object({
   drinkSlug: z.string().trim().min(1).max(200).transform((value) => value.toLowerCase()),
 });
 
+const promoCodeSchema = z.string().trim().min(1).max(64).transform((value) => value.toUpperCase());
+
+const promotionDiscountTypeSchema = z.enum(["percent", "fixed"]);
+
+const promotionInputSchema = z.object({
+  collectionId: z.string().trim().min(1),
+  code: promoCodeSchema,
+  discountType: promotionDiscountTypeSchema,
+  discountValue: z.number().int().positive(),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
+  isActive: z.boolean().optional(),
+  maxRedemptions: z.number().int().positive().nullable().optional(),
+}).superRefine((value, ctx) => {
+  if (value.discountType === "percent" && value.discountValue >= 100) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountValue"], message: "Percent discounts must be between 1 and 99." });
+  }
+
+  if (value.startsAt && value.endsAt) {
+    const startsAt = new Date(value.startsAt);
+    const endsAt = new Date(value.endsAt);
+    if (!Number.isNaN(startsAt.getTime()) && !Number.isNaN(endsAt.getTime()) && endsAt <= startsAt) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "End date must be after the start date." });
+    }
+  }
+});
+
+const promotionUpdateSchema = z.object({
+  code: promoCodeSchema.optional(),
+  discountType: promotionDiscountTypeSchema.optional(),
+  discountValue: z.number().int().positive().optional(),
+  startsAt: z.string().datetime().nullable().optional(),
+  endsAt: z.string().datetime().nullable().optional(),
+  isActive: z.boolean().optional(),
+  maxRedemptions: z.number().int().positive().nullable().optional(),
+}).refine((value) => Object.values(value).some((entry) => entry !== undefined), {
+  message: "At least one promotion field must be provided.",
+}).superRefine((value, ctx) => {
+  if (value.discountType === "percent" && value.discountValue !== undefined && value.discountValue >= 100) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["discountValue"], message: "Percent discounts must be between 1 and 99." });
+  }
+
+  if (value.startsAt && value.endsAt) {
+    const startsAt = new Date(value.startsAt);
+    const endsAt = new Date(value.endsAt);
+    if (!Number.isNaN(startsAt.getTime()) && !Number.isNaN(endsAt.getTime()) && endsAt <= startsAt) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "End date must be after the start date." });
+    }
+  }
+});
+
+const applyPromoBodySchema = z.object({
+  code: promoCodeSchema,
+});
+
+const createCheckoutBodySchema = z.object({
+  promoCode: promoCodeSchema.optional(),
+});
+
 const updateDrinkCollectionBodySchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
@@ -365,6 +446,56 @@ function normalizeCollectionDescription(value: string | null | undefined): strin
   if (typeof value !== "string") return null;
   const cleaned = value.trim();
   return cleaned.length ? cleaned : null;
+}
+
+function normalizePromotionCode(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim().toUpperCase();
+  return cleaned.length ? cleaned : null;
+}
+
+function toNullableDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function serializePromotionPricing(
+  promotion: DrinkCollectionPromotionRecord,
+  originalAmountCents: number,
+  currencyCode: string,
+): CollectionPromoPricingSnapshot {
+  const safeOriginal = Math.max(0, Number(originalAmountCents ?? 0));
+  const rawDiscountAmount = promotion.discountType === "percent"
+    ? Math.round((safeOriginal * Number(promotion.discountValue ?? 0)) / 100)
+    : Number(promotion.discountValue ?? 0);
+  const discountAmountCents = Math.max(0, Math.min(safeOriginal - 1, rawDiscountAmount));
+  const finalAmountCents = Math.max(0, safeOriginal - discountAmountCents);
+
+  return {
+    promotionId: promotion.id,
+    code: promotion.code,
+    discountType: promotion.discountType as DrinkCollectionPromotionDiscountType,
+    discountValue: Number(promotion.discountValue ?? 0),
+    originalAmountCents: safeOriginal,
+    discountAmountCents,
+    finalAmountCents,
+    currencyCode: normalizeSquareCurrencyCode(currencyCode),
+    startsAt: promotion.startsAt ? promotion.startsAt.toISOString() : null,
+    endsAt: promotion.endsAt ? promotion.endsAt.toISOString() : null,
+    maxRedemptions: promotion.maxRedemptions === null ? null : Number(promotion.maxRedemptions ?? 0),
+    redemptionCount: Number(promotion.redemptionCount ?? 0),
+  };
+}
+
+function isPromotionCurrentlyValid(promotion: DrinkCollectionPromotionRecord, now = new Date()) {
+  if (!promotion.isActive) return false;
+  if (promotion.startsAt && promotion.startsAt > now) return false;
+  if (promotion.endsAt && promotion.endsAt < now) return false;
+  if (promotion.maxRedemptions !== null && Number(promotion.redemptionCount ?? 0) >= Number(promotion.maxRedemptions ?? 0)) {
+    return false;
+  }
+  return true;
 }
 
 function logCollectionRouteError(route: string, req: any, error: unknown) {
@@ -517,6 +648,10 @@ async function ensureDrinkCollectionsSchema() {
         collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
         provider text NOT NULL DEFAULT 'square',
         status text NOT NULL DEFAULT 'pending',
+        promotion_id varchar,
+        promotion_code text,
+        original_amount_cents integer,
+        discount_amount_cents integer,
         amount_cents integer NOT NULL,
         currency_code text NOT NULL DEFAULT 'USD',
         square_payment_link_id text,
@@ -537,6 +672,10 @@ async function ensureDrinkCollectionsSchema() {
 
     await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS refunded_at timestamp;`);
     await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS access_revoked_at timestamp;`);
+    await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS promotion_id varchar;`);
+    await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS promotion_code text;`);
+    await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS original_amount_cents integer;`);
+    await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS discount_amount_cents integer;`);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_collection_square_webhook_events (
@@ -559,6 +698,10 @@ async function ensureDrinkCollectionsSchema() {
         collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
         purchase_id varchar REFERENCES drink_collection_purchases(id) ON DELETE SET NULL,
         checkout_session_id varchar REFERENCES drink_collection_checkout_sessions(id) ON DELETE SET NULL,
+        promotion_id varchar,
+        promotion_code text,
+        original_amount_cents integer,
+        discount_amount_cents integer,
         gross_amount_cents integer NOT NULL,
         platform_fee_cents integer,
         creator_share_cents integer,
@@ -573,6 +716,29 @@ async function ensureDrinkCollectionsSchema() {
 
     await db.execute(sql`ALTER TABLE drink_collection_sales_ledger ADD COLUMN IF NOT EXISTS status_reason text;`);
     await db.execute(sql`ALTER TABLE drink_collection_sales_ledger ADD COLUMN IF NOT EXISTS refunded_at timestamp;`);
+    await db.execute(sql`ALTER TABLE drink_collection_sales_ledger ADD COLUMN IF NOT EXISTS promotion_id varchar;`);
+    await db.execute(sql`ALTER TABLE drink_collection_sales_ledger ADD COLUMN IF NOT EXISTS promotion_code text;`);
+    await db.execute(sql`ALTER TABLE drink_collection_sales_ledger ADD COLUMN IF NOT EXISTS original_amount_cents integer;`);
+    await db.execute(sql`ALTER TABLE drink_collection_sales_ledger ADD COLUMN IF NOT EXISTS discount_amount_cents integer;`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_collection_promotions (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
+        code varchar(64) NOT NULL,
+        discount_type text NOT NULL,
+        discount_value integer NOT NULL,
+        starts_at timestamp,
+        ends_at timestamp,
+        is_active boolean NOT NULL DEFAULT true,
+        max_redemptions integer,
+        redemption_count integer NOT NULL DEFAULT 0,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT drink_collection_promotions_collection_code_idx UNIQUE (collection_id, code)
+      );
+    `);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_collection_events (
@@ -603,6 +769,9 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_sales_ledger_purchase_idx ON drink_collection_sales_ledger(purchase_id) WHERE purchase_id IS NOT NULL;`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_sales_ledger_checkout_session_idx ON drink_collection_sales_ledger(checkout_session_id) WHERE checkout_session_id IS NOT NULL;`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_sales_ledger_status_created_at_idx ON drink_collection_sales_ledger(status, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_promotions_creator_idx ON drink_collection_promotions(creator_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_promotions_collection_idx ON drink_collection_promotions(collection_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_promotions_active_idx ON drink_collection_promotions(is_active, starts_at, ends_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_collection_idx ON drink_collection_events(collection_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_event_type_idx ON drink_collection_events(event_type);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_created_at_idx ON drink_collection_events(created_at);`);
@@ -640,6 +809,10 @@ async function upsertDrinkCollectionSalesLedgerEntry(
     collectionId: string;
     purchaseId: string | null;
     checkoutSessionId: string | null;
+    promotionId?: string | null;
+    promotionCode?: string | null;
+    originalAmountCents?: number | null;
+    discountAmountCents?: number | null;
     grossAmountCents: number;
     currencyCode: string | null | undefined;
     createdAt: Date;
@@ -658,6 +831,10 @@ async function upsertDrinkCollectionSalesLedgerEntry(
     collectionId: input.collectionId,
     purchaseId: input.purchaseId,
     checkoutSessionId: input.checkoutSessionId,
+    promotionId: input.promotionId ?? null,
+    promotionCode: input.promotionCode ?? null,
+    originalAmountCents: input.originalAmountCents ?? null,
+    discountAmountCents: input.discountAmountCents ?? null,
     grossAmountCents: finance.grossAmountCents,
     platformFeeCents: finance.platformFeeCents,
     creatorShareCents: finance.creatorShareCents,
@@ -679,6 +856,10 @@ async function upsertDrinkCollectionSalesLedgerEntry(
           userId: values.userId,
           collectionId: values.collectionId,
           purchaseId: values.purchaseId,
+          promotionId: values.promotionId,
+          promotionCode: values.promotionCode,
+          originalAmountCents: values.originalAmountCents,
+          discountAmountCents: values.discountAmountCents,
           grossAmountCents: values.grossAmountCents,
           platformFeeCents: values.platformFeeCents,
           creatorShareCents: values.creatorShareCents,
@@ -703,6 +884,10 @@ async function upsertDrinkCollectionSalesLedgerEntry(
           userId: values.userId,
           collectionId: values.collectionId,
           checkoutSessionId: values.checkoutSessionId,
+          promotionId: values.promotionId,
+          promotionCode: values.promotionCode,
+          originalAmountCents: values.originalAmountCents,
+          discountAmountCents: values.discountAmountCents,
           grossAmountCents: values.grossAmountCents,
           platformFeeCents: values.platformFeeCents,
           creatorShareCents: values.creatorShareCents,
@@ -725,6 +910,10 @@ async function backfillDrinkCollectionSalesLedger() {
       sessionId: drinkCollectionCheckoutSessions.id,
       purchaserUserId: drinkCollectionCheckoutSessions.userId,
       collectionId: drinkCollectionCheckoutSessions.collectionId,
+      promotionId: drinkCollectionCheckoutSessions.promotionId,
+      promotionCode: drinkCollectionCheckoutSessions.promotionCode,
+      originalAmountCents: drinkCollectionCheckoutSessions.originalAmountCents,
+      discountAmountCents: drinkCollectionCheckoutSessions.discountAmountCents,
       amountCents: drinkCollectionCheckoutSessions.amountCents,
       currencyCode: drinkCollectionCheckoutSessions.currencyCode,
       verifiedAt: drinkCollectionCheckoutSessions.verifiedAt,
@@ -762,6 +951,10 @@ async function backfillDrinkCollectionSalesLedger() {
       collectionId: session.collectionId,
       purchaseId: purchase.id,
       checkoutSessionId: session.sessionId,
+      promotionId: session.promotionId,
+      promotionCode: session.promotionCode,
+      originalAmountCents: session.originalAmountCents,
+      discountAmountCents: session.discountAmountCents,
       grossAmountCents: Number(session.amountCents ?? 0),
       currencyCode: session.currencyCode,
       createdAt: purchase.createdAt ?? session.verifiedAt ?? session.updatedAt ?? new Date(),
@@ -806,6 +999,69 @@ function sumTenderAmounts(tenders: any[] | null | undefined) {
 }
 
 async function resolveCollectionPurchaseContext(collectionId: string, viewerUserId: string): Promise<ResolvedCollectionPurchaseContext> {
+  return resolveCollectionPurchaseContextWithPromo(collectionId, viewerUserId, null);
+}
+
+async function loadCollectionPromotionForCode(collectionId: string, code: string) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const normalizedCode = normalizePromotionCode(code);
+  if (!normalizedCode) return null;
+
+  const rows = await db
+    .select()
+    .from(drinkCollectionPromotions)
+    .where(
+      and(
+        eq(drinkCollectionPromotions.collectionId, collectionId),
+        eq(drinkCollectionPromotions.code, normalizedCode),
+      ),
+    )
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function resolveValidPromotionPricing(collection: typeof drinkCollections.$inferSelect, code: string) {
+  const promotion = await loadCollectionPromotionForCode(collection.id, code);
+  if (!promotion) {
+    const error = new Error("Promotion code not found for this collection.");
+    (error as any).status = 404;
+    throw error;
+  }
+
+  if (promotion.creatorUserId !== collection.userId) {
+    const error = new Error("Promotion is not valid for this collection.");
+    (error as any).status = 403;
+    throw error;
+  }
+
+  if (!isPromotionCurrentlyValid(promotion)) {
+    const error = new Error("Promotion code is inactive, expired, or fully redeemed.");
+    (error as any).status = 400;
+    throw error;
+  }
+
+  const pricing = serializePromotionPricing(promotion, Number(collection.priceCents ?? 0), squareConfig.currency ?? "USD");
+  if (pricing.finalAmountCents <= 0 || pricing.discountAmountCents <= 0) {
+    const error = new Error("Promotion does not produce a valid discounted checkout amount.");
+    (error as any).status = 400;
+    throw error;
+  }
+
+  return {
+    promotion,
+    pricing,
+  };
+}
+
+async function resolveCollectionPurchaseContextWithPromo(
+  collectionId: string,
+  viewerUserId: string,
+  promoCode: string | null,
+): Promise<ResolvedCollectionPurchaseContext> {
   if (!db) {
     throw new Error("Database unavailable");
   }
@@ -832,10 +1088,13 @@ async function resolveCollectionPurchaseContext(collectionId: string, viewerUser
   }
 
   const ownedCollectionIds = await loadOwnedCollectionIdsForUser(viewerUserId);
+  const promoPricing = promoCode ? (await resolveValidPromotionPricing(collection, promoCode)).pricing : null;
+
   return {
     collection,
     isOwner,
     alreadyOwned: isOwner || ownedCollectionIds.has(collection.id),
+    promoPricing,
   };
 }
 
@@ -874,6 +1133,9 @@ function toCollectionCheckoutSnapshot(session?: DrinkCollectionCheckoutSessionRe
     updatedAt: session.updatedAt.toISOString(),
     verifiedAt: session.verifiedAt ? session.verifiedAt.toISOString() : null,
     expiresAt: session.expiresAt ? session.expiresAt.toISOString() : null,
+    originalAmountCents: session.originalAmountCents ?? null,
+    discountAmountCents: session.discountAmountCents ?? null,
+    promotionCode: session.promotionCode ?? null,
   };
 }
 
@@ -1006,6 +1268,10 @@ async function grantCollectionPurchase(
       collectionId: session.collectionId,
       purchaseId: purchase.id,
       checkoutSessionId: session.id,
+      promotionId: session.promotionId,
+      promotionCode: session.promotionCode,
+      originalAmountCents: session.originalAmountCents ?? collection.priceCents,
+      discountAmountCents: session.discountAmountCents ?? 0,
       grossAmountCents: Number(session.amountCents ?? collection.priceCents ?? 0),
       currencyCode: session.currencyCode,
       createdAt: purchase.createdAt ?? session.verifiedAt ?? session.updatedAt ?? new Date(),
@@ -1013,6 +1279,16 @@ async function grantCollectionPurchase(
       statusReason: null,
       refundedAt: null,
     });
+
+    if (session.promotionId && session.status !== "completed") {
+      await tx
+        .update(drinkCollectionPromotions)
+        .set({
+          redemptionCount: sql`${drinkCollectionPromotions.redemptionCount} + 1`,
+          updatedAt: now,
+        })
+        .where(eq(drinkCollectionPromotions.id, session.promotionId));
+    }
   });
 }
 
@@ -1941,6 +2217,9 @@ async function loadCreatorCollectionOrders(userId: string) {
       purchaseId: drinkCollectionSalesLedger.purchaseId,
       checkoutSessionId: drinkCollectionSalesLedger.checkoutSessionId,
       collectionId: drinkCollectionSalesLedger.collectionId,
+      promotionCode: drinkCollectionSalesLedger.promotionCode,
+      originalAmountCents: drinkCollectionSalesLedger.originalAmountCents,
+      discountAmountCents: drinkCollectionSalesLedger.discountAmountCents,
       grossAmountCents: drinkCollectionSalesLedger.grossAmountCents,
       currencyCode: drinkCollectionSalesLedger.currencyCode,
       status: drinkCollectionSalesLedger.status,
@@ -1959,6 +2238,9 @@ async function loadCreatorCollectionOrders(userId: string) {
     collectionId: row.collectionId,
     collectionName: collectionNameMap.get(row.collectionId) ?? "Premium collection",
     collectionRoute: `/drinks/collections/${row.collectionId}`,
+    promotionCode: row.promotionCode ?? null,
+    originalAmountCents: row.originalAmountCents === null ? null : Number(row.originalAmountCents ?? 0),
+    discountAmountCents: row.discountAmountCents === null ? null : Number(row.discountAmountCents ?? 0),
     grossAmountCents: Number(row.grossAmountCents ?? 0),
     currency: normalizeSquareCurrencyCode(row.currencyCode ?? squareConfig.currency ?? "USD"),
     status: row.status,
@@ -2119,6 +2401,9 @@ async function loadCreatorCollectionFinanceSummary(userId: string) {
       checkoutSessionId: drinkCollectionSalesLedger.checkoutSessionId,
       purchaseId: drinkCollectionSalesLedger.purchaseId,
       collectionName: drinkCollections.name,
+      promotionCode: drinkCollectionSalesLedger.promotionCode,
+      originalAmountCents: drinkCollectionSalesLedger.originalAmountCents,
+      discountAmountCents: drinkCollectionSalesLedger.discountAmountCents,
       grossAmountCents: drinkCollectionSalesLedger.grossAmountCents,
       platformFeeCents: drinkCollectionSalesLedger.platformFeeCents,
       creatorShareCents: drinkCollectionSalesLedger.creatorShareCents,
@@ -2206,6 +2491,9 @@ async function loadCreatorCollectionFinanceSummary(userId: string) {
       collectionName: sale.collectionName,
       purchaseId: sale.purchaseId,
       checkoutSessionId: sale.checkoutSessionId,
+      promotionCode: sale.promotionCode ?? null,
+      originalAmountCents: sale.originalAmountCents === null ? null : Number(sale.originalAmountCents ?? 0),
+      discountAmountCents: sale.discountAmountCents === null ? null : Number(sale.discountAmountCents ?? 0),
       grossAmountCents: Number(sale.grossAmountCents ?? 0),
       platformFeeCents: Number(sale.platformFeeCents ?? 0),
       creatorShareCents: Number(sale.creatorShareCents ?? 0),
@@ -2217,7 +2505,7 @@ async function loadCreatorCollectionFinanceSummary(userId: string) {
       route: `/drinks/collections/${sale.collectionId}`,
     })),
     reportingNotes: [
-      "Finance totals only include ledger rows that are still in completed status.",
+      "Finance totals only include ledger rows that are still in completed status, using the actual paid amount captured by Square.",
       "Refunded, refund-pending, and revoked premium collection sales are separated from completed revenue totals and do not keep access active.",
       `Estimated platform fees and creator share use an internal ${PREMIUM_COLLECTION_PLATFORM_FEE_BPS / 100}% / ${PREMIUM_COLLECTION_CREATOR_SHARE_BPS / 100}% split for reporting readiness only.`,
       "No payouts are sent automatically yet. Square checkout captures sales, but creator transfers are not implemented in this dashboard.",
@@ -2406,7 +2694,7 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
     reportingNotes: [
       "Collection views use tracked premium collection detail-page views from non-owner visitors and can include repeat visits.",
       "Checkout starts count each Square checkout session creation, including retries.",
-      "Completed purchases only include sales ledger rows still in completed status.",
+      "Completed purchases only include sales ledger rows still in completed status, so discounted checkouts flow through at the actual paid amount.",
       "Refunded count combines refunded, refund-pending, and revoked lifecycle states so analytics stay aligned with access and finance reporting.",
     ],
   };
@@ -5834,7 +6122,7 @@ r.get("/creator-dashboard/sales", requireAuth, async (req, res) => {
       reportingNotes: [
         "Active purchases only count when the ownership record is still in completed status.",
         "Refunded, refund-pending, and revoked premium sales are tracked separately and excluded from completed sales totals.",
-        "Gross sales are reporting only and do not imply payouts or net earnings.",
+        "Gross sales are reporting only, use the actual paid amount after discounts, and do not imply payouts or net earnings.",
       ],
     });
   } catch (error) {
@@ -5861,7 +6149,7 @@ r.get("/creator-dashboard/orders", requireAuth, async (req, res) => {
       orders,
       count: orders.length,
       reportingNotes: [
-        "Completed sale means the premium collection purchase is still counted in finance totals.",
+        "Completed sale means the premium collection purchase is still counted in finance totals at the actual paid amount.",
         "Refunded sale, pending refund, and revoked access stay visible for audit history but do not imply payouts.",
         "Buyer details stay privacy-safe in this dashboard.",
       ],
@@ -5924,6 +6212,186 @@ r.get("/creator-dashboard/conversions", requireAuth, async (req, res) => {
   }
 });
 
+r.get("/creator-dashboard/promotions", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/creator-dashboard/promotions", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const requestedCollectionId = typeof req.query.collectionId === "string" ? req.query.collectionId.trim() : "";
+    const collectionFilter = requestedCollectionId.length
+      ? and(
+        eq(drinkCollectionPromotions.creatorUserId, req.user!.id),
+        eq(drinkCollectionPromotions.collectionId, requestedCollectionId),
+      )
+      : eq(drinkCollectionPromotions.creatorUserId, req.user!.id);
+
+    const rows = await db
+      .select({
+        id: drinkCollectionPromotions.id,
+        collectionId: drinkCollectionPromotions.collectionId,
+        collectionName: drinkCollections.name,
+        code: drinkCollectionPromotions.code,
+        discountType: drinkCollectionPromotions.discountType,
+        discountValue: drinkCollectionPromotions.discountValue,
+        startsAt: drinkCollectionPromotions.startsAt,
+        endsAt: drinkCollectionPromotions.endsAt,
+        isActive: drinkCollectionPromotions.isActive,
+        maxRedemptions: drinkCollectionPromotions.maxRedemptions,
+        redemptionCount: drinkCollectionPromotions.redemptionCount,
+        createdAt: drinkCollectionPromotions.createdAt,
+        updatedAt: drinkCollectionPromotions.updatedAt,
+      })
+      .from(drinkCollectionPromotions)
+      .innerJoin(drinkCollections, eq(drinkCollectionPromotions.collectionId, drinkCollections.id))
+      .where(collectionFilter)
+      .orderBy(desc(drinkCollectionPromotions.createdAt));
+
+    return res.json({
+      ok: true,
+      promotions: rows.map((row) => ({
+        ...row,
+        discountValue: Number(row.discountValue ?? 0),
+        maxRedemptions: row.maxRedemptions === null ? null : Number(row.maxRedemptions ?? 0),
+        redemptionCount: Number(row.redemptionCount ?? 0),
+        startsAt: row.startsAt ? row.startsAt.toISOString() : null,
+        endsAt: row.endsAt ? row.endsAt.toISOString() : null,
+        createdAt: row.createdAt.toISOString(),
+        updatedAt: row.updatedAt.toISOString(),
+      })),
+    });
+  } catch (error) {
+    logCollectionRouteError("/creator-dashboard/promotions", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to load creator promotions");
+    const status = classifyCollectionError(error, "Failed to load creator promotions").status;
+    return res.status(status).json(payload);
+  }
+});
+
+r.post("/creator-dashboard/promotions", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const parsed = promotionInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid promotion details", details: parsed.error.flatten() });
+    }
+
+    const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, parsed.data.collectionId)).limit(1);
+    const collection = collectionRows[0];
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+    if (collection.userId !== req.user!.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+    if (!collection.isPremium) return res.status(400).json({ ok: false, error: "Promotions are only available for premium collections" });
+
+    if (parsed.data.discountType === "fixed" && parsed.data.discountValue >= Number(collection.priceCents ?? 0)) {
+      return res.status(400).json({ ok: false, error: "Fixed discount must be less than the collection price." });
+    }
+
+    const values = {
+      creatorUserId: req.user!.id,
+      collectionId: collection.id,
+      code: parsed.data.code,
+      discountType: parsed.data.discountType,
+      discountValue: parsed.data.discountValue,
+      startsAt: toNullableDate(parsed.data.startsAt),
+      endsAt: toNullableDate(parsed.data.endsAt),
+      isActive: parsed.data.isActive ?? true,
+      maxRedemptions: parsed.data.maxRedemptions ?? null,
+      updatedAt: new Date(),
+    } as const;
+
+    const inserted = await db.insert(drinkCollectionPromotions).values(values).returning();
+    return res.status(201).json({ ok: true, promotion: inserted[0] });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/promotions", req, error);
+    if (String(message).toLowerCase().includes("duplicate")) {
+      return res.status(409).json({ ok: false, error: "That promo code already exists for this collection." });
+    }
+    return res.status(500).json(collectionServerError(message, "Failed to create promotion"));
+  }
+});
+
+r.patch("/creator-dashboard/promotions/:id", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const existingRows = await db.select().from(drinkCollectionPromotions).where(eq(drinkCollectionPromotions.id, req.params.id)).limit(1);
+    const existing = existingRows[0];
+    if (!existing) return res.status(404).json({ ok: false, error: "Promotion not found" });
+    if (existing.creatorUserId !== req.user!.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, existing.collectionId)).limit(1);
+    const collection = collectionRows[0];
+    if (!collection || collection.userId !== req.user!.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    const parsed = promotionUpdateSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid promotion update", details: parsed.error.flatten() });
+    }
+
+    const nextDiscountType = parsed.data.discountType ?? existing.discountType;
+    const nextDiscountValue = parsed.data.discountValue ?? Number(existing.discountValue ?? 0);
+    if (nextDiscountType === "percent" && nextDiscountValue >= 100) {
+      return res.status(400).json({ ok: false, error: "Percent discounts must stay between 1 and 99." });
+    }
+    if (nextDiscountType === "fixed" && nextDiscountValue >= Number(collection.priceCents ?? 0)) {
+      return res.status(400).json({ ok: false, error: "Fixed discount must be less than the collection price." });
+    }
+
+    const startsAt = parsed.data.startsAt !== undefined ? toNullableDate(parsed.data.startsAt) : existing.startsAt;
+    const endsAt = parsed.data.endsAt !== undefined ? toNullableDate(parsed.data.endsAt) : existing.endsAt;
+    if (startsAt && endsAt && endsAt <= startsAt) {
+      return res.status(400).json({ ok: false, error: "Promotion end date must be after the start date." });
+    }
+
+    const updated = await db
+      .update(drinkCollectionPromotions)
+      .set({
+        ...(parsed.data.code !== undefined ? { code: parsed.data.code } : {}),
+        ...(parsed.data.discountType !== undefined ? { discountType: parsed.data.discountType } : {}),
+        ...(parsed.data.discountValue !== undefined ? { discountValue: parsed.data.discountValue } : {}),
+        ...(parsed.data.startsAt !== undefined ? { startsAt } : {}),
+        ...(parsed.data.endsAt !== undefined ? { endsAt } : {}),
+        ...(parsed.data.isActive !== undefined ? { isActive: parsed.data.isActive } : {}),
+        ...(parsed.data.maxRedemptions !== undefined ? { maxRedemptions: parsed.data.maxRedemptions } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkCollectionPromotions.id, existing.id))
+      .returning();
+
+    return res.json({ ok: true, promotion: updated[0] ?? existing });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/promotions/:id", req, error);
+    if (String(message).toLowerCase().includes("duplicate")) {
+      return res.status(409).json({ ok: false, error: "That promo code already exists for this collection." });
+    }
+    return res.status(500).json(collectionServerError(message, "Failed to update promotion"));
+  }
+});
+
+r.delete("/creator-dashboard/promotions/:id", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const existingRows = await db.select().from(drinkCollectionPromotions).where(eq(drinkCollectionPromotions.id, req.params.id)).limit(1);
+    const existing = existingRows[0];
+    if (!existing) return res.status(404).json({ ok: false, error: "Promotion not found" });
+    if (existing.creatorUserId !== req.user!.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    await db.delete(drinkCollectionPromotions).where(eq(drinkCollectionPromotions.id, existing.id));
+    return res.json({ ok: true, deletedId: existing.id });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/promotions/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete promotion"));
+  }
+});
+
 
 r.get("/collections/:id/ownership", optionalAuth, async (req, res) => {
   try {
@@ -5950,6 +6418,57 @@ r.get("/collections/:id/ownership", optionalAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/:id/ownership", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to resolve ownership"));
+  }
+});
+
+r.post("/collections/:id/apply-promo", optionalAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const collection = collectionRows[0];
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+
+    const isOwner = req.user?.id && req.user.id === collection.userId;
+    if (!collection.isPublic && !isOwner) {
+      return res.status(403).json({ ok: false, error: "Collection is private" });
+    }
+
+    if (!collection.isPremium) {
+      return res.status(400).json({ ok: false, error: "Promotions only apply to premium collections" });
+    }
+
+    const parsed = applyPromoBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid promotion code", details: parsed.error.flatten() });
+    }
+
+    const { promotion, pricing } = await resolveValidPromotionPricing(collection, parsed.data.code);
+    return res.json({
+      ok: true,
+      collectionId: collection.id,
+      promo: {
+        id: promotion.id,
+        code: pricing.code,
+        discountType: pricing.discountType,
+        discountValue: pricing.discountValue,
+        startsAt: pricing.startsAt,
+        endsAt: pricing.endsAt,
+        maxRedemptions: pricing.maxRedemptions,
+        redemptionCount: pricing.redemptionCount,
+      },
+      pricing,
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error
+      ? Number((error as { status?: unknown }).status || 500)
+      : 500;
+    const message = logCollectionRouteError("/:id/apply-promo", req, error);
+    if (status !== 500) {
+      return res.status(status).json({ ok: false, error: error instanceof Error ? error.message : message });
+    }
+    return res.status(500).json(collectionServerError(message, "Failed to apply promotion"));
   }
 });
 
@@ -6047,7 +6566,12 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
       });
     }
 
-    const context = await resolveCollectionPurchaseContext(req.params.id, req.user!.id);
+    const parsedBody = createCheckoutBodySchema.safeParse(req.body ?? {});
+    if (!parsedBody.success) {
+      return res.status(400).json({ ok: false, error: "Invalid checkout request", details: parsedBody.error.flatten() });
+    }
+
+    const context = await resolveCollectionPurchaseContextWithPromo(req.params.id, req.user!.id, parsedBody.data.promoCode ?? null);
     if (context.alreadyOwned) {
       return res.json({
         ok: true,
@@ -6064,7 +6588,11 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
         collectionId: context.collection.id,
         provider: "square",
         status: "pending",
-        amountCents: context.collection.priceCents,
+        promotionId: context.promoPricing?.promotionId ?? null,
+        promotionCode: context.promoPricing?.code ?? null,
+        originalAmountCents: Number(context.collection.priceCents ?? 0),
+        discountAmountCents: context.promoPricing?.discountAmountCents ?? 0,
+        amountCents: context.promoPricing?.finalAmountCents ?? context.collection.priceCents,
         currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
         providerReferenceId: formatCollectionCheckoutReferenceId(crypto.randomUUID()),
         expiresAt: new Date(Date.now() + 1000 * 60 * 30),
@@ -6090,10 +6618,12 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
             name: context.collection.name,
             quantity: "1",
             basePriceMoney: {
-              amount: BigInt(context.collection.priceCents),
+              amount: BigInt(context.promoPricing?.finalAmountCents ?? context.collection.priceCents),
               currency: normalizeSquareCurrencyCode(squareConfig.currency) as any,
             },
-            note: `Premium drink collection unlock for ${context.collection.name}`,
+            note: context.promoPricing
+              ? `Premium drink collection unlock for ${context.collection.name} with promo ${context.promoPricing.code}`
+              : `Premium drink collection unlock for ${context.collection.name}`,
           },
         ],
       },
@@ -6126,9 +6656,9 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
     await db
       .update(drinkCollectionCheckoutSessions)
       .set({
-        squarePaymentLinkId: paymentLink.id,
-        squareOrderId: orderId,
-        checkoutUrl: paymentLink.url,
+      squarePaymentLinkId: paymentLink.id,
+      squareOrderId: orderId,
+      checkoutUrl: paymentLink.url,
         updatedAt: new Date(),
       })
       .where(eq(drinkCollectionCheckoutSessions.id, checkoutSession.id));
@@ -6140,7 +6670,10 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
       checkoutUrl: paymentLink.url,
       squarePaymentLinkId: paymentLink.id,
       squareOrderId: orderId,
-      amountCents: context.collection.priceCents,
+      amountCents: context.promoPricing?.finalAmountCents ?? context.collection.priceCents,
+      originalAmountCents: Number(context.collection.priceCents ?? 0),
+      discountAmountCents: context.promoPricing?.discountAmountCents ?? 0,
+      promotionCode: context.promoPricing?.code ?? null,
       currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
     });
   } catch (error) {

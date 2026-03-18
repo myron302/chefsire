@@ -1054,6 +1054,10 @@ export const drinkCollectionCheckoutSessions = pgTable(
     collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
     provider: text("provider").default("square").notNull(),
     status: text("status").default("pending").notNull(),
+    promotionId: varchar("promotion_id"),
+    promotionCode: text("promotion_code"),
+    originalAmountCents: integer("original_amount_cents"),
+    discountAmountCents: integer("discount_amount_cents"),
     amountCents: integer("amount_cents").notNull(),
     currencyCode: text("currency_code").default("USD").notNull(),
     squarePaymentLinkId: text("square_payment_link_id"),
@@ -1106,6 +1110,10 @@ export const drinkCollectionSalesLedger = pgTable(
     collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
     purchaseId: varchar("purchase_id").references(() => drinkCollectionPurchases.id, { onDelete: "set null" }),
     checkoutSessionId: varchar("checkout_session_id").references(() => drinkCollectionCheckoutSessions.id, { onDelete: "set null" }),
+    promotionId: varchar("promotion_id"),
+    promotionCode: text("promotion_code"),
+    originalAmountCents: integer("original_amount_cents"),
+    discountAmountCents: integer("discount_amount_cents"),
     grossAmountCents: integer("gross_amount_cents").notNull(),
     platformFeeCents: integer("platform_fee_cents"),
     creatorShareCents: integer("creator_share_cents"),
@@ -1122,6 +1130,31 @@ export const drinkCollectionSalesLedger = pgTable(
     purchaseIdx: uniqueIndex("drink_collection_sales_ledger_purchase_idx").on(table.purchaseId),
     checkoutSessionIdx: uniqueIndex("drink_collection_sales_ledger_checkout_session_idx").on(table.checkoutSessionId),
     statusCreatedAtIdx: index("drink_collection_sales_ledger_status_created_at_idx").on(table.status, table.createdAt),
+  })
+);
+
+export const drinkCollectionPromotions = pgTable(
+  "drink_collection_promotions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    creatorUserId: varchar("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
+    code: varchar("code", { length: 64 }).notNull(),
+    discountType: text("discount_type").notNull(),
+    discountValue: integer("discount_value").notNull(),
+    startsAt: timestamp("starts_at"),
+    endsAt: timestamp("ends_at"),
+    isActive: boolean("is_active").default(true).notNull(),
+    maxRedemptions: integer("max_redemptions"),
+    redemptionCount: integer("redemption_count").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    creatorIdx: index("drink_collection_promotions_creator_idx").on(table.creatorUserId),
+    collectionIdx: index("drink_collection_promotions_collection_idx").on(table.collectionId),
+    activeIdx: index("drink_collection_promotions_active_idx").on(table.isActive, table.startsAt, table.endsAt),
+    collectionCodeIdx: uniqueIndex("drink_collection_promotions_collection_code_idx").on(table.collectionId, table.code),
   })
 );
 
@@ -1679,6 +1712,13 @@ export const insertDrinkCollectionPurchaseSchema = createInsertSchema(drinkColle
   createdAt: true,
 });
 
+export const insertDrinkCollectionPromotionSchema = createInsertSchema(drinkCollectionPromotions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  redemptionCount: true,
+});
+
 export const insertDrinkChallengeSchema = createInsertSchema(drinkChallenges).omit({
   id: true,
   createdAt: true,
@@ -1861,6 +1901,8 @@ export type DrinkCollectionItem = typeof drinkCollectionItems.$inferSelect;
 export type InsertDrinkCollectionItem = z.infer<typeof insertDrinkCollectionItemSchema>;
 export type DrinkCollectionPurchase = typeof drinkCollectionPurchases.$inferSelect;
 export type InsertDrinkCollectionPurchase = z.infer<typeof insertDrinkCollectionPurchaseSchema>;
+export type DrinkCollectionPromotion = typeof drinkCollectionPromotions.$inferSelect;
+export type InsertDrinkCollectionPromotion = z.infer<typeof insertDrinkCollectionPromotionSchema>;
 export type DrinkChallenge = typeof drinkChallenges.$inferSelect;
 export type InsertDrinkChallenge = z.infer<typeof insertDrinkChallengeSchema>;
 export type DrinkChallengeSubmission = typeof drinkChallengeSubmissions.$inferSelect;
