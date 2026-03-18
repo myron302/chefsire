@@ -1046,6 +1046,22 @@ export const drinkCollectionPurchases = pgTable(
   })
 );
 
+export const drinkCollectionWishlists = pgTable(
+  "drink_collection_wishlists",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("drink_collection_wishlists_user_idx").on(table.userId),
+    collectionIdx: index("drink_collection_wishlists_collection_idx").on(table.collectionId),
+    userCreatedAtIdx: index("drink_collection_wishlists_user_created_at_idx").on(table.userId, table.createdAt),
+    uniqueWishlistIdx: uniqueIndex("drink_collection_wishlists_user_collection_idx").on(table.userId, table.collectionId),
+  })
+);
+
 export const drinkCollectionCheckoutSessions = pgTable(
   "drink_collection_checkout_sessions",
   {
@@ -1712,6 +1728,11 @@ export const insertDrinkCollectionPurchaseSchema = createInsertSchema(drinkColle
   createdAt: true,
 });
 
+export const insertDrinkCollectionWishlistSchema = createInsertSchema(drinkCollectionWishlists).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertDrinkCollectionPromotionSchema = createInsertSchema(drinkCollectionPromotions).omit({
   id: true,
   createdAt: true,
@@ -1901,6 +1922,8 @@ export type DrinkCollectionItem = typeof drinkCollectionItems.$inferSelect;
 export type InsertDrinkCollectionItem = z.infer<typeof insertDrinkCollectionItemSchema>;
 export type DrinkCollectionPurchase = typeof drinkCollectionPurchases.$inferSelect;
 export type InsertDrinkCollectionPurchase = z.infer<typeof insertDrinkCollectionPurchaseSchema>;
+export type DrinkCollectionWishlist = typeof drinkCollectionWishlists.$inferSelect;
+export type InsertDrinkCollectionWishlist = z.infer<typeof insertDrinkCollectionWishlistSchema>;
 export type DrinkCollectionPromotion = typeof drinkCollectionPromotions.$inferSelect;
 export type InsertDrinkCollectionPromotion = z.infer<typeof insertDrinkCollectionPromotionSchema>;
 export type DrinkChallenge = typeof drinkChallenges.$inferSelect;

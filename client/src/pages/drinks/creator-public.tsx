@@ -41,6 +41,17 @@ interface PublicCreatorMostRemixedDrinkItem {
   views7d?: number;
 }
 
+interface PromoPricing {
+  promotionId: string;
+  code: string;
+  discountType: "percent" | "fixed";
+  discountValue: number;
+  originalAmountCents: number;
+  discountAmountCents: number;
+  finalAmountCents: number;
+  currencyCode: string;
+}
+
 interface PublicCollection {
   id: string;
   name: string;
@@ -50,6 +61,9 @@ interface PublicCollection {
   priceCents: number;
   itemsCount: number;
   ownedByViewer?: boolean;
+  isWishlisted?: boolean;
+  wishlistCount?: number;
+  activePromoPricing?: PromoPricing | null;
 }
 
 interface PublicCreatorResponse {
@@ -104,6 +118,12 @@ function initials(username: string | null): string {
   return username.trim().slice(0, 2).toUpperCase();
 }
 
+function formatCurrency(cents: number, currency = "USD") {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+  }).format(cents / 100);
+}
 
 function creatorMixHeadline(data: PublicCreatorResponse): string {
   if (data.totalCreated === 0) return "New creator";
@@ -400,12 +420,20 @@ export default function PublicDrinkCreatorPage() {
                         {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
-                          <Badge>Premium · ${(collection.priceCents / 100).toFixed(2)}</Badge>
+                          <Badge>Premium · {formatCurrency(collection.priceCents)}</Badge>
                           {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+                          {user && collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
+                          {collection.activePromoPricing ? <Badge variant="secondary">Promo {collection.activePromoPricing.code}</Badge> : null}
                         </div>
+                        {collection.activePromoPricing ? (
+                          <p className="text-xs text-emerald-700">
+                            Active promo checkout price: {formatCurrency(collection.activePromoPricing.finalAmountCents, collection.activePromoPricing.currencyCode)}
+                          </p>
+                        ) : null}
+                        <p className="text-xs text-muted-foreground">Wishlist interest: {number(collection.wishlistCount ?? 0)}</p>
                         <div className="flex flex-wrap gap-2">
                           <Link href="/drinks/collections/explore" className="text-xs underline underline-offset-2">Browse premium collections</Link>
-                          <Link href={`/drinks/creator/${encodeURIComponent(data.userId)}`} className="text-xs underline underline-offset-2">Support this creator</Link>
+                          <Link href="/drinks/collections/wishlist" className="text-xs underline underline-offset-2">Open wishlist</Link>
                         </div>
                       </CardContent>
                     </Card>
