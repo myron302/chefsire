@@ -21,6 +21,7 @@ import TrendingCreatorsPage from "@/pages/drinks/creators-trending";
 import DrinksWhatsNewPage from "@/pages/drinks/whats-new";
 import DrinkCollectionsPage from "@/pages/drinks/collections";
 import DrinkCollectionsExplorePage from "@/pages/drinks/collections-explore";
+import DrinkOrdersPage from "@/pages/drinks/orders";
 import PurchasedCollectionsPage from "@/pages/drinks/purchased-collections";
 import DrinkCollectionDetailPage from "@/pages/drinks/collection-detail";
 import DrinkChallengesPage from "@/pages/drinks/challenges";
@@ -196,6 +197,7 @@ export default function DrinksRoutes() {
         <Route path="/drinks/creators/trending" component={TrendingCreatorsPage} />
         <Route path="/drinks/whats-new" component={DrinksWhatsNewPage} />
         <Route path="/drinks/collections/explore" component={DrinkCollectionsExplorePage} />
+        <Route path="/drinks/orders" component={DrinkOrdersPage} />
         <Route path="/drinks/collections/purchased" component={PurchasedCollectionsPage} />
         <Route path="/drinks/collections" component={DrinkCollectionsPage} />
         <Route path="/drinks/collections/:id" component={DrinkCollectionDetailPage} />

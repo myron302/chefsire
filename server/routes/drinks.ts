@@ -1782,6 +1782,177 @@ async function loadPurchasedCollectionsForUser(userId: string) {
   });
 }
 
+async function loadBuyerCollectionOrders(userId: string) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const purchaseRows = await db
+    .select({
+      purchaseId: drinkCollectionPurchases.id,
+      collectionId: drinkCollectionPurchases.collectionId,
+      purchaseStatus: drinkCollectionPurchases.status,
+      purchaseStatusReason: drinkCollectionPurchases.statusReason,
+      accessRevokedAt: drinkCollectionPurchases.accessRevokedAt,
+      purchasedAt: drinkCollectionPurchases.createdAt,
+      updatedAt: drinkCollectionPurchases.updatedAt,
+      collectionName: drinkCollections.name,
+      collectionUserId: drinkCollections.userId,
+      ledgerId: drinkCollectionSalesLedger.id,
+      grossAmountCents: drinkCollectionSalesLedger.grossAmountCents,
+      currencyCode: drinkCollectionSalesLedger.currencyCode,
+      refundedAt: drinkCollectionSalesLedger.refundedAt,
+    })
+    .from(drinkCollectionPurchases)
+    .innerJoin(drinkCollections, eq(drinkCollectionPurchases.collectionId, drinkCollections.id))
+    .leftJoin(drinkCollectionSalesLedger, eq(drinkCollectionSalesLedger.purchaseId, drinkCollectionPurchases.id))
+    .where(eq(drinkCollectionPurchases.userId, userId))
+    .orderBy(desc(drinkCollectionPurchases.createdAt));
+
+  const activeOwnedCollectionIds = new Set(
+    purchaseRows
+      .filter((row) => row.purchaseStatus === "completed")
+      .map((row) => row.collectionId),
+  );
+  const creatorMap = await loadCollectionCreatorsMap(purchaseRows.map((row) => row.collectionUserId));
+
+  const pendingCheckoutRows = await db
+    .select({
+      checkoutSessionId: drinkCollectionCheckoutSessions.id,
+      collectionId: drinkCollectionCheckoutSessions.collectionId,
+      status: drinkCollectionCheckoutSessions.status,
+      statusReason: drinkCollectionCheckoutSessions.failureReason,
+      amountCents: drinkCollectionCheckoutSessions.amountCents,
+      currencyCode: drinkCollectionCheckoutSessions.currencyCode,
+      purchasedAt: drinkCollectionCheckoutSessions.verifiedAt,
+      createdAt: drinkCollectionCheckoutSessions.createdAt,
+      refundedAt: drinkCollectionCheckoutSessions.refundedAt,
+      accessRevokedAt: drinkCollectionCheckoutSessions.accessRevokedAt,
+      squareOrderId: drinkCollectionCheckoutSessions.squareOrderId,
+      collectionName: drinkCollections.name,
+      collectionUserId: drinkCollections.userId,
+    })
+    .from(drinkCollectionCheckoutSessions)
+    .innerJoin(drinkCollections, eq(drinkCollectionCheckoutSessions.collectionId, drinkCollections.id))
+    .where(
+      and(
+        eq(drinkCollectionCheckoutSessions.userId, userId),
+        eq(drinkCollectionCheckoutSessions.status, "pending"),
+      ),
+    )
+    .orderBy(desc(drinkCollectionCheckoutSessions.createdAt));
+
+  const pendingCreators = await loadCollectionCreatorsMap(
+    pendingCheckoutRows
+      .map((row) => row.collectionUserId)
+      .filter((creatorUserId) => !creatorMap.has(creatorUserId)),
+  );
+
+  const orders = [
+    ...purchaseRows.map((row) => {
+      const creator = creatorMap.get(row.collectionUserId);
+      const refundedAt = row.refundedAt ?? row.accessRevokedAt ?? null;
+      return {
+        orderId: row.ledgerId ?? row.purchaseId,
+        purchaseId: row.purchaseId,
+        collectionId: row.collectionId,
+        collectionName: row.collectionName,
+        collectionRoute: `/drinks/collections/${row.collectionId}`,
+        creatorUserId: row.collectionUserId,
+        creatorUsername: creator?.username ?? null,
+        grossAmountCents: Number(row.grossAmountCents ?? 0),
+        currency: normalizeSquareCurrencyCode(row.currencyCode ?? squareConfig.currency ?? "USD"),
+        status: row.purchaseStatus,
+        statusReason: row.purchaseStatusReason,
+        purchasedAt: (row.purchasedAt ?? row.updatedAt).toISOString(),
+        refundedAt: refundedAt ? refundedAt.toISOString() : null,
+        owned: row.purchaseStatus === "completed",
+      };
+    }),
+    ...pendingCheckoutRows
+      .filter((row) => !activeOwnedCollectionIds.has(row.collectionId))
+      .map((row) => {
+        const creator = creatorMap.get(row.collectionUserId) ?? pendingCreators.get(row.collectionUserId);
+        const purchasedAt = row.purchasedAt ?? row.createdAt;
+        const refundedAt = row.refundedAt ?? row.accessRevokedAt ?? null;
+        return {
+          orderId: row.squareOrderId ?? row.checkoutSessionId,
+          purchaseId: null,
+          collectionId: row.collectionId,
+          collectionName: row.collectionName,
+          collectionRoute: `/drinks/collections/${row.collectionId}`,
+          creatorUserId: row.collectionUserId,
+          creatorUsername: creator?.username ?? null,
+          grossAmountCents: Number(row.amountCents ?? 0),
+          currency: normalizeSquareCurrencyCode(row.currencyCode ?? squareConfig.currency ?? "USD"),
+          status: row.status === "pending" ? "pending" : row.status,
+          statusReason: row.statusReason,
+          purchasedAt: purchasedAt.toISOString(),
+          refundedAt: refundedAt ? refundedAt.toISOString() : null,
+          owned: false,
+        };
+      }),
+  ];
+
+  return orders.sort((a, b) => new Date(b.purchasedAt).getTime() - new Date(a.purchasedAt).getTime());
+}
+
+async function loadCreatorCollectionOrders(userId: string) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const collectionRows = await db
+    .select({
+      id: drinkCollections.id,
+      name: drinkCollections.name,
+      userId: drinkCollections.userId,
+    })
+    .from(drinkCollections)
+    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.isPremium, true)));
+
+  if (collectionRows.length === 0) {
+    return [];
+  }
+
+  const collectionIds = collectionRows.map((row) => row.id);
+  const collectionNameMap = new Map(collectionRows.map((row) => [row.id, row.name]));
+
+  const ledgerRows = await db
+    .select({
+      ledgerId: drinkCollectionSalesLedger.id,
+      purchaseId: drinkCollectionSalesLedger.purchaseId,
+      checkoutSessionId: drinkCollectionSalesLedger.checkoutSessionId,
+      collectionId: drinkCollectionSalesLedger.collectionId,
+      grossAmountCents: drinkCollectionSalesLedger.grossAmountCents,
+      currencyCode: drinkCollectionSalesLedger.currencyCode,
+      status: drinkCollectionSalesLedger.status,
+      statusReason: drinkCollectionSalesLedger.statusReason,
+      refundedAt: drinkCollectionSalesLedger.refundedAt,
+      purchasedAt: drinkCollectionSalesLedger.createdAt,
+    })
+    .from(drinkCollectionSalesLedger)
+    .where(inArray(drinkCollectionSalesLedger.collectionId, collectionIds))
+    .orderBy(desc(drinkCollectionSalesLedger.createdAt));
+
+  return ledgerRows.map((row, index) => ({
+    orderId: row.ledgerId,
+    purchaseId: row.purchaseId,
+    checkoutSessionId: row.checkoutSessionId,
+    collectionId: row.collectionId,
+    collectionName: collectionNameMap.get(row.collectionId) ?? "Premium collection",
+    collectionRoute: `/drinks/collections/${row.collectionId}`,
+    grossAmountCents: Number(row.grossAmountCents ?? 0),
+    currency: normalizeSquareCurrencyCode(row.currencyCode ?? squareConfig.currency ?? "USD"),
+    status: row.status,
+    statusReason: row.statusReason,
+    purchasedAt: row.purchasedAt.toISOString(),
+    refundedAt: row.refundedAt ? row.refundedAt.toISOString() : null,
+    buyerLabel: `Private buyer ${index + 1}`,
+    buyerVisibility: "private" as const,
+  }));
+}
+
 async function loadCreatorCollectionSalesSummary(userId: string) {
   if (!db) {
     throw new Error("Database unavailable");
@@ -5324,6 +5495,35 @@ r.get("/collections/purchased", requireAuth, async (req, res) => {
   }
 });
 
+r.get("/orders", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/orders", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const orders = await loadBuyerCollectionOrders(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      orders,
+      count: orders.length,
+      reportingNotes: [
+        "Completed orders keep premium collection ownership active.",
+        "Refunded, refund-pending, and revoked orders do not keep ownership active.",
+        "Pending orders represent Square checkout activity that has not been granted ownership yet.",
+      ],
+    });
+  } catch (error) {
+    logCollectionRouteError("/orders", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to load premium collection orders");
+    const status = classifyCollectionError(error, "Failed to load premium collection orders").status;
+    return res.status(status).json(payload);
+  }
+});
+
 r.get("/collections/public/:userId", optionalAuth, async (req, res) => {
   try {
     if (!db) {
@@ -5437,6 +5637,35 @@ r.get("/creator-dashboard/sales", requireAuth, async (req, res) => {
     logCollectionRouteError("/creator-dashboard/sales", req, error);
     const payload = collectionDbErrorResponse(error, "Failed to load creator sales");
     const status = classifyCollectionError(error, "Failed to load creator sales").status;
+    return res.status(status).json(payload);
+  }
+});
+
+r.get("/creator-dashboard/orders", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/creator-dashboard/orders", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const orders = await loadCreatorCollectionOrders(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      orders,
+      count: orders.length,
+      reportingNotes: [
+        "Completed sale means the premium collection purchase is still counted in finance totals.",
+        "Refunded sale, pending refund, and revoked access stay visible for audit history but do not imply payouts.",
+        "Buyer details stay privacy-safe in this dashboard.",
+      ],
+    });
+  } catch (error) {
+    logCollectionRouteError("/creator-dashboard/orders", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to load creator order history");
+    const status = classifyCollectionError(error, "Failed to load creator order history").status;
     return res.status(status).json(payload);
   }
 });
