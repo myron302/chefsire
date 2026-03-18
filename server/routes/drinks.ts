@@ -11,6 +11,7 @@ import {
   insertDrinkLikeSchema,
   insertDrinkSaveSchema,
   drinkCollectionCheckoutSessions,
+  drinkCollectionSalesLedger,
   drinkCollectionSquareWebhookEvents,
   drinkCollectionItems,
   drinkCollectionPurchases,
@@ -36,6 +37,7 @@ const r = Router();
 type EventType = "view" | "remix" | "grocery_add";
 
 type DrinkCollectionCheckoutStatus = "pending" | "completed" | "failed" | "canceled";
+type DrinkCollectionSalesLedgerStatus = "completed" | "refunded";
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
 
@@ -112,6 +114,8 @@ type DiscoveryDrinkCard = {
 };
 
 const TRACKABLE_DRINK_EVENTS = new Set<EventType>(["view", "remix", "grocery_add"]);
+const PREMIUM_COLLECTION_PLATFORM_FEE_BPS = 1500;
+const PREMIUM_COLLECTION_CREATOR_SHARE_BPS = 10000 - PREMIUM_COLLECTION_PLATFORM_FEE_BPS;
 
 function slugifyDrinkRecipeName(value: string): string {
   return value
@@ -520,6 +524,23 @@ async function ensureDrinkCollectionsSchema() {
       );
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_collection_sales_ledger (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
+        purchase_id varchar REFERENCES drink_collection_purchases(id) ON DELETE SET NULL,
+        checkout_session_id varchar REFERENCES drink_collection_checkout_sessions(id) ON DELETE SET NULL,
+        gross_amount_cents integer NOT NULL,
+        platform_fee_cents integer,
+        creator_share_cents integer,
+        currency_code text NOT NULL DEFAULT 'USD',
+        status text NOT NULL DEFAULT 'completed',
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_idx ON drink_collections(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_public_idx ON drink_collections(is_public);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_updated_at_idx ON drink_collections(user_id, updated_at);`);
@@ -534,9 +555,153 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_checkout_sessions_order_idx ON drink_collection_checkout_sessions(square_order_id) WHERE square_order_id IS NOT NULL;`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_square_webhook_events_object_idx ON drink_collection_square_webhook_events(object_type, object_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_square_webhook_events_checkout_session_idx ON drink_collection_square_webhook_events(checkout_session_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_sales_ledger_user_idx ON drink_collection_sales_ledger(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_sales_ledger_collection_idx ON drink_collection_sales_ledger(collection_id);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_sales_ledger_purchase_idx ON drink_collection_sales_ledger(purchase_id) WHERE purchase_id IS NOT NULL;`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_sales_ledger_checkout_session_idx ON drink_collection_sales_ledger(checkout_session_id) WHERE checkout_session_id IS NOT NULL;`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_sales_ledger_status_created_at_idx ON drink_collection_sales_ledger(status, created_at);`);
+
+    await backfillDrinkCollectionSalesLedger();
   })();
 
   return _drinkCollectionsSchemaReady;
+}
+
+function estimateCollectionFinanceBreakdown(grossAmountCents: number) {
+  const safeGross = Math.max(0, Number(grossAmountCents ?? 0));
+  const platformFeeCents = Math.round((safeGross * PREMIUM_COLLECTION_PLATFORM_FEE_BPS) / 10000);
+  const creatorShareCents = Math.max(0, safeGross - platformFeeCents);
+  return {
+    grossAmountCents: safeGross,
+    platformFeeCents,
+    creatorShareCents,
+  };
+}
+
+async function upsertDrinkCollectionSalesLedgerEntry(
+  tx: typeof db,
+  input: {
+    creatorUserId: string;
+    collectionId: string;
+    purchaseId: string | null;
+    checkoutSessionId: string | null;
+    grossAmountCents: number;
+    currencyCode: string | null | undefined;
+    createdAt: Date;
+    status?: DrinkCollectionSalesLedgerStatus;
+  },
+) {
+  if (!tx) {
+    throw new Error("Database unavailable");
+  }
+
+  const finance = estimateCollectionFinanceBreakdown(input.grossAmountCents);
+  const values = {
+    userId: input.creatorUserId,
+    collectionId: input.collectionId,
+    purchaseId: input.purchaseId,
+    checkoutSessionId: input.checkoutSessionId,
+    grossAmountCents: finance.grossAmountCents,
+    platformFeeCents: finance.platformFeeCents,
+    creatorShareCents: finance.creatorShareCents,
+    currencyCode: normalizeSquareCurrencyCode(input.currencyCode),
+    status: input.status ?? "completed",
+    createdAt: input.createdAt,
+    updatedAt: new Date(),
+  } as const;
+
+  if (input.checkoutSessionId) {
+    await tx
+      .insert(drinkCollectionSalesLedger)
+      .values(values)
+      .onConflictDoUpdate({
+        target: drinkCollectionSalesLedger.checkoutSessionId,
+        set: {
+          userId: values.userId,
+          collectionId: values.collectionId,
+          purchaseId: values.purchaseId,
+          grossAmountCents: values.grossAmountCents,
+          platformFeeCents: values.platformFeeCents,
+          creatorShareCents: values.creatorShareCents,
+          currencyCode: values.currencyCode,
+          status: values.status,
+          createdAt: values.createdAt,
+          updatedAt: values.updatedAt,
+        },
+      });
+    return;
+  }
+
+  if (input.purchaseId) {
+    await tx
+      .insert(drinkCollectionSalesLedger)
+      .values(values)
+      .onConflictDoUpdate({
+        target: drinkCollectionSalesLedger.purchaseId,
+        set: {
+          userId: values.userId,
+          collectionId: values.collectionId,
+          checkoutSessionId: values.checkoutSessionId,
+          grossAmountCents: values.grossAmountCents,
+          platformFeeCents: values.platformFeeCents,
+          creatorShareCents: values.creatorShareCents,
+          currencyCode: values.currencyCode,
+          status: values.status,
+          createdAt: values.createdAt,
+          updatedAt: values.updatedAt,
+        },
+      });
+  }
+}
+
+async function backfillDrinkCollectionSalesLedger() {
+  if (!db) return;
+
+  const completedSessions = await db
+    .select({
+      sessionId: drinkCollectionCheckoutSessions.id,
+      purchaserUserId: drinkCollectionCheckoutSessions.userId,
+      collectionId: drinkCollectionCheckoutSessions.collectionId,
+      amountCents: drinkCollectionCheckoutSessions.amountCents,
+      currencyCode: drinkCollectionCheckoutSessions.currencyCode,
+      verifiedAt: drinkCollectionCheckoutSessions.verifiedAt,
+      updatedAt: drinkCollectionCheckoutSessions.updatedAt,
+      creatorUserId: drinkCollections.userId,
+    })
+    .from(drinkCollectionCheckoutSessions)
+    .innerJoin(drinkCollections, eq(drinkCollectionCheckoutSessions.collectionId, drinkCollections.id))
+    .where(eq(drinkCollectionCheckoutSessions.status, "completed"))
+    .orderBy(desc(drinkCollectionCheckoutSessions.verifiedAt), desc(drinkCollectionCheckoutSessions.updatedAt));
+
+  for (const session of completedSessions) {
+    const purchaseRows = await db
+      .select({
+        id: drinkCollectionPurchases.id,
+        createdAt: drinkCollectionPurchases.createdAt,
+      })
+      .from(drinkCollectionPurchases)
+      .where(
+        and(
+          eq(drinkCollectionPurchases.userId, session.purchaserUserId),
+          eq(drinkCollectionPurchases.collectionId, session.collectionId),
+        ),
+      )
+      .limit(1);
+
+    const purchase = purchaseRows[0];
+    if (!purchase) continue;
+
+    await upsertDrinkCollectionSalesLedgerEntry(db, {
+      creatorUserId: session.creatorUserId,
+      collectionId: session.collectionId,
+      purchaseId: purchase.id,
+      checkoutSessionId: session.sessionId,
+      grossAmountCents: Number(session.amountCents ?? 0),
+      currencyCode: session.currencyCode,
+      createdAt: purchase.createdAt ?? session.verifiedAt ?? session.updatedAt ?? new Date(),
+      status: "completed",
+    });
+  }
 }
 
 function getCollectionCheckoutBaseUrl(req: Request) {
@@ -693,13 +858,49 @@ async function grantCollectionPurchase(
   }
 
   await db.transaction(async (tx) => {
-    await tx
+    const collectionRows = await tx
+      .select({
+        creatorUserId: drinkCollections.userId,
+        priceCents: drinkCollections.priceCents,
+      })
+      .from(drinkCollections)
+      .where(eq(drinkCollections.id, session.collectionId))
+      .limit(1);
+
+    const collection = collectionRows[0];
+    if (!collection) {
+      throw new Error("Collection not found for premium purchase grant");
+    }
+
+    const insertedPurchase = await tx
       .insert(drinkCollectionPurchases)
       .values({
         userId: session.userId,
         collectionId: session.collectionId,
       })
-      .onConflictDoNothing({ target: [drinkCollectionPurchases.userId, drinkCollectionPurchases.collectionId] });
+      .onConflictDoNothing({ target: [drinkCollectionPurchases.userId, drinkCollectionPurchases.collectionId] })
+      .returning({
+        id: drinkCollectionPurchases.id,
+        createdAt: drinkCollectionPurchases.createdAt,
+      });
+
+    const purchase = insertedPurchase[0] ?? (await tx
+      .select({
+        id: drinkCollectionPurchases.id,
+        createdAt: drinkCollectionPurchases.createdAt,
+      })
+      .from(drinkCollectionPurchases)
+      .where(
+        and(
+          eq(drinkCollectionPurchases.userId, session.userId),
+          eq(drinkCollectionPurchases.collectionId, session.collectionId),
+        ),
+      )
+      .limit(1))[0];
+
+    if (!purchase) {
+      throw new Error("Purchase ownership record missing after premium collection grant");
+    }
 
     await tx
       .update(drinkCollectionCheckoutSessions)
@@ -713,6 +914,17 @@ async function grantCollectionPurchase(
         updatedAt: new Date(),
       })
       .where(eq(drinkCollectionCheckoutSessions.id, session.id));
+
+    await upsertDrinkCollectionSalesLedgerEntry(tx as typeof db, {
+      creatorUserId: collection.creatorUserId,
+      collectionId: session.collectionId,
+      purchaseId: purchase.id,
+      checkoutSessionId: session.id,
+      grossAmountCents: Number(session.amountCents ?? collection.priceCents ?? 0),
+      currencyCode: session.currencyCode,
+      createdAt: purchase.createdAt ?? session.verifiedAt ?? session.updatedAt ?? new Date(),
+      status: "completed",
+    });
   });
 }
 
@@ -723,6 +935,7 @@ async function revokeCollectionPurchase(
     squarePaymentId?: string | null;
     squareOrderId?: string | null;
     failureReason: string;
+    ledgerStatus?: DrinkCollectionSalesLedgerStatus | null;
   },
 ) {
   if (!db) {
@@ -750,6 +963,20 @@ async function revokeCollectionPurchase(
         updatedAt: new Date(),
       })
       .where(eq(drinkCollectionCheckoutSessions.id, session.id));
+
+    if (input.ledgerStatus === "refunded") {
+      await tx
+        .update(drinkCollectionSalesLedger)
+        .set({
+          status: "refunded",
+          updatedAt: new Date(),
+        })
+        .where(eq(drinkCollectionSalesLedger.checkoutSessionId, session.id));
+    } else {
+      await tx
+        .delete(drinkCollectionSalesLedger)
+        .where(eq(drinkCollectionSalesLedger.checkoutSessionId, session.id));
+    }
   });
 }
 
@@ -1134,6 +1361,7 @@ async function reconcileSquareWebhookEvent(payload: SquareWebhookEventBody) {
         status: "failed",
         squarePaymentId: lookup.squarePaymentId ?? resource?.paymentId ?? session.squarePaymentId,
         failureReason: "Square reported that this premium collection payment was refunded.",
+        ledgerStatus: "refunded",
       });
     }
     await db.update(drinkCollectionSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
@@ -1542,6 +1770,112 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
       grossRevenueCents: collections.reduce((sum, collection) => sum + collection.grossRevenueCents, 0),
     },
     collections,
+  };
+}
+
+async function loadCreatorCollectionFinanceSummary(userId: string) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const premiumCollections = await db
+    .select({
+      id: drinkCollections.id,
+    })
+    .from(drinkCollections)
+    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.isPremium, true)));
+
+  const recentSales = await db
+    .select({
+      id: drinkCollectionSalesLedger.id,
+      collectionId: drinkCollectionSalesLedger.collectionId,
+      checkoutSessionId: drinkCollectionSalesLedger.checkoutSessionId,
+      purchaseId: drinkCollectionSalesLedger.purchaseId,
+      collectionName: drinkCollections.name,
+      grossAmountCents: drinkCollectionSalesLedger.grossAmountCents,
+      platformFeeCents: drinkCollectionSalesLedger.platformFeeCents,
+      creatorShareCents: drinkCollectionSalesLedger.creatorShareCents,
+      currencyCode: drinkCollectionSalesLedger.currencyCode,
+      status: drinkCollectionSalesLedger.status,
+      createdAt: drinkCollectionSalesLedger.createdAt,
+    })
+    .from(drinkCollectionSalesLedger)
+    .innerJoin(drinkCollections, eq(drinkCollectionSalesLedger.collectionId, drinkCollections.id))
+    .where(
+      and(
+        eq(drinkCollectionSalesLedger.userId, userId),
+        eq(drinkCollectionSalesLedger.status, "completed"),
+      ),
+    )
+    .orderBy(desc(drinkCollectionSalesLedger.createdAt))
+    .limit(10);
+
+  const totals = recentSales.reduce((acc, sale) => {
+    acc.grossSalesCents += Number(sale.grossAmountCents ?? 0);
+    acc.platformFeesCents += Number(sale.platformFeeCents ?? 0);
+    acc.estimatedCreatorShareCents += Number(sale.creatorShareCents ?? 0);
+    return acc;
+  }, {
+    grossSalesCents: 0,
+    platformFeesCents: 0,
+    estimatedCreatorShareCents: 0,
+  });
+
+  const completedCountRows = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+      grossSalesCents: sql<number>`coalesce(sum(${drinkCollectionSalesLedger.grossAmountCents}), 0)::int`,
+      platformFeesCents: sql<number>`coalesce(sum(${drinkCollectionSalesLedger.platformFeeCents}), 0)::int`,
+      estimatedCreatorShareCents: sql<number>`coalesce(sum(${drinkCollectionSalesLedger.creatorShareCents}), 0)::int`,
+    })
+    .from(drinkCollectionSalesLedger)
+    .where(
+      and(
+        eq(drinkCollectionSalesLedger.userId, userId),
+        eq(drinkCollectionSalesLedger.status, "completed"),
+      ),
+    );
+
+  const aggregate = completedCountRows[0] ?? {
+    count: 0,
+    grossSalesCents: totals.grossSalesCents,
+    platformFeesCents: totals.platformFeesCents,
+    estimatedCreatorShareCents: totals.estimatedCreatorShareCents,
+  };
+
+  return {
+    summary: {
+      grossSalesCents: Number(aggregate.grossSalesCents ?? 0),
+      platformFeesCents: Number(aggregate.platformFeesCents ?? 0),
+      estimatedCreatorShareCents: Number(aggregate.estimatedCreatorShareCents ?? 0),
+      totalPremiumSalesCount: Number(aggregate.count ?? 0),
+      premiumCollectionsCount: premiumCollections.length,
+      estimates: {
+        usesEstimatedShareFormula: true,
+        platformFeeBps: PREMIUM_COLLECTION_PLATFORM_FEE_BPS,
+        creatorShareBps: PREMIUM_COLLECTION_CREATOR_SHARE_BPS,
+      },
+    },
+    recentSales: recentSales.map((sale) => ({
+      id: sale.id,
+      collectionId: sale.collectionId,
+      collectionName: sale.collectionName,
+      purchaseId: sale.purchaseId,
+      checkoutSessionId: sale.checkoutSessionId,
+      grossAmountCents: Number(sale.grossAmountCents ?? 0),
+      platformFeeCents: Number(sale.platformFeeCents ?? 0),
+      creatorShareCents: Number(sale.creatorShareCents ?? 0),
+      currencyCode: normalizeSquareCurrencyCode(sale.currencyCode),
+      status: sale.status,
+      createdAt: sale.createdAt.toISOString(),
+      route: `/drinks/collections/${sale.collectionId}`,
+    })),
+    reportingNotes: [
+      "Finance totals only include completed premium collection purchases with ownership records.",
+      "Pending, failed, canceled, and refunded sessions are excluded from finance totals.",
+      `Estimated platform fees and creator share use an internal ${PREMIUM_COLLECTION_PLATFORM_FEE_BPS / 100}% / ${PREMIUM_COLLECTION_CREATOR_SHARE_BPS / 100}% split for reporting readiness only.`,
+      "No payouts are sent automatically yet. Square checkout captures sales, but creator transfers are not implemented in this dashboard.",
+    ],
   };
 }
 
@@ -4945,6 +5279,31 @@ r.get("/creator-dashboard/sales", requireAuth, async (req, res) => {
     logCollectionRouteError("/creator-dashboard/sales", req, error);
     const payload = collectionDbErrorResponse(error, "Failed to load creator sales");
     const status = classifyCollectionError(error, "Failed to load creator sales").status;
+    return res.status(status).json(payload);
+  }
+});
+
+r.get("/creator-dashboard/finance", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/creator-dashboard/finance", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const finance = await loadCreatorCollectionFinanceSummary(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: finance.summary,
+      recentSales: finance.recentSales,
+      reportingNotes: finance.reportingNotes,
+    });
+  } catch (error) {
+    logCollectionRouteError("/creator-dashboard/finance", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to load creator finance");
+    const status = classifyCollectionError(error, "Failed to load creator finance").status;
     return res.status(status).json(payload);
   }
 });

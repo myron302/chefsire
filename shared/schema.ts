@@ -1092,6 +1092,31 @@ export const drinkCollectionSquareWebhookEvents = pgTable(
   })
 );
 
+export const drinkCollectionSalesLedger = pgTable(
+  "drink_collection_sales_ledger",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
+    purchaseId: varchar("purchase_id").references(() => drinkCollectionPurchases.id, { onDelete: "set null" }),
+    checkoutSessionId: varchar("checkout_session_id").references(() => drinkCollectionCheckoutSessions.id, { onDelete: "set null" }),
+    grossAmountCents: integer("gross_amount_cents").notNull(),
+    platformFeeCents: integer("platform_fee_cents"),
+    creatorShareCents: integer("creator_share_cents"),
+    currencyCode: text("currency_code").default("USD").notNull(),
+    status: text("status").default("completed").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("drink_collection_sales_ledger_user_idx").on(table.userId),
+    collectionIdx: index("drink_collection_sales_ledger_collection_idx").on(table.collectionId),
+    purchaseIdx: uniqueIndex("drink_collection_sales_ledger_purchase_idx").on(table.purchaseId),
+    checkoutSessionIdx: uniqueIndex("drink_collection_sales_ledger_checkout_session_idx").on(table.checkoutSessionId),
+    statusCreatedAtIdx: index("drink_collection_sales_ledger_status_created_at_idx").on(table.status, table.createdAt),
+  })
+);
+
 export const drinkChallenges = pgTable(
   "drink_challenges",
   {
