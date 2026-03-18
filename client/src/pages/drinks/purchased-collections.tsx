@@ -129,6 +129,8 @@ export default function PurchasedCollectionsPage() {
           <span className="text-muted-foreground">·</span>
           <Link href="/drinks/gifts" className="text-sm underline underline-offset-2">Gift history</Link>
           <span className="text-muted-foreground">·</span>
+          <Link href="/drinks/memberships" className="text-sm underline underline-offset-2">Memberships</Link>
+          <span className="text-muted-foreground">·</span>
           <Link href="/drinks/collections/explore" className="text-sm underline underline-offset-2">Browse premium collections</Link>
           <span className="text-muted-foreground">·</span>
           <Link href="/drinks/discover" className="text-sm underline underline-offset-2">Back to discover</Link>

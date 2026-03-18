@@ -6,6 +6,10 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { getCanonicalDrinkBySlug } from "../services/canonical-drinks-index";
 import { 
+  creatorMembershipCheckoutSessions,
+  creatorMembershipPlans,
+  creatorMembershipSalesLedger,
+  creatorMemberships,
   drinkBundleCheckoutSessions,
   drinkBundleItems,
   drinkBundlePurchases,
@@ -65,12 +69,18 @@ type DrinkGiftStatus = "pending" | "completed" | "revoked";
 type DrinkPurchaseType = "self" | "gift";
 type DrinkCollectionEventType = "view";
 type DrinkCollectionPromotionDiscountType = "percent" | "fixed";
+type CreatorMembershipBillingInterval = "monthly" | "yearly";
+type CreatorMembershipStatus = "active" | "canceled" | "expired" | "past_due";
+type CreatorMembershipCheckoutStatus = "pending" | "completed" | "failed" | "canceled";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
 type DrinkCollectionPromotionRecord = typeof drinkCollectionPromotions.$inferSelect;
 type DrinkBundleCheckoutSessionRecord = typeof drinkBundleCheckoutSessions.$inferSelect;
 type DrinkGiftRecord = typeof drinkGifts.$inferSelect;
+type CreatorMembershipPlanRecord = typeof creatorMembershipPlans.$inferSelect;
+type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
+type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
 
 type ResolvedCollectionPurchaseContext = {
   collection: typeof drinkCollections.$inferSelect;
@@ -507,6 +517,16 @@ const createCheckoutBodySchema = z.object({
   purchaseType: z.enum(["self", "gift"]).optional(),
 });
 
+const creatorMembershipIntervalSchema = z.enum(["monthly", "yearly"]);
+
+const creatorMembershipPlanInputSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(2000).nullable().optional(),
+  priceCents: z.coerce.number().int().min(100).max(500000),
+  billingInterval: creatorMembershipIntervalSchema.default("monthly"),
+  isActive: z.boolean().optional(),
+});
+
 const updateDrinkCollectionBodySchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
@@ -568,6 +588,33 @@ function normalizeBundleSlug(value: unknown): string | null {
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
   return cleaned.length ? cleaned.slice(0, 200) : null;
+}
+
+function normalizeMembershipPlanSlug(value: unknown, creatorUserId: string) {
+  const base = typeof value === "string" ? value : "membership";
+  const cleaned = base
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  const prefix = creatorUserId.slice(0, 8).toLowerCase();
+  return `${prefix}-${(cleaned || "membership").slice(0, 120)}`;
+}
+
+function normalizeMembershipBillingInterval(value: unknown): CreatorMembershipBillingInterval {
+  return value === "yearly" ? "yearly" : "monthly";
+}
+
+function membershipEndsAt(startedAt: Date, billingInterval: CreatorMembershipBillingInterval) {
+  const next = new Date(startedAt);
+  if (billingInterval === "yearly") {
+    next.setUTCFullYear(next.getUTCFullYear() + 1);
+  } else {
+    next.setUTCMonth(next.getUTCMonth() + 1);
+  }
+  return next;
 }
 
 async function ensureUniqueBundleSlug(baseValue: string, excludeBundleId?: string | null) {
@@ -1126,6 +1173,82 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_membership_plans (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        slug varchar(160) NOT NULL,
+        name varchar(160) NOT NULL,
+        description text,
+        price_cents integer NOT NULL,
+        billing_interval text NOT NULL DEFAULT 'monthly',
+        is_active boolean NOT NULL DEFAULT true,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT creator_membership_plans_creator_idx UNIQUE (creator_user_id),
+        CONSTRAINT creator_membership_plans_slug_idx UNIQUE (slug)
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_memberships (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        plan_id varchar NOT NULL REFERENCES creator_membership_plans(id) ON DELETE CASCADE,
+        status text NOT NULL DEFAULT 'active',
+        started_at timestamp NOT NULL DEFAULT now(),
+        ends_at timestamp,
+        canceled_at timestamp,
+        square_subscription_id text,
+        payment_reference text,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT creator_memberships_user_creator_idx UNIQUE (user_id, creator_user_id)
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_membership_checkout_sessions (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        plan_id varchar NOT NULL REFERENCES creator_membership_plans(id) ON DELETE CASCADE,
+        provider text NOT NULL DEFAULT 'square',
+        status text NOT NULL DEFAULT 'pending',
+        amount_cents integer NOT NULL,
+        currency_code text NOT NULL DEFAULT 'USD',
+        square_payment_link_id text,
+        square_order_id text,
+        square_payment_id text,
+        provider_reference_id text NOT NULL UNIQUE,
+        checkout_url text,
+        last_verified_at timestamp,
+        verified_at timestamp,
+        failure_reason text,
+        expires_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_membership_sales_ledger (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        membership_id varchar REFERENCES creator_memberships(id) ON DELETE SET NULL,
+        checkout_session_id varchar REFERENCES creator_membership_checkout_sessions(id) ON DELETE SET NULL,
+        plan_id varchar REFERENCES creator_membership_plans(id) ON DELETE SET NULL,
+        gross_amount_cents integer NOT NULL,
+        currency_code text NOT NULL DEFAULT 'USD',
+        status text NOT NULL DEFAULT 'completed',
+        status_reason text,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_bundles (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1245,6 +1368,21 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_event_type_idx ON drink_collection_events(event_type);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_created_at_idx ON drink_collection_events(created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_collection_event_type_created_at_idx ON drink_collection_events(collection_id, event_type, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_plans_active_idx ON creator_membership_plans(is_active);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_memberships_user_idx ON creator_memberships(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_memberships_creator_idx ON creator_memberships(creator_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_memberships_status_idx ON creator_memberships(status);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_user_idx ON creator_membership_checkout_sessions(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_creator_idx ON creator_membership_checkout_sessions(creator_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_plan_idx ON creator_membership_checkout_sessions(plan_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_status_idx ON creator_membership_checkout_sessions(status);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_membership_checkout_sessions_payment_link_idx ON creator_membership_checkout_sessions(square_payment_link_id) WHERE square_payment_link_id IS NOT NULL;`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_membership_checkout_sessions_order_idx ON creator_membership_checkout_sessions(square_order_id) WHERE square_order_id IS NOT NULL;`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_sales_ledger_user_idx ON creator_membership_sales_ledger(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_sales_ledger_creator_idx ON creator_membership_sales_ledger(creator_user_id);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_membership_sales_ledger_membership_idx ON creator_membership_sales_ledger(membership_id) WHERE membership_id IS NOT NULL;`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_membership_sales_ledger_checkout_idx ON creator_membership_sales_ledger(checkout_session_id) WHERE checkout_session_id IS NOT NULL;`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_sales_ledger_status_idx ON creator_membership_sales_ledger(status);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundles_user_idx ON drink_bundles(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundles_public_idx ON drink_bundles(is_public);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundles_user_updated_at_idx ON drink_bundles(user_id, updated_at);`);
@@ -1283,6 +1421,94 @@ function isCollectionAccessActive(status?: string | null): boolean {
 
 function isRefundRelatedStatus(status?: string | null): boolean {
   return status === "refunded_pending" || status === "refunded";
+}
+
+function isCreatorMembershipActiveRecord(membership?: CreatorMembershipRecord | null, now = new Date()) {
+  if (!membership) return false;
+  if (membership.status !== "active" && membership.status !== "canceled") return false;
+  if (membership.endsAt && membership.endsAt <= now) return false;
+  return true;
+}
+
+async function loadCreatorMembershipPlanByCreatorId(creatorUserId: string) {
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(creatorMembershipPlans)
+    .where(eq(creatorMembershipPlans.creatorUserId, creatorUserId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+async function loadActiveCreatorMembershipsForUser(userId?: string | null) {
+  if (!db || !userId) return [] as CreatorMembershipRecord[];
+  const rows = await db
+    .select()
+    .from(creatorMemberships)
+    .where(inArray(creatorMemberships.status, ["active", "canceled"]));
+  return rows.filter((row) => row.userId === userId && isCreatorMembershipActiveRecord(row));
+}
+
+async function loadMembershipGrantedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
+  if (!db || !userId) return new Set();
+  const memberships = await loadActiveCreatorMembershipsForUser(userId);
+  if (memberships.length === 0) return new Set();
+  const creatorIds = [...new Set(memberships.map((membership) => membership.creatorUserId))];
+  const collectionRows = await db
+    .select({ id: drinkCollections.id })
+    .from(drinkCollections)
+    .where(and(inArray(drinkCollections.userId, creatorIds), eq(drinkCollections.isPremium, true)));
+  return new Set(collectionRows.map((row) => row.id));
+}
+
+async function loadViewerMembershipForCreator(userId: string, creatorUserId: string) {
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(creatorMemberships)
+    .where(and(eq(creatorMemberships.userId, userId), eq(creatorMemberships.creatorUserId, creatorUserId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+function serializeMembershipPlan(plan?: CreatorMembershipPlanRecord | null) {
+  if (!plan) return null;
+  return {
+    id: plan.id,
+    creatorUserId: plan.creatorUserId,
+    slug: plan.slug,
+    name: plan.name,
+    description: plan.description ?? null,
+    priceCents: Number(plan.priceCents ?? 0),
+    billingInterval: normalizeMembershipBillingInterval(plan.billingInterval),
+    isActive: Boolean(plan.isActive),
+    createdAt: plan.createdAt.toISOString(),
+    updatedAt: plan.updatedAt.toISOString(),
+    benefits: [
+      "Unlock the creator’s premium drink collections while your membership is active.",
+      "Support this creator with ongoing monthly or yearly membership revenue.",
+      "Member support is additive and does not block free drink discovery, remixing, or canonical drink pages.",
+    ],
+  };
+}
+
+function serializeMembershipRecord(membership?: CreatorMembershipRecord | null) {
+  if (!membership) return null;
+  return {
+    id: membership.id,
+    userId: membership.userId,
+    creatorUserId: membership.creatorUserId,
+    planId: membership.planId,
+    status: membership.status as CreatorMembershipStatus,
+    startedAt: membership.startedAt.toISOString(),
+    endsAt: membership.endsAt ? membership.endsAt.toISOString() : null,
+    canceledAt: membership.canceledAt ? membership.canceledAt.toISOString() : null,
+    squareSubscriptionId: membership.squareSubscriptionId ?? null,
+    paymentReference: membership.paymentReference ?? null,
+    createdAt: membership.createdAt.toISOString(),
+    updatedAt: membership.updatedAt.toISOString(),
+    accessActive: isCreatorMembershipActiveRecord(membership),
+  };
 }
 
 async function upsertDrinkCollectionSalesLedgerEntry(
@@ -2978,6 +3204,149 @@ async function reconcileBundleSquareWebhookEvent(payload: SquareWebhookEventBody
   return { ok: true, ignored: true, eventId, eventType, reason: "unsupported_event" } as const;
 }
 
+async function loadMembershipCheckoutSessionForUser(sessionId: string, userId: string) {
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(creatorMembershipCheckoutSessions)
+    .where(and(eq(creatorMembershipCheckoutSessions.id, sessionId), eq(creatorMembershipCheckoutSessions.userId, userId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+async function loadLatestMembershipCheckoutSessionForUserCreator(userId: string, creatorUserId: string) {
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(creatorMembershipCheckoutSessions)
+    .where(and(eq(creatorMembershipCheckoutSessions.userId, userId), eq(creatorMembershipCheckoutSessions.creatorUserId, creatorUserId)))
+    .orderBy(desc(creatorMembershipCheckoutSessions.createdAt))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+async function grantCreatorMembership(session: CreatorMembershipCheckoutSessionRecord, squarePaymentId?: string | null, squareOrderId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+  const now = new Date();
+  const planRows = await db.select().from(creatorMembershipPlans).where(eq(creatorMembershipPlans.id, session.planId)).limit(1);
+  const plan = planRows[0];
+  if (!plan) throw new Error("Membership plan not found");
+  const endsAt = membershipEndsAt(now, normalizeMembershipBillingInterval(plan.billingInterval));
+
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(creatorMemberships)
+      .values({
+        userId: session.userId,
+        creatorUserId: session.creatorUserId,
+        planId: session.planId,
+        status: "active",
+        startedAt: now,
+        endsAt,
+        canceledAt: null,
+        squareSubscriptionId: null,
+        paymentReference: squarePaymentId ?? squareOrderId ?? session.providerReferenceId,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [creatorMemberships.userId, creatorMemberships.creatorUserId],
+        set: {
+          planId: session.planId,
+          status: "active",
+          startedAt: now,
+          endsAt,
+          canceledAt: null,
+          paymentReference: squarePaymentId ?? squareOrderId ?? session.providerReferenceId,
+          updatedAt: now,
+        },
+      });
+
+    const membershipRows = await tx
+      .select({ id: creatorMemberships.id })
+      .from(creatorMemberships)
+      .where(and(eq(creatorMemberships.userId, session.userId), eq(creatorMemberships.creatorUserId, session.creatorUserId)))
+      .limit(1);
+
+    await tx
+      .insert(creatorMembershipSalesLedger)
+      .values({
+        userId: session.userId,
+        creatorUserId: session.creatorUserId,
+        membershipId: membershipRows[0]?.id ?? null,
+        checkoutSessionId: session.id,
+        planId: session.planId,
+        grossAmountCents: session.amountCents,
+        currencyCode: session.currencyCode,
+        status: "completed",
+        statusReason: null,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: creatorMembershipSalesLedger.checkoutSessionId,
+        set: {
+          membershipId: membershipRows[0]?.id ?? null,
+          grossAmountCents: session.amountCents,
+          currencyCode: session.currencyCode,
+          status: "completed",
+          statusReason: null,
+          updatedAt: now,
+        },
+      });
+
+    await tx
+      .update(creatorMembershipCheckoutSessions)
+      .set({
+        status: "completed",
+        squareOrderId: squareOrderId ?? session.squareOrderId,
+        squarePaymentId: squarePaymentId ?? session.squarePaymentId,
+        verifiedAt: session.verifiedAt ?? now,
+        lastVerifiedAt: now,
+        failureReason: null,
+        updatedAt: now,
+      })
+      .where(eq(creatorMembershipCheckoutSessions.id, session.id));
+  });
+}
+
+async function verifyMembershipCheckoutSession(session: CreatorMembershipCheckoutSessionRecord) {
+  if (!db) throw new Error("Database unavailable");
+  const existingMembership = await loadViewerMembershipForCreator(session.userId, session.creatorUserId);
+  if (isCreatorMembershipActiveRecord(existingMembership)) {
+    await db
+      .update(creatorMembershipCheckoutSessions)
+      .set({
+        status: "completed",
+        verifiedAt: session.verifiedAt ?? new Date(),
+        lastVerifiedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(creatorMembershipCheckoutSessions.id, session.id));
+    return { status: "completed" as CreatorMembershipCheckoutStatus, membership: existingMembership };
+  }
+
+  const verification = await fetchSquareOrderVerification(session as any);
+  const parsed = parseSquareOrderState(verification?.order ?? null, verification?.payment ?? null, session.amountCents);
+  if (parsed.status === "completed") {
+    await grantCreatorMembership(session, parsed.squarePaymentId ?? null, parsed.squareOrderId ?? null);
+    const refreshed = await loadViewerMembershipForCreator(session.userId, session.creatorUserId);
+    return { status: "completed" as CreatorMembershipCheckoutStatus, membership: refreshed };
+  }
+
+  await db
+    .update(creatorMembershipCheckoutSessions)
+    .set({
+      status: parsed.status === "pending" ? "pending" : parsed.status,
+      squareOrderId: parsed.squareOrderId ?? session.squareOrderId,
+      squarePaymentId: parsed.squarePaymentId ?? session.squarePaymentId,
+      failureReason: parsed.failureReason ?? null,
+      lastVerifiedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(creatorMembershipCheckoutSessions.id, session.id));
+
+  return { status: parsed.status as CreatorMembershipCheckoutStatus, membership: null, failureReason: parsed.failureReason ?? null };
+}
+
 async function verifyCollectionCheckoutSession(session: DrinkCollectionCheckoutSessionRecord): Promise<SquareCheckoutVerificationResult> {
   if (!db) {
     throw new Error("Database unavailable");
@@ -3214,13 +3583,16 @@ async function loadOwnedBundleIdsForUser(userId?: string | null): Promise<Set<st
 }
 
 async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
-  const [directCollectionIds, ownedBundleIds] = await Promise.all([
+  const [directCollectionIds, ownedBundleIds, membershipCollectionIds] = await Promise.all([
     loadDirectlyOwnedCollectionIdsForUser(userId),
     loadOwnedBundleIdsForUser(userId),
+    loadMembershipGrantedCollectionIdsForUser(userId),
   ]);
 
   if (!db || !userId || ownedBundleIds.size === 0) {
-    return directCollectionIds;
+    const base = new Set(directCollectionIds);
+    for (const collectionId of membershipCollectionIds) base.add(collectionId);
+    return base;
   }
 
   const bundleRows = await db
@@ -3229,6 +3601,7 @@ async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Se
     .where(inArray(drinkBundleItems.bundleId, [...ownedBundleIds]));
 
   const all = new Set(directCollectionIds);
+  for (const collectionId of membershipCollectionIds) all.add(collectionId);
   for (const row of bundleRows) all.add(row.collectionId);
   return all;
 }
@@ -3480,21 +3853,8 @@ async function loadHydratedCollectionReviews(collectionId: string) {
 }
 
 async function userHasActiveCollectionReviewAccess(userId: string, collectionId: string) {
-  if (!db) return false;
-
-  const rows = await db
-    .select({ id: drinkCollectionPurchases.id })
-    .from(drinkCollectionPurchases)
-    .where(
-      and(
-        eq(drinkCollectionPurchases.userId, userId),
-        eq(drinkCollectionPurchases.collectionId, collectionId),
-        eq(drinkCollectionPurchases.status, "completed"),
-      ),
-    )
-    .limit(1);
-
-  return Boolean(rows[0]);
+  const ownedCollectionIds = await loadOwnedCollectionIdsForUser(userId);
+  return ownedCollectionIds.has(collectionId);
 }
 
 async function resolveCollectionWithItems(
@@ -3817,6 +4177,74 @@ async function loadWishlistedCollectionsForUser(userId: string) {
       wishlistCount: Number(wishlistCountsByCollectionId.get(row.collectionId) ?? 0),
       activePromoPricing,
       promoAlertReady: Boolean(activePromoPricing),
+    };
+  });
+}
+
+async function loadCreatorMembershipDashboardSummary(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+  const plan = await loadCreatorMembershipPlanByCreatorId(creatorUserId);
+  const memberRows = await db.select().from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, creatorUserId));
+  const ledgerRows = await db.select().from(creatorMembershipSalesLedger).where(eq(creatorMembershipSalesLedger.creatorUserId, creatorUserId));
+  const activeMembers = memberRows.filter((row) => isCreatorMembershipActiveRecord(row));
+  const canceledMembers = memberRows.filter((row) => row.status === "canceled");
+  const expiredMembers = memberRows.filter((row) => row.status === "expired" || (row.endsAt && row.endsAt <= new Date()));
+  const grossRevenueCents = ledgerRows
+    .filter((row) => row.status === "completed")
+    .reduce((sum, row) => sum + Number(row.grossAmountCents ?? 0), 0);
+
+  return {
+    plan: serializeMembershipPlan(plan),
+    stats: {
+      activeMembers: activeMembers.length,
+      canceledMembers: canceledMembers.length,
+      expiredMembers: expiredMembers.length,
+      totalMembers: memberRows.length,
+      grossRevenueCents,
+    },
+  };
+}
+
+async function loadMembershipsForUser(userId: string) {
+  if (!db) throw new Error("Database unavailable");
+  const memberships = await db.select().from(creatorMemberships).where(eq(creatorMemberships.userId, userId)).orderBy(desc(creatorMemberships.updatedAt));
+  const creatorIds = [...new Set(memberships.map((membership) => membership.creatorUserId))];
+  const planIds = [...new Set(memberships.map((membership) => membership.planId))];
+  const [creatorMap, planRows, creatorCollections] = await Promise.all([
+    loadCollectionCreatorsMap(creatorIds),
+    planIds.length ? db.select().from(creatorMembershipPlans).where(inArray(creatorMembershipPlans.id, planIds)) : Promise.resolve([]),
+    creatorIds.length
+      ? db.select().from(drinkCollections).where(and(inArray(drinkCollections.userId, creatorIds), eq(drinkCollections.isPremium, true)))
+      : Promise.resolve([]),
+  ]);
+  const planMap = new Map(planRows.map((row) => [row.id, row]));
+  const collectionsByCreatorId = new Map<string, Array<typeof drinkCollections.$inferSelect>>();
+  for (const collection of creatorCollections) {
+    const current = collectionsByCreatorId.get(collection.userId) ?? [];
+    current.push(collection);
+    collectionsByCreatorId.set(collection.userId, current);
+  }
+
+  return memberships.map((membership) => {
+    const creator = creatorMap.get(membership.creatorUserId);
+    const plan = planMap.get(membership.planId) ?? null;
+    const collections = (collectionsByCreatorId.get(membership.creatorUserId) ?? []).map((collection) => ({
+      id: collection.id,
+      name: collection.name,
+      route: `/drinks/collections/${collection.id}`,
+      priceCents: Number(collection.priceCents ?? 0),
+      isPublic: Boolean(collection.isPublic),
+    }));
+    return {
+      membership: serializeMembershipRecord(membership),
+      plan: serializeMembershipPlan(plan),
+      creator: {
+        userId: membership.creatorUserId,
+        username: creator?.username ?? null,
+        avatar: creator?.avatar ?? null,
+        route: `/drinks/creator/${membership.creatorUserId}`,
+      },
+      accessibleCollections: collections,
     };
   });
 }
@@ -7525,6 +7953,144 @@ r.get("/creators/:userId", async (req, res) => {
   }
 });
 
+r.get("/creators/:userId/membership/status", optionalAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/creators/:userId/membership/status", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const plan = await loadCreatorMembershipPlanByCreatorId(req.params.userId);
+    const membership = req.user?.id ? await loadViewerMembershipForCreator(req.user.id, req.params.userId) : null;
+    const checkoutSessionId = typeof req.query.checkoutSessionId === "string" ? req.query.checkoutSessionId.trim() : "";
+    const checkoutSession = req.user?.id
+      ? checkoutSessionId
+        ? await loadMembershipCheckoutSessionForUser(checkoutSessionId, req.user.id)
+        : await loadLatestMembershipCheckoutSessionForUserCreator(req.user.id, req.params.userId)
+      : null;
+    const checkoutVerification = checkoutSession ? await verifyMembershipCheckoutSession(checkoutSession) : null;
+
+    return res.json({
+      ok: true,
+      creatorUserId: req.params.userId,
+      plan: serializeMembershipPlan(plan),
+      membership: serializeMembershipRecord(checkoutVerification?.membership ?? membership),
+      checkout: checkoutSession
+        ? {
+            id: checkoutSession.id,
+            status: checkoutVerification?.status ?? checkoutSession.status,
+            failureReason: checkoutVerification?.failureReason ?? checkoutSession.failureReason ?? null,
+            checkoutUrl: checkoutSession.checkoutUrl ?? null,
+            updatedAt: checkoutSession.updatedAt.toISOString(),
+          }
+        : null,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creators/:userId/membership/status", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load membership status"));
+  }
+});
+
+r.post("/creators/:userId/membership/create-checkout", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    if (req.user!.id === req.params.userId) {
+      return res.status(400).json({ ok: false, error: "Creators cannot subscribe to their own membership." });
+    }
+
+    const configError = getSquareConfigError();
+    if (configError) {
+      return res.status(503).json({
+        ok: false,
+        error: `${configError} Set SQUARE_ENV, SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID, and APP_BASE_URL before enabling memberships.`,
+      });
+    }
+
+    const plan = await loadCreatorMembershipPlanByCreatorId(req.params.userId);
+    if (!plan || !plan.isActive) {
+      return res.status(404).json({ ok: false, error: "No active membership plan is available for this creator." });
+    }
+
+    const existingMembership = await loadViewerMembershipForCreator(req.user!.id, req.params.userId);
+    if (isCreatorMembershipActiveRecord(existingMembership)) {
+      return res.status(200).json({ ok: true, alreadyActive: true, membership: serializeMembershipRecord(existingMembership) });
+    }
+
+    const createdRows = await db
+      .insert(creatorMembershipCheckoutSessions)
+      .values({
+        userId: req.user!.id,
+        creatorUserId: req.params.userId,
+        planId: plan.id,
+        provider: "square",
+        status: "pending",
+        amountCents: Number(plan.priceCents ?? 0),
+        currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
+        providerReferenceId: `membership:${plan.id}:${crypto.randomUUID()}`,
+        expiresAt: new Date(Date.now() + 1000 * 60 * 30),
+      })
+      .returning();
+    const checkoutSession = createdRows[0];
+    const squareClient = getSquareClient();
+    const redirectUrl = `${req.protocol}://${req.get("host")}/drinks/creator/${encodeURIComponent(req.params.userId)}?membershipCheckoutSessionId=${encodeURIComponent(checkoutSession.id)}&membershipSquareCheckout=1`;
+    const squareResponse = await squareClient.checkout.paymentLinks.create({
+      idempotencyKey: checkoutSession.providerReferenceId,
+      quickPay: {
+        name: `${plan.name} membership`,
+        priceMoney: {
+          amount: BigInt(Number(plan.priceCents ?? 0)),
+          currency: normalizeSquareCurrencyCode(squareConfig.currency) as any,
+        },
+        locationId: squareConfig.locationId!,
+      },
+      checkoutOptions: {
+        redirectUrl,
+      },
+      prePopulatedData: {
+        buyerEmail: req.user?.email ?? undefined,
+      },
+      description: `ChefSire creator membership ${plan.name}`,
+    });
+
+    const paymentLink = squareResponse.paymentLink;
+    const orderId = paymentLink?.orderId ?? squareResponse.relatedResources?.orders?.[0]?.id ?? null;
+    if (!paymentLink?.url || !paymentLink.id) {
+      await db.update(creatorMembershipCheckoutSessions).set({
+        status: "failed",
+        failureReason: "Square did not return a usable membership checkout link.",
+        updatedAt: new Date(),
+      }).where(eq(creatorMembershipCheckoutSessions.id, checkoutSession.id));
+      return res.status(502).json({ ok: false, error: "Failed to create Square checkout link" });
+    }
+
+    await db.update(creatorMembershipCheckoutSessions).set({
+      squarePaymentLinkId: paymentLink.id,
+      squareOrderId: orderId,
+      checkoutUrl: paymentLink.url,
+      updatedAt: new Date(),
+    }).where(eq(creatorMembershipCheckoutSessions.id, checkoutSession.id));
+
+    return res.status(201).json({
+      ok: true,
+      creatorUserId: req.params.userId,
+      plan: serializeMembershipPlan(plan),
+      checkoutSessionId: checkoutSession.id,
+      checkoutUrl: paymentLink.url,
+      amountCents: Number(plan.priceCents ?? 0),
+      currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
+      billingInterval: normalizeMembershipBillingInterval(plan.billingInterval),
+      renewalMode: "manual_renewal_v1",
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creators/:userId/membership/create-checkout", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to start Square membership checkout"));
+  }
+});
+
 
 // Search drinks across canonical + user submissions
 r.get("/search", async (req, res) => {
@@ -7902,6 +8468,66 @@ r.get("/collections/purchased", requireAuth, async (req, res) => {
     const payload = collectionDbErrorResponse(error, "Failed to load purchased collections");
     const status = classifyCollectionError(error, "Failed to load purchased collections").status;
     return res.status(status).json(payload);
+  }
+});
+
+r.get("/memberships/mine", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/memberships/mine", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+    await ensureDrinkCollectionsSchema();
+    const memberships = await loadMembershipsForUser(req.user!.id);
+    return res.json({
+      ok: true,
+      memberships,
+      count: memberships.length,
+      reportingNotes: [
+        "Membership checkout in v1 uses Square payment links for a single monthly or yearly term.",
+        "Canceling a membership stops future renewal intent in-app, but the current paid term stays active until its end date.",
+        "Membership access adds to direct purchases, bundles, and gifts instead of replacing them.",
+      ],
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/memberships/mine", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load memberships"));
+  }
+});
+
+r.post("/memberships/:id/cancel", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const rows = await db
+      .select()
+      .from(creatorMemberships)
+      .where(and(eq(creatorMemberships.id, req.params.id), eq(creatorMemberships.userId, req.user!.id)))
+      .limit(1);
+    const membership = rows[0];
+    if (!membership) return res.status(404).json({ ok: false, error: "Membership not found" });
+
+    const now = new Date();
+    const nextStatus: CreatorMembershipStatus = membership.endsAt && membership.endsAt <= now ? "expired" : "canceled";
+    const updatedRows = await db
+      .update(creatorMemberships)
+      .set({
+        status: nextStatus,
+        canceledAt: membership.canceledAt ?? now,
+        updatedAt: now,
+      })
+      .where(eq(creatorMemberships.id, membership.id))
+      .returning();
+
+    return res.json({
+      ok: true,
+      membership: serializeMembershipRecord(updatedRows[0] ?? membership),
+      note: "Version one memberships do not auto-renew yet, so canceling only updates the in-app membership status.",
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/memberships/:id/cancel", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to cancel membership"));
   }
 });
 
@@ -8777,6 +9403,68 @@ r.get("/creator-dashboard/finance", requireAuth, async (req, res) => {
     const payload = collectionDbErrorResponse(error, "Failed to load creator finance");
     const status = classifyCollectionError(error, "Failed to load creator finance").status;
     return res.status(status).json(payload);
+  }
+});
+
+r.get("/creator-dashboard/membership", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/creator-dashboard/membership", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+    await ensureDrinkCollectionsSchema();
+    const membership = await loadCreatorMembershipDashboardSummary(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      ...membership,
+      reportingNotes: [
+        "Membership revenue is reported separately from one-off premium collection sales.",
+        "Version one memberships are term-based and manually renewed through a new Square checkout each billing period.",
+      ],
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/membership", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator membership dashboard"));
+  }
+});
+
+r.post("/creator-dashboard/membership-plan", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+    const parsed = creatorMembershipPlanInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid membership plan payload", details: parsed.error.flatten() });
+    }
+
+    const data = parsed.data;
+    const now = new Date();
+    const values = {
+      creatorUserId: req.user!.id,
+      slug: normalizeMembershipPlanSlug(data.name, req.user!.id),
+      name: data.name.trim(),
+      description: normalizeCollectionDescription(data.description ?? null),
+      priceCents: Math.round(Number(data.priceCents)),
+      billingInterval: normalizeMembershipBillingInterval(data.billingInterval),
+      isActive: Boolean(data.isActive ?? true),
+      updatedAt: now,
+    };
+
+    const existing = await loadCreatorMembershipPlanByCreatorId(req.user!.id);
+    const result = existing
+      ? await db.update(creatorMembershipPlans).set(values).where(eq(creatorMembershipPlans.id, existing.id)).returning()
+      : await db.insert(creatorMembershipPlans).values(values).returning();
+
+    const summary = await loadCreatorMembershipDashboardSummary(req.user!.id);
+    return res.status(existing ? 200 : 201).json({
+      ok: true,
+      plan: serializeMembershipPlan(result[0]),
+      stats: summary.stats,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/membership-plan", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to save membership plan"));
   }
 });
 

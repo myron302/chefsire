@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link, useRoute } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useUser } from "@/contexts/UserContext";
 import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
@@ -79,6 +79,38 @@ interface PublicBundle {
   itemsCount: number;
   route: string;
   ownedByViewer?: boolean;
+}
+
+interface CreatorMembershipPlan {
+  id: string;
+  creatorUserId: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  billingInterval: "monthly" | "yearly";
+  isActive: boolean;
+  benefits: string[];
+}
+
+interface CreatorMembershipRecord {
+  id: string;
+  status: "active" | "canceled" | "expired" | "past_due";
+  endsAt: string | null;
+  accessActive: boolean;
+}
+
+interface CreatorMembershipStatusResponse {
+  ok: boolean;
+  creatorUserId: string;
+  plan: CreatorMembershipPlan | null;
+  membership: CreatorMembershipRecord | null;
+  checkout: {
+    id: string;
+    status: "pending" | "completed" | "failed" | "canceled";
+    failureReason: string | null;
+    checkoutUrl: string | null;
+    updatedAt: string;
+  } | null;
 }
 
 interface PublicCreatorResponse {
@@ -171,6 +203,9 @@ export default function PublicDrinkCreatorPage() {
   const [matched, params] = useRoute<{ userId: string }>("/drinks/creator/:userId");
   const creatorId = matched ? String(params.userId ?? "") : "";
   const { user } = useUser();
+  const queryClient = useQueryClient();
+  const [membershipMessage, setMembershipMessage] = React.useState("");
+  const [membershipError, setMembershipError] = React.useState("");
 
   const query = useQuery<PublicCreatorResponse>({
     queryKey: ["/api/drinks/creators", creatorId],
@@ -229,6 +264,61 @@ export default function PublicDrinkCreatorPage() {
     enabled: Boolean(creatorId),
   });
 
+  const membershipStatusQuery = useQuery<CreatorMembershipStatusResponse>({
+    queryKey: ["/api/drinks/creators/membership/status", creatorId, user?.id ?? "", window.location.search],
+    queryFn: async () => {
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get("membershipCheckoutSessionId")?.trim();
+      const suffix = sessionId ? `?checkoutSessionId=${encodeURIComponent(sessionId)}` : "";
+      const response = await fetch(`/api/drinks/creators/${encodeURIComponent(creatorId)}/membership/status${suffix}`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to load creator membership status");
+      return response.json();
+    },
+    enabled: Boolean(creatorId),
+  });
+
+  const joinMembershipMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/drinks/creators/${encodeURIComponent(creatorId)}/membership/create-checkout`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || `Failed to start membership checkout (${response.status})`);
+      return payload;
+    },
+    onSuccess: async (payload) => {
+      if (payload?.alreadyActive) {
+        setMembershipMessage("You already have active membership access for this creator.");
+        await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creators/membership/status", creatorId] });
+        return;
+      }
+      if (payload?.checkoutUrl) {
+        setMembershipMessage("Square membership checkout opened in a new tab. Complete payment there and this creator page will refresh your access.");
+        window.open(String(payload.checkoutUrl), "chefsire-square-membership-checkout", "popup,width=520,height=760");
+      }
+    },
+    onError: (error) => {
+      setMembershipError(error instanceof Error ? error.message : "Failed to start membership checkout");
+    },
+  });
+
+  React.useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const flag = params.get("membershipSquareCheckout");
+    if (!flag) return;
+    const status = membershipStatusQuery.data?.checkout?.status;
+    if (status === "completed") {
+      setMembershipMessage("Membership payment verified. Premium collections from this creator are now unlocked for your active term.");
+    } else if (status === "failed" || status === "canceled") {
+      setMembershipError(membershipStatusQuery.data?.checkout?.failureReason || "Square membership checkout did not complete.");
+    } else {
+      setMembershipMessage("Finishing your Square membership checkout…");
+    }
+  }, [membershipStatusQuery.data]);
+
   if (!matched) return null;
 
   if (query.isLoading) {
@@ -253,6 +343,9 @@ export default function PublicDrinkCreatorPage() {
   const creatorBundles = publicBundlesQuery.data?.bundles ?? [];
   const premiumCollections = creatorCollections.filter((collection) => collection.isPremium);
   const freeCollections = creatorCollections.filter((collection) => !collection.isPremium);
+  const membershipPlan = membershipStatusQuery.data?.plan ?? null;
+  const viewerMembership = membershipStatusQuery.data?.membership ?? null;
+  const membershipActive = Boolean(viewerMembership?.accessActive);
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-public-creator-page">
@@ -335,6 +428,59 @@ export default function PublicDrinkCreatorPage() {
           )}
         </CardContent>
       </Card>
+
+      {membershipPlan?.isActive ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>{membershipPlan.name}</CardTitle>
+            <CardDescription>
+              Lightweight creator membership powered by Square for an ongoing support path beyond one-off premium collection purchases.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex flex-wrap gap-2">
+              <Badge>{formatCurrency(membershipPlan.priceCents)}/{membershipPlan.billingInterval === "yearly" ? "year" : "month"}</Badge>
+              <Badge variant={membershipActive ? "secondary" : "outline"}>{membershipActive ? "Member access active" : "Membership available"}</Badge>
+              {viewerMembership?.endsAt ? <Badge variant="outline">Current term ends {formatDate(viewerMembership.endsAt)}</Badge> : null}
+            </div>
+            {membershipPlan.description ? <p className="text-sm text-muted-foreground">{membershipPlan.description}</p> : null}
+            <div className="grid gap-2 md:grid-cols-2">
+              {membershipPlan.benefits.map((benefit) => (
+                <div key={benefit} className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
+                  {benefit}
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {user?.id === data.userId ? (
+                <Link href="/drinks/creator-dashboard">
+                  <Button variant="outline">Manage membership plan</Button>
+                </Link>
+              ) : membershipActive ? (
+                <Link href="/drinks/memberships">
+                  <Button>Open my memberships</Button>
+                </Link>
+              ) : !user ? (
+                <Link href="/auth/login">
+                  <Button>Sign in to subscribe</Button>
+                </Link>
+              ) : (
+                <Button onClick={() => { setMembershipError(""); setMembershipMessage(""); joinMembershipMutation.mutate(); }} disabled={joinMembershipMutation.isPending}>
+                  {joinMembershipMutation.isPending ? "Opening Square…" : "Join Membership"}
+                </Button>
+              )}
+              <Link href="#creator-collections">
+                <Button variant="ghost">See included premium collections</Button>
+              </Link>
+            </div>
+            {membershipMessage ? <p className="text-sm text-emerald-600">{membershipMessage}</p> : null}
+            {membershipError ? <p className="text-sm text-destructive">{membershipError}</p> : null}
+            <p className="text-xs text-muted-foreground">
+              Version one memberships unlock this creator&apos;s premium collections for the paid term. Renewals stay manual for now so finance reporting stays honest.
+            </p>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
@@ -491,6 +637,7 @@ export default function PublicDrinkCreatorPage() {
                           <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
                           <Badge>Premium · {formatCurrency(collection.priceCents)}</Badge>
                           {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+                          {membershipActive ? <Badge variant="secondary">Included with membership</Badge> : null}
                           {user && collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
                           {collection.activePromoPricing ? <Badge variant="secondary">Promo {collection.activePromoPricing.code}</Badge> : null}
                         </div>
