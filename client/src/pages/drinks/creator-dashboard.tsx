@@ -129,6 +129,30 @@ interface CreatorPromotionsResponse {
   promotions: CreatorPromotionItem[];
 }
 
+interface CreatorMembershipPlan {
+  id: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  billingInterval: "monthly" | "yearly";
+  isActive: boolean;
+  benefits: string[];
+}
+
+interface CreatorMembershipDashboardResponse {
+  ok: boolean;
+  userId: string;
+  plan: CreatorMembershipPlan | null;
+  stats: {
+    activeMembers: number;
+    canceledMembers: number;
+    expiredMembers: number;
+    totalMembers: number;
+    grossRevenueCents: number;
+  };
+  reportingNotes: string[];
+}
+
 interface CreatorSalesCollectionItem {
   id: string;
   name: string;
@@ -397,6 +421,15 @@ export default function CreatorDashboardPage() {
   });
   const [promotionMessage, setPromotionMessage] = React.useState("");
   const [promotionError, setPromotionError] = React.useState("");
+  const [membershipPlanForm, setMembershipPlanForm] = React.useState({
+    name: "Creator Membership",
+    description: "Unlock all of my premium drink collections while your membership is active.",
+    priceCents: "1200",
+    billingInterval: "monthly" as "monthly" | "yearly",
+    isActive: true,
+  });
+  const [membershipPlanMessage, setMembershipPlanMessage] = React.useState("");
+  const [membershipPlanError, setMembershipPlanError] = React.useState("");
 
   const query = useQuery<CreatorDrinkMetricsResponse>({
     queryKey: ["/api/drinks/creator", user?.id ?? ""],
@@ -495,6 +528,20 @@ export default function CreatorDashboardPage() {
     enabled: Boolean(user?.id),
   });
 
+  const membershipDashboardQuery = useQuery<CreatorMembershipDashboardResponse>({
+    queryKey: ["/api/drinks/creator-dashboard/membership", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/creator-dashboard/membership", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error || payload?.message || `Failed to load membership dashboard (${response.status})`;
+        throw new Error(String(message));
+      }
+      return payload as CreatorMembershipDashboardResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
   const conversionsQuery = useQuery<CreatorConversionsResponse>({
     queryKey: ["/api/drinks/creator-dashboard/conversions", user?.id ?? ""],
     queryFn: async () => {
@@ -535,6 +582,43 @@ export default function CreatorDashboardPage() {
       return payload as CreatorPromotionsResponse;
     },
     enabled: Boolean(user?.id),
+  });
+
+  React.useEffect(() => {
+    const plan = membershipDashboardQuery.data?.plan;
+    if (!plan) return;
+    setMembershipPlanForm({
+      name: plan.name,
+      description: plan.description ?? "",
+      priceCents: String(plan.priceCents ?? ""),
+      billingInterval: plan.billingInterval,
+      isActive: plan.isActive,
+    });
+  }, [membershipDashboardQuery.data?.plan?.id]);
+
+  const saveMembershipPlanMutation = useMutation({
+    mutationFn: async (payload: { name: string; description: string; priceCents: number; billingInterval: "monthly" | "yearly"; isActive: boolean }) => {
+      const response = await fetch("/api/drinks/creator-dashboard/membership-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(data?.error || `Failed to save membership plan (${response.status})`);
+      }
+      return data;
+    },
+    onSuccess: async () => {
+      setMembershipPlanMessage("Membership plan saved.");
+      setMembershipPlanError("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/membership", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setMembershipPlanError(readErrorMessage(error, "Unable to save membership plan right now."));
+      setMembershipPlanMessage("");
+    },
   });
 
   const createPromotionMutation = useMutation({
@@ -670,6 +754,19 @@ export default function CreatorDashboardPage() {
     },
   };
   const recentFinanceSales = financeQuery.data?.recentSales ?? [];
+  const membershipDashboard = membershipDashboardQuery.data ?? {
+    ok: true,
+    userId: user?.id ?? "",
+    plan: null,
+    stats: {
+      activeMembers: 0,
+      canceledMembers: 0,
+      expiredMembers: 0,
+      totalMembers: 0,
+      grossRevenueCents: 0,
+    },
+    reportingNotes: [] as string[],
+  };
   const conversionSummary = conversionsQuery.data?.summary ?? {
     premiumCollectionsCount: premiumCollections.length,
     totalCollectionViews: 0,
@@ -804,6 +901,125 @@ export default function CreatorDashboardPage() {
               <Button size="sm">Browse premium collections</Button>
             </Link>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card id="membership">
+        <CardHeader>
+          <CardTitle>Creator Membership</CardTitle>
+          <CardDescription>
+            Offer a lightweight monthly or yearly membership that unlocks all of your premium collections while the paid term is active.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Active members</p>
+              <p className="text-xl font-semibold">{metricNumber(membershipDashboard.stats.activeMembers)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Canceled members</p>
+              <p className="text-xl font-semibold">{metricNumber(membershipDashboard.stats.canceledMembers)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Expired members</p>
+              <p className="text-xl font-semibold">{metricNumber(membershipDashboard.stats.expiredMembers)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Total members</p>
+              <p className="text-xl font-semibold">{metricNumber(membershipDashboard.stats.totalMembers)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Gross membership revenue</p>
+              <p className="text-xl font-semibold">{formatCurrency(membershipDashboard.stats.grossRevenueCents)}</p>
+            </div>
+          </div>
+
+          <div className="rounded-md border border-dashed p-4 space-y-3">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
+              <div className="space-y-1 lg:col-span-2">
+                <Label htmlFor="membership-plan-name">Plan name</Label>
+                <Input id="membership-plan-name" value={membershipPlanForm.name} onChange={(event) => setMembershipPlanForm((current) => ({ ...current, name: event.target.value }))} placeholder="Creator Membership" />
+              </div>
+              <div className="space-y-1 lg:col-span-2">
+                <Label htmlFor="membership-plan-description">Description</Label>
+                <Input id="membership-plan-description" value={membershipPlanForm.description} onChange={(event) => setMembershipPlanForm((current) => ({ ...current, description: event.target.value }))} placeholder="Unlock all of my premium collections." />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="membership-plan-price">Price cents</Label>
+                <Input id="membership-plan-price" type="number" min={100} value={membershipPlanForm.priceCents} onChange={(event) => setMembershipPlanForm((current) => ({ ...current, priceCents: event.target.value }))} />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="membership-plan-interval">Billing interval</Label>
+                <select
+                  id="membership-plan-interval"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={membershipPlanForm.billingInterval}
+                  onChange={(event) => setMembershipPlanForm((current) => ({ ...current, billingInterval: event.target.value as "monthly" | "yearly" }))}
+                >
+                  <option value="monthly">Monthly</option>
+                  <option value="yearly">Yearly</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="membership-plan-active">Plan status</Label>
+                <select
+                  id="membership-plan-active"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={membershipPlanForm.isActive ? "active" : "inactive"}
+                  onChange={(event) => setMembershipPlanForm((current) => ({ ...current, isActive: event.target.value === "active" }))}
+                >
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                onClick={() => {
+                  setMembershipPlanMessage("");
+                  setMembershipPlanError("");
+                  saveMembershipPlanMutation.mutate({
+                    name: membershipPlanForm.name.trim(),
+                    description: membershipPlanForm.description.trim(),
+                    priceCents: Number(membershipPlanForm.priceCents),
+                    billingInterval: membershipPlanForm.billingInterval,
+                    isActive: membershipPlanForm.isActive,
+                  });
+                }}
+                disabled={saveMembershipPlanMutation.isPending || !membershipPlanForm.name.trim() || !membershipPlanForm.priceCents}
+              >
+                {saveMembershipPlanMutation.isPending ? "Saving plan…" : membershipDashboard.plan ? "Update membership plan" : "Create membership plan"}
+              </Button>
+              <Link href={`/drinks/creator/${encodeURIComponent(user?.id ?? "")}`}>
+                <Button variant="outline">Preview creator page</Button>
+              </Link>
+              <p className="text-xs text-muted-foreground">Version one keeps renewals manual so revenue and access remain explicit.</p>
+            </div>
+            {membershipPlanMessage ? <p className="text-sm text-emerald-600">{membershipPlanMessage}</p> : null}
+            {membershipPlanError ? <p className="text-sm text-destructive">{membershipPlanError}</p> : null}
+          </div>
+
+          {membershipDashboard.plan ? (
+            <div className="rounded-md border bg-muted/20 p-4 text-sm text-muted-foreground space-y-2">
+              <p className="font-medium text-foreground">Current plan: {membershipDashboard.plan.name}</p>
+              <p>{formatCurrency(membershipDashboard.plan.priceCents)} per {membershipDashboard.plan.billingInterval === "yearly" ? "year" : "month"} · {membershipDashboard.plan.isActive ? "Active" : "Inactive"}</p>
+              {membershipDashboard.plan.description ? <p>{membershipDashboard.plan.description}</p> : null}
+            </div>
+          ) : (
+            <div className="rounded-md border p-4 text-sm text-muted-foreground">
+              No membership plan yet. Create one to add a creator support path that complements one-off collection sales.
+            </div>
+          )}
+
+          {membershipDashboardQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading membership reporting…</p> : null}
+          {membershipDashboardQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(membershipDashboardQuery.error, "Unable to load membership reporting right now.")}</p> : null}
+          {membershipDashboard.reportingNotes.length ? (
+            <div className="space-y-1 text-xs text-muted-foreground">
+              {membershipDashboard.reportingNotes.map((note) => <p key={note}>• {note}</p>)}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
