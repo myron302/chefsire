@@ -1042,6 +1042,37 @@ export const drinkCollectionPurchases = pgTable(
   })
 );
 
+export const drinkCollectionCheckoutSessions = pgTable(
+  "drink_collection_checkout_sessions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
+    provider: text("provider").default("square").notNull(),
+    status: text("status").default("pending").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    currencyCode: text("currency_code").default("USD").notNull(),
+    squarePaymentLinkId: text("square_payment_link_id"),
+    squareOrderId: text("square_order_id"),
+    squarePaymentId: text("square_payment_id"),
+    providerReferenceId: text("provider_reference_id").notNull().unique(),
+    checkoutUrl: text("checkout_url"),
+    lastVerifiedAt: timestamp("last_verified_at"),
+    verifiedAt: timestamp("verified_at"),
+    failureReason: text("failure_reason"),
+    expiresAt: timestamp("expires_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("drink_collection_checkout_sessions_user_idx").on(table.userId),
+    collectionIdx: index("drink_collection_checkout_sessions_collection_idx").on(table.collectionId),
+    statusIdx: index("drink_collection_checkout_sessions_status_idx").on(table.status),
+    paymentLinkIdx: uniqueIndex("drink_collection_checkout_sessions_payment_link_idx").on(table.squarePaymentLinkId),
+    orderIdx: uniqueIndex("drink_collection_checkout_sessions_order_idx").on(table.squareOrderId),
+  })
+);
+
 export const drinkChallenges = pgTable(
   "drink_challenges",
   {

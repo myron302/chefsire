@@ -1,5 +1,5 @@
 // server/routes/drinks.ts
-import { Router } from "express";
+import { Router, type Request } from "express";
 import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
@@ -10,6 +10,7 @@ import {
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
   insertDrinkSaveSchema,
+  drinkCollectionCheckoutSessions,
   drinkCollectionItems,
   drinkCollectionPurchases,
   drinkCollections,
@@ -26,10 +27,45 @@ import {
 import { z } from "zod";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
 import { optionalAuth, requireAuth } from "../middleware";
+import { getSquareClient, getSquareConfigError, squareConfig } from "../lib/square";
 
 const r = Router();
 
 type EventType = "view" | "remix" | "grocery_add";
+
+type DrinkCollectionCheckoutStatus = "pending" | "completed" | "failed" | "canceled";
+
+type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
+
+type ResolvedCollectionPurchaseContext = {
+  collection: typeof drinkCollections.$inferSelect;
+  isOwner: boolean;
+  alreadyOwned: boolean;
+};
+
+type SquareCheckoutVerificationResult = {
+  status: DrinkCollectionCheckoutStatus;
+  owned: boolean;
+  collectionId: string;
+  checkoutSessionId: string;
+  squareOrderId?: string | null;
+  squarePaymentId?: string | null;
+  failureReason?: string | null;
+};
+
+type ParsedSquareOrderStatus = {
+  status: DrinkCollectionCheckoutStatus;
+  squareOrderId?: string | null;
+  squarePaymentId?: string | null;
+  failureReason?: string | null;
+};
+
+type SquareOrderVerificationPayload = {
+  order: any;
+  payment: any | null;
+  squareOrderId: string | null;
+  squarePaymentId: string | null;
+};
 
 type DrinkDetails = {
   slug: string;
@@ -425,6 +461,29 @@ async function ensureDrinkCollectionsSchema() {
       );
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_collection_checkout_sessions (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
+        provider text NOT NULL DEFAULT 'square',
+        status text NOT NULL DEFAULT 'pending',
+        amount_cents integer NOT NULL,
+        currency_code text NOT NULL DEFAULT 'USD',
+        square_payment_link_id text,
+        square_order_id text,
+        square_payment_id text,
+        provider_reference_id text NOT NULL UNIQUE,
+        checkout_url text,
+        last_verified_at timestamp,
+        verified_at timestamp,
+        failure_reason text,
+        expires_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_idx ON drink_collections(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_public_idx ON drink_collections(is_public);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_updated_at_idx ON drink_collections(user_id, updated_at);`);
@@ -432,9 +491,308 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_items_slug_idx ON drink_collection_items(drink_slug);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_purchases_user_idx ON drink_collection_purchases(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_purchases_collection_idx ON drink_collection_purchases(collection_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_user_idx ON drink_collection_checkout_sessions(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_collection_idx ON drink_collection_checkout_sessions(collection_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_status_idx ON drink_collection_checkout_sessions(status);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_checkout_sessions_payment_link_idx ON drink_collection_checkout_sessions(square_payment_link_id) WHERE square_payment_link_id IS NOT NULL;`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_checkout_sessions_order_idx ON drink_collection_checkout_sessions(square_order_id) WHERE square_order_id IS NOT NULL;`);
   })();
 
   return _drinkCollectionsSchemaReady;
+}
+
+function getCollectionCheckoutBaseUrl(req: Request) {
+  const configuredBaseUrl = process.env.APP_BASE_URL?.trim() || process.env.CLIENT_URL?.trim();
+  if (configuredBaseUrl) return configuredBaseUrl.replace(/\/$/, "");
+  const host = req.get("host");
+  if (!host) throw new Error("Unable to determine checkout redirect host");
+  return `${req.protocol}://${host}`;
+}
+
+function buildCollectionCheckoutRedirectUrl(req: Request, collectionId: string, checkoutSessionId: string) {
+  const baseUrl = getCollectionCheckoutBaseUrl(req);
+  return `${baseUrl}/drinks/collections/${encodeURIComponent(collectionId)}?checkoutSessionId=${encodeURIComponent(checkoutSessionId)}&squareCheckout=return`;
+}
+
+function formatCollectionCheckoutReferenceId(checkoutSessionId: string) {
+  return `drink_collection_checkout:${checkoutSessionId}`;
+}
+
+function normalizeSquareCurrencyCode(value?: string | null) {
+  const normalized = String(value || "USD").trim().toUpperCase();
+  return normalized || "USD";
+}
+
+function bigintAmountToNumber(value: unknown) {
+  if (typeof value === "bigint") return Number(value);
+  if (typeof value === "number") return value;
+  if (typeof value === "string" && value.length > 0) return Number(value);
+  return 0;
+}
+
+function sumTenderAmounts(tenders: any[] | null | undefined) {
+  return (tenders ?? []).reduce((sum, tender) => sum + bigintAmountToNumber(tender?.amountMoney?.amount), 0);
+}
+
+async function resolveCollectionPurchaseContext(collectionId: string, viewerUserId: string): Promise<ResolvedCollectionPurchaseContext> {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, collectionId)).limit(1);
+  const collection = rows[0];
+  if (!collection) {
+    const error = new Error("Collection not found");
+    (error as any).status = 404;
+    throw error;
+  }
+
+  const isOwner = viewerUserId === collection.userId;
+  if (!collection.isPublic && !isOwner) {
+    const error = new Error("Collection is private");
+    (error as any).status = 403;
+    throw error;
+  }
+
+  if (!collection.isPremium) {
+    const error = new Error("Collection is already free");
+    (error as any).status = 400;
+    throw error;
+  }
+
+  const ownedCollectionIds = await loadOwnedCollectionIdsForUser(viewerUserId);
+  return {
+    collection,
+    isOwner,
+    alreadyOwned: isOwner || ownedCollectionIds.has(collection.id),
+  };
+}
+
+async function loadCheckoutSessionForUser(checkoutSessionId: string, userId: string) {
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(drinkCollectionCheckoutSessions)
+    .where(
+      and(
+        eq(drinkCollectionCheckoutSessions.id, checkoutSessionId),
+        eq(drinkCollectionCheckoutSessions.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+function getCollectionCheckoutPollStatus(session: DrinkCollectionCheckoutSessionRecord): DrinkCollectionCheckoutStatus {
+  if (session.status === "completed") return "completed";
+  if (session.status === "failed") return "failed";
+  if (session.status === "canceled") return "canceled";
+  return "pending";
+}
+
+async function grantCollectionPurchase(session: DrinkCollectionCheckoutSessionRecord, squarePaymentId?: string | null) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .insert(drinkCollectionPurchases)
+      .values({
+        userId: session.userId,
+        collectionId: session.collectionId,
+      })
+      .onConflictDoNothing({ target: [drinkCollectionPurchases.userId, drinkCollectionPurchases.collectionId] });
+
+    await tx
+      .update(drinkCollectionCheckoutSessions)
+      .set({
+        status: "completed",
+        squarePaymentId: squarePaymentId ?? session.squarePaymentId,
+        verifiedAt: new Date(),
+        lastVerifiedAt: new Date(),
+        failureReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkCollectionCheckoutSessions.id, session.id));
+  });
+}
+
+function parseSquareOrderState(order: any, payment: any | null, expectedAmountCents: number): ParsedSquareOrderStatus {
+  const orderState = String(order?.state || "").toUpperCase();
+  const tenderTotal = sumTenderAmounts(order?.tenders);
+  const squarePaymentId = payment?.id ?? order?.tenders?.find((tender: any) => tender?.paymentId || tender?.id)?.paymentId ?? order?.tenders?.find((tender: any) => tender?.paymentId || tender?.id)?.id ?? null;
+  const paymentStatus = String(payment?.status || "").toUpperCase();
+  const paymentAmount = bigintAmountToNumber(payment?.amountMoney?.amount);
+
+  if (orderState === "COMPLETED" && tenderTotal >= expectedAmountCents) {
+    if (!payment || (paymentStatus === "COMPLETED" && paymentAmount >= expectedAmountCents)) {
+      return {
+        status: "completed",
+        squareOrderId: order?.id ?? null,
+        squarePaymentId,
+      };
+    }
+  }
+
+  if (paymentStatus === "FAILED") {
+    return {
+      status: "failed",
+      squareOrderId: order?.id ?? null,
+      squarePaymentId,
+      failureReason: "Square reported the payment as failed.",
+    };
+  }
+
+  if (paymentStatus === "CANCELED" || orderState === "CANCELED") {
+    return {
+      status: "canceled",
+      squareOrderId: order?.id ?? null,
+      squarePaymentId,
+      failureReason: "Square checkout was canceled before payment completed.",
+    };
+  }
+
+  return {
+    status: "pending",
+    squareOrderId: order?.id ?? null,
+    squarePaymentId,
+  };
+}
+
+async function fetchSquareOrderVerification(session: DrinkCollectionCheckoutSessionRecord): Promise<SquareOrderVerificationPayload | null> {
+  if (!session.squareOrderId) return null;
+
+  const squareClient = getSquareClient();
+  const orderResponse = await squareClient.orders.get({ orderId: session.squareOrderId });
+  const order = orderResponse?.order ?? null;
+  if (!order) return null;
+
+  const paymentId = order.tenders?.find((tender) => tender?.paymentId || tender?.id)?.paymentId
+    ?? order.tenders?.find((tender) => tender?.paymentId || tender?.id)?.id
+    ?? session.squarePaymentId
+    ?? null;
+
+  let payment = null;
+  if (paymentId) {
+    try {
+      const paymentResponse = await squareClient.payments.get({ paymentId });
+      payment = paymentResponse?.payment ?? null;
+    } catch (error) {
+      console.warn("[drinks/collections] Failed to retrieve Square payment", {
+        checkoutSessionId: session.id,
+        paymentId,
+        error,
+      });
+    }
+  }
+
+  return {
+    order,
+    payment,
+    squareOrderId: order.id ?? session.squareOrderId ?? null,
+    squarePaymentId: payment?.id ?? paymentId,
+  };
+}
+
+async function verifyCollectionCheckoutSession(session: DrinkCollectionCheckoutSessionRecord): Promise<SquareCheckoutVerificationResult> {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const ownedCollectionIds = await loadOwnedCollectionIdsForUser(session.userId);
+  if (ownedCollectionIds.has(session.collectionId)) {
+    await db
+      .update(drinkCollectionCheckoutSessions)
+      .set({
+        status: "completed",
+        verifiedAt: session.verifiedAt ?? new Date(),
+        lastVerifiedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkCollectionCheckoutSessions.id, session.id));
+
+    return {
+      status: "completed",
+      owned: true,
+      collectionId: session.collectionId,
+      checkoutSessionId: session.id,
+      squareOrderId: session.squareOrderId,
+      squarePaymentId: session.squarePaymentId,
+      failureReason: null,
+    };
+  }
+
+  if (getCollectionCheckoutPollStatus(session) !== "pending") {
+    return {
+      status: getCollectionCheckoutPollStatus(session),
+      owned: false,
+      collectionId: session.collectionId,
+      checkoutSessionId: session.id,
+      squareOrderId: session.squareOrderId,
+      squarePaymentId: session.squarePaymentId,
+      failureReason: session.failureReason,
+    };
+  }
+
+  const verification = await fetchSquareOrderVerification(session);
+  if (!verification) {
+    await db
+      .update(drinkCollectionCheckoutSessions)
+      .set({
+        lastVerifiedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkCollectionCheckoutSessions.id, session.id));
+
+    return {
+      status: "pending",
+      owned: false,
+      collectionId: session.collectionId,
+      checkoutSessionId: session.id,
+      squareOrderId: session.squareOrderId,
+      squarePaymentId: session.squarePaymentId,
+      failureReason: null,
+    };
+  }
+
+  const parsed = parseSquareOrderState(verification.order, verification.payment, session.amountCents);
+
+  if (parsed.status === "completed") {
+    await grantCollectionPurchase(session, parsed.squarePaymentId);
+    return {
+      status: "completed",
+      owned: true,
+      collectionId: session.collectionId,
+      checkoutSessionId: session.id,
+      squareOrderId: parsed.squareOrderId,
+      squarePaymentId: parsed.squarePaymentId,
+      failureReason: null,
+    };
+  }
+
+  await db
+    .update(drinkCollectionCheckoutSessions)
+    .set({
+      status: parsed.status === "pending" ? session.status : parsed.status,
+      squareOrderId: parsed.squareOrderId ?? session.squareOrderId,
+      squarePaymentId: parsed.squarePaymentId ?? session.squarePaymentId,
+      failureReason: parsed.failureReason ?? null,
+      lastVerifiedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(drinkCollectionCheckoutSessions.id, session.id));
+
+  return {
+    status: parsed.status,
+    owned: false,
+    collectionId: session.collectionId,
+    checkoutSessionId: session.id,
+    squareOrderId: parsed.squareOrderId ?? session.squareOrderId,
+    squarePaymentId: parsed.squarePaymentId ?? session.squarePaymentId,
+    failureReason: parsed.failureReason ?? null,
+  };
 }
 
 async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
@@ -3884,47 +4242,180 @@ r.get("/collections/:id/ownership", optionalAuth, async (req, res) => {
   }
 });
 
-r.post("/collections/:id/purchase", optionalAuth, async (req, res) => {
+r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
   try {
-    if (!req.user?.id) return collectionAuthRequired(res);
     if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
 
     await ensureDrinkCollectionsSchema();
 
-    const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
-    const collection = rows[0];
-    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
-
-    const isOwner = req.user.id === collection.userId;
-    if (!collection.isPublic && !isOwner) {
-      return res.status(403).json({ ok: false, error: "Collection is private" });
+    const configError = getSquareConfigError();
+    if (configError) {
+      return res.status(503).json({
+        ok: false,
+        error: `${configError} Set SQUARE_ENV, SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID, and APP_BASE_URL before enabling premium collection checkout.`,
+        code: "SQUARE_NOT_CONFIGURED",
+      });
     }
 
-    if (!collection.isPremium) {
-      return res.status(400).json({ ok: false, error: "Collection is already free" });
+    const context = await resolveCollectionPurchaseContext(req.params.id, req.user!.id);
+    if (context.alreadyOwned) {
+      return res.json({
+        ok: true,
+        collectionId: context.collection.id,
+        owned: true,
+        alreadyOwned: true,
+      });
     }
 
-    if (isOwner) {
-      return res.json({ ok: true, collectionId: collection.id, owned: true, alreadyOwned: true });
-    }
-
-    const inserted = await db
-      .insert(drinkCollectionPurchases)
+    const insertedSessions = await db
+      .insert(drinkCollectionCheckoutSessions)
       .values({
-        userId: req.user.id,
-        collectionId: collection.id,
+        userId: req.user!.id,
+        collectionId: context.collection.id,
+        provider: "square",
+        status: "pending",
+        amountCents: context.collection.priceCents,
+        currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
+        providerReferenceId: formatCollectionCheckoutReferenceId(crypto.randomUUID()),
+        expiresAt: new Date(Date.now() + 1000 * 60 * 30),
+        updatedAt: new Date(),
       })
-      .onConflictDoNothing({ target: [drinkCollectionPurchases.userId, drinkCollectionPurchases.collectionId] })
-      .returning({ id: drinkCollectionPurchases.id });
+      .returning();
 
-    return res.status(inserted.length ? 201 : 200).json({
+    const checkoutSession = insertedSessions[0];
+    const squareClient = getSquareClient();
+    const redirectUrl = buildCollectionCheckoutRedirectUrl(req, context.collection.id, checkoutSession.id);
+    const squareResponse = await squareClient.checkout.paymentLinks.create({
+      idempotencyKey: checkoutSession.providerReferenceId,
+      order: {
+        locationId: squareConfig.locationId!,
+        referenceId: checkoutSession.providerReferenceId,
+        metadata: {
+          checkoutSessionId: checkoutSession.id,
+          collectionId: context.collection.id,
+          userId: req.user!.id,
+        },
+        lineItems: [
+          {
+            name: context.collection.name,
+            quantity: "1",
+            basePriceMoney: {
+              amount: BigInt(context.collection.priceCents),
+              currency: normalizeSquareCurrencyCode(squareConfig.currency) as any,
+            },
+            note: `Premium drink collection unlock for ${context.collection.name}`,
+          },
+        ],
+      },
+      checkoutOptions: {
+        redirectUrl,
+        allowTipping: false,
+        askForShippingAddress: false,
+      },
+      paymentNote: `Premium collection unlock: ${context.collection.id}`,
+      description: `ChefSire premium drink collection: ${context.collection.name}`,
+    });
+
+    const paymentLink = squareResponse.paymentLink;
+    const orderId = paymentLink?.orderId ?? squareResponse.relatedResources?.orders?.[0]?.id ?? null;
+
+    if (!paymentLink?.id || !paymentLink.url || !orderId) {
+      await db
+        .update(drinkCollectionCheckoutSessions)
+        .set({
+          status: "failed",
+          failureReason: "Square did not return a usable checkout link.",
+          lastVerifiedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(drinkCollectionCheckoutSessions.id, checkoutSession.id));
+
+      return res.status(502).json({ ok: false, error: "Failed to create Square checkout link" });
+    }
+
+    await db
+      .update(drinkCollectionCheckoutSessions)
+      .set({
+        squarePaymentLinkId: paymentLink.id,
+        squareOrderId: orderId,
+        checkoutUrl: paymentLink.url,
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkCollectionCheckoutSessions.id, checkoutSession.id));
+
+    return res.status(201).json({
       ok: true,
-      collectionId: collection.id,
-      owned: true,
-      alreadyOwned: inserted.length === 0,
+      collectionId: context.collection.id,
+      checkoutSessionId: checkoutSession.id,
+      checkoutUrl: paymentLink.url,
+      squarePaymentLinkId: paymentLink.id,
+      squareOrderId: orderId,
+      amountCents: context.collection.priceCents,
+      currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
     });
   } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error
+      ? Number((error as { status?: unknown }).status || 500)
+      : 500;
+    const message = logCollectionRouteError("/:id/create-checkout", req, error);
+    if (status !== 500) {
+      return res.status(status).json({ ok: false, error: error instanceof Error ? error.message : message });
+    }
+    return res.status(500).json(collectionServerError(message, "Failed to start Square checkout"));
+  }
+});
+
+r.get("/collections/checkout-sessions/:sessionId/status", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    await ensureDrinkCollectionsSchema();
+
+    const checkoutSession = await loadCheckoutSessionForUser(req.params.sessionId, req.user!.id);
+    if (!checkoutSession) {
+      return res.status(404).json({ ok: false, error: "Checkout session not found" });
+    }
+
+    const verification = await verifyCollectionCheckoutSession(checkoutSession);
+    return res.json({
+      ok: true,
+      ...verification,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/checkout-sessions/:sessionId/status", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to verify Square checkout"));
+  }
+});
+
+r.post("/collections/:id/purchase", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    await ensureDrinkCollectionsSchema();
+
+    const context = await resolveCollectionPurchaseContext(req.params.id, req.user!.id);
+    if (context.alreadyOwned) {
+      return res.status(200).json({
+        ok: true,
+        collectionId: context.collection.id,
+        owned: true,
+        alreadyOwned: true,
+      });
+    }
+
+    return res.status(410).json({
+      ok: false,
+      error: "Direct premium unlock is disabled. Start Square checkout with POST /api/drinks/collections/:id/create-checkout instead.",
+      code: "SQUARE_CHECKOUT_REQUIRED",
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error
+      ? Number((error as { status?: unknown }).status || 500)
+      : 500;
     const message = logCollectionRouteError("/:id/purchase", req, error);
+    if (status !== 500) {
+      return res.status(status).json({ ok: false, error: error instanceof Error ? error.message : message });
+    }
     return res.status(500).json(collectionServerError(message, "Failed to unlock collection"));
   }
 });
