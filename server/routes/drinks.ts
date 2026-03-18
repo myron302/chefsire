@@ -867,6 +867,233 @@ async function resolvePublicCollectionCards(inputRows: Array<typeof drinkCollect
   return collections.filter(Boolean);
 }
 
+async function loadCollectionCreatorsMap(userIds: string[]) {
+  if (!db || userIds.length === 0) return new Map<string, { username: string | null; avatar: string | null }>();
+
+  const rows = await db
+    .select({
+      id: users.id,
+      username: users.username,
+      avatar: users.avatar,
+    })
+    .from(users)
+    .where(inArray(users.id, [...new Set(userIds)]));
+
+  return new Map(rows.map((row) => [row.id, { username: row.username ?? null, avatar: row.avatar ?? null }]));
+}
+
+async function loadCollectionCoverImagesMap(collectionIds: string[]) {
+  if (!db || collectionIds.length === 0) return new Map<string, string | null>();
+
+  const rows = await db
+    .select({
+      collectionId: drinkCollectionItems.collectionId,
+      drinkSlug: drinkCollectionItems.drinkSlug,
+      addedAt: drinkCollectionItems.addedAt,
+    })
+    .from(drinkCollectionItems)
+    .where(inArray(drinkCollectionItems.collectionId, [...new Set(collectionIds)]))
+    .orderBy(asc(drinkCollectionItems.collectionId), asc(drinkCollectionItems.addedAt));
+
+  const firstDrinkByCollectionId = new Map<string, string>();
+  for (const row of rows) {
+    if (!firstDrinkByCollectionId.has(row.collectionId)) {
+      firstDrinkByCollectionId.set(row.collectionId, row.drinkSlug);
+    }
+  }
+
+  const detailsBySlug = await resolveDrinkDetailsMapBySlugs([...firstDrinkByCollectionId.values()]);
+  const coverImages = new Map<string, string | null>();
+
+  for (const [collectionId, drinkSlug] of firstDrinkByCollectionId.entries()) {
+    coverImages.set(collectionId, detailsBySlug.get(drinkSlug)?.image ?? null);
+  }
+
+  return coverImages;
+}
+
+async function loadPurchasedCollectionsForUser(userId: string) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const rows = await db
+    .select({
+      purchaseId: drinkCollectionPurchases.id,
+      collectionId: drinkCollectionPurchases.collectionId,
+      purchasedAt: drinkCollectionPurchases.createdAt,
+      collectionName: drinkCollections.name,
+      collectionDescription: drinkCollections.description,
+      collectionIsPublic: drinkCollections.isPublic,
+      collectionIsPremium: drinkCollections.isPremium,
+      collectionPriceCents: drinkCollections.priceCents,
+      collectionUpdatedAt: drinkCollections.updatedAt,
+      collectionUserId: drinkCollections.userId,
+    })
+    .from(drinkCollectionPurchases)
+    .innerJoin(drinkCollections, eq(drinkCollectionPurchases.collectionId, drinkCollections.id))
+    .where(eq(drinkCollectionPurchases.userId, userId))
+    .orderBy(desc(drinkCollectionPurchases.createdAt));
+
+  const creatorMap = await loadCollectionCreatorsMap(rows.map((row) => row.collectionUserId));
+  const coverImagesMap = await loadCollectionCoverImagesMap(rows.map((row) => row.collectionId));
+
+  return rows.map((row) => {
+    const creator = creatorMap.get(row.collectionUserId);
+    return {
+      purchaseId: row.purchaseId,
+      collectionId: row.collectionId,
+      name: row.collectionName,
+      description: row.collectionDescription,
+      isPublic: row.collectionIsPublic,
+      isPremium: row.collectionIsPremium,
+      priceCents: row.collectionPriceCents,
+      purchasedAt: row.purchasedAt,
+      updatedAt: row.collectionUpdatedAt,
+      userId: row.collectionUserId,
+      creatorUsername: creator?.username ?? null,
+      creatorAvatar: creator?.avatar ?? null,
+      coverImage: coverImagesMap.get(row.collectionId) ?? null,
+      route: `/drinks/collections/${row.collectionId}`,
+    };
+  });
+}
+
+async function loadCreatorCollectionSalesSummary(userId: string) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const premiumCollections = await db
+    .select({
+      id: drinkCollections.id,
+      name: drinkCollections.name,
+      description: drinkCollections.description,
+      priceCents: drinkCollections.priceCents,
+      updatedAt: drinkCollections.updatedAt,
+      isPublic: drinkCollections.isPublic,
+      createdAt: drinkCollections.createdAt,
+    })
+    .from(drinkCollections)
+    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.isPremium, true)))
+    .orderBy(desc(drinkCollections.updatedAt));
+
+  if (premiumCollections.length === 0) {
+    return {
+      totals: {
+        premiumCollections: 0,
+        purchases: 0,
+        grossRevenueCents: 0,
+      },
+      collections: [] as Array<{
+        id: string;
+        name: string;
+        description: string | null;
+        isPublic: boolean;
+        priceCents: number;
+        purchases: number;
+        grossRevenueCents: number;
+        lastPurchasedAt: string | null;
+        updatedAt: string;
+        route: string;
+        coverImage: string | null;
+      }>,
+    };
+  }
+
+  const collectionIds = premiumCollections.map((collection) => collection.id);
+  const coverImagesMap = await loadCollectionCoverImagesMap(collectionIds);
+
+  const purchases = await db
+    .select({
+      id: drinkCollectionPurchases.id,
+      userId: drinkCollectionPurchases.userId,
+      collectionId: drinkCollectionPurchases.collectionId,
+      createdAt: drinkCollectionPurchases.createdAt,
+    })
+    .from(drinkCollectionPurchases)
+    .where(inArray(drinkCollectionPurchases.collectionId, collectionIds))
+    .orderBy(desc(drinkCollectionPurchases.createdAt));
+
+  const completedCheckoutSessions = await db
+    .select({
+      userId: drinkCollectionCheckoutSessions.userId,
+      collectionId: drinkCollectionCheckoutSessions.collectionId,
+      amountCents: drinkCollectionCheckoutSessions.amountCents,
+      verifiedAt: drinkCollectionCheckoutSessions.verifiedAt,
+      updatedAt: drinkCollectionCheckoutSessions.updatedAt,
+    })
+    .from(drinkCollectionCheckoutSessions)
+    .where(
+      and(
+        inArray(drinkCollectionCheckoutSessions.collectionId, collectionIds),
+        eq(drinkCollectionCheckoutSessions.status, "completed"),
+      ),
+    )
+    .orderBy(desc(drinkCollectionCheckoutSessions.verifiedAt), desc(drinkCollectionCheckoutSessions.updatedAt));
+
+  const checkoutAmountByOwnershipKey = new Map<string, number>();
+  for (const session of completedCheckoutSessions) {
+    const ownershipKey = `${session.userId}:${session.collectionId}`;
+    if (!checkoutAmountByOwnershipKey.has(ownershipKey)) {
+      checkoutAmountByOwnershipKey.set(ownershipKey, Number(session.amountCents ?? 0));
+    }
+  }
+
+  const salesByCollectionId = new Map<string, { purchases: number; grossRevenueCents: number; lastPurchasedAt: Date | null }>();
+  for (const purchase of purchases) {
+    const collection = premiumCollections.find((entry) => entry.id === purchase.collectionId);
+    if (!collection) continue;
+
+    const ownershipKey = `${purchase.userId}:${purchase.collectionId}`;
+    const revenueCents = checkoutAmountByOwnershipKey.get(ownershipKey) ?? Number(collection.priceCents ?? 0);
+    const existing = salesByCollectionId.get(purchase.collectionId) ?? {
+      purchases: 0,
+      grossRevenueCents: 0,
+      lastPurchasedAt: null,
+    };
+
+    existing.purchases += 1;
+    existing.grossRevenueCents += revenueCents;
+    if (!existing.lastPurchasedAt || purchase.createdAt > existing.lastPurchasedAt) {
+      existing.lastPurchasedAt = purchase.createdAt;
+    }
+
+    salesByCollectionId.set(purchase.collectionId, existing);
+  }
+
+  const collections = premiumCollections.map((collection) => {
+    const stats = salesByCollectionId.get(collection.id) ?? {
+      purchases: 0,
+      grossRevenueCents: 0,
+      lastPurchasedAt: null as Date | null,
+    };
+
+    return {
+      id: collection.id,
+      name: collection.name,
+      description: collection.description,
+      isPublic: collection.isPublic,
+      priceCents: Number(collection.priceCents ?? 0),
+      purchases: stats.purchases,
+      grossRevenueCents: stats.grossRevenueCents,
+      lastPurchasedAt: stats.lastPurchasedAt ? stats.lastPurchasedAt.toISOString() : null,
+      updatedAt: collection.updatedAt.toISOString(),
+      route: `/drinks/collections/${collection.id}`,
+      coverImage: coverImagesMap.get(collection.id) ?? null,
+    };
+  });
+
+  return {
+    totals: {
+      premiumCollections: premiumCollections.length,
+      purchases: collections.reduce((sum, collection) => sum + collection.purchases, 0),
+      grossRevenueCents: collections.reduce((sum, collection) => sum + collection.grossRevenueCents, 0),
+    },
+    collections,
+  };
+}
+
 function featuredCollectionScore(collection: {
   itemsCount: number;
   updatedAt: Date;
@@ -4131,6 +4358,29 @@ r.get("/collections/mine", optionalAuth, async (req, res) => {
   }
 });
 
+r.get("/collections/purchased", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/purchased", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const collections = await loadPurchasedCollectionsForUser(req.user!.id);
+    return res.json({
+      ok: true,
+      collections,
+      count: collections.length,
+    });
+  } catch (error) {
+    logCollectionRouteError("/purchased", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to load purchased collections");
+    const status = classifyCollectionError(error, "Failed to load purchased collections").status;
+    return res.status(status).json(payload);
+  }
+});
+
 r.get("/collections/public/:userId", optionalAuth, async (req, res) => {
   try {
     if (!db) {
@@ -4216,6 +4466,34 @@ r.get("/collections/featured", optionalAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/featured", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load featured collections"));
+  }
+});
+
+r.get("/creator-dashboard/sales", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/creator-dashboard/sales", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const sales = await loadCreatorCollectionSalesSummary(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      totals: sales.totals,
+      collections: sales.collections,
+      reportingNotes: [
+        "Purchases are counted from drink_collection_purchases ownership records.",
+        "Gross sales are reporting only and do not imply payouts or net earnings.",
+      ],
+    });
+  } catch (error) {
+    logCollectionRouteError("/creator-dashboard/sales", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to load creator sales");
+    const status = classifyCollectionError(error, "Failed to load creator sales").status;
+    return res.status(status).json(payload);
   }
 });
 
