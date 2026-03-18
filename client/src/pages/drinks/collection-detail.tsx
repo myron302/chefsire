@@ -102,6 +102,8 @@ type Collection = {
   isLocked?: boolean;
   requiresUnlock?: boolean;
   ownedByViewer?: boolean;
+  viewerAccessGrants?: Array<"creator" | "direct_purchase" | "bundle" | "membership">;
+  viewerPrimaryAccessGrant?: "creator" | "direct_purchase" | "bundle" | "membership" | null;
   isWishlisted?: boolean;
   wishlistCount?: number;
   activePromoPricing?: PromoPricing | null;
@@ -198,6 +200,14 @@ function messageForCheckoutState(status: CheckoutStatus, failureReason?: string 
 function formatPromoDiscount(promo: PromoPricing) {
   if (promo.discountType === "percent") return `${promo.discountValue}% off`;
   return `${formatCurrency(promo.discountAmountCents, promo.currencyCode)} off`;
+}
+
+function accessGrantLabel(grant?: Collection["viewerPrimaryAccessGrant"]) {
+  if (grant === "creator") return "Your collection";
+  if (grant === "membership") return "Included with membership";
+  if (grant === "bundle") return "Unlocked via bundle";
+  if (grant === "direct_purchase") return "Owned via purchase";
+  return "Owned";
 }
 
 export default function DrinkCollectionDetailPage() {
@@ -769,7 +779,7 @@ export default function DrinkCollectionDetailPage() {
               {collection.isPremium ? <Badge>Premium Collection · {(collection.priceCents / 100).toFixed(2)}</Badge> : null}
               {promoPricing ? <Badge variant="secondary">Promo {promoPricing.code} · {formatCurrency(displayedFinalAmountCents, promoPricing.currencyCode)}</Badge> : null}
               {!promoPricing && activePromo ? <Badge variant="secondary">Active promo {activePromo.code}</Badge> : null}
-              {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+              {collection.ownedByViewer ? <Badge variant="secondary">{accessGrantLabel(collection.viewerPrimaryAccessGrant)}</Badge> : null}
               {collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
               {!collection.ownedByViewer && isLockedPremium ? <Badge variant="outline">Locked</Badge> : null}
             </CardTitle>
@@ -792,6 +802,12 @@ export default function DrinkCollectionDetailPage() {
                   <span>{formatCurrency(collection.priceCents)} list price</span>
                   <span>·</span>
                   <span>{collection.wishlistCount ?? 0} interested wishlists</span>
+                  {collection.viewerPrimaryAccessGrant === "membership" ? (
+                    <>
+                      <span>·</span>
+                      <span className="font-medium text-emerald-700">Included through your active creator membership</span>
+                    </>
+                  ) : null}
                   {activePromo ? (
                     <>
                       <span>·</span>

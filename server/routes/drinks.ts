@@ -81,6 +81,7 @@ type DrinkGiftRecord = typeof drinkGifts.$inferSelect;
 type CreatorMembershipPlanRecord = typeof creatorMembershipPlans.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
 type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
+type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
 
 type ResolvedCollectionPurchaseContext = {
   collection: typeof drinkCollections.$inferSelect;
@@ -1459,6 +1460,53 @@ async function loadMembershipGrantedCollectionIdsForUser(userId?: string | null)
     .from(drinkCollections)
     .where(and(inArray(drinkCollections.userId, creatorIds), eq(drinkCollections.isPremium, true)));
   return new Set(collectionRows.map((row) => row.id));
+}
+
+function addCollectionAccessGrant(
+  accessMap: Map<string, Set<CollectionAccessGrant>>,
+  collectionId: string,
+  grant: CollectionAccessGrant,
+) {
+  const current = accessMap.get(collectionId) ?? new Set<CollectionAccessGrant>();
+  current.add(grant);
+  accessMap.set(collectionId, current);
+}
+
+function serializeCollectionAccessGrants(grants?: Set<CollectionAccessGrant>) {
+  if (!grants || grants.size === 0) return [] as CollectionAccessGrant[];
+  return ["creator", "membership", "bundle", "direct_purchase"].filter((grant) => grants.has(grant as CollectionAccessGrant)) as CollectionAccessGrant[];
+}
+
+async function loadCollectionAccessMapForUser(userId?: string | null) {
+  const accessMap = new Map<string, Set<CollectionAccessGrant>>();
+  if (!db || !userId) return accessMap;
+
+  const [directCollectionIds, ownedBundleIds, membershipCollectionIds] = await Promise.all([
+    loadDirectlyOwnedCollectionIdsForUser(userId),
+    loadOwnedBundleIdsForUser(userId),
+    loadMembershipGrantedCollectionIdsForUser(userId),
+  ]);
+
+  for (const collectionId of directCollectionIds) {
+    addCollectionAccessGrant(accessMap, collectionId, "direct_purchase");
+  }
+
+  for (const collectionId of membershipCollectionIds) {
+    addCollectionAccessGrant(accessMap, collectionId, "membership");
+  }
+
+  if (ownedBundleIds.size > 0) {
+    const bundleRows = await db
+      .select({ collectionId: drinkBundleItems.collectionId })
+      .from(drinkBundleItems)
+      .where(inArray(drinkBundleItems.bundleId, [...ownedBundleIds]));
+
+    for (const row of bundleRows) {
+      addCollectionAccessGrant(accessMap, row.collectionId, "bundle");
+    }
+  }
+
+  return accessMap;
 }
 
 async function loadViewerMembershipForCreator(userId: string, creatorUserId: string) {
@@ -3583,27 +3631,8 @@ async function loadOwnedBundleIdsForUser(userId?: string | null): Promise<Set<st
 }
 
 async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
-  const [directCollectionIds, ownedBundleIds, membershipCollectionIds] = await Promise.all([
-    loadDirectlyOwnedCollectionIdsForUser(userId),
-    loadOwnedBundleIdsForUser(userId),
-    loadMembershipGrantedCollectionIdsForUser(userId),
-  ]);
-
-  if (!db || !userId || ownedBundleIds.size === 0) {
-    const base = new Set(directCollectionIds);
-    for (const collectionId of membershipCollectionIds) base.add(collectionId);
-    return base;
-  }
-
-  const bundleRows = await db
-    .select({ collectionId: drinkBundleItems.collectionId })
-    .from(drinkBundleItems)
-    .where(inArray(drinkBundleItems.bundleId, [...ownedBundleIds]));
-
-  const all = new Set(directCollectionIds);
-  for (const collectionId of membershipCollectionIds) all.add(collectionId);
-  for (const row of bundleRows) all.add(row.collectionId);
-  return all;
+  const accessMap = await loadCollectionAccessMapForUser(userId);
+  return new Set(accessMap.keys());
 }
 
 async function claimGiftForUser(gift: DrinkGiftRecord, userId: string) {
@@ -3861,6 +3890,7 @@ async function resolveCollectionWithItems(
   collection: typeof drinkCollections.$inferSelect,
   viewerUserId?: string | null,
   ownedCollectionIds?: Set<string>,
+  collectionAccessMap?: Map<string, Set<CollectionAccessGrant>>,
   wishlistedCollectionIds?: Set<string>,
   activePromotionPricingByCollectionId?: Map<string, CollectionPromoPricingSnapshot>,
   wishlistCountsByCollectionId?: Map<string, number>,
@@ -3903,6 +3933,9 @@ async function resolveCollectionWithItems(
   const coverImage = items[0]?.image ?? null;
   const isOwner = Boolean(viewerUserId && viewerUserId === collection.userId);
   const isOwned = isOwner || Boolean(viewerUserId && ownedCollectionIds?.has(collection.id));
+  const accessGrants = new Set<CollectionAccessGrant>(collectionAccessMap?.get(collection.id) ?? []);
+  if (isOwner) accessGrants.add("creator");
+  const serializedAccessGrants = serializeCollectionAccessGrants(accessGrants);
   const isWishlisted = !isOwned && Boolean(viewerUserId && wishlistedCollectionIds?.has(collection.id));
   const reviewSummary = reviewSummaryByCollectionId?.get(collection.id) ?? normalizeCollectionReviewSummary();
 
@@ -3915,6 +3948,8 @@ async function resolveCollectionWithItems(
     itemsCount: itemRows.length,
     items,
     ownedByViewer: isOwned,
+    viewerAccessGrants: serializedAccessGrants,
+    viewerPrimaryAccessGrant: serializedAccessGrants[0] ?? null,
     isWishlisted,
     wishlistCount: Number(wishlistCountsByCollectionId?.get(collection.id) ?? 0),
     averageRating: reviewSummary.averageRating,
@@ -3924,18 +3959,20 @@ async function resolveCollectionWithItems(
 }
 
 async function resolvePublicCollectionCards(inputRows: Array<typeof drinkCollections.$inferSelect>, viewerUserId?: string | null) {
-  const [ownedCollectionIds, wishlistedCollectionIds, activePromotionPricingByCollectionId, wishlistCountsByCollectionId, reviewSummaryByCollectionId] = await Promise.all([
-    loadOwnedCollectionIdsForUser(viewerUserId),
+  const [collectionAccessMap, wishlistedCollectionIds, activePromotionPricingByCollectionId, wishlistCountsByCollectionId, reviewSummaryByCollectionId] = await Promise.all([
+    loadCollectionAccessMapForUser(viewerUserId),
     loadWishlistedCollectionIdsForUser(viewerUserId),
     loadActivePromotionPricingMap(inputRows),
     loadWishlistCountsForCollections(inputRows.map((row) => row.id)),
     loadCollectionReviewSummaryMap(inputRows.map((row) => row.id)),
   ]);
+  const ownedCollectionIds = new Set(collectionAccessMap.keys());
   const collections = await Promise.all(
     inputRows.map((row) => resolveCollectionWithItems(
       row,
       viewerUserId,
       ownedCollectionIds,
+      collectionAccessMap,
       wishlistedCollectionIds,
       activePromotionPricingByCollectionId,
       wishlistCountsByCollectionId,
@@ -3981,6 +4018,7 @@ async function resolveBundleWithCollections(
         collection,
         viewerUserId,
         viewerAccessibleCollectionIds,
+        undefined,
       );
       return resolved ? { ...resolved, addedAt: item.addedAt.toISOString(), sortOrder: Number(item.sortOrder ?? 0) } : null;
     }),
@@ -10257,17 +10295,19 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Collection is private" });
     }
 
-    const [ownedCollectionIds, wishlistedCollectionIds, activePromotionPricingByCollectionId, wishlistCountsByCollectionId, reviewSummaryByCollectionId] = await Promise.all([
-      loadOwnedCollectionIdsForUser(req.user?.id ?? null),
+    const [collectionAccessMap, wishlistedCollectionIds, activePromotionPricingByCollectionId, wishlistCountsByCollectionId, reviewSummaryByCollectionId] = await Promise.all([
+      loadCollectionAccessMapForUser(req.user?.id ?? null),
       loadWishlistedCollectionIdsForUser(req.user?.id ?? null),
       loadActivePromotionPricingMap([collection]),
       loadWishlistCountsForCollections([collection.id]),
       loadCollectionReviewSummaryMap([collection.id]),
     ]);
+    const ownedCollectionIds = new Set(collectionAccessMap.keys());
     const hydrated = await resolveCollectionWithItems(
       collection,
       req.user?.id ?? null,
       ownedCollectionIds,
+      collectionAccessMap,
       wishlistedCollectionIds,
       activePromotionPricingByCollectionId,
       wishlistCountsByCollectionId,
