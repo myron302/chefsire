@@ -171,6 +171,37 @@ interface CreatorFinanceResponse {
   reportingNotes: string[];
 }
 
+interface CreatorConversionCollectionItem {
+  collectionId: string;
+  collectionName: string;
+  isPremium: boolean;
+  priceCents: number;
+  viewsCount: number;
+  checkoutStartsCount: number;
+  completedPurchasesCount: number;
+  refundedCount: number;
+  grossSalesCents: number;
+  conversionRate: number | null;
+  route: string;
+  isPublic: boolean;
+}
+
+interface CreatorConversionsResponse {
+  ok: boolean;
+  userId: string;
+  summary: {
+    premiumCollectionsCount: number;
+    totalCollectionViews: number;
+    totalCheckoutStarts: number;
+    totalCompletedPurchases: number;
+    totalRefundedPurchases: number;
+    grossSalesCents: number;
+    overallConversionRate: number | null;
+  };
+  collections: CreatorConversionCollectionItem[];
+  reportingNotes: string[];
+}
+
 interface CreatorOrderItem {
   orderId: string;
   purchaseId: string | null;
@@ -233,6 +264,11 @@ function formatDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
+  return `${Number(value).toFixed(1)}%`;
 }
 
 function saleStatusLabel(status: string): string {
@@ -382,6 +418,20 @@ export default function CreatorDashboardPage() {
     enabled: Boolean(user?.id),
   });
 
+  const conversionsQuery = useQuery<CreatorConversionsResponse>({
+    queryKey: ["/api/drinks/creator-dashboard/conversions", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/creator-dashboard/conversions", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error || payload?.message || `Failed to load creator conversion analytics (${response.status})`;
+        throw new Error(String(message));
+      }
+      return payload as CreatorConversionsResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
   const ordersQuery = useQuery<CreatorOrdersResponse>({
     queryKey: ["/api/drinks/creator-dashboard/orders", user?.id ?? ""],
     queryFn: async () => {
@@ -470,6 +520,16 @@ export default function CreatorDashboardPage() {
     },
   };
   const recentFinanceSales = financeQuery.data?.recentSales ?? [];
+  const conversionSummary = conversionsQuery.data?.summary ?? {
+    premiumCollectionsCount: premiumCollections.length,
+    totalCollectionViews: 0,
+    totalCheckoutStarts: 0,
+    totalCompletedPurchases: salesTotals.purchases,
+    totalRefundedPurchases: salesTotals.refundedSalesCount,
+    grossSalesCents: salesTotals.grossRevenueCents,
+    overallConversionRate: null,
+  };
+  const conversionCollections = conversionsQuery.data?.collections ?? [];
   const recentCreatorOrders = ordersQuery.data?.orders ?? [];
 
   return (
@@ -580,6 +640,108 @@ export default function CreatorDashboardPage() {
               <Button size="sm">Browse premium collections</Button>
             </Link>
           </div>
+        </CardContent>
+      </Card>
+
+      <Card id="conversions">
+        <CardHeader>
+          <CardTitle>Conversion Analytics</CardTitle>
+          <CardDescription>
+            Discovery-to-purchase reporting for your premium drink collections.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
+              <p className="text-xl font-semibold">{metricNumber(conversionSummary.premiumCollectionsCount)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Collection views</p>
+              <p className="text-xl font-semibold">{metricNumber(conversionSummary.totalCollectionViews)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Checkout starts</p>
+              <p className="text-xl font-semibold">{metricNumber(conversionSummary.totalCheckoutStarts)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Completed purchases</p>
+              <p className="text-xl font-semibold">{metricNumber(conversionSummary.totalCompletedPurchases)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Conversion rate</p>
+              <p className="text-xl font-semibold">{formatPercent(conversionSummary.overallConversionRate)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Purchases ÷ views</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Gross sales</p>
+              <p className="text-xl font-semibold">{formatCurrency(conversionSummary.grossSalesCents)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{metricNumber(conversionSummary.totalRefundedPurchases)} refunded / revoked</p>
+            </div>
+          </div>
+
+          {conversionsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading conversion analytics…</p> : null}
+          {conversionsQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(conversionsQuery.error, "Unable to load conversion analytics right now.")}</p> : null}
+
+          {conversionsQuery.data?.reportingNotes?.length ? (
+            <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+              <ul className="list-disc space-y-1 pl-5">
+                {conversionsQuery.data.reportingNotes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {conversionCollections.length === 0 ? (
+            <div className="rounded-md border p-4 text-sm text-muted-foreground">
+              No premium collection conversion activity yet. Once shoppers view a premium collection or start Square checkout, funnel reporting will show up here.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Collection</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">Views</TableHead>
+                  <TableHead className="text-right">Checkout starts</TableHead>
+                  <TableHead className="text-right">Completed purchases</TableHead>
+                  <TableHead className="text-right">Conversion rate</TableHead>
+                  <TableHead className="text-right">Gross sales</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {conversionCollections.map((collection) => (
+                  <TableRow key={collection.collectionId}>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <Link href={collection.route} className="font-medium underline underline-offset-2">
+                          {collection.collectionName}
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                          {collection.refundedCount > 0
+                            ? `${metricNumber(collection.refundedCount)} refunded / revoked lifecycle events`
+                            : "No refunds or access revocations recorded."}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={collection.isPublic ? "secondary" : "outline"}>
+                        {collection.isPublic ? "Public" : "Private"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{formatCurrency(collection.priceCents)}</TableCell>
+                    <TableCell className="text-right">{metricNumber(collection.viewsCount)}</TableCell>
+                    <TableCell className="text-right">{metricNumber(collection.checkoutStartsCount)}</TableCell>
+                    <TableCell className="text-right">{metricNumber(collection.completedPurchasesCount)}</TableCell>
+                    <TableCell className="text-right">{formatPercent(collection.conversionRate)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(collection.grossSalesCents)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
 

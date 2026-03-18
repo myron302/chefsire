@@ -11,6 +11,7 @@ import {
   insertDrinkLikeSchema,
   insertDrinkSaveSchema,
   drinkCollectionCheckoutSessions,
+  drinkCollectionEvents,
   drinkCollectionSalesLedger,
   drinkCollectionSquareWebhookEvents,
   drinkCollectionItems,
@@ -39,6 +40,7 @@ type EventType = "view" | "remix" | "grocery_add";
 type DrinkCollectionPurchaseStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
 type DrinkCollectionCheckoutStatus = "pending" | "completed" | "failed" | "canceled" | "refunded_pending" | "refunded" | "revoked";
 type DrinkCollectionSalesLedgerStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
+type DrinkCollectionEventType = "view";
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
 
@@ -125,6 +127,7 @@ type DiscoveryDrinkCard = {
 };
 
 const TRACKABLE_DRINK_EVENTS = new Set<EventType>(["view", "remix", "grocery_add"]);
+const TRACKABLE_COLLECTION_EVENTS = new Set<DrinkCollectionEventType>(["view"]);
 const PREMIUM_COLLECTION_PLATFORM_FEE_BPS = 1500;
 const PREMIUM_COLLECTION_CREATOR_SHARE_BPS = 10000 - PREMIUM_COLLECTION_PLATFORM_FEE_BPS;
 
@@ -571,6 +574,16 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`ALTER TABLE drink_collection_sales_ledger ADD COLUMN IF NOT EXISTS status_reason text;`);
     await db.execute(sql`ALTER TABLE drink_collection_sales_ledger ADD COLUMN IF NOT EXISTS refunded_at timestamp;`);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_collection_events (
+        id bigserial PRIMARY KEY,
+        collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
+        event_type text NOT NULL,
+        user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+        created_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_idx ON drink_collections(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_public_idx ON drink_collections(is_public);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_updated_at_idx ON drink_collections(user_id, updated_at);`);
@@ -590,6 +603,10 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_sales_ledger_purchase_idx ON drink_collection_sales_ledger(purchase_id) WHERE purchase_id IS NOT NULL;`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_sales_ledger_checkout_session_idx ON drink_collection_sales_ledger(checkout_session_id) WHERE checkout_session_id IS NOT NULL;`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_sales_ledger_status_created_at_idx ON drink_collection_sales_ledger(status, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_collection_idx ON drink_collection_events(collection_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_event_type_idx ON drink_collection_events(event_type);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_created_at_idx ON drink_collection_events(created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_collection_event_type_created_at_idx ON drink_collection_events(collection_id, event_type, created_at);`);
 
     await backfillDrinkCollectionSalesLedger();
   })();
@@ -2204,6 +2221,193 @@ async function loadCreatorCollectionFinanceSummary(userId: string) {
       "Refunded, refund-pending, and revoked premium collection sales are separated from completed revenue totals and do not keep access active.",
       `Estimated platform fees and creator share use an internal ${PREMIUM_COLLECTION_PLATFORM_FEE_BPS / 100}% / ${PREMIUM_COLLECTION_CREATOR_SHARE_BPS / 100}% split for reporting readiness only.`,
       "No payouts are sent automatically yet. Square checkout captures sales, but creator transfers are not implemented in this dashboard.",
+    ],
+  };
+}
+
+async function trackCollectionEvent(input: {
+  collectionId: string;
+  eventType: DrinkCollectionEventType;
+  userId?: string | null;
+}) {
+  if (!db || !TRACKABLE_COLLECTION_EVENTS.has(input.eventType)) return;
+
+  await db.insert(drinkCollectionEvents).values({
+    collectionId: input.collectionId,
+    eventType: input.eventType,
+    userId: input.userId ?? null,
+  });
+}
+
+async function shouldTrackCollectionView(collectionId: string, viewerUserId: string | null | undefined) {
+  if (!db) return false;
+  if (!viewerUserId) return true;
+
+  const rows = await db
+    .select({
+      userId: drinkCollections.userId,
+    })
+    .from(drinkCollections)
+    .where(eq(drinkCollections.id, collectionId))
+    .limit(1);
+
+  const collection = rows[0];
+  if (!collection) return false;
+  if (collection.userId === viewerUserId) return false;
+
+  const ownedCollectionIds = await loadOwnedCollectionIdsForUser(viewerUserId);
+  return !ownedCollectionIds.has(collectionId);
+}
+
+async function loadCreatorCollectionConversionAnalytics(userId: string) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const premiumCollections = await db
+    .select({
+      id: drinkCollections.id,
+      name: drinkCollections.name,
+      isPremium: drinkCollections.isPremium,
+      priceCents: drinkCollections.priceCents,
+      isPublic: drinkCollections.isPublic,
+      updatedAt: drinkCollections.updatedAt,
+    })
+    .from(drinkCollections)
+    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.isPremium, true)))
+    .orderBy(desc(drinkCollections.updatedAt));
+
+  if (premiumCollections.length === 0) {
+    return {
+      summary: {
+        premiumCollectionsCount: 0,
+        totalCollectionViews: 0,
+        totalCheckoutStarts: 0,
+        totalCompletedPurchases: 0,
+        totalRefundedPurchases: 0,
+        grossSalesCents: 0,
+        overallConversionRate: null as number | null,
+      },
+      collections: [] as Array<{
+        collectionId: string;
+        collectionName: string;
+        isPremium: boolean;
+        priceCents: number;
+        viewsCount: number;
+        checkoutStartsCount: number;
+        completedPurchasesCount: number;
+        refundedCount: number;
+        grossSalesCents: number;
+        conversionRate: number | null;
+        route: string;
+        isPublic: boolean;
+      }>,
+      reportingNotes: [
+        "Collection views use tracked premium collection detail-page views from non-owner visitors and can include repeat visits.",
+        "Checkout starts count each Square checkout session creation, including retries.",
+        "Completed purchases and refunded lifecycle counts come from the same premium collection ownership and sales records used in finance reporting.",
+      ],
+    };
+  }
+
+  const collectionIds = premiumCollections.map((collection) => collection.id);
+
+  const [viewRows, checkoutStartRows, purchaseRows] = await Promise.all([
+    db
+      .select({
+        collectionId: drinkCollectionEvents.collectionId,
+        viewsCount: sql<number>`count(*)::int`,
+      })
+      .from(drinkCollectionEvents)
+      .where(
+        and(
+          inArray(drinkCollectionEvents.collectionId, collectionIds),
+          eq(drinkCollectionEvents.eventType, "view"),
+        ),
+      )
+      .groupBy(drinkCollectionEvents.collectionId),
+    db
+      .select({
+        collectionId: drinkCollectionCheckoutSessions.collectionId,
+        checkoutStartsCount: sql<number>`count(*)::int`,
+      })
+      .from(drinkCollectionCheckoutSessions)
+      .where(inArray(drinkCollectionCheckoutSessions.collectionId, collectionIds))
+      .groupBy(drinkCollectionCheckoutSessions.collectionId),
+    db
+      .select({
+        collectionId: drinkCollectionSalesLedger.collectionId,
+        completedPurchasesCount: sql<number>`count(*) filter (where ${drinkCollectionSalesLedger.status} = 'completed')::int`,
+        refundedCount: sql<number>`count(*) filter (where ${drinkCollectionSalesLedger.status} in ('refunded', 'refunded_pending', 'revoked'))::int`,
+        grossSalesCents: sql<number>`coalesce(sum(case when ${drinkCollectionSalesLedger.status} = 'completed' then ${drinkCollectionSalesLedger.grossAmountCents} else 0 end), 0)::int`,
+      })
+      .from(drinkCollectionSalesLedger)
+      .where(inArray(drinkCollectionSalesLedger.collectionId, collectionIds))
+      .groupBy(drinkCollectionSalesLedger.collectionId),
+  ]);
+
+  const viewsByCollectionId = new Map(viewRows.map((row) => [row.collectionId, Number(row.viewsCount ?? 0)]));
+  const checkoutStartsByCollectionId = new Map(checkoutStartRows.map((row) => [row.collectionId, Number(row.checkoutStartsCount ?? 0)]));
+  const purchaseStatsByCollectionId = new Map(
+    purchaseRows.map((row) => [
+      row.collectionId,
+      {
+        completedPurchasesCount: Number(row.completedPurchasesCount ?? 0),
+        refundedCount: Number(row.refundedCount ?? 0),
+        grossSalesCents: Number(row.grossSalesCents ?? 0),
+      },
+    ]),
+  );
+
+  const collections = premiumCollections.map((collection) => {
+    const viewsCount = viewsByCollectionId.get(collection.id) ?? 0;
+    const checkoutStartsCount = checkoutStartsByCollectionId.get(collection.id) ?? 0;
+    const purchaseStats = purchaseStatsByCollectionId.get(collection.id) ?? {
+      completedPurchasesCount: 0,
+      refundedCount: 0,
+      grossSalesCents: 0,
+    };
+    const conversionRate = viewsCount > 0
+      ? Number(((purchaseStats.completedPurchasesCount / viewsCount) * 100).toFixed(1))
+      : null;
+
+    return {
+      collectionId: collection.id,
+      collectionName: collection.name,
+      isPremium: collection.isPremium,
+      priceCents: Number(collection.priceCents ?? 0),
+      viewsCount,
+      checkoutStartsCount,
+      completedPurchasesCount: purchaseStats.completedPurchasesCount,
+      refundedCount: purchaseStats.refundedCount,
+      grossSalesCents: purchaseStats.grossSalesCents,
+      conversionRate,
+      route: `/drinks/collections/${collection.id}`,
+      isPublic: collection.isPublic,
+    };
+  });
+
+  const totalCollectionViews = collections.reduce((sum, collection) => sum + collection.viewsCount, 0);
+  const totalCompletedPurchases = collections.reduce((sum, collection) => sum + collection.completedPurchasesCount, 0);
+
+  return {
+    summary: {
+      premiumCollectionsCount: premiumCollections.length,
+      totalCollectionViews,
+      totalCheckoutStarts: collections.reduce((sum, collection) => sum + collection.checkoutStartsCount, 0),
+      totalCompletedPurchases,
+      totalRefundedPurchases: collections.reduce((sum, collection) => sum + collection.refundedCount, 0),
+      grossSalesCents: collections.reduce((sum, collection) => sum + collection.grossSalesCents, 0),
+      overallConversionRate: totalCollectionViews > 0
+        ? Number(((totalCompletedPurchases / totalCollectionViews) * 100).toFixed(1))
+        : null,
+    },
+    collections,
+    reportingNotes: [
+      "Collection views use tracked premium collection detail-page views from non-owner visitors and can include repeat visits.",
+      "Checkout starts count each Square checkout session creation, including retries.",
+      "Completed purchases only include sales ledger rows still in completed status.",
+      "Refunded count combines refunded, refund-pending, and revoked lifecycle states so analytics stay aligned with access and finance reporting.",
     ],
   };
 }
@@ -5695,6 +5899,31 @@ r.get("/creator-dashboard/finance", requireAuth, async (req, res) => {
   }
 });
 
+r.get("/creator-dashboard/conversions", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/creator-dashboard/conversions", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const conversions = await loadCreatorCollectionConversionAnalytics(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: conversions.summary,
+      collections: conversions.collections,
+      reportingNotes: conversions.reportingNotes,
+    });
+  } catch (error) {
+    logCollectionRouteError("/creator-dashboard/conversions", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to load creator conversion analytics");
+    const status = classifyCollectionError(error, "Failed to load creator conversion analytics").status;
+    return res.status(status).json(payload);
+  }
+});
+
 
 r.get("/collections/:id/ownership", optionalAuth, async (req, res) => {
   try {
@@ -5721,6 +5950,49 @@ r.get("/collections/:id/ownership", optionalAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/:id/ownership", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to resolve ownership"));
+  }
+});
+
+r.post("/collections/:id/track-view", optionalAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    await ensureDrinkCollectionsSchema();
+
+    const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const collection = rows[0];
+
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+
+    const isOwner = req.user?.id && req.user.id === collection.userId;
+    if (!collection.isPublic && !isOwner) {
+      return res.status(403).json({ ok: false, error: "Collection is private" });
+    }
+
+    const shouldTrack = await shouldTrackCollectionView(collection.id, req.user?.id ?? null);
+    if (!shouldTrack) {
+      return res.status(202).json({
+        ok: true,
+        tracked: false,
+        reason: isOwner ? "owner_view" : "owned_collection_view",
+      });
+    }
+
+    await trackCollectionEvent({
+      collectionId: collection.id,
+      eventType: "view",
+      userId: req.user?.id ?? null,
+    });
+
+    return res.status(201).json({
+      ok: true,
+      tracked: true,
+      collectionId: collection.id,
+      eventType: "view",
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/:id/track-view", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to track collection view"));
   }
 });
 
