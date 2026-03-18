@@ -1125,6 +1125,23 @@ export const drinkCollectionSalesLedger = pgTable(
   })
 );
 
+export const drinkCollectionEvents = pgTable(
+  "drink_collection_events",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
+    eventType: text("event_type").notNull(),
+    userId: varchar("user_id").references(() => users.id),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    collectionIdx: index("drink_collection_events_collection_idx").on(table.collectionId),
+    eventTypeIdx: index("drink_collection_events_event_type_idx").on(table.eventType),
+    createdAtIdx: index("drink_collection_events_created_at_idx").on(table.createdAt),
+    collectionEventTypeCreatedAtIdx: index("drink_collection_events_collection_event_type_created_at_idx").on(table.collectionId, table.eventType, table.createdAt),
+  })
+);
+
 export const drinkChallenges = pgTable(
   "drink_challenges",
   {

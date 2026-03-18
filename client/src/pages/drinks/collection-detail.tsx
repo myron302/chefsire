@@ -158,6 +158,29 @@ export default function DrinkCollectionDetailPage() {
   }, [collectionId]);
 
   useEffect(() => {
+    if (!collection?.id) return;
+    if (typeof window === "undefined") return;
+
+    const storageKey = `drink-collection-view:${collection.id}`;
+    const lastTrackedAtRaw = window.sessionStorage.getItem(storageKey);
+    const lastTrackedAt = lastTrackedAtRaw ? Number(lastTrackedAtRaw) : 0;
+
+    if (Number.isFinite(lastTrackedAt) && lastTrackedAt > 0 && Date.now() - lastTrackedAt < 1000 * 60 * 30) {
+      return;
+    }
+
+    window.sessionStorage.setItem(storageKey, String(Date.now()));
+
+    void fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}/track-view`, {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+    }).catch(() => {
+      window.sessionStorage.removeItem(storageKey);
+    });
+  }, [collection?.id]);
+
+  useEffect(() => {
     const returnedSessionId = queryParams.get("checkoutSessionId")?.trim();
     if (!returnedSessionId) return;
 
