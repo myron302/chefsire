@@ -17,6 +17,7 @@ import {
   drinkCollectionSquareWebhookEvents,
   drinkCollectionItems,
   drinkCollectionPurchases,
+  drinkCollectionReviews,
   drinkCollectionWishlists,
   drinkCollections,
   drinkChallengeSubmissions,
@@ -123,6 +124,28 @@ type CollectionCheckoutSnapshot = {
   originalAmountCents?: number | null;
   discountAmountCents?: number | null;
   promotionCode?: string | null;
+};
+
+type CollectionReviewSummary = {
+  averageRating: number;
+  reviewCount: number;
+};
+
+type HydratedDrinkCollectionReview = {
+  id: string;
+  userId: string;
+  collectionId: string;
+  rating: number;
+  title: string | null;
+  body: string | null;
+  isVerifiedPurchase: boolean;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    username: string | null;
+    displayName: string | null;
+    avatar: string | null;
+  };
 };
 
 type SquareWebhookEventBody = {
@@ -847,6 +870,26 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_collection_reviews (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
+        rating integer NOT NULL,
+        title varchar(160),
+        body text,
+        is_verified_purchase boolean NOT NULL DEFAULT true,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT drink_collection_reviews_user_collection_idx UNIQUE (user_id, collection_id)
+      );
+    `);
+
+    await db.execute(sql`ALTER TABLE drink_collection_reviews ADD COLUMN IF NOT EXISTS title varchar(160);`);
+    await db.execute(sql`ALTER TABLE drink_collection_reviews ADD COLUMN IF NOT EXISTS body text;`);
+    await db.execute(sql`ALTER TABLE drink_collection_reviews ADD COLUMN IF NOT EXISTS is_verified_purchase boolean NOT NULL DEFAULT true;`);
+    await db.execute(sql`ALTER TABLE drink_collection_reviews ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();`);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_collection_checkout_sessions (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -965,6 +1008,9 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_wishlists_user_idx ON drink_collection_wishlists(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_wishlists_collection_idx ON drink_collection_wishlists(collection_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_wishlists_user_created_at_idx ON drink_collection_wishlists(user_id, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_reviews_collection_idx ON drink_collection_reviews(collection_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_reviews_user_idx ON drink_collection_reviews(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_reviews_collection_created_at_idx ON drink_collection_reviews(collection_id, created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_user_idx ON drink_collection_checkout_sessions(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_collection_idx ON drink_collection_checkout_sessions(collection_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_status_idx ON drink_collection_checkout_sessions(status);`);
@@ -2135,6 +2181,120 @@ async function loadWishlistedCollectionIdsForUser(userId?: string | null): Promi
   return new Set(rows.map((row) => row.collectionId));
 }
 
+function normalizeCollectionReviewSummary(input?: { averageRating?: unknown; reviewCount?: unknown } | null): CollectionReviewSummary {
+  const reviewCount = Math.max(0, Number(input?.reviewCount ?? 0));
+  const rawAverageRating = Number(input?.averageRating ?? 0);
+  const averageRating = reviewCount > 0 && Number.isFinite(rawAverageRating)
+    ? Math.round(rawAverageRating * 10) / 10
+    : 0;
+
+  return {
+    averageRating,
+    reviewCount,
+  };
+}
+
+function normalizeOptionalReviewText(value: unknown, maxLength: number) {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+  return normalized.slice(0, maxLength);
+}
+
+const collectionReviewInputSchema = z.object({
+  rating: z.coerce.number().int().min(1).max(5),
+  title: z.string().max(160).optional().nullable(),
+  body: z.string().max(4000).optional().nullable(),
+});
+
+async function loadCollectionReviewSummaryMap(collectionIds: string[]): Promise<Map<string, CollectionReviewSummary>> {
+  if (!db || collectionIds.length === 0) return new Map();
+
+  const uniqueCollectionIds = [...new Set(collectionIds.filter(Boolean))];
+  if (uniqueCollectionIds.length === 0) return new Map();
+
+  const rows = await db
+    .select({
+      collectionId: drinkCollectionReviews.collectionId,
+      averageRating: sql<string>`round(avg(${drinkCollectionReviews.rating})::numeric, 1)`,
+      reviewCount: sql<number>`count(*)::int`,
+    })
+    .from(drinkCollectionReviews)
+    .where(inArray(drinkCollectionReviews.collectionId, uniqueCollectionIds))
+    .groupBy(drinkCollectionReviews.collectionId);
+
+  return new Map(rows.map((row) => [row.collectionId, normalizeCollectionReviewSummary(row)]));
+}
+
+async function loadHydratedCollectionReviews(collectionId: string) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const [reviewRows, summaryMap] = await Promise.all([
+    db
+      .select({
+        id: drinkCollectionReviews.id,
+        userId: drinkCollectionReviews.userId,
+        collectionId: drinkCollectionReviews.collectionId,
+        rating: drinkCollectionReviews.rating,
+        title: drinkCollectionReviews.title,
+        body: drinkCollectionReviews.body,
+        isVerifiedPurchase: drinkCollectionReviews.isVerifiedPurchase,
+        createdAt: drinkCollectionReviews.createdAt,
+        updatedAt: drinkCollectionReviews.updatedAt,
+        username: users.username,
+        displayName: users.displayName,
+        avatar: users.avatar,
+      })
+      .from(drinkCollectionReviews)
+      .innerJoin(users, eq(drinkCollectionReviews.userId, users.id))
+      .where(eq(drinkCollectionReviews.collectionId, collectionId))
+      .orderBy(desc(drinkCollectionReviews.createdAt)),
+    loadCollectionReviewSummaryMap([collectionId]),
+  ]);
+
+  const reviews: HydratedDrinkCollectionReview[] = reviewRows.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    collectionId: row.collectionId,
+    rating: Number(row.rating ?? 0),
+    title: row.title ?? null,
+    body: row.body ?? null,
+    isVerifiedPurchase: Boolean(row.isVerifiedPurchase),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    user: {
+      username: row.username ?? null,
+      displayName: row.displayName ?? null,
+      avatar: row.avatar ?? null,
+    },
+  }));
+
+  return {
+    summary: summaryMap.get(collectionId) ?? normalizeCollectionReviewSummary(),
+    reviews,
+  };
+}
+
+async function userHasActiveCollectionReviewAccess(userId: string, collectionId: string) {
+  if (!db) return false;
+
+  const rows = await db
+    .select({ id: drinkCollectionPurchases.id })
+    .from(drinkCollectionPurchases)
+    .where(
+      and(
+        eq(drinkCollectionPurchases.userId, userId),
+        eq(drinkCollectionPurchases.collectionId, collectionId),
+        eq(drinkCollectionPurchases.status, "completed"),
+      ),
+    )
+    .limit(1);
+
+  return Boolean(rows[0]);
+}
+
 async function resolveCollectionWithItems(
   collection: typeof drinkCollections.$inferSelect,
   viewerUserId?: string | null,
@@ -2142,6 +2302,7 @@ async function resolveCollectionWithItems(
   wishlistedCollectionIds?: Set<string>,
   activePromotionPricingByCollectionId?: Map<string, CollectionPromoPricingSnapshot>,
   wishlistCountsByCollectionId?: Map<string, number>,
+  reviewSummaryByCollectionId?: Map<string, CollectionReviewSummary>,
 ) {
   if (!db) return null;
 
@@ -2181,6 +2342,7 @@ async function resolveCollectionWithItems(
   const isOwner = Boolean(viewerUserId && viewerUserId === collection.userId);
   const isOwned = isOwner || Boolean(viewerUserId && ownedCollectionIds?.has(collection.id));
   const isWishlisted = !isOwned && Boolean(viewerUserId && wishlistedCollectionIds?.has(collection.id));
+  const reviewSummary = reviewSummaryByCollectionId?.get(collection.id) ?? normalizeCollectionReviewSummary();
 
   return {
     ...collection,
@@ -2193,16 +2355,19 @@ async function resolveCollectionWithItems(
     ownedByViewer: isOwned,
     isWishlisted,
     wishlistCount: Number(wishlistCountsByCollectionId?.get(collection.id) ?? 0),
+    averageRating: reviewSummary.averageRating,
+    reviewCount: reviewSummary.reviewCount,
     activePromoPricing: activePromotionPricingByCollectionId?.get(collection.id) ?? null,
   };
 }
 
 async function resolvePublicCollectionCards(inputRows: Array<typeof drinkCollections.$inferSelect>, viewerUserId?: string | null) {
-  const [ownedCollectionIds, wishlistedCollectionIds, activePromotionPricingByCollectionId, wishlistCountsByCollectionId] = await Promise.all([
+  const [ownedCollectionIds, wishlistedCollectionIds, activePromotionPricingByCollectionId, wishlistCountsByCollectionId, reviewSummaryByCollectionId] = await Promise.all([
     loadOwnedCollectionIdsForUser(viewerUserId),
     loadWishlistedCollectionIdsForUser(viewerUserId),
     loadActivePromotionPricingMap(inputRows),
     loadWishlistCountsForCollections(inputRows.map((row) => row.id)),
+    loadCollectionReviewSummaryMap(inputRows.map((row) => row.id)),
   ]);
   const collections = await Promise.all(
     inputRows.map((row) => resolveCollectionWithItems(
@@ -2212,6 +2377,7 @@ async function resolvePublicCollectionCards(inputRows: Array<typeof drinkCollect
       wishlistedCollectionIds,
       activePromotionPricingByCollectionId,
       wishlistCountsByCollectionId,
+      reviewSummaryByCollectionId,
     )),
   );
   return collections.filter(Boolean);
@@ -2561,6 +2727,52 @@ async function loadCreatorCollectionOrders(userId: string) {
   }));
 }
 
+async function loadRecentCollectionReviewsForCreator(userId: string, limit = 5) {
+  if (!db) return [] as Array<HydratedDrinkCollectionReview & { collectionName: string; collectionRoute: string }>;
+
+  const rows = await db
+    .select({
+      id: drinkCollectionReviews.id,
+      userId: drinkCollectionReviews.userId,
+      collectionId: drinkCollectionReviews.collectionId,
+      rating: drinkCollectionReviews.rating,
+      title: drinkCollectionReviews.title,
+      body: drinkCollectionReviews.body,
+      isVerifiedPurchase: drinkCollectionReviews.isVerifiedPurchase,
+      createdAt: drinkCollectionReviews.createdAt,
+      updatedAt: drinkCollectionReviews.updatedAt,
+      username: users.username,
+      displayName: users.displayName,
+      avatar: users.avatar,
+      collectionName: drinkCollections.name,
+    })
+    .from(drinkCollectionReviews)
+    .innerJoin(drinkCollections, eq(drinkCollectionReviews.collectionId, drinkCollections.id))
+    .innerJoin(users, eq(drinkCollectionReviews.userId, users.id))
+    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.isPremium, true)))
+    .orderBy(desc(drinkCollectionReviews.createdAt))
+    .limit(limit);
+
+  return rows.map((row) => ({
+    id: row.id,
+    userId: row.userId,
+    collectionId: row.collectionId,
+    rating: Number(row.rating ?? 0),
+    title: row.title ?? null,
+    body: row.body ?? null,
+    isVerifiedPurchase: Boolean(row.isVerifiedPurchase),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    collectionName: row.collectionName,
+    collectionRoute: `/drinks/collections/${row.collectionId}`,
+    user: {
+      username: row.username ?? null,
+      displayName: row.displayName ?? null,
+      avatar: row.avatar ?? null,
+    },
+  }));
+}
+
 async function loadCreatorCollectionSalesSummary(userId: string) {
   if (!db) {
     throw new Error("Database unavailable");
@@ -2590,6 +2802,11 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
         refundedRevenueCents: 0,
         totalWishlistInterest: 0,
       },
+      reviewInsights: {
+        averageRating: 0,
+        totalReviews: 0,
+        recentReviews: [] as Array<HydratedDrinkCollectionReview & { collectionName: string; collectionRoute: string }>,
+      },
       collections: [] as Array<{
         id: string;
         name: string;
@@ -2601,6 +2818,8 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
         refundedSalesCount: number;
         refundedRevenueCents: number;
         wishlistCount: number;
+        averageRating: number;
+        reviewCount: number;
         lastPurchasedAt: string | null;
         updatedAt: string;
         route: string;
@@ -2610,10 +2829,13 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
   }
 
   const collectionIds = premiumCollections.map((collection) => collection.id);
-  const [coverImagesMap, wishlistCountsByCollectionId] = await Promise.all([
+  const [coverImagesMap, wishlistCountsByCollectionId, reviewSummaryByCollectionId, recentReviews] = await Promise.all([
     loadCollectionCoverImagesMap(collectionIds),
     loadWishlistCountsForCollections(collectionIds),
+    loadCollectionReviewSummaryMap(collectionIds),
+    loadRecentCollectionReviewsForCreator(userId),
   ]);
+
   const ledgerRows = await db
     .select({
       id: drinkCollectionSalesLedger.id,
@@ -2623,9 +2845,7 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
       createdAt: drinkCollectionSalesLedger.createdAt,
     })
     .from(drinkCollectionSalesLedger)
-    .where(
-      inArray(drinkCollectionSalesLedger.collectionId, collectionIds),
-    )
+    .where(inArray(drinkCollectionSalesLedger.collectionId, collectionIds))
     .orderBy(desc(drinkCollectionSalesLedger.createdAt));
 
   const salesByCollectionId = new Map<string, {
@@ -2635,6 +2855,7 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
     refundedRevenueCents: number;
     lastPurchasedAt: Date | null;
   }>();
+
   for (const entry of ledgerRows) {
     const existing = salesByCollectionId.get(entry.collectionId) ?? {
       purchases: 0,
@@ -2666,6 +2887,7 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
       refundedRevenueCents: 0,
       lastPurchasedAt: null as Date | null,
     };
+    const reviewSummary = reviewSummaryByCollectionId.get(collection.id) ?? normalizeCollectionReviewSummary();
 
     return {
       id: collection.id,
@@ -2678,12 +2900,17 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
       refundedSalesCount: stats.refundedSalesCount,
       refundedRevenueCents: stats.refundedRevenueCents,
       wishlistCount: Number(wishlistCountsByCollectionId.get(collection.id) ?? 0),
+      averageRating: reviewSummary.averageRating,
+      reviewCount: reviewSummary.reviewCount,
       lastPurchasedAt: stats.lastPurchasedAt ? stats.lastPurchasedAt.toISOString() : null,
       updatedAt: collection.updatedAt.toISOString(),
       route: `/drinks/collections/${collection.id}`,
       coverImage: coverImagesMap.get(collection.id) ?? null,
     };
   });
+
+  const totalReviews = collections.reduce((sum, collection) => sum + collection.reviewCount, 0);
+  const weightedRatingTotal = collections.reduce((sum, collection) => sum + (collection.averageRating * collection.reviewCount), 0);
 
   return {
     totals: {
@@ -2693,6 +2920,11 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
       refundedSalesCount: collections.reduce((sum, collection) => sum + collection.refundedSalesCount, 0),
       refundedRevenueCents: collections.reduce((sum, collection) => sum + collection.refundedRevenueCents, 0),
       totalWishlistInterest: collections.reduce((sum, collection) => sum + collection.wishlistCount, 0),
+    },
+    reviewInsights: {
+      averageRating: totalReviews > 0 ? Math.round((weightedRatingTotal / totalReviews) * 10) / 10 : 0,
+      totalReviews,
+      recentReviews,
     },
     collections,
   };
@@ -6678,11 +6910,13 @@ r.get("/creator-dashboard/sales", requireAuth, async (req, res) => {
       ok: true,
       userId: req.user!.id,
       totals: sales.totals,
+      reviewInsights: sales.reviewInsights,
       collections: sales.collections,
       reportingNotes: [
         "Active purchases only count when the ownership record is still in completed status.",
         "Refunded, refund-pending, and revoked premium sales are tracked separately and excluded from completed sales totals.",
         "Gross sales are reporting only, use the actual paid amount after discounts, and do not imply payouts or net earnings.",
+        "Reviews are social proof only and do not change ownership, finance reporting, or conversion analytics directly.",
       ],
     });
   } catch (error) {
@@ -6981,6 +7215,184 @@ r.delete("/creator-dashboard/promotions/:id", requireAuth, async (req, res) => {
   }
 });
 
+
+r.get("/collections/:id/reviews", optionalAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/:id/reviews", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const collection = collectionRows[0];
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+
+    const isCreator = req.user?.id === collection.userId;
+    if (!collection.isPublic && !isCreator) {
+      return res.status(403).json({ ok: false, error: "Collection is private" });
+    }
+
+    const { summary, reviews } = await loadHydratedCollectionReviews(collection.id);
+    const viewerOwnsCollection = req.user?.id ? await userHasActiveCollectionReviewAccess(req.user.id, collection.id) : false;
+    const viewerReview = req.user?.id ? reviews.find((review) => review.userId === req.user?.id) ?? null : null;
+
+    return res.json({
+      ok: true,
+      collectionId: collection.id,
+      summary,
+      reviews,
+      viewerOwnsCollection,
+      canReview: Boolean(req.user?.id && viewerOwnsCollection && req.user.id !== collection.userId && collection.isPremium),
+      viewerReview,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/:id/reviews", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load collection reviews"));
+  }
+});
+
+r.post("/collections/:id/reviews", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/:id/reviews", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const collection = collectionRows[0];
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+    if (!collection.isPremium) return res.status(400).json({ ok: false, error: "Reviews are only supported for premium collections" });
+    if (collection.userId === req.user!.id) return res.status(403).json({ ok: false, error: "Creators cannot review their own premium collections" });
+
+    const parsed = collectionReviewInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Rating must be between 1 and 5 and review text must be valid." });
+    }
+
+    const hasOwnership = await userHasActiveCollectionReviewAccess(req.user!.id, collection.id);
+    if (!hasOwnership) {
+      return res.status(403).json({ ok: false, error: "You must currently own this premium collection to leave a review" });
+    }
+
+    const existingRows = await db
+      .select({ id: drinkCollectionReviews.id })
+      .from(drinkCollectionReviews)
+      .where(and(eq(drinkCollectionReviews.userId, req.user!.id), eq(drinkCollectionReviews.collectionId, collection.id)))
+      .limit(1);
+
+    if (existingRows[0]) {
+      return res.status(409).json({ ok: false, error: "You already reviewed this collection. Edit your existing review instead." });
+    }
+
+    const now = new Date();
+    await db
+      .insert(drinkCollectionReviews)
+      .values({
+        userId: req.user!.id,
+        collectionId: collection.id,
+        rating: parsed.data.rating,
+        title: normalizeOptionalReviewText(parsed.data.title, 160),
+        body: normalizeOptionalReviewText(parsed.data.body, 4000),
+        isVerifiedPurchase: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+
+    const { summary, reviews } = await loadHydratedCollectionReviews(collection.id);
+    const review = reviews.find((entry) => entry.userId === req.user!.id) ?? null;
+
+    return res.status(201).json({ ok: true, review, summary });
+  } catch (error) {
+    const message = logCollectionRouteError("/:id/reviews", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create collection review"));
+  }
+});
+
+r.patch("/collections/:id/reviews/:reviewId", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/:id/reviews/:reviewId", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const parsed = collectionReviewInputSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Rating must be between 1 and 5 and review text must be valid." });
+    }
+
+    const reviewRows = await db
+      .select()
+      .from(drinkCollectionReviews)
+      .where(and(eq(drinkCollectionReviews.id, req.params.reviewId), eq(drinkCollectionReviews.collectionId, req.params.id)))
+      .limit(1);
+    const review = reviewRows[0];
+    if (!review) return res.status(404).json({ ok: false, error: "Review not found" });
+    if (review.userId !== req.user!.id) return res.status(403).json({ ok: false, error: "You can only edit your own review" });
+
+    const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const collection = collectionRows[0];
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+    if (!collection.isPremium) return res.status(400).json({ ok: false, error: "Reviews are only supported for premium collections" });
+    if (collection.userId === req.user!.id) return res.status(403).json({ ok: false, error: "Creators cannot review their own premium collections" });
+
+    const hasOwnership = await userHasActiveCollectionReviewAccess(req.user!.id, collection.id);
+    if (!hasOwnership) {
+      return res.status(403).json({ ok: false, error: "You must currently own this premium collection to edit a review" });
+    }
+
+    await db
+      .update(drinkCollectionReviews)
+      .set({
+        rating: parsed.data.rating,
+        title: normalizeOptionalReviewText(parsed.data.title, 160),
+        body: normalizeOptionalReviewText(parsed.data.body, 4000),
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkCollectionReviews.id, review.id));
+
+    const { summary, reviews } = await loadHydratedCollectionReviews(collection.id);
+    const updatedReview = reviews.find((entry) => entry.id === review.id) ?? null;
+
+    return res.json({ ok: true, review: updatedReview, summary });
+  } catch (error) {
+    const message = logCollectionRouteError("/:id/reviews/:reviewId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update collection review"));
+  }
+});
+
+r.delete("/collections/:id/reviews/:reviewId", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/:id/reviews/:reviewId", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const reviewRows = await db
+      .select()
+      .from(drinkCollectionReviews)
+      .where(and(eq(drinkCollectionReviews.id, req.params.reviewId), eq(drinkCollectionReviews.collectionId, req.params.id)))
+      .limit(1);
+    const review = reviewRows[0];
+    if (!review) return res.status(404).json({ ok: false, error: "Review not found" });
+    if (review.userId !== req.user!.id) return res.status(403).json({ ok: false, error: "You can only delete your own review" });
+
+    await db.delete(drinkCollectionReviews).where(eq(drinkCollectionReviews.id, review.id));
+    const summary = (await loadCollectionReviewSummaryMap([req.params.id])).get(req.params.id) ?? normalizeCollectionReviewSummary();
+
+    return res.json({ ok: true, deletedReviewId: review.id, summary });
+  } catch (error) {
+    const message = logCollectionRouteError("/:id/reviews/:reviewId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete collection review"));
+  }
+});
 
 r.get("/collections/:id/ownership", optionalAuth, async (req, res) => {
   try {
@@ -7348,11 +7760,12 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Collection is private" });
     }
 
-    const [ownedCollectionIds, wishlistedCollectionIds, activePromotionPricingByCollectionId, wishlistCountsByCollectionId] = await Promise.all([
+    const [ownedCollectionIds, wishlistedCollectionIds, activePromotionPricingByCollectionId, wishlistCountsByCollectionId, reviewSummaryByCollectionId] = await Promise.all([
       loadOwnedCollectionIdsForUser(req.user?.id ?? null),
       loadWishlistedCollectionIdsForUser(req.user?.id ?? null),
       loadActivePromotionPricingMap([collection]),
       loadWishlistCountsForCollections([collection.id]),
+      loadCollectionReviewSummaryMap([collection.id]),
     ]);
     const hydrated = await resolveCollectionWithItems(
       collection,
@@ -7361,6 +7774,7 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
       wishlistedCollectionIds,
       activePromotionPricingByCollectionId,
       wishlistCountsByCollectionId,
+      reviewSummaryByCollectionId,
     );
 
     if (!hydrated) return res.status(500).json({ ok: false, error: "Failed to resolve collection" });

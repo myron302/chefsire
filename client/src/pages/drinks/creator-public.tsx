@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 
 interface PublicCreatorDrinkItem {
   id: string;
@@ -63,6 +64,8 @@ interface PublicCollection {
   ownedByViewer?: boolean;
   isWishlisted?: boolean;
   wishlistCount?: number;
+  averageRating?: number;
+  reviewCount?: number;
   activePromoPricing?: PromoPricing | null;
 }
 
@@ -431,6 +434,7 @@ export default function PublicDrinkCreatorPage() {
                           </p>
                         ) : null}
                         <p className="text-xs text-muted-foreground">Wishlist interest: {number(collection.wishlistCount ?? 0)}</p>
+                        <CollectionRatingSummary averageRating={collection.averageRating} reviewCount={collection.reviewCount} />
                         <div className="flex flex-wrap gap-2">
                           <Link href="/drinks/collections/explore" className="text-xs underline underline-offset-2">Browse premium collections</Link>
                           <Link href="/drinks/collections/wishlist" className="text-xs underline underline-offset-2">Open wishlist</Link>
