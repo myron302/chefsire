@@ -129,7 +129,7 @@ export async function sendFollowRequestNotification(
       title: "New Follow Request",
       message: `${requesterName} wants to follow you`,
       imageUrl: requesterAvatar,
-      linkUrl: `/settings`,
+      linkUrl: `/profile/${requesterId}`,
       priority: "normal",
     });
   } catch (error) {
@@ -153,7 +153,7 @@ export async function sendFollowAcceptedNotification(
       title: "Follow Request Accepted",
       message: `${accepterName} accepted your follow request`,
       imageUrl: accepterAvatar,
-      linkUrl: `/@${accepterName}`,
+      linkUrl: `/profile/${accepterId}`,
       priority: "normal",
     });
   } catch (error) {
@@ -177,7 +177,7 @@ export async function sendNewFollowerNotification(
       title: "New Follower",
       message: `${followerName} started following you`,
       imageUrl: followerAvatar,
-      linkUrl: `/@${followerName}`,
+      linkUrl: `/profile/${followerId}`,
       priority: "normal",
     });
   } catch (error) {
