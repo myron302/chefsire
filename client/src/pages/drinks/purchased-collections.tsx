@@ -11,6 +11,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 type PurchasedCollection = {
   purchaseId: string;
   collectionId: string;
+  status: "completed" | "refunded_pending" | "refunded" | "revoked";
+  statusReason: string | null;
+  accessRevokedAt: string | null;
   name: string;
   description: string | null;
   isPublic: boolean;
@@ -49,6 +52,20 @@ function formatPrice(priceCents?: number | null) {
 function initials(value?: string | null) {
   if (!value) return "DR";
   return value.slice(0, 2).toUpperCase();
+}
+
+function purchaseStatusBadge(status: PurchasedCollection["status"]) {
+  switch (status) {
+    case "refunded":
+      return { label: "Refunded", variant: "outline" as const };
+    case "refunded_pending":
+      return { label: "Refund pending", variant: "outline" as const };
+    case "revoked":
+      return { label: "Access revoked", variant: "outline" as const };
+    case "completed":
+    default:
+      return { label: "Owned", variant: "default" as const };
+  }
 }
 
 export default function PurchasedCollectionsPage() {
@@ -152,9 +169,10 @@ export default function PurchasedCollectionsPage() {
               ) : null}
               <CardHeader className="space-y-3">
                 <div className="flex flex-wrap gap-2">
-                  <Badge>Owned</Badge>
+                  <Badge variant={purchaseStatusBadge(collection.status).variant}>{purchaseStatusBadge(collection.status).label}</Badge>
                   {collection.isPremium ? <Badge variant="secondary">{formatPrice(collection.priceCents)}</Badge> : null}
                   <Badge variant="outline">Purchased {formatDate(collection.purchasedAt)}</Badge>
+                  {collection.accessRevokedAt ? <Badge variant="outline">Updated {formatDate(collection.accessRevokedAt)}</Badge> : null}
                 </div>
                 <div>
                   <CardTitle className="text-xl">
@@ -178,9 +196,17 @@ export default function PurchasedCollectionsPage() {
                 <div className="grid gap-2 text-sm text-muted-foreground">
                   <div>Owned since: {formatDate(collection.purchasedAt)}</div>
                   <div>Latest collection update: {formatDate(collection.updatedAt)}</div>
+                  {collection.status !== "completed" ? (
+                    <div>
+                      Access status: {purchaseStatusBadge(collection.status).label}.
+                      {collection.statusReason ? ` ${collection.statusReason}` : ""}
+                    </div>
+                  ) : null}
                 </div>
                 <Link href={collection.route}>
-                  <Button className="w-full">Open collection</Button>
+                  <Button className="w-full" variant={collection.status === "completed" ? "default" : "outline"}>
+                    {collection.status === "completed" ? "Open collection" : "View collection status"}
+                  </Button>
                 </Link>
               </CardContent>
             </Card>

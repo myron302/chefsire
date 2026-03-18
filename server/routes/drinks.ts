@@ -36,8 +36,9 @@ const r = Router();
 
 type EventType = "view" | "remix" | "grocery_add";
 
-type DrinkCollectionCheckoutStatus = "pending" | "completed" | "failed" | "canceled";
-type DrinkCollectionSalesLedgerStatus = "completed" | "refunded";
+type DrinkCollectionPurchaseStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
+type DrinkCollectionCheckoutStatus = "pending" | "completed" | "failed" | "canceled" | "refunded_pending" | "refunded" | "revoked";
+type DrinkCollectionSalesLedgerStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
 
@@ -45,6 +46,16 @@ type ResolvedCollectionPurchaseContext = {
   collection: typeof drinkCollections.$inferSelect;
   isOwner: boolean;
   alreadyOwned: boolean;
+};
+
+type CollectionAccessStatusInput = {
+  purchaseStatus: DrinkCollectionPurchaseStatus;
+  checkoutStatus: DrinkCollectionCheckoutStatus;
+  ledgerStatus: DrinkCollectionSalesLedgerStatus;
+  reason?: string | null;
+  squarePaymentId?: string | null;
+  squareOrderId?: string | null;
+  refundedAt?: Date | null;
 };
 
 type SquareCheckoutVerificationResult = {
@@ -482,10 +493,19 @@ async function ensureDrinkCollectionsSchema() {
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
+        status text NOT NULL DEFAULT 'completed',
+        status_reason text,
+        access_revoked_at timestamp,
         created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
         CONSTRAINT drink_collection_purchases_user_collection_idx UNIQUE (user_id, collection_id)
       );
     `);
+
+    await db.execute(sql`ALTER TABLE drink_collection_purchases ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'completed';`);
+    await db.execute(sql`ALTER TABLE drink_collection_purchases ADD COLUMN IF NOT EXISTS status_reason text;`);
+    await db.execute(sql`ALTER TABLE drink_collection_purchases ADD COLUMN IF NOT EXISTS access_revoked_at timestamp;`);
+    await db.execute(sql`ALTER TABLE drink_collection_purchases ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();`);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_collection_checkout_sessions (
@@ -503,12 +523,17 @@ async function ensureDrinkCollectionsSchema() {
         checkout_url text,
         last_verified_at timestamp,
         verified_at timestamp,
+        refunded_at timestamp,
+        access_revoked_at timestamp,
         failure_reason text,
         expires_at timestamp,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       );
     `);
+
+    await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS refunded_at timestamp;`);
+    await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS access_revoked_at timestamp;`);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_collection_square_webhook_events (
@@ -536,10 +561,15 @@ async function ensureDrinkCollectionsSchema() {
         creator_share_cents integer,
         currency_code text NOT NULL DEFAULT 'USD',
         status text NOT NULL DEFAULT 'completed',
+        status_reason text,
+        refunded_at timestamp,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       );
     `);
+
+    await db.execute(sql`ALTER TABLE drink_collection_sales_ledger ADD COLUMN IF NOT EXISTS status_reason text;`);
+    await db.execute(sql`ALTER TABLE drink_collection_sales_ledger ADD COLUMN IF NOT EXISTS refunded_at timestamp;`);
 
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_idx ON drink_collections(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_public_idx ON drink_collections(is_public);`);
@@ -578,6 +608,14 @@ function estimateCollectionFinanceBreakdown(grossAmountCents: number) {
   };
 }
 
+function isCollectionAccessActive(status?: string | null): boolean {
+  return status === "completed";
+}
+
+function isRefundRelatedStatus(status?: string | null): boolean {
+  return status === "refunded_pending" || status === "refunded";
+}
+
 async function upsertDrinkCollectionSalesLedgerEntry(
   tx: typeof db,
   input: {
@@ -589,6 +627,8 @@ async function upsertDrinkCollectionSalesLedgerEntry(
     currencyCode: string | null | undefined;
     createdAt: Date;
     status?: DrinkCollectionSalesLedgerStatus;
+    statusReason?: string | null;
+    refundedAt?: Date | null;
   },
 ) {
   if (!tx) {
@@ -606,6 +646,8 @@ async function upsertDrinkCollectionSalesLedgerEntry(
     creatorShareCents: finance.creatorShareCents,
     currencyCode: normalizeSquareCurrencyCode(input.currencyCode),
     status: input.status ?? "completed",
+    statusReason: input.statusReason ?? null,
+    refundedAt: input.refundedAt ?? null,
     createdAt: input.createdAt,
     updatedAt: new Date(),
   } as const;
@@ -625,6 +667,8 @@ async function upsertDrinkCollectionSalesLedgerEntry(
           creatorShareCents: values.creatorShareCents,
           currencyCode: values.currencyCode,
           status: values.status,
+          statusReason: values.statusReason,
+          refundedAt: values.refundedAt,
           createdAt: values.createdAt,
           updatedAt: values.updatedAt,
         },
@@ -647,6 +691,8 @@ async function upsertDrinkCollectionSalesLedgerEntry(
           creatorShareCents: values.creatorShareCents,
           currencyCode: values.currencyCode,
           status: values.status,
+          statusReason: values.statusReason,
+          refundedAt: values.refundedAt,
           createdAt: values.createdAt,
           updatedAt: values.updatedAt,
         },
@@ -678,6 +724,9 @@ async function backfillDrinkCollectionSalesLedger() {
       .select({
         id: drinkCollectionPurchases.id,
         createdAt: drinkCollectionPurchases.createdAt,
+        status: drinkCollectionPurchases.status,
+        statusReason: drinkCollectionPurchases.statusReason,
+        accessRevokedAt: drinkCollectionPurchases.accessRevokedAt,
       })
       .from(drinkCollectionPurchases)
       .where(
@@ -699,7 +748,9 @@ async function backfillDrinkCollectionSalesLedger() {
       grossAmountCents: Number(session.amountCents ?? 0),
       currencyCode: session.currencyCode,
       createdAt: purchase.createdAt ?? session.verifiedAt ?? session.updatedAt ?? new Date(),
-      status: "completed",
+      status: purchase.status === "completed" ? "completed" : purchase.status,
+      statusReason: purchase.statusReason,
+      refundedAt: purchase.accessRevokedAt,
     });
   }
 }
@@ -791,6 +842,9 @@ function getCollectionCheckoutPollStatus(session: DrinkCollectionCheckoutSession
   if (session.status === "completed") return "completed";
   if (session.status === "failed") return "failed";
   if (session.status === "canceled") return "canceled";
+  if (session.status === "refunded_pending") return "refunded_pending";
+  if (session.status === "refunded") return "refunded";
+  if (session.status === "revoked") return "revoked";
   return "pending";
 }
 
@@ -872,13 +926,26 @@ async function grantCollectionPurchase(
       throw new Error("Collection not found for premium purchase grant");
     }
 
+    const now = new Date();
     const insertedPurchase = await tx
       .insert(drinkCollectionPurchases)
       .values({
         userId: session.userId,
         collectionId: session.collectionId,
+        status: "completed",
+        statusReason: null,
+        accessRevokedAt: null,
+        updatedAt: now,
       })
-      .onConflictDoNothing({ target: [drinkCollectionPurchases.userId, drinkCollectionPurchases.collectionId] })
+      .onConflictDoUpdate({
+        target: [drinkCollectionPurchases.userId, drinkCollectionPurchases.collectionId],
+        set: {
+          status: "completed",
+          statusReason: null,
+          accessRevokedAt: null,
+          updatedAt: now,
+        },
+      })
       .returning({
         id: drinkCollectionPurchases.id,
         createdAt: drinkCollectionPurchases.createdAt,
@@ -908,10 +975,12 @@ async function grantCollectionPurchase(
         status: "completed",
         squareOrderId: input.squareOrderId ?? session.squareOrderId,
         squarePaymentId: input.squarePaymentId ?? session.squarePaymentId,
-        verifiedAt: new Date(),
-        lastVerifiedAt: new Date(),
+        verifiedAt: now,
+        refundedAt: null,
+        accessRevokedAt: null,
+        lastVerifiedAt: now,
         failureReason: null,
-        updatedAt: new Date(),
+        updatedAt: now,
       })
       .where(eq(drinkCollectionCheckoutSessions.id, session.id));
 
@@ -924,57 +993,76 @@ async function grantCollectionPurchase(
       currencyCode: session.currencyCode,
       createdAt: purchase.createdAt ?? session.verifiedAt ?? session.updatedAt ?? new Date(),
       status: "completed",
+      statusReason: null,
+      refundedAt: null,
     });
   });
 }
 
-async function revokeCollectionPurchase(
+async function updateCollectionAccessState(
   session: DrinkCollectionCheckoutSessionRecord,
-  input: {
-    status?: Extract<DrinkCollectionCheckoutStatus, "failed" | "canceled">;
-    squarePaymentId?: string | null;
-    squareOrderId?: string | null;
-    failureReason: string;
-    ledgerStatus?: DrinkCollectionSalesLedgerStatus | null;
-  },
+  input: CollectionAccessStatusInput,
 ) {
   if (!db) {
     throw new Error("Database unavailable");
   }
 
   await db.transaction(async (tx) => {
-    await tx
-      .delete(drinkCollectionPurchases)
+    const now = new Date();
+    const revokeTimestamp = input.purchaseStatus === "completed" ? null : (input.refundedAt ?? now);
+
+    const purchaseRows = await tx
+      .select({
+        id: drinkCollectionPurchases.id,
+        createdAt: drinkCollectionPurchases.createdAt,
+      })
+      .from(drinkCollectionPurchases)
       .where(
         and(
           eq(drinkCollectionPurchases.userId, session.userId),
           eq(drinkCollectionPurchases.collectionId, session.collectionId),
         ),
-      );
+      )
+      .limit(1);
+
+    const existingPurchase = purchaseRows[0] ?? null;
+
+    if (existingPurchase) {
+      await tx
+        .update(drinkCollectionPurchases)
+        .set({
+          status: input.purchaseStatus,
+          statusReason: input.reason ?? null,
+          accessRevokedAt: revokeTimestamp,
+          updatedAt: now,
+        })
+        .where(eq(drinkCollectionPurchases.id, existingPurchase.id));
+    }
 
     await tx
       .update(drinkCollectionCheckoutSessions)
       .set({
-        status: input.status ?? "failed",
+        status: input.checkoutStatus,
         squareOrderId: input.squareOrderId ?? session.squareOrderId,
         squarePaymentId: input.squarePaymentId ?? session.squarePaymentId,
-        failureReason: input.failureReason,
-        lastVerifiedAt: new Date(),
-        updatedAt: new Date(),
+        refundedAt: isRefundRelatedStatus(input.checkoutStatus) ? (input.refundedAt ?? now) : null,
+        accessRevokedAt: input.checkoutStatus === "completed" ? null : revokeTimestamp,
+        failureReason: input.reason ?? null,
+        lastVerifiedAt: now,
+        updatedAt: now,
       })
       .where(eq(drinkCollectionCheckoutSessions.id, session.id));
 
-    if (input.ledgerStatus === "refunded") {
+    if (existingPurchase || input.ledgerStatus === "completed") {
       await tx
         .update(drinkCollectionSalesLedger)
         .set({
-          status: "refunded",
-          updatedAt: new Date(),
+          purchaseId: existingPurchase?.id ?? null,
+          status: input.ledgerStatus,
+          statusReason: input.reason ?? null,
+          refundedAt: isRefundRelatedStatus(input.ledgerStatus) ? (input.refundedAt ?? now) : null,
+          updatedAt: now,
         })
-        .where(eq(drinkCollectionSalesLedger.checkoutSessionId, session.id));
-    } else {
-      await tx
-        .delete(drinkCollectionSalesLedger)
         .where(eq(drinkCollectionSalesLedger.checkoutSessionId, session.id));
     }
   });
@@ -1170,6 +1258,33 @@ function getPaymentAmountDetails(resource: Record<string, any> | null) {
   };
 }
 
+function mapSquareRefundState(refundStatus: string): CollectionAccessStatusInput | null {
+  const normalized = refundStatus.trim().toUpperCase();
+  if (!normalized) return null;
+
+  if (normalized === "COMPLETED") {
+    return {
+      purchaseStatus: "refunded",
+      checkoutStatus: "refunded",
+      ledgerStatus: "refunded",
+      reason: "Square reported that this premium collection payment was refunded.",
+      refundedAt: new Date(),
+    };
+  }
+
+  if (normalized === "PENDING") {
+    return {
+      purchaseStatus: "refunded_pending",
+      checkoutStatus: "refunded_pending",
+      ledgerStatus: "refunded_pending",
+      reason: "Square reported that a refund is pending for this premium collection payment.",
+      refundedAt: new Date(),
+    };
+  }
+
+  return null;
+}
+
 async function recordSquareWebhookEvent(input: {
   eventId: string;
   eventType: string;
@@ -1249,22 +1364,26 @@ async function reconcileSquareWebhookEvent(payload: SquareWebhookEventBody) {
 
   const metadata = resource?.metadata ?? null;
   if (metadata?.collectionId && metadata.collectionId !== session.collectionId) {
-    await revokeCollectionPurchase(session, {
-      status: "failed",
+    await updateCollectionAccessState(session, {
+      purchaseStatus: "revoked",
+      checkoutStatus: "revoked",
+      ledgerStatus: "revoked",
       squareOrderId: lookup.squareOrderId,
       squarePaymentId: lookup.squarePaymentId,
-      failureReason: "Square webhook metadata did not match the expected collection.",
+      reason: "Square webhook metadata did not match the expected collection.",
     });
     await db.update(drinkCollectionSquareWebhookEvents).set({ status: "rejected" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
     return { ok: true, ignored: true, eventId, eventType, reason: "collection_mismatch" } as const;
   }
 
   if (metadata?.userId && metadata.userId !== session.userId) {
-    await revokeCollectionPurchase(session, {
-      status: "failed",
+    await updateCollectionAccessState(session, {
+      purchaseStatus: "revoked",
+      checkoutStatus: "revoked",
+      ledgerStatus: "revoked",
       squareOrderId: lookup.squareOrderId,
       squarePaymentId: lookup.squarePaymentId,
-      failureReason: "Square webhook metadata did not match the expected purchaser.",
+      reason: "Square webhook metadata did not match the expected purchaser.",
     });
     await db.update(drinkCollectionSquareWebhookEvents).set({ status: "rejected" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
     return { ok: true, ignored: true, eventId, eventType, reason: "user_mismatch" } as const;
@@ -1276,11 +1395,13 @@ async function reconcileSquareWebhookEvent(payload: SquareWebhookEventBody) {
   const currencyMismatch = shouldValidateAmount && paymentDetails.amountCents > 0 && paymentDetails.currencyCode !== normalizeSquareCurrencyCode(session.currencyCode);
 
   if (amountMismatch || currencyMismatch) {
-    await revokeCollectionPurchase(session, {
-      status: "failed",
+    await updateCollectionAccessState(session, {
+      purchaseStatus: "revoked",
+      checkoutStatus: "revoked",
+      ledgerStatus: "revoked",
       squareOrderId: lookup.squareOrderId,
       squarePaymentId: lookup.squarePaymentId,
-      failureReason: amountMismatch
+      reason: amountMismatch
         ? `Square reported ${paymentDetails.amountCents} cents, which is less than the expected ${session.amountCents} cents.`
         : `Square reported ${paymentDetails.currencyCode}, which did not match ${normalizeSquareCurrencyCode(session.currencyCode)}.`,
     });
@@ -1300,11 +1421,13 @@ async function reconcileSquareWebhookEvent(payload: SquareWebhookEventBody) {
     }
 
     if (paymentStatus === "FAILED") {
-      await revokeCollectionPurchase(session, {
-        status: "failed",
+      await updateCollectionAccessState(session, {
+        purchaseStatus: "revoked",
+        checkoutStatus: "failed",
+        ledgerStatus: "revoked",
         squareOrderId: lookup.squareOrderId ?? resource?.orderId ?? session.squareOrderId,
         squarePaymentId: lookup.squarePaymentId ?? resource?.id ?? session.squarePaymentId,
-        failureReason: resource?.delayAction ?? resource?.sourceType
+        reason: resource?.delayAction ?? resource?.sourceType
           ? `Square reported the payment as failed (${paymentStatus}).`
           : "Square reported the payment as failed.",
       });
@@ -1313,11 +1436,13 @@ async function reconcileSquareWebhookEvent(payload: SquareWebhookEventBody) {
     }
 
     if (paymentStatus === "CANCELED") {
-      await revokeCollectionPurchase(session, {
-        status: "canceled",
+      await updateCollectionAccessState(session, {
+        purchaseStatus: "revoked",
+        checkoutStatus: "canceled",
+        ledgerStatus: "revoked",
         squareOrderId: lookup.squareOrderId ?? resource?.orderId ?? session.squareOrderId,
         squarePaymentId: lookup.squarePaymentId ?? resource?.id ?? session.squarePaymentId,
-        failureReason: "Square checkout was canceled before payment completed.",
+        reason: "Square checkout was canceled before payment completed.",
       });
       await db.update(drinkCollectionSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
       return { ok: true, eventId, eventType, checkoutSessionId: session.id, status: "canceled" } as const;
@@ -1332,11 +1457,13 @@ async function reconcileSquareWebhookEvent(payload: SquareWebhookEventBody) {
         squarePaymentId: parsed.squarePaymentId ?? lookup.squarePaymentId ?? session.squarePaymentId,
       });
     } else if (parsed.status === "failed" || parsed.status === "canceled") {
-      await revokeCollectionPurchase(session, {
-        status: parsed.status,
+      await updateCollectionAccessState(session, {
+        purchaseStatus: "revoked",
+        checkoutStatus: parsed.status,
+        ledgerStatus: "revoked",
         squareOrderId: parsed.squareOrderId ?? lookup.squareOrderId ?? session.squareOrderId,
         squarePaymentId: parsed.squarePaymentId ?? lookup.squarePaymentId ?? session.squarePaymentId,
-        failureReason: parsed.failureReason ?? "Square updated the order to a non-completed state.",
+        reason: parsed.failureReason ?? "Square updated the order to a non-completed state.",
       });
     } else {
       await db
@@ -1356,12 +1483,18 @@ async function reconcileSquareWebhookEvent(payload: SquareWebhookEventBody) {
 
   if (eventType.startsWith("refund.")) {
     const refundStatus = String(resource?.status || "").toUpperCase();
-    if (refundStatus === "COMPLETED") {
-      await revokeCollectionPurchase(session, {
-        status: "failed",
+    const refundState = mapSquareRefundState(refundStatus);
+    if (refundState) {
+      await updateCollectionAccessState(session, {
+        ...refundState,
         squarePaymentId: lookup.squarePaymentId ?? resource?.paymentId ?? session.squarePaymentId,
-        failureReason: "Square reported that this premium collection payment was refunded.",
-        ledgerStatus: "refunded",
+        squareOrderId: lookup.squareOrderId ?? session.squareOrderId,
+      });
+    } else if ((refundStatus === "FAILED" || refundStatus === "REJECTED" || refundStatus === "CANCELED")
+      && session.status === "refunded_pending") {
+      await grantCollectionPurchase(session, {
+        squareOrderId: lookup.squareOrderId ?? session.squareOrderId,
+        squarePaymentId: lookup.squarePaymentId ?? resource?.paymentId ?? session.squarePaymentId,
       });
     }
     await db.update(drinkCollectionSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
@@ -1480,7 +1613,12 @@ async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Se
   const rows = await db
     .select({ collectionId: drinkCollectionPurchases.collectionId })
     .from(drinkCollectionPurchases)
-    .where(eq(drinkCollectionPurchases.userId, userId));
+    .where(
+      and(
+        eq(drinkCollectionPurchases.userId, userId),
+        eq(drinkCollectionPurchases.status, "completed"),
+      ),
+    );
 
   return new Set(rows.map((row) => row.collectionId));
 }
@@ -1600,6 +1738,9 @@ async function loadPurchasedCollectionsForUser(userId: string) {
     .select({
       purchaseId: drinkCollectionPurchases.id,
       collectionId: drinkCollectionPurchases.collectionId,
+      purchaseStatus: drinkCollectionPurchases.status,
+      purchaseStatusReason: drinkCollectionPurchases.statusReason,
+      accessRevokedAt: drinkCollectionPurchases.accessRevokedAt,
       purchasedAt: drinkCollectionPurchases.createdAt,
       collectionName: drinkCollections.name,
       collectionDescription: drinkCollections.description,
@@ -1622,6 +1763,9 @@ async function loadPurchasedCollectionsForUser(userId: string) {
     return {
       purchaseId: row.purchaseId,
       collectionId: row.collectionId,
+      status: row.purchaseStatus,
+      statusReason: row.purchaseStatusReason,
+      accessRevokedAt: row.accessRevokedAt,
       name: row.collectionName,
       description: row.collectionDescription,
       isPublic: row.collectionIsPublic,
@@ -1663,6 +1807,8 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
         premiumCollections: 0,
         purchases: 0,
         grossRevenueCents: 0,
+        refundedSalesCount: 0,
+        refundedRevenueCents: 0,
       },
       collections: [] as Array<{
         id: string;
@@ -1672,6 +1818,8 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
         priceCents: number;
         purchases: number;
         grossRevenueCents: number;
+        refundedSalesCount: number;
+        refundedRevenueCents: number;
         lastPurchasedAt: string | null;
         updatedAt: string;
         route: string;
@@ -1682,69 +1830,56 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
 
   const collectionIds = premiumCollections.map((collection) => collection.id);
   const coverImagesMap = await loadCollectionCoverImagesMap(collectionIds);
-
-  const purchases = await db
+  const ledgerRows = await db
     .select({
-      id: drinkCollectionPurchases.id,
-      userId: drinkCollectionPurchases.userId,
-      collectionId: drinkCollectionPurchases.collectionId,
-      createdAt: drinkCollectionPurchases.createdAt,
+      id: drinkCollectionSalesLedger.id,
+      collectionId: drinkCollectionSalesLedger.collectionId,
+      grossAmountCents: drinkCollectionSalesLedger.grossAmountCents,
+      status: drinkCollectionSalesLedger.status,
+      createdAt: drinkCollectionSalesLedger.createdAt,
     })
-    .from(drinkCollectionPurchases)
-    .where(inArray(drinkCollectionPurchases.collectionId, collectionIds))
-    .orderBy(desc(drinkCollectionPurchases.createdAt));
-
-  const completedCheckoutSessions = await db
-    .select({
-      userId: drinkCollectionCheckoutSessions.userId,
-      collectionId: drinkCollectionCheckoutSessions.collectionId,
-      amountCents: drinkCollectionCheckoutSessions.amountCents,
-      verifiedAt: drinkCollectionCheckoutSessions.verifiedAt,
-      updatedAt: drinkCollectionCheckoutSessions.updatedAt,
-    })
-    .from(drinkCollectionCheckoutSessions)
+    .from(drinkCollectionSalesLedger)
     .where(
-      and(
-        inArray(drinkCollectionCheckoutSessions.collectionId, collectionIds),
-        eq(drinkCollectionCheckoutSessions.status, "completed"),
-      ),
+      inArray(drinkCollectionSalesLedger.collectionId, collectionIds),
     )
-    .orderBy(desc(drinkCollectionCheckoutSessions.verifiedAt), desc(drinkCollectionCheckoutSessions.updatedAt));
+    .orderBy(desc(drinkCollectionSalesLedger.createdAt));
 
-  const checkoutAmountByOwnershipKey = new Map<string, number>();
-  for (const session of completedCheckoutSessions) {
-    const ownershipKey = `${session.userId}:${session.collectionId}`;
-    if (!checkoutAmountByOwnershipKey.has(ownershipKey)) {
-      checkoutAmountByOwnershipKey.set(ownershipKey, Number(session.amountCents ?? 0));
-    }
-  }
-
-  const salesByCollectionId = new Map<string, { purchases: number; grossRevenueCents: number; lastPurchasedAt: Date | null }>();
-  for (const purchase of purchases) {
-    const collection = premiumCollections.find((entry) => entry.id === purchase.collectionId);
-    if (!collection) continue;
-
-    const ownershipKey = `${purchase.userId}:${purchase.collectionId}`;
-    const revenueCents = checkoutAmountByOwnershipKey.get(ownershipKey) ?? Number(collection.priceCents ?? 0);
-    const existing = salesByCollectionId.get(purchase.collectionId) ?? {
+  const salesByCollectionId = new Map<string, {
+    purchases: number;
+    grossRevenueCents: number;
+    refundedSalesCount: number;
+    refundedRevenueCents: number;
+    lastPurchasedAt: Date | null;
+  }>();
+  for (const entry of ledgerRows) {
+    const existing = salesByCollectionId.get(entry.collectionId) ?? {
       purchases: 0,
       grossRevenueCents: 0,
+      refundedSalesCount: 0,
+      refundedRevenueCents: 0,
       lastPurchasedAt: null,
     };
 
-    existing.purchases += 1;
-    existing.grossRevenueCents += revenueCents;
-    if (!existing.lastPurchasedAt || purchase.createdAt > existing.lastPurchasedAt) {
-      existing.lastPurchasedAt = purchase.createdAt;
+    if (entry.status === "completed") {
+      existing.purchases += 1;
+      existing.grossRevenueCents += Number(entry.grossAmountCents ?? 0);
+      if (!existing.lastPurchasedAt || entry.createdAt > existing.lastPurchasedAt) {
+        existing.lastPurchasedAt = entry.createdAt;
+      }
+    } else if (entry.status === "refunded" || entry.status === "refunded_pending" || entry.status === "revoked") {
+      existing.refundedSalesCount += 1;
+      existing.refundedRevenueCents += Number(entry.grossAmountCents ?? 0);
     }
 
-    salesByCollectionId.set(purchase.collectionId, existing);
+    salesByCollectionId.set(entry.collectionId, existing);
   }
 
   const collections = premiumCollections.map((collection) => {
     const stats = salesByCollectionId.get(collection.id) ?? {
       purchases: 0,
       grossRevenueCents: 0,
+      refundedSalesCount: 0,
+      refundedRevenueCents: 0,
       lastPurchasedAt: null as Date | null,
     };
 
@@ -1756,6 +1891,8 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
       priceCents: Number(collection.priceCents ?? 0),
       purchases: stats.purchases,
       grossRevenueCents: stats.grossRevenueCents,
+      refundedSalesCount: stats.refundedSalesCount,
+      refundedRevenueCents: stats.refundedRevenueCents,
       lastPurchasedAt: stats.lastPurchasedAt ? stats.lastPurchasedAt.toISOString() : null,
       updatedAt: collection.updatedAt.toISOString(),
       route: `/drinks/collections/${collection.id}`,
@@ -1768,6 +1905,8 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
       premiumCollections: premiumCollections.length,
       purchases: collections.reduce((sum, collection) => sum + collection.purchases, 0),
       grossRevenueCents: collections.reduce((sum, collection) => sum + collection.grossRevenueCents, 0),
+      refundedSalesCount: collections.reduce((sum, collection) => sum + collection.refundedSalesCount, 0),
+      refundedRevenueCents: collections.reduce((sum, collection) => sum + collection.refundedRevenueCents, 0),
     },
     collections,
   };
@@ -1797,20 +1936,17 @@ async function loadCreatorCollectionFinanceSummary(userId: string) {
       creatorShareCents: drinkCollectionSalesLedger.creatorShareCents,
       currencyCode: drinkCollectionSalesLedger.currencyCode,
       status: drinkCollectionSalesLedger.status,
+      statusReason: drinkCollectionSalesLedger.statusReason,
+      refundedAt: drinkCollectionSalesLedger.refundedAt,
       createdAt: drinkCollectionSalesLedger.createdAt,
     })
     .from(drinkCollectionSalesLedger)
     .innerJoin(drinkCollections, eq(drinkCollectionSalesLedger.collectionId, drinkCollections.id))
-    .where(
-      and(
-        eq(drinkCollectionSalesLedger.userId, userId),
-        eq(drinkCollectionSalesLedger.status, "completed"),
-      ),
-    )
+    .where(eq(drinkCollectionSalesLedger.userId, userId))
     .orderBy(desc(drinkCollectionSalesLedger.createdAt))
     .limit(10);
 
-  const totals = recentSales.reduce((acc, sale) => {
+  const totals = recentSales.filter((sale) => sale.status === "completed").reduce((acc, sale) => {
     acc.grossSalesCents += Number(sale.grossAmountCents ?? 0);
     acc.platformFeesCents += Number(sale.platformFeeCents ?? 0);
     acc.estimatedCreatorShareCents += Number(sale.creatorShareCents ?? 0);
@@ -1843,12 +1979,32 @@ async function loadCreatorCollectionFinanceSummary(userId: string) {
     estimatedCreatorShareCents: totals.estimatedCreatorShareCents,
   };
 
+  const refundedCountRows = await db
+    .select({
+      count: sql<number>`count(*)::int`,
+      refundedSalesCents: sql<number>`coalesce(sum(${drinkCollectionSalesLedger.grossAmountCents}), 0)::int`,
+    })
+    .from(drinkCollectionSalesLedger)
+    .where(
+      and(
+        eq(drinkCollectionSalesLedger.userId, userId),
+        inArray(drinkCollectionSalesLedger.status, ["refunded", "refunded_pending", "revoked"]),
+      ),
+    );
+
+  const refundedAggregate = refundedCountRows[0] ?? {
+    count: 0,
+    refundedSalesCents: 0,
+  };
+
   return {
     summary: {
       grossSalesCents: Number(aggregate.grossSalesCents ?? 0),
       platformFeesCents: Number(aggregate.platformFeesCents ?? 0),
       estimatedCreatorShareCents: Number(aggregate.estimatedCreatorShareCents ?? 0),
       totalPremiumSalesCount: Number(aggregate.count ?? 0),
+      refundedSalesCount: Number(refundedAggregate.count ?? 0),
+      refundedSalesCents: Number(refundedAggregate.refundedSalesCents ?? 0),
       premiumCollectionsCount: premiumCollections.length,
       estimates: {
         usesEstimatedShareFormula: true,
@@ -1867,12 +2023,14 @@ async function loadCreatorCollectionFinanceSummary(userId: string) {
       creatorShareCents: Number(sale.creatorShareCents ?? 0),
       currencyCode: normalizeSquareCurrencyCode(sale.currencyCode),
       status: sale.status,
+      statusReason: sale.statusReason,
+      refundedAt: sale.refundedAt ? sale.refundedAt.toISOString() : null,
       createdAt: sale.createdAt.toISOString(),
       route: `/drinks/collections/${sale.collectionId}`,
     })),
     reportingNotes: [
-      "Finance totals only include completed premium collection purchases with ownership records.",
-      "Pending, failed, canceled, and refunded sessions are excluded from finance totals.",
+      "Finance totals only include ledger rows that are still in completed status.",
+      "Refunded, refund-pending, and revoked premium collection sales are separated from completed revenue totals and do not keep access active.",
       `Estimated platform fees and creator share use an internal ${PREMIUM_COLLECTION_PLATFORM_FEE_BPS / 100}% / ${PREMIUM_COLLECTION_CREATOR_SHARE_BPS / 100}% split for reporting readiness only.`,
       "No payouts are sent automatically yet. Square checkout captures sales, but creator transfers are not implemented in this dashboard.",
     ],
@@ -5270,8 +5428,8 @@ r.get("/creator-dashboard/sales", requireAuth, async (req, res) => {
       totals: sales.totals,
       collections: sales.collections,
       reportingNotes: [
-        "Purchases are counted from drink_collection_purchases ownership records.",
-        "Pending, failed, canceled, and refunded checkout sessions are excluded from sales totals.",
+        "Active purchases only count when the ownership record is still in completed status.",
+        "Refunded, refund-pending, and revoked premium sales are tracked separately and excluded from completed sales totals.",
         "Gross sales are reporting only and do not imply payouts or net earnings.",
       ],
     });
