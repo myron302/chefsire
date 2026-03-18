@@ -62,6 +62,8 @@ interface PublicCollection {
   priceCents: number;
   itemsCount: number;
   ownedByViewer?: boolean;
+  viewerAccessGrants?: Array<"creator" | "direct_purchase" | "bundle" | "membership">;
+  viewerPrimaryAccessGrant?: "creator" | "direct_purchase" | "bundle" | "membership" | null;
   isWishlisted?: boolean;
   wishlistCount?: number;
   averageRating?: number;
@@ -170,6 +172,14 @@ function formatCurrency(cents: number, currency = "USD") {
     style: "currency",
     currency,
   }).format(cents / 100);
+}
+
+function accessGrantLabel(grant?: PublicCollection["viewerPrimaryAccessGrant"]) {
+  if (grant === "creator") return "Your collection";
+  if (grant === "membership") return "Included with membership";
+  if (grant === "bundle") return "Unlocked via bundle";
+  if (grant === "direct_purchase") return "Owned via purchase";
+  return "Owned";
 }
 
 function creatorMixHeadline(data: PublicCreatorResponse): string {
@@ -636,7 +646,7 @@ export default function PublicDrinkCreatorPage() {
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
                           <Badge>Premium · {formatCurrency(collection.priceCents)}</Badge>
-                          {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+                          {collection.ownedByViewer ? <Badge variant="secondary">{accessGrantLabel(collection.viewerPrimaryAccessGrant)}</Badge> : null}
                           {membershipActive ? <Badge variant="secondary">Included with membership</Badge> : null}
                           {user && collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
                           {collection.activePromoPricing ? <Badge variant="secondary">Promo {collection.activePromoPricing.code}</Badge> : null}

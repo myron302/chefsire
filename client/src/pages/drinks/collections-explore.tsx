@@ -43,6 +43,8 @@ interface PublicCollection {
   updatedAt: string;
   route: string;
   ownedByViewer?: boolean;
+  viewerAccessGrants?: Array<"creator" | "direct_purchase" | "bundle" | "membership">;
+  viewerPrimaryAccessGrant?: "creator" | "direct_purchase" | "bundle" | "membership" | null;
   isWishlisted?: boolean;
   wishlistCount?: number;
   averageRating?: number;
@@ -90,6 +92,14 @@ function CollectionPromoNote({ collection }: { collection: PublicCollection }) {
       Active promo {collection.activePromoPricing.code}: checkout price {formatCurrency(collection.activePromoPricing.finalAmountCents, collection.activePromoPricing.currencyCode)}.
     </p>
   );
+}
+
+function accessGrantLabel(grant?: PublicCollection["viewerPrimaryAccessGrant"]) {
+  if (grant === "creator") return "Your collection";
+  if (grant === "membership") return "Included with membership";
+  if (grant === "bundle") return "Unlocked via bundle";
+  if (grant === "direct_purchase") return "Owned via purchase";
+  return "Owned";
 }
 
 export default function DrinkCollectionsExplorePage() {
@@ -184,7 +194,7 @@ export default function DrinkCollectionsExplorePage() {
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
                     {collection.isPremium ? <Badge>Premium · {formatCurrency(collection.priceCents)}</Badge> : null}
-                    {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+                    {collection.ownedByViewer ? <Badge variant="secondary">{accessGrantLabel(collection.viewerPrimaryAccessGrant)}</Badge> : null}
                     {user && collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
                     {collection.activePromoPricing ? <Badge variant="secondary">Promo {collection.activePromoPricing.code}</Badge> : null}
                     <Badge variant="outline">Updated {new Date(collection.updatedAt).toLocaleDateString()}</Badge>
@@ -224,7 +234,7 @@ export default function DrinkCollectionsExplorePage() {
                   <p className="text-sm text-muted-foreground">by {collection.creatorUsername ? `@${collection.creatorUsername}` : "a creator"}</p>
                   <div className="flex flex-wrap gap-2">
                     <Badge>Premium Collection · {formatCurrency(collection.priceCents)}</Badge>
-                    {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+                    {collection.ownedByViewer ? <Badge variant="secondary">{accessGrantLabel(collection.viewerPrimaryAccessGrant)}</Badge> : null}
                     {user && collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
                     {collection.activePromoPricing ? <Badge variant="secondary">Promo {collection.activePromoPricing.code}</Badge> : null}
                   </div>
