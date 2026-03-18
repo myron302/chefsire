@@ -49,6 +49,7 @@ interface PublicCollection {
   isPremium: boolean;
   priceCents: number;
   itemsCount: number;
+  ownedByViewer?: boolean;
 }
 
 interface PublicCreatorResponse {
@@ -400,6 +401,7 @@ export default function PublicDrinkCreatorPage() {
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
                           <Badge>Premium · ${(collection.priceCents / 100).toFixed(2)}</Badge>
+                          {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <Link href="/drinks/collections/explore" className="text-xs underline underline-offset-2">Browse premium collections</Link>

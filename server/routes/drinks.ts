@@ -11,6 +11,7 @@ import {
   insertDrinkLikeSchema,
   insertDrinkSaveSchema,
   drinkCollectionItems,
+  drinkCollectionPurchases,
   drinkCollections,
   drinkChallengeSubmissions,
   drinkChallenges,
@@ -414,17 +415,44 @@ async function ensureDrinkCollectionsSchema() {
       );
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_collection_purchases (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
+        created_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT drink_collection_purchases_user_collection_idx UNIQUE (user_id, collection_id)
+      );
+    `);
+
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_idx ON drink_collections(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_public_idx ON drink_collections(is_public);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_updated_at_idx ON drink_collections(user_id, updated_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_public_updated_at_idx ON drink_collections(is_public, updated_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_items_slug_idx ON drink_collection_items(drink_slug);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_purchases_user_idx ON drink_collection_purchases(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_purchases_collection_idx ON drink_collection_purchases(collection_id);`);
   })();
 
   return _drinkCollectionsSchemaReady;
 }
 
-async function resolveCollectionWithItems(collection: typeof drinkCollections.$inferSelect) {
+async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
+  if (!db || !userId) return new Set();
+
+  const rows = await db
+    .select({ collectionId: drinkCollectionPurchases.collectionId })
+    .from(drinkCollectionPurchases)
+    .where(eq(drinkCollectionPurchases.userId, userId));
+
+  return new Set(rows.map((row) => row.collectionId));
+}
+
+async function resolveCollectionWithItems(
+  collection: typeof drinkCollections.$inferSelect,
+  viewerUserId?: string | null,
+  ownedCollectionIds?: Set<string>,
+) {
   if (!db) return null;
 
   const creatorRows = await db
@@ -460,6 +488,8 @@ async function resolveCollectionWithItems(collection: typeof drinkCollections.$i
   }));
 
   const coverImage = items[0]?.image ?? null;
+  const isOwner = Boolean(viewerUserId && viewerUserId === collection.userId);
+  const isOwned = isOwner || Boolean(viewerUserId && ownedCollectionIds?.has(collection.id));
 
   return {
     ...collection,
@@ -469,11 +499,13 @@ async function resolveCollectionWithItems(collection: typeof drinkCollections.$i
     coverImage,
     itemsCount: itemRows.length,
     items,
+    ownedByViewer: isOwned,
   };
 }
 
-async function resolvePublicCollectionCards(inputRows: Array<typeof drinkCollections.$inferSelect>) {
-  const collections = await Promise.all(inputRows.map((row) => resolveCollectionWithItems(row)));
+async function resolvePublicCollectionCards(inputRows: Array<typeof drinkCollections.$inferSelect>, viewerUserId?: string | null) {
+  const ownedCollectionIds = await loadOwnedCollectionIdsForUser(viewerUserId);
+  const collections = await Promise.all(inputRows.map((row) => resolveCollectionWithItems(row, viewerUserId, ownedCollectionIds)));
   return collections.filter(Boolean);
 }
 
@@ -3731,7 +3763,7 @@ r.get("/collections/mine", optionalAuth, async (req, res) => {
       .limit(limit)
       .offset(offset);
 
-    const collections = await Promise.all(rows.map((row) => resolveCollectionWithItems(row)));
+    const collections = await Promise.all(rows.map((row) => resolveCollectionWithItems(row, req.user?.id ?? null)));
     return res.json({ ok: true, limit, offset, collections: collections.filter(Boolean) });
   } catch (error) {
     logCollectionRouteError("/mine", req, error);
@@ -3741,7 +3773,7 @@ r.get("/collections/mine", optionalAuth, async (req, res) => {
   }
 });
 
-r.get("/collections/public/:userId", async (req, res) => {
+r.get("/collections/public/:userId", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       logCollectionDbUnavailable("/public/:userId", req);
@@ -3760,7 +3792,7 @@ r.get("/collections/public/:userId", async (req, res) => {
       .limit(limit)
       .offset(offset);
 
-    const collections = await resolvePublicCollectionCards(rows);
+    const collections = await resolvePublicCollectionCards(rows, req.user?.id ?? null);
     return res.json({ ok: true, limit, offset, collections: collections.filter(Boolean) });
   } catch (error) {
     const message = logCollectionRouteError("/public/:userId", req, error);
@@ -3768,7 +3800,7 @@ r.get("/collections/public/:userId", async (req, res) => {
   }
 });
 
-r.get("/collections/explore", async (req, res) => {
+r.get("/collections/explore", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       logCollectionDbUnavailable("/explore", req);
@@ -3787,7 +3819,7 @@ r.get("/collections/explore", async (req, res) => {
       .limit(limit)
       .offset(offset);
 
-    const collections = await resolvePublicCollectionCards(rows);
+    const collections = await resolvePublicCollectionCards(rows, req.user?.id ?? null);
     return res.json({ ok: true, limit, offset, collections });
   } catch (error) {
     const message = logCollectionRouteError("/explore", req, error);
@@ -3795,7 +3827,7 @@ r.get("/collections/explore", async (req, res) => {
   }
 });
 
-r.get("/collections/featured", async (req, res) => {
+r.get("/collections/featured", optionalAuth, async (req, res) => {
   try {
     if (!db) {
       logCollectionDbUnavailable("/featured", req);
@@ -3813,7 +3845,7 @@ r.get("/collections/featured", async (req, res) => {
       .orderBy(desc(drinkCollections.updatedAt))
       .limit(100);
 
-    const hydrated = await resolvePublicCollectionCards(rows);
+    const hydrated = await resolvePublicCollectionCards(rows, req.user?.id ?? null);
     const featured = hydrated
       .sort((a, b) => featuredCollectionScore(b) - featuredCollectionScore(a))
       .slice(0, limit);
@@ -3826,6 +3858,74 @@ r.get("/collections/featured", async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/featured", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load featured collections"));
+  }
+});
+
+
+r.get("/collections/:id/ownership", optionalAuth, async (req, res) => {
+  try {
+    if (!req.user?.id) return collectionAuthRequired(res);
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    await ensureDrinkCollectionsSchema();
+
+    const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const collection = rows[0];
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+
+    const isOwner = req.user.id === collection.userId;
+    const ownedCollectionIds = await loadOwnedCollectionIdsForUser(req.user.id);
+    const owned = isOwner || ownedCollectionIds.has(collection.id);
+
+    return res.json({ ok: true, collectionId: collection.id, owned });
+  } catch (error) {
+    const message = logCollectionRouteError("/:id/ownership", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to resolve ownership"));
+  }
+});
+
+r.post("/collections/:id/purchase", optionalAuth, async (req, res) => {
+  try {
+    if (!req.user?.id) return collectionAuthRequired(res);
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    await ensureDrinkCollectionsSchema();
+
+    const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const collection = rows[0];
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+
+    const isOwner = req.user.id === collection.userId;
+    if (!collection.isPublic && !isOwner) {
+      return res.status(403).json({ ok: false, error: "Collection is private" });
+    }
+
+    if (!collection.isPremium) {
+      return res.status(400).json({ ok: false, error: "Collection is already free" });
+    }
+
+    if (isOwner) {
+      return res.json({ ok: true, collectionId: collection.id, owned: true, alreadyOwned: true });
+    }
+
+    const inserted = await db
+      .insert(drinkCollectionPurchases)
+      .values({
+        userId: req.user.id,
+        collectionId: collection.id,
+      })
+      .onConflictDoNothing({ target: [drinkCollectionPurchases.userId, drinkCollectionPurchases.collectionId] })
+      .returning({ id: drinkCollectionPurchases.id });
+
+    return res.status(inserted.length ? 201 : 200).json({
+      ok: true,
+      collectionId: collection.id,
+      owned: true,
+      alreadyOwned: inserted.length === 0,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/:id/purchase", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to unlock collection"));
   }
 });
 
@@ -3845,8 +3945,35 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Collection is private" });
     }
 
-    const hydrated = await resolveCollectionWithItems(collection);
-    return res.json({ ok: true, collection: hydrated });
+    const ownedCollectionIds = await loadOwnedCollectionIdsForUser(req.user?.id ?? null);
+    const hydrated = await resolveCollectionWithItems(collection, req.user?.id ?? null, ownedCollectionIds);
+
+    if (!hydrated) return res.status(500).json({ ok: false, error: "Failed to resolve collection" });
+
+    const isOwned = Boolean(hydrated.ownedByViewer);
+    if (hydrated.isPremium && !isOwner && !isOwned) {
+      const previewLimit = 2;
+      return res.json({
+        ok: true,
+        collection: {
+          ...hydrated,
+          isLocked: true,
+          requiresUnlock: true,
+          ownedByViewer: false,
+          previewLimit,
+          items: hydrated.items.slice(0, previewLimit),
+        },
+      });
+    }
+
+    return res.json({
+      ok: true,
+      collection: {
+        ...hydrated,
+        isLocked: false,
+        requiresUnlock: false,
+      },
+    });
   } catch (error) {
     const message = logCollectionRouteError("/:id", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load collection"));
@@ -3887,7 +4014,7 @@ r.patch("/collections/:id", optionalAuth, async (req, res) => {
       .where(eq(drinkCollections.id, req.params.id))
       .returning();
 
-    const hydrated = await resolveCollectionWithItems(updatedRows[0]);
+    const hydrated = await resolveCollectionWithItems(updatedRows[0], req.user?.id ?? null);
     return res.json({ ok: true, collection: hydrated });
   } catch (error) {
     logCollectionRouteError("/:id", req, error);
@@ -3956,7 +4083,7 @@ r.post("/collections/:id/items", optionalAuth, async (req, res) => {
       .where(eq(drinkCollections.id, req.params.id));
 
     const refreshedRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
-    const hydrated = await resolveCollectionWithItems(refreshedRows[0]);
+    const hydrated = await resolveCollectionWithItems(refreshedRows[0], req.user?.id ?? null);
     return res.status(201).json({ ok: true, collection: hydrated });
   } catch (error) {
     logCollectionRouteError("/:id/items", req, error);
@@ -3994,7 +4121,7 @@ r.delete("/collections/:id/items/:slug", optionalAuth, async (req, res) => {
       .where(eq(drinkCollections.id, req.params.id));
 
     const refreshedRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
-    const hydrated = await resolveCollectionWithItems(refreshedRows[0]);
+    const hydrated = await resolveCollectionWithItems(refreshedRows[0], req.user?.id ?? null);
     return res.json({ ok: true, collection: hydrated });
   } catch (error) {
     logCollectionRouteError("/:id/items/:slug", req, error);
