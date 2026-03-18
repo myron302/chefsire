@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Star } from "lucide-react";
 import { Link, useLocation, useRoute } from "wouter";
 
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import { useUser } from "@/contexts/UserContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 
 type CollectionItem = {
   id: string;
@@ -83,6 +86,8 @@ type Collection = {
   wishlistCount?: number;
   activePromoPricing?: PromoPricing | null;
   previewLimit?: number;
+  averageRating?: number;
+  reviewCount?: number;
   checkout?: CollectionCheckoutSnapshot | null;
   userId: string;
   creatorUsername?: string | null;
@@ -108,6 +113,36 @@ type WishlistStatusResponse = {
   isWishlisted: boolean;
   owned: boolean;
   wishlistCount: number;
+};
+
+type CollectionReview = {
+  id: string;
+  userId: string;
+  collectionId: string;
+  rating: number;
+  title: string | null;
+  body: string | null;
+  isVerifiedPurchase: boolean;
+  createdAt: string;
+  updatedAt: string;
+  user: {
+    username: string | null;
+    displayName: string | null;
+    avatar: string | null;
+  };
+};
+
+type CollectionReviewsResponse = {
+  ok: boolean;
+  collectionId: string;
+  summary: {
+    averageRating: number;
+    reviewCount: number;
+  };
+  reviews: CollectionReview[];
+  viewerOwnsCollection?: boolean;
+  canReview?: boolean;
+  viewerReview?: CollectionReview | null;
 };
 
 function initials(value: string | null | undefined): string {
@@ -159,6 +194,19 @@ export default function DrinkCollectionDetailPage() {
   const [isUpdatingWishlist, setIsUpdatingWishlist] = useState(false);
   const [wishlistMessage, setWishlistMessage] = useState("");
   const [wishlistError, setWishlistError] = useState("");
+  const [reviewsLoading, setReviewsLoading] = useState(false);
+  const [reviewsError, setReviewsError] = useState("");
+  const [reviews, setReviews] = useState<CollectionReview[]>([]);
+  const [currentUserReview, setCurrentUserReview] = useState<CollectionReview | null>(null);
+  const [canReviewCollection, setCanReviewCollection] = useState(false);
+  const [reviewFormOpen, setReviewFormOpen] = useState(false);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewTitle, setReviewTitle] = useState("");
+  const [reviewBody, setReviewBody] = useState("");
+  const [reviewMessage, setReviewMessage] = useState("");
+  const [reviewMutationError, setReviewMutationError] = useState("");
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [isDeletingReview, setIsDeletingReview] = useState(false);
   const checkoutWindowRef = useRef<Window | null>(null);
   const pollStartedAtRef = useRef<number | null>(null);
   const popupClosedNoticeShownRef = useRef(false);
@@ -228,8 +276,134 @@ export default function DrinkCollectionDetailPage() {
     }
   }
 
+  function openReviewForm(review?: CollectionReview | null) {
+    setReviewMutationError("");
+    setReviewMessage("");
+    setCurrentUserReview(review ?? currentUserReview ?? null);
+    setReviewRating(review?.rating ?? currentUserReview?.rating ?? 5);
+    setReviewTitle(review?.title ?? currentUserReview?.title ?? "");
+    setReviewBody(review?.body ?? currentUserReview?.body ?? "");
+    setReviewFormOpen(true);
+  }
+
+  function closeReviewForm() {
+    setReviewFormOpen(false);
+    setReviewMutationError("");
+    setReviewMessage("");
+  }
+
+  async function loadReviews(currentCollectionId: string) {
+    if (!currentCollectionId) return;
+
+    setReviewsLoading(true);
+    setReviewsError("");
+
+    try {
+      const response = await fetch(`/api/drinks/collections/${encodeURIComponent(currentCollectionId)}/reviews`, {
+        credentials: "include",
+      });
+      const payload = (await response.json().catch(() => null)) as CollectionReviewsResponse | null;
+      if (!response.ok) {
+        throw new Error(payload && "error" in payload ? String((payload as any).error) : `Failed to load reviews (${response.status})`);
+      }
+
+      setReviews(Array.isArray(payload?.reviews) ? payload.reviews : []);
+      setCurrentUserReview(payload?.viewerReview ?? null);
+      setCanReviewCollection(Boolean(payload?.canReview));
+      setCollection((current) => current
+        ? {
+            ...current,
+            averageRating: payload?.summary?.averageRating ?? current.averageRating ?? 0,
+            reviewCount: payload?.summary?.reviewCount ?? current.reviewCount ?? 0,
+          }
+        : current);
+    } catch (err) {
+      setReviewsError(err instanceof Error ? err.message : "Failed to load reviews");
+    } finally {
+      setReviewsLoading(false);
+    }
+  }
+
+  async function refreshCollectionAndReviews(preserveCheckoutMessage = true) {
+    if (!collectionId) return;
+    await Promise.all([
+      loadCollection(collectionId, preserveCheckoutMessage),
+      loadReviews(collectionId),
+    ]);
+  }
+
+  async function submitReview() {
+    if (!collection?.id) return;
+
+    setIsSubmittingReview(true);
+    setReviewMutationError("");
+    setReviewMessage("");
+
+    try {
+      const response = await fetch(
+        currentUserReview
+          ? `/api/drinks/collections/${encodeURIComponent(collection.id)}/reviews/${encodeURIComponent(currentUserReview.id)}`
+          : `/api/drinks/collections/${encodeURIComponent(collection.id)}/reviews`,
+        {
+          method: currentUserReview ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            rating: reviewRating,
+            title: reviewTitle,
+            body: reviewBody,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to save review (${response.status})`);
+      }
+
+      await refreshCollectionAndReviews();
+      setReviewMessage(currentUserReview ? "Your review was updated." : "Thanks for sharing your review.");
+      setReviewFormOpen(false);
+    } catch (err) {
+      setReviewMutationError(err instanceof Error ? err.message : "Failed to save review");
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  }
+
+  async function deleteReview() {
+    if (!collection?.id || !currentUserReview?.id) return;
+
+    setIsDeletingReview(true);
+    setReviewMutationError("");
+    setReviewMessage("");
+
+    try {
+      const response = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}/reviews/${encodeURIComponent(currentUserReview.id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to delete review (${response.status})`);
+      }
+
+      setCurrentUserReview(null);
+      setReviewTitle("");
+      setReviewBody("");
+      setReviewRating(5);
+      await refreshCollectionAndReviews();
+      setReviewMessage("Your review was removed.");
+      setReviewFormOpen(false);
+    } catch (err) {
+      setReviewMutationError(err instanceof Error ? err.message : "Failed to delete review");
+    } finally {
+      setIsDeletingReview(false);
+    }
+  }
+
   useEffect(() => {
     void loadCollection(collectionId);
+    void loadReviews(collectionId);
   }, [collectionId]);
 
   useEffect(() => {
@@ -511,6 +685,9 @@ export default function DrinkCollectionDetailPage() {
   const displayedDiscountAmountCents = promoPricing?.discountAmountCents ?? 0;
   const activePromo = collection?.activePromoPricing ?? null;
   const canWishlist = Boolean(user?.id && collection?.isPremium && !collection?.ownedByViewer && collection?.userId !== user.id);
+  const reviewAverageRating = collection?.averageRating ?? 0;
+  const reviewCount = collection?.reviewCount ?? 0;
+  const canManageReview = Boolean(canReviewCollection && user?.id && collection?.userId !== user.id);
 
   return (
     <div className="container mx-auto max-w-5xl space-y-6 px-4 py-8">
@@ -552,18 +729,21 @@ export default function DrinkCollectionDetailPage() {
               ) : null}
             </div>
             {collection.isPremium ? (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <span>{formatCurrency(collection.priceCents)} list price</span>
-                <span>·</span>
-                <span>{collection.wishlistCount ?? 0} interested wishlists</span>
-                {activePromo ? (
-                  <>
-                    <span>·</span>
-                    <span className="font-medium text-emerald-700">
-                      Active promo {activePromo.code}: {formatPromoDiscount(activePromo)}
-                    </span>
-                  </>
-                ) : null}
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>{formatCurrency(collection.priceCents)} list price</span>
+                  <span>·</span>
+                  <span>{collection.wishlistCount ?? 0} interested wishlists</span>
+                  {activePromo ? (
+                    <>
+                      <span>·</span>
+                      <span className="font-medium text-emerald-700">
+                        Active promo {activePromo.code}: {formatPromoDiscount(activePromo)}
+                      </span>
+                    </>
+                  ) : null}
+                </div>
+                <CollectionRatingSummary averageRating={reviewAverageRating} reviewCount={reviewCount} />
               </div>
             ) : null}
           </CardHeader>
@@ -713,6 +893,126 @@ export default function DrinkCollectionDetailPage() {
               <p className="text-xs text-muted-foreground">
                 Showing preview ({collection.items.length} of {collection.itemsCount} drinks). Unlock to access the full collection.
               </p>
+            ) : null}
+
+            {collection.isPremium ? (
+              <div className="space-y-4 rounded-md border-t pt-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="space-y-1">
+                    <h2 className="text-lg font-semibold">Reviews & ratings</h2>
+                    <CollectionRatingSummary averageRating={reviewAverageRating} reviewCount={reviewCount} />
+                    <p className="text-xs text-muted-foreground">
+                      Verified buyer reviews stay visible as social proof even if access changes later, but new reviews require active ownership.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {canManageReview ? (
+                      <Button type="button" variant={currentUserReview ? "outline" : "default"} onClick={() => openReviewForm(currentUserReview)}>
+                        {currentUserReview ? "Edit Your Review" : "Leave a Review"}
+                      </Button>
+                    ) : !user ? (
+                      <Link href="/auth/login">
+                        <Button type="button" variant="outline">Sign in to review</Button>
+                      </Link>
+                    ) : collection.userId === user.id ? (
+                      <p className="text-sm text-muted-foreground">Creators can view feedback here but cannot review their own collection.</p>
+                    ) : collection.isLocked ? (
+                      <p className="text-sm text-muted-foreground">Unlock this premium collection to leave a verified review.</p>
+                    ) : null}
+                  </div>
+                </div>
+
+                {reviewMessage ? <p className="text-sm text-emerald-600">{reviewMessage}</p> : null}
+                {reviewMutationError ? <p className="text-sm text-destructive">{reviewMutationError}</p> : null}
+                {reviewsError ? <p className="text-sm text-destructive">{reviewsError}</p> : null}
+
+                {reviewFormOpen ? (
+                  <div className="space-y-3 rounded-md border bg-muted/20 p-4">
+                    <div className="space-y-1">
+                      <p className="font-medium">{currentUserReview ? "Edit your review" : "Leave a review"}</p>
+                      <p className="text-xs text-muted-foreground">One verified buyer review per collection for version one.</p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Your rating</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {[1, 2, 3, 4, 5].map((value) => (
+                          <Button
+                            key={value}
+                            type="button"
+                            variant={reviewRating === value ? "default" : "outline"}
+                            onClick={() => setReviewRating(value)}
+                            className="gap-1"
+                          >
+                            <Star className={`h-4 w-4 ${reviewRating >= value ? "fill-yellow-400 text-yellow-500" : "text-muted-foreground"}`} />
+                            {value}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="collection-review-title">Title (optional)</Label>
+                      <Input
+                        id="collection-review-title"
+                        value={reviewTitle}
+                        onChange={(event) => setReviewTitle(event.target.value.slice(0, 160))}
+                        placeholder="Worth the unlock"
+                        maxLength={160}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="collection-review-body">Review (optional)</Label>
+                      <Textarea
+                        id="collection-review-body"
+                        value={reviewBody}
+                        onChange={(event) => setReviewBody(event.target.value.slice(0, 4000))}
+                        placeholder="What made this premium collection useful?"
+                        rows={4}
+                        maxLength={4000}
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <Button type="button" onClick={() => void submitReview()} disabled={isSubmittingReview}>
+                        {isSubmittingReview ? "Saving…" : currentUserReview ? "Update Review" : "Publish Review"}
+                      </Button>
+                      <Button type="button" variant="outline" onClick={closeReviewForm} disabled={isSubmittingReview || isDeletingReview}>
+                        Cancel
+                      </Button>
+                      {currentUserReview ? (
+                        <Button type="button" variant="destructive" onClick={() => void deleteReview()} disabled={isSubmittingReview || isDeletingReview}>
+                          {isDeletingReview ? "Deleting…" : "Delete Review"}
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
+
+                {reviewsLoading ? <p className="text-sm text-muted-foreground">Loading reviews…</p> : null}
+                {!reviewsLoading && reviews.length === 0 ? (
+                  <div className="rounded-md border p-4 text-sm text-muted-foreground">
+                    No reviews yet. Verified buyers can add the first rating once they unlock this collection.
+                  </div>
+                ) : null}
+
+                <div className="space-y-3">
+                  {reviews.map((review) => (
+                    <div key={review.id} className="rounded-md border p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="space-y-1">
+                          <p className="font-medium">{review.user.displayName || review.user.username || "Verified buyer"}</p>
+                          <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                            <span className="font-medium text-foreground">{review.rating.toFixed(1)}★</span>
+                            <span>{new Date(review.createdAt).toLocaleDateString()}</span>
+                            {review.isVerifiedPurchase ? <Badge variant="secondary">Verified purchase</Badge> : null}
+                            {review.userId === user?.id ? <Badge variant="outline">Your review</Badge> : null}
+                          </div>
+                        </div>
+                      </div>
+                      {review.title ? <p className="mt-3 font-medium">{review.title}</p> : null}
+                      {review.body ? <p className="mt-2 text-sm text-muted-foreground">{review.body}</p> : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : null}
           </CardContent>
         </Card>

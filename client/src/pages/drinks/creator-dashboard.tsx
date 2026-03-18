@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 
 interface CreatorDrinkMetricsItem {
@@ -138,10 +139,29 @@ interface CreatorSalesCollectionItem {
   refundedSalesCount: number;
   refundedRevenueCents: number;
   wishlistCount: number;
+  averageRating: number;
+  reviewCount: number;
   lastPurchasedAt: string | null;
   updatedAt: string;
   route: string;
   coverImage: string | null;
+}
+
+interface CreatorSalesReviewItem {
+  id: string;
+  collectionId: string;
+  collectionName: string;
+  collectionRoute: string;
+  rating: number;
+  title: string | null;
+  body: string | null;
+  createdAt: string;
+  isVerifiedPurchase: boolean;
+  user: {
+    username: string | null;
+    displayName: string | null;
+    avatar: string | null;
+  };
 }
 
 interface CreatorSalesResponse {
@@ -154,6 +174,11 @@ interface CreatorSalesResponse {
     refundedSalesCount: number;
     refundedRevenueCents: number;
     totalWishlistInterest: number;
+  };
+  reviewInsights: {
+    averageRating: number;
+    totalReviews: number;
+    recentReviews: CreatorSalesReviewItem[];
   };
   collections: CreatorSalesCollectionItem[];
   reportingNotes: string[];
@@ -624,6 +649,11 @@ export default function CreatorDashboardPage() {
     totalWishlistInterest: 0,
   };
   const salesCollections = salesQuery.data?.collections ?? [];
+  const reviewInsights = salesQuery.data?.reviewInsights ?? {
+    averageRating: 0,
+    totalReviews: 0,
+    recentReviews: [] as CreatorSalesReviewItem[],
+  };
   const financeSummary = financeQuery.data?.summary ?? {
     grossSalesCents: salesTotals.grossRevenueCents,
     platformFeesCents: 0,
@@ -737,7 +767,7 @@ export default function CreatorDashboardPage() {
           <CardDescription>Your collections storefront and lightweight monetization setup.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Public collections</p>
               <p className="text-xl font-semibold">{metricNumber(publicCollectionsCount)}</p>
@@ -1190,7 +1220,7 @@ export default function CreatorDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Recent orders</p>
               <p className="text-xl font-semibold">{metricNumber(recentCreatorOrders.length)}</p>
@@ -1290,7 +1320,7 @@ export default function CreatorDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
               <p className="text-xl font-semibold">{metricNumber(salesTotals.premiumCollections)}</p>
@@ -1308,6 +1338,16 @@ export default function CreatorDashboardPage() {
               <p className="text-xl font-semibold">{metricNumber(salesTotals.refundedSalesCount)}</p>
               <p className="mt-1 text-xs text-muted-foreground">{formatCurrency(salesTotals.refundedRevenueCents)} removed from completed totals</p>
             </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Avg rating</p>
+              <p className="text-xl font-semibold">{reviewInsights.totalReviews > 0 ? reviewInsights.averageRating.toFixed(1) : "—"}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Across verified buyer reviews</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Total reviews</p>
+              <p className="text-xl font-semibold">{metricNumber(reviewInsights.totalReviews)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Social proof only</p>
+            </div>
           </div>
 
           {salesQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading premium collections sales…</p> : null}
@@ -1320,6 +1360,40 @@ export default function CreatorDashboardPage() {
                   <li key={note}>{note}</li>
                 ))}
               </ul>
+            </div>
+          ) : null}
+
+          {reviewInsights.totalReviews > 0 ? (
+            <div className="space-y-3 rounded-md border p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium">Recent buyer reviews</p>
+                  <CollectionRatingSummary averageRating={reviewInsights.averageRating} reviewCount={reviewInsights.totalReviews} />
+                </div>
+                <p className="text-xs text-muted-foreground">Lightweight insight for messaging and pricing, not a CRM.</p>
+              </div>
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                {reviewInsights.recentReviews.map((review) => (
+                  <div key={review.id} className="rounded-md border bg-muted/20 p-3 text-sm">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <Link href={review.collectionRoute} className="font-medium underline underline-offset-2">{review.collectionName}</Link>
+                        <p className="text-xs text-muted-foreground">
+                          {review.user.displayName || review.user.username || "Verified buyer"} · {formatDate(review.createdAt)}
+                        </p>
+                      </div>
+                      <span className="text-sm font-medium">{review.rating.toFixed(1)}★</span>
+                    </div>
+                    {review.title ? <p className="mt-2 font-medium">{review.title}</p> : null}
+                    {review.body ? <p className="mt-1 text-muted-foreground">{review.body}</p> : null}
+                    {review.isVerifiedPurchase ? <p className="mt-2 text-xs text-emerald-700">Verified purchase</p> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : salesQuery.isSuccess ? (
+            <div className="rounded-md border p-4 text-sm text-muted-foreground">
+              No buyer reviews yet. Once verified owners leave ratings, they will show up here as lightweight social-proof insight.
             </div>
           ) : null}
 
@@ -1338,6 +1412,8 @@ export default function CreatorDashboardPage() {
                   <TableHead className="text-right">Gross sales</TableHead>
                   <TableHead className="text-right">Refunded / revoked</TableHead>
                   <TableHead className="text-right">Last purchase</TableHead>
+                  <TableHead className="text-right">Rating</TableHead>
+                  <TableHead className="text-right">Reviews</TableHead>
                   <TableHead className="text-right">Wishlists</TableHead>
                 </TableRow>
               </TableHeader>
@@ -1368,6 +1444,8 @@ export default function CreatorDashboardPage() {
                         : "—"}
                     </TableCell>
                     <TableCell className="text-right">{collection.lastPurchasedAt ? formatDate(collection.lastPurchasedAt) : "—"}</TableCell>
+                    <TableCell className="text-right">{collection.reviewCount > 0 ? `${collection.averageRating.toFixed(1)}★` : "—"}</TableCell>
+                    <TableCell className="text-right">{metricNumber(collection.reviewCount)}</TableCell>
                     <TableCell className="text-right">{metricNumber(collection.wishlistCount)}</TableCell>
                   </TableRow>
                 ))}

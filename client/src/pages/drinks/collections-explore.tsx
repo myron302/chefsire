@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import { useUser } from "@/contexts/UserContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +45,8 @@ interface PublicCollection {
   ownedByViewer?: boolean;
   isWishlisted?: boolean;
   wishlistCount?: number;
+  averageRating?: number;
+  reviewCount?: number;
   activePromoPricing?: PromoPricing | null;
   items: PublicCollectionItem[];
 }
@@ -162,6 +165,7 @@ export default function DrinkCollectionsExplorePage() {
                     {collection.activePromoPricing ? <Badge variant="secondary">Promo {collection.activePromoPricing.code}</Badge> : null}
                     <Badge variant="outline">Updated {new Date(collection.updatedAt).toLocaleDateString()}</Badge>
                   </div>
+                  <CollectionRatingSummary averageRating={collection.averageRating} reviewCount={collection.reviewCount} />
                   <CollectionPromoNote collection={collection} />
                 </CardContent>
               </Card>
@@ -201,6 +205,7 @@ export default function DrinkCollectionsExplorePage() {
                     {collection.activePromoPricing ? <Badge variant="secondary">Promo {collection.activePromoPricing.code}</Badge> : null}
                   </div>
                   <p className="text-xs text-muted-foreground">{collection.wishlistCount ?? 0} wishlists</p>
+                  <CollectionRatingSummary averageRating={collection.averageRating} reviewCount={collection.reviewCount} />
                   <CollectionPromoNote collection={collection} />
                 </CardContent>
               </Card>
