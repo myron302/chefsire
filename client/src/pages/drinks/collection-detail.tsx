@@ -51,7 +51,7 @@ type Collection = {
   items: CollectionItem[];
 };
 
-type CheckoutStatus = "pending" | "completed" | "failed" | "canceled";
+type CheckoutStatus = "pending" | "completed" | "failed" | "canceled" | "refunded_pending" | "refunded" | "revoked";
 
 type CheckoutStatusResponse = {
   ok: boolean;
@@ -71,6 +71,9 @@ function messageForCheckoutState(status: CheckoutStatus, failureReason?: string 
   if (status === "completed") return "Payment verified. Your premium collection is now unlocked.";
   if (status === "failed") return failureReason || "Square reported that the payment failed.";
   if (status === "canceled") return failureReason || "Checkout was canceled before payment completed.";
+  if (status === "refunded_pending") return failureReason || "A refund is pending for this purchase. Access is temporarily unavailable while Square finishes the refund lifecycle.";
+  if (status === "refunded") return failureReason || "This premium collection purchase was refunded, so access has been removed.";
+  if (status === "revoked") return failureReason || "Access to this premium collection has been revoked.";
   return "Payment submitted. We’re waiting for Square to confirm it. This page will unlock automatically once verification finishes.";
 }
 

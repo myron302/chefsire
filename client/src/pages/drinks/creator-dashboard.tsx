@@ -111,6 +111,8 @@ interface CreatorSalesCollectionItem {
   priceCents: number;
   purchases: number;
   grossRevenueCents: number;
+  refundedSalesCount: number;
+  refundedRevenueCents: number;
   lastPurchasedAt: string | null;
   updatedAt: string;
   route: string;
@@ -124,6 +126,8 @@ interface CreatorSalesResponse {
     premiumCollections: number;
     purchases: number;
     grossRevenueCents: number;
+    refundedSalesCount: number;
+    refundedRevenueCents: number;
   };
   collections: CreatorSalesCollectionItem[];
   reportingNotes: string[];
@@ -140,6 +144,8 @@ interface CreatorFinanceRecentSale {
   creatorShareCents: number;
   currencyCode: string;
   status: string;
+  statusReason: string | null;
+  refundedAt: string | null;
   createdAt: string;
   route: string;
 }
@@ -152,6 +158,8 @@ interface CreatorFinanceResponse {
     platformFeesCents: number;
     estimatedCreatorShareCents: number;
     totalPremiumSalesCount: number;
+    refundedSalesCount: number;
+    refundedSalesCents: number;
     premiumCollectionsCount: number;
     estimates: {
       usesEstimatedShareFormula: boolean;
@@ -200,6 +208,32 @@ function formatDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function saleStatusLabel(status: string): string {
+  switch (status) {
+    case "refunded":
+      return "Refunded";
+    case "refunded_pending":
+      return "Refund pending";
+    case "revoked":
+      return "Revoked";
+    case "completed":
+    default:
+      return "Completed";
+  }
+}
+
+function saleStatusVariant(status: string): "default" | "secondary" | "outline" {
+  switch (status) {
+    case "completed":
+      return "secondary";
+    case "refunded":
+    case "refunded_pending":
+    case "revoked":
+    default:
+      return "outline";
+  }
 }
 
 function activityBadgeLabel(type: CreatorActivityType): string {
@@ -376,6 +410,8 @@ export default function CreatorDashboardPage() {
     premiumCollections: premiumCollections.length,
     purchases: 0,
     grossRevenueCents: 0,
+    refundedSalesCount: 0,
+    refundedRevenueCents: 0,
   };
   const salesCollections = salesQuery.data?.collections ?? [];
   const financeSummary = financeQuery.data?.summary ?? {
@@ -383,6 +419,8 @@ export default function CreatorDashboardPage() {
     platformFeesCents: 0,
     estimatedCreatorShareCents: 0,
     totalPremiumSalesCount: salesTotals.purchases,
+    refundedSalesCount: salesTotals.refundedSalesCount,
+    refundedSalesCents: salesTotals.refundedRevenueCents,
     premiumCollectionsCount: salesTotals.premiumCollections,
     estimates: {
       usesEstimatedShareFormula: false,
@@ -470,7 +508,7 @@ export default function CreatorDashboardPage() {
           <CardDescription>Your collections storefront and lightweight monetization setup.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Public collections</p>
               <p className="text-xl font-semibold">{metricNumber(publicCollectionsCount)}</p>
@@ -511,7 +549,7 @@ export default function CreatorDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Gross sales</p>
               <p className="text-xl font-semibold">{formatCurrency(financeSummary.grossSalesCents)}</p>
@@ -527,6 +565,11 @@ export default function CreatorDashboardPage() {
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Estimated creator share</p>
               <p className="text-xl font-semibold">{formatCurrency(financeSummary.estimatedCreatorShareCents)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Refunded / revoked</p>
+              <p className="text-xl font-semibold">{metricNumber(financeSummary.refundedSalesCount)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{formatCurrency(financeSummary.refundedSalesCents)} separated</p>
             </div>
           </div>
 
@@ -567,7 +610,7 @@ export default function CreatorDashboardPage() {
           <div className="space-y-2">
             <div>
               <p className="text-sm font-medium">Recent premium sales activity</p>
-              <p className="text-xs text-muted-foreground">Completed purchases only.</p>
+              <p className="text-xs text-muted-foreground">Completed sales stay in revenue totals; refunded and revoked entries are shown separately for audit readiness.</p>
             </div>
 
             {recentFinanceSales.length === 0 ? (
@@ -579,6 +622,7 @@ export default function CreatorDashboardPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Collection</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead className="text-right">Gross sale</TableHead>
                     <TableHead className="text-right">Estimated creator share</TableHead>
                     <TableHead className="text-right">Date</TableHead>
@@ -592,9 +636,17 @@ export default function CreatorDashboardPage() {
                           {sale.collectionName}
                         </Link>
                       </TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <Badge variant={saleStatusVariant(sale.status)}>{saleStatusLabel(sale.status)}</Badge>
+                          {sale.status !== "completed" && sale.statusReason ? (
+                            <p className="max-w-xs text-xs text-muted-foreground">{sale.statusReason}</p>
+                          ) : null}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-right">{formatCurrency(sale.grossAmountCents)}</TableCell>
                       <TableCell className="text-right">{formatCurrency(sale.creatorShareCents)}</TableCell>
-                      <TableCell className="text-right">{formatDateTime(sale.createdAt)}</TableCell>
+                      <TableCell className="text-right">{formatDateTime(sale.refundedAt ?? sale.createdAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -612,7 +664,7 @@ export default function CreatorDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
               <p className="text-xl font-semibold">{metricNumber(salesTotals.premiumCollections)}</p>
@@ -624,6 +676,11 @@ export default function CreatorDashboardPage() {
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Gross sales</p>
               <p className="text-xl font-semibold">{formatCurrency(salesTotals.grossRevenueCents)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Refunded / revoked</p>
+              <p className="text-xl font-semibold">{metricNumber(salesTotals.refundedSalesCount)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{formatCurrency(salesTotals.refundedRevenueCents)} removed from completed totals</p>
             </div>
           </div>
 
@@ -653,6 +710,7 @@ export default function CreatorDashboardPage() {
                   <TableHead className="text-right">Price</TableHead>
                   <TableHead className="text-right">Purchases</TableHead>
                   <TableHead className="text-right">Gross sales</TableHead>
+                  <TableHead className="text-right">Refunded / revoked</TableHead>
                   <TableHead className="text-right">Last purchase</TableHead>
                 </TableRow>
               </TableHeader>
@@ -677,6 +735,11 @@ export default function CreatorDashboardPage() {
                     <TableCell className="text-right">{formatCurrency(collection.priceCents)}</TableCell>
                     <TableCell className="text-right">{metricNumber(collection.purchases)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(collection.grossRevenueCents)}</TableCell>
+                    <TableCell className="text-right">
+                      {collection.refundedSalesCount > 0
+                        ? `${metricNumber(collection.refundedSalesCount)} · ${formatCurrency(collection.refundedRevenueCents)}`
+                        : "—"}
+                    </TableCell>
                     <TableCell className="text-right">{collection.lastPurchasedAt ? formatDate(collection.lastPurchasedAt) : "—"}</TableCell>
                   </TableRow>
                 ))}
