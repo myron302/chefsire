@@ -187,6 +187,7 @@ export default function DrinksRoutes() {
       <Switch>
         <Route path="/drinks/discover" component={DrinksDiscoverPage} />
         <Route path="/drinks/search" component={DrinksCommunitySearchPage} />
+        <Route path="/drinks/alerts" component={DrinksNotificationsPage} />
         <Route path="/drinks/notifications" component={DrinksNotificationsPage} />
         <Route path="/drinks/recipe/:slug" component={CanonicalDrinkRecipePage} />
         <Route path="/drinks/submit" component={SubmitDrinkRecipePage} />

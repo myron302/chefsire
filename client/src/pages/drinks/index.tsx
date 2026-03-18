@@ -279,6 +279,9 @@ export default function DrinksPage() {
             <Link href="/drinks/creator-dashboard">
               <Button variant="outline">Creator Dashboard</Button>
             </Link>
+            <Link href="/drinks/alerts">
+              <Button variant="outline">Alerts</Button>
+            </Link>
             <Link href="/drinks/collections">
               <Button variant="outline">Collections</Button>
             </Link>

@@ -2,7 +2,209 @@
 // Notification service to send notifications without circular dependencies
 
 import { db } from "../db";
-import { notifications } from "../../shared/schema";
+import { eq } from "drizzle-orm";
+import {
+  drinkCollectionWishlists,
+  follows,
+  notifications,
+} from "../../shared/schema";
+
+export const DRINK_ALERT_TYPES = {
+  wishlistPromo: "drink_collection_wishlist_promo",
+  wishlistPriceDrop: "drink_collection_wishlist_price_drop",
+  followedCreatorCollection: "drink_collection_followed_creator_launch",
+  followedCreatorPromo: "drink_collection_followed_creator_promo",
+} as const;
+
+export type DrinkAlertType = (typeof DRINK_ALERT_TYPES)[keyof typeof DRINK_ALERT_TYPES];
+
+type DrinkAlertInsertInput = {
+  userId: string;
+  type: DrinkAlertType;
+  title: string;
+  message: string;
+  linkUrl: string;
+  imageUrl?: string | null;
+  priority?: "low" | "normal" | "high" | "urgent";
+  metadata?: Record<string, any>;
+};
+
+async function sendBulkDrinkAlerts(items: DrinkAlertInsertInput[]) {
+  if (!items.length) return;
+
+  try {
+    await db.insert(notifications).values(
+      items.map((item) => ({
+        userId: item.userId,
+        type: item.type,
+        title: item.title,
+        message: item.message,
+        linkUrl: item.linkUrl,
+        imageUrl: item.imageUrl ?? null,
+        priority: item.priority ?? "normal",
+        metadata: item.metadata ?? {},
+      })),
+    );
+  } catch (error) {
+    console.error("Failed to send bulk drink alerts:", error);
+  }
+}
+
+async function loadWishlistRecipientIds(collectionId: string, excludedUserId?: string | null) {
+  const rows = await db
+    .select({ userId: drinkCollectionWishlists.userId })
+    .from(drinkCollectionWishlists)
+    .where(eq(drinkCollectionWishlists.collectionId, collectionId));
+
+  return [...new Set(
+    rows
+      .map((row) => row.userId)
+      .filter((userId): userId is string => Boolean(userId) && userId !== excludedUserId),
+  )];
+}
+
+async function loadFollowerRecipientIds(creatorUserId: string, excludedUserId?: string | null) {
+  const rows = await db
+    .select({ userId: follows.followerId })
+    .from(follows)
+    .where(eq(follows.followingId, creatorUserId));
+
+  return [...new Set(
+    rows
+      .map((row) => row.userId)
+      .filter((userId): userId is string => Boolean(userId) && userId !== excludedUserId),
+  )];
+}
+
+export async function sendWishlistPromoAlerts(params: {
+  collectionId: string;
+  collectionName: string;
+  creatorUserId: string;
+  creatorUsername?: string | null;
+  creatorAvatar?: string | null;
+  promotionId: string;
+  promotionCode: string;
+}) {
+  const recipientIds = await loadWishlistRecipientIds(params.collectionId, params.creatorUserId);
+  if (!recipientIds.length) return;
+
+  const creatorHandle = params.creatorUsername ? `@${params.creatorUsername}` : "a creator";
+
+  await sendBulkDrinkAlerts(
+    recipientIds.map((userId) => ({
+      userId,
+      type: DRINK_ALERT_TYPES.wishlistPromo,
+      title: "A collection on your wishlist is now on sale",
+      message: `"${params.collectionName}" from ${creatorHandle} now has an active promo. Use code ${params.promotionCode} at checkout.`,
+      linkUrl: `/drinks/collections/${params.collectionId}`,
+      imageUrl: params.creatorAvatar ?? null,
+      metadata: {
+        collectionId: params.collectionId,
+        creatorUserId: params.creatorUserId,
+        promotionId: params.promotionId,
+        promotionCode: params.promotionCode,
+        audience: "wishlist",
+      },
+    })),
+  );
+}
+
+export async function sendWishlistPriceDropAlerts(params: {
+  collectionId: string;
+  collectionName: string;
+  creatorUserId: string;
+  creatorUsername?: string | null;
+  creatorAvatar?: string | null;
+  previousPriceCents: number;
+  nextPriceCents: number;
+  currencyCode?: string | null;
+}) {
+  const recipientIds = await loadWishlistRecipientIds(params.collectionId, params.creatorUserId);
+  if (!recipientIds.length) return;
+
+  const creatorHandle = params.creatorUsername ? `@${params.creatorUsername}` : "a creator";
+
+  await sendBulkDrinkAlerts(
+    recipientIds.map((userId) => ({
+      userId,
+      type: DRINK_ALERT_TYPES.wishlistPriceDrop,
+      title: "Price dropped on a collection you saved",
+      message: `"${params.collectionName}" from ${creatorHandle} dropped from ${(params.previousPriceCents / 100).toFixed(2)} to ${(params.nextPriceCents / 100).toFixed(2)} ${params.currencyCode ?? "USD"}.`,
+      linkUrl: `/drinks/collections/${params.collectionId}`,
+      imageUrl: params.creatorAvatar ?? null,
+      metadata: {
+        collectionId: params.collectionId,
+        creatorUserId: params.creatorUserId,
+        previousPriceCents: params.previousPriceCents,
+        nextPriceCents: params.nextPriceCents,
+        currencyCode: params.currencyCode ?? "USD",
+        audience: "wishlist",
+      },
+    })),
+  );
+}
+
+export async function sendFollowedCreatorCollectionLaunchAlerts(params: {
+  collectionId: string;
+  collectionName: string;
+  creatorUserId: string;
+  creatorUsername?: string | null;
+  creatorAvatar?: string | null;
+}) {
+  const recipientIds = await loadFollowerRecipientIds(params.creatorUserId, params.creatorUserId);
+  if (!recipientIds.length) return;
+
+  const creatorHandle = params.creatorUsername ? `@${params.creatorUsername}` : "A creator";
+
+  await sendBulkDrinkAlerts(
+    recipientIds.map((userId) => ({
+      userId,
+      type: DRINK_ALERT_TYPES.followedCreatorCollection,
+      title: "A creator you follow launched a premium collection",
+      message: `${creatorHandle} just launched "${params.collectionName}".`,
+      linkUrl: `/drinks/collections/${params.collectionId}`,
+      imageUrl: params.creatorAvatar ?? null,
+      metadata: {
+        collectionId: params.collectionId,
+        creatorUserId: params.creatorUserId,
+        audience: "following",
+      },
+    })),
+  );
+}
+
+export async function sendFollowedCreatorPromoAlerts(params: {
+  collectionId: string;
+  collectionName: string;
+  creatorUserId: string;
+  creatorUsername?: string | null;
+  creatorAvatar?: string | null;
+  promotionId: string;
+  promotionCode: string;
+}) {
+  const recipientIds = await loadFollowerRecipientIds(params.creatorUserId, params.creatorUserId);
+  if (!recipientIds.length) return;
+
+  const creatorHandle = params.creatorUsername ? `@${params.creatorUsername}` : "A creator";
+
+  await sendBulkDrinkAlerts(
+    recipientIds.map((userId) => ({
+      userId,
+      type: DRINK_ALERT_TYPES.followedCreatorPromo,
+      title: "A creator you follow started a promo",
+      message: `${creatorHandle} now has a promo on "${params.collectionName}".`,
+      linkUrl: `/drinks/collections/${params.collectionId}`,
+      imageUrl: params.creatorAvatar ?? null,
+      metadata: {
+        collectionId: params.collectionId,
+        creatorUserId: params.creatorUserId,
+        promotionId: params.promotionId,
+        promotionCode: params.promotionCode,
+        audience: "following",
+      },
+    })),
+  );
+}
 
 export async function sendLikeNotification(
   postAuthorId: string,
