@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { Link } from "wouter";
-import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem } from "lucide-react";
+import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem, ShoppingBag } from "lucide-react";
 
 import { useUser } from "@/contexts/UserContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,6 +82,13 @@ const discoverLinks: DiscoverLink[] = [
     activityHint: "New",
   },
   {
+    title: "My Purchased Collections",
+    description: "Jump back into premium collections you already own.",
+    href: "/drinks/collections/purchased",
+    icon: ShoppingBag,
+    activityHint: "New",
+  },
+  {
     title: "Support Creators",
     description: "Discover creators, visit storefront collections, and follow makers you want to support.",
     href: "/drinks/creators/trending",
@@ -150,7 +157,7 @@ export default function DrinksDiscoverPage() {
                 <CardDescription>Track your drinks performance and creator momentum.</CardDescription>
               </CardHeader>
               <CardContent>
-                <Link href="/drinks/creator-dashboard">
+                <Link href="/drinks/creator-dashboard#sales">
                   <Button variant="outline" className="w-full justify-between">
                     Open Creator Dashboard
                     <ArrowRight className="h-4 w-4" />
@@ -171,6 +178,24 @@ export default function DrinksDiscoverPage() {
                 <Link href="/drinks/notifications">
                   <Button variant="outline" className="w-full justify-between">
                     Open Notifications
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <ShoppingBag className="h-5 w-5 text-blue-600" />
+                  My Purchased Collections
+                </CardTitle>
+                <CardDescription>Open the premium collections you&apos;ve already unlocked.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/drinks/collections/purchased">
+                  <Button variant="outline" className="w-full justify-between">
+                    Open Purchased Collections
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>

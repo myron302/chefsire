@@ -103,6 +103,32 @@ interface CreatorCollectionItem {
   priceCents: number;
 }
 
+interface CreatorSalesCollectionItem {
+  id: string;
+  name: string;
+  description: string | null;
+  isPublic: boolean;
+  priceCents: number;
+  purchases: number;
+  grossRevenueCents: number;
+  lastPurchasedAt: string | null;
+  updatedAt: string;
+  route: string;
+  coverImage: string | null;
+}
+
+interface CreatorSalesResponse {
+  ok: boolean;
+  userId: string;
+  totals: {
+    premiumCollections: number;
+    purchases: number;
+    grossRevenueCents: number;
+  };
+  collections: CreatorSalesCollectionItem[];
+  reportingNotes: string[];
+}
+
 interface CreatorBadgesResponse {
   ok: boolean;
   userId: string;
@@ -127,6 +153,13 @@ function formatDate(value: string): string {
 
 function metricNumber(value: number | null | undefined): string {
   return new Intl.NumberFormat().format(Number(value ?? 0));
+}
+
+function formatCurrency(cents: number | null | undefined): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: "USD",
+  }).format(Number(cents ?? 0) / 100);
 }
 
 function formatDateTime(value: string): string {
@@ -226,6 +259,20 @@ export default function CreatorDashboardPage() {
     enabled: Boolean(user?.id),
   });
 
+  const salesQuery = useQuery<CreatorSalesResponse>({
+    queryKey: ["/api/drinks/creator-dashboard/sales", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/creator-dashboard/sales", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error || payload?.message || `Failed to load creator sales (${response.status})`;
+        throw new Error(String(message));
+      }
+      return payload as CreatorSalesResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
   if (userLoading) {
     return <div className="container mx-auto p-6">Loading dashboard...</div>;
   }
@@ -277,6 +324,12 @@ export default function CreatorDashboardPage() {
   const publicCollectionsCount = creatorCollections.filter((collection) => collection.isPublic).length;
   const premiumCollections = creatorCollections.filter((collection) => collection.isPremium);
   const freeCollectionsCount = creatorCollections.filter((collection) => collection.isPublic && !collection.isPremium).length;
+  const salesTotals = salesQuery.data?.totals ?? {
+    premiumCollections: premiumCollections.length,
+    purchases: 0,
+    grossRevenueCents: 0,
+  };
+  const salesCollections = salesQuery.data?.collections ?? [];
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
@@ -384,6 +437,100 @@ export default function CreatorDashboardPage() {
             </Link>
             <Link href="/drinks/collections/explore">
               <Button size="sm">Browse premium collections</Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card id="sales">
+        <CardHeader>
+          <CardTitle>Sales · Premium Collections</CardTitle>
+          <CardDescription>
+            Reporting only. Gross sales reflect completed premium collection purchases and do not imply payouts or net earnings.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-3">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
+              <p className="text-xl font-semibold">{metricNumber(salesTotals.premiumCollections)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Purchases</p>
+              <p className="text-xl font-semibold">{metricNumber(salesTotals.purchases)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Gross sales</p>
+              <p className="text-xl font-semibold">{formatCurrency(salesTotals.grossRevenueCents)}</p>
+            </div>
+          </div>
+
+          {salesQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading premium collections sales…</p> : null}
+          {salesQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(salesQuery.error, "Unable to load sales reporting right now.")}</p> : null}
+
+          {salesQuery.data?.reportingNotes?.length ? (
+            <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+              <ul className="list-disc space-y-1 pl-5">
+                {salesQuery.data.reportingNotes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {salesCollections.length === 0 ? (
+            <div className="rounded-md border p-4 text-sm text-muted-foreground">
+              No premium collection sales yet. Publish a premium collection to start seeing purchase reporting here.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Collection</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">Purchases</TableHead>
+                  <TableHead className="text-right">Gross sales</TableHead>
+                  <TableHead className="text-right">Last purchase</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {salesCollections.map((collection) => (
+                  <TableRow key={collection.id}>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <Link href={collection.route} className="font-medium underline underline-offset-2">
+                          {collection.name}
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                          {collection.description || "Premium collection performance summary."}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={collection.isPublic ? "secondary" : "outline"}>
+                        {collection.isPublic ? "Public" : "Private"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">{formatCurrency(collection.priceCents)}</TableCell>
+                    <TableCell className="text-right">{metricNumber(collection.purchases)}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(collection.grossRevenueCents)}</TableCell>
+                    <TableCell className="text-right">{collection.lastPurchasedAt ? formatDate(collection.lastPurchasedAt) : "—"}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Link href="/drinks/collections">
+              <Button variant="outline" size="sm">Manage premium collections</Button>
+            </Link>
+            <Link href="/drinks/collections/explore">
+              <Button variant="outline" size="sm">Browse premium collections</Button>
+            </Link>
+            <Link href="/drinks/collections/purchased">
+              <Button size="sm">View buyer ownership page</Button>
             </Link>
           </div>
         </CardContent>
