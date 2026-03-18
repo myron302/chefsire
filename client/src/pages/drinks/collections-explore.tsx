@@ -29,6 +29,7 @@ interface PublicCollection {
   coverImage: string | null;
   updatedAt: string;
   route: string;
+  ownedByViewer?: boolean;
   items: PublicCollectionItem[];
 }
 
@@ -122,6 +123,7 @@ export default function DrinkCollectionsExplorePage() {
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
                     {collection.isPremium ? <Badge>Premium · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
+                    {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
                     <Badge variant="outline">Updated {new Date(collection.updatedAt).toLocaleDateString()}</Badge>
                   </div>
                 </CardContent>
@@ -157,6 +159,7 @@ export default function DrinkCollectionsExplorePage() {
                 <CardContent className="space-y-2">
                   <p className="text-sm text-muted-foreground">by {collection.creatorUsername ? `@${collection.creatorUsername}` : "a creator"}</p>
                   <Badge>Premium Collection · ${(collection.priceCents / 100).toFixed(2)}</Badge>
+                  {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
                 </CardContent>
               </Card>
             ))}

@@ -4,6 +4,7 @@ import { Link, useRoute } from "wouter";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type CollectionItem = {
@@ -29,6 +30,10 @@ type Collection = {
   isPublic: boolean;
   isPremium: boolean;
   priceCents: number;
+  isLocked?: boolean;
+  requiresUnlock?: boolean;
+  ownedByViewer?: boolean;
+  previewLimit?: number;
   userId: string;
   creatorUsername?: string | null;
   creatorAvatar?: string | null;
@@ -48,6 +53,7 @@ export default function DrinkCollectionDetailPage() {
   const [error, setError] = useState("");
   const [statusCode, setStatusCode] = useState<number | null>(null);
   const [collection, setCollection] = useState<Collection | null>(null);
+  const [isUnlocking, setIsUnlocking] = useState(false);
 
   useEffect(() => {
     if (!collectionId) return;
@@ -72,6 +78,35 @@ export default function DrinkCollectionDetailPage() {
       .finally(() => setLoading(false));
   }, [collectionId]);
 
+  async function unlockCollection() {
+    if (!collection) return;
+    setIsUnlocking(true);
+    setError("");
+    try {
+      const purchaseRes = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}/purchase`, {
+        method: "POST",
+        credentials: "include",
+      });
+
+      if (!purchaseRes.ok) {
+        const payload = await purchaseRes.json().catch(() => null);
+        setStatusCode(purchaseRes.status);
+        throw new Error(payload?.error || `Failed to unlock collection (${purchaseRes.status})`);
+      }
+
+      const refreshedRes = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}`, { credentials: "include" });
+      if (!refreshedRes.ok) throw new Error("Collection unlocked, but refresh failed");
+      const refreshedPayload = await refreshedRes.json();
+      setCollection(refreshedPayload?.collection ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to unlock collection");
+    } finally {
+      setIsUnlocking(false);
+    }
+  }
+
+  const isLockedPremium = Boolean(collection?.isPremium && collection?.requiresUnlock);
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl space-y-6">
       <DrinksPlatformNav current="collections" />
@@ -79,7 +114,7 @@ export default function DrinkCollectionDetailPage() {
       {loading ? <p className="text-muted-foreground">Loading collection…</p> : null}
       {!loading && error ? (
         <p className="text-destructive">
-          {statusCode === 404 ? "Collection not found." : statusCode === 401 ? "Please sign in to view this collection." : statusCode === 403 ? "This collection is private." : error}
+          {statusCode === 404 ? "Collection not found." : statusCode === 401 ? "Please sign in to unlock this collection." : statusCode === 403 ? "This collection is private." : error}
         </p>
       ) : null}
       {!loading && error && import.meta.env.DEV ? <p className="text-xs text-muted-foreground break-all">{error}</p> : null}
@@ -92,6 +127,8 @@ export default function DrinkCollectionDetailPage() {
               <Badge variant="outline">{collection.isPublic ? "Public" : "Private"}</Badge>
               <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
               {collection.isPremium ? <Badge>Premium Collection · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
+              {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+              {!collection.ownedByViewer && isLockedPremium ? <Badge variant="outline">Locked</Badge> : null}
             </CardTitle>
             {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -108,6 +145,17 @@ export default function DrinkCollectionDetailPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
+            {isLockedPremium ? (
+              <Card>
+                <CardContent className="p-4 space-y-2">
+                  <p className="text-sm text-muted-foreground">This premium collection is locked. Preview available below.</p>
+                  <Button onClick={unlockCollection} disabled={isUnlocking}>
+                    {isUnlocking ? "Unlocking…" : `Unlock Collection · $${(collection.priceCents / 100).toFixed(2)}`}
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : null}
+
             {collection.items.length === 0 ? <p className="text-sm text-muted-foreground">This public collection is empty right now. Check back soon for added drinks.</p> : null}
             {collection.items.map((item) => (
               <div key={item.id || `${collection.id}-${item.drinkSlug}`} className="border rounded-md p-3 space-y-1">
@@ -122,6 +170,11 @@ export default function DrinkCollectionDetailPage() {
                 <p className="text-xs text-muted-foreground">Added {new Date(item.addedAt).toLocaleDateString()}</p>
               </div>
             ))}
+            {isLockedPremium ? (
+              <p className="text-xs text-muted-foreground">
+                Showing preview ({collection.items.length} of {collection.itemsCount} drinks). Unlock to access the full collection.
+              </p>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}
