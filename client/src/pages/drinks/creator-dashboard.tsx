@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
+import CreatorBundlesSection from "@/components/drinks/CreatorBundlesSection";
 
 interface CreatorDrinkMetricsItem {
   id: string;
@@ -715,6 +716,8 @@ export default function CreatorDashboardPage() {
       </div>
 
       <DrinksPlatformNav current="dashboard" />
+
+      <CreatorBundlesSection />
 
       <Card>
         <CardHeader>

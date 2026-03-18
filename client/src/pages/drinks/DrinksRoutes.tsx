@@ -25,6 +25,7 @@ import DrinkOrdersPage from "@/pages/drinks/orders";
 import PurchasedCollectionsPage from "@/pages/drinks/purchased-collections";
 import DrinkCollectionsWishlistPage from "@/pages/drinks/wishlist";
 import DrinkCollectionDetailPage from "@/pages/drinks/collection-detail";
+import DrinkBundleDetailPage from "@/pages/drinks/bundle-detail";
 import DrinkChallengesPage from "@/pages/drinks/challenges";
 import DrinkChallengeDetailPage from "@/pages/drinks/challenge-detail";
 import DrinksDiscoverPage from "@/pages/drinks/discover";
@@ -204,6 +205,7 @@ export default function DrinksRoutes() {
         <Route path="/drinks/collections/wishlist" component={DrinkCollectionsWishlistPage} />
         <Route path="/drinks/collections" component={DrinkCollectionsPage} />
         <Route path="/drinks/collections/:id" component={DrinkCollectionDetailPage} />
+        <Route path="/drinks/bundles/:id" component={DrinkBundleDetailPage} />
         <Route path="/drinks/challenges" component={DrinkChallengesPage} />
         <Route path="/drinks/challenges/:slug" component={DrinkChallengeDetailPage} />
 
