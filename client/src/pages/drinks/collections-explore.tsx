@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import { useUser } from "@/contexts/UserContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,17 @@ interface PublicCollectionItem {
   image: string | null;
   route: string;
   remixedFromSlug: string | null;
+}
+
+interface PromoPricing {
+  promotionId: string;
+  code: string;
+  discountType: "percent" | "fixed";
+  discountValue: number;
+  originalAmountCents: number;
+  discountAmountCents: number;
+  finalAmountCents: number;
+  currencyCode: string;
 }
 
 interface PublicCollection {
@@ -30,6 +42,9 @@ interface PublicCollection {
   updatedAt: string;
   route: string;
   ownedByViewer?: boolean;
+  isWishlisted?: boolean;
+  wishlistCount?: number;
+  activePromoPricing?: PromoPricing | null;
   items: PublicCollectionItem[];
 }
 
@@ -43,7 +58,26 @@ function initials(value: string | null): string {
   return value.slice(0, 2).toUpperCase();
 }
 
+function formatCurrency(cents: number, currency = "USD") {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+  }).format(cents / 100);
+}
+
+function CollectionPromoNote({ collection }: { collection: PublicCollection }) {
+  if (!collection.activePromoPricing) return null;
+
+  return (
+    <p className="text-xs text-emerald-700">
+      Active promo {collection.activePromoPricing.code}: checkout price {formatCurrency(collection.activePromoPricing.finalAmountCents, collection.activePromoPricing.currencyCode)}.
+    </p>
+  );
+}
+
 export default function DrinkCollectionsExplorePage() {
+  const { user } = useUser();
+
   const featuredQuery = useQuery<PublicCollectionsResponse>({
     queryKey: ["/api/drinks/collections/featured"],
     queryFn: async () => {
@@ -64,9 +98,6 @@ export default function DrinkCollectionsExplorePage() {
 
   const featuredCollections = featuredQuery.data?.collections ?? [];
   const exploreCollections = exploreQuery.data?.collections ?? [];
-
-  const featuredCountLabel = featuredQuery.isSuccess ? `${featuredCollections.length} featured` : "—";
-  const exploreCountLabel = exploreQuery.isSuccess ? `${exploreCollections.length} collections` : "—";
   const premiumCollections = exploreCollections.filter((collection) => collection.isPremium);
   const freeCollections = exploreCollections.filter((collection) => !collection.isPremium);
 
@@ -82,6 +113,8 @@ export default function DrinkCollectionsExplorePage() {
           <span className="text-muted-foreground">·</span>
           <Link href="/drinks/collections/purchased" className="text-sm underline underline-offset-2">My purchased collections</Link>
           <span className="text-muted-foreground">·</span>
+          <Link href="/drinks/collections/wishlist" className="text-sm underline underline-offset-2">Wishlist</Link>
+          <span className="text-muted-foreground">·</span>
           <Link href="/drinks/creators/trending" className="text-sm underline underline-offset-2">Support creators</Link>
         </div>
       </section>
@@ -89,11 +122,10 @@ export default function DrinkCollectionsExplorePage() {
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-xl font-semibold">Featured Collections</h2>
-          <span className="text-sm text-muted-foreground">{featuredCountLabel}</span>
+          <span className="text-sm text-muted-foreground">{featuredQuery.isSuccess ? `${featuredCollections.length} featured` : "—"}</span>
         </div>
 
         {featuredQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading featured collections…</p> : null}
-
         {featuredQuery.isError ? <p className="text-sm text-destructive">Could not load featured collections right now.</p> : null}
 
         {featuredQuery.isSuccess && featuredCollections.length === 0 ? (
@@ -102,7 +134,7 @@ export default function DrinkCollectionsExplorePage() {
           </Card>
         ) : null}
 
-        {featuredQuery.isSuccess && featuredCollections.length > 0 ? (
+        {featuredCollections.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2">
             {featuredCollections.map((collection) => (
               <Card key={`featured-${collection.id}`}>
@@ -118,23 +150,23 @@ export default function DrinkCollectionsExplorePage() {
                       <AvatarImage src={collection.creatorAvatar ?? undefined} alt={collection.creatorUsername ?? "creator"} />
                       <AvatarFallback>{initials(collection.creatorUsername)}</AvatarFallback>
                     </Avatar>
-                    <span className="text-sm text-muted-foreground">
-                      by {collection.creatorUsername ? `@${collection.creatorUsername}` : "a creator"}
-                    </span>
+                    <span className="text-sm text-muted-foreground">by {collection.creatorUsername ? `@${collection.creatorUsername}` : "a creator"}</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
-                    {collection.isPremium ? <Badge>Premium · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
+                    {collection.isPremium ? <Badge>Premium · {formatCurrency(collection.priceCents)}</Badge> : null}
                     {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+                    {user && collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
+                    {collection.activePromoPricing ? <Badge variant="secondary">Promo {collection.activePromoPricing.code}</Badge> : null}
                     <Badge variant="outline">Updated {new Date(collection.updatedAt).toLocaleDateString()}</Badge>
                   </div>
+                  <CollectionPromoNote collection={collection} />
                 </CardContent>
               </Card>
             ))}
           </div>
         ) : null}
       </section>
-
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
@@ -160,8 +192,14 @@ export default function DrinkCollectionsExplorePage() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <p className="text-sm text-muted-foreground">by {collection.creatorUsername ? `@${collection.creatorUsername}` : "a creator"}</p>
-                  <Badge>Premium Collection · ${(collection.priceCents / 100).toFixed(2)}</Badge>
-                  {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Badge>Premium Collection · {formatCurrency(collection.priceCents)}</Badge>
+                    {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+                    {user && collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
+                    {collection.activePromoPricing ? <Badge variant="secondary">Promo {collection.activePromoPricing.code}</Badge> : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground">{collection.wishlistCount ?? 0} wishlists</p>
+                  <CollectionPromoNote collection={collection} />
                 </CardContent>
               </Card>
             ))}
@@ -172,7 +210,7 @@ export default function DrinkCollectionsExplorePage() {
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-xl font-semibold">Free / Public Collections</h2>
-          <span className="text-sm text-muted-foreground">{exploreCountLabel}</span>
+          <span className="text-sm text-muted-foreground">{exploreQuery.isSuccess ? `${exploreCollections.length} collections` : "—"}</span>
         </div>
 
         {exploreQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading public collections…</p> : null}
@@ -183,7 +221,7 @@ export default function DrinkCollectionsExplorePage() {
           </Card>
         ) : null}
 
-        {exploreQuery.isSuccess && exploreCollections.length > 0 ? (
+        {freeCollections.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             {freeCollections.map((collection) => (
               <Card key={collection.id}>

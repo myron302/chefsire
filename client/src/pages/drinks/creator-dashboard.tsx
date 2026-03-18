@@ -137,6 +137,7 @@ interface CreatorSalesCollectionItem {
   grossRevenueCents: number;
   refundedSalesCount: number;
   refundedRevenueCents: number;
+  wishlistCount: number;
   lastPurchasedAt: string | null;
   updatedAt: string;
   route: string;
@@ -152,6 +153,7 @@ interface CreatorSalesResponse {
     grossRevenueCents: number;
     refundedSalesCount: number;
     refundedRevenueCents: number;
+    totalWishlistInterest: number;
   };
   collections: CreatorSalesCollectionItem[];
   reportingNotes: string[];
@@ -208,6 +210,7 @@ interface CreatorConversionCollectionItem {
   completedPurchasesCount: number;
   refundedCount: number;
   grossSalesCents: number;
+  wishlistCount: number;
   conversionRate: number | null;
   route: string;
   isPublic: boolean;
@@ -223,6 +226,7 @@ interface CreatorConversionsResponse {
     totalCompletedPurchases: number;
     totalRefundedPurchases: number;
     grossSalesCents: number;
+    totalWishlistInterest: number;
     overallConversionRate: number | null;
   };
   collections: CreatorConversionCollectionItem[];
@@ -617,6 +621,7 @@ export default function CreatorDashboardPage() {
     grossRevenueCents: 0,
     refundedSalesCount: 0,
     refundedRevenueCents: 0,
+    totalWishlistInterest: 0,
   };
   const salesCollections = salesQuery.data?.collections ?? [];
   const financeSummary = financeQuery.data?.summary ?? {
@@ -641,6 +646,7 @@ export default function CreatorDashboardPage() {
     totalCompletedPurchases: salesTotals.purchases,
     totalRefundedPurchases: salesTotals.refundedSalesCount,
     grossSalesCents: salesTotals.grossRevenueCents,
+    totalWishlistInterest: salesTotals.totalWishlistInterest,
     overallConversionRate: null,
   };
   const conversionCollections = conversionsQuery.data?.collections ?? [];
@@ -744,6 +750,10 @@ export default function CreatorDashboardPage() {
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Free collections</p>
               <p className="text-xl font-semibold">{metricNumber(freeCollectionsCount)}</p>
             </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Wishlist interest</p>
+              <p className="text-xl font-semibold">{metricNumber(salesTotals.totalWishlistInterest)}</p>
+            </div>
           </div>
           {premiumCollections.length > 0 ? (
             <p className="text-sm text-muted-foreground">{metricNumber(premiumCollections.length)} premium collections live. Your public creator page now highlights paid vs free collections for storefront clarity.</p>
@@ -772,7 +782,7 @@ export default function CreatorDashboardPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Active promos</p>
               <p className="text-xl font-semibold">{metricNumber(creatorPromotions.filter((promo) => promo.isActive).length)}</p>
@@ -788,6 +798,10 @@ export default function CreatorDashboardPage() {
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
               <p className="text-xl font-semibold">{metricNumber(premiumCollections.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Wishlist interest</p>
+              <p className="text-xl font-semibold">{metricNumber(salesTotals.totalWishlistInterest)}</p>
             </div>
           </div>
 
@@ -866,7 +880,7 @@ export default function CreatorDashboardPage() {
                 >
                   {createPromotionMutation.isPending ? "Creating promo…" : "Create promo"}
                 </Button>
-                <p className="text-xs text-muted-foreground">Keep promos lightweight: one collection, one code, one discount.</p>
+                <p className="text-xs text-muted-foreground">Keep promos lightweight: one collection, one code, one discount. Promo alerts are scaffolded for up to {metricNumber(salesTotals.totalWishlistInterest)} wishlisted saves later.</p>
               </div>
               {promotionMessage ? <p className="text-sm text-emerald-600">{promotionMessage}</p> : null}
               {promotionError ? <p className="text-sm text-destructive">{promotionError}</p> : null}
@@ -965,6 +979,11 @@ export default function CreatorDashboardPage() {
               <p className="text-xl font-semibold">{formatCurrency(conversionSummary.grossSalesCents)}</p>
               <p className="mt-1 text-xs text-muted-foreground">{metricNumber(conversionSummary.totalRefundedPurchases)} refunded / revoked</p>
             </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Wishlist interest</p>
+              <p className="text-xl font-semibold">{metricNumber(conversionSummary.totalWishlistInterest)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">Tracked separately from purchases</p>
+            </div>
           </div>
 
           {conversionsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading conversion analytics…</p> : null}
@@ -996,6 +1015,7 @@ export default function CreatorDashboardPage() {
                   <TableHead className="text-right">Completed purchases</TableHead>
                   <TableHead className="text-right">Conversion rate</TableHead>
                   <TableHead className="text-right">Gross sales</TableHead>
+                  <TableHead className="text-right">Wishlists</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1024,6 +1044,7 @@ export default function CreatorDashboardPage() {
                     <TableCell className="text-right">{metricNumber(collection.completedPurchasesCount)}</TableCell>
                     <TableCell className="text-right">{formatPercent(collection.conversionRate)}</TableCell>
                     <TableCell className="text-right">{formatCurrency(collection.grossSalesCents)}</TableCell>
+                    <TableCell className="text-right">{metricNumber(collection.wishlistCount)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -1317,6 +1338,7 @@ export default function CreatorDashboardPage() {
                   <TableHead className="text-right">Gross sales</TableHead>
                   <TableHead className="text-right">Refunded / revoked</TableHead>
                   <TableHead className="text-right">Last purchase</TableHead>
+                  <TableHead className="text-right">Wishlists</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -1346,6 +1368,7 @@ export default function CreatorDashboardPage() {
                         : "—"}
                     </TableCell>
                     <TableCell className="text-right">{collection.lastPurchasedAt ? formatDate(collection.lastPurchasedAt) : "—"}</TableCell>
+                    <TableCell className="text-right">{metricNumber(collection.wishlistCount)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

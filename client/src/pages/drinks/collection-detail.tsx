@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import { useUser } from "@/contexts/UserContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -78,6 +79,9 @@ type Collection = {
   isLocked?: boolean;
   requiresUnlock?: boolean;
   ownedByViewer?: boolean;
+  isWishlisted?: boolean;
+  wishlistCount?: number;
+  activePromoPricing?: PromoPricing | null;
   previewLimit?: number;
   checkout?: CollectionCheckoutSnapshot | null;
   userId: string;
@@ -96,6 +100,14 @@ type CheckoutStatusResponse = {
   failureReason?: string | null;
   collectionId: string;
   checkoutSessionId: string;
+};
+
+type WishlistStatusResponse = {
+  ok: boolean;
+  collectionId: string;
+  isWishlisted: boolean;
+  owned: boolean;
+  wishlistCount: number;
 };
 
 function initials(value: string | null | undefined): string {
@@ -120,7 +132,13 @@ function messageForCheckoutState(status: CheckoutStatus, failureReason?: string 
   return "Payment submitted. We’re waiting for Square to confirm it. This page will unlock automatically once verification finishes.";
 }
 
+function formatPromoDiscount(promo: PromoPricing) {
+  if (promo.discountType === "percent") return `${promo.discountValue}% off`;
+  return `${formatCurrency(promo.discountAmountCents, promo.currencyCode)} off`;
+}
+
 export default function DrinkCollectionDetailPage() {
+  const { user } = useUser();
   const [matched, params] = useRoute<{ id: string }>("/drinks/collections/:id");
   const [location] = useLocation();
   const collectionId = matched ? String(params.id ?? "") : "";
@@ -138,6 +156,9 @@ export default function DrinkCollectionDetailPage() {
   const [promoMessage, setPromoMessage] = useState("");
   const [promoError, setPromoError] = useState("");
   const [isApplyingPromo, setIsApplyingPromo] = useState(false);
+  const [isUpdatingWishlist, setIsUpdatingWishlist] = useState(false);
+  const [wishlistMessage, setWishlistMessage] = useState("");
+  const [wishlistError, setWishlistError] = useState("");
   const checkoutWindowRef = useRef<Window | null>(null);
   const pollStartedAtRef = useRef<number | null>(null);
   const popupClosedNoticeShownRef = useRef(false);
@@ -168,10 +189,12 @@ export default function DrinkCollectionDetailPage() {
       const payload = await res.json();
       const nextCollection = (payload?.collection ?? null) as Collection | null;
       setCollection(nextCollection);
-      setPromoCode("");
+      setPromoCode(nextCollection?.activePromoPricing?.code ?? "");
       setPromoPricing(null);
       setPromoMessage("");
       setPromoError("");
+      setWishlistMessage("");
+      setWishlistError("");
       if (!preserveCheckoutMessage) {
         const latestCheckout = nextCollection?.checkout ?? null;
         if (nextCollection?.ownedByViewer) {
@@ -334,6 +357,54 @@ export default function DrinkCollectionDetailPage() {
     };
   }, [checkoutSessionId, collectionId]);
 
+  async function refreshWishlistStatus(currentCollectionId: string) {
+    if (!user?.id || !currentCollectionId) return;
+
+    const response = await fetch(`/api/drinks/collections/${encodeURIComponent(currentCollectionId)}/wishlist-status`, {
+      credentials: "include",
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      throw new Error(payload?.error || `Failed to refresh wishlist status (${response.status})`);
+    }
+
+    const result = payload as WishlistStatusResponse;
+    setCollection((current) => current
+      ? {
+          ...current,
+          isWishlisted: result.isWishlisted,
+          ownedByViewer: result.owned,
+          wishlistCount: result.wishlistCount,
+        }
+      : current);
+  }
+
+  async function toggleWishlist(nextWishlisted: boolean) {
+    if (!collection?.id) return;
+
+    setIsUpdatingWishlist(true);
+    setWishlistError("");
+    setWishlistMessage("");
+
+    try {
+      const response = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}/wishlist`, {
+        method: nextWishlisted ? "POST" : "DELETE",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to update wishlist (${response.status})`);
+      }
+
+      await refreshWishlistStatus(collection.id);
+      setWishlistMessage(nextWishlisted ? "Saved to your wishlist." : "Removed from your wishlist.");
+    } catch (err) {
+      setWishlistError(err instanceof Error ? err.message : "Unable to update wishlist right now.");
+    } finally {
+      setIsUpdatingWishlist(false);
+    }
+  }
+
   async function applyPromoCode() {
     if (!collection?.id) return;
 
@@ -438,9 +509,11 @@ export default function DrinkCollectionDetailPage() {
   const displayedOriginalAmountCents = promoPricing?.originalAmountCents ?? collection?.priceCents ?? 0;
   const displayedFinalAmountCents = promoPricing?.finalAmountCents ?? collection?.priceCents ?? 0;
   const displayedDiscountAmountCents = promoPricing?.discountAmountCents ?? 0;
+  const activePromo = collection?.activePromoPricing ?? null;
+  const canWishlist = Boolean(user?.id && collection?.isPremium && !collection?.ownedByViewer && collection?.userId !== user.id);
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl space-y-6">
+    <div className="container mx-auto max-w-5xl space-y-6 px-4 py-8">
       <DrinksPlatformNav current="collections" />
 
       {loading ? <p className="text-muted-foreground">Loading collection…</p> : null}
@@ -449,22 +522,24 @@ export default function DrinkCollectionDetailPage() {
           {statusCode === 404 ? "Collection not found." : statusCode === 401 ? "Please sign in to unlock this collection." : statusCode === 403 ? "This collection is private." : error}
         </p>
       ) : null}
-      {!loading && error && import.meta.env.DEV ? <p className="text-xs text-muted-foreground break-all">{error}</p> : null}
+      {!loading && error && import.meta.env.DEV ? <p className="break-all text-xs text-muted-foreground">{error}</p> : null}
 
       {!loading && !error && collection ? (
         <Card>
           <CardHeader className="space-y-3">
-            <CardTitle className="text-2xl flex flex-wrap items-center gap-2">
+            <CardTitle className="flex flex-wrap items-center gap-2 text-2xl">
               {collection.name}
               <Badge variant="outline">{collection.isPublic ? "Public" : "Private"}</Badge>
               <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
-              {collection.isPremium ? <Badge>Premium Collection · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
+              {collection.isPremium ? <Badge>Premium Collection · {(collection.priceCents / 100).toFixed(2)}</Badge> : null}
               {promoPricing ? <Badge variant="secondary">Promo {promoPricing.code} · {formatCurrency(displayedFinalAmountCents, promoPricing.currencyCode)}</Badge> : null}
+              {!promoPricing && activePromo ? <Badge variant="secondary">Active promo {activePromo.code}</Badge> : null}
               {collection.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+              {collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
               {!collection.ownedByViewer && isLockedPremium ? <Badge variant="outline">Locked</Badge> : null}
             </CardTitle>
             {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <Avatar className="h-6 w-6">
                 <AvatarImage src={collection.creatorAvatar ?? undefined} alt={collection.creatorUsername ?? "creator"} />
                 <AvatarFallback>{initials(collection.creatorUsername)}</AvatarFallback>
@@ -476,16 +551,79 @@ export default function DrinkCollectionDetailPage() {
                 </Link>
               ) : null}
             </div>
+            {collection.isPremium ? (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                <span>{formatCurrency(collection.priceCents)} list price</span>
+                <span>·</span>
+                <span>{collection.wishlistCount ?? 0} interested wishlists</span>
+                {activePromo ? (
+                  <>
+                    <span>·</span>
+                    <span className="font-medium text-emerald-700">
+                      Active promo {activePromo.code}: {formatPromoDiscount(activePromo)}
+                    </span>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
           </CardHeader>
           <CardContent className="space-y-3">
             {!isLockedPremium && checkoutMessage && checkoutStatus === "completed" ? (
               <p className="text-sm text-emerald-600">{checkoutMessage}</p>
             ) : null}
+
+            {collection.isPremium && !collection.ownedByViewer ? (
+              <div className="rounded-md border border-dashed p-3 text-sm">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="space-y-1">
+                    <p className="font-medium">Save this premium collection for later</p>
+                    <p className="text-xs text-muted-foreground">
+                      Wishlist keeps demand separate from purchases and helps you revisit this collection when promos go live.
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {canWishlist ? (
+                      <Button
+                        type="button"
+                        variant={collection.isWishlisted ? "outline" : "secondary"}
+                        onClick={() => void toggleWishlist(!collection.isWishlisted)}
+                        disabled={isUpdatingWishlist}
+                      >
+                        {isUpdatingWishlist
+                          ? "Updating…"
+                          : collection.isWishlisted
+                            ? "Remove from Wishlist"
+                            : "Add to Wishlist"}
+                      </Button>
+                    ) : !user ? (
+                      <Link href="/auth/login">
+                        <Button type="button" variant="outline">Sign in to wishlist</Button>
+                      </Link>
+                    ) : null}
+                    <Link href="/drinks/collections/wishlist">
+                      <Button type="button" variant="ghost">Open Wishlist</Button>
+                    </Link>
+                  </div>
+                </div>
+                {wishlistMessage ? <p className="text-sm text-emerald-600">{wishlistMessage}</p> : null}
+                {wishlistError ? <p className="text-sm text-destructive">{wishlistError}</p> : null}
+              </div>
+            ) : null}
+
             {isLockedPremium ? (
               <Card>
-                <CardContent className="p-4 space-y-3">
+                <CardContent className="space-y-3 p-4">
                   <p className="text-sm text-muted-foreground">This premium collection is locked. Preview available below.</p>
-                  <div className="rounded-md border border-dashed p-3 space-y-3">
+                  {activePromo ? (
+                    <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 text-sm">
+                      <p className="font-medium text-emerald-800">Active creator promo: {activePromo.code}</p>
+                      <p className="text-emerald-700">
+                        {formatPromoDiscount(activePromo)} · checkout price {formatCurrency(activePromo.finalAmountCents, activePromo.currencyCode)}
+                      </p>
+                      <p className="text-xs text-emerald-700/90">Enter this code below before Square checkout if you want the discounted amount carried into payment.</p>
+                    </div>
+                  ) : null}
+                  <div className="space-y-3 rounded-md border border-dashed p-3">
                     <div className="space-y-1">
                       <p className="text-sm font-medium">Optional promo code</p>
                       <p className="text-xs text-muted-foreground">Enter a creator promo for this collection before Square checkout.</p>
@@ -502,7 +640,7 @@ export default function DrinkCollectionDetailPage() {
                             setPromoMessage("");
                             setPromoError("");
                           }}
-                          placeholder="SUMMER20"
+                          placeholder={activePromo?.code ?? "SUMMER20"}
                           autoCapitalize="characters"
                         />
                       </div>
@@ -559,7 +697,7 @@ export default function DrinkCollectionDetailPage() {
 
             {collection.items.length === 0 ? <p className="text-sm text-muted-foreground">This public collection is empty right now. Check back soon for added drinks.</p> : null}
             {collection.items.map((item) => (
-              <div key={item.id || `${collection.id}-${item.drinkSlug}`} className="border rounded-md p-3 space-y-1">
+              <div key={item.id || `${collection.id}-${item.drinkSlug}`} className="space-y-1 rounded-md border p-3">
                 <Link href={item.route ?? item.drink?.route ?? `/drinks/recipe/${encodeURIComponent(item.drinkSlug)}`} className="font-medium underline underline-offset-2">
                   {item.drinkName ?? item.drink?.name ?? item.drinkSlug}
                 </Link>

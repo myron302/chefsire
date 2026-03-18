@@ -17,6 +17,7 @@ import {
   drinkCollectionSquareWebhookEvents,
   drinkCollectionItems,
   drinkCollectionPurchases,
+  drinkCollectionWishlists,
   drinkCollections,
   drinkChallengeSubmissions,
   drinkChallenges,
@@ -498,6 +499,73 @@ function isPromotionCurrentlyValid(promotion: DrinkCollectionPromotionRecord, no
   return true;
 }
 
+function comparePromotionPriority(a: DrinkCollectionPromotionRecord, b: DrinkCollectionPromotionRecord) {
+  const aStartsAt = a.startsAt?.getTime() ?? 0;
+  const bStartsAt = b.startsAt?.getTime() ?? 0;
+  if (aStartsAt !== bStartsAt) return bStartsAt - aStartsAt;
+
+  const aUpdatedAt = a.updatedAt?.getTime() ?? 0;
+  const bUpdatedAt = b.updatedAt?.getTime() ?? 0;
+  if (aUpdatedAt !== bUpdatedAt) return bUpdatedAt - aUpdatedAt;
+
+  return a.code.localeCompare(b.code);
+}
+
+async function loadActivePromotionPricingMap(collections: Array<typeof drinkCollections.$inferSelect>) {
+  if (!db || collections.length === 0) return new Map<string, CollectionPromoPricingSnapshot>();
+
+  const premiumCollections = collections.filter((collection) => collection.isPremium);
+  if (premiumCollections.length === 0) return new Map<string, CollectionPromoPricingSnapshot>();
+
+  const collectionById = new Map(premiumCollections.map((collection) => [collection.id, collection]));
+  const rows = await db
+    .select()
+    .from(drinkCollectionPromotions)
+    .where(inArray(drinkCollectionPromotions.collectionId, premiumCollections.map((collection) => collection.id)));
+
+  const now = new Date();
+  const bestPromotionByCollectionId = new Map<string, DrinkCollectionPromotionRecord>();
+  for (const row of rows) {
+    if (!isPromotionCurrentlyValid(row, now)) continue;
+    const current = bestPromotionByCollectionId.get(row.collectionId);
+    if (!current || comparePromotionPriority(row, current) < 0) {
+      bestPromotionByCollectionId.set(row.collectionId, row);
+    }
+  }
+
+  return new Map(
+    [...bestPromotionByCollectionId.entries()].flatMap(([collectionId, promotion]) => {
+      const collection = collectionById.get(collectionId);
+      if (!collection) return [];
+      return [[collectionId, serializePromotionPricing(promotion, Number(collection.priceCents ?? 0), squareConfig.currency ?? "USD")]] as const;
+    }),
+  );
+}
+
+async function loadWishlistCountsForCollections(collectionIds: string[]) {
+  if (!db || collectionIds.length === 0) return new Map<string, number>();
+
+  const rows = await db
+    .select({
+      collectionId: drinkCollectionWishlists.collectionId,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(drinkCollectionWishlists)
+    .where(inArray(drinkCollectionWishlists.collectionId, [...new Set(collectionIds)]))
+    .groupBy(drinkCollectionWishlists.collectionId);
+
+  return new Map(rows.map((row) => [row.collectionId, Number(row.count ?? 0)]));
+}
+
+function logWishlistPromoAlertReady(event: {
+  collectionId: string;
+  creatorUserId: string;
+  promotionId: string;
+  wishlistAudienceCount: number;
+}) {
+  console.info("[drinks/collections/promo-alert-ready] Wishlist promo alert audience snapshot prepared", event);
+}
+
 function logCollectionRouteError(route: string, req: any, error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[drinks/collections${route}] Request failed`, {
@@ -642,6 +710,16 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`ALTER TABLE drink_collection_purchases ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();`);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_collection_wishlists (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
+        created_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT drink_collection_wishlists_user_collection_idx UNIQUE (user_id, collection_id)
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_collection_checkout_sessions (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -757,6 +835,9 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_items_slug_idx ON drink_collection_items(drink_slug);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_purchases_user_idx ON drink_collection_purchases(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_purchases_collection_idx ON drink_collection_purchases(collection_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_wishlists_user_idx ON drink_collection_wishlists(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_wishlists_collection_idx ON drink_collection_wishlists(collection_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_wishlists_user_created_at_idx ON drink_collection_wishlists(user_id, created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_user_idx ON drink_collection_checkout_sessions(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_collection_idx ON drink_collection_checkout_sessions(collection_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_status_idx ON drink_collection_checkout_sessions(status);`);
@@ -1916,10 +1997,24 @@ async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Se
   return new Set(rows.map((row) => row.collectionId));
 }
 
+async function loadWishlistedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
+  if (!db || !userId) return new Set();
+
+  const rows = await db
+    .select({ collectionId: drinkCollectionWishlists.collectionId })
+    .from(drinkCollectionWishlists)
+    .where(eq(drinkCollectionWishlists.userId, userId));
+
+  return new Set(rows.map((row) => row.collectionId));
+}
+
 async function resolveCollectionWithItems(
   collection: typeof drinkCollections.$inferSelect,
   viewerUserId?: string | null,
   ownedCollectionIds?: Set<string>,
+  wishlistedCollectionIds?: Set<string>,
+  activePromotionPricingByCollectionId?: Map<string, CollectionPromoPricingSnapshot>,
+  wishlistCountsByCollectionId?: Map<string, number>,
 ) {
   if (!db) return null;
 
@@ -1958,6 +2053,7 @@ async function resolveCollectionWithItems(
   const coverImage = items[0]?.image ?? null;
   const isOwner = Boolean(viewerUserId && viewerUserId === collection.userId);
   const isOwned = isOwner || Boolean(viewerUserId && ownedCollectionIds?.has(collection.id));
+  const isWishlisted = !isOwned && Boolean(viewerUserId && wishlistedCollectionIds?.has(collection.id));
 
   return {
     ...collection,
@@ -1968,12 +2064,29 @@ async function resolveCollectionWithItems(
     itemsCount: itemRows.length,
     items,
     ownedByViewer: isOwned,
+    isWishlisted,
+    wishlistCount: Number(wishlistCountsByCollectionId?.get(collection.id) ?? 0),
+    activePromoPricing: activePromotionPricingByCollectionId?.get(collection.id) ?? null,
   };
 }
 
 async function resolvePublicCollectionCards(inputRows: Array<typeof drinkCollections.$inferSelect>, viewerUserId?: string | null) {
-  const ownedCollectionIds = await loadOwnedCollectionIdsForUser(viewerUserId);
-  const collections = await Promise.all(inputRows.map((row) => resolveCollectionWithItems(row, viewerUserId, ownedCollectionIds)));
+  const [ownedCollectionIds, wishlistedCollectionIds, activePromotionPricingByCollectionId, wishlistCountsByCollectionId] = await Promise.all([
+    loadOwnedCollectionIdsForUser(viewerUserId),
+    loadWishlistedCollectionIdsForUser(viewerUserId),
+    loadActivePromotionPricingMap(inputRows),
+    loadWishlistCountsForCollections(inputRows.map((row) => row.id)),
+  ]);
+  const collections = await Promise.all(
+    inputRows.map((row) => resolveCollectionWithItems(
+      row,
+      viewerUserId,
+      ownedCollectionIds,
+      wishlistedCollectionIds,
+      activePromotionPricingByCollectionId,
+      wishlistCountsByCollectionId,
+    )),
+  );
   return collections.filter(Boolean);
 }
 
@@ -2071,6 +2184,75 @@ async function loadPurchasedCollectionsForUser(userId: string) {
       creatorAvatar: creator?.avatar ?? null,
       coverImage: coverImagesMap.get(row.collectionId) ?? null,
       route: `/drinks/collections/${row.collectionId}`,
+    };
+  });
+}
+
+async function loadWishlistedCollectionsForUser(userId: string) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const rows = await db
+    .select({
+      wishlistId: drinkCollectionWishlists.id,
+      wishlistedAt: drinkCollectionWishlists.createdAt,
+      collectionId: drinkCollections.id,
+      collectionName: drinkCollections.name,
+      collectionDescription: drinkCollections.description,
+      collectionIsPublic: drinkCollections.isPublic,
+      collectionIsPremium: drinkCollections.isPremium,
+      collectionPriceCents: drinkCollections.priceCents,
+      collectionUpdatedAt: drinkCollections.updatedAt,
+      collectionUserId: drinkCollections.userId,
+    })
+    .from(drinkCollectionWishlists)
+    .innerJoin(drinkCollections, eq(drinkCollectionWishlists.collectionId, drinkCollections.id))
+    .where(eq(drinkCollectionWishlists.userId, userId))
+    .orderBy(desc(drinkCollectionWishlists.createdAt));
+
+  const ownedCollectionIds = await loadOwnedCollectionIdsForUser(userId);
+  const filteredRows = rows.filter((row) => row.collectionIsPremium && !ownedCollectionIds.has(row.collectionId));
+  const creatorMap = await loadCollectionCreatorsMap(filteredRows.map((row) => row.collectionUserId));
+  const coverImagesMap = await loadCollectionCoverImagesMap(filteredRows.map((row) => row.collectionId));
+  const activePromotionPricingMap = await loadActivePromotionPricingMap(
+    filteredRows.map((row) => ({
+      id: row.collectionId,
+      userId: row.collectionUserId,
+      name: row.collectionName,
+      description: row.collectionDescription,
+      isPublic: row.collectionIsPublic,
+      isPremium: row.collectionIsPremium,
+      priceCents: row.collectionPriceCents,
+      updatedAt: row.collectionUpdatedAt,
+      createdAt: row.wishlistedAt,
+    } as typeof drinkCollections.$inferSelect)),
+  );
+  const wishlistCountsByCollectionId = await loadWishlistCountsForCollections(filteredRows.map((row) => row.collectionId));
+
+  return filteredRows.map((row) => {
+    const creator = creatorMap.get(row.collectionUserId);
+    const activePromoPricing = activePromotionPricingMap.get(row.collectionId) ?? null;
+    return {
+      wishlistId: row.wishlistId,
+      wishlistedAt: row.wishlistedAt.toISOString(),
+      collectionId: row.collectionId,
+      name: row.collectionName,
+      description: row.collectionDescription,
+      isPublic: row.collectionIsPublic,
+      isPremium: row.collectionIsPremium,
+      priceCents: Number(row.collectionPriceCents ?? 0),
+      updatedAt: row.collectionUpdatedAt.toISOString(),
+      userId: row.collectionUserId,
+      creatorUsername: creator?.username ?? null,
+      creatorAvatar: creator?.avatar ?? null,
+      coverImage: coverImagesMap.get(row.collectionId) ?? null,
+      route: `/drinks/collections/${row.collectionId}`,
+      isWishlisted: true,
+      ownedByViewer: false,
+      wishlistCount: Number(wishlistCountsByCollectionId.get(row.collectionId) ?? 0),
+      activePromoPricing,
+      promoAlertReady: Boolean(activePromoPricing),
     };
   });
 }
@@ -2279,6 +2461,7 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
         grossRevenueCents: 0,
         refundedSalesCount: 0,
         refundedRevenueCents: 0,
+        totalWishlistInterest: 0,
       },
       collections: [] as Array<{
         id: string;
@@ -2290,6 +2473,7 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
         grossRevenueCents: number;
         refundedSalesCount: number;
         refundedRevenueCents: number;
+        wishlistCount: number;
         lastPurchasedAt: string | null;
         updatedAt: string;
         route: string;
@@ -2299,7 +2483,10 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
   }
 
   const collectionIds = premiumCollections.map((collection) => collection.id);
-  const coverImagesMap = await loadCollectionCoverImagesMap(collectionIds);
+  const [coverImagesMap, wishlistCountsByCollectionId] = await Promise.all([
+    loadCollectionCoverImagesMap(collectionIds),
+    loadWishlistCountsForCollections(collectionIds),
+  ]);
   const ledgerRows = await db
     .select({
       id: drinkCollectionSalesLedger.id,
@@ -2363,6 +2550,7 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
       grossRevenueCents: stats.grossRevenueCents,
       refundedSalesCount: stats.refundedSalesCount,
       refundedRevenueCents: stats.refundedRevenueCents,
+      wishlistCount: Number(wishlistCountsByCollectionId.get(collection.id) ?? 0),
       lastPurchasedAt: stats.lastPurchasedAt ? stats.lastPurchasedAt.toISOString() : null,
       updatedAt: collection.updatedAt.toISOString(),
       route: `/drinks/collections/${collection.id}`,
@@ -2377,6 +2565,7 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
       grossRevenueCents: collections.reduce((sum, collection) => sum + collection.grossRevenueCents, 0),
       refundedSalesCount: collections.reduce((sum, collection) => sum + collection.refundedSalesCount, 0),
       refundedRevenueCents: collections.reduce((sum, collection) => sum + collection.refundedRevenueCents, 0),
+      totalWishlistInterest: collections.reduce((sum, collection) => sum + collection.wishlistCount, 0),
     },
     collections,
   };
@@ -2574,6 +2763,7 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
         totalCompletedPurchases: 0,
         totalRefundedPurchases: 0,
         grossSalesCents: 0,
+        totalWishlistInterest: 0,
         overallConversionRate: null as number | null,
       },
       collections: [] as Array<{
@@ -2586,6 +2776,7 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
         completedPurchasesCount: number;
         refundedCount: number;
         grossSalesCents: number;
+        wishlistCount: number;
         conversionRate: number | null;
         route: string;
         isPublic: boolean;
@@ -2600,7 +2791,7 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
 
   const collectionIds = premiumCollections.map((collection) => collection.id);
 
-  const [viewRows, checkoutStartRows, purchaseRows] = await Promise.all([
+  const [viewRows, checkoutStartRows, purchaseRows, wishlistCountsByCollectionId] = await Promise.all([
     db
       .select({
         collectionId: drinkCollectionEvents.collectionId,
@@ -2632,6 +2823,7 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
       .from(drinkCollectionSalesLedger)
       .where(inArray(drinkCollectionSalesLedger.collectionId, collectionIds))
       .groupBy(drinkCollectionSalesLedger.collectionId),
+    loadWishlistCountsForCollections(collectionIds),
   ]);
 
   const viewsByCollectionId = new Map(viewRows.map((row) => [row.collectionId, Number(row.viewsCount ?? 0)]));
@@ -2669,6 +2861,7 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
       completedPurchasesCount: purchaseStats.completedPurchasesCount,
       refundedCount: purchaseStats.refundedCount,
       grossSalesCents: purchaseStats.grossSalesCents,
+      wishlistCount: Number(wishlistCountsByCollectionId.get(collection.id) ?? 0),
       conversionRate,
       route: `/drinks/collections/${collection.id}`,
       isPublic: collection.isPublic,
@@ -2686,6 +2879,7 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
       totalCompletedPurchases,
       totalRefundedPurchases: collections.reduce((sum, collection) => sum + collection.refundedCount, 0),
       grossSalesCents: collections.reduce((sum, collection) => sum + collection.grossSalesCents, 0),
+      totalWishlistInterest: collections.reduce((sum, collection) => sum + collection.wishlistCount, 0),
       overallConversionRate: totalCollectionViews > 0
         ? Number(((totalCompletedPurchases / totalCollectionViews) * 100).toFixed(1))
         : null,
@@ -2696,6 +2890,7 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
       "Checkout starts count each Square checkout session creation, including retries.",
       "Completed purchases only include sales ledger rows still in completed status, so discounted checkouts flow through at the actual paid amount.",
       "Refunded count combines refunded, refund-pending, and revoked lifecycle states so analytics stay aligned with access and finance reporting.",
+      "Wishlist interest is tracked separately from views, checkouts, purchases, and revenue so demand signals stay honest.",
     ],
   };
 }
@@ -5987,6 +6182,151 @@ r.get("/collections/purchased", requireAuth, async (req, res) => {
   }
 });
 
+r.post("/collections/:id/wishlist", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const collection = collectionRows[0];
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+
+    const isOwner = req.user!.id === collection.userId;
+    if (!collection.isPublic && !isOwner) {
+      return res.status(403).json({ ok: false, error: "Collection is private" });
+    }
+    if (!collection.isPremium) {
+      return res.status(400).json({ ok: false, error: "Only premium collections can be wishlisted" });
+    }
+    if (isOwner) {
+      return res.status(400).json({ ok: false, error: "You cannot wishlist your own premium collection" });
+    }
+
+    const ownedCollectionIds = await loadOwnedCollectionIdsForUser(req.user!.id);
+    if (ownedCollectionIds.has(collection.id)) {
+      return res.status(400).json({ ok: false, error: "You already own this premium collection" });
+    }
+
+    const inserted = await db
+      .insert(drinkCollectionWishlists)
+      .values({
+        userId: req.user!.id,
+        collectionId: collection.id,
+      })
+      .onConflictDoNothing({ target: [drinkCollectionWishlists.userId, drinkCollectionWishlists.collectionId] })
+      .returning();
+
+    const wishlistCountsByCollectionId = await loadWishlistCountsForCollections([collection.id]);
+
+    return res.status(inserted[0] ? 201 : 200).json({
+      ok: true,
+      collectionId: collection.id,
+      isWishlisted: true,
+      owned: false,
+      wishlistCount: Number(wishlistCountsByCollectionId.get(collection.id) ?? 0),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/:id/wishlist", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to add collection to wishlist"));
+  }
+});
+
+r.delete("/collections/:id/wishlist", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    await db
+      .delete(drinkCollectionWishlists)
+      .where(
+        and(
+          eq(drinkCollectionWishlists.userId, req.user!.id),
+          eq(drinkCollectionWishlists.collectionId, req.params.id),
+        ),
+      );
+
+    const wishlistCountsByCollectionId = await loadWishlistCountsForCollections([req.params.id]);
+
+    return res.json({
+      ok: true,
+      collectionId: req.params.id,
+      isWishlisted: false,
+      owned: false,
+      wishlistCount: Number(wishlistCountsByCollectionId.get(req.params.id) ?? 0),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/:id/wishlist", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to remove collection from wishlist"));
+  }
+});
+
+r.get("/collections/:id/wishlist-status", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
+    const collection = collectionRows[0];
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+
+    const ownedCollectionIds = await loadOwnedCollectionIdsForUser(req.user!.id);
+    const owned = req.user!.id === collection.userId || ownedCollectionIds.has(collection.id);
+
+    const wishlistRows = owned
+      ? []
+      : await db
+          .select({ id: drinkCollectionWishlists.id })
+          .from(drinkCollectionWishlists)
+          .where(
+            and(
+              eq(drinkCollectionWishlists.userId, req.user!.id),
+              eq(drinkCollectionWishlists.collectionId, collection.id),
+            ),
+          )
+          .limit(1);
+
+    const wishlistCountsByCollectionId = await loadWishlistCountsForCollections([collection.id]);
+
+    return res.json({
+      ok: true,
+      collectionId: collection.id,
+      isWishlisted: !owned && Boolean(wishlistRows[0]),
+      owned,
+      wishlistCount: Number(wishlistCountsByCollectionId.get(collection.id) ?? 0),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/:id/wishlist-status", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load collection wishlist status"));
+  }
+});
+
+r.get("/collections/wishlist", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/wishlist", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const collections = await loadWishlistedCollectionsForUser(req.user!.id);
+    return res.json({
+      ok: true,
+      collections,
+      count: collections.length,
+      promoAlertReadiness: {
+        scaffolded: true,
+        activelySurfacedCollections: collections.filter((collection) => Boolean(collection.activePromoPricing)).length,
+      },
+    });
+  } catch (error) {
+    logCollectionRouteError("/wishlist", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to load wishlisted collections");
+    const status = classifyCollectionError(error, "Failed to load wishlisted collections").status;
+    return res.status(status).json(payload);
+  }
+});
+
 r.get("/orders", requireAuth, async (req, res) => {
   try {
     if (!db) {
@@ -6305,7 +6645,17 @@ r.post("/creator-dashboard/promotions", requireAuth, async (req, res) => {
     } as const;
 
     const inserted = await db.insert(drinkCollectionPromotions).values(values).returning();
-    return res.status(201).json({ ok: true, promotion: inserted[0] });
+    const promotion = inserted[0];
+    const wishlistAudienceCount = Number((await loadWishlistCountsForCollections([collection.id])).get(collection.id) ?? 0);
+    if (promotion) {
+      logWishlistPromoAlertReady({
+        collectionId: collection.id,
+        creatorUserId: req.user!.id,
+        promotionId: promotion.id,
+        wishlistAudienceCount,
+      });
+    }
+    return res.status(201).json({ ok: true, promotion, promoAlertReadyAudienceCount: wishlistAudienceCount });
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/promotions", req, error);
     if (String(message).toLowerCase().includes("duplicate")) {
@@ -6364,7 +6714,16 @@ r.patch("/creator-dashboard/promotions/:id", requireAuth, async (req, res) => {
       .where(eq(drinkCollectionPromotions.id, existing.id))
       .returning();
 
-    return res.json({ ok: true, promotion: updated[0] ?? existing });
+    const promotion = updated[0] ?? existing;
+    const wishlistAudienceCount = Number((await loadWishlistCountsForCollections([collection.id])).get(collection.id) ?? 0);
+    logWishlistPromoAlertReady({
+      collectionId: collection.id,
+      creatorUserId: req.user!.id,
+      promotionId: promotion.id,
+      wishlistAudienceCount,
+    });
+
+    return res.json({ ok: true, promotion, promoAlertReadyAudienceCount: wishlistAudienceCount });
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/promotions/:id", req, error);
     if (String(message).toLowerCase().includes("duplicate")) {
@@ -6759,8 +7118,20 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Collection is private" });
     }
 
-    const ownedCollectionIds = await loadOwnedCollectionIdsForUser(req.user?.id ?? null);
-    const hydrated = await resolveCollectionWithItems(collection, req.user?.id ?? null, ownedCollectionIds);
+    const [ownedCollectionIds, wishlistedCollectionIds, activePromotionPricingByCollectionId, wishlistCountsByCollectionId] = await Promise.all([
+      loadOwnedCollectionIdsForUser(req.user?.id ?? null),
+      loadWishlistedCollectionIdsForUser(req.user?.id ?? null),
+      loadActivePromotionPricingMap([collection]),
+      loadWishlistCountsForCollections([collection.id]),
+    ]);
+    const hydrated = await resolveCollectionWithItems(
+      collection,
+      req.user?.id ?? null,
+      ownedCollectionIds,
+      wishlistedCollectionIds,
+      activePromotionPricingByCollectionId,
+      wishlistCountsByCollectionId,
+    );
 
     if (!hydrated) return res.status(500).json({ ok: false, error: "Failed to resolve collection" });
 
