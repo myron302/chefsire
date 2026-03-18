@@ -26,6 +26,7 @@ import {
   drinkCollectionReviews,
   drinkCollectionWishlists,
   drinkCollections,
+  drinkGifts,
   drinkChallengeSubmissions,
   drinkChallenges,
   drinkEvents,
@@ -59,6 +60,9 @@ type DrinkCollectionCheckoutStatus = "pending" | "completed" | "failed" | "cance
 type DrinkCollectionSalesLedgerStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
 type DrinkBundlePurchaseStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
 type DrinkBundleCheckoutStatus = "pending" | "completed" | "failed" | "canceled" | "refunded_pending" | "refunded" | "revoked";
+type DrinkGiftTargetType = "collection" | "bundle";
+type DrinkGiftStatus = "pending" | "completed" | "revoked";
+type DrinkPurchaseType = "self" | "gift";
 type DrinkCollectionEventType = "view";
 type DrinkCollectionPromotionDiscountType = "percent" | "fixed";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
@@ -66,6 +70,7 @@ type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
 type DrinkCollectionPromotionRecord = typeof drinkCollectionPromotions.$inferSelect;
 type DrinkBundleCheckoutSessionRecord = typeof drinkBundleCheckoutSessions.$inferSelect;
+type DrinkGiftRecord = typeof drinkGifts.$inferSelect;
 
 type ResolvedCollectionPurchaseContext = {
   collection: typeof drinkCollections.$inferSelect;
@@ -126,6 +131,7 @@ type SquareOrderVerificationPayload = {
 type CollectionCheckoutSnapshot = {
   checkoutSessionId: string;
   status: DrinkCollectionCheckoutStatus;
+  purchaseType: DrinkPurchaseType;
   failureReason: string | null;
   updatedAt: string;
   verifiedAt: string | null;
@@ -133,15 +139,36 @@ type CollectionCheckoutSnapshot = {
   originalAmountCents?: number | null;
   discountAmountCents?: number | null;
   promotionCode?: string | null;
+  gift?: GiftSummary | null;
 };
 
 type BundleCheckoutSnapshot = {
   checkoutSessionId: string;
   status: DrinkBundleCheckoutStatus;
+  purchaseType: DrinkPurchaseType;
   failureReason: string | null;
   updatedAt: string;
   verifiedAt: string | null;
   expiresAt: string | null;
+  gift?: GiftSummary | null;
+};
+
+type GiftSummary = {
+  id: string;
+  giftCode: string;
+  status: DrinkGiftStatus;
+  targetType: DrinkGiftTargetType;
+  targetId: string;
+  checkoutSessionId: string;
+  purchaserUserId: string;
+  recipientUserId: string | null;
+  recipientIdentifier: string | null;
+  claimUrl: string;
+  claimedAt: string | null;
+  completedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type CollectionReviewSummary = {
@@ -477,6 +504,7 @@ const applyPromoBodySchema = z.object({
 
 const createCheckoutBodySchema = z.object({
   promoCode: promoCodeSchema.optional(),
+  purchaseType: z.enum(["self", "gift"]).optional(),
 });
 
 const updateDrinkCollectionBodySchema = z.object({
@@ -972,6 +1000,7 @@ async function ensureDrinkCollectionsSchema() {
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
         provider text NOT NULL DEFAULT 'square',
+        purchase_type text NOT NULL DEFAULT 'self',
         status text NOT NULL DEFAULT 'pending',
         promotion_id varchar,
         promotion_code text,
@@ -997,6 +1026,7 @@ async function ensureDrinkCollectionsSchema() {
 
     await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS refunded_at timestamp;`);
     await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS access_revoked_at timestamp;`);
+    await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS purchase_type text NOT NULL DEFAULT 'self';`);
     await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS promotion_id varchar;`);
     await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS promotion_code text;`);
     await db.execute(sql`ALTER TABLE drink_collection_checkout_sessions ADD COLUMN IF NOT EXISTS original_amount_cents integer;`);
@@ -1013,6 +1043,26 @@ async function ensureDrinkCollectionsSchema() {
         status text NOT NULL DEFAULT 'processed',
         received_at timestamp NOT NULL DEFAULT now(),
         created_at timestamp
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_gifts (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        purchaser_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        recipient_user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+        recipient_identifier text,
+        target_type text NOT NULL,
+        target_id varchar(200) NOT NULL,
+        checkout_session_id varchar(200) NOT NULL,
+        provider text NOT NULL DEFAULT 'square',
+        status text NOT NULL DEFAULT 'pending',
+        gift_code varchar(120) NOT NULL UNIQUE,
+        claimed_at timestamp,
+        completed_at timestamp,
+        revoked_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
       );
     `);
 
@@ -1122,6 +1172,7 @@ async function ensureDrinkCollectionsSchema() {
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         bundle_id varchar NOT NULL REFERENCES drink_bundles(id) ON DELETE CASCADE,
         provider text NOT NULL DEFAULT 'square',
+        purchase_type text NOT NULL DEFAULT 'self',
         status text NOT NULL DEFAULT 'pending',
         amount_cents integer NOT NULL,
         currency_code text NOT NULL DEFAULT 'USD',
@@ -1140,6 +1191,8 @@ async function ensureDrinkCollectionsSchema() {
         updated_at timestamp NOT NULL DEFAULT now()
       );
     `);
+
+    await db.execute(sql`ALTER TABLE drink_bundle_checkout_sessions ADD COLUMN IF NOT EXISTS purchase_type text NOT NULL DEFAULT 'self';`);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_bundle_square_webhook_events (
@@ -1173,6 +1226,11 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_status_idx ON drink_collection_checkout_sessions(status);`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_checkout_sessions_payment_link_idx ON drink_collection_checkout_sessions(square_payment_link_id) WHERE square_payment_link_id IS NOT NULL;`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_checkout_sessions_order_idx ON drink_collection_checkout_sessions(square_order_id) WHERE square_order_id IS NOT NULL;`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_gifts_purchaser_user_idx ON drink_gifts(purchaser_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_gifts_recipient_user_idx ON drink_gifts(recipient_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_gifts_target_idx ON drink_gifts(target_type, target_id);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_gifts_checkout_session_idx ON drink_gifts(checkout_session_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_gifts_status_idx ON drink_gifts(status);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_square_webhook_events_object_idx ON drink_collection_square_webhook_events(object_type, object_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_square_webhook_events_checkout_session_idx ON drink_collection_square_webhook_events(checkout_session_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_sales_ledger_user_idx ON drink_collection_sales_ledger(user_id);`);
@@ -1412,8 +1470,17 @@ function buildBundleCheckoutRedirectUrl(req: Request, bundleId: string, checkout
   return `${baseUrl}/drinks/bundles/${encodeURIComponent(bundleId)}?checkoutSessionId=${encodeURIComponent(checkoutSessionId)}&squareCheckout=return`;
 }
 
+function buildGiftClaimUrl(req: Request, giftCode: string) {
+  const baseUrl = getCollectionCheckoutBaseUrl(req);
+  return `${baseUrl}/drinks/gifts/${encodeURIComponent(giftCode)}`;
+}
+
 function formatBundleCheckoutReferenceId(checkoutSessionId: string) {
   return `drink_bundle_checkout:${checkoutSessionId}`;
+}
+
+function normalizePurchaseType(value?: string | null): DrinkPurchaseType {
+  return value === "gift" ? "gift" : "self";
 }
 
 function normalizeSquareCurrencyCode(value?: string | null) {
@@ -1631,11 +1698,32 @@ function getCollectionCheckoutPollStatus(session: DrinkCollectionCheckoutSession
   return "pending";
 }
 
-function toCollectionCheckoutSnapshot(session?: DrinkCollectionCheckoutSessionRecord | null): CollectionCheckoutSnapshot | null {
+function toGiftSummary(record: DrinkGiftRecord, claimUrl: string): GiftSummary {
+  return {
+    id: record.id,
+    giftCode: record.giftCode,
+    status: record.status as DrinkGiftStatus,
+    targetType: record.targetType as DrinkGiftTargetType,
+    targetId: record.targetId,
+    checkoutSessionId: record.checkoutSessionId,
+    purchaserUserId: record.purchaserUserId,
+    recipientUserId: record.recipientUserId ?? null,
+    recipientIdentifier: record.recipientIdentifier ?? null,
+    claimUrl,
+    claimedAt: record.claimedAt ? record.claimedAt.toISOString() : null,
+    completedAt: record.completedAt ? record.completedAt.toISOString() : null,
+    revokedAt: record.revokedAt ? record.revokedAt.toISOString() : null,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
+function toCollectionCheckoutSnapshot(session?: DrinkCollectionCheckoutSessionRecord | null, gift?: GiftSummary | null): CollectionCheckoutSnapshot | null {
   if (!session) return null;
   return {
     checkoutSessionId: session.id,
     status: getCollectionCheckoutPollStatus(session),
+    purchaseType: normalizePurchaseType(session.purchaseType),
     failureReason: session.failureReason ?? null,
     updatedAt: session.updatedAt.toISOString(),
     verifiedAt: session.verifiedAt ? session.verifiedAt.toISOString() : null,
@@ -1643,6 +1731,7 @@ function toCollectionCheckoutSnapshot(session?: DrinkCollectionCheckoutSessionRe
     originalAmountCents: session.originalAmountCents ?? null,
     discountAmountCents: session.discountAmountCents ?? null,
     promotionCode: session.promotionCode ?? null,
+    gift: gift ?? null,
   };
 }
 
@@ -1656,15 +1745,17 @@ function getBundleCheckoutPollStatus(session: DrinkBundleCheckoutSessionRecord):
   return "pending";
 }
 
-function toBundleCheckoutSnapshot(session?: DrinkBundleCheckoutSessionRecord | null): BundleCheckoutSnapshot | null {
+function toBundleCheckoutSnapshot(session?: DrinkBundleCheckoutSessionRecord | null, gift?: GiftSummary | null): BundleCheckoutSnapshot | null {
   if (!session) return null;
   return {
     checkoutSessionId: session.id,
     status: getBundleCheckoutPollStatus(session),
+    purchaseType: normalizePurchaseType(session.purchaseType),
     failureReason: session.failureReason ?? null,
     updatedAt: session.updatedAt.toISOString(),
     verifiedAt: session.verifiedAt ? session.verifiedAt.toISOString() : null,
     expiresAt: session.expiresAt ? session.expiresAt.toISOString() : null,
+    gift: gift ?? null,
   };
 }
 
@@ -1729,6 +1820,79 @@ async function loadCheckoutSessionForWebhookLookup(input: {
   return rows[0] ?? null;
 }
 
+async function loadGiftByCheckoutSessionId(checkoutSessionId?: string | null) {
+  if (!db || !checkoutSessionId) return null;
+
+  const rows = await db
+    .select()
+    .from(drinkGifts)
+    .where(eq(drinkGifts.checkoutSessionId, checkoutSessionId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function loadGiftByCode(giftCode: string) {
+  if (!db) return null;
+
+  const rows = await db
+    .select()
+    .from(drinkGifts)
+    .where(eq(drinkGifts.giftCode, giftCode))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function ensureGiftRecordForCheckout(
+  tx: typeof db,
+  input: {
+    purchaserUserId: string;
+    targetType: DrinkGiftTargetType;
+    targetId: string;
+    checkoutSessionId: string;
+    provider?: string | null;
+    recipientIdentifier?: string | null;
+  },
+) {
+  const now = new Date();
+
+  await tx
+    .insert(drinkGifts)
+    .values({
+      purchaserUserId: input.purchaserUserId,
+      recipientIdentifier: input.recipientIdentifier ?? null,
+      targetType: input.targetType,
+      targetId: input.targetId,
+      checkoutSessionId: input.checkoutSessionId,
+      provider: input.provider ?? "square",
+      status: "pending",
+      giftCode: crypto.randomUUID(),
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: drinkGifts.checkoutSessionId,
+      set: {
+        purchaserUserId: input.purchaserUserId,
+        targetType: input.targetType,
+        targetId: input.targetId,
+        provider: input.provider ?? "square",
+        recipientIdentifier: input.recipientIdentifier ?? null,
+        status: "pending",
+        revokedAt: null,
+        updatedAt: now,
+      },
+    });
+
+  const rows = await tx
+    .select()
+    .from(drinkGifts)
+    .where(eq(drinkGifts.checkoutSessionId, input.checkoutSessionId))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
 async function loadBundleCheckoutSessionForWebhookLookup(input: {
   checkoutSessionId?: string | null;
   squareOrderId?: string | null;
@@ -1778,46 +1942,59 @@ async function grantCollectionPurchase(
     }
 
     const now = new Date();
-    const insertedPurchase = await tx
-      .insert(drinkCollectionPurchases)
-      .values({
-        userId: session.userId,
-        collectionId: session.collectionId,
-        status: "completed",
-        statusReason: null,
-        accessRevokedAt: null,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [drinkCollectionPurchases.userId, drinkCollectionPurchases.collectionId],
-        set: {
+    const purchaseType = normalizePurchaseType(session.purchaseType);
+    let purchase: { id: string; createdAt: Date | null } | null = null;
+
+    if (purchaseType === "gift") {
+      await ensureGiftRecordForCheckout(tx as typeof db, {
+        purchaserUserId: session.userId,
+        targetType: "collection",
+        targetId: session.collectionId,
+        checkoutSessionId: session.id,
+        provider: session.provider,
+      });
+    } else {
+      const insertedPurchase = await tx
+        .insert(drinkCollectionPurchases)
+        .values({
+          userId: session.userId,
+          collectionId: session.collectionId,
           status: "completed",
           statusReason: null,
           accessRevokedAt: null,
           updatedAt: now,
-        },
-      })
-      .returning({
-        id: drinkCollectionPurchases.id,
-        createdAt: drinkCollectionPurchases.createdAt,
-      });
+        })
+        .onConflictDoUpdate({
+          target: [drinkCollectionPurchases.userId, drinkCollectionPurchases.collectionId],
+          set: {
+            status: "completed",
+            statusReason: null,
+            accessRevokedAt: null,
+            updatedAt: now,
+          },
+        })
+        .returning({
+          id: drinkCollectionPurchases.id,
+          createdAt: drinkCollectionPurchases.createdAt,
+        });
 
-    const purchase = insertedPurchase[0] ?? (await tx
-      .select({
-        id: drinkCollectionPurchases.id,
-        createdAt: drinkCollectionPurchases.createdAt,
-      })
-      .from(drinkCollectionPurchases)
-      .where(
-        and(
-          eq(drinkCollectionPurchases.userId, session.userId),
-          eq(drinkCollectionPurchases.collectionId, session.collectionId),
-        ),
-      )
-      .limit(1))[0];
+      purchase = insertedPurchase[0] ?? (await tx
+        .select({
+          id: drinkCollectionPurchases.id,
+          createdAt: drinkCollectionPurchases.createdAt,
+        })
+        .from(drinkCollectionPurchases)
+        .where(
+          and(
+            eq(drinkCollectionPurchases.userId, session.userId),
+            eq(drinkCollectionPurchases.collectionId, session.collectionId),
+          ),
+        )
+        .limit(1))[0] ?? null;
 
-    if (!purchase) {
-      throw new Error("Purchase ownership record missing after premium collection grant");
+      if (!purchase) {
+        throw new Error("Purchase ownership record missing after premium collection grant");
+      }
     }
 
     await tx
@@ -1838,7 +2015,7 @@ async function grantCollectionPurchase(
     await upsertDrinkCollectionSalesLedgerEntry(tx as typeof db, {
       creatorUserId: collection.creatorUserId,
       collectionId: session.collectionId,
-      purchaseId: purchase.id,
+      purchaseId: purchase?.id ?? null,
       checkoutSessionId: session.id,
       promotionId: session.promotionId,
       promotionCode: session.promotionCode,
@@ -1846,7 +2023,7 @@ async function grantCollectionPurchase(
       discountAmountCents: session.discountAmountCents ?? 0,
       grossAmountCents: Number(session.amountCents ?? collection.priceCents ?? 0),
       currencyCode: session.currencyCode,
-      createdAt: purchase.createdAt ?? session.verifiedAt ?? session.updatedAt ?? new Date(),
+      createdAt: purchase?.createdAt ?? session.verifiedAt ?? session.updatedAt ?? new Date(),
       status: "completed",
       statusReason: null,
       refundedAt: null,
@@ -1875,24 +2052,34 @@ async function updateCollectionAccessState(
   await db.transaction(async (tx) => {
     const now = new Date();
     const revokeTimestamp = input.purchaseStatus === "completed" ? null : (input.refundedAt ?? now);
+    const purchaseType = normalizePurchaseType(session.purchaseType);
+    const gift = purchaseType === "gift"
+      ? await (tx as typeof db)
+        .select()
+        .from(drinkGifts)
+        .where(eq(drinkGifts.checkoutSessionId, session.id))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      : null;
+    const purchaseUserId = gift?.recipientUserId ?? session.userId;
 
-    const purchaseRows = await tx
-      .select({
-        id: drinkCollectionPurchases.id,
-        createdAt: drinkCollectionPurchases.createdAt,
-      })
-      .from(drinkCollectionPurchases)
-      .where(
-        and(
-          eq(drinkCollectionPurchases.userId, session.userId),
-          eq(drinkCollectionPurchases.collectionId, session.collectionId),
-        ),
-      )
-      .limit(1);
+    const existingPurchase = purchaseUserId
+      ? (await tx
+        .select({
+          id: drinkCollectionPurchases.id,
+          createdAt: drinkCollectionPurchases.createdAt,
+        })
+        .from(drinkCollectionPurchases)
+        .where(
+          and(
+            eq(drinkCollectionPurchases.userId, purchaseUserId),
+            eq(drinkCollectionPurchases.collectionId, session.collectionId),
+          ),
+        )
+        .limit(1))[0] ?? null
+      : null;
 
-    const existingPurchase = purchaseRows[0] ?? null;
-
-    if (existingPurchase) {
+    if (existingPurchase && purchaseUserId) {
       await tx
         .update(drinkCollectionPurchases)
         .set({
@@ -1918,6 +2105,18 @@ async function updateCollectionAccessState(
       })
       .where(eq(drinkCollectionCheckoutSessions.id, session.id));
 
+    if (gift) {
+      await tx
+        .update(drinkGifts)
+        .set({
+          status: input.checkoutStatus === "completed" ? "completed" : "revoked",
+          revokedAt: input.checkoutStatus === "completed" ? null : revokeTimestamp,
+          completedAt: input.checkoutStatus === "completed" ? (gift.completedAt ?? now) : gift.completedAt,
+          updatedAt: now,
+        })
+        .where(eq(drinkGifts.id, gift.id));
+    }
+
     if (existingPurchase || input.ledgerStatus === "completed") {
       await tx
         .update(drinkCollectionSalesLedger)
@@ -1941,25 +2140,35 @@ async function grantBundlePurchase(
 
   await db.transaction(async (tx) => {
     const now = new Date();
-    await tx
-      .insert(drinkBundlePurchases)
-      .values({
-        userId: session.userId,
-        bundleId: session.bundleId,
-        status: "completed",
-        statusReason: null,
-        accessRevokedAt: null,
-        updatedAt: now,
-      })
-      .onConflictDoUpdate({
-        target: [drinkBundlePurchases.userId, drinkBundlePurchases.bundleId],
-        set: {
+    if (normalizePurchaseType(session.purchaseType) === "gift") {
+      await ensureGiftRecordForCheckout(tx as typeof db, {
+        purchaserUserId: session.userId,
+        targetType: "bundle",
+        targetId: session.bundleId,
+        checkoutSessionId: session.id,
+        provider: session.provider,
+      });
+    } else {
+      await tx
+        .insert(drinkBundlePurchases)
+        .values({
+          userId: session.userId,
+          bundleId: session.bundleId,
           status: "completed",
           statusReason: null,
           accessRevokedAt: null,
           updatedAt: now,
-        },
-      });
+        })
+        .onConflictDoUpdate({
+          target: [drinkBundlePurchases.userId, drinkBundlePurchases.bundleId],
+          set: {
+            status: "completed",
+            statusReason: null,
+            accessRevokedAt: null,
+            updatedAt: now,
+          },
+        });
+    }
 
     await tx
       .update(drinkBundleCheckoutSessions)
@@ -1994,21 +2203,33 @@ async function updateBundleAccessState(
   await db.transaction(async (tx) => {
     const now = new Date();
     const revokeTimestamp = input.purchaseStatus === "completed" ? null : (input.refundedAt ?? now);
+    const purchaseType = normalizePurchaseType(session.purchaseType);
+    const gift = purchaseType === "gift"
+      ? await (tx as typeof db)
+        .select()
+        .from(drinkGifts)
+        .where(eq(drinkGifts.checkoutSessionId, session.id))
+        .limit(1)
+        .then((rows) => rows[0] ?? null)
+      : null;
+    const purchaseUserId = gift?.recipientUserId ?? session.userId;
 
-    await tx
-      .update(drinkBundlePurchases)
-      .set({
-        status: input.purchaseStatus,
-        statusReason: input.reason ?? null,
-        accessRevokedAt: revokeTimestamp,
-        updatedAt: now,
-      })
-      .where(
-        and(
-          eq(drinkBundlePurchases.userId, session.userId),
-          eq(drinkBundlePurchases.bundleId, session.bundleId),
-        ),
-      );
+    if (purchaseUserId) {
+      await tx
+        .update(drinkBundlePurchases)
+        .set({
+          status: input.purchaseStatus,
+          statusReason: input.reason ?? null,
+          accessRevokedAt: revokeTimestamp,
+          updatedAt: now,
+        })
+        .where(
+          and(
+            eq(drinkBundlePurchases.userId, purchaseUserId),
+            eq(drinkBundlePurchases.bundleId, session.bundleId),
+          ),
+        );
+    }
 
     await tx
       .update(drinkBundleCheckoutSessions)
@@ -2023,6 +2244,18 @@ async function updateBundleAccessState(
         updatedAt: now,
       })
       .where(eq(drinkBundleCheckoutSessions.id, session.id));
+
+    if (gift) {
+      await tx
+        .update(drinkGifts)
+        .set({
+          status: input.checkoutStatus === "completed" ? "completed" : "revoked",
+          revokedAt: input.checkoutStatus === "completed" ? null : revokeTimestamp,
+          completedAt: input.checkoutStatus === "completed" ? (gift.completedAt ?? now) : gift.completedAt,
+          updatedAt: now,
+        })
+        .where(eq(drinkGifts.id, gift.id));
+    }
   });
 }
 
@@ -2750,8 +2983,9 @@ async function verifyCollectionCheckoutSession(session: DrinkCollectionCheckoutS
     throw new Error("Database unavailable");
   }
 
-  const ownedCollectionIds = await loadOwnedCollectionIdsForUser(session.userId);
-  if (ownedCollectionIds.has(session.collectionId)) {
+  const purchaseType = normalizePurchaseType(session.purchaseType);
+  const ownedCollectionIds = purchaseType === "gift" ? new Set<string>() : await loadOwnedCollectionIdsForUser(session.userId);
+  if (purchaseType !== "gift" && ownedCollectionIds.has(session.collectionId)) {
     await db
       .update(drinkCollectionCheckoutSessions)
       .set({
@@ -2776,7 +3010,7 @@ async function verifyCollectionCheckoutSession(session: DrinkCollectionCheckoutS
   if (getCollectionCheckoutPollStatus(session) !== "pending") {
     return {
       status: getCollectionCheckoutPollStatus(session),
-      owned: false,
+      owned: purchaseType === "gift" ? false : ownedCollectionIds.has(session.collectionId),
       collectionId: session.collectionId,
       checkoutSessionId: session.id,
       squareOrderId: session.squareOrderId,
@@ -2815,7 +3049,7 @@ async function verifyCollectionCheckoutSession(session: DrinkCollectionCheckoutS
     });
     return {
       status: "completed",
-      owned: true,
+      owned: purchaseType === "gift" ? false : true,
       collectionId: session.collectionId,
       checkoutSessionId: session.id,
       squareOrderId: parsed.squareOrderId,
@@ -2850,8 +3084,9 @@ async function verifyCollectionCheckoutSession(session: DrinkCollectionCheckoutS
 async function verifyBundleCheckoutSession(session: DrinkBundleCheckoutSessionRecord) {
   if (!db) throw new Error("Database unavailable");
 
-  const ownedBundleIds = await loadOwnedBundleIdsForUser(session.userId);
-  if (ownedBundleIds.has(session.bundleId)) {
+  const purchaseType = normalizePurchaseType(session.purchaseType);
+  const ownedBundleIds = purchaseType === "gift" ? new Set<string>() : await loadOwnedBundleIdsForUser(session.userId);
+  if (purchaseType !== "gift" && ownedBundleIds.has(session.bundleId)) {
     await db
       .update(drinkBundleCheckoutSessions)
       .set({
@@ -2876,7 +3111,7 @@ async function verifyBundleCheckoutSession(session: DrinkBundleCheckoutSessionRe
   if (getBundleCheckoutPollStatus(session) !== "pending") {
     return {
       status: getBundleCheckoutPollStatus(session),
-      owned: false,
+      owned: purchaseType === "gift" ? false : ownedBundleIds.has(session.bundleId),
       bundleId: session.bundleId,
       checkoutSessionId: session.id,
       squareOrderId: session.squareOrderId,
@@ -2914,7 +3149,7 @@ async function verifyBundleCheckoutSession(session: DrinkBundleCheckoutSessionRe
     });
     return {
       status: "completed" as const,
-      owned: true,
+      owned: purchaseType === "gift" ? false : true,
       bundleId: session.bundleId,
       checkoutSessionId: session.id,
       squareOrderId: parsed.squareOrderId,
@@ -2996,6 +3231,145 @@ async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Se
   const all = new Set(directCollectionIds);
   for (const row of bundleRows) all.add(row.collectionId);
   return all;
+}
+
+async function claimGiftForUser(gift: DrinkGiftRecord, userId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  if (gift.status === "revoked") {
+    const error = new Error("This gift is no longer available to claim.");
+    (error as any).status = 410;
+    throw error;
+  }
+
+  if (gift.recipientUserId && gift.recipientUserId !== userId) {
+    const error = new Error("This gift has already been claimed by another account.");
+    (error as any).status = 409;
+    throw error;
+  }
+
+  await db.transaction(async (tx) => {
+    const now = new Date();
+
+    if (gift.targetType === "collection") {
+      await tx
+        .insert(drinkCollectionPurchases)
+        .values({
+          userId,
+          collectionId: gift.targetId,
+          status: "completed",
+          statusReason: null,
+          accessRevokedAt: null,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [drinkCollectionPurchases.userId, drinkCollectionPurchases.collectionId],
+          set: {
+            status: "completed",
+            statusReason: null,
+            accessRevokedAt: null,
+            updatedAt: now,
+          },
+        });
+
+      await tx
+        .update(drinkCollectionSalesLedger)
+        .set({
+          purchaseId: sql`(
+            SELECT id
+            FROM drink_collection_purchases
+            WHERE user_id = ${userId} AND collection_id = ${gift.targetId}
+            LIMIT 1
+          )`,
+          updatedAt: now,
+        })
+        .where(eq(drinkCollectionSalesLedger.checkoutSessionId, gift.checkoutSessionId));
+    } else {
+      await tx
+        .insert(drinkBundlePurchases)
+        .values({
+          userId,
+          bundleId: gift.targetId,
+          status: "completed",
+          statusReason: null,
+          accessRevokedAt: null,
+          updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [drinkBundlePurchases.userId, drinkBundlePurchases.bundleId],
+          set: {
+            status: "completed",
+            statusReason: null,
+            accessRevokedAt: null,
+            updatedAt: now,
+          },
+        });
+    }
+
+    await tx
+      .update(drinkGifts)
+      .set({
+        recipientUserId: userId,
+        status: "completed",
+        claimedAt: gift.claimedAt ?? now,
+        completedAt: now,
+        revokedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(drinkGifts.id, gift.id));
+  });
+
+  return (await loadGiftByCode(gift.giftCode)) ?? gift;
+}
+
+async function loadGiftHistory(userId: string, req: Request) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [purchasedRows, receivedRows] = await Promise.all([
+    db
+      .select()
+      .from(drinkGifts)
+      .where(eq(drinkGifts.purchaserUserId, userId))
+      .orderBy(desc(drinkGifts.createdAt)),
+    db
+      .select()
+      .from(drinkGifts)
+      .where(eq(drinkGifts.recipientUserId, userId))
+      .orderBy(desc(drinkGifts.updatedAt), desc(drinkGifts.createdAt)),
+  ]);
+
+  const collectionIds = new Set<string>();
+  const bundleIds = new Set<string>();
+  for (const gift of [...purchasedRows, ...receivedRows]) {
+    if (gift.targetType === "collection") collectionIds.add(gift.targetId);
+    if (gift.targetType === "bundle") bundleIds.add(gift.targetId);
+  }
+
+  const [collectionRows, bundleRows] = await Promise.all([
+    collectionIds.size
+      ? db.select({ id: drinkCollections.id, name: drinkCollections.name }).from(drinkCollections).where(inArray(drinkCollections.id, [...collectionIds]))
+      : Promise.resolve([]),
+    bundleIds.size
+      ? db.select({ id: drinkBundles.id, name: drinkBundles.name }).from(drinkBundles).where(inArray(drinkBundles.id, [...bundleIds]))
+      : Promise.resolve([]),
+  ]);
+
+  const collectionNameMap = new Map(collectionRows.map((row) => [row.id, row.name]));
+  const bundleNameMap = new Map(bundleRows.map((row) => [row.id, row.name]));
+  const toEntry = (gift: DrinkGiftRecord) => ({
+    ...toGiftSummary(gift, buildGiftClaimUrl(req, gift.giftCode)),
+    targetName: gift.targetType === "collection"
+      ? (collectionNameMap.get(gift.targetId) ?? "Premium collection")
+      : (bundleNameMap.get(gift.targetId) ?? "Premium bundle"),
+    targetRoute: gift.targetType === "collection"
+      ? `/drinks/collections/${gift.targetId}`
+      : `/drinks/bundles/${gift.targetId}`,
+  });
+
+  return {
+    purchased: purchasedRows.map(toEntry),
+    received: receivedRows.map(toEntry),
+  };
 }
 
 async function loadWishlistedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
@@ -7793,6 +8167,106 @@ r.get("/collections/featured", optionalAuth, async (req, res) => {
   }
 });
 
+r.get("/gifts", requireAuth, async (req, res) => {
+  try {
+    if (!db) {
+      logCollectionDbUnavailable("/gifts", req);
+      return res.status(503).json({ ok: false, error: "Database unavailable", code: "DB_UNAVAILABLE" });
+    }
+
+    await ensureDrinkCollectionsSchema();
+
+    const history = await loadGiftHistory(req.user!.id, req);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      purchased: history.purchased,
+      received: history.received,
+    });
+  } catch (error) {
+    logCollectionRouteError("/gifts", req, error);
+    const payload = collectionDbErrorResponse(error, "Failed to load gifts");
+    const status = classifyCollectionError(error, "Failed to load gifts").status;
+    return res.status(status).json(payload);
+  }
+});
+
+r.get("/gifts/:token", optionalAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const gift = await loadGiftByCode(req.params.token);
+    if (!gift) return res.status(404).json({ ok: false, error: "Gift not found" });
+
+    let targetName = "Premium gift";
+    let targetRoute = "/";
+    if (gift.targetType === "collection") {
+      const collection = await db.select({ id: drinkCollections.id, name: drinkCollections.name }).from(drinkCollections).where(eq(drinkCollections.id, gift.targetId)).limit(1);
+      targetName = collection[0]?.name ?? "Premium collection";
+      targetRoute = `/drinks/collections/${gift.targetId}`;
+    } else {
+      const bundle = await db.select({ id: drinkBundles.id, name: drinkBundles.name }).from(drinkBundles).where(eq(drinkBundles.id, gift.targetId)).limit(1);
+      targetName = bundle[0]?.name ?? "Premium bundle";
+      targetRoute = `/drinks/bundles/${gift.targetId}`;
+    }
+
+    const viewerOwnsTarget = req.user?.id
+      ? (gift.targetType === "collection"
+        ? (await loadOwnedCollectionIdsForUser(req.user.id)).has(gift.targetId)
+        : (await loadOwnedBundleIdsForUser(req.user.id)).has(gift.targetId))
+      : false;
+
+    return res.json({
+      ok: true,
+      gift: {
+        ...toGiftSummary(gift, buildGiftClaimUrl(req, gift.giftCode)),
+        targetName,
+        targetRoute,
+      },
+      viewer: {
+        signedIn: Boolean(req.user?.id),
+        userId: req.user?.id ?? null,
+        canClaim: Boolean(req.user?.id)
+          && gift.status !== "revoked"
+          && (!gift.recipientUserId || gift.recipientUserId === req.user?.id),
+        alreadyClaimedByViewer: Boolean(req.user?.id && gift.recipientUserId === req.user.id),
+        ownsTarget: viewerOwnsTarget,
+      },
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/gifts/:token", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load gift"));
+  }
+});
+
+r.post("/gifts/:token/claim", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const gift = await loadGiftByCode(req.params.token);
+    if (!gift) return res.status(404).json({ ok: false, error: "Gift not found" });
+
+    const claimedGift = await claimGiftForUser(gift, req.user!.id);
+    return res.json({
+      ok: true,
+      gift: {
+        ...toGiftSummary(claimedGift, buildGiftClaimUrl(req, claimedGift.giftCode)),
+        targetRoute: claimedGift.targetType === "collection"
+          ? `/drinks/collections/${claimedGift.targetId}`
+          : `/drinks/bundles/${claimedGift.targetId}`,
+      },
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error
+      ? Number((error as { status?: unknown }).status || 500)
+      : 500;
+    const message = logCollectionRouteError("/gifts/:token/claim", req, error);
+    return res.status(status).json({ ok: false, error: error instanceof Error ? error.message : message });
+  }
+});
+
 // ========================================
 // DRINK BUNDLES
 // ========================================
@@ -7901,11 +8375,15 @@ r.get("/bundles/:id", optionalAuth, async (req, res) => {
 
     const resolved = await resolveBundleWithCollections(bundle, req.user?.id ?? null);
     const latestCheckout = req.user?.id && !isOwner ? await loadLatestCheckoutSessionForUserBundle(req.user.id, bundle.id) : null;
+    const latestGift = latestCheckout ? await loadGiftByCheckoutSessionId(latestCheckout.id) : null;
     return res.json({
       ok: true,
       bundle: {
         ...resolved,
-        checkout: toBundleCheckoutSnapshot(latestCheckout),
+        checkout: toBundleCheckoutSnapshot(
+          latestCheckout,
+          latestGift ? toGiftSummary(latestGift, buildGiftClaimUrl(req, latestGift.giftCode)) : null,
+        ),
       },
     });
   } catch (error) {
@@ -8054,12 +8532,16 @@ r.get("/bundles/:id/ownership", requireAuth, async (req, res) => {
     const isOwner = req.user!.id === bundle.userId;
     const ownedBundleIds = await loadOwnedBundleIdsForUser(req.user!.id);
     const latestCheckout = isOwner ? null : await loadLatestCheckoutSessionForUserBundle(req.user!.id, bundle.id);
+    const latestGift = latestCheckout ? await loadGiftByCheckoutSessionId(latestCheckout.id) : null;
 
     return res.json({
       ok: true,
       bundleId: bundle.id,
       owned: isOwner || ownedBundleIds.has(bundle.id),
-      checkout: toBundleCheckoutSnapshot(latestCheckout),
+      checkout: toBundleCheckoutSnapshot(
+        latestCheckout,
+        latestGift ? toGiftSummary(latestGift, buildGiftClaimUrl(req, latestGift.giftCode)) : null,
+      ),
     });
   } catch (error) {
     const message = logCollectionRouteError("/bundles/:id/ownership", req, error);
@@ -8081,8 +8563,14 @@ r.post("/bundles/:id/create-checkout", requireAuth, async (req, res) => {
       });
     }
 
+    const parsedBody = createCheckoutBodySchema.safeParse(req.body ?? {});
+    if (!parsedBody.success) {
+      return res.status(400).json({ ok: false, error: "Invalid checkout request", details: parsedBody.error.flatten() });
+    }
+
+    const purchaseType = parsedBody.data.purchaseType ?? "self";
     const context = await resolveBundlePurchaseContext(req.params.id, req.user!.id);
-    if (context.alreadyOwned) {
+    if (purchaseType === "self" && context.alreadyOwned) {
       return res.json({ ok: true, bundleId: context.bundle.id, owned: true, alreadyOwned: true });
     }
 
@@ -8092,6 +8580,7 @@ r.post("/bundles/:id/create-checkout", requireAuth, async (req, res) => {
         userId: req.user!.id,
         bundleId: context.bundle.id,
         provider: "square",
+        purchaseType,
         status: "pending",
         amountCents: context.bundle.priceCents,
         currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
@@ -8119,6 +8608,7 @@ r.post("/bundles/:id/create-checkout", requireAuth, async (req, res) => {
           checkoutSessionId: checkoutSession.id,
           bundleId: context.bundle.id,
           userId: req.user!.id,
+          purchaseType,
         },
         lineItems: [
           {
@@ -8128,7 +8618,7 @@ r.post("/bundles/:id/create-checkout", requireAuth, async (req, res) => {
               amount: BigInt(context.bundle.priceCents),
               currency: normalizeSquareCurrencyCode(squareConfig.currency) as any,
             },
-            note: `Premium drink bundle unlock for ${context.bundle.name}${itemRows.length ? ` (${itemRows.length} collections)` : ""}`,
+            note: `Premium drink bundle ${purchaseType === "gift" ? "gift" : "unlock"} for ${context.bundle.name}${itemRows.length ? ` (${itemRows.length} collections)` : ""}`,
           },
         ],
       },
@@ -8137,8 +8627,8 @@ r.post("/bundles/:id/create-checkout", requireAuth, async (req, res) => {
         allowTipping: false,
         askForShippingAddress: false,
       },
-      paymentNote: `Premium bundle unlock: ${context.bundle.id}`,
-      description: `ChefSire premium drink bundle: ${context.bundle.name}`,
+      paymentNote: `Premium bundle ${purchaseType === "gift" ? "gift" : "unlock"}: ${context.bundle.id}`,
+      description: `ChefSire premium drink bundle ${purchaseType === "gift" ? "gift" : "checkout"}: ${context.bundle.name}`,
     });
 
     const paymentLink = squareResponse.paymentLink;
@@ -8168,6 +8658,7 @@ r.post("/bundles/:id/create-checkout", requireAuth, async (req, res) => {
       squarePaymentLinkId: paymentLink.id,
       squareOrderId: orderId,
       amountCents: context.bundle.priceCents,
+      purchaseType,
       currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
     });
   } catch (error) {
@@ -8191,7 +8682,13 @@ r.get("/bundles/checkout-sessions/:sessionId/status", requireAuth, async (req, r
     if (!checkoutSession) return res.status(404).json({ ok: false, error: "Checkout session not found" });
 
     const verification = await verifyBundleCheckoutSession(checkoutSession);
-    return res.json({ ok: true, ...verification });
+    const gift = await loadGiftByCheckoutSessionId(checkoutSession.id);
+    return res.json({
+      ok: true,
+      ...verification,
+      purchaseType: normalizePurchaseType(checkoutSession.purchaseType),
+      gift: gift ? toGiftSummary(gift, buildGiftClaimUrl(req, gift.giftCode)) : null,
+    });
   } catch (error) {
     const message = logCollectionRouteError("/bundles/checkout-sessions/:sessionId/status", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to verify bundle checkout"));
@@ -8877,8 +9374,9 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "Invalid checkout request", details: parsedBody.error.flatten() });
     }
 
+    const purchaseType = parsedBody.data.purchaseType ?? "self";
     const context = await resolveCollectionPurchaseContextWithPromo(req.params.id, req.user!.id, parsedBody.data.promoCode ?? null);
-    if (context.alreadyOwned) {
+    if (purchaseType === "self" && context.alreadyOwned) {
       return res.json({
         ok: true,
         collectionId: context.collection.id,
@@ -8893,6 +9391,7 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
         userId: req.user!.id,
         collectionId: context.collection.id,
         provider: "square",
+        purchaseType,
         status: "pending",
         promotionId: context.promoPricing?.promotionId ?? null,
         promotionCode: context.promoPricing?.code ?? null,
@@ -8918,6 +9417,7 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
           checkoutSessionId: checkoutSession.id,
           collectionId: context.collection.id,
           userId: req.user!.id,
+          purchaseType,
         },
         lineItems: [
           {
@@ -8928,8 +9428,8 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
               currency: normalizeSquareCurrencyCode(squareConfig.currency) as any,
             },
             note: context.promoPricing
-              ? `Premium drink collection unlock for ${context.collection.name} with promo ${context.promoPricing.code}`
-              : `Premium drink collection unlock for ${context.collection.name}`,
+              ? `Premium drink collection ${purchaseType === "gift" ? "gift" : "unlock"} for ${context.collection.name} with promo ${context.promoPricing.code}`
+              : `Premium drink collection ${purchaseType === "gift" ? "gift" : "unlock"} for ${context.collection.name}`,
           },
         ],
       },
@@ -8938,8 +9438,8 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
         allowTipping: false,
         askForShippingAddress: false,
       },
-      paymentNote: `Premium collection unlock: ${context.collection.id}`,
-      description: `ChefSire premium drink collection: ${context.collection.name}`,
+      paymentNote: `Premium collection ${purchaseType === "gift" ? "gift" : "unlock"}: ${context.collection.id}`,
+      description: `ChefSire premium drink collection ${purchaseType === "gift" ? "gift" : "checkout"}: ${context.collection.name}`,
     });
 
     const paymentLink = squareResponse.paymentLink;
@@ -8977,6 +9477,7 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
       squarePaymentLinkId: paymentLink.id,
       squareOrderId: orderId,
       amountCents: context.promoPricing?.finalAmountCents ?? context.collection.priceCents,
+      purchaseType,
       originalAmountCents: Number(context.collection.priceCents ?? 0),
       discountAmountCents: context.promoPricing?.discountAmountCents ?? 0,
       promotionCode: context.promoPricing?.code ?? null,
@@ -9006,9 +9507,12 @@ r.get("/collections/checkout-sessions/:sessionId/status", requireAuth, async (re
     }
 
     const verification = await verifyCollectionCheckoutSession(checkoutSession);
+    const gift = await loadGiftByCheckoutSessionId(checkoutSession.id);
     return res.json({
       ok: true,
       ...verification,
+      purchaseType: normalizePurchaseType(checkoutSession.purchaseType),
+      gift: gift ? toGiftSummary(gift, buildGiftClaimUrl(req, gift.giftCode)) : null,
     });
   } catch (error) {
     const message = logCollectionRouteError("/checkout-sessions/:sessionId/status", req, error);
@@ -9087,6 +9591,7 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
     const latestCheckoutSession = req.user?.id && !isOwner
       ? await loadLatestCheckoutSessionForUserCollection(req.user.id, collection.id)
       : null;
+    const latestGift = latestCheckoutSession ? await loadGiftByCheckoutSessionId(latestCheckoutSession.id) : null;
 
     const isOwned = Boolean(hydrated.ownedByViewer);
     if (hydrated.isPremium && !isOwner && !isOwned) {
@@ -9100,7 +9605,10 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
           ownedByViewer: false,
           previewLimit,
           items: hydrated.items.slice(0, previewLimit),
-          checkout: toCollectionCheckoutSnapshot(latestCheckoutSession),
+          checkout: toCollectionCheckoutSnapshot(
+            latestCheckoutSession,
+            latestGift ? toGiftSummary(latestGift, buildGiftClaimUrl(req, latestGift.giftCode)) : null,
+          ),
         },
       });
     }
@@ -9111,7 +9619,10 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
         ...hydrated,
         isLocked: false,
         requiresUnlock: false,
-        checkout: toCollectionCheckoutSnapshot(latestCheckoutSession),
+        checkout: toCollectionCheckoutSnapshot(
+          latestCheckoutSession,
+          latestGift ? toGiftSummary(latestGift, buildGiftClaimUrl(req, latestGift.giftCode)) : null,
+        ),
       },
     });
   } catch (error) {

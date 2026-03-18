@@ -32,6 +32,7 @@ type CollectionItem = {
 type CollectionCheckoutSnapshot = {
   checkoutSessionId: string;
   status: CheckoutStatus;
+  purchaseType?: PurchaseType;
   failureReason?: string | null;
   updatedAt: string;
   verifiedAt?: string | null;
@@ -39,6 +40,25 @@ type CollectionCheckoutSnapshot = {
   originalAmountCents?: number | null;
   discountAmountCents?: number | null;
   promotionCode?: string | null;
+  gift?: GiftSummary | null;
+};
+
+type PurchaseType = "self" | "gift";
+
+type GiftSummary = {
+  id: string;
+  giftCode: string;
+  status: "pending" | "completed" | "revoked";
+  targetType: "collection" | "bundle";
+  targetId: string;
+  checkoutSessionId: string;
+  claimUrl: string;
+  recipientUserId: string | null;
+  claimedAt: string | null;
+  completedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type PromoPricing = {
@@ -102,9 +122,11 @@ type CheckoutStatusResponse = {
   ok: boolean;
   status: CheckoutStatus;
   owned: boolean;
+  purchaseType?: PurchaseType;
   failureReason?: string | null;
   collectionId: string;
   checkoutSessionId: string;
+  gift?: GiftSummary | null;
 };
 
 type WishlistStatusResponse = {
@@ -157,8 +179,14 @@ function formatCurrency(cents: number | null | undefined, currency = "USD") {
   }).format(Number(cents ?? 0) / 100);
 }
 
-function messageForCheckoutState(status: CheckoutStatus, failureReason?: string | null) {
-  if (status === "completed") return "Payment verified. Your premium collection is now unlocked.";
+function messageForCheckoutState(status: CheckoutStatus, failureReason?: string | null, purchaseType: PurchaseType = "self", gift?: GiftSummary | null) {
+  if (status === "completed") {
+    return purchaseType === "gift"
+      ? gift?.claimUrl
+        ? "Payment verified. Your gift is ready to share."
+        : "Payment verified. Your gift purchase is complete."
+      : "Payment verified. Your premium collection is now unlocked.";
+  }
   if (status === "failed") return failureReason || "Square reported that the payment failed.";
   if (status === "canceled") return failureReason || "Checkout was canceled before payment completed.";
   if (status === "refunded_pending") return failureReason || "A refund is pending for this purchase. Access is temporarily unavailable while Square finishes the refund lifecycle.";
@@ -184,6 +212,8 @@ export default function DrinkCollectionDetailPage() {
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
   const [checkoutStatus, setCheckoutStatus] = useState<CheckoutStatus | null>(null);
+  const [checkoutPurchaseType, setCheckoutPurchaseType] = useState<PurchaseType>("self");
+  const [giftSummary, setGiftSummary] = useState<GiftSummary | null>(null);
   const [checkoutMessage, setCheckoutMessage] = useState("");
   const [isPollingCheckout, setIsPollingCheckout] = useState(false);
   const [promoCode, setPromoCode] = useState("");
@@ -245,18 +275,25 @@ export default function DrinkCollectionDetailPage() {
       setWishlistError("");
       if (!preserveCheckoutMessage) {
         const latestCheckout = nextCollection?.checkout ?? null;
+        setCheckoutPurchaseType(latestCheckout?.purchaseType ?? "self");
+        setGiftSummary(latestCheckout?.gift ?? null);
         if (nextCollection?.ownedByViewer) {
           setCheckoutSessionId(null);
           if (latestCheckout?.status === "completed") {
             setCheckoutStatus("completed");
-            setCheckoutMessage("This premium collection is unlocked and ready to use.");
+            setCheckoutMessage(messageForCheckoutState("completed", null, "self", null));
           } else {
             setCheckoutStatus(null);
             setCheckoutMessage("");
           }
         } else if (latestCheckout?.status) {
           setCheckoutStatus(latestCheckout.status);
-          setCheckoutMessage(messageForCheckoutState(latestCheckout.status, latestCheckout.failureReason));
+          setCheckoutMessage(messageForCheckoutState(
+            latestCheckout.status,
+            latestCheckout.failureReason,
+            latestCheckout.purchaseType ?? "self",
+            latestCheckout.gift ?? null,
+          ));
           if (latestCheckout.status === "pending") {
             setCheckoutSessionId(latestCheckout.checkoutSessionId);
           } else {
@@ -264,6 +301,8 @@ export default function DrinkCollectionDetailPage() {
           }
         } else {
           setCheckoutStatus(null);
+          setCheckoutPurchaseType("self");
+          setGiftSummary(null);
           setCheckoutMessage("");
           setCheckoutSessionId(null);
         }
@@ -475,9 +514,21 @@ export default function DrinkCollectionDetailPage() {
         if (cancelled) return;
 
         setCheckoutStatus(payload.status);
+        setCheckoutPurchaseType(payload.purchaseType ?? "self");
+        setGiftSummary(payload.gift ?? null);
 
         if (payload.status === "completed" && payload.owned) {
-          setCheckoutMessage(messageForCheckoutState("completed"));
+          setCheckoutMessage(messageForCheckoutState("completed", null, payload.purchaseType ?? "self", payload.gift ?? null));
+          setCheckoutSessionId(null);
+          setIsPollingCheckout(false);
+          checkoutWindowRef.current?.close();
+          checkoutWindowRef.current = null;
+          await loadCollection(collectionId, true);
+          return;
+        }
+
+        if (payload.status === "completed" && (payload.purchaseType ?? "self") === "gift") {
+          setCheckoutMessage(messageForCheckoutState("completed", null, "gift", payload.gift ?? null));
           setCheckoutSessionId(null);
           setIsPollingCheckout(false);
           checkoutWindowRef.current?.close();
@@ -487,14 +538,14 @@ export default function DrinkCollectionDetailPage() {
         }
 
         if (payload.status === "failed") {
-          setCheckoutMessage(messageForCheckoutState("failed", payload.failureReason));
+          setCheckoutMessage(messageForCheckoutState("failed", payload.failureReason, payload.purchaseType ?? "self", payload.gift ?? null));
           setCheckoutSessionId(null);
           setIsPollingCheckout(false);
           return;
         }
 
         if (payload.status === "canceled") {
-          setCheckoutMessage(messageForCheckoutState("canceled", payload.failureReason));
+          setCheckoutMessage(messageForCheckoutState("canceled", payload.failureReason, payload.purchaseType ?? "self", payload.gift ?? null));
           setCheckoutSessionId(null);
           setIsPollingCheckout(false);
           return;
@@ -619,14 +670,16 @@ export default function DrinkCollectionDetailPage() {
     }
   }
 
-  async function unlockCollection() {
+  async function startCollectionCheckout(purchaseType: PurchaseType) {
     if (!collection) return;
 
     setIsUnlocking(true);
     setError("");
     setStatusCode(null);
     setCheckoutStatus("pending");
-    setCheckoutMessage("Creating your Square checkout…");
+    setCheckoutPurchaseType(purchaseType);
+    setGiftSummary(null);
+    setCheckoutMessage(purchaseType === "gift" ? "Creating your Square gift checkout…" : "Creating your Square checkout…");
     setPromoError("");
 
     try {
@@ -636,6 +689,7 @@ export default function DrinkCollectionDetailPage() {
         credentials: "include",
         body: JSON.stringify({
           promoCode: promoPricing?.code ?? (promoCode.trim() ? promoCode.trim().toUpperCase() : undefined),
+          purchaseType,
         }),
       });
 
@@ -661,7 +715,11 @@ export default function DrinkCollectionDetailPage() {
       }
 
       setCheckoutSessionId(String(payload.checkoutSessionId));
-      setCheckoutMessage("Square checkout opened in a new tab. Complete payment there and we’ll unlock the collection here.");
+      setCheckoutMessage(
+        purchaseType === "gift"
+          ? "Square checkout opened in a new tab. Complete payment there and we’ll generate a shareable gift link here."
+          : "Square checkout opened in a new tab. Complete payment there and we’ll unlock the collection here.",
+      );
 
       const popup = window.open(String(payload.checkoutUrl), "chefsire-square-checkout", "popup,width=520,height=760");
       checkoutWindowRef.current = popup;
@@ -854,9 +912,39 @@ export default function DrinkCollectionDetailPage() {
                       {checkoutMessage}
                     </p>
                   ) : null}
+                  {giftSummary?.claimUrl ? (
+                    <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                      <p className="font-medium">Gift link ready</p>
+                      <p className="text-xs text-muted-foreground">Share this claim link with the recipient. Ownership is only granted after they claim it while signed in.</p>
+                      <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                        <Input readOnly value={giftSummary.claimUrl} />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(giftSummary.claimUrl);
+                            setCheckoutMessage("Gift claim link copied to your clipboard.");
+                          }}
+                        >
+                          Copy link
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
-                    <Button onClick={unlockCollection} disabled={isUnlocking || isPollingCheckout}>
-                      {isUnlocking ? "Opening Square Checkout…" : isPollingCheckout ? "Waiting for Square payment…" : `Unlock Collection · ${formatCurrency(displayedFinalAmountCents, promoPricing?.currencyCode ?? "USD")}`}
+                    <Button onClick={() => void startCollectionCheckout("self")} disabled={isUnlocking || isPollingCheckout}>
+                      {isUnlocking && checkoutPurchaseType === "self"
+                        ? "Opening Square Checkout…"
+                        : isPollingCheckout && checkoutPurchaseType === "self"
+                          ? "Waiting for Square payment…"
+                          : `Unlock Collection · ${formatCurrency(displayedFinalAmountCents, promoPricing?.currencyCode ?? "USD")}`}
+                    </Button>
+                    <Button onClick={() => void startCollectionCheckout("gift")} disabled={isUnlocking || isPollingCheckout} variant="outline">
+                      {isUnlocking && checkoutPurchaseType === "gift"
+                        ? "Opening Gift Checkout…"
+                        : isPollingCheckout && checkoutPurchaseType === "gift"
+                          ? "Waiting for gift payment…"
+                          : `Gift this · ${formatCurrency(displayedFinalAmountCents, promoPricing?.currencyCode ?? "USD")}`}
                     </Button>
                     {checkoutSessionId ? (
                       <Button

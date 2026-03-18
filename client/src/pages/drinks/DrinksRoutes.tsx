@@ -22,10 +22,12 @@ import DrinksWhatsNewPage from "@/pages/drinks/whats-new";
 import DrinkCollectionsPage from "@/pages/drinks/collections";
 import DrinkCollectionsExplorePage from "@/pages/drinks/collections-explore";
 import DrinkOrdersPage from "@/pages/drinks/orders";
+import DrinkGiftsPage from "@/pages/drinks/gifts";
 import PurchasedCollectionsPage from "@/pages/drinks/purchased-collections";
 import DrinkCollectionsWishlistPage from "@/pages/drinks/wishlist";
 import DrinkCollectionDetailPage from "@/pages/drinks/collection-detail";
 import DrinkBundleDetailPage from "@/pages/drinks/bundle-detail";
+import DrinkGiftClaimPage from "@/pages/drinks/gift-claim";
 import DrinkChallengesPage from "@/pages/drinks/challenges";
 import DrinkChallengeDetailPage from "@/pages/drinks/challenge-detail";
 import DrinksDiscoverPage from "@/pages/drinks/discover";
@@ -201,6 +203,8 @@ export default function DrinksRoutes() {
         <Route path="/drinks/whats-new" component={DrinksWhatsNewPage} />
         <Route path="/drinks/collections/explore" component={DrinkCollectionsExplorePage} />
         <Route path="/drinks/orders" component={DrinkOrdersPage} />
+        <Route path="/drinks/gifts/:token" component={DrinkGiftClaimPage} />
+        <Route path="/drinks/gifts" component={DrinkGiftsPage} />
         <Route path="/drinks/collections/purchased" component={PurchasedCollectionsPage} />
         <Route path="/drinks/collections/wishlist" component={DrinkCollectionsWishlistPage} />
         <Route path="/drinks/collections" component={DrinkCollectionsPage} />

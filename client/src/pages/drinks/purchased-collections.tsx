@@ -127,6 +127,8 @@ export default function PurchasedCollectionsPage() {
         <div className="flex flex-wrap gap-2 pt-1">
           <Link href="/drinks/orders" className="text-sm underline underline-offset-2">View order history</Link>
           <span className="text-muted-foreground">·</span>
+          <Link href="/drinks/gifts" className="text-sm underline underline-offset-2">Gift history</Link>
+          <span className="text-muted-foreground">·</span>
           <Link href="/drinks/collections/explore" className="text-sm underline underline-offset-2">Browse premium collections</Link>
           <span className="text-muted-foreground">·</span>
           <Link href="/drinks/discover" className="text-sm underline underline-offset-2">Back to discover</Link>
