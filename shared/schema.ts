@@ -1212,6 +1212,118 @@ export const drinkCollectionEvents = pgTable(
   })
 );
 
+export const drinkBundles = pgTable(
+  "drink_bundles",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    slug: varchar("slug", { length: 200 }).notNull().unique(),
+    name: varchar("name", { length: 160 }).notNull(),
+    description: text("description"),
+    isPublic: boolean("is_public").default(false).notNull(),
+    isPremium: boolean("is_premium").default(true).notNull(),
+    priceCents: integer("price_cents").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("drink_bundles_user_idx").on(table.userId),
+    slugIdx: uniqueIndex("drink_bundles_slug_idx").on(table.slug),
+    publicIdx: index("drink_bundles_public_idx").on(table.isPublic),
+    userUpdatedAtIdx: index("drink_bundles_user_updated_at_idx").on(table.userId, table.updatedAt),
+  })
+);
+
+export const drinkBundleItems = pgTable(
+  "drink_bundle_items",
+  {
+    bundleId: varchar("bundle_id")
+      .references(() => drinkBundles.id, { onDelete: "cascade" })
+      .notNull(),
+    collectionId: varchar("collection_id")
+      .references(() => drinkCollections.id, { onDelete: "cascade" })
+      .notNull(),
+    addedAt: timestamp("added_at").defaultNow().notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+  },
+  (table) => ({
+    bundleCollectionIdx: uniqueIndex("drink_bundle_items_bundle_collection_idx").on(table.bundleId, table.collectionId),
+    collectionIdx: index("drink_bundle_items_collection_idx").on(table.collectionId),
+    sortOrderIdx: index("drink_bundle_items_bundle_sort_order_idx").on(table.bundleId, table.sortOrder),
+  })
+);
+
+export const drinkBundlePurchases = pgTable(
+  "drink_bundle_purchases",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    bundleId: varchar("bundle_id").references(() => drinkBundles.id, { onDelete: "cascade" }).notNull(),
+    status: text("status").default("completed").notNull(),
+    statusReason: text("status_reason"),
+    accessRevokedAt: timestamp("access_revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("drink_bundle_purchases_user_idx").on(table.userId),
+    bundleIdx: index("drink_bundle_purchases_bundle_idx").on(table.bundleId),
+    uniqueOwnershipIdx: uniqueIndex("drink_bundle_purchases_user_bundle_idx").on(table.userId, table.bundleId),
+  })
+);
+
+export const drinkBundleCheckoutSessions = pgTable(
+  "drink_bundle_checkout_sessions",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    bundleId: varchar("bundle_id").references(() => drinkBundles.id, { onDelete: "cascade" }).notNull(),
+    provider: text("provider").default("square").notNull(),
+    status: text("status").default("pending").notNull(),
+    amountCents: integer("amount_cents").notNull(),
+    currencyCode: text("currency_code").default("USD").notNull(),
+    squarePaymentLinkId: text("square_payment_link_id"),
+    squareOrderId: text("square_order_id"),
+    squarePaymentId: text("square_payment_id"),
+    providerReferenceId: text("provider_reference_id").notNull().unique(),
+    checkoutUrl: text("checkout_url"),
+    lastVerifiedAt: timestamp("last_verified_at"),
+    verifiedAt: timestamp("verified_at"),
+    refundedAt: timestamp("refunded_at"),
+    accessRevokedAt: timestamp("access_revoked_at"),
+    failureReason: text("failure_reason"),
+    expiresAt: timestamp("expires_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("drink_bundle_checkout_sessions_user_idx").on(table.userId),
+    bundleIdx: index("drink_bundle_checkout_sessions_bundle_idx").on(table.bundleId),
+    statusIdx: index("drink_bundle_checkout_sessions_status_idx").on(table.status),
+    paymentLinkIdx: uniqueIndex("drink_bundle_checkout_sessions_payment_link_idx").on(table.squarePaymentLinkId),
+    orderIdx: uniqueIndex("drink_bundle_checkout_sessions_order_idx").on(table.squareOrderId),
+  })
+);
+
+export const drinkBundleSquareWebhookEvents = pgTable(
+  "drink_bundle_square_webhook_events",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    eventId: text("event_id").notNull().unique(),
+    eventType: text("event_type").notNull(),
+    objectType: text("object_type"),
+    objectId: text("object_id"),
+    checkoutSessionId: varchar("checkout_session_id").references(() => drinkBundleCheckoutSessions.id, { onDelete: "set null" }),
+    status: text("status").default("processed").notNull(),
+    receivedAt: timestamp("received_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => ({
+    objectIdx: index("drink_bundle_square_webhook_events_object_idx").on(table.objectType, table.objectId),
+    checkoutSessionIdx: index("drink_bundle_square_webhook_events_checkout_session_idx").on(table.checkoutSessionId),
+  })
+);
+
 export const drinkChallenges = pgTable(
   "drink_challenges",
   {
@@ -1768,6 +1880,21 @@ export const insertDrinkCollectionPromotionSchema = createInsertSchema(drinkColl
   redemptionCount: true,
 });
 
+export const insertDrinkBundleSchema = createInsertSchema(drinkBundles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertDrinkBundleItemSchema = createInsertSchema(drinkBundleItems).omit({
+  addedAt: true,
+});
+
+export const insertDrinkBundlePurchaseSchema = createInsertSchema(drinkBundlePurchases).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertDrinkChallengeSchema = createInsertSchema(drinkChallenges).omit({
   id: true,
   createdAt: true,
@@ -1956,6 +2083,12 @@ export type DrinkCollectionReview = typeof drinkCollectionReviews.$inferSelect;
 export type InsertDrinkCollectionReview = z.infer<typeof insertDrinkCollectionReviewSchema>;
 export type DrinkCollectionPromotion = typeof drinkCollectionPromotions.$inferSelect;
 export type InsertDrinkCollectionPromotion = z.infer<typeof insertDrinkCollectionPromotionSchema>;
+export type DrinkBundle = typeof drinkBundles.$inferSelect;
+export type InsertDrinkBundle = z.infer<typeof insertDrinkBundleSchema>;
+export type DrinkBundleItem = typeof drinkBundleItems.$inferSelect;
+export type InsertDrinkBundleItem = z.infer<typeof insertDrinkBundleItemSchema>;
+export type DrinkBundlePurchase = typeof drinkBundlePurchases.$inferSelect;
+export type InsertDrinkBundlePurchase = z.infer<typeof insertDrinkBundlePurchaseSchema>;
 export type DrinkChallenge = typeof drinkChallenges.$inferSelect;
 export type InsertDrinkChallenge = z.infer<typeof insertDrinkChallengeSchema>;
 export type DrinkChallengeSubmission = typeof drinkChallengeSubmissions.$inferSelect;

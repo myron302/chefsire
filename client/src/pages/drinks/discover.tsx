@@ -82,6 +82,13 @@ const discoverLinks: DiscoverLink[] = [
     activityHint: "New",
   },
   {
+    title: "Bundle Offers",
+    description: "Unlock multiple premium collections together in one Square checkout.",
+    href: "/drinks/collections/explore",
+    icon: Layers,
+    activityHint: "New",
+  },
+  {
     title: "My Purchased Collections",
     description: "Jump back into premium collections you already own.",
     href: "/drinks/collections/purchased",

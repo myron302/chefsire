@@ -56,6 +56,20 @@ interface PublicCollectionsResponse {
   collections: PublicCollection[];
 }
 
+interface PublicBundle {
+  id: string;
+  name: string;
+  description: string | null;
+  isPublic: boolean;
+  isPremium: boolean;
+  priceCents: number;
+  userId: string;
+  creatorUsername: string | null;
+  itemsCount: number;
+  route: string;
+  ownedByViewer?: boolean;
+}
+
 function initials(value: string | null): string {
   if (!value) return "DR";
   return value.slice(0, 2).toUpperCase();
@@ -99,8 +113,18 @@ export default function DrinkCollectionsExplorePage() {
     },
   });
 
+  const bundlesQuery = useQuery<{ ok: boolean; bundles: PublicBundle[] }>({
+    queryKey: ["/api/drinks/bundles/explore"],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/bundles/explore", { credentials: "include" });
+      if (!response.ok) throw new Error("Failed to load public bundles");
+      return response.json();
+    },
+  });
+
   const featuredCollections = featuredQuery.data?.collections ?? [];
   const exploreCollections = exploreQuery.data?.collections ?? [];
+  const exploreBundles = bundlesQuery.data?.bundles ?? [];
   const premiumCollections = exploreCollections.filter((collection) => collection.isPremium);
   const freeCollections = exploreCollections.filter((collection) => !collection.isPremium);
 
@@ -207,6 +231,44 @@ export default function DrinkCollectionsExplorePage() {
                   <p className="text-xs text-muted-foreground">{collection.wishlistCount ?? 0} wishlists</p>
                   <CollectionRatingSummary averageRating={collection.averageRating} reviewCount={collection.reviewCount} />
                   <CollectionPromoNote collection={collection} />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : null}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-semibold">Premium Bundles</h2>
+          <span className="text-sm text-muted-foreground">{exploreBundles.length} bundle offers</span>
+        </div>
+
+        {bundlesQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading premium bundles…</p> : null}
+        {bundlesQuery.isError ? <p className="text-sm text-destructive">Could not load bundle offers right now.</p> : null}
+        {!bundlesQuery.isLoading && exploreBundles.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">No public bundle offers yet. Check back as creators package premium collections together.</CardContent>
+          </Card>
+        ) : null}
+
+        {exploreBundles.length > 0 ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            {exploreBundles.map((bundle) => (
+              <Card key={bundle.id}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-lg">
+                    <Link href={bundle.route} className="underline underline-offset-2">{bundle.name}</Link>
+                  </CardTitle>
+                  <CardDescription>{bundle.description || "Package multiple premium collections together with one checkout."}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <p className="text-sm text-muted-foreground">by {bundle.creatorUsername ? `@${bundle.creatorUsername}` : "a creator"}</p>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge>Premium Bundle · {formatCurrency(bundle.priceCents)}</Badge>
+                    <Badge variant="secondary">{bundle.itemsCount} collections</Badge>
+                    {bundle.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+                  </div>
                 </CardContent>
               </Card>
             ))}

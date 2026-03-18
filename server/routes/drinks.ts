@@ -6,10 +6,16 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { getCanonicalDrinkBySlug } from "../services/canonical-drinks-index";
 import { 
+  drinkBundleCheckoutSessions,
+  drinkBundleItems,
+  drinkBundlePurchases,
+  drinkBundleSquareWebhookEvents,
+  drinkBundles,
   insertCustomDrinkSchema, 
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
   insertDrinkSaveSchema,
+  insertDrinkBundleSchema,
   drinkCollectionCheckoutSessions,
   drinkCollectionEvents,
   drinkCollectionPromotions,
@@ -51,12 +57,15 @@ type EventType = "view" | "remix" | "grocery_add";
 type DrinkCollectionPurchaseStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
 type DrinkCollectionCheckoutStatus = "pending" | "completed" | "failed" | "canceled" | "refunded_pending" | "refunded" | "revoked";
 type DrinkCollectionSalesLedgerStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
+type DrinkBundlePurchaseStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
+type DrinkBundleCheckoutStatus = "pending" | "completed" | "failed" | "canceled" | "refunded_pending" | "refunded" | "revoked";
 type DrinkCollectionEventType = "view";
 type DrinkCollectionPromotionDiscountType = "percent" | "fixed";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
 type DrinkCollectionPromotionRecord = typeof drinkCollectionPromotions.$inferSelect;
+type DrinkBundleCheckoutSessionRecord = typeof drinkBundleCheckoutSessions.$inferSelect;
 
 type ResolvedCollectionPurchaseContext = {
   collection: typeof drinkCollections.$inferSelect;
@@ -124,6 +133,15 @@ type CollectionCheckoutSnapshot = {
   originalAmountCents?: number | null;
   discountAmountCents?: number | null;
   promotionCode?: string | null;
+};
+
+type BundleCheckoutSnapshot = {
+  checkoutSessionId: string;
+  status: DrinkBundleCheckoutStatus;
+  failureReason: string | null;
+  updatedAt: string;
+  verifiedAt: string | null;
+  expiresAt: string | null;
 };
 
 type CollectionReviewSummary = {
@@ -477,6 +495,29 @@ const updateDrinkCollectionBodySchema = z.object({
   message: "Premium collections require a positive price and free collections must use a price of 0",
 });
 
+const bundleBaseSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(2000).nullable().optional(),
+  isPublic: z.boolean().optional(),
+  isPremium: z.boolean().optional(),
+  priceCents: z.coerce.number().int().min(1).max(500000),
+});
+
+const createDrinkBundleBodySchema = bundleBaseSchema.extend({
+  slug: z.string().trim().min(1).max(200).optional(),
+});
+
+const updateDrinkBundleBodySchema = bundleBaseSchema.partial().extend({
+  slug: z.string().trim().min(1).max(200).optional(),
+}).refine((value) => Object.values(value).some((field) => field !== undefined), {
+  message: "At least one field must be provided",
+});
+
+const createDrinkBundleItemBodySchema = z.object({
+  collectionId: z.string().trim().min(1),
+  sortOrder: z.coerce.number().int().min(0).max(10000).optional(),
+});
+
 function normalizeCollectionDescription(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value.trim();
@@ -487,6 +528,42 @@ function normalizePromotionCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value.trim().toUpperCase();
   return cleaned.length ? cleaned : null;
+}
+
+function normalizeBundleSlug(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const cleaned = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return cleaned.length ? cleaned.slice(0, 200) : null;
+}
+
+async function ensureUniqueBundleSlug(baseValue: string, excludeBundleId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const baseSlug = normalizeBundleSlug(baseValue) || "premium-bundle";
+  let attempt = 0;
+
+  while (attempt < 25) {
+    const slug = attempt === 0 ? baseSlug : `${baseSlug}-${attempt + 1}`;
+    const rows = await db
+      .select({ id: drinkBundles.id })
+      .from(drinkBundles)
+      .where(eq(drinkBundles.slug, slug))
+      .limit(1);
+
+    const existing = rows[0];
+    if (!existing || existing.id === excludeBundleId) {
+      return slug;
+    }
+    attempt += 1;
+  }
+
+  return `${baseSlug}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
 function toNullableDate(value?: string | null) {
@@ -998,6 +1075,86 @@ async function ensureDrinkCollectionsSchema() {
       );
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_bundles (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        slug varchar(200) NOT NULL UNIQUE,
+        name varchar(160) NOT NULL,
+        description text,
+        is_public boolean NOT NULL DEFAULT false,
+        is_premium boolean NOT NULL DEFAULT true,
+        price_cents integer NOT NULL DEFAULT 0,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_bundle_items (
+        bundle_id varchar NOT NULL REFERENCES drink_bundles(id) ON DELETE CASCADE,
+        collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
+        added_at timestamp NOT NULL DEFAULT now(),
+        sort_order integer NOT NULL DEFAULT 0,
+        CONSTRAINT drink_bundle_items_bundle_collection_idx UNIQUE (bundle_id, collection_id)
+      );
+    `);
+
+    await db.execute(sql`ALTER TABLE drink_bundle_items ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0;`);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_bundle_purchases (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        bundle_id varchar NOT NULL REFERENCES drink_bundles(id) ON DELETE CASCADE,
+        status text NOT NULL DEFAULT 'completed',
+        status_reason text,
+        access_revoked_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT drink_bundle_purchases_user_bundle_idx UNIQUE (user_id, bundle_id)
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_bundle_checkout_sessions (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        bundle_id varchar NOT NULL REFERENCES drink_bundles(id) ON DELETE CASCADE,
+        provider text NOT NULL DEFAULT 'square',
+        status text NOT NULL DEFAULT 'pending',
+        amount_cents integer NOT NULL,
+        currency_code text NOT NULL DEFAULT 'USD',
+        square_payment_link_id text,
+        square_order_id text,
+        square_payment_id text,
+        provider_reference_id text NOT NULL UNIQUE,
+        checkout_url text,
+        last_verified_at timestamp,
+        verified_at timestamp,
+        refunded_at timestamp,
+        access_revoked_at timestamp,
+        failure_reason text,
+        expires_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_bundle_square_webhook_events (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id text NOT NULL UNIQUE,
+        event_type text NOT NULL,
+        object_type text,
+        object_id text,
+        checkout_session_id varchar REFERENCES drink_bundle_checkout_sessions(id) ON DELETE SET NULL,
+        status text NOT NULL DEFAULT 'processed',
+        received_at timestamp NOT NULL DEFAULT now(),
+        created_at timestamp
+      );
+    `);
+
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_idx ON drink_collections(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_public_idx ON drink_collections(is_public);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_updated_at_idx ON drink_collections(user_id, updated_at);`);
@@ -1030,6 +1187,20 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_event_type_idx ON drink_collection_events(event_type);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_created_at_idx ON drink_collection_events(created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_events_collection_event_type_created_at_idx ON drink_collection_events(collection_id, event_type, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundles_user_idx ON drink_bundles(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundles_public_idx ON drink_bundles(is_public);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundles_user_updated_at_idx ON drink_bundles(user_id, updated_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundle_items_collection_idx ON drink_bundle_items(collection_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundle_items_bundle_sort_order_idx ON drink_bundle_items(bundle_id, sort_order);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundle_purchases_user_idx ON drink_bundle_purchases(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundle_purchases_bundle_idx ON drink_bundle_purchases(bundle_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundle_checkout_sessions_user_idx ON drink_bundle_checkout_sessions(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundle_checkout_sessions_bundle_idx ON drink_bundle_checkout_sessions(bundle_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundle_checkout_sessions_status_idx ON drink_bundle_checkout_sessions(status);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_bundle_checkout_sessions_payment_link_idx ON drink_bundle_checkout_sessions(square_payment_link_id) WHERE square_payment_link_id IS NOT NULL;`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_bundle_checkout_sessions_order_idx ON drink_bundle_checkout_sessions(square_order_id) WHERE square_order_id IS NOT NULL;`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundle_square_webhook_events_object_idx ON drink_bundle_square_webhook_events(object_type, object_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_bundle_square_webhook_events_checkout_session_idx ON drink_bundle_square_webhook_events(checkout_session_id);`);
 
     await backfillDrinkCollectionSalesLedger();
   })();
@@ -1236,6 +1407,15 @@ function formatCollectionCheckoutReferenceId(checkoutSessionId: string) {
   return `drink_collection_checkout:${checkoutSessionId}`;
 }
 
+function buildBundleCheckoutRedirectUrl(req: Request, bundleId: string, checkoutSessionId: string) {
+  const baseUrl = getCollectionCheckoutBaseUrl(req);
+  return `${baseUrl}/drinks/bundles/${encodeURIComponent(bundleId)}?checkoutSessionId=${encodeURIComponent(checkoutSessionId)}&squareCheckout=return`;
+}
+
+function formatBundleCheckoutReferenceId(checkoutSessionId: string) {
+  return `drink_bundle_checkout:${checkoutSessionId}`;
+}
+
 function normalizeSquareCurrencyCode(value?: string | null) {
   const normalized = String(value || "USD").trim().toUpperCase();
   return normalized || "USD";
@@ -1352,6 +1532,63 @@ async function resolveCollectionPurchaseContextWithPromo(
   };
 }
 
+async function resolveBundlePurchaseContext(bundleId: string, viewerUserId: string) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const rows = await db.select().from(drinkBundles).where(eq(drinkBundles.id, bundleId)).limit(1);
+  const bundle = rows[0];
+  if (!bundle) {
+    const error = new Error("Bundle not found");
+    (error as any).status = 404;
+    throw error;
+  }
+
+  const isOwner = viewerUserId === bundle.userId;
+  if (!bundle.isPublic && !isOwner) {
+    const error = new Error("Bundle is private");
+    (error as any).status = 403;
+    throw error;
+  }
+
+  if (!bundle.isPremium) {
+    const error = new Error("Bundle is already free");
+    (error as any).status = 400;
+    throw error;
+  }
+
+  const itemRows = await db
+    .select({
+      collectionId: drinkBundleItems.collectionId,
+      collectionUserId: drinkCollections.userId,
+      isPremium: drinkCollections.isPremium,
+    })
+    .from(drinkBundleItems)
+    .innerJoin(drinkCollections, eq(drinkBundleItems.collectionId, drinkCollections.id))
+    .where(eq(drinkBundleItems.bundleId, bundle.id));
+
+  if (itemRows.length === 0) {
+    const error = new Error("Bundle must include at least one premium collection before checkout");
+    (error as any).status = 400;
+    throw error;
+  }
+
+  const invalidItem = itemRows.find((item) => item.collectionUserId !== bundle.userId || !item.isPremium);
+  if (invalidItem) {
+    const error = new Error("Bundles can only include this creator's premium collections");
+    (error as any).status = 400;
+    throw error;
+  }
+
+  const ownedBundleIds = await loadOwnedBundleIdsForUser(viewerUserId);
+  return {
+    bundle,
+    isOwner,
+    alreadyOwned: isOwner || ownedBundleIds.has(bundle.id),
+  };
+}
+
 async function loadCheckoutSessionForUser(checkoutSessionId: string, userId: string) {
   if (!db) return null;
   const rows = await db
@@ -1361,6 +1598,22 @@ async function loadCheckoutSessionForUser(checkoutSessionId: string, userId: str
       and(
         eq(drinkCollectionCheckoutSessions.id, checkoutSessionId),
         eq(drinkCollectionCheckoutSessions.userId, userId),
+      ),
+    )
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function loadBundleCheckoutSessionForUser(checkoutSessionId: string, userId: string) {
+  if (!db) return null;
+  const rows = await db
+    .select()
+    .from(drinkBundleCheckoutSessions)
+    .where(
+      and(
+        eq(drinkBundleCheckoutSessions.id, checkoutSessionId),
+        eq(drinkBundleCheckoutSessions.userId, userId),
       ),
     )
     .limit(1);
@@ -1393,6 +1646,28 @@ function toCollectionCheckoutSnapshot(session?: DrinkCollectionCheckoutSessionRe
   };
 }
 
+function getBundleCheckoutPollStatus(session: DrinkBundleCheckoutSessionRecord): DrinkBundleCheckoutStatus {
+  if (session.status === "completed") return "completed";
+  if (session.status === "failed") return "failed";
+  if (session.status === "canceled") return "canceled";
+  if (session.status === "refunded_pending") return "refunded_pending";
+  if (session.status === "refunded") return "refunded";
+  if (session.status === "revoked") return "revoked";
+  return "pending";
+}
+
+function toBundleCheckoutSnapshot(session?: DrinkBundleCheckoutSessionRecord | null): BundleCheckoutSnapshot | null {
+  if (!session) return null;
+  return {
+    checkoutSessionId: session.id,
+    status: getBundleCheckoutPollStatus(session),
+    failureReason: session.failureReason ?? null,
+    updatedAt: session.updatedAt.toISOString(),
+    verifiedAt: session.verifiedAt ? session.verifiedAt.toISOString() : null,
+    expiresAt: session.expiresAt ? session.expiresAt.toISOString() : null,
+  };
+}
+
 async function loadLatestCheckoutSessionForUserCollection(userId: string, collectionId: string) {
   if (!db) return null;
 
@@ -1406,6 +1681,24 @@ async function loadLatestCheckoutSessionForUserCollection(userId: string, collec
       ),
     )
     .orderBy(desc(drinkCollectionCheckoutSessions.updatedAt), desc(drinkCollectionCheckoutSessions.createdAt))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function loadLatestCheckoutSessionForUserBundle(userId: string, bundleId: string) {
+  if (!db) return null;
+
+  const rows = await db
+    .select()
+    .from(drinkBundleCheckoutSessions)
+    .where(
+      and(
+        eq(drinkBundleCheckoutSessions.userId, userId),
+        eq(drinkBundleCheckoutSessions.bundleId, bundleId),
+      ),
+    )
+    .orderBy(desc(drinkBundleCheckoutSessions.updatedAt), desc(drinkBundleCheckoutSessions.createdAt))
     .limit(1);
 
   return rows[0] ?? null;
@@ -1431,6 +1724,31 @@ async function loadCheckoutSessionForWebhookLookup(input: {
     .from(drinkCollectionCheckoutSessions)
     .where(or(...conditions))
     .orderBy(desc(drinkCollectionCheckoutSessions.updatedAt), desc(drinkCollectionCheckoutSessions.createdAt))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function loadBundleCheckoutSessionForWebhookLookup(input: {
+  checkoutSessionId?: string | null;
+  squareOrderId?: string | null;
+  squarePaymentId?: string | null;
+  providerReferenceId?: string | null;
+}) {
+  if (!db) return null;
+
+  const conditions: any[] = [];
+  if (input.checkoutSessionId) conditions.push(eq(drinkBundleCheckoutSessions.id, input.checkoutSessionId));
+  if (input.squareOrderId) conditions.push(eq(drinkBundleCheckoutSessions.squareOrderId, input.squareOrderId));
+  if (input.squarePaymentId) conditions.push(eq(drinkBundleCheckoutSessions.squarePaymentId, input.squarePaymentId));
+  if (input.providerReferenceId) conditions.push(eq(drinkBundleCheckoutSessions.providerReferenceId, input.providerReferenceId));
+  if (!conditions.length) return null;
+
+  const rows = await db
+    .select()
+    .from(drinkBundleCheckoutSessions)
+    .where(or(...conditions))
+    .orderBy(desc(drinkBundleCheckoutSessions.updatedAt), desc(drinkBundleCheckoutSessions.createdAt))
     .limit(1);
 
   return rows[0] ?? null;
@@ -1615,6 +1933,99 @@ async function updateCollectionAccessState(
   });
 }
 
+async function grantBundlePurchase(
+  session: DrinkBundleCheckoutSessionRecord,
+  input: { squarePaymentId?: string | null; squareOrderId?: string | null } = {},
+) {
+  if (!db) throw new Error("Database unavailable");
+
+  await db.transaction(async (tx) => {
+    const now = new Date();
+    await tx
+      .insert(drinkBundlePurchases)
+      .values({
+        userId: session.userId,
+        bundleId: session.bundleId,
+        status: "completed",
+        statusReason: null,
+        accessRevokedAt: null,
+        updatedAt: now,
+      })
+      .onConflictDoUpdate({
+        target: [drinkBundlePurchases.userId, drinkBundlePurchases.bundleId],
+        set: {
+          status: "completed",
+          statusReason: null,
+          accessRevokedAt: null,
+          updatedAt: now,
+        },
+      });
+
+    await tx
+      .update(drinkBundleCheckoutSessions)
+      .set({
+        status: "completed",
+        squareOrderId: input.squareOrderId ?? session.squareOrderId,
+        squarePaymentId: input.squarePaymentId ?? session.squarePaymentId,
+        verifiedAt: now,
+        refundedAt: null,
+        accessRevokedAt: null,
+        lastVerifiedAt: now,
+        failureReason: null,
+        updatedAt: now,
+      })
+      .where(eq(drinkBundleCheckoutSessions.id, session.id));
+  });
+}
+
+async function updateBundleAccessState(
+  session: DrinkBundleCheckoutSessionRecord,
+  input: {
+    purchaseStatus: DrinkBundlePurchaseStatus;
+    checkoutStatus: DrinkBundleCheckoutStatus;
+    reason?: string | null;
+    squarePaymentId?: string | null;
+    squareOrderId?: string | null;
+    refundedAt?: Date | null;
+  },
+) {
+  if (!db) throw new Error("Database unavailable");
+
+  await db.transaction(async (tx) => {
+    const now = new Date();
+    const revokeTimestamp = input.purchaseStatus === "completed" ? null : (input.refundedAt ?? now);
+
+    await tx
+      .update(drinkBundlePurchases)
+      .set({
+        status: input.purchaseStatus,
+        statusReason: input.reason ?? null,
+        accessRevokedAt: revokeTimestamp,
+        updatedAt: now,
+      })
+      .where(
+        and(
+          eq(drinkBundlePurchases.userId, session.userId),
+          eq(drinkBundlePurchases.bundleId, session.bundleId),
+        ),
+      );
+
+    await tx
+      .update(drinkBundleCheckoutSessions)
+      .set({
+        status: input.checkoutStatus,
+        squareOrderId: input.squareOrderId ?? session.squareOrderId,
+        squarePaymentId: input.squarePaymentId ?? session.squarePaymentId,
+        refundedAt: isRefundRelatedStatus(input.checkoutStatus) ? (input.refundedAt ?? now) : null,
+        accessRevokedAt: input.checkoutStatus === "completed" ? null : revokeTimestamp,
+        failureReason: input.reason ?? null,
+        lastVerifiedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(drinkBundleCheckoutSessions.id, session.id));
+  });
+}
+
 function parseSquareOrderState(order: any, payment: any | null, expectedAmountCents: number): ParsedSquareOrderStatus {
   const orderState = String(order?.state || "").toUpperCase();
   const tenderTotal = sumTenderAmounts(order?.tenders);
@@ -1677,6 +2088,41 @@ async function fetchSquareOrderVerification(session: DrinkCollectionCheckoutSess
       payment = paymentResponse?.payment ?? null;
     } catch (error) {
       console.warn("[drinks/collections] Failed to retrieve Square payment", {
+        checkoutSessionId: session.id,
+        paymentId,
+        error,
+      });
+    }
+  }
+
+  return {
+    order,
+    payment,
+    squareOrderId: order.id ?? session.squareOrderId ?? null,
+    squarePaymentId: payment?.id ?? paymentId,
+  };
+}
+
+async function fetchSquareOrderVerificationForBundle(session: DrinkBundleCheckoutSessionRecord): Promise<SquareOrderVerificationPayload | null> {
+  if (!session.squareOrderId) return null;
+
+  const squareClient = getSquareClient();
+  const orderResponse = await squareClient.orders.get({ orderId: session.squareOrderId });
+  const order = orderResponse?.order ?? null;
+  if (!order) return null;
+
+  const paymentId = order.tenders?.find((tender) => tender?.paymentId || tender?.id)?.paymentId
+    ?? order.tenders?.find((tender) => tender?.paymentId || tender?.id)?.id
+    ?? session.squarePaymentId
+    ?? null;
+
+  let payment = null;
+  if (paymentId) {
+    try {
+      const paymentResponse = await squareClient.payments.get({ paymentId });
+      payment = paymentResponse?.payment ?? null;
+    } catch (error) {
+      console.warn("[drinks/bundles] Failed to retrieve Square payment", {
         checkoutSessionId: session.id,
         paymentId,
         error,
@@ -1777,6 +2223,62 @@ async function resolveWebhookSessionFromPayload(payload: SquareWebhookEventBody)
   };
 }
 
+async function resolveBundleWebhookSessionFromPayload(payload: SquareWebhookEventBody) {
+  const { resource } = extractSquareWebhookObject(payload);
+  const checkoutSessionId = typeof resource?.metadata?.checkoutSessionId === "string" ? resource.metadata.checkoutSessionId : null;
+  const providerReferenceId = typeof resource?.referenceId === "string"
+    ? resource.referenceId
+    : typeof resource?.order?.referenceId === "string"
+      ? resource.order.referenceId
+      : null;
+  const squareOrderId = typeof resource?.orderId === "string"
+    ? resource.orderId
+    : typeof resource?.id === "string" && String(payload.data?.type || "").toLowerCase() === "order"
+      ? resource.id
+      : null;
+  const squarePaymentId = typeof resource?.id === "string" && String(payload.data?.type || "").toLowerCase() === "payment"
+    ? resource.id
+    : typeof resource?.paymentId === "string"
+      ? resource.paymentId
+      : null;
+
+  let session = await loadBundleCheckoutSessionForWebhookLookup({
+    checkoutSessionId,
+    squareOrderId,
+    squarePaymentId,
+    providerReferenceId,
+  });
+
+  if (!session && squarePaymentId) {
+    try {
+      const squareClient = getSquareClient();
+      const paymentResponse = await squareClient.payments.get({ paymentId: squarePaymentId });
+      const payment = paymentResponse?.payment ?? null;
+      session = await loadBundleCheckoutSessionForWebhookLookup({
+        checkoutSessionId,
+        squareOrderId: payment?.orderId ?? squareOrderId,
+        squarePaymentId,
+        providerReferenceId,
+      });
+    } catch (error) {
+      console.warn("[drinks/bundles] Failed webhook payment lookup", {
+        eventId: payload.event_id,
+        squarePaymentId,
+        error,
+      });
+    }
+  }
+
+  return {
+    session,
+    resource,
+    checkoutSessionId,
+    providerReferenceId,
+    squareOrderId,
+    squarePaymentId,
+  };
+}
+
 function doesWebhookMatchSession(
   session: DrinkCollectionCheckoutSessionRecord,
   input: {
@@ -1856,6 +2358,34 @@ async function recordSquareWebhookEvent(input: {
     })
     .onConflictDoNothing({ target: drinkCollectionSquareWebhookEvents.eventId })
     .returning({ id: drinkCollectionSquareWebhookEvents.id });
+
+  return insertResult.length > 0;
+}
+
+async function recordBundleSquareWebhookEvent(input: {
+  eventId: string;
+  eventType: string;
+  objectType?: string | null;
+  objectId?: string | null;
+  checkoutSessionId?: string | null;
+  createdAt?: string | null;
+  status?: string;
+}) {
+  if (!db) throw new Error("Database unavailable");
+
+  const insertResult = await db
+    .insert(drinkBundleSquareWebhookEvents)
+    .values({
+      eventId: input.eventId,
+      eventType: input.eventType,
+      objectType: input.objectType ?? null,
+      objectId: input.objectId ?? null,
+      checkoutSessionId: input.checkoutSessionId ?? null,
+      status: input.status ?? "processed",
+      createdAt: input.createdAt ? new Date(input.createdAt) : null,
+    })
+    .onConflictDoNothing({ target: drinkBundleSquareWebhookEvents.eventId })
+    .returning({ id: drinkBundleSquareWebhookEvents.id });
 
   return insertResult.length > 0;
 }
@@ -2052,6 +2582,169 @@ async function reconcileSquareWebhookEvent(payload: SquareWebhookEventBody) {
   return { ok: true, ignored: true, eventId, eventType, reason: "unsupported_event" } as const;
 }
 
+async function reconcileBundleSquareWebhookEvent(payload: SquareWebhookEventBody) {
+  if (!db) throw new Error("Database unavailable");
+
+  const eventId = String(payload.event_id || "").trim();
+  const eventType = String(payload.type || "").trim().toLowerCase();
+  const { objectType, resource } = extractSquareWebhookObject(payload);
+  const objectId = typeof payload.data?.id === "string" ? payload.data.id : typeof resource?.id === "string" ? resource.id : null;
+
+  if (!eventId || !eventType) {
+    return { ok: false, ignored: true, reason: "invalid_event" } as const;
+  }
+
+  const inserted = await recordBundleSquareWebhookEvent({
+    eventId,
+    eventType,
+    objectType,
+    objectId,
+    createdAt: payload.created_at ?? null,
+    status: "received",
+  });
+
+  if (!inserted) {
+    return { ok: true, duplicate: true, ignored: true, eventId, eventType } as const;
+  }
+
+  const lookup = await resolveBundleWebhookSessionFromPayload(payload);
+  if (!lookup.session || !doesWebhookMatchSession(lookup.session as any, lookup)) {
+    await db
+      .update(drinkBundleSquareWebhookEvents)
+      .set({ checkoutSessionId: lookup.session?.id ?? null, status: "ignored" })
+      .where(eq(drinkBundleSquareWebhookEvents.eventId, eventId));
+
+    return { ok: true, ignored: true, eventId, eventType, reason: "session_not_found" } as const;
+  }
+
+  const session = lookup.session;
+  await db
+    .update(drinkBundleSquareWebhookEvents)
+    .set({ checkoutSessionId: session.id, status: "processing" })
+    .where(eq(drinkBundleSquareWebhookEvents.eventId, eventId));
+
+  const metadata = resource?.metadata ?? null;
+  if (metadata?.bundleId && metadata.bundleId !== session.bundleId) {
+    await updateBundleAccessState(session, {
+      purchaseStatus: "revoked",
+      checkoutStatus: "revoked",
+      squareOrderId: lookup.squareOrderId,
+      squarePaymentId: lookup.squarePaymentId,
+      reason: "Square webhook metadata did not match the expected bundle.",
+    });
+    await db.update(drinkBundleSquareWebhookEvents).set({ status: "rejected" }).where(eq(drinkBundleSquareWebhookEvents.eventId, eventId));
+    return { ok: true, ignored: true, eventId, eventType, reason: "bundle_mismatch" } as const;
+  }
+
+  if (metadata?.userId && metadata.userId !== session.userId) {
+    await updateBundleAccessState(session, {
+      purchaseStatus: "revoked",
+      checkoutStatus: "revoked",
+      squareOrderId: lookup.squareOrderId,
+      squarePaymentId: lookup.squarePaymentId,
+      reason: "Square webhook metadata did not match the expected purchaser.",
+    });
+    await db.update(drinkBundleSquareWebhookEvents).set({ status: "rejected" }).where(eq(drinkBundleSquareWebhookEvents.eventId, eventId));
+    return { ok: true, ignored: true, eventId, eventType, reason: "user_mismatch" } as const;
+  }
+
+  const paymentDetails = getPaymentAmountDetails(resource);
+  const shouldValidateAmount = eventType.startsWith("payment.") || eventType.startsWith("order.");
+  const amountMismatch = shouldValidateAmount && paymentDetails.amountCents > 0 && paymentDetails.amountCents < session.amountCents;
+  const currencyMismatch = shouldValidateAmount && paymentDetails.amountCents > 0 && paymentDetails.currencyCode !== normalizeSquareCurrencyCode(session.currencyCode);
+
+  if (amountMismatch || currencyMismatch) {
+    await updateBundleAccessState(session, {
+      purchaseStatus: "revoked",
+      checkoutStatus: "revoked",
+      squareOrderId: lookup.squareOrderId,
+      squarePaymentId: lookup.squarePaymentId,
+      reason: amountMismatch
+        ? `Square reported ${paymentDetails.amountCents} cents, which is less than the expected ${session.amountCents} cents.`
+        : `Square reported ${paymentDetails.currencyCode}, which did not match ${normalizeSquareCurrencyCode(session.currencyCode)}.`,
+    });
+    await db.update(drinkBundleSquareWebhookEvents).set({ status: "rejected" }).where(eq(drinkBundleSquareWebhookEvents.eventId, eventId));
+    return { ok: true, ignored: true, eventId, eventType, reason: amountMismatch ? "amount_mismatch" : "currency_mismatch" } as const;
+  }
+
+  if (eventType.startsWith("payment.")) {
+    const paymentStatus = String(resource?.status || "").toUpperCase();
+    if (paymentStatus === "COMPLETED") {
+      await grantBundlePurchase(session, {
+        squareOrderId: lookup.squareOrderId ?? resource?.orderId ?? session.squareOrderId,
+        squarePaymentId: lookup.squarePaymentId ?? resource?.id ?? session.squarePaymentId,
+      });
+    } else if (paymentStatus === "FAILED") {
+      await updateBundleAccessState(session, {
+        purchaseStatus: "revoked",
+        checkoutStatus: "failed",
+        squareOrderId: lookup.squareOrderId ?? resource?.orderId ?? session.squareOrderId,
+        squarePaymentId: lookup.squarePaymentId ?? resource?.id ?? session.squarePaymentId,
+        reason: "Square reported the payment as failed.",
+      });
+    } else if (paymentStatus === "CANCELED") {
+      await updateBundleAccessState(session, {
+        purchaseStatus: "revoked",
+        checkoutStatus: "canceled",
+        squareOrderId: lookup.squareOrderId ?? resource?.orderId ?? session.squareOrderId,
+        squarePaymentId: lookup.squarePaymentId ?? resource?.id ?? session.squarePaymentId,
+        reason: "Square checkout was canceled before payment completed.",
+      });
+    }
+
+    await db.update(drinkBundleSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkBundleSquareWebhookEvents.eventId, eventId));
+    return { ok: true, eventId, eventType, checkoutSessionId: session.id, status: getBundleCheckoutPollStatus(session) } as const;
+  }
+
+  if (eventType.startsWith("order.")) {
+    const parsed = parseSquareOrderState(resource, null, session.amountCents);
+    if (parsed.status === "completed") {
+      await grantBundlePurchase(session, {
+        squareOrderId: parsed.squareOrderId ?? lookup.squareOrderId ?? session.squareOrderId,
+        squarePaymentId: parsed.squarePaymentId ?? lookup.squarePaymentId ?? session.squarePaymentId,
+      });
+    } else if (parsed.status === "failed" || parsed.status === "canceled") {
+      await updateBundleAccessState(session, {
+        purchaseStatus: "revoked",
+        checkoutStatus: parsed.status,
+        squareOrderId: parsed.squareOrderId ?? lookup.squareOrderId ?? session.squareOrderId,
+        squarePaymentId: parsed.squarePaymentId ?? lookup.squarePaymentId ?? session.squarePaymentId,
+        reason: parsed.failureReason ?? "Square updated the order to a non-completed state.",
+      });
+    }
+
+    await db.update(drinkBundleSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkBundleSquareWebhookEvents.eventId, eventId));
+    return { ok: true, eventId, eventType, checkoutSessionId: session.id, status: getBundleCheckoutPollStatus(session) } as const;
+  }
+
+  if (eventType.startsWith("refund.")) {
+    const refundStatus = String(resource?.status || "").toUpperCase();
+    const refundState = mapSquareRefundState(refundStatus);
+    if (refundState) {
+      await updateBundleAccessState(session, {
+        purchaseStatus: refundState.purchaseStatus,
+        checkoutStatus: refundState.checkoutStatus,
+        squarePaymentId: lookup.squarePaymentId ?? resource?.paymentId ?? session.squarePaymentId,
+        squareOrderId: lookup.squareOrderId ?? session.squareOrderId,
+        reason: refundState.reason,
+        refundedAt: refundState.refundedAt,
+      });
+    } else if ((refundStatus === "FAILED" || refundStatus === "REJECTED" || refundStatus === "CANCELED")
+      && session.status === "refunded_pending") {
+      await grantBundlePurchase(session, {
+        squareOrderId: lookup.squareOrderId ?? session.squareOrderId,
+        squarePaymentId: lookup.squarePaymentId ?? resource?.paymentId ?? session.squarePaymentId,
+      });
+    }
+
+    await db.update(drinkBundleSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkBundleSquareWebhookEvents.eventId, eventId));
+    return { ok: true, eventId, eventType, checkoutSessionId: session.id, status: refundStatus } as const;
+  }
+
+  await db.update(drinkBundleSquareWebhookEvents).set({ status: "ignored" }).where(eq(drinkBundleSquareWebhookEvents.eventId, eventId));
+  return { ok: true, ignored: true, eventId, eventType, reason: "unsupported_event" } as const;
+}
+
 async function verifyCollectionCheckoutSession(session: DrinkCollectionCheckoutSessionRecord): Promise<SquareCheckoutVerificationResult> {
   if (!db) {
     throw new Error("Database unavailable");
@@ -2154,7 +2847,106 @@ async function verifyCollectionCheckoutSession(session: DrinkCollectionCheckoutS
   };
 }
 
-async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
+async function verifyBundleCheckoutSession(session: DrinkBundleCheckoutSessionRecord) {
+  if (!db) throw new Error("Database unavailable");
+
+  const ownedBundleIds = await loadOwnedBundleIdsForUser(session.userId);
+  if (ownedBundleIds.has(session.bundleId)) {
+    await db
+      .update(drinkBundleCheckoutSessions)
+      .set({
+        status: "completed",
+        verifiedAt: session.verifiedAt ?? new Date(),
+        lastVerifiedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkBundleCheckoutSessions.id, session.id));
+
+    return {
+      status: "completed" as const,
+      owned: true,
+      bundleId: session.bundleId,
+      checkoutSessionId: session.id,
+      squareOrderId: session.squareOrderId,
+      squarePaymentId: session.squarePaymentId,
+      failureReason: null,
+    };
+  }
+
+  if (getBundleCheckoutPollStatus(session) !== "pending") {
+    return {
+      status: getBundleCheckoutPollStatus(session),
+      owned: false,
+      bundleId: session.bundleId,
+      checkoutSessionId: session.id,
+      squareOrderId: session.squareOrderId,
+      squarePaymentId: session.squarePaymentId,
+      failureReason: session.failureReason,
+    };
+  }
+
+  const verification = await fetchSquareOrderVerificationForBundle(session);
+  if (!verification) {
+    await db
+      .update(drinkBundleCheckoutSessions)
+      .set({
+        lastVerifiedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkBundleCheckoutSessions.id, session.id));
+
+    return {
+      status: "pending" as const,
+      owned: false,
+      bundleId: session.bundleId,
+      checkoutSessionId: session.id,
+      squareOrderId: session.squareOrderId,
+      squarePaymentId: session.squarePaymentId,
+      failureReason: null,
+    };
+  }
+
+  const parsed = parseSquareOrderState(verification.order, verification.payment, session.amountCents);
+  if (parsed.status === "completed") {
+    await grantBundlePurchase(session, {
+      squareOrderId: parsed.squareOrderId,
+      squarePaymentId: parsed.squarePaymentId,
+    });
+    return {
+      status: "completed" as const,
+      owned: true,
+      bundleId: session.bundleId,
+      checkoutSessionId: session.id,
+      squareOrderId: parsed.squareOrderId,
+      squarePaymentId: parsed.squarePaymentId,
+      failureReason: null,
+    };
+  }
+
+  await db
+    .update(drinkBundleCheckoutSessions)
+    .set({
+      status: parsed.status === "pending" ? session.status : parsed.status,
+      squareOrderId: parsed.squareOrderId ?? session.squareOrderId,
+      squarePaymentId: parsed.squarePaymentId ?? session.squarePaymentId,
+      failureReason: parsed.failureReason ?? null,
+      lastVerifiedAt: new Date(),
+      updatedAt: new Date(),
+    })
+    .where(eq(drinkBundleCheckoutSessions.id, session.id));
+
+  return {
+    status: parsed.status,
+    owned: false,
+    bundleId: session.bundleId,
+    checkoutSessionId: session.id,
+    squareOrderId: parsed.squareOrderId ?? session.squareOrderId,
+    squarePaymentId: parsed.squarePaymentId ?? session.squarePaymentId,
+    failureReason: parsed.failureReason ?? null,
+  };
+}
+
+async function loadDirectlyOwnedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
   if (!db || !userId) return new Set();
 
   const rows = await db
@@ -2168,6 +2960,42 @@ async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Se
     );
 
   return new Set(rows.map((row) => row.collectionId));
+}
+
+async function loadOwnedBundleIdsForUser(userId?: string | null): Promise<Set<string>> {
+  if (!db || !userId) return new Set();
+
+  const rows = await db
+    .select({ bundleId: drinkBundlePurchases.bundleId })
+    .from(drinkBundlePurchases)
+    .where(
+      and(
+        eq(drinkBundlePurchases.userId, userId),
+        eq(drinkBundlePurchases.status, "completed"),
+      ),
+    );
+
+  return new Set(rows.map((row) => row.bundleId));
+}
+
+async function loadOwnedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
+  const [directCollectionIds, ownedBundleIds] = await Promise.all([
+    loadDirectlyOwnedCollectionIdsForUser(userId),
+    loadOwnedBundleIdsForUser(userId),
+  ]);
+
+  if (!db || !userId || ownedBundleIds.size === 0) {
+    return directCollectionIds;
+  }
+
+  const bundleRows = await db
+    .select({ collectionId: drinkBundleItems.collectionId })
+    .from(drinkBundleItems)
+    .where(inArray(drinkBundleItems.bundleId, [...ownedBundleIds]));
+
+  const all = new Set(directCollectionIds);
+  for (const row of bundleRows) all.add(row.collectionId);
+  return all;
 }
 
 async function loadWishlistedCollectionIdsForUser(userId?: string | null): Promise<Set<string>> {
@@ -2381,6 +3209,75 @@ async function resolvePublicCollectionCards(inputRows: Array<typeof drinkCollect
     )),
   );
   return collections.filter(Boolean);
+}
+
+async function resolveBundleWithCollections(
+  bundle: typeof drinkBundles.$inferSelect,
+  viewerUserId?: string | null,
+  ownedBundleIds?: Set<string>,
+  accessibleCollectionIds?: Set<string>,
+) {
+  if (!db) return null;
+
+  const [creatorRows, itemRows, viewerOwnedBundleIds, viewerAccessibleCollectionIds] = await Promise.all([
+    db.select({ username: users.username, avatar: users.avatar }).from(users).where(eq(users.id, bundle.userId)).limit(1),
+    db
+      .select({
+        collectionId: drinkBundleItems.collectionId,
+        addedAt: drinkBundleItems.addedAt,
+        sortOrder: drinkBundleItems.sortOrder,
+      })
+      .from(drinkBundleItems)
+      .where(eq(drinkBundleItems.bundleId, bundle.id))
+      .orderBy(asc(drinkBundleItems.sortOrder), asc(drinkBundleItems.addedAt)),
+    ownedBundleIds ? Promise.resolve(ownedBundleIds) : loadOwnedBundleIdsForUser(viewerUserId),
+    accessibleCollectionIds ? Promise.resolve(accessibleCollectionIds) : loadOwnedCollectionIdsForUser(viewerUserId),
+  ]);
+
+  const collectionIds = itemRows.map((row) => row.collectionId);
+  const collectionRows = collectionIds.length === 0
+    ? []
+    : await db.select().from(drinkCollections).where(inArray(drinkCollections.id, collectionIds));
+  const collectionMap = new Map(collectionRows.map((row) => [row.id, row]));
+  const collectionCards = await Promise.all(
+    itemRows.map(async (item) => {
+      const collection = collectionMap.get(item.collectionId);
+      if (!collection) return null;
+      const resolved = await resolveCollectionWithItems(
+        collection,
+        viewerUserId,
+        viewerAccessibleCollectionIds,
+      );
+      return resolved ? { ...resolved, addedAt: item.addedAt.toISOString(), sortOrder: Number(item.sortOrder ?? 0) } : null;
+    }),
+  );
+
+  const creator = creatorRows[0] ?? null;
+  const viewerOwnsBundle = Boolean(viewerUserId && (viewerOwnedBundleIds.has(bundle.id) || viewerUserId === bundle.userId));
+
+  return {
+    ...bundle,
+    creatorUsername: creator?.username ?? null,
+    creatorAvatar: creator?.avatar ?? null,
+    route: `/drinks/bundles/${bundle.id}`,
+    itemsCount: collectionCards.filter(Boolean).length,
+    includedCollections: collectionCards.filter(Boolean),
+    ownedByViewer: viewerOwnsBundle,
+    unlockedCollectionCount: collectionCards.filter((collection) => collection?.id && viewerAccessibleCollectionIds.has(collection.id)).length,
+  };
+}
+
+async function resolvePublicBundleCards(inputRows: Array<typeof drinkBundles.$inferSelect>, viewerUserId?: string | null) {
+  const [ownedBundleIds, accessibleCollectionIds] = await Promise.all([
+    loadOwnedBundleIdsForUser(viewerUserId),
+    loadOwnedCollectionIdsForUser(viewerUserId),
+  ]);
+
+  const bundles = await Promise.all(
+    inputRows.map((row) => resolveBundleWithCollections(row, viewerUserId, ownedBundleIds, accessibleCollectionIds)),
+  );
+
+  return bundles.filter(Boolean);
 }
 
 async function loadCollectionCreatorsMap(userIds: string[]) {
@@ -6896,6 +7793,411 @@ r.get("/collections/featured", optionalAuth, async (req, res) => {
   }
 });
 
+// ========================================
+// DRINK BUNDLES
+// ========================================
+
+r.post("/bundles", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const parsed = createDrinkBundleBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid bundle payload", details: parsed.error.flatten() });
+    }
+
+    const slug = await ensureUniqueBundleSlug(parsed.data.slug ?? parsed.data.name);
+    const createPayload = insertDrinkBundleSchema.parse({
+      userId: req.user!.id,
+      slug,
+      name: parsed.data.name,
+      description: normalizeCollectionDescription(parsed.data.description),
+      isPublic: Boolean(parsed.data.isPublic),
+      isPremium: parsed.data.isPremium ?? true,
+      priceCents: Math.max(1, Number(parsed.data.priceCents ?? 0)),
+    });
+
+    const createdRows = await db.insert(drinkBundles).values(createPayload).returning();
+    const bundle = createdRows[0];
+    return res.status(201).json({ ok: true, bundle: await resolveBundleWithCollections(bundle, req.user!.id) });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create bundle"));
+  }
+});
+
+r.get("/bundles/mine", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const rows = await db
+      .select()
+      .from(drinkBundles)
+      .where(eq(drinkBundles.userId, req.user!.id))
+      .orderBy(desc(drinkBundles.updatedAt));
+
+    const bundles = await resolvePublicBundleCards(rows, req.user!.id);
+    return res.json({ ok: true, bundles });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles/mine", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load bundles"));
+  }
+});
+
+r.get("/bundles/public/:userId", optionalAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const rows = await db
+      .select()
+      .from(drinkBundles)
+      .where(and(eq(drinkBundles.userId, req.params.userId), eq(drinkBundles.isPublic, true)))
+      .orderBy(desc(drinkBundles.updatedAt));
+
+    const bundles = await resolvePublicBundleCards(rows, req.user?.id ?? null);
+    return res.json({ ok: true, bundles });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles/public/:userId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load public bundles"));
+  }
+});
+
+r.get("/bundles/explore", optionalAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const rows = await db
+      .select()
+      .from(drinkBundles)
+      .where(eq(drinkBundles.isPublic, true))
+      .orderBy(desc(drinkBundles.updatedAt))
+      .limit(24);
+
+    const bundles = await resolvePublicBundleCards(rows, req.user?.id ?? null);
+    return res.json({ ok: true, bundles });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles/explore", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load bundle explore"));
+  }
+});
+
+r.get("/bundles/:id", optionalAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const rows = await db.select().from(drinkBundles).where(eq(drinkBundles.id, req.params.id)).limit(1);
+    const bundle = rows[0];
+    if (!bundle) return res.status(404).json({ ok: false, error: "Bundle not found" });
+
+    const isOwner = req.user?.id === bundle.userId;
+    if (!bundle.isPublic && !isOwner) {
+      return res.status(403).json({ ok: false, error: "Bundle is private" });
+    }
+
+    const resolved = await resolveBundleWithCollections(bundle, req.user?.id ?? null);
+    const latestCheckout = req.user?.id && !isOwner ? await loadLatestCheckoutSessionForUserBundle(req.user.id, bundle.id) : null;
+    return res.json({
+      ok: true,
+      bundle: {
+        ...resolved,
+        checkout: toBundleCheckoutSnapshot(latestCheckout),
+      },
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load bundle"));
+  }
+});
+
+r.patch("/bundles/:id", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const existingRows = await db.select().from(drinkBundles).where(eq(drinkBundles.id, req.params.id)).limit(1);
+    const existing = existingRows[0];
+    if (!existing) return res.status(404).json({ ok: false, error: "Bundle not found" });
+    if (existing.userId !== req.user!.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    const parsed = updateDrinkBundleBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid bundle update", details: parsed.error.flatten() });
+    }
+
+    const nextIsPremium = parsed.data.isPremium ?? existing.isPremium;
+    const nextPriceCents = parsed.data.priceCents ?? existing.priceCents;
+    if (!nextIsPremium || Number(nextPriceCents ?? 0) <= 0) {
+      return res.status(400).json({ ok: false, error: "Bundles currently support premium paid bundles only" });
+    }
+
+    const updatedRows = await db
+      .update(drinkBundles)
+      .set({
+        ...(parsed.data.slug !== undefined ? { slug: await ensureUniqueBundleSlug(parsed.data.slug, existing.id) } : {}),
+        ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
+        ...(parsed.data.description !== undefined ? { description: normalizeCollectionDescription(parsed.data.description) } : {}),
+        ...(parsed.data.isPublic !== undefined ? { isPublic: parsed.data.isPublic } : {}),
+        ...(parsed.data.isPremium !== undefined ? { isPremium: parsed.data.isPremium } : {}),
+        ...(parsed.data.priceCents !== undefined ? { priceCents: parsed.data.priceCents } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkBundles.id, existing.id))
+      .returning();
+
+    return res.json({ ok: true, bundle: await resolveBundleWithCollections(updatedRows[0] ?? existing, req.user!.id) });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update bundle"));
+  }
+});
+
+r.delete("/bundles/:id", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const rows = await db.select().from(drinkBundles).where(eq(drinkBundles.id, req.params.id)).limit(1);
+    const bundle = rows[0];
+    if (!bundle) return res.status(404).json({ ok: false, error: "Bundle not found" });
+    if (bundle.userId !== req.user!.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    await db.delete(drinkBundles).where(eq(drinkBundles.id, bundle.id));
+    return res.json({ ok: true, deletedId: bundle.id });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete bundle"));
+  }
+});
+
+r.post("/bundles/:id/items", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const bundleRows = await db.select().from(drinkBundles).where(eq(drinkBundles.id, req.params.id)).limit(1);
+    const bundle = bundleRows[0];
+    if (!bundle) return res.status(404).json({ ok: false, error: "Bundle not found" });
+    if (bundle.userId !== req.user!.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    const parsed = createDrinkBundleItemBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: "Invalid bundle item payload", details: parsed.error.flatten() });
+    }
+
+    const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, parsed.data.collectionId)).limit(1);
+    const collection = collectionRows[0];
+    if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
+    if (collection.userId !== req.user!.id || !collection.isPremium) {
+      return res.status(400).json({ ok: false, error: "Bundles can only include your premium collections" });
+    }
+
+    await db
+      .insert(drinkBundleItems)
+      .values({
+        bundleId: bundle.id,
+        collectionId: collection.id,
+        sortOrder: parsed.data.sortOrder ?? 0,
+      })
+      .onConflictDoUpdate({
+        target: [drinkBundleItems.bundleId, drinkBundleItems.collectionId],
+        set: {
+          sortOrder: parsed.data.sortOrder ?? 0,
+        },
+      });
+
+    await db.update(drinkBundles).set({ updatedAt: new Date() }).where(eq(drinkBundles.id, bundle.id));
+    const refreshed = await db.select().from(drinkBundles).where(eq(drinkBundles.id, bundle.id)).limit(1);
+    return res.status(201).json({ ok: true, bundle: await resolveBundleWithCollections(refreshed[0] ?? bundle, req.user!.id) });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles/:id/items", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to add bundle item"));
+  }
+});
+
+r.delete("/bundles/:id/items/:collectionId", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const bundleRows = await db.select().from(drinkBundles).where(eq(drinkBundles.id, req.params.id)).limit(1);
+    const bundle = bundleRows[0];
+    if (!bundle) return res.status(404).json({ ok: false, error: "Bundle not found" });
+    if (bundle.userId !== req.user!.id) return res.status(403).json({ ok: false, error: "Not authorized" });
+
+    await db
+      .delete(drinkBundleItems)
+      .where(and(eq(drinkBundleItems.bundleId, bundle.id), eq(drinkBundleItems.collectionId, req.params.collectionId)));
+
+    await db.update(drinkBundles).set({ updatedAt: new Date() }).where(eq(drinkBundles.id, bundle.id));
+    const refreshed = await db.select().from(drinkBundles).where(eq(drinkBundles.id, bundle.id)).limit(1);
+    return res.json({ ok: true, bundle: await resolveBundleWithCollections(refreshed[0] ?? bundle, req.user!.id) });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles/:id/items/:collectionId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to remove bundle item"));
+  }
+});
+
+r.get("/bundles/:id/ownership", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const rows = await db.select().from(drinkBundles).where(eq(drinkBundles.id, req.params.id)).limit(1);
+    const bundle = rows[0];
+    if (!bundle) return res.status(404).json({ ok: false, error: "Bundle not found" });
+
+    const isOwner = req.user!.id === bundle.userId;
+    const ownedBundleIds = await loadOwnedBundleIdsForUser(req.user!.id);
+    const latestCheckout = isOwner ? null : await loadLatestCheckoutSessionForUserBundle(req.user!.id, bundle.id);
+
+    return res.json({
+      ok: true,
+      bundleId: bundle.id,
+      owned: isOwner || ownedBundleIds.has(bundle.id),
+      checkout: toBundleCheckoutSnapshot(latestCheckout),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles/:id/ownership", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to resolve bundle ownership"));
+  }
+});
+
+r.post("/bundles/:id/create-checkout", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const configError = getSquareConfigError();
+    if (configError) {
+      return res.status(503).json({
+        ok: false,
+        error: `${configError} Set SQUARE_ENV, SQUARE_ACCESS_TOKEN, SQUARE_LOCATION_ID, and APP_BASE_URL before enabling premium bundle checkout.`,
+        code: "SQUARE_NOT_CONFIGURED",
+      });
+    }
+
+    const context = await resolveBundlePurchaseContext(req.params.id, req.user!.id);
+    if (context.alreadyOwned) {
+      return res.json({ ok: true, bundleId: context.bundle.id, owned: true, alreadyOwned: true });
+    }
+
+    const insertedSessions = await db
+      .insert(drinkBundleCheckoutSessions)
+      .values({
+        userId: req.user!.id,
+        bundleId: context.bundle.id,
+        provider: "square",
+        status: "pending",
+        amountCents: context.bundle.priceCents,
+        currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
+        providerReferenceId: formatBundleCheckoutReferenceId(crypto.randomUUID()),
+        expiresAt: new Date(Date.now() + 1000 * 60 * 30),
+        updatedAt: new Date(),
+      })
+      .returning();
+
+    const checkoutSession = insertedSessions[0];
+    const itemRows = await db
+      .select({ name: drinkCollections.name })
+      .from(drinkBundleItems)
+      .innerJoin(drinkCollections, eq(drinkBundleItems.collectionId, drinkCollections.id))
+      .where(eq(drinkBundleItems.bundleId, context.bundle.id));
+
+    const squareClient = getSquareClient();
+    const redirectUrl = buildBundleCheckoutRedirectUrl(req, context.bundle.id, checkoutSession.id);
+    const squareResponse = await squareClient.checkout.paymentLinks.create({
+      idempotencyKey: checkoutSession.providerReferenceId,
+      order: {
+        locationId: squareConfig.locationId!,
+        referenceId: checkoutSession.providerReferenceId,
+        metadata: {
+          checkoutSessionId: checkoutSession.id,
+          bundleId: context.bundle.id,
+          userId: req.user!.id,
+        },
+        lineItems: [
+          {
+            name: context.bundle.name,
+            quantity: "1",
+            basePriceMoney: {
+              amount: BigInt(context.bundle.priceCents),
+              currency: normalizeSquareCurrencyCode(squareConfig.currency) as any,
+            },
+            note: `Premium drink bundle unlock for ${context.bundle.name}${itemRows.length ? ` (${itemRows.length} collections)` : ""}`,
+          },
+        ],
+      },
+      checkoutOptions: {
+        redirectUrl,
+        allowTipping: false,
+        askForShippingAddress: false,
+      },
+      paymentNote: `Premium bundle unlock: ${context.bundle.id}`,
+      description: `ChefSire premium drink bundle: ${context.bundle.name}`,
+    });
+
+    const paymentLink = squareResponse.paymentLink;
+    const orderId = paymentLink?.orderId ?? squareResponse.relatedResources?.orders?.[0]?.id ?? null;
+    if (!paymentLink?.id || !paymentLink.url || !orderId) {
+      await db.update(drinkBundleCheckoutSessions).set({
+        status: "failed",
+        failureReason: "Square did not return a usable checkout link.",
+        lastVerifiedAt: new Date(),
+        updatedAt: new Date(),
+      }).where(eq(drinkBundleCheckoutSessions.id, checkoutSession.id));
+      return res.status(502).json({ ok: false, error: "Failed to create Square checkout link" });
+    }
+
+    await db.update(drinkBundleCheckoutSessions).set({
+      squarePaymentLinkId: paymentLink.id,
+      squareOrderId: orderId,
+      checkoutUrl: paymentLink.url,
+      updatedAt: new Date(),
+    }).where(eq(drinkBundleCheckoutSessions.id, checkoutSession.id));
+
+    return res.status(201).json({
+      ok: true,
+      bundleId: context.bundle.id,
+      checkoutSessionId: checkoutSession.id,
+      checkoutUrl: paymentLink.url,
+      squarePaymentLinkId: paymentLink.id,
+      squareOrderId: orderId,
+      amountCents: context.bundle.priceCents,
+      currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
+    });
+  } catch (error) {
+    const status = typeof error === "object" && error !== null && "status" in error
+      ? Number((error as { status?: unknown }).status || 500)
+      : 500;
+    const message = logCollectionRouteError("/bundles/:id/create-checkout", req, error);
+    if (status !== 500) {
+      return res.status(status).json({ ok: false, error: error instanceof Error ? error.message : message });
+    }
+    return res.status(500).json(collectionServerError(message, "Failed to start bundle checkout"));
+  }
+});
+
+r.get("/bundles/checkout-sessions/:sessionId/status", requireAuth, async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const checkoutSession = await loadBundleCheckoutSessionForUser(req.params.sessionId, req.user!.id);
+    if (!checkoutSession) return res.status(404).json({ ok: false, error: "Checkout session not found" });
+
+    const verification = await verifyBundleCheckoutSession(checkoutSession);
+    return res.json({ ok: true, ...verification });
+  } catch (error) {
+    const message = logCollectionRouteError("/bundles/checkout-sessions/:sessionId/status", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to verify bundle checkout"));
+  }
+});
+
 r.get("/creator-dashboard/sales", requireAuth, async (req, res) => {
   try {
     if (!db) {
@@ -7544,7 +8846,10 @@ r.post("/collections/payments/square/webhook", async (req, res) => {
     }
 
     const payload = (req.body ?? {}) as SquareWebhookEventBody;
-    const result = await reconcileSquareWebhookEvent(payload);
+    let result = await reconcileSquareWebhookEvent(payload);
+    if ((result as any)?.reason === "session_not_found") {
+      result = await reconcileBundleSquareWebhookEvent(payload);
+    }
     return res.status(200).json({ ok: true, result });
   } catch (error) {
     const message = logCollectionRouteError("/collections/payments/square/webhook", req, error);

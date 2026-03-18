@@ -69,6 +69,18 @@ interface PublicCollection {
   activePromoPricing?: PromoPricing | null;
 }
 
+interface PublicBundle {
+  id: string;
+  name: string;
+  description?: string | null;
+  isPublic: boolean;
+  isPremium: boolean;
+  priceCents: number;
+  itemsCount: number;
+  route: string;
+  ownedByViewer?: boolean;
+}
+
 interface PublicCreatorResponse {
   ok: boolean;
   userId: string;
@@ -203,6 +215,20 @@ export default function PublicDrinkCreatorPage() {
     enabled: Boolean(creatorId),
   });
 
+  const publicBundlesQuery = useQuery<{ ok: boolean; bundles: PublicBundle[] }>({
+    queryKey: ["/api/drinks/bundles/public", creatorId],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/bundles/public/${encodeURIComponent(creatorId)}`, {
+        credentials: "include",
+      });
+      if (!response.ok) {
+        throw new Error("Failed to load public bundles");
+      }
+      return response.json();
+    },
+    enabled: Boolean(creatorId),
+  });
+
   if (!matched) return null;
 
   if (query.isLoading) {
@@ -224,6 +250,7 @@ export default function PublicDrinkCreatorPage() {
 
   const data = query.data;
   const creatorCollections = publicCollectionsQuery.data?.collections ?? [];
+  const creatorBundles = publicBundlesQuery.data?.bundles ?? [];
   const premiumCollections = creatorCollections.filter((collection) => collection.isPremium);
   const freeCollections = creatorCollections.filter((collection) => !collection.isPremium);
 
@@ -308,6 +335,45 @@ export default function PublicDrinkCreatorPage() {
           )}
         </CardContent>
       </Card>
+
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-semibold">Bundle offers</h2>
+          <span className="text-sm text-muted-foreground">{creatorBundles.length} public bundles</span>
+        </div>
+
+        {publicBundlesQuery.isLoading ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">Loading creator bundle offers…</CardContent>
+          </Card>
+        ) : null}
+
+        {!publicBundlesQuery.isLoading && creatorBundles.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">No public bundle offers featured yet.</CardContent>
+          </Card>
+        ) : null}
+
+        {creatorBundles.length > 0 ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {creatorBundles.map((bundle) => (
+              <Card key={bundle.id}>
+                <CardContent className="p-4 space-y-2">
+                  <Link href={bundle.route} className="font-medium underline underline-offset-2">
+                    {bundle.name}
+                  </Link>
+                  {bundle.description ? <p className="text-sm text-muted-foreground">{bundle.description}</p> : null}
+                  <div className="flex flex-wrap gap-2">
+                    <Badge>Premium Bundle · {formatCurrency(bundle.priceCents)}</Badge>
+                    <Badge variant="secondary">{number(bundle.itemsCount)} collections</Badge>
+                    {bundle.ownedByViewer ? <Badge variant="secondary">Owned</Badge> : null}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : null}
+      </section>
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
