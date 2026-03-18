@@ -22,6 +22,23 @@ type BundleCollection = {
 };
 
 type CheckoutStatus = "pending" | "completed" | "failed" | "canceled" | "refunded_pending" | "refunded" | "revoked";
+type PurchaseType = "self" | "gift";
+
+type GiftSummary = {
+  id: string;
+  giftCode: string;
+  status: "pending" | "completed" | "revoked";
+  targetType: "collection" | "bundle";
+  targetId: string;
+  checkoutSessionId: string;
+  claimUrl: string;
+  recipientUserId: string | null;
+  claimedAt: string | null;
+  completedAt: string | null;
+  revokedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 type Bundle = {
   id: string;
@@ -40,10 +57,12 @@ type Bundle = {
   checkout?: {
     checkoutSessionId: string;
     status: CheckoutStatus;
+    purchaseType?: PurchaseType;
     failureReason?: string | null;
     updatedAt: string;
     verifiedAt?: string | null;
     expiresAt?: string | null;
+    gift?: GiftSummary | null;
   } | null;
 };
 
@@ -56,8 +75,14 @@ function formatCurrency(cents: number | null | undefined, currency = "USD") {
   return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(Number(cents ?? 0) / 100);
 }
 
-function messageForCheckoutState(status: CheckoutStatus, failureReason?: string | null) {
-  if (status === "completed") return "Payment verified. Your bundle is unlocked.";
+function messageForCheckoutState(status: CheckoutStatus, failureReason?: string | null, purchaseType: PurchaseType = "self", gift?: GiftSummary | null) {
+  if (status === "completed") {
+    return purchaseType === "gift"
+      ? gift?.claimUrl
+        ? "Payment verified. Your bundle gift is ready to share."
+        : "Payment verified. Your bundle gift purchase is complete."
+      : "Payment verified. Your bundle is unlocked.";
+  }
   if (status === "failed") return failureReason || "Square reported that the bundle payment failed.";
   if (status === "canceled") return failureReason || "Bundle checkout was canceled before payment completed.";
   if (status === "refunded_pending") return failureReason || "A refund is pending for this bundle purchase.";
@@ -77,6 +102,8 @@ export default function DrinkBundleDetailPage() {
   const [checkoutMessage, setCheckoutMessage] = useState("");
   const [checkoutSessionId, setCheckoutSessionId] = useState<string | null>(null);
   const [checkoutStatus, setCheckoutStatus] = useState<CheckoutStatus | null>(null);
+  const [checkoutPurchaseType, setCheckoutPurchaseType] = useState<PurchaseType>("self");
+  const [giftSummary, setGiftSummary] = useState<GiftSummary | null>(null);
   const [isUnlocking, setIsUnlocking] = useState(false);
   const [isPolling, setIsPolling] = useState(false);
   const pollStartedAtRef = useRef<number | null>(null);
@@ -99,6 +126,8 @@ export default function DrinkBundleDetailPage() {
       const nextBundle = (payload?.bundle ?? null) as Bundle | null;
       setBundle(nextBundle);
       if (!preserveCheckoutMessage) {
+        setCheckoutPurchaseType(nextBundle?.checkout?.purchaseType ?? "self");
+        setGiftSummary(nextBundle?.checkout?.gift ?? null);
         if (nextBundle?.ownedByViewer) {
           setCheckoutStatus("completed");
           setCheckoutSessionId(null);
@@ -106,10 +135,17 @@ export default function DrinkBundleDetailPage() {
         } else if (nextBundle?.checkout?.status) {
           setCheckoutStatus(nextBundle.checkout.status);
           setCheckoutSessionId(nextBundle.checkout.status === "pending" ? nextBundle.checkout.checkoutSessionId : null);
-          setCheckoutMessage(messageForCheckoutState(nextBundle.checkout.status, nextBundle.checkout.failureReason));
+          setCheckoutMessage(messageForCheckoutState(
+            nextBundle.checkout.status,
+            nextBundle.checkout.failureReason,
+            nextBundle.checkout.purchaseType ?? "self",
+            nextBundle.checkout.gift ?? null,
+          ));
         } else {
           setCheckoutStatus(null);
           setCheckoutSessionId(null);
+          setCheckoutPurchaseType("self");
+          setGiftSummary(null);
           setCheckoutMessage("");
         }
       }
@@ -153,8 +189,15 @@ export default function DrinkBundleDetailPage() {
         if (!response.ok) throw new Error(payload?.error || `Failed to verify checkout (${response.status})`);
 
         const nextStatus = payload?.status as CheckoutStatus;
+        setCheckoutPurchaseType((payload?.purchaseType as PurchaseType | undefined) ?? "self");
+        setGiftSummary((payload?.gift as GiftSummary | null | undefined) ?? null);
         setCheckoutStatus(nextStatus);
-        setCheckoutMessage(messageForCheckoutState(nextStatus, payload?.failureReason || null));
+        setCheckoutMessage(messageForCheckoutState(
+          nextStatus,
+          payload?.failureReason || null,
+          (payload?.purchaseType as PurchaseType | undefined) ?? "self",
+          (payload?.gift as GiftSummary | null | undefined) ?? null,
+        ));
 
         if (payload?.owned || nextStatus === "completed") {
           setCheckoutSessionId(null);
@@ -193,13 +236,17 @@ export default function DrinkBundleDetailPage() {
     };
   }, [bundleId, checkoutSessionId, user]);
 
-  const startCheckout = async () => {
+  const startCheckout = async (purchaseType: PurchaseType) => {
     if (!bundle) return;
     setIsUnlocking(true);
+    setCheckoutPurchaseType(purchaseType);
+    setGiftSummary(null);
     try {
       const response = await fetch(`/api/drinks/bundles/${encodeURIComponent(bundle.id)}/create-checkout`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({ purchaseType }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || `Failed to start checkout (${response.status})`);
@@ -214,7 +261,11 @@ export default function DrinkBundleDetailPage() {
       if (!nextCheckoutSessionId || !checkoutUrl) throw new Error("Square did not return a usable checkout link.");
       setCheckoutSessionId(nextCheckoutSessionId);
       setCheckoutStatus("pending");
-      setCheckoutMessage("Square checkout opened in a new tab. Complete payment there and this page will unlock automatically.");
+      setCheckoutMessage(
+        purchaseType === "gift"
+          ? "Square checkout opened in a new tab. Complete payment there and we’ll generate a bundle gift link here."
+          : "Square checkout opened in a new tab. Complete payment there and this page will unlock automatically.",
+      );
       popupClosedNoticeShownRef.current = false;
       pollStartedAtRef.current = Date.now();
       checkoutWindowRef.current = window.open(checkoutUrl, "_blank", "noopener,noreferrer");
@@ -251,8 +302,8 @@ export default function DrinkBundleDetailPage() {
               </div>
               <Card className="w-full max-w-sm">
                 <CardHeader>
-                  <CardTitle className="text-xl">Unlock Bundle</CardTitle>
-                  <CardDescription>One Square checkout unlocks every included premium collection in this bundle.</CardDescription>
+                  <CardTitle className="text-xl">Unlock or Gift Bundle</CardTitle>
+                  <CardDescription>One Square checkout can unlock this bundle for you or create a shareable gift claim link.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -263,13 +314,41 @@ export default function DrinkBundleDetailPage() {
                     <span>by {bundle.creatorUsername ? `@${bundle.creatorUsername}` : "a creator"}</span>
                   </div>
                   <div className="text-3xl font-semibold">{formatCurrency(bundle.priceCents)}</div>
-                  <Button className="w-full" disabled={!user || isUnlocking || Boolean(bundle.ownedByViewer)} onClick={() => void startCheckout()}>
-                    {bundle.ownedByViewer ? "Bundle unlocked" : isUnlocking ? "Opening Square…" : "Unlock Bundle"}
-                  </Button>
+                  <div className="grid gap-2">
+                    <Button className="w-full" disabled={!user || isUnlocking || Boolean(bundle.ownedByViewer)} onClick={() => void startCheckout("self")}>
+                      {bundle.ownedByViewer
+                        ? "Bundle unlocked"
+                        : isUnlocking && checkoutPurchaseType === "self"
+                          ? "Opening Square…"
+                          : "Unlock Bundle"}
+                    </Button>
+                    <Button className="w-full" variant="outline" disabled={!user || isUnlocking} onClick={() => void startCheckout("gift")}>
+                      {isUnlocking && checkoutPurchaseType === "gift" ? "Opening gift checkout…" : "Gift this"}
+                    </Button>
+                  </div>
                   {!user ? (
                     <Link href="/login">
                       <Button variant="outline" className="w-full">Sign in to buy</Button>
                     </Link>
+                  ) : null}
+                  {giftSummary?.claimUrl ? (
+                    <div className="rounded-md border bg-muted/40 p-3 text-sm">
+                      <p className="font-medium">Gift link ready</p>
+                      <p className="text-xs text-muted-foreground">Share this claim link after payment. The recipient gets access only after claiming it while signed in.</p>
+                      <div className="mt-2 flex flex-col gap-2">
+                        <input readOnly value={giftSummary.claimUrl} className="w-full rounded-md border bg-background px-3 py-2 text-sm" />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(giftSummary.claimUrl);
+                            setCheckoutMessage("Gift claim link copied to your clipboard.");
+                          }}
+                        >
+                          Copy gift link
+                        </Button>
+                      </div>
+                    </div>
                   ) : null}
                   {checkoutMessage ? <p className="text-sm text-muted-foreground">{checkoutMessage}</p> : null}
                   {isPolling ? <p className="text-xs text-muted-foreground">Verifying Square payment…</p> : null}

@@ -1090,6 +1090,7 @@ export const drinkCollectionCheckoutSessions = pgTable(
     userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
     collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
     provider: text("provider").default("square").notNull(),
+    purchaseType: text("purchase_type").default("self").notNull(),
     status: text("status").default("pending").notNull(),
     promotionId: varchar("promotion_id"),
     promotionCode: text("promotion_code"),
@@ -1136,6 +1137,34 @@ export const drinkCollectionSquareWebhookEvents = pgTable(
   (table) => ({
     objectIdx: index("drink_collection_square_webhook_events_object_idx").on(table.objectType, table.objectId),
     checkoutSessionIdx: index("drink_collection_square_webhook_events_checkout_session_idx").on(table.checkoutSessionId),
+  })
+);
+
+export const drinkGifts = pgTable(
+  "drink_gifts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    purchaserUserId: varchar("purchaser_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    recipientUserId: varchar("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
+    recipientIdentifier: text("recipient_identifier"),
+    targetType: text("target_type").notNull(),
+    targetId: varchar("target_id", { length: 200 }).notNull(),
+    checkoutSessionId: varchar("checkout_session_id", { length: 200 }).notNull(),
+    provider: text("provider").default("square").notNull(),
+    status: text("status").default("pending").notNull(),
+    giftCode: varchar("gift_code", { length: 120 }).notNull().unique(),
+    claimedAt: timestamp("claimed_at"),
+    completedAt: timestamp("completed_at"),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    purchaserIdx: index("drink_gifts_purchaser_user_idx").on(table.purchaserUserId),
+    recipientIdx: index("drink_gifts_recipient_user_idx").on(table.recipientUserId),
+    targetIdx: index("drink_gifts_target_idx").on(table.targetType, table.targetId),
+    checkoutSessionIdx: uniqueIndex("drink_gifts_checkout_session_idx").on(table.checkoutSessionId),
+    statusIdx: index("drink_gifts_status_idx").on(table.status),
   })
 );
 
@@ -1279,6 +1308,7 @@ export const drinkBundleCheckoutSessions = pgTable(
     userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
     bundleId: varchar("bundle_id").references(() => drinkBundles.id, { onDelete: "cascade" }).notNull(),
     provider: text("provider").default("square").notNull(),
+    purchaseType: text("purchase_type").default("self").notNull(),
     status: text("status").default("pending").notNull(),
     amountCents: integer("amount_cents").notNull(),
     currencyCode: text("currency_code").default("USD").notNull(),
