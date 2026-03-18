@@ -129,6 +129,40 @@ interface CreatorSalesResponse {
   reportingNotes: string[];
 }
 
+interface CreatorFinanceRecentSale {
+  id: string;
+  collectionId: string;
+  collectionName: string;
+  purchaseId: string | null;
+  checkoutSessionId: string | null;
+  grossAmountCents: number;
+  platformFeeCents: number;
+  creatorShareCents: number;
+  currencyCode: string;
+  status: string;
+  createdAt: string;
+  route: string;
+}
+
+interface CreatorFinanceResponse {
+  ok: boolean;
+  userId: string;
+  summary: {
+    grossSalesCents: number;
+    platformFeesCents: number;
+    estimatedCreatorShareCents: number;
+    totalPremiumSalesCount: number;
+    premiumCollectionsCount: number;
+    estimates: {
+      usesEstimatedShareFormula: boolean;
+      platformFeeBps: number;
+      creatorShareBps: number;
+    };
+  };
+  recentSales: CreatorFinanceRecentSale[];
+  reportingNotes: string[];
+}
+
 interface CreatorBadgesResponse {
   ok: boolean;
   userId: string;
@@ -273,6 +307,20 @@ export default function CreatorDashboardPage() {
     enabled: Boolean(user?.id),
   });
 
+  const financeQuery = useQuery<CreatorFinanceResponse>({
+    queryKey: ["/api/drinks/creator-dashboard/finance", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/creator-dashboard/finance", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error || payload?.message || `Failed to load creator finance (${response.status})`;
+        throw new Error(String(message));
+      }
+      return payload as CreatorFinanceResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
   if (userLoading) {
     return <div className="container mx-auto p-6">Loading dashboard...</div>;
   }
@@ -330,6 +378,19 @@ export default function CreatorDashboardPage() {
     grossRevenueCents: 0,
   };
   const salesCollections = salesQuery.data?.collections ?? [];
+  const financeSummary = financeQuery.data?.summary ?? {
+    grossSalesCents: salesTotals.grossRevenueCents,
+    platformFeesCents: 0,
+    estimatedCreatorShareCents: 0,
+    totalPremiumSalesCount: salesTotals.purchases,
+    premiumCollectionsCount: salesTotals.premiumCollections,
+    estimates: {
+      usesEstimatedShareFormula: false,
+      platformFeeBps: 0,
+      creatorShareBps: 0,
+    },
+  };
+  const recentFinanceSales = financeQuery.data?.recentSales ?? [];
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
@@ -443,6 +504,107 @@ export default function CreatorDashboardPage() {
       </Card>
 
       <Card id="sales">
+        <CardHeader>
+          <CardTitle>Finance · Premium Collections</CardTitle>
+          <CardDescription>
+            Sales tracking and payout readiness only. No payouts sent yet.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Gross sales</p>
+              <p className="text-xl font-semibold">{formatCurrency(financeSummary.grossSalesCents)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Sales count</p>
+              <p className="text-xl font-semibold">{metricNumber(financeSummary.totalPremiumSalesCount)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections count</p>
+              <p className="text-xl font-semibold">{metricNumber(financeSummary.premiumCollectionsCount)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Estimated creator share</p>
+              <p className="text-xl font-semibold">{formatCurrency(financeSummary.estimatedCreatorShareCents)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Estimated platform fees</p>
+              <p className="text-lg font-semibold">{formatCurrency(financeSummary.platformFeesCents)}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Based on the current internal reporting estimate, not on transferred funds.
+              </p>
+            </div>
+            <div className="rounded-md border border-dashed p-3">
+              <p className="text-sm font-medium">Payout readiness</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Square checkout sales are tracked here so creator payouts can be added later, but payout automation is not implemented yet.
+              </p>
+              {financeSummary.estimates.usesEstimatedShareFormula ? (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Estimated split: {financeSummary.estimates.creatorShareBps / 100}% creator share / {financeSummary.estimates.platformFeeBps / 100}% platform fee.
+                </p>
+              ) : null}
+            </div>
+          </div>
+
+          {financeQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading finance reporting…</p> : null}
+          {financeQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(financeQuery.error, "Unable to load finance reporting right now.")}</p> : null}
+
+          {financeQuery.data?.reportingNotes?.length ? (
+            <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+              <ul className="list-disc space-y-1 pl-5">
+                {financeQuery.data.reportingNotes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="space-y-2">
+            <div>
+              <p className="text-sm font-medium">Recent premium sales activity</p>
+              <p className="text-xs text-muted-foreground">Completed purchases only.</p>
+            </div>
+
+            {recentFinanceSales.length === 0 ? (
+              <div className="rounded-md border p-4 text-sm text-muted-foreground">
+                No completed premium sales tracked yet.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Collection</TableHead>
+                    <TableHead className="text-right">Gross sale</TableHead>
+                    <TableHead className="text-right">Estimated creator share</TableHead>
+                    <TableHead className="text-right">Date</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {recentFinanceSales.map((sale) => (
+                    <TableRow key={sale.id}>
+                      <TableCell>
+                        <Link href={sale.route} className="font-medium underline underline-offset-2">
+                          {sale.collectionName}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-right">{formatCurrency(sale.grossAmountCents)}</TableCell>
+                      <TableCell className="text-right">{formatCurrency(sale.creatorShareCents)}</TableCell>
+                      <TableCell className="text-right">{formatDateTime(sale.createdAt)}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
         <CardHeader>
           <CardTitle>Sales · Premium Collections</CardTitle>
           <CardDescription>
