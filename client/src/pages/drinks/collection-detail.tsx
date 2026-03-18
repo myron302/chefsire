@@ -23,6 +23,15 @@ type CollectionItem = {
   } | null;
 };
 
+type CollectionCheckoutSnapshot = {
+  checkoutSessionId: string;
+  status: CheckoutStatus;
+  failureReason?: string | null;
+  updatedAt: string;
+  verifiedAt?: string | null;
+  expiresAt?: string | null;
+};
+
 type Collection = {
   id: string;
   name: string;
@@ -34,6 +43,7 @@ type Collection = {
   requiresUnlock?: boolean;
   ownedByViewer?: boolean;
   previewLimit?: number;
+  checkout?: CollectionCheckoutSnapshot | null;
   userId: string;
   creatorUsername?: string | null;
   creatorAvatar?: string | null;
@@ -55,6 +65,13 @@ type CheckoutStatusResponse = {
 function initials(value: string | null | undefined): string {
   if (!value) return "DR";
   return value.slice(0, 2).toUpperCase();
+}
+
+function messageForCheckoutState(status: CheckoutStatus, failureReason?: string | null) {
+  if (status === "completed") return "Payment verified. Your premium collection is now unlocked.";
+  if (status === "failed") return failureReason || "Square reported that the payment failed.";
+  if (status === "canceled") return failureReason || "Checkout was canceled before payment completed.";
+  return "Payment submitted. We’re waiting for Square to confirm it. This page will unlock automatically once verification finishes.";
 }
 
 export default function DrinkCollectionDetailPage() {
@@ -98,10 +115,32 @@ export default function DrinkCollectionDetailPage() {
       }
 
       const payload = await res.json();
-      setCollection(payload?.collection ?? null);
+      const nextCollection = (payload?.collection ?? null) as Collection | null;
+      setCollection(nextCollection);
       if (!preserveCheckoutMessage) {
-        setCheckoutStatus(null);
-        setCheckoutMessage("");
+        const latestCheckout = nextCollection?.checkout ?? null;
+        if (nextCollection?.ownedByViewer) {
+          setCheckoutSessionId(null);
+          if (latestCheckout?.status === "completed") {
+            setCheckoutStatus("completed");
+            setCheckoutMessage("This premium collection is unlocked and ready to use.");
+          } else {
+            setCheckoutStatus(null);
+            setCheckoutMessage("");
+          }
+        } else if (latestCheckout?.status) {
+          setCheckoutStatus(latestCheckout.status);
+          setCheckoutMessage(messageForCheckoutState(latestCheckout.status, latestCheckout.failureReason));
+          if (latestCheckout.status === "pending") {
+            setCheckoutSessionId(latestCheckout.checkoutSessionId);
+          } else {
+            setCheckoutSessionId(null);
+          }
+        } else {
+          setCheckoutStatus(null);
+          setCheckoutMessage("");
+          setCheckoutSessionId(null);
+        }
       }
     } catch (err) {
       setCollection(null);
@@ -163,7 +202,7 @@ export default function DrinkCollectionDetailPage() {
         setCheckoutStatus(payload.status);
 
         if (payload.status === "completed" && payload.owned) {
-          setCheckoutMessage("Payment verified. Your premium collection is now unlocked.");
+          setCheckoutMessage(messageForCheckoutState("completed"));
           setCheckoutSessionId(null);
           setIsPollingCheckout(false);
           checkoutWindowRef.current?.close();
@@ -173,14 +212,14 @@ export default function DrinkCollectionDetailPage() {
         }
 
         if (payload.status === "failed") {
-          setCheckoutMessage(payload.failureReason || "Square reported that the payment failed.");
+          setCheckoutMessage(messageForCheckoutState("failed", payload.failureReason));
           setCheckoutSessionId(null);
           setIsPollingCheckout(false);
           return;
         }
 
         if (payload.status === "canceled") {
-          setCheckoutMessage(payload.failureReason || "Checkout was canceled before payment completed.");
+          setCheckoutMessage(messageForCheckoutState("canceled", payload.failureReason));
           setCheckoutSessionId(null);
           setIsPollingCheckout(false);
           return;
@@ -194,7 +233,7 @@ export default function DrinkCollectionDetailPage() {
         }
 
         if (pollAgeMs > 60_000) {
-          setCheckoutMessage("Square checkout did not complete in time. The collection remains locked until payment is verified.");
+          setCheckoutMessage("Square checkout is still pending. We’ll keep this collection locked until Square confirms a completed payment.");
           setCheckoutSessionId(null);
           setIsPollingCheckout(false);
         }
@@ -308,10 +347,16 @@ export default function DrinkCollectionDetailPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
+            {!isLockedPremium && checkoutMessage && checkoutStatus === "completed" ? (
+              <p className="text-sm text-emerald-600">{checkoutMessage}</p>
+            ) : null}
             {isLockedPremium ? (
               <Card>
                 <CardContent className="p-4 space-y-3">
                   <p className="text-sm text-muted-foreground">This premium collection is locked. Preview available below.</p>
+                  {collection.checkout?.status === "pending" && !checkoutSessionId ? (
+                    <p className="text-xs text-muted-foreground">A previous Square checkout is still pending verification. Use the status button below if you just completed payment.</p>
+                  ) : null}
                   {checkoutMessage ? (
                     <p className={`text-sm ${checkoutStatus === "completed" ? "text-emerald-600" : checkoutStatus === "failed" || checkoutStatus === "canceled" ? "text-destructive" : "text-muted-foreground"}`}>
                       {checkoutMessage}

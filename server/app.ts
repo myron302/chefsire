@@ -26,8 +26,19 @@ app.use(cors({
   credentials: true,
   origin: process.env.CLIENT_URL || true, // Allow configured origin or all origins in dev
 }));
-app.use(express.json({ limit: "50mb" }));
-app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+app.use(express.json({
+  limit: "50mb",
+  verify: (req, _res, buf) => {
+    (req as Request & { rawBody?: string }).rawBody = buf.toString("utf8");
+  },
+}));
+app.use(express.urlencoded({
+  extended: true,
+  limit: "50mb",
+  verify: (req, _res, buf) => {
+    (req as Request & { rawBody?: string }).rawBody = buf.toString("utf8");
+  },
+}));
 app.use(compression());
 app.use(cookieParser()); // Parse cookies before Passport
 

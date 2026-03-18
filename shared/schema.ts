@@ -1073,6 +1073,25 @@ export const drinkCollectionCheckoutSessions = pgTable(
   })
 );
 
+export const drinkCollectionSquareWebhookEvents = pgTable(
+  "drink_collection_square_webhook_events",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    eventId: text("event_id").notNull().unique(),
+    eventType: text("event_type").notNull(),
+    objectType: text("object_type"),
+    objectId: text("object_id"),
+    checkoutSessionId: varchar("checkout_session_id").references(() => drinkCollectionCheckoutSessions.id, { onDelete: "set null" }),
+    status: text("status").default("processed").notNull(),
+    receivedAt: timestamp("received_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at"),
+  },
+  (table) => ({
+    objectIdx: index("drink_collection_square_webhook_events_object_idx").on(table.objectType, table.objectId),
+    checkoutSessionIdx: index("drink_collection_square_webhook_events_checkout_session_idx").on(table.checkoutSessionId),
+  })
+);
+
 export const drinkChallenges = pgTable(
   "drink_challenges",
   {
