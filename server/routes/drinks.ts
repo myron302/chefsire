@@ -11,6 +11,7 @@ import {
   insertDrinkLikeSchema,
   insertDrinkSaveSchema,
   drinkCollectionCheckoutSessions,
+  drinkCollectionSquareWebhookEvents,
   drinkCollectionItems,
   drinkCollectionPurchases,
   drinkCollections,
@@ -27,7 +28,8 @@ import {
 import { z } from "zod";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
 import { optionalAuth, requireAuth } from "../middleware";
-import { getSquareClient, getSquareConfigError, squareConfig } from "../lib/square";
+import { WebhooksHelper } from "square";
+import { getSquareClient, getSquareConfigError, requireWebhookKey, squareConfig } from "../lib/square";
 
 const r = Router();
 
@@ -65,6 +67,26 @@ type SquareOrderVerificationPayload = {
   payment: any | null;
   squareOrderId: string | null;
   squarePaymentId: string | null;
+};
+
+type CollectionCheckoutSnapshot = {
+  checkoutSessionId: string;
+  status: DrinkCollectionCheckoutStatus;
+  failureReason: string | null;
+  updatedAt: string;
+  verifiedAt: string | null;
+  expiresAt: string | null;
+};
+
+type SquareWebhookEventBody = {
+  event_id?: string;
+  type?: string;
+  created_at?: string;
+  data?: {
+    id?: string;
+    type?: string;
+    object?: Record<string, any> | null;
+  } | null;
 };
 
 type DrinkDetails = {
@@ -484,6 +506,20 @@ async function ensureDrinkCollectionsSchema() {
       );
     `);
 
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS drink_collection_square_webhook_events (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        event_id text NOT NULL UNIQUE,
+        event_type text NOT NULL,
+        object_type text,
+        object_id text,
+        checkout_session_id varchar REFERENCES drink_collection_checkout_sessions(id) ON DELETE SET NULL,
+        status text NOT NULL DEFAULT 'processed',
+        received_at timestamp NOT NULL DEFAULT now(),
+        created_at timestamp
+      );
+    `);
+
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_idx ON drink_collections(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_public_idx ON drink_collections(is_public);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collections_user_updated_at_idx ON drink_collections(user_id, updated_at);`);
@@ -496,6 +532,8 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_checkout_sessions_status_idx ON drink_collection_checkout_sessions(status);`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_checkout_sessions_payment_link_idx ON drink_collection_checkout_sessions(square_payment_link_id) WHERE square_payment_link_id IS NOT NULL;`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS drink_collection_checkout_sessions_order_idx ON drink_collection_checkout_sessions(square_order_id) WHERE square_order_id IS NOT NULL;`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_square_webhook_events_object_idx ON drink_collection_square_webhook_events(object_type, object_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS drink_collection_square_webhook_events_checkout_session_idx ON drink_collection_square_webhook_events(checkout_session_id);`);
   })();
 
   return _drinkCollectionsSchemaReady;
@@ -591,7 +629,65 @@ function getCollectionCheckoutPollStatus(session: DrinkCollectionCheckoutSession
   return "pending";
 }
 
-async function grantCollectionPurchase(session: DrinkCollectionCheckoutSessionRecord, squarePaymentId?: string | null) {
+function toCollectionCheckoutSnapshot(session?: DrinkCollectionCheckoutSessionRecord | null): CollectionCheckoutSnapshot | null {
+  if (!session) return null;
+  return {
+    checkoutSessionId: session.id,
+    status: getCollectionCheckoutPollStatus(session),
+    failureReason: session.failureReason ?? null,
+    updatedAt: session.updatedAt.toISOString(),
+    verifiedAt: session.verifiedAt ? session.verifiedAt.toISOString() : null,
+    expiresAt: session.expiresAt ? session.expiresAt.toISOString() : null,
+  };
+}
+
+async function loadLatestCheckoutSessionForUserCollection(userId: string, collectionId: string) {
+  if (!db) return null;
+
+  const rows = await db
+    .select()
+    .from(drinkCollectionCheckoutSessions)
+    .where(
+      and(
+        eq(drinkCollectionCheckoutSessions.userId, userId),
+        eq(drinkCollectionCheckoutSessions.collectionId, collectionId),
+      ),
+    )
+    .orderBy(desc(drinkCollectionCheckoutSessions.updatedAt), desc(drinkCollectionCheckoutSessions.createdAt))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function loadCheckoutSessionForWebhookLookup(input: {
+  checkoutSessionId?: string | null;
+  squareOrderId?: string | null;
+  squarePaymentId?: string | null;
+  providerReferenceId?: string | null;
+}) {
+  if (!db) return null;
+
+  const conditions: any[] = [];
+  if (input.checkoutSessionId) conditions.push(eq(drinkCollectionCheckoutSessions.id, input.checkoutSessionId));
+  if (input.squareOrderId) conditions.push(eq(drinkCollectionCheckoutSessions.squareOrderId, input.squareOrderId));
+  if (input.squarePaymentId) conditions.push(eq(drinkCollectionCheckoutSessions.squarePaymentId, input.squarePaymentId));
+  if (input.providerReferenceId) conditions.push(eq(drinkCollectionCheckoutSessions.providerReferenceId, input.providerReferenceId));
+  if (!conditions.length) return null;
+
+  const rows = await db
+    .select()
+    .from(drinkCollectionCheckoutSessions)
+    .where(or(...conditions))
+    .orderBy(desc(drinkCollectionCheckoutSessions.updatedAt), desc(drinkCollectionCheckoutSessions.createdAt))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function grantCollectionPurchase(
+  session: DrinkCollectionCheckoutSessionRecord,
+  input: { squarePaymentId?: string | null; squareOrderId?: string | null } = {},
+) {
   if (!db) {
     throw new Error("Database unavailable");
   }
@@ -609,10 +705,48 @@ async function grantCollectionPurchase(session: DrinkCollectionCheckoutSessionRe
       .update(drinkCollectionCheckoutSessions)
       .set({
         status: "completed",
-        squarePaymentId: squarePaymentId ?? session.squarePaymentId,
+        squareOrderId: input.squareOrderId ?? session.squareOrderId,
+        squarePaymentId: input.squarePaymentId ?? session.squarePaymentId,
         verifiedAt: new Date(),
         lastVerifiedAt: new Date(),
         failureReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(drinkCollectionCheckoutSessions.id, session.id));
+  });
+}
+
+async function revokeCollectionPurchase(
+  session: DrinkCollectionCheckoutSessionRecord,
+  input: {
+    status?: Extract<DrinkCollectionCheckoutStatus, "failed" | "canceled">;
+    squarePaymentId?: string | null;
+    squareOrderId?: string | null;
+    failureReason: string;
+  },
+) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(drinkCollectionPurchases)
+      .where(
+        and(
+          eq(drinkCollectionPurchases.userId, session.userId),
+          eq(drinkCollectionPurchases.collectionId, session.collectionId),
+        ),
+      );
+
+    await tx
+      .update(drinkCollectionCheckoutSessions)
+      .set({
+        status: input.status ?? "failed",
+        squareOrderId: input.squareOrderId ?? session.squareOrderId,
+        squarePaymentId: input.squarePaymentId ?? session.squarePaymentId,
+        failureReason: input.failureReason,
+        lastVerifiedAt: new Date(),
         updatedAt: new Date(),
       })
       .where(eq(drinkCollectionCheckoutSessions.id, session.id));
@@ -696,6 +830,320 @@ async function fetchSquareOrderVerification(session: DrinkCollectionCheckoutSess
   };
 }
 
+
+function getSquareWebhookNotificationUrl(req: Request) {
+  const configuredBaseUrl = process.env.APP_BASE_URL?.trim() || process.env.CLIENT_URL?.trim();
+  if (configuredBaseUrl) {
+    return `${configuredBaseUrl.replace(/\/$/, "")}${req.originalUrl}`;
+  }
+
+  const host = req.get("host");
+  if (!host) {
+    throw new Error("Unable to determine Square webhook host");
+  }
+
+  return `${req.protocol}://${host}${req.originalUrl}`;
+}
+
+function extractSquareWebhookObject(payload: SquareWebhookEventBody) {
+  const objectEnvelope = payload.data?.object ?? null;
+  const objectType = String(payload.data?.type || "").trim().toLowerCase();
+  if (!objectEnvelope || !objectType) {
+    return { objectType, resource: null as Record<string, any> | null };
+  }
+
+  const resource = (objectEnvelope as Record<string, any>)[objectType] ?? objectEnvelope;
+  return {
+    objectType,
+    resource: resource && typeof resource === "object" ? (resource as Record<string, any>) : null,
+  };
+}
+
+async function resolveWebhookSessionFromPayload(payload: SquareWebhookEventBody) {
+  const { resource } = extractSquareWebhookObject(payload);
+  const checkoutSessionId = typeof resource?.metadata?.checkoutSessionId === "string" ? resource.metadata.checkoutSessionId : null;
+  const providerReferenceId = typeof resource?.referenceId === "string"
+    ? resource.referenceId
+    : typeof resource?.order?.referenceId === "string"
+      ? resource.order.referenceId
+      : null;
+  const squareOrderId = typeof resource?.orderId === "string"
+    ? resource.orderId
+    : typeof resource?.id === "string" && String(payload.data?.type || "").toLowerCase() === "order"
+      ? resource.id
+      : null;
+  const squarePaymentId = typeof resource?.id === "string" && String(payload.data?.type || "").toLowerCase() === "payment"
+    ? resource.id
+    : typeof resource?.paymentId === "string"
+      ? resource.paymentId
+      : null;
+
+  let session = await loadCheckoutSessionForWebhookLookup({
+    checkoutSessionId,
+    squareOrderId,
+    squarePaymentId,
+    providerReferenceId,
+  });
+
+  if (!session && squarePaymentId) {
+    try {
+      const squareClient = getSquareClient();
+      const paymentResponse = await squareClient.payments.get({ paymentId: squarePaymentId });
+      const payment = paymentResponse?.payment ?? null;
+      session = await loadCheckoutSessionForWebhookLookup({
+        checkoutSessionId,
+        squareOrderId: payment?.orderId ?? squareOrderId,
+        squarePaymentId,
+        providerReferenceId,
+      });
+    } catch (error) {
+      console.warn("[drinks/collections] Failed webhook payment lookup", {
+        eventId: payload.event_id,
+        squarePaymentId,
+        error,
+      });
+    }
+  }
+
+  return {
+    session,
+    resource,
+    checkoutSessionId,
+    providerReferenceId,
+    squareOrderId,
+    squarePaymentId,
+  };
+}
+
+function doesWebhookMatchSession(
+  session: DrinkCollectionCheckoutSessionRecord,
+  input: {
+    resource: Record<string, any> | null;
+    checkoutSessionId?: string | null;
+    providerReferenceId?: string | null;
+    squareOrderId?: string | null;
+    squarePaymentId?: string | null;
+  },
+) {
+  const metadata = input.resource?.metadata ?? null;
+  if (input.checkoutSessionId && input.checkoutSessionId !== session.id) return false;
+  if (input.providerReferenceId && input.providerReferenceId !== session.providerReferenceId) return false;
+  if (input.squareOrderId && session.squareOrderId && input.squareOrderId !== session.squareOrderId) return false;
+  if (input.squarePaymentId && session.squarePaymentId && input.squarePaymentId !== session.squarePaymentId) return false;
+  if (metadata?.collectionId && metadata.collectionId !== session.collectionId) return false;
+  if (metadata?.userId && metadata.userId !== session.userId) return false;
+  return true;
+}
+
+function getPaymentAmountDetails(resource: Record<string, any> | null) {
+  const amountMoney = resource?.amountMoney ?? resource?.totalMoney ?? resource?.approvedMoney ?? null;
+  return {
+    amountCents: bigintAmountToNumber(amountMoney?.amount),
+    currencyCode: normalizeSquareCurrencyCode(amountMoney?.currency),
+  };
+}
+
+async function recordSquareWebhookEvent(input: {
+  eventId: string;
+  eventType: string;
+  objectType?: string | null;
+  objectId?: string | null;
+  checkoutSessionId?: string | null;
+  createdAt?: string | null;
+  status?: string;
+}) {
+  if (!db) throw new Error("Database unavailable");
+
+  const insertResult = await db
+    .insert(drinkCollectionSquareWebhookEvents)
+    .values({
+      eventId: input.eventId,
+      eventType: input.eventType,
+      objectType: input.objectType ?? null,
+      objectId: input.objectId ?? null,
+      checkoutSessionId: input.checkoutSessionId ?? null,
+      status: input.status ?? "processed",
+      createdAt: input.createdAt ? new Date(input.createdAt) : null,
+    })
+    .onConflictDoNothing({ target: drinkCollectionSquareWebhookEvents.eventId })
+    .returning({ id: drinkCollectionSquareWebhookEvents.id });
+
+  return insertResult.length > 0;
+}
+
+async function reconcileSquareWebhookEvent(payload: SquareWebhookEventBody) {
+  if (!db) {
+    throw new Error("Database unavailable");
+  }
+
+  const eventId = String(payload.event_id || "").trim();
+  const eventType = String(payload.type || "").trim().toLowerCase();
+  const { objectType, resource } = extractSquareWebhookObject(payload);
+  const objectId = typeof payload.data?.id === "string" ? payload.data.id : typeof resource?.id === "string" ? resource.id : null;
+
+  if (!eventId || !eventType) {
+    return { ok: false, ignored: true, reason: "invalid_event" } as const;
+  }
+
+  const inserted = await recordSquareWebhookEvent({
+    eventId,
+    eventType,
+    objectType,
+    objectId,
+    createdAt: payload.created_at ?? null,
+    status: "received",
+  });
+
+  if (!inserted) {
+    return { ok: true, duplicate: true, ignored: true, eventId, eventType } as const;
+  }
+
+  const lookup = await resolveWebhookSessionFromPayload(payload);
+  if (!lookup.session || !doesWebhookMatchSession(lookup.session, lookup)) {
+    await db
+      .update(drinkCollectionSquareWebhookEvents)
+      .set({
+        checkoutSessionId: lookup.session?.id ?? null,
+        status: "ignored",
+      })
+      .where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+
+    return { ok: true, ignored: true, eventId, eventType, reason: "session_not_found" } as const;
+  }
+
+  const session = lookup.session;
+  await db
+    .update(drinkCollectionSquareWebhookEvents)
+    .set({
+      checkoutSessionId: session.id,
+      status: "processing",
+    })
+    .where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+
+  const metadata = resource?.metadata ?? null;
+  if (metadata?.collectionId && metadata.collectionId !== session.collectionId) {
+    await revokeCollectionPurchase(session, {
+      status: "failed",
+      squareOrderId: lookup.squareOrderId,
+      squarePaymentId: lookup.squarePaymentId,
+      failureReason: "Square webhook metadata did not match the expected collection.",
+    });
+    await db.update(drinkCollectionSquareWebhookEvents).set({ status: "rejected" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+    return { ok: true, ignored: true, eventId, eventType, reason: "collection_mismatch" } as const;
+  }
+
+  if (metadata?.userId && metadata.userId !== session.userId) {
+    await revokeCollectionPurchase(session, {
+      status: "failed",
+      squareOrderId: lookup.squareOrderId,
+      squarePaymentId: lookup.squarePaymentId,
+      failureReason: "Square webhook metadata did not match the expected purchaser.",
+    });
+    await db.update(drinkCollectionSquareWebhookEvents).set({ status: "rejected" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+    return { ok: true, ignored: true, eventId, eventType, reason: "user_mismatch" } as const;
+  }
+
+  const paymentDetails = getPaymentAmountDetails(resource);
+  const shouldValidateAmount = eventType.startsWith("payment.") || eventType.startsWith("order.");
+  const amountMismatch = shouldValidateAmount && paymentDetails.amountCents > 0 && paymentDetails.amountCents < session.amountCents;
+  const currencyMismatch = shouldValidateAmount && paymentDetails.amountCents > 0 && paymentDetails.currencyCode !== normalizeSquareCurrencyCode(session.currencyCode);
+
+  if (amountMismatch || currencyMismatch) {
+    await revokeCollectionPurchase(session, {
+      status: "failed",
+      squareOrderId: lookup.squareOrderId,
+      squarePaymentId: lookup.squarePaymentId,
+      failureReason: amountMismatch
+        ? `Square reported ${paymentDetails.amountCents} cents, which is less than the expected ${session.amountCents} cents.`
+        : `Square reported ${paymentDetails.currencyCode}, which did not match ${normalizeSquareCurrencyCode(session.currencyCode)}.`,
+    });
+    await db.update(drinkCollectionSquareWebhookEvents).set({ status: "rejected" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+    return { ok: true, ignored: true, eventId, eventType, reason: amountMismatch ? "amount_mismatch" : "currency_mismatch" } as const;
+  }
+
+  if (eventType.startsWith("payment.")) {
+    const paymentStatus = String(resource?.status || "").toUpperCase();
+    if (paymentStatus === "COMPLETED") {
+      await grantCollectionPurchase(session, {
+        squareOrderId: lookup.squareOrderId ?? resource?.orderId ?? session.squareOrderId,
+        squarePaymentId: lookup.squarePaymentId ?? resource?.id ?? session.squarePaymentId,
+      });
+      await db.update(drinkCollectionSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+      return { ok: true, eventId, eventType, checkoutSessionId: session.id, status: "completed" } as const;
+    }
+
+    if (paymentStatus === "FAILED") {
+      await revokeCollectionPurchase(session, {
+        status: "failed",
+        squareOrderId: lookup.squareOrderId ?? resource?.orderId ?? session.squareOrderId,
+        squarePaymentId: lookup.squarePaymentId ?? resource?.id ?? session.squarePaymentId,
+        failureReason: resource?.delayAction ?? resource?.sourceType
+          ? `Square reported the payment as failed (${paymentStatus}).`
+          : "Square reported the payment as failed.",
+      });
+      await db.update(drinkCollectionSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+      return { ok: true, eventId, eventType, checkoutSessionId: session.id, status: "failed" } as const;
+    }
+
+    if (paymentStatus === "CANCELED") {
+      await revokeCollectionPurchase(session, {
+        status: "canceled",
+        squareOrderId: lookup.squareOrderId ?? resource?.orderId ?? session.squareOrderId,
+        squarePaymentId: lookup.squarePaymentId ?? resource?.id ?? session.squarePaymentId,
+        failureReason: "Square checkout was canceled before payment completed.",
+      });
+      await db.update(drinkCollectionSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+      return { ok: true, eventId, eventType, checkoutSessionId: session.id, status: "canceled" } as const;
+    }
+  }
+
+  if (eventType.startsWith("order.")) {
+    const parsed = parseSquareOrderState(resource, null, session.amountCents);
+    if (parsed.status === "completed") {
+      await grantCollectionPurchase(session, {
+        squareOrderId: parsed.squareOrderId ?? lookup.squareOrderId ?? session.squareOrderId,
+        squarePaymentId: parsed.squarePaymentId ?? lookup.squarePaymentId ?? session.squarePaymentId,
+      });
+    } else if (parsed.status === "failed" || parsed.status === "canceled") {
+      await revokeCollectionPurchase(session, {
+        status: parsed.status,
+        squareOrderId: parsed.squareOrderId ?? lookup.squareOrderId ?? session.squareOrderId,
+        squarePaymentId: parsed.squarePaymentId ?? lookup.squarePaymentId ?? session.squarePaymentId,
+        failureReason: parsed.failureReason ?? "Square updated the order to a non-completed state.",
+      });
+    } else {
+      await db
+        .update(drinkCollectionCheckoutSessions)
+        .set({
+          squareOrderId: parsed.squareOrderId ?? lookup.squareOrderId ?? session.squareOrderId,
+          squarePaymentId: parsed.squarePaymentId ?? lookup.squarePaymentId ?? session.squarePaymentId,
+          lastVerifiedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(drinkCollectionCheckoutSessions.id, session.id));
+    }
+
+    await db.update(drinkCollectionSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+    return { ok: true, eventId, eventType, checkoutSessionId: session.id, status: getCollectionCheckoutPollStatus(session) } as const;
+  }
+
+  if (eventType.startsWith("refund.")) {
+    const refundStatus = String(resource?.status || "").toUpperCase();
+    if (refundStatus === "COMPLETED") {
+      await revokeCollectionPurchase(session, {
+        status: "failed",
+        squarePaymentId: lookup.squarePaymentId ?? resource?.paymentId ?? session.squarePaymentId,
+        failureReason: "Square reported that this premium collection payment was refunded.",
+      });
+    }
+    await db.update(drinkCollectionSquareWebhookEvents).set({ status: "processed" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+    return { ok: true, eventId, eventType, checkoutSessionId: session.id, status: refundStatus } as const;
+  }
+
+  await db.update(drinkCollectionSquareWebhookEvents).set({ status: "ignored" }).where(eq(drinkCollectionSquareWebhookEvents.eventId, eventId));
+  return { ok: true, ignored: true, eventId, eventType, reason: "unsupported_event" } as const;
+}
+
 async function verifyCollectionCheckoutSession(session: DrinkCollectionCheckoutSessionRecord): Promise<SquareCheckoutVerificationResult> {
   if (!db) {
     throw new Error("Database unavailable");
@@ -760,7 +1208,10 @@ async function verifyCollectionCheckoutSession(session: DrinkCollectionCheckoutS
   const parsed = parseSquareOrderState(verification.order, verification.payment, session.amountCents);
 
   if (parsed.status === "completed") {
-    await grantCollectionPurchase(session, parsed.squarePaymentId);
+    await grantCollectionPurchase(session, {
+      squareOrderId: parsed.squareOrderId,
+      squarePaymentId: parsed.squarePaymentId,
+    });
     return {
       status: "completed",
       owned: true,
@@ -4486,6 +4937,7 @@ r.get("/creator-dashboard/sales", requireAuth, async (req, res) => {
       collections: sales.collections,
       reportingNotes: [
         "Purchases are counted from drink_collection_purchases ownership records.",
+        "Pending, failed, canceled, and refunded checkout sessions are excluded from sales totals.",
         "Gross sales are reporting only and do not imply payouts or net earnings.",
       ],
     });
@@ -4512,11 +4964,53 @@ r.get("/collections/:id/ownership", optionalAuth, async (req, res) => {
     const isOwner = req.user.id === collection.userId;
     const ownedCollectionIds = await loadOwnedCollectionIdsForUser(req.user.id);
     const owned = isOwner || ownedCollectionIds.has(collection.id);
+    const latestCheckoutSession = isOwner ? null : await loadLatestCheckoutSessionForUserCollection(req.user.id, collection.id);
 
-    return res.json({ ok: true, collectionId: collection.id, owned });
+    return res.json({
+      ok: true,
+      collectionId: collection.id,
+      owned,
+      checkout: toCollectionCheckoutSnapshot(latestCheckoutSession),
+    });
   } catch (error) {
     const message = logCollectionRouteError("/:id/ownership", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to resolve ownership"));
+  }
+});
+
+r.post("/collections/payments/square/webhook", async (req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+
+    await ensureDrinkCollectionsSchema();
+
+    const signatureHeader = String(req.get("x-square-hmacsha256-signature") || "").trim();
+    const rawBody = typeof (req as Request & { rawBody?: string }).rawBody === "string"
+      ? (req as Request & { rawBody?: string }).rawBody!
+      : JSON.stringify(req.body ?? {});
+
+    if (!signatureHeader) {
+      return res.status(400).json({ ok: false, error: "Missing Square webhook signature" });
+    }
+
+    const signatureKey = requireWebhookKey();
+    const isValidSignature = await WebhooksHelper.verifySignature({
+      requestBody: rawBody,
+      signatureHeader,
+      signatureKey,
+      notificationUrl: getSquareWebhookNotificationUrl(req),
+    });
+
+    if (!isValidSignature) {
+      return res.status(401).json({ ok: false, error: "Invalid Square webhook signature" });
+    }
+
+    const payload = (req.body ?? {}) as SquareWebhookEventBody;
+    const result = await reconcileSquareWebhookEvent(payload);
+    return res.status(200).json({ ok: true, result });
+  } catch (error) {
+    const message = logCollectionRouteError("/collections/payments/square/webhook", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to process Square webhook"));
   }
 });
 
@@ -4719,6 +5213,10 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
 
     if (!hydrated) return res.status(500).json({ ok: false, error: "Failed to resolve collection" });
 
+    const latestCheckoutSession = req.user?.id && !isOwner
+      ? await loadLatestCheckoutSessionForUserCollection(req.user.id, collection.id)
+      : null;
+
     const isOwned = Boolean(hydrated.ownedByViewer);
     if (hydrated.isPremium && !isOwner && !isOwned) {
       const previewLimit = 2;
@@ -4731,6 +5229,7 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
           ownedByViewer: false,
           previewLimit,
           items: hydrated.items.slice(0, previewLimit),
+          checkout: toCollectionCheckoutSnapshot(latestCheckoutSession),
         },
       });
     }
@@ -4741,6 +5240,7 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
         ...hydrated,
         isLocked: false,
         requiresUnlock: false,
+        checkout: toCollectionCheckoutSnapshot(latestCheckoutSession),
       },
     });
   } catch (error) {
