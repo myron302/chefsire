@@ -171,6 +171,31 @@ interface CreatorFinanceResponse {
   reportingNotes: string[];
 }
 
+interface CreatorOrderItem {
+  orderId: string;
+  purchaseId: string | null;
+  checkoutSessionId: string | null;
+  collectionId: string;
+  collectionName: string;
+  collectionRoute: string;
+  grossAmountCents: number;
+  currency: string;
+  status: string;
+  statusReason: string | null;
+  purchasedAt: string;
+  refundedAt: string | null;
+  buyerLabel: string;
+  buyerVisibility: "private";
+}
+
+interface CreatorOrdersResponse {
+  ok: boolean;
+  userId: string;
+  count: number;
+  orders: CreatorOrderItem[];
+  reportingNotes: string[];
+}
+
 interface CreatorBadgesResponse {
   ok: boolean;
   userId: string;
@@ -197,10 +222,10 @@ function metricNumber(value: number | null | undefined): string {
   return new Intl.NumberFormat().format(Number(value ?? 0));
 }
 
-function formatCurrency(cents: number | null | undefined): string {
+function formatCurrency(cents: number | null | undefined, currency = "USD"): string {
   return new Intl.NumberFormat(undefined, {
     style: "currency",
-    currency: "USD",
+    currency: currency || "USD",
   }).format(Number(cents ?? 0) / 100);
 }
 
@@ -213,14 +238,16 @@ function formatDateTime(value: string): string {
 function saleStatusLabel(status: string): string {
   switch (status) {
     case "refunded":
-      return "Refunded";
+      return "Refunded sale";
     case "refunded_pending":
-      return "Refund pending";
+      return "Pending refund";
     case "revoked":
-      return "Revoked";
+      return "Revoked access";
+    case "pending":
+      return "Pending";
     case "completed":
     default:
-      return "Completed";
+      return "Completed sale";
   }
 }
 
@@ -355,6 +382,20 @@ export default function CreatorDashboardPage() {
     enabled: Boolean(user?.id),
   });
 
+  const ordersQuery = useQuery<CreatorOrdersResponse>({
+    queryKey: ["/api/drinks/creator-dashboard/orders", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/creator-dashboard/orders", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = payload?.error || payload?.message || `Failed to load creator order history (${response.status})`;
+        throw new Error(String(message));
+      }
+      return payload as CreatorOrdersResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
   if (userLoading) {
     return <div className="container mx-auto p-6">Loading dashboard...</div>;
   }
@@ -429,6 +470,7 @@ export default function CreatorDashboardPage() {
     },
   };
   const recentFinanceSales = financeQuery.data?.recentSales ?? [];
+  const recentCreatorOrders = ordersQuery.data?.orders ?? [];
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
@@ -653,6 +695,106 @@ export default function CreatorDashboardPage() {
               </Table>
             )}
           </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Link href="/drinks/creator-dashboard#orders">
+              <Button variant="outline" size="sm">Jump to order history</Button>
+            </Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card id="orders">
+        <CardHeader>
+          <CardTitle>Orders · Sales Activity</CardTitle>
+          <CardDescription>
+            Recent premium collection order history with privacy-safe buyer records and lifecycle-aware statuses.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Recent orders</p>
+              <p className="text-xl font-semibold">{metricNumber(recentCreatorOrders.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Completed sale</p>
+              <p className="text-xl font-semibold">{metricNumber(recentCreatorOrders.filter((order) => order.status === "completed").length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Refunded / revoked</p>
+              <p className="text-xl font-semibold">{metricNumber(recentCreatorOrders.filter((order) => order.status === "refunded" || order.status === "refunded_pending" || order.status === "revoked").length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Gross tracked</p>
+              <p className="text-xl font-semibold">{formatCurrency(recentCreatorOrders.reduce((sum, order) => sum + Number(order.grossAmountCents ?? 0), 0))}</p>
+            </div>
+          </div>
+
+          {ordersQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading order history…</p> : null}
+          {ordersQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(ordersQuery.error, "Unable to load order history right now.")}</p> : null}
+
+          {ordersQuery.data?.reportingNotes?.length ? (
+            <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+              <ul className="list-disc space-y-1 pl-5">
+                {ordersQuery.data.reportingNotes.map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {recentCreatorOrders.length === 0 ? (
+            <div className="rounded-md border p-4 text-sm text-muted-foreground">
+              No premium collection order activity yet. Completed, refunded, or revoked sales will appear here as they happen.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Collection</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Buyer</TableHead>
+                  <TableHead className="text-right">Gross sale</TableHead>
+                  <TableHead className="text-right">Purchased</TableHead>
+                  <TableHead className="text-right">Updated</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {recentCreatorOrders.map((order) => (
+                  <TableRow key={order.orderId}>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <Link href={order.collectionRoute} className="font-medium underline underline-offset-2">
+                          {order.collectionName}
+                        </Link>
+                        <p className="text-xs text-muted-foreground">
+                          Order {order.orderId}
+                          {order.purchaseId ? ` · Purchase ${order.purchaseId}` : ""}
+                        </p>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-1">
+                        <Badge variant={saleStatusVariant(order.status)}>{saleStatusLabel(order.status)}</Badge>
+                        {order.statusReason ? <p className="max-w-xs text-xs text-muted-foreground">{order.statusReason}</p> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>{order.buyerLabel}</TableCell>
+                    <TableCell className="text-right">{formatCurrency(order.grossAmountCents, order.currency)}</TableCell>
+                    <TableCell className="text-right">{formatDateTime(order.purchasedAt)}</TableCell>
+                    <TableCell className="text-right">{formatDateTime(order.refundedAt ?? order.purchasedAt)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Link href="/drinks/creator-dashboard#sales">
+              <Button variant="outline" size="sm">Back to finance</Button>
+            </Link>
+          </div>
         </CardContent>
       </Card>
 
@@ -750,6 +892,9 @@ export default function CreatorDashboardPage() {
           <div className="flex flex-wrap gap-2">
             <Link href="/drinks/collections">
               <Button variant="outline" size="sm">Manage premium collections</Button>
+            </Link>
+            <Link href="/drinks/creator-dashboard#orders">
+              <Button variant="outline" size="sm">View order history</Button>
             </Link>
             <Link href="/drinks/collections/explore">
               <Button variant="outline" size="sm">Browse premium collections</Button>

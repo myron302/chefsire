@@ -125,6 +125,8 @@ export default function PurchasedCollectionsPage() {
           Revisit premium drink collections you&apos;ve unlocked. Gross creator payouts are not shown here—this page is ownership only.
         </p>
         <div className="flex flex-wrap gap-2 pt-1">
+          <Link href="/drinks/orders" className="text-sm underline underline-offset-2">View order history</Link>
+          <span className="text-muted-foreground">·</span>
           <Link href="/drinks/collections/explore" className="text-sm underline underline-offset-2">Browse premium collections</Link>
           <span className="text-muted-foreground">·</span>
           <Link href="/drinks/discover" className="text-sm underline underline-offset-2">Back to discover</Link>
@@ -143,6 +145,9 @@ export default function PurchasedCollectionsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
+            <Link href="/drinks/orders">
+              <Button variant="outline">View order history</Button>
+            </Link>
             <Link href="/drinks/collections/explore">
               <Button>Browse premium collections</Button>
             </Link>
@@ -207,6 +212,9 @@ export default function PurchasedCollectionsPage() {
                   <Button className="w-full" variant={collection.status === "completed" ? "default" : "outline"}>
                     {collection.status === "completed" ? "Open collection" : "View collection status"}
                   </Button>
+                </Link>
+                <Link href="/drinks/orders">
+                  <Button className="w-full" variant="ghost">Open order history</Button>
                 </Link>
               </CardContent>
             </Card>
