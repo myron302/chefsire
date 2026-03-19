@@ -15,7 +15,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Upload, Plus, Minus, X, Video } from "lucide-react";
+import { Camera, Upload, Plus, Minus, X, Video, GripVertical, ChevronLeft, ChevronRight } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
@@ -61,6 +61,21 @@ const UNIT_OPTIONS = [
 type PostType = "post" | "recipe" | "review";
 type IngredientRow = { amount: string; unit: string; name: string };
 type MediaKind = "image" | "video" | "";
+type PostImage = { id: string; url: string };
+
+function buildPostImages(imageUrl: string, additionalImages: string[] = []): PostImage[] {
+  return [imageUrl, ...additionalImages]
+    .map((url, index) => ({ id: `${index}-${url}`, url: String(url ?? "").trim() }))
+    .filter((image) => image.url);
+}
+
+function splitPostImages(images: PostImage[]) {
+  const [primaryImage, ...otherImages] = images;
+  return {
+    imageUrl: primaryImage?.url ?? "",
+    additionalImages: otherImages.map((image) => image.url),
+  };
+}
 
 function ingredientRowsToStrings(rows: IngredientRow[]): string[] {
   return rows
@@ -165,6 +180,7 @@ export default function CreatePost() {
     postType: "post" as PostType,
     caption: "",
     imageUrl: "",
+    additionalImages: [] as string[],
     tags: [""],
 
     // Recipe fields
@@ -186,6 +202,7 @@ export default function CreatePost() {
     reviewVerdict: "",
     reviewNotes: "",
   });
+  const [galleryUrlInput, setGalleryUrlInput] = useState("");
 
   const reviewCaptionPreview = useMemo(() => {
     if (formData.postType !== "review") return "";
@@ -286,6 +303,7 @@ export default function CreatePost() {
         userId: user.id,
         caption: captionToSend,
         imageUrl: formData.imageUrl,
+        additionalImages: formData.additionalImages,
         tags,
         isRecipe,
       };
@@ -391,37 +409,129 @@ export default function CreatePost() {
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files ?? []);
+    if (!files.length) return;
 
-    setMediaFile(file);
-
-    const kind: MediaKind = file.type.startsWith("video/")
-      ? "video"
-      : file.type.startsWith("image/")
-      ? "image"
-      : "";
-
-    if (!kind) {
-      toast({ variant: "destructive", description: "Please select an image or video file" });
+    const invalidFile = files.find(
+      (file) => !file.type.startsWith("image/") && !file.type.startsWith("video/")
+    );
+    if (invalidFile) {
+      toast({ variant: "destructive", description: "Please select image or video files only" });
       return;
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      setMediaPreview(result);
-      setMediaKind(kind);
-      handleChange("imageUrl", result);
-    };
-    reader.readAsDataURL(file);
+    const containsVideo = files.some((file) => file.type.startsWith("video/"));
+    if (containsVideo && files.length > 1) {
+      toast({
+        variant: "destructive",
+        description: "Videos can only be uploaded one at a time. Use images for multi-photo posts.",
+      });
+      return;
+    }
+
+    const readFileAsDataUrl = (file: File) =>
+      new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
+        reader.readAsDataURL(file);
+      });
+
+    Promise.all(files.map(readFileAsDataUrl))
+      .then((results) => {
+        const firstFile = files[0];
+        const kind: MediaKind = firstFile.type.startsWith("video/") ? "video" : "image";
+
+        setMediaFile(firstFile);
+        setMediaPreview(results[0] ?? "");
+        setMediaKind(kind);
+
+        if (kind === "video") {
+          setFormData((prev) => ({
+            ...prev,
+            imageUrl: results[0] ?? "",
+            additionalImages: [],
+          }));
+          return;
+        }
+
+        const [{ imageUrl, additionalImages }] = [splitPostImages(
+          results.map((url, index) => ({ id: `${index}-${url}`, url }))
+        )];
+
+        setFormData((prev) => ({
+          ...prev,
+          imageUrl,
+          additionalImages,
+        }));
+      })
+      .catch((error: Error) => {
+        toast({
+          variant: "destructive",
+          description: error.message || "Failed to load selected files",
+        });
+      })
+      .finally(() => {
+        e.target.value = "";
+      });
   };
 
   const clearMedia = () => {
     setMediaFile(null);
     setMediaPreview("");
     setMediaKind("");
+    setGalleryUrlInput("");
     handleChange("imageUrl", "");
+    handleChange("additionalImages", []);
+  };
+
+  const orderedImages = buildPostImages(formData.imageUrl, formData.additionalImages);
+
+  const syncImages = (images: PostImage[]) => {
+    const { imageUrl, additionalImages } = splitPostImages(images);
+    setFormData((prev) => ({
+      ...prev,
+      imageUrl,
+      additionalImages,
+    }));
+
+    if (!imageUrl) {
+      setMediaFile(null);
+      setMediaPreview("");
+      setMediaKind("");
+      return;
+    }
+
+    setMediaPreview(imageUrl);
+    setMediaKind(isVideoUrl(imageUrl) ? "video" : "image");
+  };
+
+  const removeImageAt = (index: number) => {
+    syncImages(orderedImages.filter((_, imageIndex) => imageIndex !== index));
+  };
+
+  const moveImage = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= orderedImages.length) return;
+
+    const nextImages = [...orderedImages];
+    [nextImages[index], nextImages[nextIndex]] = [nextImages[nextIndex], nextImages[index]];
+    syncImages(nextImages);
+  };
+
+  const addImageUrlToGallery = () => {
+    const nextUrl = galleryUrlInput.trim();
+    if (!nextUrl) return;
+    if (isVideoUrl(nextUrl)) {
+      toast({
+        variant: "destructive",
+        description: "Additional gallery items must be images.",
+      });
+      return;
+    }
+
+    syncImages([...orderedImages, { id: `${Date.now()}-${nextUrl}`, url: nextUrl }]);
+    setGalleryUrlInput("");
   };
 
   const addTag = () => setFormData((prev) => ({ ...prev, tags: [...prev.tags, ""] }));
@@ -539,6 +649,84 @@ export default function CreatePost() {
                         }}
                       />
                     )}
+                    {mediaKind === "image" && orderedImages.length > 0 && (
+                      <div className="space-y-3 text-left">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-medium">Photo order</p>
+                          <p className="text-xs text-muted-foreground">
+                            The first image is the cover photo shown in the feed.
+                          </p>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {orderedImages.map((image, index) => (
+                            <div
+                              key={image.id}
+                              className="flex items-center gap-3 rounded-lg border bg-background p-2"
+                            >
+                              <GripVertical className="h-4 w-4 text-muted-foreground" />
+                              <img
+                                src={image.url}
+                                alt={`Selected image ${index + 1}`}
+                                className="h-16 w-16 rounded-md object-cover"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium">
+                                  {index === 0 ? "Cover image" : `Image ${index + 1}`}
+                                </p>
+                                <p className="truncate text-xs text-muted-foreground">
+                                  {image.url}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => moveImage(index, -1)}
+                                  disabled={index === 0}
+                                >
+                                  <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => moveImage(index, 1)}
+                                  disabled={index === orderedImages.length - 1}
+                                >
+                                  <ChevronRight className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => removeImageAt(index)}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-col gap-2 sm:flex-row">
+                          <Input
+                            type="url"
+                            placeholder="Add another image URL"
+                            value={galleryUrlInput}
+                            onChange={(e) => setGalleryUrlInput(e.target.value)}
+                          />
+                          <Button type="button" variant="outline" onClick={addImageUrlToGallery}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add image
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -595,6 +783,7 @@ export default function CreatePost() {
                       id="file-input"
                       type="file"
                       accept="image/*,video/*"
+                      multiple
                       onChange={handleFileSelect}
                       className="hidden"
                       data-testid="input-file"
@@ -614,10 +803,12 @@ export default function CreatePost() {
                         if (!url) {
                           setMediaPreview("");
                           setMediaKind("");
+                          handleChange("additionalImages", []);
                           return;
                         }
                         setMediaPreview(url);
                         setMediaKind(isVideoUrl(url) ? "video" : "image");
+                        handleChange("additionalImages", []);
                       }}
                       data-testid="input-image-url"
                     />

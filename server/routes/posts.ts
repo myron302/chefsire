@@ -111,6 +111,7 @@ r.post("/", async (req, res) => {
       userId: z.string(),
       caption: z.string().optional(),
       imageUrl: z.string().min(1, "Image URL is required"), // Required, allows data URIs
+      additionalImages: z.array(z.string().min(1, "Additional image URL is required")).default([]),
       tags: z.array(z.string()).optional(),
       isRecipe: z.boolean().optional(),
       recipe: recipeSchema.optional(),
@@ -129,6 +130,7 @@ r.post("/", async (req, res) => {
       userId: body.userId,
       caption: body.caption,
       imageUrl: body.imageUrl,
+      additionalImages: body.additionalImages,
       tags: body.tags,
       isRecipe: body.isRecipe ?? false,
     } as any);
