@@ -16,6 +16,7 @@ import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 import CreatorBundlesSection from "@/components/drinks/CreatorBundlesSection";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
+import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
 
 interface CreatorDrinkMetricsItem {
   id: string;
@@ -145,6 +146,18 @@ interface CreatorDropsResponse {
   creatorUserId: string;
   count: number;
   items: CreatorDropItem[];
+}
+
+interface CreatorRoadmapResponse {
+  ok: boolean;
+  creatorUserId: string;
+  count: number;
+  counts: {
+    upcoming: number;
+    live: number;
+    archived: number;
+  };
+  items: CreatorRoadmapItem[];
 }
 
 interface CreatorMembershipPlan {
@@ -473,6 +486,20 @@ export default function CreatorDashboardPage() {
   });
   const [dropMessage, setDropMessage] = React.useState("");
   const [dropError, setDropError] = React.useState("");
+  const [roadmapForm, setRoadmapForm] = React.useState({
+    id: "",
+    title: "",
+    description: "",
+    itemType: "roadmap" as CreatorRoadmapItem["itemType"],
+    visibility: "public" as CreatorRoadmapItem["visibility"],
+    linkedCollectionId: "",
+    linkedChallengeId: "",
+    scheduledFor: "",
+    releasedAt: "",
+    status: "upcoming" as CreatorRoadmapItem["status"],
+  });
+  const [roadmapMessage, setRoadmapMessage] = React.useState("");
+  const [roadmapError, setRoadmapError] = React.useState("");
 
   const query = useQuery<CreatorDrinkMetricsResponse>({
     queryKey: ["/api/drinks/creator", user?.id ?? ""],
@@ -653,6 +680,21 @@ export default function CreatorDashboardPage() {
         throw new Error(payload?.error || payload?.message || `Failed to load creator drops (${response.status})`);
       }
       return payload as CreatorDropsResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
+  const creatorRoadmapQuery = useQuery<CreatorRoadmapResponse>({
+    queryKey: ["/api/drinks/roadmap/creator", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/roadmap/creator/${encodeURIComponent(user?.id ?? "")}`, {
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || `Failed to load creator roadmap (${response.status})`);
+      }
+      return payload as CreatorRoadmapResponse;
     },
     enabled: Boolean(user?.id),
   });
@@ -962,6 +1004,109 @@ export default function CreatorDashboardPage() {
     },
   });
 
+  const saveRoadmapMutation = useMutation({
+    mutationFn: async (payloadBody: {
+      id?: string;
+      title: string;
+      description?: string | null;
+      itemType: CreatorRoadmapItem["itemType"];
+      visibility: CreatorRoadmapItem["visibility"];
+      linkedCollectionId?: string | null;
+      linkedChallengeId?: string | null;
+      scheduledFor?: string | null;
+      releasedAt?: string | null;
+      status: CreatorRoadmapItem["status"];
+    }) => {
+      const isEditing = Boolean(payloadBody.id);
+      const response = await fetch(
+        isEditing
+          ? `/api/drinks/roadmap/${encodeURIComponent(payloadBody.id!)}`
+          : "/api/drinks/roadmap",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            title: payloadBody.title,
+            description: payloadBody.description || null,
+            itemType: payloadBody.itemType,
+            visibility: payloadBody.itemType === "member_drop" ? "members" : payloadBody.visibility,
+            linkedCollectionId: payloadBody.linkedCollectionId || null,
+            linkedChallengeId: payloadBody.linkedChallengeId || null,
+            scheduledFor: payloadBody.scheduledFor ? new Date(payloadBody.scheduledFor).toISOString() : null,
+            releasedAt: payloadBody.releasedAt ? new Date(payloadBody.releasedAt).toISOString() : null,
+            status: payloadBody.status,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to save roadmap item (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async (_, variables) => {
+      setRoadmapMessage(variables.id ? "Roadmap item updated." : "Roadmap item created.");
+      setRoadmapError("");
+      setRoadmapForm({
+        id: "",
+        title: "",
+        description: "",
+        itemType: "roadmap",
+        visibility: "public",
+        linkedCollectionId: "",
+        linkedChallengeId: "",
+        scheduledFor: "",
+        releasedAt: "",
+        status: "upcoming",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/roadmap/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/roadmap/feed", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setRoadmapError(readErrorMessage(error, "Unable to save roadmap item right now."));
+      setRoadmapMessage("");
+    },
+  });
+
+  const deleteRoadmapMutation = useMutation({
+    mutationFn: async (roadmapId: string) => {
+      const response = await fetch(`/api/drinks/roadmap/${encodeURIComponent(roadmapId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to delete roadmap item (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async (payload: { deletedId?: string }) => {
+      if (payload?.deletedId && roadmapForm.id === payload.deletedId) {
+        setRoadmapForm({
+          id: "",
+          title: "",
+          description: "",
+          itemType: "roadmap",
+          visibility: "public",
+          linkedCollectionId: "",
+          linkedChallengeId: "",
+          scheduledFor: "",
+          releasedAt: "",
+          status: "upcoming",
+        });
+      }
+      setRoadmapMessage("Roadmap item deleted.");
+      setRoadmapError("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/roadmap/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/roadmap/feed", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setRoadmapError(readErrorMessage(error, "Unable to delete roadmap item right now."));
+      setRoadmapMessage("");
+    },
+  });
+
   if (userLoading) {
     return <div className="container mx-auto p-6">Loading dashboard...</div>;
   }
@@ -1071,6 +1216,10 @@ export default function CreatorDashboardPage() {
   const creatorPromotions = promotionsQuery.data?.promotions ?? [];
   const creatorPosts = creatorPostsQuery.data?.items ?? [];
   const creatorDrops = creatorDropsQuery.data?.items ?? [];
+  const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
+  const roadmapUpcoming = creatorRoadmap.filter((item) => item.status === "upcoming");
+  const roadmapLive = creatorRoadmap.filter((item) => item.status === "live");
+  const roadmapArchived = creatorRoadmap.filter((item) => item.status === "archived");
   const challengeOptions = challengesQuery.data?.challenges ?? [];
   const premiumCollectionOptions = premiumPurchaseCollections.map((collection) => ({
     id: collection.id,
@@ -1114,6 +1263,9 @@ export default function CreatorDashboardPage() {
           </Link>
           <Link href="/drinks/drops">
             <Button variant="outline" size="sm">Drops Calendar</Button>
+          </Link>
+          <Link href="/drinks/roadmap">
+            <Button variant="outline" size="sm">Roadmap + Archive</Button>
           </Link>
         </div>
       </div>
@@ -1699,6 +1851,289 @@ export default function CreatorDashboardPage() {
                     </>
                   )}
                 />
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card id="roadmap">
+        <CardHeader>
+          <CardTitle>Roadmap + Archive</CardTitle>
+          <CardDescription>
+            Tell an ongoing creator story without replacing posts or drops: what is coming next, what is live now, and what already shipped for followers and members.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Roadmap items</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorRoadmap.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Upcoming</p>
+              <p className="text-xl font-semibold">{metricNumber(roadmapUpcoming.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Live now</p>
+              <p className="text-xl font-semibold">{metricNumber(roadmapLive.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Archive</p>
+              <p className="text-xl font-semibold">{metricNumber(roadmapArchived.length)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),minmax(0,1.2fr)]">
+            <div className="space-y-4 rounded-lg border p-4">
+              <div className="space-y-1">
+                <h3 className="font-semibold">{roadmapForm.id ? "Edit roadmap item" : "New roadmap item"}</h3>
+                <p className="text-sm text-muted-foreground">
+                  Keep this lightweight: a short title, quick context, visibility, status, and optional links back to a collection or challenge.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="roadmap-title">Title</Label>
+                <Input id="roadmap-title" value={roadmapForm.title} onChange={(event) => setRoadmapForm((current) => ({ ...current, title: event.target.value }))} placeholder="Members get early access to the citrus flight next week" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="roadmap-description">Description</Label>
+                <Textarea id="roadmap-description" value={roadmapForm.description} onChange={(event) => setRoadmapForm((current) => ({ ...current, description: event.target.value }))} placeholder="A few lines of context about what is changing, who it is for, or why it mattered." className="min-h-[120px]" />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="roadmap-item-type">Item type</Label>
+                  <select
+                    id="roadmap-item-type"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={roadmapForm.itemType}
+                    onChange={(event) => {
+                      const nextType = event.target.value as CreatorRoadmapItem["itemType"];
+                      setRoadmapForm((current) => ({
+                        ...current,
+                        itemType: nextType,
+                        visibility: nextType === "member_drop" ? "members" : current.visibility,
+                      }));
+                    }}
+                  >
+                    <option value="roadmap">Roadmap note</option>
+                    <option value="collection">Collection</option>
+                    <option value="promo">Promo</option>
+                    <option value="challenge">Challenge</option>
+                    <option value="member_drop">Member drop</option>
+                    <option value="update">Update</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="roadmap-status">Status</Label>
+                  <select
+                    id="roadmap-status"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={roadmapForm.status}
+                    onChange={(event) => setRoadmapForm((current) => ({ ...current, status: event.target.value as CreatorRoadmapItem["status"] }))}
+                  >
+                    <option value="upcoming">Upcoming</option>
+                    <option value="live">Live now</option>
+                    <option value="archived">Archive / past</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="roadmap-visibility">Visibility</Label>
+                  <select
+                    id="roadmap-visibility"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={roadmapForm.itemType === "member_drop" ? "members" : roadmapForm.visibility}
+                    onChange={(event) => setRoadmapForm((current) => ({ ...current, visibility: event.target.value as CreatorRoadmapItem["visibility"] }))}
+                    disabled={roadmapForm.itemType === "member_drop"}
+                  >
+                    <option value="public">Public</option>
+                    <option value="followers">Followers</option>
+                    <option value="members">Members</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">Public → anyone. Followers → followed users + you. Members → active members + you.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="roadmap-scheduled-for">Scheduled for</Label>
+                  <Input id="roadmap-scheduled-for" type="datetime-local" value={roadmapForm.scheduledFor} onChange={(event) => setRoadmapForm((current) => ({ ...current, scheduledFor: event.target.value }))} />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="roadmap-released-at">Released at</Label>
+                  <Input id="roadmap-released-at" type="datetime-local" value={roadmapForm.releasedAt} onChange={(event) => setRoadmapForm((current) => ({ ...current, releasedAt: event.target.value }))} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="roadmap-linked-collection">Linked collection</Label>
+                  <select
+                    id="roadmap-linked-collection"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={roadmapForm.linkedCollectionId}
+                    onChange={(event) => setRoadmapForm((current) => ({ ...current, linkedCollectionId: event.target.value }))}
+                  >
+                    <option value="">No linked collection</option>
+                    {creatorCollectionOptions.map((collection) => (
+                      <option key={collection.id} value={collection.id}>{collection.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="roadmap-linked-challenge">Linked challenge</Label>
+                <select
+                  id="roadmap-linked-challenge"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={roadmapForm.linkedChallengeId}
+                  onChange={(event) => setRoadmapForm((current) => ({ ...current, linkedChallengeId: event.target.value }))}
+                >
+                  <option value="">No linked challenge</option>
+                  {challengeOptions.map((challenge) => (
+                    <option key={challenge.id} value={challenge.id}>{challenge.title}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    setRoadmapMessage("");
+                    setRoadmapError("");
+                    saveRoadmapMutation.mutate({
+                      id: roadmapForm.id || undefined,
+                      title: roadmapForm.title.trim(),
+                      description: roadmapForm.description.trim(),
+                      itemType: roadmapForm.itemType,
+                      visibility: roadmapForm.itemType === "member_drop" ? "members" : roadmapForm.visibility,
+                      linkedCollectionId: roadmapForm.linkedCollectionId || null,
+                      linkedChallengeId: roadmapForm.linkedChallengeId || null,
+                      scheduledFor: roadmapForm.scheduledFor || null,
+                      releasedAt: roadmapForm.releasedAt || null,
+                      status: roadmapForm.status,
+                    });
+                  }}
+                  disabled={saveRoadmapMutation.isPending || !roadmapForm.title.trim()}
+                >
+                  {saveRoadmapMutation.isPending ? "Saving roadmap…" : roadmapForm.id ? "Update roadmap item" : "Create roadmap item"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setRoadmapMessage("");
+                    setRoadmapError("");
+                    setRoadmapForm({
+                      id: "",
+                      title: "",
+                      description: "",
+                      itemType: "roadmap",
+                      visibility: "public",
+                      linkedCollectionId: "",
+                      linkedChallengeId: "",
+                      scheduledFor: "",
+                      releasedAt: "",
+                      status: "upcoming",
+                    });
+                  }}
+                >
+                  Reset
+                </Button>
+                <Link href={`/drinks/creator/${encodeURIComponent(user.id)}#creator-roadmap`}><Button variant="ghost">Preview roadmap on page</Button></Link>
+              </div>
+
+              {roadmapMessage ? <p className="text-sm text-emerald-600">{roadmapMessage}</p> : null}
+              {roadmapError ? <p className="text-sm text-destructive">{roadmapError}</p> : null}
+            </div>
+
+            <div className="space-y-4">
+              {creatorRoadmapQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading roadmap + archive…</p> : null}
+              {creatorRoadmapQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(creatorRoadmapQuery.error, "Unable to load roadmap right now.")}</p> : null}
+              {!creatorRoadmapQuery.isLoading && !creatorRoadmapQuery.isError && creatorRoadmap.length === 0 ? (
+                <Card>
+                  <CardContent className="p-4 text-sm text-muted-foreground">
+                    No roadmap items yet. Add upcoming plans, live launch notes, or archived highlights to show how your creator story is progressing over time.
+                  </CardContent>
+                </Card>
+              ) : null}
+
+              {[
+                ["Upcoming", roadmapUpcoming],
+                ["Live Now", roadmapLive],
+                ["Archive / Past Releases", roadmapArchived],
+              ].map(([title, group]) => (
+                <div key={title as string} className="space-y-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="font-semibold">{title}</h3>
+                    <span className="text-sm text-muted-foreground">{(group as CreatorRoadmapItem[]).length} item{(group as CreatorRoadmapItem[]).length === 1 ? "" : "s"}</span>
+                  </div>
+                  {(group as CreatorRoadmapItem[]).length > 0 ? (
+                    <div className="space-y-3">
+                      {(group as CreatorRoadmapItem[]).map((item) => (
+                        <CreatorRoadmapCard
+                          key={item.id}
+                          item={item}
+                          showCreator={false}
+                          actions={(
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setRoadmapMessage("");
+                                  setRoadmapError("");
+                                  const scheduledDate = item.scheduledFor ? new Date(item.scheduledFor) : null;
+                                  const releasedDate = item.releasedAt ? new Date(item.releasedAt) : null;
+                                  const scheduledValue = scheduledDate && !Number.isNaN(scheduledDate.getTime())
+                                    ? new Date(scheduledDate.getTime() - scheduledDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+                                    : "";
+                                  const releasedValue = releasedDate && !Number.isNaN(releasedDate.getTime())
+                                    ? new Date(releasedDate.getTime() - releasedDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+                                    : "";
+                                  setRoadmapForm({
+                                    id: item.id,
+                                    title: item.title,
+                                    description: item.description ?? "",
+                                    itemType: item.itemType,
+                                    visibility: item.visibility,
+                                    linkedCollectionId: item.linkedCollection?.id ?? "",
+                                    linkedChallengeId: item.linkedChallenge?.id ?? "",
+                                    scheduledFor: scheduledValue,
+                                    releasedAt: releasedValue,
+                                    status: item.status,
+                                  });
+                                  window.location.hash = "roadmap";
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => {
+                                  setRoadmapMessage("");
+                                  setRoadmapError("");
+                                  deleteRoadmapMutation.mutate(item.id);
+                                }}
+                                disabled={deleteRoadmapMutation.isPending}
+                              >
+                                {deleteRoadmapMutation.isPending ? "Deleting…" : "Delete"}
+                              </Button>
+                            </>
+                          )}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <Card>
+                      <CardContent className="p-4 text-sm text-muted-foreground">Nothing in this section yet.</CardContent>
+                    </Card>
+                  )}
+                </div>
               ))}
             </div>
           </div>

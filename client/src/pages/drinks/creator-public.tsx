@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/contexts/UserContext";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
+import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
 import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -169,6 +170,18 @@ interface CreatorDropsResponse {
   items: CreatorDropItem[];
 }
 
+interface CreatorRoadmapResponse {
+  ok: boolean;
+  creatorUserId: string;
+  count: number;
+  counts: {
+    upcoming: number;
+    live: number;
+    archived: number;
+  };
+  items: CreatorRoadmapItem[];
+}
+
 function number(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
@@ -307,6 +320,21 @@ export default function PublicDrinkCreatorPage() {
     enabled: Boolean(creatorId),
   });
 
+  const creatorRoadmapQuery = useQuery<CreatorRoadmapResponse>({
+    queryKey: ["/api/drinks/roadmap/creator", creatorId, user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/roadmap/creator/${encodeURIComponent(creatorId)}`, {
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to load creator roadmap");
+      }
+      return payload as CreatorRoadmapResponse;
+    },
+    enabled: Boolean(creatorId),
+  });
+
   const publicBundlesQuery = useQuery<{ ok: boolean; bundles: PublicBundle[] }>({
     queryKey: ["/api/drinks/bundles/public", creatorId],
     queryFn: async () => {
@@ -400,6 +428,10 @@ export default function PublicDrinkCreatorPage() {
   const creatorBundles = publicBundlesQuery.data?.bundles ?? [];
   const creatorPosts = creatorPostsQuery.data?.items ?? [];
   const creatorDrops = creatorDropsQuery.data?.items ?? [];
+  const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
+  const roadmapUpcoming = creatorRoadmap.filter((item) => item.status === "upcoming");
+  const roadmapLive = creatorRoadmap.filter((item) => item.status === "live");
+  const roadmapArchived = creatorRoadmap.filter((item) => item.status === "archived");
   const premiumCollections = creatorCollections.filter((collection) => collection.accessType === "premium_purchase");
   const memberOnlyCollections = creatorCollections.filter((collection) => collection.accessType === "membership_only");
   const freeCollections = creatorCollections.filter((collection) => collection.accessType === "public");
@@ -414,6 +446,9 @@ export default function PublicDrinkCreatorPage() {
         <div className="flex flex-wrap gap-2">
           <Link href="/drinks/drops">
             <Button variant="outline" size="sm">Drops Calendar</Button>
+          </Link>
+          <Link href="/drinks/roadmap">
+            <Button variant="outline" size="sm">Roadmap + Archive</Button>
           </Link>
           <Link href="/drinks/feed">
             <Button variant="outline" size="sm">Creator Feed</Button>
@@ -485,6 +520,9 @@ export default function PublicDrinkCreatorPage() {
               </Link>
               <Link href="#creator-drops">
                 <Button size="sm" variant="outline">Upcoming drops</Button>
+              </Link>
+              <Link href="#creator-roadmap">
+                <Button size="sm" variant="outline">Roadmap + archive</Button>
               </Link>
               {memberOnlyCollections.length > 0 || premiumCollections.length > 0 ? (
                 <Link href="/drinks/collections/explore">
@@ -563,6 +601,65 @@ export default function PublicDrinkCreatorPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <section id="creator-roadmap" className="space-y-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-semibold">Roadmap + Archive</h2>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span>{creatorRoadmap.length} visible items</span>
+            <Link href="/drinks/roadmap" className="underline underline-offset-2">Open global roadmap</Link>
+          </div>
+        </div>
+
+        {creatorRoadmapQuery.isLoading ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">Loading roadmap + archive…</CardContent>
+          </Card>
+        ) : null}
+
+        {creatorRoadmapQuery.isError ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-destructive">
+              {creatorRoadmapQuery.error instanceof Error ? creatorRoadmapQuery.error.message : "Unable to load creator roadmap right now."}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {!creatorRoadmapQuery.isLoading && !creatorRoadmapQuery.isError && creatorRoadmap.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              No visible roadmap items yet. Public visitors only see public roadmap items; follower and member notes appear here only when your access allows it.
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {[
+          ["Upcoming", roadmapUpcoming, "What this creator is teasing next."],
+          ["Live Now", roadmapLive, "What just launched or is actively being highlighted."],
+          ["Archive / Past Releases", roadmapArchived, "Past promos, launches, challenge moments, and member drops."],
+        ].map(([title, group, description]) => (
+          <div key={title as string} className="space-y-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-semibold">{title}</h3>
+                <p className="text-sm text-muted-foreground">{description}</p>
+              </div>
+              <span className="text-sm text-muted-foreground">{(group as CreatorRoadmapItem[]).length} item{(group as CreatorRoadmapItem[]).length === 1 ? "" : "s"}</span>
+            </div>
+            {(group as CreatorRoadmapItem[]).length > 0 ? (
+              <div className="space-y-3">
+                {(group as CreatorRoadmapItem[]).map((item) => (
+                  <CreatorRoadmapCard key={item.id} item={item} showCreator={false} />
+                ))}
+              </div>
+            ) : (
+              <Card>
+                <CardContent className="p-4 text-sm text-muted-foreground">Nothing visible in this section right now.</CardContent>
+              </Card>
+            )}
+          </div>
+        ))}
+      </section>
 
       <section id="creator-drops" className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">

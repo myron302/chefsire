@@ -10,6 +10,7 @@ import {
   creatorDrops,
   creatorMembershipPlans,
   creatorPosts,
+  creatorRoadmapItems,
   creatorMembershipSalesLedger,
   creatorMemberships,
   drinkBundleCheckoutSessions,
@@ -39,6 +40,7 @@ import {
   drinkRecipes,
   follows,
   insertCreatorDropSchema,
+  insertCreatorRoadmapItemSchema,
   insertDrinkCollectionSchema,
   insertDrinkChallengeSchema,
   insertDrinkRecipeSchema,
@@ -80,6 +82,9 @@ type CreatorPostType = "update" | "promo" | "collection_launch" | "challenge" | 
 type CreatorPostVisibility = "public" | "followers" | "members";
 type CreatorDropType = "collection_launch" | "promo_launch" | "member_drop" | "challenge_launch" | "update";
 type CreatorDropVisibility = "public" | "followers" | "members";
+type CreatorRoadmapItemType = "collection" | "promo" | "challenge" | "member_drop" | "update" | "roadmap";
+type CreatorRoadmapVisibility = "public" | "followers" | "members";
+type CreatorRoadmapStatus = "upcoming" | "live" | "archived";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
@@ -89,6 +94,7 @@ type DrinkGiftRecord = typeof drinkGifts.$inferSelect;
 type CreatorMembershipPlanRecord = typeof creatorMembershipPlans.$inferSelect;
 type CreatorDropRecord = typeof creatorDrops.$inferSelect;
 type CreatorPostRecord = typeof creatorPosts.$inferSelect;
+type CreatorRoadmapRecord = typeof creatorRoadmapItems.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
 type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
 type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
@@ -543,6 +549,9 @@ const creatorPostTypeSchema = z.enum(["update", "promo", "collection_launch", "c
 const creatorPostVisibilitySchema = z.enum(["public", "followers", "members"]);
 const creatorDropTypeSchema = z.enum(["collection_launch", "promo_launch", "member_drop", "challenge_launch", "update"]);
 const creatorDropVisibilitySchema = z.enum(["public", "followers", "members"]);
+const creatorRoadmapItemTypeSchema = z.enum(["collection", "promo", "challenge", "member_drop", "update", "roadmap"]);
+const creatorRoadmapVisibilitySchema = z.enum(["public", "followers", "members"]);
+const creatorRoadmapStatusSchema = z.enum(["upcoming", "live", "archived"]);
 
 const creatorPostBodyBaseSchema = z.object({
   title: z.string().trim().min(2).max(160),
@@ -596,6 +605,31 @@ const createCreatorDropBodySchema = creatorDropBodyBaseSchema.superRefine((value
 });
 
 const updateCreatorDropBodySchema = creatorDropBodyBaseSchema.partial().refine((value) => Object.values(value).some((field) => field !== undefined), {
+  message: "At least one field must be provided",
+});
+
+const creatorRoadmapBodyBaseSchema = z.object({
+  title: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(5000).nullable().optional(),
+  itemType: creatorRoadmapItemTypeSchema.default("roadmap"),
+  visibility: creatorRoadmapVisibilitySchema.default("public"),
+  linkedCollectionId: z.string().trim().min(1).nullable().optional(),
+  linkedChallengeId: z.string().trim().min(1).nullable().optional(),
+  scheduledFor: z.string().datetime({ offset: true }).nullable().optional(),
+  releasedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  status: creatorRoadmapStatusSchema.default("upcoming"),
+});
+
+const createCreatorRoadmapBodySchema = creatorRoadmapBodyBaseSchema.superRefine((value, ctx) => {
+  if (value.itemType === "collection" && !value.linkedCollectionId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedCollectionId"], message: "Collection roadmap items should link to a collection when possible." });
+  }
+  if (value.itemType === "challenge" && !value.linkedChallengeId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedChallengeId"], message: "Challenge roadmap items should link to a challenge when possible." });
+  }
+});
+
+const updateCreatorRoadmapBodySchema = creatorRoadmapBodyBaseSchema.partial().refine((value) => Object.values(value).some((field) => field !== undefined), {
   message: "At least one field must be provided",
 });
 
@@ -1423,6 +1457,24 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_roadmap_items (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title varchar(160) NOT NULL,
+        description text,
+        item_type text NOT NULL DEFAULT 'roadmap',
+        visibility text NOT NULL DEFAULT 'public',
+        linked_collection_id varchar REFERENCES drink_collections(id) ON DELETE SET NULL,
+        linked_challenge_id varchar REFERENCES drink_challenges(id) ON DELETE SET NULL,
+        scheduled_for timestamp,
+        released_at timestamp,
+        status text NOT NULL DEFAULT 'upcoming',
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_bundles (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1555,6 +1607,12 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_scheduled_for_idx ON creator_drops(scheduled_for);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_published_scheduled_idx ON creator_drops(is_published, scheduled_for);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_creator_scheduled_idx ON creator_drops(creator_user_id, scheduled_for);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_creator_idx ON creator_roadmap_items(creator_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_visibility_idx ON creator_roadmap_items(visibility);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_status_idx ON creator_roadmap_items(status);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_creator_status_idx ON creator_roadmap_items(creator_user_id, status);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_scheduled_idx ON creator_roadmap_items(scheduled_for);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_released_idx ON creator_roadmap_items(released_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_user_idx ON creator_membership_checkout_sessions(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_creator_idx ON creator_membership_checkout_sessions(creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_plan_idx ON creator_membership_checkout_sessions(plan_id);`);
@@ -1809,6 +1867,60 @@ function creatorDropAudienceLabel(drop: Pick<CreatorDropRecord, "creatorUserId" 
   return "Public";
 }
 
+function canViewerSeeCreatorRoadmapItem(input: {
+  item: Pick<CreatorRoadmapRecord, "creatorUserId" | "visibility">;
+  viewerId?: string | null;
+  followedCreatorIds?: Set<string>;
+  memberCreatorIds?: Set<string>;
+}) {
+  const { item, viewerId, followedCreatorIds = new Set<string>(), memberCreatorIds = new Set<string>() } = input;
+  if (viewerId && item.creatorUserId === viewerId) return true;
+  if (item.visibility === "public") return true;
+  if (!viewerId) return false;
+  if (item.visibility === "followers") return followedCreatorIds.has(item.creatorUserId);
+  if (item.visibility === "members") return memberCreatorIds.has(item.creatorUserId);
+  return false;
+}
+
+function creatorRoadmapAudienceLabel(item: Pick<CreatorRoadmapRecord, "creatorUserId" | "visibility">, viewerId?: string | null) {
+  if (viewerId && item.creatorUserId === viewerId) return "You";
+  if (item.visibility === "members") return "Members";
+  if (item.visibility === "followers") return "Followers";
+  return "Public";
+}
+
+function roadmapSortDate(item: Pick<CreatorRoadmapRecord, "status" | "scheduledFor" | "releasedAt" | "updatedAt" | "createdAt">) {
+  if (item.status === "upcoming") {
+    return item.scheduledFor ?? item.updatedAt ?? item.createdAt;
+  }
+  return item.releasedAt ?? item.updatedAt ?? item.createdAt;
+}
+
+function sortCreatorRoadmapItems(items: CreatorRoadmapRecord[]) {
+  const statusPriority: Record<CreatorRoadmapStatus, number> = {
+    live: 0,
+    upcoming: 1,
+    archived: 2,
+  };
+
+  return [...items].sort((a, b) => {
+    const aStatus = a.status as CreatorRoadmapStatus;
+    const bStatus = b.status as CreatorRoadmapStatus;
+    if (statusPriority[aStatus] !== statusPriority[bStatus]) {
+      return statusPriority[aStatus] - statusPriority[bStatus];
+    }
+
+    const aDate = roadmapSortDate(a).getTime();
+    const bDate = roadmapSortDate(b).getTime();
+
+    if (aStatus === "upcoming") {
+      return aDate - bDate;
+    }
+
+    return bDate - aDate;
+  });
+}
+
 async function validateCreatorPostLinkedEntities(input: {
   creatorUserId: string;
   visibility?: CreatorPostVisibility | null;
@@ -1916,6 +2028,44 @@ async function validateCreatorDropLinkedEntities(input: {
   }
 }
 
+async function validateCreatorRoadmapLinkedEntities(input: {
+  creatorUserId: string;
+  itemType?: CreatorRoadmapItemType | null;
+  visibility?: CreatorRoadmapVisibility | null;
+  linkedCollectionId?: string | null;
+  linkedChallengeId?: string | null;
+}) {
+  if (!db) throw new Error("Database unavailable");
+
+  if (input.linkedCollectionId) {
+    const collectionRows = await db
+      .select({ id: drinkCollections.id })
+      .from(drinkCollections)
+      .where(and(eq(drinkCollections.id, input.linkedCollectionId), eq(drinkCollections.userId, input.creatorUserId)))
+      .limit(1);
+
+    if (!collectionRows[0]) {
+      throw new Error("Linked collection must belong to the creator.");
+    }
+  }
+
+  if (input.linkedChallengeId) {
+    const challengeRows = await db
+      .select({ id: drinkChallenges.id })
+      .from(drinkChallenges)
+      .where(eq(drinkChallenges.id, input.linkedChallengeId))
+      .limit(1);
+
+    if (!challengeRows[0]) {
+      throw new Error("Linked challenge was not found.");
+    }
+  }
+
+  if (input.itemType === "member_drop" && input.visibility !== "members") {
+    throw new Error("Member drop roadmap items must use members visibility.");
+  }
+}
+
 async function loadCreatorPostLinkedMaps(posts: CreatorPostRecord[]) {
   if (!db || posts.length === 0) {
     return {
@@ -1989,6 +2139,41 @@ async function loadCreatorDropLinkedMaps(drops: CreatorDropRecord[]) {
     collectionMap: new Map(collectionRows.map((row) => [row.id, row])),
     challengeMap: new Map(challengeRows.map((row) => [row.id, row])),
     promotionMap: new Map(promotionRows.map((row) => [row.id, row])),
+  };
+}
+
+async function loadCreatorRoadmapLinkedMaps(items: CreatorRoadmapRecord[]) {
+  if (!db || items.length === 0) {
+    return {
+      creatorMap: new Map<string, Awaited<ReturnType<typeof loadUserBasicProfile>>>(),
+      collectionMap: new Map<string, typeof drinkCollections.$inferSelect>(),
+      challengeMap: new Map<string, typeof drinkChallenges.$inferSelect>(),
+    };
+  }
+
+  const creatorIds = [...new Set(items.map((item) => item.creatorUserId).filter(Boolean))];
+  const collectionIds = [...new Set(items.map((item) => item.linkedCollectionId).filter((value): value is string => Boolean(value)))];
+  const challengeIds = [...new Set(items.map((item) => item.linkedChallengeId).filter((value): value is string => Boolean(value)))];
+
+  const [creatorRows, collectionRows, challengeRows] = await Promise.all([
+    creatorIds.length === 0
+      ? Promise.resolve([] as Array<{ id: string; username: string | null; avatar: string | null }>)
+      : db
+        .select({ id: users.id, username: users.username, avatar: users.avatar })
+        .from(users)
+        .where(inArray(users.id, creatorIds)),
+    collectionIds.length === 0
+      ? Promise.resolve([] as Array<typeof drinkCollections.$inferSelect>)
+      : db.select().from(drinkCollections).where(inArray(drinkCollections.id, collectionIds)),
+    challengeIds.length === 0
+      ? Promise.resolve([] as Array<typeof drinkChallenges.$inferSelect>)
+      : db.select().from(drinkChallenges).where(inArray(drinkChallenges.id, challengeIds)),
+  ]);
+
+  return {
+    creatorMap: new Map(creatorRows.map((row) => [row.id, row])),
+    collectionMap: new Map(collectionRows.map((row) => [row.id, row])),
+    challengeMap: new Map(challengeRows.map((row) => [row.id, row])),
   };
 }
 
@@ -2101,6 +2286,60 @@ function serializeCreatorDrop(
         code: linkedPromotion.code,
         startsAt: linkedPromotion.startsAt ? linkedPromotion.startsAt.toISOString() : null,
         endsAt: linkedPromotion.endsAt ? linkedPromotion.endsAt.toISOString() : null,
+      }
+      : null,
+  };
+}
+
+function serializeCreatorRoadmapItem(
+  item: CreatorRoadmapRecord,
+  options: {
+    viewerId?: string | null;
+    creator?: { id: string; username: string | null; avatar: string | null } | null;
+    linkedCollection?: typeof drinkCollections.$inferSelect | null;
+    linkedChallenge?: typeof drinkChallenges.$inferSelect | null;
+  } = {},
+) {
+  const creator = options.creator ?? null;
+  const linkedCollection = options.linkedCollection ?? null;
+  const linkedChallenge = options.linkedChallenge ?? null;
+
+  return {
+    id: item.id,
+    creatorUserId: item.creatorUserId,
+    title: item.title,
+    description: item.description ?? null,
+    itemType: item.itemType as CreatorRoadmapItemType,
+    visibility: item.visibility as CreatorRoadmapVisibility,
+    audienceLabel: creatorRoadmapAudienceLabel(item, options.viewerId),
+    scheduledFor: item.scheduledFor ? item.scheduledFor.toISOString() : null,
+    releasedAt: item.releasedAt ? item.releasedAt.toISOString() : null,
+    status: item.status as CreatorRoadmapStatus,
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+    creator: creator
+      ? {
+        userId: creator.id,
+        username: creator.username ?? null,
+        avatar: creator.avatar ?? null,
+        route: `/drinks/creator/${encodeURIComponent(creator.id)}`,
+      }
+      : null,
+    linkedCollection: linkedCollection
+      ? {
+        id: linkedCollection.id,
+        name: linkedCollection.name,
+        accessType: collectionAccessTypeForRow(linkedCollection),
+        isPublic: Boolean(linkedCollection.isPublic),
+        route: `/drinks/collections/${encodeURIComponent(linkedCollection.id)}`,
+      }
+      : null,
+    linkedChallenge: linkedChallenge
+      ? {
+        id: linkedChallenge.id,
+        slug: linkedChallenge.slug,
+        title: linkedChallenge.title,
+        route: `/drinks/challenges/${encodeURIComponent(linkedChallenge.slug)}`,
       }
       : null,
   };
@@ -7625,6 +7864,277 @@ r.delete("/drops/:id", requireAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/drops/:id", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to delete creator drop"));
+  }
+});
+
+r.get("/roadmap/feed", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [roadmapItems, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      db.select().from(creatorRoadmapItems).orderBy(desc(creatorRoadmapItems.updatedAt)).limit(240),
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+
+    const visibleItems = sortCreatorRoadmapItems(roadmapItems.filter((item) => canViewerSeeCreatorRoadmapItem({
+      item,
+      viewerId,
+      followedCreatorIds,
+      memberCreatorIds,
+    })));
+
+    const maps = await loadCreatorRoadmapLinkedMaps(visibleItems);
+    const items = visibleItems.map((item) => serializeCreatorRoadmapItem(item, {
+      viewerId,
+      creator: maps.creatorMap.get(item.creatorUserId) ?? null,
+      linkedCollection: item.linkedCollectionId ? maps.collectionMap.get(item.linkedCollectionId) ?? null : null,
+      linkedChallenge: item.linkedChallengeId ? maps.challengeMap.get(item.linkedChallengeId) ?? null : null,
+    }));
+
+    return res.json({
+      ok: true,
+      signedIn: Boolean(viewerId),
+      count: items.length,
+      visibility: {
+        public: true,
+        followers: Boolean(viewerId),
+        members: Boolean(viewerId),
+      },
+      counts: {
+        upcoming: items.filter((item) => item.status === "upcoming").length,
+        live: items.filter((item) => item.status === "live").length,
+        archived: items.filter((item) => item.status === "archived").length,
+      },
+      items,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/roadmap/feed", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator roadmap"));
+  }
+});
+
+r.get("/roadmap/creator/:userId", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const creatorUserId = String(req.params.userId ?? "").trim();
+    if (!creatorUserId) {
+      return res.status(400).json({ ok: false, error: "Creator userId is required." });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [roadmapItems, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      db.select().from(creatorRoadmapItems).where(eq(creatorRoadmapItems.creatorUserId, creatorUserId)).orderBy(desc(creatorRoadmapItems.updatedAt)).limit(160),
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+
+    const visibleItems = sortCreatorRoadmapItems(roadmapItems.filter((item) => canViewerSeeCreatorRoadmapItem({
+      item,
+      viewerId,
+      followedCreatorIds,
+      memberCreatorIds,
+    })));
+
+    const maps = await loadCreatorRoadmapLinkedMaps(visibleItems);
+    const items = visibleItems.map((item) => serializeCreatorRoadmapItem(item, {
+      viewerId,
+      creator: maps.creatorMap.get(item.creatorUserId) ?? null,
+      linkedCollection: item.linkedCollectionId ? maps.collectionMap.get(item.linkedCollectionId) ?? null : null,
+      linkedChallenge: item.linkedChallengeId ? maps.challengeMap.get(item.linkedChallengeId) ?? null : null,
+    }));
+
+    return res.json({
+      ok: true,
+      creatorUserId,
+      count: items.length,
+      counts: {
+        upcoming: items.filter((item) => item.status === "upcoming").length,
+        live: items.filter((item) => item.status === "live").length,
+        archived: items.filter((item) => item.status === "archived").length,
+      },
+      items,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/roadmap/creator/:userId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator roadmap"));
+  }
+});
+
+r.post("/roadmap", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const parsed = createCreatorRoadmapBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid creator roadmap payload." });
+    }
+
+    const payload = parsed.data;
+    const values = insertCreatorRoadmapItemSchema.parse({
+      creatorUserId: req.user!.id,
+      title: payload.title.trim(),
+      description: payload.description?.trim() ? payload.description.trim() : null,
+      itemType: payload.itemType,
+      visibility: payload.itemType === "member_drop" ? "members" : payload.visibility,
+      linkedCollectionId: normalizeNullableForeignId(payload.linkedCollectionId),
+      linkedChallengeId: normalizeNullableForeignId(payload.linkedChallengeId),
+      scheduledFor: payload.scheduledFor ? new Date(payload.scheduledFor) : null,
+      releasedAt: payload.releasedAt ? new Date(payload.releasedAt) : (payload.status === "live" || payload.status === "archived" ? new Date() : null),
+      status: payload.status,
+    });
+
+    await validateCreatorRoadmapLinkedEntities({
+      creatorUserId: values.creatorUserId,
+      itemType: values.itemType as CreatorRoadmapItemType,
+      visibility: values.visibility as CreatorRoadmapVisibility,
+      linkedCollectionId: values.linkedCollectionId,
+      linkedChallengeId: values.linkedChallengeId,
+    });
+
+    const inserted = await db.insert(creatorRoadmapItems).values({
+      ...values,
+      updatedAt: new Date(),
+    }).returning();
+    const item = inserted[0];
+    if (!item) {
+      return res.status(500).json({ ok: false, error: "Failed to create creator roadmap item." });
+    }
+
+    const maps = await loadCreatorRoadmapLinkedMaps([item]);
+    return res.status(201).json({
+      ok: true,
+      item: serializeCreatorRoadmapItem(item, {
+        viewerId: req.user!.id,
+        creator: maps.creatorMap.get(item.creatorUserId) ?? null,
+        linkedCollection: item.linkedCollectionId ? maps.collectionMap.get(item.linkedCollectionId) ?? null : null,
+        linkedChallenge: item.linkedChallengeId ? maps.challengeMap.get(item.linkedChallengeId) ?? null : null,
+      }),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/roadmap", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create roadmap item"));
+  }
+});
+
+r.patch("/roadmap/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const roadmapId = String(req.params.id ?? "").trim();
+    if (!roadmapId) {
+      return res.status(400).json({ ok: false, error: "Roadmap item id is required." });
+    }
+
+    const parsed = updateCreatorRoadmapBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid creator roadmap payload." });
+    }
+
+    const existingRows = await db
+      .select()
+      .from(creatorRoadmapItems)
+      .where(and(eq(creatorRoadmapItems.id, roadmapId), eq(creatorRoadmapItems.creatorUserId, req.user!.id)))
+      .limit(1);
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ ok: false, error: "Creator roadmap item not found." });
+    }
+
+    const payload = parsed.data;
+    const nextItemType = (payload.itemType ?? existing.itemType) as CreatorRoadmapItemType;
+    const nextStatus = (payload.status ?? existing.status) as CreatorRoadmapStatus;
+    const nextVisibility = (nextItemType === "member_drop" ? "members" : (payload.visibility ?? existing.visibility)) as CreatorRoadmapVisibility;
+    const nextReleasedAt = payload.releasedAt !== undefined
+      ? (payload.releasedAt ? new Date(payload.releasedAt) : null)
+      : nextStatus === "upcoming"
+        ? null
+        : existing.releasedAt ?? new Date();
+
+    const values = {
+      title: payload.title?.trim() ?? existing.title,
+      description: payload.description !== undefined ? (payload.description?.trim() ? payload.description.trim() : null) : existing.description,
+      itemType: nextItemType,
+      visibility: nextVisibility,
+      linkedCollectionId: payload.linkedCollectionId !== undefined ? normalizeNullableForeignId(payload.linkedCollectionId) : existing.linkedCollectionId,
+      linkedChallengeId: payload.linkedChallengeId !== undefined ? normalizeNullableForeignId(payload.linkedChallengeId) : existing.linkedChallengeId,
+      scheduledFor: payload.scheduledFor !== undefined ? (payload.scheduledFor ? new Date(payload.scheduledFor) : null) : existing.scheduledFor,
+      releasedAt: nextReleasedAt,
+      status: nextStatus,
+      updatedAt: new Date(),
+    };
+
+    await validateCreatorRoadmapLinkedEntities({
+      creatorUserId: req.user!.id,
+      itemType: values.itemType,
+      visibility: values.visibility,
+      linkedCollectionId: values.linkedCollectionId,
+      linkedChallengeId: values.linkedChallengeId,
+    });
+
+    const updatedRows = await db
+      .update(creatorRoadmapItems)
+      .set(values)
+      .where(eq(creatorRoadmapItems.id, roadmapId))
+      .returning();
+
+    const item = updatedRows[0];
+    const maps = await loadCreatorRoadmapLinkedMaps(item ? [item] : []);
+    return res.json({
+      ok: true,
+      item: item ? serializeCreatorRoadmapItem(item, {
+        viewerId: req.user!.id,
+        creator: maps.creatorMap.get(item.creatorUserId) ?? null,
+        linkedCollection: item.linkedCollectionId ? maps.collectionMap.get(item.linkedCollectionId) ?? null : null,
+        linkedChallenge: item.linkedChallengeId ? maps.challengeMap.get(item.linkedChallengeId) ?? null : null,
+      }) : null,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/roadmap/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update roadmap item"));
+  }
+});
+
+r.delete("/roadmap/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const roadmapId = String(req.params.id ?? "").trim();
+    if (!roadmapId) {
+      return res.status(400).json({ ok: false, error: "Roadmap item id is required." });
+    }
+
+    const deletedRows = await db
+      .delete(creatorRoadmapItems)
+      .where(and(eq(creatorRoadmapItems.id, roadmapId), eq(creatorRoadmapItems.creatorUserId, req.user!.id)))
+      .returning({ id: creatorRoadmapItems.id });
+
+    if (!deletedRows[0]) {
+      return res.status(404).json({ ok: false, error: "Creator roadmap item not found." });
+    }
+
+    return res.json({ ok: true, deletedId: deletedRows[0].id });
+  } catch (error) {
+    const message = logCollectionRouteError("/roadmap/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete roadmap item"));
   }
 });
 

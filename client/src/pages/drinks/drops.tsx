@@ -77,6 +77,7 @@ export default function DrinkDropsPage() {
           <div className="flex flex-wrap gap-2">
             <Link href="/drinks/discover"><Button variant="outline">Discover hub</Button></Link>
             <Link href="/drinks/feed"><Button variant="outline">Creator feed</Button></Link>
+            <Link href="/drinks/roadmap"><Button variant="outline">Roadmap + archive</Button></Link>
             <Link href="/drinks/creator-dashboard#drops"><Button variant="outline">Schedule a drop</Button></Link>
             {!user ? <Link href="/auth/login"><Button>Sign in for personalized drops</Button></Link> : null}
           </div>
