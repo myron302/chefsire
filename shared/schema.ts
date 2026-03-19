@@ -87,6 +87,7 @@ export const posts = pgTable("posts", {
   userId: varchar("user_id").references(() => users.id).notNull(),
   caption: text("caption"),
   imageUrl: text("image_url").notNull(),
+  additionalImages: jsonb("additional_images").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
   tags: jsonb("tags").$type<string[]>().default(sql`'[]'::jsonb`),
   likesCount: integer("likes_count").default(0),
   commentsCount: integer("comments_count").default(0),
