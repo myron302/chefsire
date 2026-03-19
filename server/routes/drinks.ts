@@ -8,6 +8,7 @@ import { getCanonicalDrinkBySlug } from "../services/canonical-drinks-index";
 import { 
   creatorMembershipCheckoutSessions,
   creatorMembershipPlans,
+  creatorPosts,
   creatorMembershipSalesLedger,
   creatorMemberships,
   drinkBundleCheckoutSessions,
@@ -72,6 +73,8 @@ type DrinkCollectionPromotionDiscountType = "percent" | "fixed";
 type CreatorMembershipBillingInterval = "monthly" | "yearly";
 type CreatorMembershipStatus = "active" | "canceled" | "expired" | "past_due";
 type CreatorMembershipCheckoutStatus = "pending" | "completed" | "failed" | "canceled";
+type CreatorPostType = "update" | "promo" | "collection_launch" | "challenge" | "member_only";
+type CreatorPostVisibility = "public" | "followers" | "members";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
@@ -79,6 +82,7 @@ type DrinkCollectionPromotionRecord = typeof drinkCollectionPromotions.$inferSel
 type DrinkBundleCheckoutSessionRecord = typeof drinkBundleCheckoutSessions.$inferSelect;
 type DrinkGiftRecord = typeof drinkGifts.$inferSelect;
 type CreatorMembershipPlanRecord = typeof creatorMembershipPlans.$inferSelect;
+type CreatorPostRecord = typeof creatorPosts.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
 type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
 type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
@@ -527,6 +531,31 @@ const creatorMembershipPlanInputSchema = z.object({
   priceCents: z.coerce.number().int().min(100).max(500000),
   billingInterval: creatorMembershipIntervalSchema.default("monthly"),
   isActive: z.boolean().optional(),
+});
+
+const creatorPostTypeSchema = z.enum(["update", "promo", "collection_launch", "challenge", "member_only"]);
+const creatorPostVisibilitySchema = z.enum(["public", "followers", "members"]);
+
+const creatorPostBodyBaseSchema = z.object({
+  title: z.string().trim().min(2).max(160),
+  body: z.string().trim().min(1).max(5000),
+  postType: creatorPostTypeSchema.default("update"),
+  visibility: creatorPostVisibilitySchema.default("public"),
+  linkedCollectionId: z.string().trim().min(1).nullable().optional(),
+  linkedChallengeId: z.string().trim().min(1).nullable().optional(),
+});
+
+const createCreatorPostBodySchema = creatorPostBodyBaseSchema.superRefine((value, ctx) => {
+  if (value.postType === "collection_launch" && !value.linkedCollectionId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedCollectionId"], message: "Collection launch posts should link to a collection." });
+  }
+  if (value.postType === "challenge" && !value.linkedChallengeId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedChallengeId"], message: "Challenge posts should link to a challenge." });
+  }
+});
+
+const updateCreatorPostBodySchema = creatorPostBodyBaseSchema.partial().refine((value) => Object.values(value).some((field) => field !== undefined), {
+  message: "At least one field must be provided",
 });
 
 const collectionAccessTypeSchema = z.enum(["public", "premium_purchase", "membership_only"]);
@@ -1320,6 +1349,21 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_posts (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title varchar(160) NOT NULL,
+        body text NOT NULL,
+        post_type text NOT NULL DEFAULT 'update',
+        visibility text NOT NULL DEFAULT 'public',
+        linked_collection_id varchar REFERENCES drink_collections(id) ON DELETE SET NULL,
+        linked_challenge_id varchar REFERENCES drink_challenges(id) ON DELETE SET NULL,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_bundles (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1443,6 +1487,10 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_memberships_user_idx ON creator_memberships(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_memberships_creator_idx ON creator_memberships(creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_memberships_status_idx ON creator_memberships(status);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_posts_creator_idx ON creator_posts(creator_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_posts_visibility_idx ON creator_posts(visibility);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_posts_creator_created_at_idx ON creator_posts(creator_user_id, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_posts_visibility_created_at_idx ON creator_posts(visibility, created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_user_idx ON creator_membership_checkout_sessions(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_creator_idx ON creator_membership_checkout_sessions(creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_plan_idx ON creator_membership_checkout_sessions(plan_id);`);
@@ -1629,6 +1677,246 @@ function serializeMembershipRecord(membership?: CreatorMembershipRecord | null) 
     updatedAt: membership.updatedAt.toISOString(),
     accessActive: isCreatorMembershipActiveRecord(membership),
   };
+}
+
+function normalizeNullableForeignId(value: unknown) {
+  if (typeof value !== "string") return null;
+  const cleaned = value.trim();
+  return cleaned.length ? cleaned : null;
+}
+
+async function loadFollowedCreatorIdsForUser(userId?: string | null) {
+  if (!db || !userId) return new Set<string>();
+  const rows = await db
+    .select({ creatorUserId: follows.followingId })
+    .from(follows)
+    .where(eq(follows.followerId, userId));
+  return new Set(rows.map((row) => row.creatorUserId).filter(Boolean));
+}
+
+async function loadActiveMembershipCreatorIdsForUser(userId?: string | null) {
+  const memberships = await loadActiveCreatorMembershipsForUser(userId);
+  return new Set(memberships.map((membership) => membership.creatorUserId).filter(Boolean));
+}
+
+function canViewerSeeCreatorPost(input: {
+  post: Pick<CreatorPostRecord, "creatorUserId" | "visibility">;
+  viewerId?: string | null;
+  followedCreatorIds?: Set<string>;
+  memberCreatorIds?: Set<string>;
+}) {
+  const { post, viewerId, followedCreatorIds = new Set<string>(), memberCreatorIds = new Set<string>() } = input;
+  if (viewerId && post.creatorUserId === viewerId) return true;
+  if (post.visibility === "public") return true;
+  if (!viewerId) return false;
+  if (post.visibility === "followers") return followedCreatorIds.has(post.creatorUserId);
+  if (post.visibility === "members") return memberCreatorIds.has(post.creatorUserId);
+  return false;
+}
+
+function creatorPostAudienceLabel(post: Pick<CreatorPostRecord, "creatorUserId" | "visibility">, viewerId?: string | null) {
+  if (viewerId && post.creatorUserId === viewerId) return "You";
+  if (post.visibility === "members") return "Members";
+  if (post.visibility === "followers") return "Followers";
+  return "Public";
+}
+
+async function validateCreatorPostLinkedEntities(input: {
+  creatorUserId: string;
+  visibility?: CreatorPostVisibility | null;
+  linkedCollectionId?: string | null;
+  linkedChallengeId?: string | null;
+}) {
+  if (!db) throw new Error("Database unavailable");
+
+  if (input.linkedCollectionId) {
+    const collectionRows = await db
+      .select({ id: drinkCollections.id, isPublic: drinkCollections.isPublic })
+      .from(drinkCollections)
+      .where(and(eq(drinkCollections.id, input.linkedCollectionId), eq(drinkCollections.userId, input.creatorUserId)))
+      .limit(1);
+
+    if (!collectionRows[0]) {
+      throw new Error("Linked collection must belong to the creator.");
+    }
+    if (!collectionRows[0].isPublic && input.visibility !== "members") {
+      throw new Error("Non-public collections can only be linked from member-visible posts.");
+    }
+  }
+
+  if (input.linkedChallengeId) {
+    const challengeRows = await db
+      .select({ id: drinkChallenges.id })
+      .from(drinkChallenges)
+      .where(eq(drinkChallenges.id, input.linkedChallengeId))
+      .limit(1);
+
+    if (!challengeRows[0]) {
+      throw new Error("Linked challenge was not found.");
+    }
+  }
+}
+
+async function loadCreatorPostLinkedMaps(posts: CreatorPostRecord[]) {
+  if (!db || posts.length === 0) {
+    return {
+      creatorMap: new Map<string, Awaited<ReturnType<typeof loadUserBasicProfile>>>(),
+      collectionMap: new Map<string, typeof drinkCollections.$inferSelect>(),
+      challengeMap: new Map<string, typeof drinkChallenges.$inferSelect>(),
+    };
+  }
+
+  const creatorIds = [...new Set(posts.map((post) => post.creatorUserId).filter(Boolean))];
+  const collectionIds = [...new Set(posts.map((post) => post.linkedCollectionId).filter((value): value is string => Boolean(value)))];
+  const challengeIds = [...new Set(posts.map((post) => post.linkedChallengeId).filter((value): value is string => Boolean(value)))];
+
+  const [creatorRows, collectionRows, challengeRows] = await Promise.all([
+    creatorIds.length === 0
+      ? Promise.resolve([] as Array<{ id: string; username: string | null; avatar: string | null }>)
+      : db
+        .select({ id: users.id, username: users.username, avatar: users.avatar })
+        .from(users)
+        .where(inArray(users.id, creatorIds)),
+    collectionIds.length === 0
+      ? Promise.resolve([] as Array<typeof drinkCollections.$inferSelect>)
+      : db.select().from(drinkCollections).where(inArray(drinkCollections.id, collectionIds)),
+    challengeIds.length === 0
+      ? Promise.resolve([] as Array<typeof drinkChallenges.$inferSelect>)
+      : db.select().from(drinkChallenges).where(inArray(drinkChallenges.id, challengeIds)),
+  ]);
+
+  return {
+    creatorMap: new Map(creatorRows.map((row) => [row.id, row])),
+    collectionMap: new Map(collectionRows.map((row) => [row.id, row])),
+    challengeMap: new Map(challengeRows.map((row) => [row.id, row])),
+  };
+}
+
+function serializeCreatorPost(
+  post: CreatorPostRecord,
+  options: {
+    viewerId?: string | null;
+    creator?: { id: string; username: string | null; avatar: string | null } | null;
+    linkedCollection?: typeof drinkCollections.$inferSelect | null;
+    linkedChallenge?: typeof drinkChallenges.$inferSelect | null;
+  } = {},
+) {
+  const creator = options.creator ?? null;
+  const linkedCollection = options.linkedCollection ?? null;
+  const linkedChallenge = options.linkedChallenge ?? null;
+
+  return {
+    id: post.id,
+    creatorUserId: post.creatorUserId,
+    title: post.title,
+    body: post.body,
+    postType: post.postType as CreatorPostType,
+    visibility: post.visibility as CreatorPostVisibility,
+    audienceLabel: creatorPostAudienceLabel(post, options.viewerId),
+    createdAt: post.createdAt.toISOString(),
+    updatedAt: post.updatedAt.toISOString(),
+    creator: creator
+      ? {
+        userId: creator.id,
+        username: creator.username ?? null,
+        avatar: creator.avatar ?? null,
+        route: `/drinks/creator/${encodeURIComponent(creator.id)}`,
+      }
+      : null,
+    linkedCollection: linkedCollection
+      ? {
+        id: linkedCollection.id,
+        name: linkedCollection.name,
+        accessType: collectionAccessTypeForRow(linkedCollection),
+        isPublic: Boolean(linkedCollection.isPublic),
+        route: `/drinks/collections/${encodeURIComponent(linkedCollection.id)}`,
+      }
+      : null,
+    linkedChallenge: linkedChallenge
+      ? {
+        id: linkedChallenge.id,
+        slug: linkedChallenge.slug,
+        title: linkedChallenge.title,
+        route: `/drinks/challenges/${encodeURIComponent(linkedChallenge.slug)}`,
+      }
+      : null,
+  };
+}
+
+async function maybeSendCreatorPostAlerts(post: CreatorPostRecord) {
+  if (!db) return;
+  if (post.postType !== "promo" && post.postType !== "collection_launch" && post.visibility !== "members") return;
+
+  const creator = await loadUserBasicProfile(post.creatorUserId);
+  const creatorHandle = creator?.username ? `@${creator.username}` : "A creator";
+  const linkUrl = post.linkedCollectionId
+    ? `/drinks/collections/${encodeURIComponent(post.linkedCollectionId)}`
+    : `/drinks/creator/${encodeURIComponent(post.creatorUserId)}`;
+
+  let recipientIds: string[] = [];
+  let type: DrinkAlertType = DRINK_ALERT_TYPES.followedCreatorPost;
+  let title = "A creator you follow published an update";
+  let message = `${creatorHandle} posted "${post.title}".`;
+
+  if (post.visibility === "members") {
+    const memberRows = await db
+      .select()
+      .from(creatorMemberships)
+      .where(and(eq(creatorMemberships.creatorUserId, post.creatorUserId), inArray(creatorMemberships.status, ["active", "canceled"])));
+
+    recipientIds = [...new Set(
+      memberRows
+        .filter((row) => isCreatorMembershipActiveRecord(row))
+        .map((row) => row.userId)
+        .filter((userId): userId is string => Boolean(userId) && userId !== post.creatorUserId),
+    )];
+    type = DRINK_ALERT_TYPES.creatorMemberPost;
+    title = "New member update from a creator you support";
+    message = `${creatorHandle} shared a members update: "${post.title}".`;
+  } else {
+    const followerRows = await db
+      .select({ userId: follows.followerId })
+      .from(follows)
+      .where(eq(follows.followingId, post.creatorUserId));
+
+    recipientIds = [...new Set(
+      followerRows
+        .map((row) => row.userId)
+        .filter((userId): userId is string => Boolean(userId) && userId !== post.creatorUserId),
+    )];
+
+    if (post.postType === "promo") {
+      title = "A creator you follow posted a promo";
+      message = `${creatorHandle} posted a promo update: "${post.title}".`;
+    } else if (post.postType === "collection_launch") {
+      title = "A creator you follow launched something new";
+      message = `${creatorHandle} announced a collection launch: "${post.title}".`;
+    }
+  }
+
+  if (!recipientIds.length) return;
+
+  await db.insert(notifications).values(
+    recipientIds.map((userId) => ({
+      userId,
+      type,
+      title,
+      message,
+      linkUrl,
+      imageUrl: creator?.avatar ?? null,
+      priority: post.visibility === "members" ? "high" : "normal",
+      metadata: {
+        creatorPostId: post.id,
+        creatorUserId: post.creatorUserId,
+        linkedCollectionId: post.linkedCollectionId ?? null,
+        linkedChallengeId: post.linkedChallengeId ?? null,
+        visibility: post.visibility,
+        postType: post.postType,
+      },
+    })),
+  ).catch((error) => {
+    console.error("Failed to send creator post alerts:", error);
+  });
 }
 
 async function upsertDrinkCollectionSalesLedgerEntry(
@@ -6698,6 +6986,277 @@ r.get("/recommended", async (req, res) => {
   } catch (error: any) {
     console.error("Error getting recommended drinks:", error);
     return res.status(500).json({ ok: false, error: "Failed to fetch recommended drinks" });
+  }
+});
+
+r.get("/creator-posts/feed", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [posts, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      db.select().from(creatorPosts).orderBy(desc(creatorPosts.createdAt)).limit(120),
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+
+    const visiblePosts = posts.filter((post) => canViewerSeeCreatorPost({
+      post,
+      viewerId,
+      followedCreatorIds,
+      memberCreatorIds,
+    }));
+
+    const prioritizedPosts = visiblePosts
+      .map((post) => ({
+        post,
+        priority: viewerId
+          ? post.creatorUserId === viewerId
+            ? 0
+            : memberCreatorIds.has(post.creatorUserId)
+              ? 1
+              : followedCreatorIds.has(post.creatorUserId)
+                ? 2
+                : 3
+          : 0,
+      }))
+      .sort((a, b) => {
+        if (a.priority !== b.priority) return a.priority - b.priority;
+        return b.post.createdAt.getTime() - a.post.createdAt.getTime();
+      })
+      .map((entry) => entry.post);
+
+    const maps = await loadCreatorPostLinkedMaps(prioritizedPosts);
+    const items = prioritizedPosts.map((post) => serializeCreatorPost(post, {
+      viewerId,
+      creator: maps.creatorMap.get(post.creatorUserId) ?? null,
+      linkedCollection: post.linkedCollectionId ? maps.collectionMap.get(post.linkedCollectionId) ?? null : null,
+      linkedChallenge: post.linkedChallengeId ? maps.challengeMap.get(post.linkedChallengeId) ?? null : null,
+    }));
+
+    return res.json({
+      ok: true,
+      signedIn: Boolean(viewerId),
+      count: items.length,
+      visibility: {
+        public: true,
+        followers: Boolean(viewerId),
+        members: Boolean(viewerId),
+      },
+      items,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-posts/feed", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator posts feed"));
+  }
+});
+
+r.get("/creator-posts/creator/:userId", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const creatorUserId = String(req.params.userId ?? "").trim();
+    if (!creatorUserId) {
+      return res.status(400).json({ ok: false, error: "Creator userId is required." });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [posts, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      db.select().from(creatorPosts).where(eq(creatorPosts.creatorUserId, creatorUserId)).orderBy(desc(creatorPosts.createdAt)).limit(60),
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+
+    const visiblePosts = posts.filter((post) => canViewerSeeCreatorPost({
+      post,
+      viewerId,
+      followedCreatorIds,
+      memberCreatorIds,
+    }));
+
+    const maps = await loadCreatorPostLinkedMaps(visiblePosts);
+    const items = visiblePosts.map((post) => serializeCreatorPost(post, {
+      viewerId,
+      creator: maps.creatorMap.get(post.creatorUserId) ?? null,
+      linkedCollection: post.linkedCollectionId ? maps.collectionMap.get(post.linkedCollectionId) ?? null : null,
+      linkedChallenge: post.linkedChallengeId ? maps.challengeMap.get(post.linkedChallengeId) ?? null : null,
+    }));
+
+    return res.json({
+      ok: true,
+      creatorUserId,
+      count: items.length,
+      items,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-posts/creator/:userId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator posts"));
+  }
+});
+
+r.post("/creator-posts", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const parsed = createCreatorPostBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid creator post payload." });
+    }
+
+    const payload = parsed.data;
+    const values = {
+      creatorUserId: req.user!.id,
+      title: payload.title.trim(),
+      body: payload.body.trim(),
+      postType: payload.postType,
+      visibility: payload.postType === "member_only" ? "members" as const : payload.visibility,
+      linkedCollectionId: normalizeNullableForeignId(payload.linkedCollectionId),
+      linkedChallengeId: normalizeNullableForeignId(payload.linkedChallengeId),
+      updatedAt: new Date(),
+    };
+
+    await validateCreatorPostLinkedEntities({
+      creatorUserId: values.creatorUserId,
+      visibility: values.visibility,
+      linkedCollectionId: values.linkedCollectionId,
+      linkedChallengeId: values.linkedChallengeId,
+    });
+
+    const inserted = await db.insert(creatorPosts).values(values).returning();
+    const post = inserted[0];
+    if (!post) {
+      return res.status(500).json({ ok: false, error: "Failed to create creator post." });
+    }
+
+    await maybeSendCreatorPostAlerts(post);
+    const maps = await loadCreatorPostLinkedMaps([post]);
+    return res.status(201).json({
+      ok: true,
+      post: serializeCreatorPost(post, {
+        viewerId: req.user!.id,
+        creator: maps.creatorMap.get(post.creatorUserId) ?? null,
+        linkedCollection: post.linkedCollectionId ? maps.collectionMap.get(post.linkedCollectionId) ?? null : null,
+        linkedChallenge: post.linkedChallengeId ? maps.challengeMap.get(post.linkedChallengeId) ?? null : null,
+      }),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-posts", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create creator post"));
+  }
+});
+
+r.patch("/creator-posts/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const postId = String(req.params.id ?? "").trim();
+    if (!postId) {
+      return res.status(400).json({ ok: false, error: "Post id is required." });
+    }
+
+    const parsed = updateCreatorPostBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid creator post payload." });
+    }
+
+    const existingRows = await db
+      .select()
+      .from(creatorPosts)
+      .where(and(eq(creatorPosts.id, postId), eq(creatorPosts.creatorUserId, req.user!.id)))
+      .limit(1);
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ ok: false, error: "Creator post not found." });
+    }
+
+    const payload = parsed.data;
+    const values = {
+      title: payload.title?.trim() ?? existing.title,
+      body: payload.body?.trim() ?? existing.body,
+      postType: payload.postType ?? (existing.postType as CreatorPostType),
+      visibility: (payload.postType ?? existing.postType) === "member_only"
+        ? "members" as const
+        : (payload.visibility ?? (existing.visibility as CreatorPostVisibility)),
+      linkedCollectionId: payload.linkedCollectionId !== undefined ? normalizeNullableForeignId(payload.linkedCollectionId) : existing.linkedCollectionId,
+      linkedChallengeId: payload.linkedChallengeId !== undefined ? normalizeNullableForeignId(payload.linkedChallengeId) : existing.linkedChallengeId,
+      updatedAt: new Date(),
+    };
+
+    if (values.postType === "collection_launch" && !values.linkedCollectionId) {
+      return res.status(400).json({ ok: false, error: "Collection launch posts should link to a collection." });
+    }
+    if (values.postType === "challenge" && !values.linkedChallengeId) {
+      return res.status(400).json({ ok: false, error: "Challenge posts should link to a challenge." });
+    }
+
+    await validateCreatorPostLinkedEntities({
+      creatorUserId: req.user!.id,
+      visibility: values.visibility,
+      linkedCollectionId: values.linkedCollectionId,
+      linkedChallengeId: values.linkedChallengeId,
+    });
+
+    const updatedRows = await db
+      .update(creatorPosts)
+      .set(values)
+      .where(eq(creatorPosts.id, postId))
+      .returning();
+
+    const post = updatedRows[0];
+    const maps = await loadCreatorPostLinkedMaps(post ? [post] : []);
+    return res.json({
+      ok: true,
+      post: post ? serializeCreatorPost(post, {
+        viewerId: req.user!.id,
+        creator: maps.creatorMap.get(post.creatorUserId) ?? null,
+        linkedCollection: post.linkedCollectionId ? maps.collectionMap.get(post.linkedCollectionId) ?? null : null,
+        linkedChallenge: post.linkedChallengeId ? maps.challengeMap.get(post.linkedChallengeId) ?? null : null,
+      }) : null,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-posts/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update creator post"));
+  }
+});
+
+r.delete("/creator-posts/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const postId = String(req.params.id ?? "").trim();
+    if (!postId) {
+      return res.status(400).json({ ok: false, error: "Post id is required." });
+    }
+
+    const deletedRows = await db
+      .delete(creatorPosts)
+      .where(and(eq(creatorPosts.id, postId), eq(creatorPosts.creatorUserId, req.user!.id)))
+      .returning({ id: creatorPosts.id });
+
+    if (!deletedRows[0]) {
+      return res.status(404).json({ ok: false, error: "Creator post not found." });
+    }
+
+    return res.json({ ok: true, deletedId: deletedRows[0].id });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-posts/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete creator post"));
   }
 });
 

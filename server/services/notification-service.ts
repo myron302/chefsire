@@ -14,6 +14,8 @@ export const DRINK_ALERT_TYPES = {
   wishlistPriceDrop: "drink_collection_wishlist_price_drop",
   followedCreatorCollection: "drink_collection_followed_creator_launch",
   followedCreatorPromo: "drink_collection_followed_creator_promo",
+  followedCreatorPost: "drink_creator_followed_post",
+  creatorMemberPost: "drink_creator_member_post",
 } as const;
 
 export type DrinkAlertType = (typeof DRINK_ALERT_TYPES)[keyof typeof DRINK_ALERT_TYPES];

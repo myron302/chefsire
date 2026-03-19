@@ -142,6 +142,8 @@ export default function DrinkMembershipsPage() {
           <span className="text-muted-foreground">·</span>
           <Link href="/drinks/orders" className="underline underline-offset-2">Order history</Link>
           <span className="text-muted-foreground">·</span>
+          <Link href="/drinks/feed" className="underline underline-offset-2">Creator feed</Link>
+          <span className="text-muted-foreground">·</span>
           <Link href="/drinks/creators/trending" className="underline underline-offset-2">Discover creators</Link>
         </div>
       </section>
@@ -204,11 +206,12 @@ export default function DrinkMembershipsPage() {
                         From {collection.creatorUsername ? `@${collection.creatorUsername}` : "a creator"}
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        <Link href={collection.route}><Button size="sm">Open collection</Button></Link>
-                        <Link href={collection.creatorRoute}><Button size="sm" variant="outline">View creator</Button></Link>
-                      </div>
-                    </CardContent>
-                  </Card>
+                      <Link href={collection.route}><Button size="sm">Open collection</Button></Link>
+                      <Link href={collection.creatorRoute}><Button size="sm" variant="outline">View creator</Button></Link>
+                      <Link href="/drinks/feed"><Button size="sm" variant="ghost">Creator feed</Button></Link>
+                    </div>
+                  </CardContent>
+                </Card>
                 ))}
               </div>
             )}

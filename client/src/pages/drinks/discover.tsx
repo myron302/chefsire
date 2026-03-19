@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { Link } from "wouter";
-import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem, ShoppingBag } from "lucide-react";
+import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem, ShoppingBag, Newspaper } from "lucide-react";
 
 import { useUser } from "@/contexts/UserContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,6 +58,13 @@ const discoverLinks: DiscoverLink[] = [
     description: "Recent ecosystem activity, launches, and notable updates.",
     href: "/drinks/whats-new",
     icon: Sparkles,
+    activityHint: "New",
+  },
+  {
+    title: "Creator Feed",
+    description: "Lightweight creator posts for updates, promos, launches, and member notes.",
+    href: "/drinks/feed",
+    icon: Newspaper,
     activityHint: "New",
   },
   {
@@ -149,6 +156,24 @@ export default function DrinksDiscoverPage() {
                 <Link href="/drinks/following">
                   <Button variant="outline" className="w-full justify-between">
                     Open Following Feed
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Newspaper className="h-5 w-5 text-blue-600" />
+                  Creator Feed
+                </CardTitle>
+                <CardDescription>See creator posts from updates, launches, promos, and memberships.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/drinks/feed">
+                  <Button variant="outline" className="w-full justify-between">
+                    Open Creator Feed
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>

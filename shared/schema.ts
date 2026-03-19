@@ -1287,6 +1287,28 @@ export const creatorMemberships = pgTable(
   })
 );
 
+export const creatorPosts = pgTable(
+  "creator_posts",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    creatorUserId: varchar("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    body: text("body").notNull(),
+    postType: text("post_type").default("update").notNull(),
+    visibility: text("visibility").default("public").notNull(),
+    linkedCollectionId: varchar("linked_collection_id").references(() => drinkCollections.id, { onDelete: "set null" }),
+    linkedChallengeId: varchar("linked_challenge_id").references(() => drinkChallenges.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    creatorIdx: index("creator_posts_creator_idx").on(table.creatorUserId),
+    visibilityIdx: index("creator_posts_visibility_idx").on(table.visibility),
+    creatorCreatedAtIdx: index("creator_posts_creator_created_at_idx").on(table.creatorUserId, table.createdAt),
+    visibilityCreatedAtIdx: index("creator_posts_visibility_created_at_idx").on(table.visibility, table.createdAt),
+  })
+);
+
 export const creatorMembershipCheckoutSessions = pgTable(
   "creator_membership_checkout_sessions",
   {
@@ -2032,6 +2054,12 @@ export const insertCreatorMembershipSchema = createInsertSchema(creatorMembershi
   updatedAt: true,
 });
 
+export const insertCreatorPostSchema = createInsertSchema(creatorPosts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertDrinkBundleItemSchema = createInsertSchema(drinkBundleItems).omit({
   addedAt: true,
 });
@@ -2233,6 +2261,8 @@ export type CreatorMembershipPlan = typeof creatorMembershipPlans.$inferSelect;
 export type InsertCreatorMembershipPlan = z.infer<typeof insertCreatorMembershipPlanSchema>;
 export type CreatorMembership = typeof creatorMemberships.$inferSelect;
 export type InsertCreatorMembership = z.infer<typeof insertCreatorMembershipSchema>;
+export type CreatorPost = typeof creatorPosts.$inferSelect;
+export type InsertCreatorPost = z.infer<typeof insertCreatorPostSchema>;
 export type DrinkBundle = typeof drinkBundles.$inferSelect;
 export type InsertDrinkBundle = z.infer<typeof insertDrinkBundleSchema>;
 export type DrinkBundleItem = typeof drinkBundleItems.$inferSelect;

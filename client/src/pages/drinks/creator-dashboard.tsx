@@ -9,10 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 import CreatorBundlesSection from "@/components/drinks/CreatorBundlesSection";
+import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 
 interface CreatorDrinkMetricsItem {
   id: string;
@@ -128,6 +130,13 @@ interface CreatorPromotionItem {
 interface CreatorPromotionsResponse {
   ok: boolean;
   promotions: CreatorPromotionItem[];
+}
+
+interface CreatorPostsResponse {
+  ok: boolean;
+  creatorUserId: string;
+  count: number;
+  items: CreatorPostItem[];
 }
 
 interface CreatorMembershipPlan {
@@ -431,6 +440,17 @@ export default function CreatorDashboardPage() {
   });
   const [membershipPlanMessage, setMembershipPlanMessage] = React.useState("");
   const [membershipPlanError, setMembershipPlanError] = React.useState("");
+  const [postForm, setPostForm] = React.useState({
+    id: "",
+    title: "",
+    body: "",
+    postType: "update" as CreatorPostItem["postType"],
+    visibility: "public" as CreatorPostItem["visibility"],
+    linkedCollectionId: "",
+    linkedChallengeId: "",
+  });
+  const [postMessage, setPostMessage] = React.useState("");
+  const [postError, setPostError] = React.useState("");
 
   const query = useQuery<CreatorDrinkMetricsResponse>({
     queryKey: ["/api/drinks/creator", user?.id ?? ""],
@@ -585,6 +605,42 @@ export default function CreatorDashboardPage() {
     enabled: Boolean(user?.id),
   });
 
+  const creatorPostsQuery = useQuery<CreatorPostsResponse>({
+    queryKey: ["/api/drinks/creator-posts/creator", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/creator-posts/creator/${encodeURIComponent(user?.id ?? "")}`, {
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || `Failed to load creator posts (${response.status})`);
+      }
+      return payload as CreatorPostsResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
+  const challengesQuery = useQuery<{ ok: boolean; challenges: Array<{ id: string; slug: string; title: string }> }>({
+    queryKey: ["/api/drinks/challenges"],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/challenges", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || `Failed to load challenges (${response.status})`);
+      }
+      const sourceItems = Array.isArray(payload?.items) ? payload.items : payload?.challenges;
+      const challenges = Array.isArray(sourceItems)
+        ? sourceItems.map((challenge: any) => ({
+          id: String(challenge.id ?? ""),
+          slug: String(challenge.slug ?? ""),
+          title: String(challenge.title ?? challenge.slug ?? "Challenge"),
+        }))
+        : [];
+      return { ok: true, challenges };
+    },
+    enabled: Boolean(user?.id),
+  });
+
   React.useEffect(() => {
     const plan = membershipDashboardQuery.data?.plan;
     if (!plan) return;
@@ -672,6 +728,97 @@ export default function CreatorDashboardPage() {
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/promotions", user?.id ?? ""] });
+    },
+  });
+
+  const savePostMutation = useMutation({
+    mutationFn: async (payloadBody: {
+      id?: string;
+      title: string;
+      body: string;
+      postType: CreatorPostItem["postType"];
+      visibility: CreatorPostItem["visibility"];
+      linkedCollectionId?: string | null;
+      linkedChallengeId?: string | null;
+    }) => {
+      const isEditing = Boolean(payloadBody.id);
+      const response = await fetch(
+        isEditing
+          ? `/api/drinks/creator-posts/${encodeURIComponent(payloadBody.id!)}`
+          : "/api/drinks/creator-posts",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            title: payloadBody.title,
+            body: payloadBody.body,
+            postType: payloadBody.postType,
+            visibility: payloadBody.postType === "member_only" ? "members" : payloadBody.visibility,
+            linkedCollectionId: payloadBody.linkedCollectionId || null,
+            linkedChallengeId: payloadBody.linkedChallengeId || null,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to save creator post (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async (_, variables) => {
+      setPostMessage(variables.id ? "Creator post updated." : "Creator post published.");
+      setPostError("");
+      setPostForm({
+        id: "",
+        title: "",
+        body: "",
+        postType: "update",
+        visibility: "public",
+        linkedCollectionId: "",
+        linkedChallengeId: "",
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-posts/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-posts/feed", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setPostError(readErrorMessage(error, "Unable to save creator post right now."));
+      setPostMessage("");
+    },
+  });
+
+  const deletePostMutation = useMutation({
+    mutationFn: async (postId: string) => {
+      const response = await fetch(`/api/drinks/creator-posts/${encodeURIComponent(postId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to delete creator post (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async (payload: { deletedId?: string }) => {
+      if (payload?.deletedId && postForm.id === payload.deletedId) {
+        setPostForm({
+          id: "",
+          title: "",
+          body: "",
+          postType: "update",
+          visibility: "public",
+          linkedCollectionId: "",
+          linkedChallengeId: "",
+        });
+      }
+      setPostMessage("Creator post deleted.");
+      setPostError("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-posts/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-posts/feed", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setPostError(readErrorMessage(error, "Unable to delete creator post right now."));
+      setPostMessage("");
     },
   });
 
@@ -782,10 +929,16 @@ export default function CreatorDashboardPage() {
   const conversionCollections = conversionsQuery.data?.collections ?? [];
   const recentCreatorOrders = ordersQuery.data?.orders ?? [];
   const creatorPromotions = promotionsQuery.data?.promotions ?? [];
+  const creatorPosts = creatorPostsQuery.data?.items ?? [];
+  const challengeOptions = challengesQuery.data?.challenges ?? [];
   const premiumCollectionOptions = premiumPurchaseCollections.map((collection) => ({
     id: collection.id,
     name: collection.name ?? `Collection ${collection.id.slice(0, 8)}`,
     priceCents: collection.priceCents,
+  }));
+  const postCollectionOptions = creatorCollections.map((collection) => ({
+    id: collection.id,
+    name: collection.name ?? `Collection ${collection.id.slice(0, 8)}`,
   }));
   const selectedPromotionCollectionId = promotionForm.collectionId || premiumCollectionOptions[0]?.id || "";
 
@@ -810,6 +963,9 @@ export default function CreatorDashboardPage() {
           </Link>
           <Link href="/drinks/notifications">
             <Button variant="outline" size="sm">Notifications Center</Button>
+          </Link>
+          <Link href="/drinks/feed">
+            <Button variant="outline" size="sm">Creator Feed</Button>
           </Link>
         </div>
       </div>
@@ -909,6 +1065,227 @@ export default function CreatorDashboardPage() {
             <Link href="/drinks/collections/explore">
               <Button size="sm">Browse premium collections</Button>
             </Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card id="posts">
+        <CardHeader>
+          <CardTitle>Posts</CardTitle>
+          <CardDescription>
+            Publish lightweight creator posts for launches, member updates, promos, and challenge notes without rebuilding the drinks platform into a full social network.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Total posts</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorPosts.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Public</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorPosts.filter((post) => post.visibility === "public").length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Followers</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorPosts.filter((post) => post.visibility === "followers").length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Members</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorPosts.filter((post) => post.visibility === "members").length)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),minmax(0,1.2fr)]">
+            <div className="space-y-4 rounded-lg border p-4">
+              <div className="space-y-1">
+                <h3 className="font-semibold">{postForm.id ? "Edit post" : "New creator post"}</h3>
+                <p className="text-sm text-muted-foreground">
+                  Keep it concise. Version one supports text plus optional collection or challenge links.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="post-title">Title</Label>
+                <Input id="post-title" value={postForm.title} onChange={(event) => setPostForm((current) => ({ ...current, title: event.target.value }))} placeholder="Spring membership update" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="post-body">Body</Label>
+                <Textarea id="post-body" value={postForm.body} onChange={(event) => setPostForm((current) => ({ ...current, body: event.target.value }))} placeholder="Tell followers or members what changed, launched, or is now available." className="min-h-[140px]" />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="post-type">Post type</Label>
+                  <select
+                    id="post-type"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={postForm.postType}
+                    onChange={(event) => {
+                      const nextType = event.target.value as CreatorPostItem["postType"];
+                      setPostForm((current) => ({
+                        ...current,
+                        postType: nextType,
+                        visibility: nextType === "member_only" ? "members" : current.visibility,
+                      }));
+                    }}
+                  >
+                    <option value="update">Update</option>
+                    <option value="promo">Promo</option>
+                    <option value="collection_launch">Collection launch</option>
+                    <option value="challenge">Challenge</option>
+                    <option value="member_only">Member-only update</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="post-visibility">Visibility</Label>
+                  <select
+                    id="post-visibility"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={postForm.postType === "member_only" ? "members" : postForm.visibility}
+                    onChange={(event) => setPostForm((current) => ({ ...current, visibility: event.target.value as CreatorPostItem["visibility"] }))}
+                    disabled={postForm.postType === "member_only"}
+                  >
+                    <option value="public">Public</option>
+                    <option value="followers">Followers</option>
+                    <option value="members">Members</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">
+                    Public → anyone. Followers → followed users and you. Members → active members and you.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="post-linked-collection">Linked collection</Label>
+                  <select
+                    id="post-linked-collection"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={postForm.linkedCollectionId}
+                    onChange={(event) => setPostForm((current) => ({ ...current, linkedCollectionId: event.target.value }))}
+                  >
+                    <option value="">No linked collection</option>
+                    {postCollectionOptions.map((collection) => (
+                      <option key={collection.id} value={collection.id}>{collection.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="post-linked-challenge">Linked challenge</Label>
+                  <select
+                    id="post-linked-challenge"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={postForm.linkedChallengeId}
+                    onChange={(event) => setPostForm((current) => ({ ...current, linkedChallengeId: event.target.value }))}
+                  >
+                    <option value="">No linked challenge</option>
+                    {challengeOptions.map((challenge) => (
+                      <option key={challenge.id} value={challenge.id}>{challenge.title}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    setPostMessage("");
+                    setPostError("");
+                    savePostMutation.mutate({
+                      id: postForm.id || undefined,
+                      title: postForm.title.trim(),
+                      body: postForm.body.trim(),
+                      postType: postForm.postType,
+                      visibility: postForm.postType === "member_only" ? "members" : postForm.visibility,
+                      linkedCollectionId: postForm.linkedCollectionId || null,
+                      linkedChallengeId: postForm.linkedChallengeId || null,
+                    });
+                  }}
+                  disabled={savePostMutation.isPending || !postForm.title.trim() || !postForm.body.trim()}
+                >
+                  {savePostMutation.isPending ? "Saving post…" : postForm.id ? "Update post" : "Publish post"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setPostMessage("");
+                    setPostError("");
+                    setPostForm({
+                      id: "",
+                      title: "",
+                      body: "",
+                      postType: "update",
+                      visibility: "public",
+                      linkedCollectionId: "",
+                      linkedChallengeId: "",
+                    });
+                  }}
+                >
+                  Reset
+                </Button>
+                <Link href="/drinks/feed"><Button variant="ghost">Open creator feed</Button></Link>
+              </div>
+
+              {postMessage ? <p className="text-sm text-emerald-600">{postMessage}</p> : null}
+              {postError ? <p className="text-sm text-destructive">{postError}</p> : null}
+            </div>
+
+            <div className="space-y-3">
+              {creatorPostsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading creator posts…</p> : null}
+              {creatorPostsQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(creatorPostsQuery.error, "Unable to load creator posts right now.")}</p> : null}
+              {!creatorPostsQuery.isLoading && !creatorPostsQuery.isError && creatorPosts.length === 0 ? (
+                <Card>
+                  <CardContent className="p-4 text-sm text-muted-foreground">
+                    No creator posts yet. Start with a public update, a follower-facing announcement, or a member-only note tied to a collection or challenge.
+                  </CardContent>
+                </Card>
+              ) : null}
+              {creatorPosts.map((post) => (
+                <CreatorPostCard
+                  key={post.id}
+                  post={post}
+                  showCreator={false}
+                  actions={(
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setPostMessage("");
+                          setPostError("");
+                          setPostForm({
+                            id: post.id,
+                            title: post.title,
+                            body: post.body,
+                            postType: post.postType,
+                            visibility: post.visibility,
+                            linkedCollectionId: post.linkedCollection?.id ?? "",
+                            linkedChallengeId: post.linkedChallenge?.id ?? "",
+                          });
+                          window.location.hash = "posts";
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setPostMessage("");
+                          setPostError("");
+                          deletePostMutation.mutate(post.id);
+                        }}
+                        disabled={deletePostMutation.isPending}
+                      >
+                        {deletePostMutation.isPending ? "Deleting…" : "Delete"}
+                      </Button>
+                    </>
+                  )}
+                />
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>

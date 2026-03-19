@@ -15,6 +15,7 @@ import SubmitDrinkRecipePage from "@/pages/drinks/submit";
 import CreatorDashboardPage from "@/pages/drinks/creator-dashboard";
 import PublicDrinkCreatorPage from "@/pages/drinks/creator-public";
 import FollowingDrinksFeedPage from "@/pages/drinks/following";
+import DrinkCreatorPostsFeedPage from "@/pages/drinks/feed";
 import DrinksRemixDiscoveryPage from "@/pages/drinks/remixes";
 import MostRemixedDrinksPage from "@/pages/drinks/most-remixed";
 import TrendingCreatorsPage from "@/pages/drinks/creators-trending";
@@ -198,6 +199,7 @@ export default function DrinksRoutes() {
         <Route path="/drinks/creator/:userId" component={PublicDrinkCreatorPage} />
         <Route path="/drinks/creator-dashboard" component={CreatorDashboardPage} />
         <Route path="/drinks/following" component={FollowingDrinksFeedPage} />
+        <Route path="/drinks/feed" component={DrinkCreatorPostsFeedPage} />
         <Route path="/drinks/remixes" component={DrinksRemixDiscoveryPage} />
         <Route path="/drinks/most-remixed" component={MostRemixedDrinksPage} />
         <Route path="/drinks/creators/trending" component={TrendingCreatorsPage} />
