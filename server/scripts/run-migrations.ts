@@ -67,27 +67,37 @@ async function runMigrations() {
     await ensureLedger();
 
     const migrationSources = [
-      { dir: join(__dirname, "../drizzle"), keyPrefix: "drizzle" }, // matches drizzle.config.ts: out
-      { dir: join(__dirname, "../../migrations"), keyPrefix: "legacy" },
+      { dir: join(__dirname, "../drizzle"), keyPrefix: "drizzle", priority: 0 }, // matches drizzle.config.ts: out
+      { dir: join(__dirname, "../migrations"), keyPrefix: "server", priority: 1 }, // fallback for historical SQL files not copied into drizzle/
+      { dir: join(__dirname, "../../migrations"), keyPrefix: "legacy", priority: 2 },
     ];
 
-    const sqlFiles: Array<{ sourceDir: string; keyPrefix: string; filename: string; ledgerKey: string }> = [];
+    const sqlFilesByName = new Map<
+      string,
+      { sourceDir: string; keyPrefix: string; filename: string; ledgerKey: string; priority: number }
+    >();
     for (const source of migrationSources) {
       const files = await readdir(source.dir).catch(() => [] as string[]);
       for (const filename of files.filter((f) => f.endsWith(".sql")).sort()) {
-        sqlFiles.push({
+        const nextFile = {
           sourceDir: source.dir,
           keyPrefix: source.keyPrefix,
           filename,
           ledgerKey: `${source.keyPrefix}:${filename}`,
-        });
+          priority: source.priority,
+        };
+        const existing = sqlFilesByName.get(filename);
+        if (!existing || nextFile.priority < existing.priority) {
+          sqlFilesByName.set(filename, nextFile);
+        }
       }
     }
 
+    const sqlFiles = Array.from(sqlFilesByName.values());
     sqlFiles.sort((a, b) => a.filename.localeCompare(b.filename));
 
     if (sqlFiles.length === 0) {
-      console.log("✅ No migrations found under server/drizzle or /migrations.");
+      console.log("✅ No migrations found under server/drizzle, server/migrations, or /migrations.");
       return;
     }
 
