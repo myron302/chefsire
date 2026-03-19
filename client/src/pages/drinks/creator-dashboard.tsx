@@ -104,6 +104,7 @@ interface CreatorCollectionItem {
   id: string;
   name?: string;
   isPublic: boolean;
+  accessType: "public" | "premium_purchase" | "membership_only";
   isPremium: boolean;
   priceCents: number;
 }
@@ -723,10 +724,11 @@ export default function CreatorDashboardPage() {
   const safeItems = Array.isArray(items) ? items : [];
   const creatorCollections = collectionsQuery.data?.collections ?? [];
   const publicCollectionsCount = creatorCollections.filter((collection) => collection.isPublic).length;
-  const premiumCollections = creatorCollections.filter((collection) => collection.isPremium);
-  const freeCollectionsCount = creatorCollections.filter((collection) => collection.isPublic && !collection.isPremium).length;
+  const premiumPurchaseCollections = creatorCollections.filter((collection) => collection.accessType === "premium_purchase");
+  const memberOnlyCollections = creatorCollections.filter((collection) => collection.accessType === "membership_only");
+  const freeCollectionsCount = creatorCollections.filter((collection) => collection.accessType === "public").length;
   const salesTotals = salesQuery.data?.totals ?? {
-    premiumCollections: premiumCollections.length,
+    premiumCollections: premiumPurchaseCollections.length,
     purchases: 0,
     grossRevenueCents: 0,
     refundedSalesCount: 0,
@@ -768,7 +770,7 @@ export default function CreatorDashboardPage() {
     reportingNotes: [] as string[],
   };
   const conversionSummary = conversionsQuery.data?.summary ?? {
-    premiumCollectionsCount: premiumCollections.length,
+    premiumCollectionsCount: premiumPurchaseCollections.length,
     totalCollectionViews: 0,
     totalCheckoutStarts: 0,
     totalCompletedPurchases: salesTotals.purchases,
@@ -780,7 +782,7 @@ export default function CreatorDashboardPage() {
   const conversionCollections = conversionsQuery.data?.collections ?? [];
   const recentCreatorOrders = ordersQuery.data?.orders ?? [];
   const creatorPromotions = promotionsQuery.data?.promotions ?? [];
-  const premiumCollectionOptions = premiumCollections.map((collection) => ({
+  const premiumCollectionOptions = premiumPurchaseCollections.map((collection) => ({
     id: collection.id,
     name: collection.name ?? `Collection ${collection.id.slice(0, 8)}`,
     priceCents: collection.priceCents,
@@ -873,8 +875,12 @@ export default function CreatorDashboardPage() {
               <p className="text-xl font-semibold">{metricNumber(publicCollectionsCount)}</p>
             </div>
             <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
-              <p className="text-xl font-semibold">{metricNumber(premiumCollections.length)}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium purchase</p>
+              <p className="text-xl font-semibold">{metricNumber(premiumPurchaseCollections.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Members only</p>
+              <p className="text-xl font-semibold">{metricNumber(memberOnlyCollections.length)}</p>
             </div>
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Free collections</p>
@@ -885,10 +891,13 @@ export default function CreatorDashboardPage() {
               <p className="text-xl font-semibold">{metricNumber(salesTotals.totalWishlistInterest)}</p>
             </div>
           </div>
-          {premiumCollections.length > 0 ? (
-            <p className="text-sm text-muted-foreground">{metricNumber(premiumCollections.length)} premium collections live. Your public creator page now highlights paid vs free collections for storefront clarity.</p>
+          {premiumPurchaseCollections.length > 0 || memberOnlyCollections.length > 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {metricNumber(premiumPurchaseCollections.length)} premium purchase collections and {metricNumber(memberOnlyCollections.length)} members-only collections live.
+              Your public creator page now highlights one-off purchase value separately from membership perks.
+            </p>
           ) : (
-            <p className="text-sm text-muted-foreground">No premium collections yet. Mark a collection premium to add a support path without blocking browsing.</p>
+            <p className="text-sm text-muted-foreground">No monetized collections yet. Mark a collection as Premium Purchase or Members Only to add a support path without blocking browsing.</p>
           )}
           <div className="flex flex-wrap gap-2">
             <Link href="/drinks/collections">
@@ -1045,8 +1054,8 @@ export default function CreatorDashboardPage() {
               <p className="text-xl font-semibold">{metricNumber(creatorPromotions.reduce((sum, promo) => sum + Number(promo.redemptionCount ?? 0), 0))}</p>
             </div>
             <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
-              <p className="text-xl font-semibold">{metricNumber(premiumCollections.length)}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium purchase collections</p>
+              <p className="text-xl font-semibold">{metricNumber(premiumPurchaseCollections.length)}</p>
             </div>
             <div className="rounded-md border p-3">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">Wishlist interest</p>
@@ -1197,13 +1206,13 @@ export default function CreatorDashboardPage() {
         <CardHeader>
           <CardTitle>Conversion Analytics</CardTitle>
           <CardDescription>
-            Discovery-to-purchase reporting for your premium drink collections.
+            Discovery-to-purchase reporting for your Premium Purchase drink collections.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
             <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium purchase collections</p>
               <p className="text-xl font-semibold">{metricNumber(conversionSummary.premiumCollectionsCount)}</p>
             </div>
             <div className="rounded-md border p-3">
@@ -1320,7 +1329,7 @@ export default function CreatorDashboardPage() {
               <p className="text-xl font-semibold">{metricNumber(financeSummary.totalPremiumSalesCount)}</p>
             </div>
             <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections count</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium purchase collections</p>
               <p className="text-xl font-semibold">{metricNumber(financeSummary.premiumCollectionsCount)}</p>
             </div>
             <div className="rounded-md border p-3">
@@ -1535,13 +1544,13 @@ export default function CreatorDashboardPage() {
         <CardHeader>
           <CardTitle>Sales · Premium Collections</CardTitle>
           <CardDescription>
-            Reporting only. Gross sales reflect completed premium collection purchases at the actual paid amount, not the undiscounted list price.
+            Reporting only. Gross sales reflect completed Premium Purchase collection checkouts at the actual paid amount, not the undiscounted list price.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
             <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium collections</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium purchase collections</p>
               <p className="text-xl font-semibold">{metricNumber(salesTotals.premiumCollections)}</p>
             </div>
             <div className="rounded-md border p-3">
