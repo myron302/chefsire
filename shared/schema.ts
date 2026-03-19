@@ -1363,6 +1363,32 @@ export const creatorRoadmapItems = pgTable(
   })
 );
 
+export const creatorCollaborations = pgTable(
+  "creator_collaborations",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    ownerCreatorUserId: varchar("owner_creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    collaboratorUserId: varchar("collaborator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    collaborationType: text("collaboration_type").notNull(),
+    targetId: varchar("target_id", { length: 200 }).notNull(),
+    status: text("status").default("pending").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    ownerIdx: index("creator_collaborations_owner_idx").on(table.ownerCreatorUserId),
+    collaboratorIdx: index("creator_collaborations_collaborator_idx").on(table.collaboratorUserId),
+    targetIdx: uniqueIndex("creator_collaborations_target_idx").on(table.collaborationType, table.targetId),
+    ownerCollaboratorTargetIdx: uniqueIndex("creator_collaborations_owner_collaborator_target_idx").on(
+      table.ownerCreatorUserId,
+      table.collaboratorUserId,
+      table.collaborationType,
+      table.targetId,
+    ),
+    statusIdx: index("creator_collaborations_status_idx").on(table.status),
+  })
+);
+
 export const creatorMembershipCheckoutSessions = pgTable(
   "creator_membership_checkout_sessions",
   {
@@ -2126,6 +2152,12 @@ export const insertCreatorRoadmapItemSchema = createInsertSchema(creatorRoadmapI
   updatedAt: true,
 });
 
+export const insertCreatorCollaborationSchema = createInsertSchema(creatorCollaborations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertDrinkBundleItemSchema = createInsertSchema(drinkBundleItems).omit({
   addedAt: true,
 });
@@ -2333,6 +2365,8 @@ export type CreatorDrop = typeof creatorDrops.$inferSelect;
 export type InsertCreatorDrop = z.infer<typeof insertCreatorDropSchema>;
 export type CreatorRoadmapItem = typeof creatorRoadmapItems.$inferSelect;
 export type InsertCreatorRoadmapItem = z.infer<typeof insertCreatorRoadmapItemSchema>;
+export type CreatorCollaboration = typeof creatorCollaborations.$inferSelect;
+export type InsertCreatorCollaboration = z.infer<typeof insertCreatorCollaborationSchema>;
 export type DrinkBundle = typeof drinkBundles.$inferSelect;
 export type InsertDrinkBundle = z.infer<typeof insertDrinkBundleSchema>;
 export type DrinkBundleItem = typeof drinkBundleItems.$inferSelect;

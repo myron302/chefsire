@@ -4,6 +4,7 @@ import { Link, useLocation, useRoute } from "wouter";
 
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
+import CreatorCollaborationAttribution, { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
 import { useUser } from "@/contexts/UserContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -134,6 +135,7 @@ type Collection = {
   userId: string;
   creatorUsername?: string | null;
   creatorAvatar?: string | null;
+  acceptedCollaboration?: AcceptedCreatorCollaboration | null;
   itemsCount: number;
   items: CollectionItem[];
 };
@@ -817,6 +819,11 @@ export default function DrinkCollectionDetailPage() {
                 </Link>
               ) : null}
             </div>
+            <CreatorCollaborationAttribution
+              collaboration={collection.acceptedCollaboration ?? null}
+              primaryCreatorUserId={collection.userId}
+              className="text-sm text-muted-foreground"
+            />
             {collection.accessType !== "public" ? (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

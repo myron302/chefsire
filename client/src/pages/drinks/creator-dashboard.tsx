@@ -14,6 +14,7 @@ import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 import CreatorBundlesSection from "@/components/drinks/CreatorBundlesSection";
+import { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
@@ -111,6 +112,7 @@ interface CreatorCollectionItem {
   accessType: "public" | "premium_purchase" | "membership_only";
   isPremium: boolean;
   priceCents: number;
+  acceptedCollaboration?: AcceptedCreatorCollaboration | null;
 }
 
 interface CreatorPromotionItem {
@@ -158,6 +160,47 @@ interface CreatorRoadmapResponse {
     archived: number;
   };
   items: CreatorRoadmapItem[];
+}
+
+interface CreatorCollaborationItem {
+  id: string;
+  ownerCreatorUserId: string;
+  collaboratorUserId: string;
+  collaborationType: "collection" | "drop" | "post" | "roadmap";
+  targetId: string;
+  status: "pending" | "accepted" | "declined" | "revoked";
+  createdAt: string;
+  updatedAt: string;
+  ownerCreator: {
+    userId: string;
+    username: string | null;
+    avatar: string | null;
+    route: string;
+  } | null;
+  collaborator: {
+    userId: string;
+    username: string | null;
+    avatar: string | null;
+    route: string;
+  } | null;
+  target: {
+    id: string;
+    title: string;
+    route: string | null;
+  } | null;
+}
+
+interface CreatorCollaborationsResponse {
+  ok: boolean;
+  userId: string;
+  counts: {
+    total: number;
+    incomingPending: number;
+    outgoingPending: number;
+    accepted: number;
+  };
+  incoming: CreatorCollaborationItem[];
+  outgoing: CreatorCollaborationItem[];
 }
 
 interface CreatorMembershipPlan {
@@ -438,6 +481,36 @@ function readErrorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+function collaborationTypeLabel(type: CreatorCollaborationItem["collaborationType"]) {
+  switch (type) {
+    case "collection":
+      return "Collection";
+    case "drop":
+      return "Drop";
+    case "post":
+      return "Post";
+    case "roadmap":
+      return "Roadmap";
+    default:
+      return "Collaboration";
+  }
+}
+
+function collaborationStatusLabel(status: CreatorCollaborationItem["status"]) {
+  switch (status) {
+    case "pending":
+      return "Pending";
+    case "accepted":
+      return "Accepted";
+    case "declined":
+      return "Declined";
+    case "revoked":
+      return "Revoked";
+    default:
+      return status;
+  }
+}
+
 export default function CreatorDashboardPage() {
   const { user, loading: userLoading } = useUser();
   const queryClient = useQueryClient();
@@ -500,6 +573,13 @@ export default function CreatorDashboardPage() {
   });
   const [roadmapMessage, setRoadmapMessage] = React.useState("");
   const [roadmapError, setRoadmapError] = React.useState("");
+  const [collaborationForm, setCollaborationForm] = React.useState({
+    collaboratorUserId: "",
+    collaborationType: "collection" as CreatorCollaborationItem["collaborationType"],
+    targetId: "",
+  });
+  const [collaborationMessage, setCollaborationMessage] = React.useState("");
+  const [collaborationError, setCollaborationError] = React.useState("");
 
   const query = useQuery<CreatorDrinkMetricsResponse>({
     queryKey: ["/api/drinks/creator", user?.id ?? ""],
@@ -720,6 +800,19 @@ export default function CreatorDashboardPage() {
     enabled: Boolean(user?.id),
   });
 
+  const collaborationsQuery = useQuery<CreatorCollaborationsResponse>({
+    queryKey: ["/api/drinks/collaborations/mine", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/collaborations/mine", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || `Failed to load collaborations (${response.status})`);
+      }
+      return payload as CreatorCollaborationsResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
   React.useEffect(() => {
     const plan = membershipDashboardQuery.data?.plan;
     if (!plan) return;
@@ -731,6 +824,31 @@ export default function CreatorDashboardPage() {
       isActive: plan.isActive,
     });
   }, [membershipDashboardQuery.data?.plan?.id]);
+
+  React.useEffect(() => {
+    const targetOptionsByType: Record<CreatorCollaborationItem["collaborationType"], string[]> = {
+      collection: (collectionsQuery.data?.collections ?? []).map((collection) => collection.id),
+      post: (creatorPostsQuery.data?.items ?? []).map((post) => post.id),
+      drop: (creatorDropsQuery.data?.items ?? []).map((drop) => drop.id),
+      roadmap: (creatorRoadmapQuery.data?.items ?? []).map((item) => item.id),
+    };
+
+    const currentOptions = targetOptionsByType[collaborationForm.collaborationType] ?? [];
+    if (currentOptions.length === 0) return;
+    if (collaborationForm.targetId && currentOptions.includes(collaborationForm.targetId)) return;
+
+    setCollaborationForm((current) => ({
+      ...current,
+      targetId: currentOptions[0] ?? "",
+    }));
+  }, [
+    collaborationForm.collaborationType,
+    collaborationForm.targetId,
+    collectionsQuery.data?.collections,
+    creatorPostsQuery.data?.items,
+    creatorDropsQuery.data?.items,
+    creatorRoadmapQuery.data?.items,
+  ]);
 
   const saveMembershipPlanMutation = useMutation({
     mutationFn: async (payload: { name: string; description: string; priceCents: number; billingInterval: "monthly" | "yearly"; isActive: boolean }) => {
@@ -1107,6 +1225,94 @@ export default function CreatorDashboardPage() {
     },
   });
 
+  const inviteCollaborationMutation = useMutation({
+    mutationFn: async (payloadBody: {
+      collaboratorUserId: string;
+      collaborationType: CreatorCollaborationItem["collaborationType"];
+      targetId: string;
+    }) => {
+      const response = await fetch("/api/drinks/collaborations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payloadBody),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to invite collaborator (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      setCollaborationMessage("Collaboration invite sent.");
+      setCollaborationError("");
+      setCollaborationForm((current) => ({ ...current, collaboratorUserId: "" }));
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/collaborations/mine", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/collections/mine", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-posts/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/drops/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/roadmap/creator", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setCollaborationError(readErrorMessage(error, "Unable to invite collaborator right now."));
+      setCollaborationMessage("");
+    },
+  });
+
+  const respondToCollaborationMutation = useMutation({
+    mutationFn: async ({ id, action }: { id: string; action: "accept" | "decline" }) => {
+      const response = await fetch(`/api/drinks/collaborations/${encodeURIComponent(id)}/${action}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to ${action} collaboration (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async (_, variables) => {
+      setCollaborationMessage(variables.action === "accept" ? "Collaboration accepted." : "Collaboration declined.");
+      setCollaborationError("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/collaborations/mine", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/collections/mine", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-posts/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/drops/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/roadmap/creator", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setCollaborationError(readErrorMessage(error, "Unable to update collaboration invite right now."));
+      setCollaborationMessage("");
+    },
+  });
+
+  const revokeCollaborationMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/drinks/collaborations/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to revoke collaboration (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async () => {
+      setCollaborationMessage("Collaboration revoked.");
+      setCollaborationError("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/collaborations/mine", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/collections/mine", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-posts/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/drops/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/roadmap/creator", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setCollaborationError(readErrorMessage(error, "Unable to revoke collaboration right now."));
+      setCollaborationMessage("");
+    },
+  });
+
   if (userLoading) {
     return <div className="container mx-auto p-6">Loading dashboard...</div>;
   }
@@ -1217,6 +1423,12 @@ export default function CreatorDashboardPage() {
   const creatorPosts = creatorPostsQuery.data?.items ?? [];
   const creatorDrops = creatorDropsQuery.data?.items ?? [];
   const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
+  const collaborationIncoming = collaborationsQuery.data?.incoming ?? [];
+  const collaborationOutgoing = collaborationsQuery.data?.outgoing ?? [];
+  const collaborationPendingIncoming = collaborationIncoming.filter((item) => item.status === "pending");
+  const collaborationAccepted = [...collaborationIncoming, ...collaborationOutgoing]
+    .filter((item) => item.status === "accepted")
+    .filter((item, index, all) => all.findIndex((entry) => entry.id === item.id) === index);
   const roadmapUpcoming = creatorRoadmap.filter((item) => item.status === "upcoming");
   const roadmapLive = creatorRoadmap.filter((item) => item.status === "live");
   const roadmapArchived = creatorRoadmap.filter((item) => item.status === "archived");
@@ -1231,6 +1443,14 @@ export default function CreatorDashboardPage() {
     name: collection.name ?? `Collection ${collection.id.slice(0, 8)}`,
   }));
   const postCollectionOptions = creatorCollectionOptions;
+  const collaborationTargetsByType: Record<CreatorCollaborationItem["collaborationType"], Array<{ id: string; label: string }>> = {
+    collection: creatorCollectionOptions.map((collection) => ({ id: collection.id, label: collection.name })),
+    post: creatorPosts.map((post) => ({ id: post.id, label: post.title })),
+    drop: creatorDrops.map((drop) => ({ id: drop.id, label: drop.title })),
+    roadmap: creatorRoadmap.map((item) => ({ id: item.id, label: item.title })),
+  };
+  const collaborationTargetOptions = collaborationTargetsByType[collaborationForm.collaborationType] ?? [];
+  const selectedCollaborationTargetId = collaborationForm.targetId || collaborationTargetOptions[0]?.id || "";
   const selectedPromotionCollectionId = promotionForm.collectionId || premiumCollectionOptions[0]?.id || "";
   const selectedDropType = dropForm.dropType;
   const selectedDropCollectionId = dropForm.linkedCollectionId;
@@ -1365,6 +1585,215 @@ export default function CreatorDashboardPage() {
             <Link href="/drinks/collections/explore">
               <Button size="sm">Browse premium collections</Button>
             </Link>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card id="collaborations">
+        <CardHeader>
+          <CardTitle>Collaborations</CardTitle>
+          <CardDescription>
+            Invite one other creator onto a collection, drop, post, or roadmap item. Version one keeps this social-first for attribution and discovery, not payout splitting.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Accepted</p>
+              <p className="text-xl font-semibold">{metricNumber(collaborationAccepted.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Incoming pending</p>
+              <p className="text-xl font-semibold">{metricNumber(collaborationPendingIncoming.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Outgoing pending</p>
+              <p className="text-xl font-semibold">{metricNumber(collaborationOutgoing.filter((item) => item.status === "pending").length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Supported targets</p>
+              <p className="text-xl font-semibold">4</p>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),minmax(0,1.2fr)]">
+            <div className="space-y-4 rounded-lg border p-4">
+              <div className="space-y-1">
+                <h3 className="font-semibold">Invite a collaborator</h3>
+                <p className="text-sm text-muted-foreground">
+                  Use a creator&apos;s user id for now to keep this lightweight. Accepted collabs show as public attribution across supported surfaces.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="collaboration-user-id">Collaborator user id</Label>
+                <Input
+                  id="collaboration-user-id"
+                  value={collaborationForm.collaboratorUserId}
+                  onChange={(event) => setCollaborationForm((current) => ({ ...current, collaboratorUserId: event.target.value }))}
+                  placeholder="creator user id"
+                />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="collaboration-type">Target type</Label>
+                  <select
+                    id="collaboration-type"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={collaborationForm.collaborationType}
+                    onChange={(event) => {
+                      const nextType = event.target.value as CreatorCollaborationItem["collaborationType"];
+                      const nextOptions = collaborationTargetsByType[nextType] ?? [];
+                      setCollaborationForm((current) => ({
+                        ...current,
+                        collaborationType: nextType,
+                        targetId: nextOptions[0]?.id ?? "",
+                      }));
+                    }}
+                  >
+                    <option value="collection">Collection</option>
+                    <option value="post">Post</option>
+                    <option value="drop">Drop</option>
+                    <option value="roadmap">Roadmap</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="collaboration-target">Target</Label>
+                  <select
+                    id="collaboration-target"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={selectedCollaborationTargetId}
+                    onChange={(event) => setCollaborationForm((current) => ({ ...current, targetId: event.target.value }))}
+                  >
+                    {collaborationTargetOptions.length === 0 ? <option value="">No eligible targets yet</option> : null}
+                    {collaborationTargetOptions.map((target) => (
+                      <option key={target.id} value={target.id}>{target.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                Collaborations stay lightweight in version one: one extra collaborator per supported target, explicit invite acceptance, and no automatic revenue sharing.
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    setCollaborationMessage("");
+                    setCollaborationError("");
+                    inviteCollaborationMutation.mutate({
+                      collaboratorUserId: collaborationForm.collaboratorUserId.trim(),
+                      collaborationType: collaborationForm.collaborationType,
+                      targetId: selectedCollaborationTargetId,
+                    });
+                  }}
+                  disabled={inviteCollaborationMutation.isPending || !collaborationForm.collaboratorUserId.trim() || !selectedCollaborationTargetId}
+                >
+                  {inviteCollaborationMutation.isPending ? "Sending invite…" : "Send invite"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setCollaborationMessage("");
+                    setCollaborationError("");
+                    setCollaborationForm({
+                      collaboratorUserId: "",
+                      collaborationType: "collection",
+                      targetId: collaborationTargetsByType.collection[0]?.id ?? "",
+                    });
+                  }}
+                >
+                  Reset
+                </Button>
+              </div>
+
+              {collaborationMessage ? <p className="text-sm text-emerald-600">{collaborationMessage}</p> : null}
+              {collaborationError ? <p className="text-sm text-destructive">{collaborationError}</p> : null}
+            </div>
+
+            <div className="space-y-4">
+              {collaborationsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading collaborations…</p> : null}
+              {collaborationsQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(collaborationsQuery.error, "Unable to load collaborations right now.")}</p> : null}
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-semibold">Incoming invites</h3>
+                  <span className="text-xs text-muted-foreground">{metricNumber(collaborationIncoming.length)} total</span>
+                </div>
+                {collaborationIncoming.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-4 text-sm text-muted-foreground">No incoming collaboration invites right now.</CardContent>
+                  </Card>
+                ) : (
+                  collaborationIncoming.map((item) => (
+                    <Card key={item.id}>
+                      <CardContent className="space-y-3 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary">{collaborationTypeLabel(item.collaborationType)}</Badge>
+                          <Badge variant={item.status === "accepted" ? "secondary" : item.status === "pending" ? "outline" : "default"}>{collaborationStatusLabel(item.status)}</Badge>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="font-medium">{item.target?.title ?? "Untitled target"}</p>
+                          <p className="text-sm text-muted-foreground">
+                            Invite from {item.ownerCreator?.username ? `@${item.ownerCreator.username}` : "creator"}.
+                          </p>
+                          {item.target?.route ? <Link href={item.target.route} className="text-xs underline underline-offset-2">Open target</Link> : null}
+                        </div>
+                        {item.status === "pending" ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" onClick={() => respondToCollaborationMutation.mutate({ id: item.id, action: "accept" })} disabled={respondToCollaborationMutation.isPending}>
+                              Accept
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => respondToCollaborationMutation.mutate({ id: item.id, action: "decline" })} disabled={respondToCollaborationMutation.isPending}>
+                              Decline
+                            </Button>
+                          </div>
+                        ) : null}
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="font-semibold">Outgoing + active</h3>
+                  <span className="text-xs text-muted-foreground">{metricNumber(collaborationOutgoing.length)} total</span>
+                </div>
+                {collaborationOutgoing.length === 0 ? (
+                  <Card>
+                    <CardContent className="p-4 text-sm text-muted-foreground">No outgoing collaboration invites yet.</CardContent>
+                  </Card>
+                ) : (
+                  collaborationOutgoing.map((item) => (
+                    <Card key={item.id}>
+                      <CardContent className="space-y-3 p-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Badge variant="secondary">{collaborationTypeLabel(item.collaborationType)}</Badge>
+                          <Badge variant={item.status === "accepted" ? "secondary" : item.status === "pending" ? "outline" : "default"}>{collaborationStatusLabel(item.status)}</Badge>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="font-medium">{item.target?.title ?? "Untitled target"}</p>
+                          <p className="text-sm text-muted-foreground">
+                            With {item.collaborator?.username ? `@${item.collaborator.username}` : "creator"}.
+                          </p>
+                          {item.target?.route ? <Link href={item.target.route} className="text-xs underline underline-offset-2">Open target</Link> : null}
+                        </div>
+                        {(item.status === "pending" || item.status === "accepted") ? (
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="outline" onClick={() => revokeCollaborationMutation.mutate(item.id)} disabled={revokeCollaborationMutation.isPending}>
+                              {revokeCollaborationMutation.isPending ? "Updating…" : item.status === "accepted" ? "Revoke collab" : "Cancel invite"}
+                            </Button>
+                          </div>
+                        ) : null}
+                      </CardContent>
+                    </Card>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </CardContent>
       </Card>

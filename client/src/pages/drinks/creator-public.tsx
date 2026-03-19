@@ -7,6 +7,7 @@ import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/Creat
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
 import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
+import CreatorCollaborationAttribution, { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -73,6 +74,7 @@ interface PublicCollection {
   averageRating?: number;
   reviewCount?: number;
   activePromoPricing?: PromoPricing | null;
+  acceptedCollaboration?: AcceptedCreatorCollaboration | null;
 }
 
 interface PublicBundle {
@@ -429,6 +431,12 @@ export default function PublicDrinkCreatorPage() {
   const creatorPosts = creatorPostsQuery.data?.items ?? [];
   const creatorDrops = creatorDropsQuery.data?.items ?? [];
   const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
+  const collaborationHighlightsCount = [
+    ...creatorCollections.filter((collection) => Boolean(collection.acceptedCollaboration)),
+    ...creatorPosts.filter((post) => Boolean(post.acceptedCollaboration)),
+    ...creatorDrops.filter((drop) => Boolean(drop.acceptedCollaboration)),
+    ...creatorRoadmap.filter((item) => Boolean(item.acceptedCollaboration)),
+  ].length;
   const roadmapUpcoming = creatorRoadmap.filter((item) => item.status === "upcoming");
   const roadmapLive = creatorRoadmap.filter((item) => item.status === "live");
   const roadmapArchived = creatorRoadmap.filter((item) => item.status === "archived");
@@ -460,6 +468,20 @@ export default function PublicDrinkCreatorPage() {
       </div>
 
       <DrinksPlatformNav current="creator" />
+
+      {collaborationHighlightsCount > 0 ? (
+        <Card>
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+            <div>
+              <p className="font-medium">Collaboration highlights</p>
+              <p className="text-muted-foreground">
+                This creator currently has {collaborationHighlightsCount} accepted collab surface{collaborationHighlightsCount === 1 ? "" : "s"} showing attribution across drops, posts, roadmap items, or collections.
+              </p>
+            </div>
+            <Link href="#creator-collections" className="underline underline-offset-2">Jump to collections + collabs</Link>
+          </CardContent>
+        </Card>
+      ) : null}
 
       <Card>
         <CardHeader>
@@ -856,7 +878,7 @@ export default function PublicDrinkCreatorPage() {
 
       <section id="creator-collections" className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-xl font-semibold">Collections by this creator</h2>
+          <h2 className="text-xl font-semibold">Collections + collabs</h2>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <span>{creatorCollections.length} items</span>
             {memberOnlyCollections.length > 0 ? <span>{memberOnlyCollections.length} members only</span> : null}
@@ -893,6 +915,7 @@ export default function PublicDrinkCreatorPage() {
                           {collection.name}
                         </Link>
                         {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
+                        <CreatorCollaborationAttribution collaboration={collection.acceptedCollaboration ?? null} primaryCreatorUserId={creatorId} />
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
                           <Badge variant="secondary">Members Only</Badge>
@@ -933,6 +956,7 @@ export default function PublicDrinkCreatorPage() {
                           {collection.name}
                         </Link>
                         {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
+                        <CreatorCollaborationAttribution collaboration={collection.acceptedCollaboration ?? null} primaryCreatorUserId={creatorId} />
                         <div className="flex flex-wrap gap-2">
                           <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
                           <Badge>Premium · {formatCurrency(collection.priceCents)}</Badge>
@@ -971,6 +995,7 @@ export default function PublicDrinkCreatorPage() {
                         {collection.name}
                       </Link>
                       {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
+                      <CreatorCollaborationAttribution collaboration={collection.acceptedCollaboration ?? null} primaryCreatorUserId={creatorId} />
                       <div className="flex flex-wrap gap-2">
                         <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
                         <Badge variant="outline">Public</Badge>

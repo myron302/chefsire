@@ -7,6 +7,7 @@ import { db } from "../db";
 import { getCanonicalDrinkBySlug } from "../services/canonical-drinks-index";
 import { 
   creatorMembershipCheckoutSessions,
+  creatorCollaborations,
   creatorDrops,
   creatorMembershipPlans,
   creatorPosts,
@@ -40,6 +41,7 @@ import {
   drinkRecipes,
   follows,
   insertCreatorDropSchema,
+  insertCreatorCollaborationSchema,
   insertCreatorRoadmapItemSchema,
   insertDrinkCollectionSchema,
   insertDrinkChallengeSchema,
@@ -85,6 +87,8 @@ type CreatorDropVisibility = "public" | "followers" | "members";
 type CreatorRoadmapItemType = "collection" | "promo" | "challenge" | "member_drop" | "update" | "roadmap";
 type CreatorRoadmapVisibility = "public" | "followers" | "members";
 type CreatorRoadmapStatus = "upcoming" | "live" | "archived";
+type CreatorCollaborationType = "collection" | "drop" | "post" | "roadmap";
+type CreatorCollaborationStatus = "pending" | "accepted" | "declined" | "revoked";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
@@ -95,6 +99,7 @@ type CreatorMembershipPlanRecord = typeof creatorMembershipPlans.$inferSelect;
 type CreatorDropRecord = typeof creatorDrops.$inferSelect;
 type CreatorPostRecord = typeof creatorPosts.$inferSelect;
 type CreatorRoadmapRecord = typeof creatorRoadmapItems.$inferSelect;
+type CreatorCollaborationRecord = typeof creatorCollaborations.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
 type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
 type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
@@ -552,6 +557,8 @@ const creatorDropVisibilitySchema = z.enum(["public", "followers", "members"]);
 const creatorRoadmapItemTypeSchema = z.enum(["collection", "promo", "challenge", "member_drop", "update", "roadmap"]);
 const creatorRoadmapVisibilitySchema = z.enum(["public", "followers", "members"]);
 const creatorRoadmapStatusSchema = z.enum(["upcoming", "live", "archived"]);
+const creatorCollaborationTypeSchema = z.enum(["collection", "drop", "post", "roadmap"]);
+const creatorCollaborationStatusSchema = z.enum(["pending", "accepted", "declined", "revoked"]);
 
 const creatorPostBodyBaseSchema = z.object({
   title: z.string().trim().min(2).max(160),
@@ -631,6 +638,12 @@ const createCreatorRoadmapBodySchema = creatorRoadmapBodyBaseSchema.superRefine(
 
 const updateCreatorRoadmapBodySchema = creatorRoadmapBodyBaseSchema.partial().refine((value) => Object.values(value).some((field) => field !== undefined), {
   message: "At least one field must be provided",
+});
+
+const createCreatorCollaborationBodySchema = z.object({
+  collaboratorUserId: z.string().trim().min(1),
+  collaborationType: creatorCollaborationTypeSchema,
+  targetId: z.string().trim().min(1),
 });
 
 const collectionAccessTypeSchema = z.enum(["public", "premium_purchase", "membership_only"]);
@@ -929,6 +942,325 @@ async function loadUserBasicProfile(userId: string) {
     .limit(1);
 
   return rows[0] ?? null;
+}
+
+function collaborationTargetRoute(collaborationType: CreatorCollaborationType, target: {
+  id: string;
+  linkedCollectionId?: string | null;
+}) {
+  switch (collaborationType) {
+    case "collection":
+      return `/drinks/collections/${encodeURIComponent(target.id)}`;
+    case "drop":
+      return target.linkedCollectionId
+        ? `/drinks/collections/${encodeURIComponent(target.linkedCollectionId)}`
+        : "/drinks/drops";
+    case "post":
+      return target.linkedCollectionId
+        ? `/drinks/collections/${encodeURIComponent(target.linkedCollectionId)}`
+        : "/drinks/feed";
+    case "roadmap":
+      return target.linkedCollectionId
+        ? `/drinks/collections/${encodeURIComponent(target.linkedCollectionId)}`
+        : "/drinks/roadmap";
+    default:
+      return "/drinks";
+  }
+}
+
+async function userCanReceiveCreatorCollaboration(userId: string) {
+  if (!db) return false;
+
+  const [recipeRow, collectionRow, postRow, dropRow, roadmapRow] = await Promise.all([
+    db.select({ id: drinkRecipes.id }).from(drinkRecipes).where(eq(drinkRecipes.userId, userId)).limit(1),
+    db.select({ id: drinkCollections.id }).from(drinkCollections).where(eq(drinkCollections.userId, userId)).limit(1),
+    db.select({ id: creatorPosts.id }).from(creatorPosts).where(eq(creatorPosts.creatorUserId, userId)).limit(1),
+    db.select({ id: creatorDrops.id }).from(creatorDrops).where(eq(creatorDrops.creatorUserId, userId)).limit(1),
+    db.select({ id: creatorRoadmapItems.id }).from(creatorRoadmapItems).where(eq(creatorRoadmapItems.creatorUserId, userId)).limit(1),
+  ]);
+
+  return Boolean(recipeRow[0] || collectionRow[0] || postRow[0] || dropRow[0] || roadmapRow[0]);
+}
+
+async function resolveCollaborationTargetForOwner(input: {
+  ownerCreatorUserId: string;
+  collaborationType: CreatorCollaborationType;
+  targetId: string;
+}) {
+  if (!db) return null;
+
+  switch (input.collaborationType) {
+    case "collection": {
+      const rows = await db
+        .select({
+          id: drinkCollections.id,
+          title: drinkCollections.name,
+          ownerCreatorUserId: drinkCollections.userId,
+          linkedCollectionId: drinkCollections.id,
+        })
+        .from(drinkCollections)
+        .where(and(eq(drinkCollections.id, input.targetId), eq(drinkCollections.userId, input.ownerCreatorUserId)))
+        .limit(1);
+      return rows[0]
+        ? {
+            ...rows[0],
+            route: collaborationTargetRoute("collection", rows[0]),
+          }
+        : null;
+    }
+    case "drop": {
+      const rows = await db
+        .select({
+          id: creatorDrops.id,
+          title: creatorDrops.title,
+          ownerCreatorUserId: creatorDrops.creatorUserId,
+          linkedCollectionId: creatorDrops.linkedCollectionId,
+        })
+        .from(creatorDrops)
+        .where(and(eq(creatorDrops.id, input.targetId), eq(creatorDrops.creatorUserId, input.ownerCreatorUserId)))
+        .limit(1);
+      return rows[0]
+        ? {
+            ...rows[0],
+            route: collaborationTargetRoute("drop", rows[0]),
+          }
+        : null;
+    }
+    case "post": {
+      const rows = await db
+        .select({
+          id: creatorPosts.id,
+          title: creatorPosts.title,
+          ownerCreatorUserId: creatorPosts.creatorUserId,
+          linkedCollectionId: creatorPosts.linkedCollectionId,
+        })
+        .from(creatorPosts)
+        .where(and(eq(creatorPosts.id, input.targetId), eq(creatorPosts.creatorUserId, input.ownerCreatorUserId)))
+        .limit(1);
+      return rows[0]
+        ? {
+            ...rows[0],
+            route: collaborationTargetRoute("post", rows[0]),
+          }
+        : null;
+    }
+    case "roadmap": {
+      const rows = await db
+        .select({
+          id: creatorRoadmapItems.id,
+          title: creatorRoadmapItems.title,
+          ownerCreatorUserId: creatorRoadmapItems.creatorUserId,
+          linkedCollectionId: creatorRoadmapItems.linkedCollectionId,
+        })
+        .from(creatorRoadmapItems)
+        .where(and(eq(creatorRoadmapItems.id, input.targetId), eq(creatorRoadmapItems.creatorUserId, input.ownerCreatorUserId)))
+        .limit(1);
+      return rows[0]
+        ? {
+            ...rows[0],
+            route: collaborationTargetRoute("roadmap", rows[0]),
+          }
+        : null;
+    }
+    default:
+      return null;
+  }
+}
+
+async function loadAcceptedCollaborationsForTargets(input: Array<{
+  collaborationType: CreatorCollaborationType;
+  targetId: string;
+}>) {
+  if (!db || input.length === 0) return new Map<string, CreatorCollaborationRecord>();
+
+  const filters = input.map((entry) =>
+    and(
+      eq(creatorCollaborations.collaborationType, entry.collaborationType),
+      eq(creatorCollaborations.targetId, entry.targetId),
+      eq(creatorCollaborations.status, "accepted"),
+    ),
+  );
+
+  if (filters.length === 0) return new Map<string, CreatorCollaborationRecord>();
+
+  const rows = await db
+    .select()
+    .from(creatorCollaborations)
+    .where(or(...filters));
+
+  return new Map(rows.map((row) => [`${row.collaborationType}:${row.targetId}`, row]));
+}
+
+async function loadAcceptedCollaborationsForCreator(userId: string) {
+  if (!db) return [] as CreatorCollaborationRecord[];
+
+  return db
+    .select()
+    .from(creatorCollaborations)
+    .where(
+      and(
+        eq(creatorCollaborations.status, "accepted"),
+        or(
+          eq(creatorCollaborations.ownerCreatorUserId, userId),
+          eq(creatorCollaborations.collaboratorUserId, userId),
+        ),
+      ),
+    )
+    .orderBy(desc(creatorCollaborations.updatedAt));
+}
+
+async function loadCreatorProfilesMap(userIds: string[]) {
+  if (!db || userIds.length === 0) {
+    return new Map<string, { id: string; username: string | null; avatar: string | null }>();
+  }
+
+  const uniqueIds = [...new Set(userIds.filter(Boolean))];
+  if (uniqueIds.length === 0) {
+    return new Map<string, { id: string; username: string | null; avatar: string | null }>();
+  }
+
+  const rows = await db
+    .select({ id: users.id, username: users.username, avatar: users.avatar })
+    .from(users)
+    .where(inArray(users.id, uniqueIds));
+
+  return new Map(rows.map((row) => [row.id, row]));
+}
+
+function serializeAcceptedCollaboration(
+  collaboration: CreatorCollaborationRecord | null | undefined,
+  profilesMap: Map<string, { id: string; username: string | null; avatar: string | null }>,
+) {
+  if (!collaboration || collaboration.status !== "accepted") return null;
+
+  const owner = profilesMap.get(collaboration.ownerCreatorUserId) ?? null;
+  const collaborator = profilesMap.get(collaboration.collaboratorUserId) ?? null;
+
+  return {
+    id: collaboration.id,
+    collaborationType: collaboration.collaborationType as CreatorCollaborationType,
+    status: collaboration.status as CreatorCollaborationStatus,
+    ownerCreator: owner
+      ? {
+          userId: owner.id,
+          username: owner.username ?? null,
+          avatar: owner.avatar ?? null,
+          route: `/drinks/creator/${encodeURIComponent(owner.id)}`,
+        }
+      : null,
+    collaborator: collaborator
+      ? {
+          userId: collaborator.id,
+          username: collaborator.username ?? null,
+          avatar: collaborator.avatar ?? null,
+          route: `/drinks/creator/${encodeURIComponent(collaborator.id)}`,
+        }
+      : null,
+  };
+}
+
+async function loadAcceptedCollaborationProfileMapByRows(rows: CreatorCollaborationRecord[]) {
+  return loadCreatorProfilesMap(rows.flatMap((row) => [row.ownerCreatorUserId, row.collaboratorUserId]));
+}
+
+async function loadCollaborationTargetsMap(rows: CreatorCollaborationRecord[]) {
+  const map = new Map<string, { id: string; title: string; route: string | null }>();
+  if (!db || rows.length === 0) return map;
+
+  const collectionIds = rows.filter((row) => row.collaborationType === "collection").map((row) => row.targetId);
+  const dropIds = rows.filter((row) => row.collaborationType === "drop").map((row) => row.targetId);
+  const postIds = rows.filter((row) => row.collaborationType === "post").map((row) => row.targetId);
+  const roadmapIds = rows.filter((row) => row.collaborationType === "roadmap").map((row) => row.targetId);
+
+  const [collectionRows, dropRows, postRows, roadmapRows] = await Promise.all([
+    collectionIds.length === 0
+      ? Promise.resolve([] as Array<{ id: string; title: string }>)
+      : db.select({ id: drinkCollections.id, title: drinkCollections.name }).from(drinkCollections).where(inArray(drinkCollections.id, collectionIds)),
+    dropIds.length === 0
+      ? Promise.resolve([] as Array<{ id: string; title: string; linkedCollectionId: string | null }>)
+      : db.select({ id: creatorDrops.id, title: creatorDrops.title, linkedCollectionId: creatorDrops.linkedCollectionId }).from(creatorDrops).where(inArray(creatorDrops.id, dropIds)),
+    postIds.length === 0
+      ? Promise.resolve([] as Array<{ id: string; title: string; linkedCollectionId: string | null }>)
+      : db.select({ id: creatorPosts.id, title: creatorPosts.title, linkedCollectionId: creatorPosts.linkedCollectionId }).from(creatorPosts).where(inArray(creatorPosts.id, postIds)),
+    roadmapIds.length === 0
+      ? Promise.resolve([] as Array<{ id: string; title: string; linkedCollectionId: string | null }>)
+      : db.select({ id: creatorRoadmapItems.id, title: creatorRoadmapItems.title, linkedCollectionId: creatorRoadmapItems.linkedCollectionId }).from(creatorRoadmapItems).where(inArray(creatorRoadmapItems.id, roadmapIds)),
+  ]);
+
+  for (const row of collectionRows) {
+    map.set(`collection:${row.id}`, {
+      id: row.id,
+      title: row.title,
+      route: `/drinks/collections/${encodeURIComponent(row.id)}`,
+    });
+  }
+  for (const row of dropRows) {
+    map.set(`drop:${row.id}`, {
+      id: row.id,
+      title: row.title,
+      route: collaborationTargetRoute("drop", row),
+    });
+  }
+  for (const row of postRows) {
+    map.set(`post:${row.id}`, {
+      id: row.id,
+      title: row.title,
+      route: collaborationTargetRoute("post", row),
+    });
+  }
+  for (const row of roadmapRows) {
+    map.set(`roadmap:${row.id}`, {
+      id: row.id,
+      title: row.title,
+      route: collaborationTargetRoute("roadmap", row),
+    });
+  }
+
+  return map;
+}
+
+function serializeCreatorCollaborationRow(
+  row: CreatorCollaborationRecord,
+  profileMap: Map<string, { id: string; username: string | null; avatar: string | null }>,
+  targetMap: Map<string, { id: string; title: string; route: string | null }>,
+) {
+  const owner = profileMap.get(row.ownerCreatorUserId) ?? null;
+  const collaborator = profileMap.get(row.collaboratorUserId) ?? null;
+  const target = targetMap.get(`${row.collaborationType}:${row.targetId}`) ?? null;
+
+  return {
+    id: row.id,
+    ownerCreatorUserId: row.ownerCreatorUserId,
+    collaboratorUserId: row.collaboratorUserId,
+    collaborationType: row.collaborationType as CreatorCollaborationType,
+    targetId: row.targetId,
+    status: row.status as CreatorCollaborationStatus,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    ownerCreator: owner
+      ? {
+          userId: owner.id,
+          username: owner.username ?? null,
+          avatar: owner.avatar ?? null,
+          route: `/drinks/creator/${encodeURIComponent(owner.id)}`,
+        }
+      : null,
+    collaborator: collaborator
+      ? {
+          userId: collaborator.id,
+          username: collaborator.username ?? null,
+          avatar: collaborator.avatar ?? null,
+          route: `/drinks/creator/${encodeURIComponent(collaborator.id)}`,
+        }
+      : null,
+    target: target
+      ? {
+          id: target.id,
+          title: target.title,
+          route: target.route,
+        }
+      : null,
+  };
 }
 
 function serializeDrinkAlert(notification: typeof notifications.$inferSelect) {
@@ -1475,6 +1807,25 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_collaborations (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        owner_creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        collaborator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        collaboration_type text NOT NULL,
+        target_id varchar(200) NOT NULL,
+        status text NOT NULL DEFAULT 'pending',
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT creator_collaborations_owner_collaborator_target_idx UNIQUE (
+          owner_creator_user_id,
+          collaborator_user_id,
+          collaboration_type,
+          target_id
+        )
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_bundles (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1613,6 +1964,10 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_creator_status_idx ON creator_roadmap_items(creator_user_id, status);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_scheduled_idx ON creator_roadmap_items(scheduled_for);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_released_idx ON creator_roadmap_items(released_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_collaborations_owner_idx ON creator_collaborations(owner_creator_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_collaborations_collaborator_idx ON creator_collaborations(collaborator_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_collaborations_status_idx ON creator_collaborations(status);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_collaborations_target_idx ON creator_collaborations(collaboration_type, target_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_user_idx ON creator_membership_checkout_sessions(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_creator_idx ON creator_membership_checkout_sessions(creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_plan_idx ON creator_membership_checkout_sessions(plan_id);`);
@@ -2072,6 +2427,8 @@ async function loadCreatorPostLinkedMaps(posts: CreatorPostRecord[]) {
       creatorMap: new Map<string, Awaited<ReturnType<typeof loadUserBasicProfile>>>(),
       collectionMap: new Map<string, typeof drinkCollections.$inferSelect>(),
       challengeMap: new Map<string, typeof drinkChallenges.$inferSelect>(),
+      collaborationMap: new Map<string, CreatorCollaborationRecord>(),
+      collaborationProfileMap: new Map<string, { id: string; username: string | null; avatar: string | null }>(),
     };
   }
 
@@ -2093,11 +2450,19 @@ async function loadCreatorPostLinkedMaps(posts: CreatorPostRecord[]) {
       ? Promise.resolve([] as Array<typeof drinkChallenges.$inferSelect>)
       : db.select().from(drinkChallenges).where(inArray(drinkChallenges.id, challengeIds)),
   ]);
+  const collaborationMap = await loadAcceptedCollaborationsForTargets(
+    posts.map((post) => ({ collaborationType: "post" as const, targetId: post.id })),
+  );
+  const collaborationProfileMap = await loadCreatorProfilesMap(
+    [...collaborationMap.values()].flatMap((row) => [row.ownerCreatorUserId, row.collaboratorUserId]),
+  );
 
   return {
     creatorMap: new Map(creatorRows.map((row) => [row.id, row])),
     collectionMap: new Map(collectionRows.map((row) => [row.id, row])),
     challengeMap: new Map(challengeRows.map((row) => [row.id, row])),
+    collaborationMap,
+    collaborationProfileMap,
   };
 }
 
@@ -2108,6 +2473,8 @@ async function loadCreatorDropLinkedMaps(drops: CreatorDropRecord[]) {
       collectionMap: new Map<string, typeof drinkCollections.$inferSelect>(),
       challengeMap: new Map<string, typeof drinkChallenges.$inferSelect>(),
       promotionMap: new Map<string, typeof drinkCollectionPromotions.$inferSelect>(),
+      collaborationMap: new Map<string, CreatorCollaborationRecord>(),
+      collaborationProfileMap: new Map<string, { id: string; username: string | null; avatar: string | null }>(),
     };
   }
 
@@ -2133,12 +2500,20 @@ async function loadCreatorDropLinkedMaps(drops: CreatorDropRecord[]) {
       ? Promise.resolve([] as Array<typeof drinkCollectionPromotions.$inferSelect>)
       : db.select().from(drinkCollectionPromotions).where(inArray(drinkCollectionPromotions.id, promotionIds)),
   ]);
+  const collaborationMap = await loadAcceptedCollaborationsForTargets(
+    drops.map((drop) => ({ collaborationType: "drop" as const, targetId: drop.id })),
+  );
+  const collaborationProfileMap = await loadCreatorProfilesMap(
+    [...collaborationMap.values()].flatMap((row) => [row.ownerCreatorUserId, row.collaboratorUserId]),
+  );
 
   return {
     creatorMap: new Map(creatorRows.map((row) => [row.id, row])),
     collectionMap: new Map(collectionRows.map((row) => [row.id, row])),
     challengeMap: new Map(challengeRows.map((row) => [row.id, row])),
     promotionMap: new Map(promotionRows.map((row) => [row.id, row])),
+    collaborationMap,
+    collaborationProfileMap,
   };
 }
 
@@ -2148,6 +2523,8 @@ async function loadCreatorRoadmapLinkedMaps(items: CreatorRoadmapRecord[]) {
       creatorMap: new Map<string, Awaited<ReturnType<typeof loadUserBasicProfile>>>(),
       collectionMap: new Map<string, typeof drinkCollections.$inferSelect>(),
       challengeMap: new Map<string, typeof drinkChallenges.$inferSelect>(),
+      collaborationMap: new Map<string, CreatorCollaborationRecord>(),
+      collaborationProfileMap: new Map<string, { id: string; username: string | null; avatar: string | null }>(),
     };
   }
 
@@ -2169,11 +2546,19 @@ async function loadCreatorRoadmapLinkedMaps(items: CreatorRoadmapRecord[]) {
       ? Promise.resolve([] as Array<typeof drinkChallenges.$inferSelect>)
       : db.select().from(drinkChallenges).where(inArray(drinkChallenges.id, challengeIds)),
   ]);
+  const collaborationMap = await loadAcceptedCollaborationsForTargets(
+    items.map((item) => ({ collaborationType: "roadmap" as const, targetId: item.id })),
+  );
+  const collaborationProfileMap = await loadCreatorProfilesMap(
+    [...collaborationMap.values()].flatMap((row) => [row.ownerCreatorUserId, row.collaboratorUserId]),
+  );
 
   return {
     creatorMap: new Map(creatorRows.map((row) => [row.id, row])),
     collectionMap: new Map(collectionRows.map((row) => [row.id, row])),
     challengeMap: new Map(challengeRows.map((row) => [row.id, row])),
+    collaborationMap,
+    collaborationProfileMap,
   };
 }
 
@@ -2184,6 +2569,7 @@ function serializeCreatorPost(
     creator?: { id: string; username: string | null; avatar: string | null } | null;
     linkedCollection?: typeof drinkCollections.$inferSelect | null;
     linkedChallenge?: typeof drinkChallenges.$inferSelect | null;
+    acceptedCollaboration?: ReturnType<typeof serializeAcceptedCollaboration> | null;
   } = {},
 ) {
   const creator = options.creator ?? null;
@@ -2225,6 +2611,7 @@ function serializeCreatorPost(
         route: `/drinks/challenges/${encodeURIComponent(linkedChallenge.slug)}`,
       }
       : null,
+    acceptedCollaboration: options.acceptedCollaboration ?? null,
   };
 }
 
@@ -2236,6 +2623,7 @@ function serializeCreatorDrop(
     linkedCollection?: typeof drinkCollections.$inferSelect | null;
     linkedChallenge?: typeof drinkChallenges.$inferSelect | null;
     linkedPromotion?: typeof drinkCollectionPromotions.$inferSelect | null;
+    acceptedCollaboration?: ReturnType<typeof serializeAcceptedCollaboration> | null;
   } = {},
 ) {
   const creator = options.creator ?? null;
@@ -2288,6 +2676,7 @@ function serializeCreatorDrop(
         endsAt: linkedPromotion.endsAt ? linkedPromotion.endsAt.toISOString() : null,
       }
       : null,
+    acceptedCollaboration: options.acceptedCollaboration ?? null,
   };
 }
 
@@ -2298,6 +2687,7 @@ function serializeCreatorRoadmapItem(
     creator?: { id: string; username: string | null; avatar: string | null } | null;
     linkedCollection?: typeof drinkCollections.$inferSelect | null;
     linkedChallenge?: typeof drinkChallenges.$inferSelect | null;
+    acceptedCollaboration?: ReturnType<typeof serializeAcceptedCollaboration> | null;
   } = {},
 ) {
   const creator = options.creator ?? null;
@@ -2342,6 +2732,7 @@ function serializeCreatorRoadmapItem(
         route: `/drinks/challenges/${encodeURIComponent(linkedChallenge.slug)}`,
       }
       : null,
+    acceptedCollaboration: options.acceptedCollaboration ?? null,
   };
 }
 
@@ -4789,6 +5180,10 @@ async function resolveCollectionWithItems(
   if (!db) return null;
 
   const normalizedCollection = normalizeCollectionRowForResponse(collection);
+  const acceptedCollaborationMap = await loadAcceptedCollaborationsForTargets([
+    { collaborationType: "collection", targetId: normalizedCollection.id },
+  ]);
+  const acceptedCollaboration = acceptedCollaborationMap.get(`collection:${normalizedCollection.id}`) ?? null;
 
   const creatorRows = await db
     .select({
@@ -4800,6 +5195,11 @@ async function resolveCollectionWithItems(
     .limit(1);
 
   const creator = creatorRows[0];
+  const collaborationProfilesMap = await loadCreatorProfilesMap([
+    normalizedCollection.userId,
+    acceptedCollaboration?.collaboratorUserId ?? "",
+    acceptedCollaboration?.ownerCreatorUserId ?? "",
+  ]);
 
   const itemRows = await db
     .select({
@@ -4847,6 +5247,7 @@ async function resolveCollectionWithItems(
     averageRating: reviewSummary.averageRating,
     reviewCount: reviewSummary.reviewCount,
     activePromoPricing: activePromotionPricingByCollectionId?.get(normalizedCollection.id) ?? null,
+    acceptedCollaboration: serializeAcceptedCollaboration(acceptedCollaboration, collaborationProfilesMap),
   };
 }
 
@@ -7558,6 +7959,7 @@ r.get("/creator-posts/feed", optionalAuth, async (req, res) => {
       creator: maps.creatorMap.get(post.creatorUserId) ?? null,
       linkedCollection: post.linkedCollectionId ? maps.collectionMap.get(post.linkedCollectionId) ?? null : null,
       linkedChallenge: post.linkedChallengeId ? maps.challengeMap.get(post.linkedChallengeId) ?? null : null,
+      acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`post:${post.id}`) ?? null, maps.collaborationProfileMap),
     }));
 
     return res.json({
@@ -7624,6 +8026,7 @@ r.get("/drops/feed", optionalAuth, async (req, res) => {
       linkedCollection: drop.linkedCollectionId ? maps.collectionMap.get(drop.linkedCollectionId) ?? null : null,
       linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
       linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
+      acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`drop:${drop.id}`) ?? null, maps.collaborationProfileMap),
     }));
 
     return res.json({
@@ -7656,11 +8059,28 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
     }
 
     const viewerId = req.user?.id ?? null;
-    const [drops, followedCreatorIds, memberCreatorIds] = await Promise.all([
-      db.select().from(creatorDrops).where(and(eq(creatorDrops.creatorUserId, creatorUserId), gt(creatorDrops.scheduledFor, new Date()))).orderBy(asc(creatorDrops.scheduledFor)).limit(120),
+    const [acceptedCollaborations, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      loadAcceptedCollaborationsForCreator(creatorUserId),
       loadFollowedCreatorIdsForUser(viewerId),
       loadActiveMembershipCreatorIdsForUser(viewerId),
     ]);
+    const acceptedDropIds = acceptedCollaborations
+      .filter((row) => row.collaborationType === "drop")
+      .map((row) => row.targetId);
+    const ownDrops = await db
+      .select()
+      .from(creatorDrops)
+      .where(and(eq(creatorDrops.creatorUserId, creatorUserId), gt(creatorDrops.scheduledFor, new Date())))
+      .orderBy(asc(creatorDrops.scheduledFor))
+      .limit(120);
+    const collaborativeDrops = acceptedDropIds.length > 0
+      ? await db
+          .select()
+          .from(creatorDrops)
+          .where(and(inArray(creatorDrops.id, acceptedDropIds), gt(creatorDrops.scheduledFor, new Date())))
+          .orderBy(asc(creatorDrops.scheduledFor))
+      : [];
+    const drops = [...new Map([...ownDrops, ...collaborativeDrops].map((drop) => [drop.id, drop])).values()];
 
     const visibleDrops = drops.filter((drop) => canViewerSeeCreatorDrop({
       drop,
@@ -7676,6 +8096,7 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
       linkedCollection: drop.linkedCollectionId ? maps.collectionMap.get(drop.linkedCollectionId) ?? null : null,
       linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
       linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
+      acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`drop:${drop.id}`) ?? null, maps.collaborationProfileMap),
     }));
 
     return res.json({
@@ -7744,6 +8165,7 @@ r.post("/drops", requireAuth, async (req, res) => {
         linkedCollection: drop.linkedCollectionId ? maps.collectionMap.get(drop.linkedCollectionId) ?? null : null,
         linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
         linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
+        acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`drop:${drop.id}`) ?? null, maps.collaborationProfileMap),
       }),
     });
   } catch (error) {
@@ -7831,6 +8253,7 @@ r.patch("/drops/:id", requireAuth, async (req, res) => {
         linkedCollection: drop.linkedCollectionId ? maps.collectionMap.get(drop.linkedCollectionId) ?? null : null,
         linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
         linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
+        acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`drop:${drop.id}`) ?? null, maps.collaborationProfileMap),
       }) : null,
     });
   } catch (error) {
@@ -7894,6 +8317,7 @@ r.get("/roadmap/feed", optionalAuth, async (req, res) => {
       creator: maps.creatorMap.get(item.creatorUserId) ?? null,
       linkedCollection: item.linkedCollectionId ? maps.collectionMap.get(item.linkedCollectionId) ?? null : null,
       linkedChallenge: item.linkedChallengeId ? maps.challengeMap.get(item.linkedChallengeId) ?? null : null,
+      acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`roadmap:${item.id}`) ?? null, maps.collaborationProfileMap),
     }));
 
     return res.json({
@@ -7931,11 +8355,28 @@ r.get("/roadmap/creator/:userId", optionalAuth, async (req, res) => {
     }
 
     const viewerId = req.user?.id ?? null;
-    const [roadmapItems, followedCreatorIds, memberCreatorIds] = await Promise.all([
-      db.select().from(creatorRoadmapItems).where(eq(creatorRoadmapItems.creatorUserId, creatorUserId)).orderBy(desc(creatorRoadmapItems.updatedAt)).limit(160),
+    const [acceptedCollaborations, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      loadAcceptedCollaborationsForCreator(creatorUserId),
       loadFollowedCreatorIdsForUser(viewerId),
       loadActiveMembershipCreatorIdsForUser(viewerId),
     ]);
+    const acceptedRoadmapIds = acceptedCollaborations
+      .filter((row) => row.collaborationType === "roadmap")
+      .map((row) => row.targetId);
+    const ownRoadmapItems = await db
+      .select()
+      .from(creatorRoadmapItems)
+      .where(eq(creatorRoadmapItems.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorRoadmapItems.updatedAt))
+      .limit(160);
+    const collaborativeRoadmapItems = acceptedRoadmapIds.length > 0
+      ? await db
+          .select()
+          .from(creatorRoadmapItems)
+          .where(inArray(creatorRoadmapItems.id, acceptedRoadmapIds))
+          .orderBy(desc(creatorRoadmapItems.updatedAt))
+      : [];
+    const roadmapItems = [...new Map([...ownRoadmapItems, ...collaborativeRoadmapItems].map((item) => [item.id, item])).values()];
 
     const visibleItems = sortCreatorRoadmapItems(roadmapItems.filter((item) => canViewerSeeCreatorRoadmapItem({
       item,
@@ -7950,6 +8391,7 @@ r.get("/roadmap/creator/:userId", optionalAuth, async (req, res) => {
       creator: maps.creatorMap.get(item.creatorUserId) ?? null,
       linkedCollection: item.linkedCollectionId ? maps.collectionMap.get(item.linkedCollectionId) ?? null : null,
       linkedChallenge: item.linkedChallengeId ? maps.challengeMap.get(item.linkedChallengeId) ?? null : null,
+      acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`roadmap:${item.id}`) ?? null, maps.collaborationProfileMap),
     }));
 
     return res.json({
@@ -8020,6 +8462,7 @@ r.post("/roadmap", requireAuth, async (req, res) => {
         creator: maps.creatorMap.get(item.creatorUserId) ?? null,
         linkedCollection: item.linkedCollectionId ? maps.collectionMap.get(item.linkedCollectionId) ?? null : null,
         linkedChallenge: item.linkedChallengeId ? maps.challengeMap.get(item.linkedChallengeId) ?? null : null,
+        acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`roadmap:${item.id}`) ?? null, maps.collaborationProfileMap),
       }),
     });
   } catch (error) {
@@ -8102,6 +8545,7 @@ r.patch("/roadmap/:id", requireAuth, async (req, res) => {
         creator: maps.creatorMap.get(item.creatorUserId) ?? null,
         linkedCollection: item.linkedCollectionId ? maps.collectionMap.get(item.linkedCollectionId) ?? null : null,
         linkedChallenge: item.linkedChallengeId ? maps.challengeMap.get(item.linkedChallengeId) ?? null : null,
+        acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`roadmap:${item.id}`) ?? null, maps.collaborationProfileMap),
       }) : null,
     });
   } catch (error) {
@@ -8151,11 +8595,28 @@ r.get("/creator-posts/creator/:userId", optionalAuth, async (req, res) => {
     }
 
     const viewerId = req.user?.id ?? null;
-    const [posts, followedCreatorIds, memberCreatorIds] = await Promise.all([
-      db.select().from(creatorPosts).where(eq(creatorPosts.creatorUserId, creatorUserId)).orderBy(desc(creatorPosts.createdAt)).limit(60),
+    const [acceptedCollaborations, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      loadAcceptedCollaborationsForCreator(creatorUserId),
       loadFollowedCreatorIdsForUser(viewerId),
       loadActiveMembershipCreatorIdsForUser(viewerId),
     ]);
+    const acceptedPostIds = acceptedCollaborations
+      .filter((row) => row.collaborationType === "post")
+      .map((row) => row.targetId);
+    const ownPosts = await db
+      .select()
+      .from(creatorPosts)
+      .where(eq(creatorPosts.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorPosts.createdAt))
+      .limit(60);
+    const collaborativePosts = acceptedPostIds.length > 0
+      ? await db
+          .select()
+          .from(creatorPosts)
+          .where(inArray(creatorPosts.id, acceptedPostIds))
+          .orderBy(desc(creatorPosts.createdAt))
+      : [];
+    const posts = [...new Map([...ownPosts, ...collaborativePosts].map((post) => [post.id, post])).values()];
 
     const visiblePosts = posts.filter((post) => canViewerSeeCreatorPost({
       post,
@@ -8170,6 +8631,7 @@ r.get("/creator-posts/creator/:userId", optionalAuth, async (req, res) => {
       creator: maps.creatorMap.get(post.creatorUserId) ?? null,
       linkedCollection: post.linkedCollectionId ? maps.collectionMap.get(post.linkedCollectionId) ?? null : null,
       linkedChallenge: post.linkedChallengeId ? maps.challengeMap.get(post.linkedChallengeId) ?? null : null,
+      acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`post:${post.id}`) ?? null, maps.collaborationProfileMap),
     }));
 
     return res.json({
@@ -8230,6 +8692,7 @@ r.post("/creator-posts", requireAuth, async (req, res) => {
         creator: maps.creatorMap.get(post.creatorUserId) ?? null,
         linkedCollection: post.linkedCollectionId ? maps.collectionMap.get(post.linkedCollectionId) ?? null : null,
         linkedChallenge: post.linkedChallengeId ? maps.challengeMap.get(post.linkedChallengeId) ?? null : null,
+        acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`post:${post.id}`) ?? null, maps.collaborationProfileMap),
       }),
     });
   } catch (error) {
@@ -8308,6 +8771,7 @@ r.patch("/creator-posts/:id", requireAuth, async (req, res) => {
         creator: maps.creatorMap.get(post.creatorUserId) ?? null,
         linkedCollection: post.linkedCollectionId ? maps.collectionMap.get(post.linkedCollectionId) ?? null : null,
         linkedChallenge: post.linkedChallengeId ? maps.challengeMap.get(post.linkedChallengeId) ?? null : null,
+        acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`post:${post.id}`) ?? null, maps.collaborationProfileMap),
       }) : null,
     });
   } catch (error) {
@@ -8341,6 +8805,302 @@ r.delete("/creator-posts/:id", requireAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/creator-posts/:id", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to delete creator post"));
+  }
+});
+
+r.get("/collaborations/mine", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const userId = req.user!.id;
+    const rows = await db
+      .select()
+      .from(creatorCollaborations)
+      .where(
+        or(
+          eq(creatorCollaborations.ownerCreatorUserId, userId),
+          eq(creatorCollaborations.collaboratorUserId, userId),
+        ),
+      )
+      .orderBy(desc(creatorCollaborations.updatedAt));
+
+    const [profileMap, targetMap] = await Promise.all([
+      loadAcceptedCollaborationProfileMapByRows(rows),
+      loadCollaborationTargetsMap(rows),
+    ]);
+
+    const items = rows.map((row) => serializeCreatorCollaborationRow(row, profileMap, targetMap));
+
+    return res.json({
+      ok: true,
+      userId,
+      counts: {
+        total: items.length,
+        incomingPending: items.filter((item) => item.collaboratorUserId === userId && item.status === "pending").length,
+        outgoingPending: items.filter((item) => item.ownerCreatorUserId === userId && item.status === "pending").length,
+        accepted: items.filter((item) => item.status === "accepted").length,
+      },
+      incoming: items.filter((item) => item.collaboratorUserId === userId),
+      outgoing: items.filter((item) => item.ownerCreatorUserId === userId),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/collaborations/mine", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator collaborations"));
+  }
+});
+
+r.post("/collaborations", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const parsed = createCreatorCollaborationBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid collaboration payload." });
+    }
+
+    const ownerCreatorUserId = req.user!.id;
+    const payload = parsed.data;
+    const collaboratorUserId = payload.collaboratorUserId.trim();
+    if (collaboratorUserId === ownerCreatorUserId) {
+      return res.status(400).json({ ok: false, error: "Invite a different creator for collaboration." });
+    }
+
+    const [collaboratorRows, canCollaborate, target] = await Promise.all([
+      db.select({ id: users.id, username: users.username, avatar: users.avatar }).from(users).where(eq(users.id, collaboratorUserId)).limit(1),
+      userCanReceiveCreatorCollaboration(collaboratorUserId),
+      resolveCollaborationTargetForOwner({
+        ownerCreatorUserId,
+        collaborationType: payload.collaborationType,
+        targetId: payload.targetId,
+      }),
+    ]);
+
+    if (!collaboratorRows[0]) {
+      return res.status(404).json({ ok: false, error: "Collaborator not found." });
+    }
+    if (!canCollaborate) {
+      return res.status(400).json({ ok: false, error: "Collaborator needs at least one existing creator artifact before joining creator collaborations." });
+    }
+    if (!target) {
+      return res.status(404).json({ ok: false, error: "Supported target not found for this creator." });
+    }
+
+    const existingRows = await db
+      .select()
+      .from(creatorCollaborations)
+      .where(
+        and(
+          eq(creatorCollaborations.collaborationType, payload.collaborationType),
+          eq(creatorCollaborations.targetId, payload.targetId),
+        ),
+      )
+      .limit(1);
+
+    const existing = existingRows[0] ?? null;
+    if (existing && existing.collaboratorUserId !== collaboratorUserId && (existing.status === "pending" || existing.status === "accepted")) {
+      return res.status(409).json({ ok: false, error: "This target already has an active collaborator in version one." });
+    }
+    if (existing && existing.collaboratorUserId === collaboratorUserId && existing.status === "accepted") {
+      const [profileMap, targetMap] = await Promise.all([
+        loadAcceptedCollaborationProfileMapByRows([existing]),
+        loadCollaborationTargetsMap([existing]),
+      ]);
+      return res.status(200).json({
+        ok: true,
+        collaboration: serializeCreatorCollaborationRow(existing, profileMap, targetMap),
+        note: "This creator collaboration is already active.",
+      });
+    }
+
+    const baseValues = insertCreatorCollaborationSchema.parse({
+      ownerCreatorUserId,
+      collaboratorUserId,
+      collaborationType: payload.collaborationType,
+      targetId: payload.targetId,
+      status: "pending",
+    });
+
+    const rows = existing
+      ? await db
+          .update(creatorCollaborations)
+          .set({
+            ...baseValues,
+            status: "pending",
+            updatedAt: new Date(),
+          })
+          .where(eq(creatorCollaborations.id, existing.id))
+          .returning()
+      : await db
+          .insert(creatorCollaborations)
+          .values({
+            ...baseValues,
+            updatedAt: new Date(),
+          })
+          .returning();
+
+    const collaboration = rows[0];
+    const [profileMap, targetMap] = await Promise.all([
+      loadAcceptedCollaborationProfileMapByRows(collaboration ? [collaboration] : []),
+      loadCollaborationTargetsMap(collaboration ? [collaboration] : []),
+    ]);
+
+    return res.status(existing ? 200 : 201).json({
+      ok: true,
+      collaboration: collaboration ? serializeCreatorCollaborationRow(collaboration, profileMap, targetMap) : null,
+      note: "Creator collaborations are social attribution and discovery first. Revenue sharing and payouts stay unchanged in version one.",
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/collaborations", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create creator collaboration"));
+  }
+});
+
+r.post("/collaborations/:id/accept", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const collaborationId = String(req.params.id ?? "").trim();
+    if (!collaborationId) {
+      return res.status(400).json({ ok: false, error: "Collaboration id is required." });
+    }
+
+    const existingRows = await db
+      .select()
+      .from(creatorCollaborations)
+      .where(eq(creatorCollaborations.id, collaborationId))
+      .limit(1);
+    const existing = existingRows[0];
+
+    if (!existing || existing.collaboratorUserId !== req.user!.id) {
+      return res.status(404).json({ ok: false, error: "Collaboration invite not found." });
+    }
+    if (existing.status !== "pending") {
+      return res.status(400).json({ ok: false, error: "Only pending collaboration invites can be accepted." });
+    }
+
+    const updatedRows = await db
+      .update(creatorCollaborations)
+      .set({ status: "accepted", updatedAt: new Date() })
+      .where(eq(creatorCollaborations.id, collaborationId))
+      .returning();
+    const collaboration = updatedRows[0];
+
+    const [profileMap, targetMap] = await Promise.all([
+      loadAcceptedCollaborationProfileMapByRows(collaboration ? [collaboration] : []),
+      loadCollaborationTargetsMap(collaboration ? [collaboration] : []),
+    ]);
+
+    return res.json({
+      ok: true,
+      collaboration: collaboration ? serializeCreatorCollaborationRow(collaboration, profileMap, targetMap) : null,
+      note: "Accepted collaborations add public attribution and cross-surface discovery, not automatic payout sharing.",
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/collaborations/:id/accept", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to accept creator collaboration"));
+  }
+});
+
+r.post("/collaborations/:id/decline", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const collaborationId = String(req.params.id ?? "").trim();
+    if (!collaborationId) {
+      return res.status(400).json({ ok: false, error: "Collaboration id is required." });
+    }
+
+    const existingRows = await db
+      .select()
+      .from(creatorCollaborations)
+      .where(eq(creatorCollaborations.id, collaborationId))
+      .limit(1);
+    const existing = existingRows[0];
+
+    if (!existing || existing.collaboratorUserId !== req.user!.id) {
+      return res.status(404).json({ ok: false, error: "Collaboration invite not found." });
+    }
+    if (existing.status !== "pending") {
+      return res.status(400).json({ ok: false, error: "Only pending collaboration invites can be declined." });
+    }
+
+    const updatedRows = await db
+      .update(creatorCollaborations)
+      .set({ status: "declined", updatedAt: new Date() })
+      .where(eq(creatorCollaborations.id, collaborationId))
+      .returning();
+    const collaboration = updatedRows[0];
+
+    const [profileMap, targetMap] = await Promise.all([
+      loadAcceptedCollaborationProfileMapByRows(collaboration ? [collaboration] : []),
+      loadCollaborationTargetsMap(collaboration ? [collaboration] : []),
+    ]);
+
+    return res.json({
+      ok: true,
+      collaboration: collaboration ? serializeCreatorCollaborationRow(collaboration, profileMap, targetMap) : null,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/collaborations/:id/decline", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to decline creator collaboration"));
+  }
+});
+
+r.delete("/collaborations/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const collaborationId = String(req.params.id ?? "").trim();
+    if (!collaborationId) {
+      return res.status(400).json({ ok: false, error: "Collaboration id is required." });
+    }
+
+    const existingRows = await db
+      .select()
+      .from(creatorCollaborations)
+      .where(eq(creatorCollaborations.id, collaborationId))
+      .limit(1);
+    const existing = existingRows[0];
+
+    if (!existing || existing.ownerCreatorUserId !== req.user!.id) {
+      return res.status(404).json({ ok: false, error: "Collaboration not found for this creator." });
+    }
+
+    const updatedRows = await db
+      .update(creatorCollaborations)
+      .set({ status: "revoked", updatedAt: new Date() })
+      .where(eq(creatorCollaborations.id, collaborationId))
+      .returning();
+    const collaboration = updatedRows[0];
+
+    const [profileMap, targetMap] = await Promise.all([
+      loadAcceptedCollaborationProfileMapByRows(collaboration ? [collaboration] : []),
+      loadCollaborationTargetsMap(collaboration ? [collaboration] : []),
+    ]);
+
+    return res.json({
+      ok: true,
+      collaboration: collaboration ? serializeCreatorCollaborationRow(collaboration, profileMap, targetMap) : null,
+      note: "Revoking removes collaboration attribution only. Ownership, pricing, and payouts stay unchanged.",
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/collaborations/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to revoke creator collaboration"));
   }
 });
 
@@ -10494,15 +11254,35 @@ r.get("/collections/public/:userId", optionalAuth, async (req, res) => {
 
     await ensureDrinkCollectionsSchema();
 
-    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 20, maxLimit: 100 });
+    const creatorUserId = String(req.params.userId ?? "").trim();
+    if (!creatorUserId) {
+      return res.status(400).json({ ok: false, error: "Creator userId is required." });
+    }
 
-    const rows = await db
+    const { limit, offset } = parseLimitOffset(req.query as Record<string, unknown>, { limit: 20, maxLimit: 100 });
+    const acceptedCollaborations = await loadAcceptedCollaborationsForCreator(creatorUserId);
+    const collaborativeCollectionIds = acceptedCollaborations
+      .filter((row) => row.collaborationType === "collection")
+      .map((row) => row.targetId);
+
+    const ownRows = await db
       .select()
       .from(drinkCollections)
-      .where(and(eq(drinkCollections.userId, req.params.userId), eq(drinkCollections.isPublic, true)))
+      .where(and(eq(drinkCollections.userId, creatorUserId), eq(drinkCollections.isPublic, true)))
       .orderBy(desc(drinkCollections.updatedAt))
-      .limit(limit)
-      .offset(offset);
+      .limit(limit + offset);
+
+    const collaborativeRows = collaborativeCollectionIds.length > 0
+      ? await db
+          .select()
+          .from(drinkCollections)
+          .where(and(inArray(drinkCollections.id, collaborativeCollectionIds), eq(drinkCollections.isPublic, true)))
+          .orderBy(desc(drinkCollections.updatedAt))
+      : [];
+
+    const rows = [...new Map([...ownRows, ...collaborativeRows].map((row) => [row.id, row])).values()]
+      .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+      .slice(offset, offset + limit);
 
     const collections = await resolvePublicCollectionCards(rows, req.user?.id ?? null);
     return res.json({ ok: true, limit, offset, collections: collections.filter(Boolean) });

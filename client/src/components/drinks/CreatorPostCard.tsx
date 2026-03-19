@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import CreatorCollaborationAttribution, { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
 
 export type CreatorPostItem = {
   id: string;
@@ -35,6 +36,7 @@ export type CreatorPostItem = {
     title: string;
     route: string;
   } | null;
+  acceptedCollaboration?: AcceptedCreatorCollaboration | null;
 };
 
 function formatDateTime(value: string) {
@@ -110,6 +112,7 @@ export default function CreatorPostCard({ post, showCreator = true, actions }: C
                 <Badge variant="outline">Visible to {post.audienceLabel.toLowerCase()}</Badge>
               </div>
               <h3 className="text-lg font-semibold">{post.title}</h3>
+              <CreatorCollaborationAttribution collaboration={post.acceptedCollaboration ?? null} primaryCreatorUserId={post.creatorUserId} />
               <p className="whitespace-pre-wrap text-sm text-muted-foreground">{post.body}</p>
             </div>
           </div>
