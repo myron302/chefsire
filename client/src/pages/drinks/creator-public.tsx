@@ -3,6 +3,7 @@ import { Link, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useUser } from "@/contexts/UserContext";
+import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -153,6 +154,13 @@ interface PublicCreatorBadgesResponse {
   earnedCount: number;
 }
 
+interface CreatorPostsResponse {
+  ok: boolean;
+  creatorUserId: string;
+  count: number;
+  items: CreatorPostItem[];
+}
+
 function number(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
@@ -261,6 +269,21 @@ export default function PublicDrinkCreatorPage() {
     enabled: Boolean(creatorId),
   });
 
+  const creatorPostsQuery = useQuery<CreatorPostsResponse>({
+    queryKey: ["/api/drinks/creator-posts/creator", creatorId, user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/creator-posts/creator/${encodeURIComponent(creatorId)}`, {
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to load creator posts");
+      }
+      return payload as CreatorPostsResponse;
+    },
+    enabled: Boolean(creatorId),
+  });
+
   const publicBundlesQuery = useQuery<{ ok: boolean; bundles: PublicBundle[] }>({
     queryKey: ["/api/drinks/bundles/public", creatorId],
     queryFn: async () => {
@@ -352,6 +375,7 @@ export default function PublicDrinkCreatorPage() {
   const data = query.data;
   const creatorCollections = publicCollectionsQuery.data?.collections ?? [];
   const creatorBundles = publicBundlesQuery.data?.bundles ?? [];
+  const creatorPosts = creatorPostsQuery.data?.items ?? [];
   const premiumCollections = creatorCollections.filter((collection) => collection.accessType === "premium_purchase");
   const memberOnlyCollections = creatorCollections.filter((collection) => collection.accessType === "membership_only");
   const freeCollections = creatorCollections.filter((collection) => collection.accessType === "public");
@@ -363,9 +387,14 @@ export default function PublicDrinkCreatorPage() {
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-public-creator-page">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-3xl font-bold">Creator Profile</h1>
-        <Link href="/drinks">
-          <Button variant="outline" size="sm">Back to Drinks Hub</Button>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/drinks/feed">
+            <Button variant="outline" size="sm">Creator Feed</Button>
+          </Link>
+          <Link href="/drinks">
+            <Button variant="outline" size="sm">Back to Drinks Hub</Button>
+          </Link>
+        </div>
       </div>
 
       <DrinksPlatformNav current="creator" />
@@ -423,6 +452,9 @@ export default function PublicDrinkCreatorPage() {
             <div className="flex flex-wrap gap-2 pt-1">
               <Link href="#creator-collections">
                 <Button size="sm" variant="outline">View creator collections</Button>
+              </Link>
+              <Link href="#creator-posts">
+                <Button size="sm" variant="outline">View creator posts</Button>
               </Link>
               {memberOnlyCollections.length > 0 || premiumCollections.length > 0 ? (
                 <Link href="/drinks/collections/explore">
@@ -501,6 +533,46 @@ export default function PublicDrinkCreatorPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <section id="creator-posts" className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-semibold">Creator posts</h2>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span>{creatorPosts.length} visible posts</span>
+            <Link href="/drinks/feed" className="underline underline-offset-2">Open full creator feed</Link>
+          </div>
+        </div>
+
+        {creatorPostsQuery.isLoading ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">Loading creator posts…</CardContent>
+          </Card>
+        ) : null}
+
+        {creatorPostsQuery.isError ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-destructive">
+              {creatorPostsQuery.error instanceof Error ? creatorPostsQuery.error.message : "Unable to load creator posts right now."}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {!creatorPostsQuery.isLoading && !creatorPostsQuery.isError && creatorPosts.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              No visible creator posts yet. Public visitors only see public posts; follower and member updates appear here only when your access allows it.
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {creatorPosts.length > 0 ? (
+          <div className="space-y-3">
+            {creatorPosts.map((post) => (
+              <CreatorPostCard key={post.id} post={post} showCreator={false} />
+            ))}
+          </div>
+        ) : null}
+      </section>
 
       <section className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
