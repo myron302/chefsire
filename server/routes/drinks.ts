@@ -82,6 +82,7 @@ type CreatorMembershipPlanRecord = typeof creatorMembershipPlans.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
 type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
 type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
+type DrinkCollectionAccessType = "public" | "premium_purchase" | "membership_only";
 
 type ResolvedCollectionPurchaseContext = {
   collection: typeof drinkCollections.$inferSelect;
@@ -528,20 +529,17 @@ const creatorMembershipPlanInputSchema = z.object({
   isActive: z.boolean().optional(),
 });
 
+const collectionAccessTypeSchema = z.enum(["public", "premium_purchase", "membership_only"]);
+
 const updateDrinkCollectionBodySchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
   description: z.string().trim().max(2000).nullable().optional(),
   isPublic: z.boolean().optional(),
+  accessType: collectionAccessTypeSchema.optional(),
   isPremium: z.boolean().optional(),
   priceCents: z.number().int().min(0).max(500000).optional(),
-}).refine((value) => value.name !== undefined || value.description !== undefined || value.isPublic !== undefined || value.isPremium !== undefined || value.priceCents !== undefined, {
+}).refine((value) => value.name !== undefined || value.description !== undefined || value.isPublic !== undefined || value.accessType !== undefined || value.isPremium !== undefined || value.priceCents !== undefined, {
   message: "At least one field must be provided",
-}).refine((value) => {
-  if (value.isPremium === true && (value.priceCents ?? 0) <= 0) return false;
-  if (value.isPremium === false && value.priceCents !== undefined && value.priceCents !== 0) return false;
-  return true;
-}, {
-  message: "Premium collections require a positive price and free collections must use a price of 0",
 });
 
 const bundleBaseSchema = z.object({
@@ -571,6 +569,66 @@ function normalizeCollectionDescription(value: string | null | undefined): strin
   if (typeof value !== "string") return null;
   const cleaned = value.trim();
   return cleaned.length ? cleaned : null;
+}
+
+function normalizeCollectionAccessType(value: unknown, fallback: DrinkCollectionAccessType = "public"): DrinkCollectionAccessType {
+  if (value === "membership_only" || value === "premium_purchase" || value === "public") return value;
+  return fallback;
+}
+
+function deriveCollectionAccessType(input: {
+  accessType?: unknown;
+  isPremium?: unknown;
+  fallback?: DrinkCollectionAccessType;
+}): DrinkCollectionAccessType {
+  if (input.accessType !== undefined) {
+    return normalizeCollectionAccessType(input.accessType, input.fallback ?? "public");
+  }
+  if (input.isPremium === true) return "premium_purchase";
+  if (input.isPremium === false) return "public";
+  return input.fallback ?? "public";
+}
+
+function collectionAccessTypeForRow(collection: Pick<typeof drinkCollections.$inferSelect, "accessType" | "isPremium">): DrinkCollectionAccessType {
+  return deriveCollectionAccessType({
+    accessType: collection.accessType,
+    isPremium: collection.isPremium,
+    fallback: collection.isPremium ? "premium_purchase" : "public",
+  });
+}
+
+function isCollectionPremiumPurchase(collection: Pick<typeof drinkCollections.$inferSelect, "accessType" | "isPremium">) {
+  return collectionAccessTypeForRow(collection) === "premium_purchase";
+}
+
+function collectionPriceCentsForAccessType(accessType: DrinkCollectionAccessType, priceCents?: number | null) {
+  return accessType === "premium_purchase" ? Math.max(0, Math.round(Number(priceCents ?? 0))) : 0;
+}
+
+function validateCollectionAccessPayload(accessType: DrinkCollectionAccessType, priceCents?: number | null) {
+  const normalizedPrice = collectionPriceCentsForAccessType(accessType, priceCents);
+  if (accessType === "premium_purchase" && normalizedPrice <= 0) {
+    return { ok: false as const, error: "Premium Purchase collections require a positive price." };
+  }
+  return { ok: true as const, normalizedPrice };
+}
+
+function normalizeCollectionRowForResponse<T extends typeof drinkCollections.$inferSelect>(collection: T): T & {
+  accessType: DrinkCollectionAccessType;
+  isPremium: boolean;
+  priceCents: number;
+} {
+  const accessType = collectionAccessTypeForRow(collection);
+  return {
+    ...collection,
+    accessType,
+    isPremium: accessType !== "public",
+    priceCents: collectionPriceCentsForAccessType(accessType, Number(collection.priceCents ?? 0)),
+  };
+}
+
+function normalizeCollectionRowsForResponse<T extends typeof drinkCollections.$inferSelect>(collections: T[]) {
+  return collections.map((collection) => normalizeCollectionRowForResponse(collection));
 }
 
 function normalizePromotionCode(value: unknown): string | null {
@@ -701,7 +759,7 @@ function comparePromotionPriority(a: DrinkCollectionPromotionRecord, b: DrinkCol
 async function loadActivePromotionPricingMap(collections: Array<typeof drinkCollections.$inferSelect>) {
   if (!db || collections.length === 0) return new Map<string, CollectionPromoPricingSnapshot>();
 
-  const premiumCollections = collections.filter((collection) => collection.isPremium);
+  const premiumCollections = normalizeCollectionRowsForResponse(collections).filter((collection) => collection.accessType === "premium_purchase");
   if (premiumCollections.length === 0) return new Map<string, CollectionPromoPricingSnapshot>();
 
   const collectionById = new Map(premiumCollections.map((collection) => [collection.id, collection]));
@@ -814,7 +872,7 @@ async function maybeNotifyWishlistersAboutPriceDrop(input: {
   nextCollection: typeof drinkCollections.$inferSelect;
 }) {
   const { previousCollection, nextCollection } = input;
-  if (!nextCollection.isPremium || !nextCollection.isPublic) return;
+  if (!nextCollection.isPublic || !isCollectionPremiumPurchase(nextCollection)) return;
 
   const previousPrice = Number(previousCollection.priceCents ?? 0);
   const nextPrice = Number(nextCollection.priceCents ?? 0);
@@ -839,7 +897,7 @@ async function maybeNotifyPromoActivation(input: {
   nextPromotion: DrinkCollectionPromotionRecord;
 }) {
   const { collection, previousPromotion = null, nextPromotion } = input;
-  if (!collection.isPremium || !collection.isPublic) return;
+  if (!collection.isPublic || !isCollectionPremiumPurchase(collection)) return;
 
   const wasActive = previousPromotion ? isPromotionCurrentlyValid(previousPromotion) : false;
   const isActive = isPromotionCurrentlyValid(nextPromotion);
@@ -967,11 +1025,17 @@ async function ensureDrinkCollectionsSchema() {
         name varchar(160) NOT NULL,
         description text,
         is_public boolean NOT NULL DEFAULT false,
+        access_type text NOT NULL DEFAULT 'public',
         is_premium boolean NOT NULL DEFAULT false,
         price_cents integer NOT NULL DEFAULT 0,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       );
+    `);
+
+    await db.execute(sql`
+      ALTER TABLE drink_collections
+      ADD COLUMN IF NOT EXISTS access_type text NOT NULL DEFAULT 'public';
     `);
 
     await db.execute(sql`
@@ -982,6 +1046,12 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`
       ALTER TABLE drink_collections
       ADD COLUMN IF NOT EXISTS price_cents integer NOT NULL DEFAULT 0;
+    `);
+
+    await db.execute(sql`
+      UPDATE drink_collections
+      SET access_type = CASE WHEN is_premium THEN 'premium_purchase' ELSE 'public' END
+      WHERE access_type IS NULL OR access_type NOT IN ('public', 'premium_purchase', 'membership_only');
     `);
 
     await db.execute(sql`
@@ -1455,10 +1525,12 @@ async function loadMembershipGrantedCollectionIdsForUser(userId?: string | null)
   const memberships = await loadActiveCreatorMembershipsForUser(userId);
   if (memberships.length === 0) return new Set();
   const creatorIds = [...new Set(memberships.map((membership) => membership.creatorUserId))];
-  const collectionRows = await db
-    .select({ id: drinkCollections.id })
+  const collectionRows = normalizeCollectionRowsForResponse(await db
+    .select()
     .from(drinkCollections)
-    .where(and(inArray(drinkCollections.userId, creatorIds), eq(drinkCollections.isPremium, true)));
+    .where(inArray(drinkCollections.userId, creatorIds)))
+    .filter((collection) => collection.accessType === "membership_only")
+    .map((collection) => ({ id: collection.id }));
   return new Set(collectionRows.map((row) => row.id));
 }
 
@@ -1533,9 +1605,9 @@ function serializeMembershipPlan(plan?: CreatorMembershipPlanRecord | null) {
     createdAt: plan.createdAt.toISOString(),
     updatedAt: plan.updatedAt.toISOString(),
     benefits: [
-      "Unlock the creator’s premium drink collections while your membership is active.",
+      "Unlock this creator’s Members Only collections while your membership access is active.",
       "Support this creator with ongoing monthly or yearly membership revenue.",
-      "Member support is additive and does not block free drink discovery, remixing, or canonical drink pages.",
+      "Membership perks are additive and do not block free drink discovery, remixing, or canonical drink pages.",
     ],
   };
 }
@@ -1842,7 +1914,7 @@ async function resolveCollectionPurchaseContextWithPromo(
   }
 
   const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, collectionId)).limit(1);
-  const collection = rows[0];
+  const collection = rows[0] ? normalizeCollectionRowForResponse(rows[0]) : null;
   if (!collection) {
     const error = new Error("Collection not found");
     (error as any).status = 404;
@@ -1856,8 +1928,14 @@ async function resolveCollectionPurchaseContextWithPromo(
     throw error;
   }
 
-  if (!collection.isPremium) {
+  if (collection.accessType === "public") {
     const error = new Error("Collection is already free");
+    (error as any).status = 400;
+    throw error;
+  }
+
+  if (collection.accessType !== "premium_purchase") {
+    const error = new Error("This collection is available through membership access, not direct checkout.");
     (error as any).status = 400;
     throw error;
   }
@@ -1904,6 +1982,7 @@ async function resolveBundlePurchaseContext(bundleId: string, viewerUserId: stri
       collectionId: drinkBundleItems.collectionId,
       collectionUserId: drinkCollections.userId,
       isPremium: drinkCollections.isPremium,
+      accessType: drinkCollections.accessType,
     })
     .from(drinkBundleItems)
     .innerJoin(drinkCollections, eq(drinkBundleItems.collectionId, drinkCollections.id))
@@ -1915,9 +1994,9 @@ async function resolveBundlePurchaseContext(bundleId: string, viewerUserId: stri
     throw error;
   }
 
-  const invalidItem = itemRows.find((item) => item.collectionUserId !== bundle.userId || !item.isPremium);
+  const invalidItem = itemRows.find((item) => item.collectionUserId !== bundle.userId || deriveCollectionAccessType({ accessType: item.accessType, isPremium: item.isPremium }) !== "premium_purchase");
   if (invalidItem) {
-    const error = new Error("Bundles can only include this creator's premium collections");
+    const error = new Error("Bundles can only include this creator's Premium Purchase collections");
     (error as any).status = 400;
     throw error;
   }
@@ -3898,13 +3977,15 @@ async function resolveCollectionWithItems(
 ) {
   if (!db) return null;
 
+  const normalizedCollection = normalizeCollectionRowForResponse(collection);
+
   const creatorRows = await db
     .select({
       username: users.username,
       avatar: users.avatar,
     })
     .from(users)
-    .where(eq(users.id, collection.userId))
+    .where(eq(users.id, normalizedCollection.userId))
     .limit(1);
 
   const creator = creatorRows[0];
@@ -3915,12 +3996,12 @@ async function resolveCollectionWithItems(
       addedAt: drinkCollectionItems.addedAt,
     })
     .from(drinkCollectionItems)
-    .where(eq(drinkCollectionItems.collectionId, collection.id));
+    .where(eq(drinkCollectionItems.collectionId, normalizedCollection.id));
 
   const detailsBySlug = await resolveDrinkDetailsMapBySlugs(itemRows.map((row) => row.drinkSlug));
 
   const items = itemRows.map((row) => ({
-    id: `${collection.id}:${row.drinkSlug}`,
+    id: `${normalizedCollection.id}:${row.drinkSlug}`,
     drinkSlug: row.drinkSlug,
     drinkName: detailsBySlug.get(row.drinkSlug)?.name ?? row.drinkSlug,
     image: detailsBySlug.get(row.drinkSlug)?.image ?? null,
@@ -3931,16 +4012,16 @@ async function resolveCollectionWithItems(
   }));
 
   const coverImage = items[0]?.image ?? null;
-  const isOwner = Boolean(viewerUserId && viewerUserId === collection.userId);
-  const isOwned = isOwner || Boolean(viewerUserId && ownedCollectionIds?.has(collection.id));
-  const accessGrants = new Set<CollectionAccessGrant>(collectionAccessMap?.get(collection.id) ?? []);
+  const isOwner = Boolean(viewerUserId && viewerUserId === normalizedCollection.userId);
+  const isOwned = isOwner || Boolean(viewerUserId && ownedCollectionIds?.has(normalizedCollection.id));
+  const accessGrants = new Set<CollectionAccessGrant>(collectionAccessMap?.get(normalizedCollection.id) ?? []);
   if (isOwner) accessGrants.add("creator");
   const serializedAccessGrants = serializeCollectionAccessGrants(accessGrants);
-  const isWishlisted = !isOwned && Boolean(viewerUserId && wishlistedCollectionIds?.has(collection.id));
-  const reviewSummary = reviewSummaryByCollectionId?.get(collection.id) ?? normalizeCollectionReviewSummary();
+  const isWishlisted = !isOwned && Boolean(viewerUserId && wishlistedCollectionIds?.has(normalizedCollection.id));
+  const reviewSummary = reviewSummaryByCollectionId?.get(normalizedCollection.id) ?? normalizeCollectionReviewSummary();
 
   return {
-    ...collection,
+    ...normalizedCollection,
     creatorUsername: creator?.username ?? null,
     creatorAvatar: creator?.avatar ?? null,
     route: `/drinks/collections/${collection.id}`,
@@ -3951,10 +4032,10 @@ async function resolveCollectionWithItems(
     viewerAccessGrants: serializedAccessGrants,
     viewerPrimaryAccessGrant: serializedAccessGrants[0] ?? null,
     isWishlisted,
-    wishlistCount: Number(wishlistCountsByCollectionId?.get(collection.id) ?? 0),
+    wishlistCount: Number(wishlistCountsByCollectionId?.get(normalizedCollection.id) ?? 0),
     averageRating: reviewSummary.averageRating,
     reviewCount: reviewSummary.reviewCount,
-    activePromoPricing: activePromotionPricingByCollectionId?.get(collection.id) ?? null,
+    activePromoPricing: activePromotionPricingByCollectionId?.get(normalizedCollection.id) ?? null,
   };
 }
 
@@ -4252,12 +4333,12 @@ async function loadMembershipsForUser(userId: string) {
     loadCollectionCreatorsMap(creatorIds),
     planIds.length ? db.select().from(creatorMembershipPlans).where(inArray(creatorMembershipPlans.id, planIds)) : Promise.resolve([]),
     creatorIds.length
-      ? db.select().from(drinkCollections).where(and(inArray(drinkCollections.userId, creatorIds), eq(drinkCollections.isPremium, true)))
+      ? db.select().from(drinkCollections).where(inArray(drinkCollections.userId, creatorIds))
       : Promise.resolve([]),
   ]);
   const planMap = new Map(planRows.map((row) => [row.id, row]));
   const collectionsByCreatorId = new Map<string, Array<typeof drinkCollections.$inferSelect>>();
-  for (const collection of creatorCollections) {
+  for (const collection of normalizeCollectionRowsForResponse(creatorCollections)) {
     const current = collectionsByCreatorId.get(collection.userId) ?? [];
     current.push(collection);
     collectionsByCreatorId.set(collection.userId, current);
@@ -4266,15 +4347,21 @@ async function loadMembershipsForUser(userId: string) {
   return memberships.map((membership) => {
     const creator = creatorMap.get(membership.creatorUserId);
     const plan = planMap.get(membership.planId) ?? null;
-    const collections = (collectionsByCreatorId.get(membership.creatorUserId) ?? []).map((collection) => ({
-      id: collection.id,
-      name: collection.name,
-      route: `/drinks/collections/${collection.id}`,
-      priceCents: Number(collection.priceCents ?? 0),
-      isPublic: Boolean(collection.isPublic),
-    }));
+    const serializedMembership = serializeMembershipRecord(membership);
+    const collections = (serializedMembership?.accessActive
+      ? (collectionsByCreatorId.get(membership.creatorUserId) ?? [])
+      : [])
+      .filter((collection) => collection.accessType === "membership_only")
+      .map((collection) => ({
+        id: collection.id,
+        name: collection.name,
+        route: `/drinks/collections/${collection.id}`,
+        priceCents: Number(collection.priceCents ?? 0),
+        isPublic: Boolean(collection.isPublic),
+        accessType: collection.accessType,
+      }));
     return {
-      membership: serializeMembershipRecord(membership),
+      membership: serializedMembership,
       plan: serializeMembershipPlan(plan),
       creator: {
         userId: membership.creatorUserId,
@@ -8422,11 +8509,14 @@ r.post("/collections", optionalAuth, async (req, res) => {
 
     await ensureDrinkCollectionsSchema();
 
-    const requestedPremium = Boolean(req.body?.isPremium);
-    const requestedPriceCents = Number(req.body?.priceCents ?? 0);
-
-    if (requestedPremium && (!Number.isFinite(requestedPriceCents) || requestedPriceCents <= 0)) {
-      return res.status(400).json({ ok: false, error: "Premium collections require a positive price" });
+    const requestedAccessType = deriveCollectionAccessType({
+      accessType: req.body?.accessType,
+      isPremium: req.body?.isPremium,
+      fallback: "public",
+    });
+    const validation = validateCollectionAccessPayload(requestedAccessType, Number(req.body?.priceCents ?? 0));
+    if (!validation.ok) {
+      return res.status(400).json({ ok: false, error: validation.error });
     }
 
     const parsed = insertDrinkCollectionSchema.safeParse({
@@ -8434,8 +8524,9 @@ r.post("/collections", optionalAuth, async (req, res) => {
       name: req.body?.name,
       description: normalizeCollectionDescription(req.body?.description),
       isPublic: Boolean(req.body?.isPublic),
-      isPremium: requestedPremium,
-      priceCents: requestedPremium ? Math.round(requestedPriceCents) : 0,
+      accessType: requestedAccessType,
+      isPremium: requestedAccessType !== "public",
+      priceCents: validation.normalizedPrice,
     });
 
     if (!parsed.success) {
@@ -8443,7 +8534,7 @@ r.post("/collections", optionalAuth, async (req, res) => {
     }
 
     const createdRows = await db.insert(drinkCollections).values(parsed.data).returning();
-    const created = createdRows[0];
+    const created = createdRows[0] ? normalizeCollectionRowForResponse(createdRows[0]) : null;
     if (created) {
       await maybeNotifyFollowersAboutPublishedPremiumCollection(created, null);
     }
@@ -8575,7 +8666,7 @@ r.post("/collections/:id/wishlist", requireAuth, async (req, res) => {
     await ensureDrinkCollectionsSchema();
 
     const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
-    const collection = collectionRows[0];
+    const collection = collectionRows[0] ? normalizeCollectionRowForResponse(collectionRows[0]) : null;
     if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
 
     const isOwner = req.user!.id === collection.userId;
@@ -9132,10 +9223,10 @@ r.post("/bundles/:id/items", requireAuth, async (req, res) => {
     }
 
     const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, parsed.data.collectionId)).limit(1);
-    const collection = collectionRows[0];
+    const collection = collectionRows[0] ? normalizeCollectionRowForResponse(collectionRows[0]) : null;
     if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
-    if (collection.userId !== req.user!.id || !collection.isPremium) {
-      return res.status(400).json({ ok: false, error: "Bundles can only include your premium collections" });
+    if (collection.userId !== req.user!.id || collection.accessType !== "premium_purchase") {
+      return res.status(400).json({ ok: false, error: "Bundles can only include your Premium Purchase collections" });
     }
 
     await db
@@ -9601,10 +9692,10 @@ r.post("/creator-dashboard/promotions", requireAuth, async (req, res) => {
     }
 
     const collectionRows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, parsed.data.collectionId)).limit(1);
-    const collection = collectionRows[0];
+    const collection = collectionRows[0] ? normalizeCollectionRowForResponse(collectionRows[0]) : null;
     if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
     if (collection.userId !== req.user!.id) return res.status(403).json({ ok: false, error: "Not authorized" });
-    if (!collection.isPremium) return res.status(400).json({ ok: false, error: "Promotions are only available for premium collections" });
+    if (collection.accessType !== "premium_purchase") return res.status(400).json({ ok: false, error: "Promotions are only available for Premium Purchase collections" });
 
     if (parsed.data.discountType === "fixed" && parsed.data.discountValue >= Number(collection.priceCents ?? 0)) {
       return res.status(400).json({ ok: false, error: "Fixed discount must be less than the collection price." });
@@ -9927,7 +10018,7 @@ r.get("/collections/:id/ownership", optionalAuth, async (req, res) => {
     await ensureDrinkCollectionsSchema();
 
     const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
-    const collection = rows[0];
+    const collection = rows[0] ? normalizeCollectionRowForResponse(rows[0]) : null;
     if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
 
     const isOwner = req.user.id === collection.userId;
@@ -9961,8 +10052,8 @@ r.post("/collections/:id/apply-promo", optionalAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Collection is private" });
     }
 
-    if (!collection.isPremium) {
-      return res.status(400).json({ ok: false, error: "Promotions only apply to premium collections" });
+    if (collection.accessType !== "premium_purchase") {
+      return res.status(400).json({ ok: false, error: "Promotions only apply to Premium Purchase collections" });
     }
 
     const parsed = applyPromoBodySchema.safeParse(req.body ?? {});
@@ -10005,7 +10096,7 @@ r.post("/collections/:id/track-view", optionalAuth, async (req, res) => {
     await ensureDrinkCollectionsSchema();
 
     const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
-    const collection = rows[0];
+    const collection = rows[0] ? normalizeCollectionRowForResponse(rows[0]) : null;
 
     if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
 
@@ -10286,7 +10377,7 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
     await ensureDrinkCollectionsSchema();
 
     const rows = await db.select().from(drinkCollections).where(eq(drinkCollections.id, req.params.id)).limit(1);
-    const collection = rows[0];
+    const collection = rows[0] ? normalizeCollectionRowForResponse(rows[0]) : null;
 
     if (!collection) return res.status(404).json({ ok: false, error: "Collection not found" });
 
@@ -10316,13 +10407,16 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
 
     if (!hydrated) return res.status(500).json({ ok: false, error: "Failed to resolve collection" });
 
-    const latestCheckoutSession = req.user?.id && !isOwner
+    const latestCheckoutSession = req.user?.id && !isOwner && hydrated.accessType === "premium_purchase"
       ? await loadLatestCheckoutSessionForUserCollection(req.user.id, collection.id)
       : null;
     const latestGift = latestCheckoutSession ? await loadGiftByCheckoutSessionId(latestCheckoutSession.id) : null;
+    const membershipPlan = await loadCreatorMembershipPlanByCreatorId(collection.userId);
+    const viewerMembership = req.user?.id ? await loadViewerMembershipForCreator(req.user.id, collection.userId) : null;
 
     const isOwned = Boolean(hydrated.ownedByViewer);
-    if (hydrated.isPremium && !isOwner && !isOwned) {
+    const requiresUnlock = hydrated.accessType !== "public" && !isOwner && !isOwned;
+    if (requiresUnlock) {
       const previewLimit = 2;
       return res.json({
         ok: true,
@@ -10337,6 +10431,8 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
             latestCheckoutSession,
             latestGift ? toGiftSummary(latestGift, buildGiftClaimUrl(req, latestGift.giftCode)) : null,
           ),
+          membershipPlan: serializeMembershipPlan(membershipPlan),
+          viewerMembership: serializeMembershipRecord(viewerMembership),
         },
       });
     }
@@ -10351,6 +10447,8 @@ r.get("/collections/:id", optionalAuth, async (req, res) => {
           latestCheckoutSession,
           latestGift ? toGiftSummary(latestGift, buildGiftClaimUrl(req, latestGift.giftCode)) : null,
         ),
+        membershipPlan: serializeMembershipPlan(membershipPlan),
+        viewerMembership: serializeMembershipRecord(viewerMembership),
       },
     });
   } catch (error) {
@@ -10379,15 +10477,26 @@ r.patch("/collections/:id", optionalAuth, async (req, res) => {
       return res.status(400).json({ ok: false, error: "Invalid collection update", details: parsed.error.flatten() });
     }
 
+    const nextAccessType = deriveCollectionAccessType({
+      accessType: parsed.data.accessType,
+      isPremium: parsed.data.isPremium,
+      fallback: collectionAccessTypeForRow(existing),
+    });
+    const nextPriceInput = parsed.data.priceCents ?? existing.priceCents;
+    const validation = validateCollectionAccessPayload(nextAccessType, nextPriceInput);
+    if (!validation.ok) {
+      return res.status(400).json({ ok: false, error: validation.error });
+    }
+
     const updatedRows = await db
       .update(drinkCollections)
       .set({
         ...(parsed.data.name !== undefined ? { name: parsed.data.name } : {}),
         ...(parsed.data.description !== undefined ? { description: normalizeCollectionDescription(parsed.data.description) } : {}),
         ...(parsed.data.isPublic !== undefined ? { isPublic: parsed.data.isPublic } : {}),
-        ...(parsed.data.isPremium !== undefined ? { isPremium: parsed.data.isPremium } : {}),
-        ...(parsed.data.priceCents !== undefined ? { priceCents: parsed.data.priceCents } : {}),
-        ...(parsed.data.isPremium === false ? { priceCents: 0 } : {}),
+        accessType: nextAccessType,
+        isPremium: nextAccessType !== "public",
+        priceCents: validation.normalizedPrice,
         updatedAt: new Date(),
       })
       .where(eq(drinkCollections.id, req.params.id))

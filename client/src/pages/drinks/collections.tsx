@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
 
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+
+type CollectionAccessType = "public" | "premium_purchase" | "membership_only";
 
 type CollectionItem = {
   drinkSlug: string;
@@ -25,14 +26,33 @@ type Collection = {
   name: string;
   description?: string | null;
   isPublic: boolean;
+  accessType: CollectionAccessType;
   isPremium: boolean;
   priceCents: number;
   itemsCount: number;
   items: CollectionItem[];
 };
 
+type CollectionSettingsMap = Record<string, { accessType: CollectionAccessType; price: string }>;
+
 function isAuthFailureStatus(status: number): boolean {
   return status === 401 || status === 403;
+}
+
+function accessTypeLabel(accessType: CollectionAccessType) {
+  if (accessType === "membership_only") return "Members Only";
+  if (accessType === "premium_purchase") return "Premium Purchase";
+  return "Public";
+}
+
+function accessTypeBadgeVariant(accessType: CollectionAccessType): "default" | "secondary" | "outline" {
+  if (accessType === "membership_only") return "secondary";
+  if (accessType === "premium_purchase") return "default";
+  return "outline";
+}
+
+function formatPrice(priceCents: number) {
+  return `$${(priceCents / 100).toFixed(2)}`;
 }
 
 export default function DrinkCollectionsPage() {
@@ -42,10 +62,12 @@ export default function DrinkCollectionsPage() {
   const [loadError, setLoadError] = useState("");
   const [backendUnavailable, setBackendUnavailable] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [updatingCollectionId, setUpdatingCollectionId] = useState<string | null>(null);
   const [collections, setCollections] = useState<Collection[]>([]);
+  const [collectionSettings, setCollectionSettings] = useState<CollectionSettingsMap>({});
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [isPremium, setIsPremium] = useState(false);
+  const [accessType, setAccessType] = useState<CollectionAccessType>("public");
   const [price, setPrice] = useState("4.99");
 
   const loadCollections = async () => {
@@ -70,15 +92,15 @@ export default function DrinkCollectionsPage() {
         throw new Error(payload?.error || `Failed to load collections (${res.status})`);
       }
       const payload = await res.json();
-      if (payload?.ok === false) {
-        throw new Error(payload?.error || "Failed to load collections");
-      }
-
-      if (import.meta.env.DEV && !Array.isArray(payload?.collections)) {
-        console.warn("[drinks/collections] Unexpected collections payload shape", payload);
-      }
-
-      setCollections(Array.isArray(payload?.collections) ? payload.collections : []);
+      const nextCollections = Array.isArray(payload?.collections) ? payload.collections as Collection[] : [];
+      setCollections(nextCollections);
+      setCollectionSettings(Object.fromEntries(nextCollections.map((collection) => [
+        collection.id,
+        {
+          accessType: collection.accessType ?? (collection.isPremium ? "premium_purchase" : "public"),
+          price: collection.priceCents ? (collection.priceCents / 100).toFixed(2) : "4.99",
+        },
+      ])));
     } catch (error) {
       setCollections([]);
       setLoadError("Could not load collections right now.");
@@ -94,6 +116,12 @@ export default function DrinkCollectionsPage() {
     void loadCollections();
   }, []);
 
+  const collectionCounts = useMemo(() => ({
+    public: collections.filter((collection) => collection.accessType === "public").length,
+    premium_purchase: collections.filter((collection) => collection.accessType === "premium_purchase").length,
+    membership_only: collections.filter((collection) => collection.accessType === "membership_only").length,
+  }), [collections]);
+
   const createCollection = async () => {
     if (!name.trim()) return;
     setSaving(true);
@@ -106,8 +134,8 @@ export default function DrinkCollectionsPage() {
           name: name.trim(),
           description: description.trim() || null,
           isPublic: false,
-          isPremium,
-          priceCents: isPremium ? Math.max(1, Math.round(Number(price || 0) * 100)) : 0,
+          accessType,
+          priceCents: accessType === "premium_purchase" ? Math.max(1, Math.round(Number(price || 0) * 100)) : 0,
         }),
       });
 
@@ -122,36 +150,52 @@ export default function DrinkCollectionsPage() {
       }
       setName("");
       setDescription("");
-      setIsPremium(false);
+      setAccessType("public");
       setPrice("4.99");
       await loadCollections();
       toast({ title: "Collection created" });
     } catch (error) {
-      toast({ title: "Could not create collection", description: import.meta.env.DEV ? (error instanceof Error ? error.message : "Unknown error") : undefined, variant: "destructive" });
+      toast({
+        title: "Could not create collection",
+        description: import.meta.env.DEV ? (error instanceof Error ? error.message : "Unknown error") : undefined,
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
   };
 
+  const updateCollectionAccess = async (collection: Collection) => {
+    const current = collectionSettings[collection.id];
+    if (!current) return;
 
-  const togglePremium = async (collection: Collection) => {
+    setUpdatingCollectionId(collection.id);
     try {
-      const nextIsPremium = !collection.isPremium;
       const res = await fetch(`/api/drinks/collections/${encodeURIComponent(collection.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          isPremium: nextIsPremium,
-          priceCents: nextIsPremium ? Math.max(1, collection.priceCents || 499) : 0,
+          accessType: current.accessType,
+          priceCents: current.accessType === "premium_purchase" ? Math.max(1, Math.round(Number(current.price || 0) * 100)) : 0,
         }),
       });
 
-      if (!res.ok) throw new Error("Failed to update premium settings");
+      const payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(payload?.error || "Failed to update collection access");
+      }
+
       await loadCollections();
-      toast({ title: nextIsPremium ? "Collection marked premium" : "Collection set to free" });
-    } catch {
-      toast({ title: "Could not update premium settings", variant: "destructive" });
+      toast({ title: `${collection.name} updated`, description: `${accessTypeLabel(current.accessType)} access saved.` });
+    } catch (error) {
+      toast({
+        title: "Could not update access",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingCollectionId(null);
     }
   };
 
@@ -170,13 +214,13 @@ export default function DrinkCollectionsPage() {
         throw new Error("Failed remove");
       }
       await loadCollections();
-    } catch (error) {
+    } catch {
       toast({ title: "Could not remove drink", variant: "destructive" });
     }
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-5xl space-y-6">
+    <div className="container mx-auto max-w-5xl space-y-6 px-4 py-8">
       <DrinksPlatformNav current="collections" />
 
       {!isAuthRequired ? (
@@ -193,19 +237,34 @@ export default function DrinkCollectionsPage() {
               <Label htmlFor="description">Description (optional)</Label>
               <Input id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="What this collection is for" />
             </div>
-            <div className="flex items-center justify-between rounded-md border p-3">
-              <div>
-                <p className="text-sm font-medium">Premium collection</p>
-                <p className="text-xs text-muted-foreground">Add a subtle premium badge and price on public pages.</p>
-              </div>
-              <Switch checked={isPremium} onCheckedChange={setIsPremium} />
+            <div className="space-y-2 rounded-md border p-3">
+              <Label htmlFor="collection-access-type">Collection access</Label>
+              <select
+                id="collection-access-type"
+                value={accessType}
+                onChange={(event) => setAccessType(event.target.value as CollectionAccessType)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+              >
+                <option value="public">Public</option>
+                <option value="premium_purchase">Premium Purchase</option>
+                <option value="membership_only">Members Only</option>
+              </select>
+              <p className="text-xs text-muted-foreground">
+                Public is open to everyone, Premium Purchase uses checkout, and Members Only is unlocked by an active creator membership.
+              </p>
             </div>
-            {isPremium ? (
+            {accessType === "premium_purchase" ? (
               <div className="space-y-2">
                 <Label htmlFor="price">Price (USD)</Label>
                 <Input id="price" type="number" min="0.5" step="0.5" value={price} onChange={(event) => setPrice(event.target.value)} />
               </div>
-            ) : null}
+            ) : (
+              <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+                {accessType === "membership_only"
+                  ? "Members Only collections do not show one-off collection pricing or direct checkout buttons."
+                  : "Public collections are open without a paywall or membership lock."}
+              </div>
+            )}
             <Button onClick={createCollection} disabled={saving || !name.trim() || backendUnavailable}>
               Create collection
             </Button>
@@ -218,45 +277,106 @@ export default function DrinkCollectionsPage() {
           <CardTitle>Your Collections ({collections.length})</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
+            <span>{collectionCounts.public} public</span>
+            <span>·</span>
+            <span>{collectionCounts.premium_purchase} premium purchase</span>
+            <span>·</span>
+            <span>{collectionCounts.membership_only} members only</span>
+          </div>
           {loading ? <p className="text-sm text-muted-foreground">Loading collections…</p> : null}
           {!loading && isAuthRequired ? <p className="text-sm text-muted-foreground">Sign in to view and manage your collections.</p> : null}
           {!loading && !isAuthRequired && loadError ? <p className="text-sm text-destructive">{loadError}</p> : null}
           {!loading && !isAuthRequired && backendUnavailable ? <p className="text-sm text-muted-foreground">Collections are temporarily unavailable on this server.</p> : null}
           {!loading && !isAuthRequired && !loadError && collections.length === 0 ? <p className="text-sm text-muted-foreground">No collections yet.</p> : null}
 
-          {collections.map((collection) => (
-            <Card key={collection.id}>
-              <CardHeader>
-                <CardTitle className="text-lg flex items-center gap-2">
-                  <Link href={`/drinks/collections/${encodeURIComponent(collection.id)}`} className="underline underline-offset-2">
-                    {collection.name}
-                  </Link>
-                  <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
-                  <Badge variant="outline">{collection.isPublic ? "Public" : "Private"}</Badge>
-                  {collection.isPremium ? <Badge>Premium Collection · ${(collection.priceCents / 100).toFixed(2)}</Badge> : null}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
-                <div className="flex items-center gap-2">
-                  <Button variant="outline" size="sm" onClick={() => void togglePremium(collection)}>
-                    {collection.isPremium ? "Mark as free" : "Mark as premium"}
-                  </Button>
-                </div>
-                {collection.items.length === 0 ? <p className="text-sm text-muted-foreground">No drinks in this collection yet.</p> : null}
-                {collection.items.slice(0, 4).map((item) => (
-                  <div key={`${collection.id}-${item.drinkSlug}`} className="flex items-center justify-between gap-2 text-sm">
-                    <Link href={item.drink?.route ?? `/drinks/recipe/${encodeURIComponent(item.drinkSlug)}`} className="underline underline-offset-2">
-                      {item.drink?.name ?? item.drinkSlug}
+          {collections.map((collection) => {
+            const current = collectionSettings[collection.id] ?? {
+              accessType: collection.accessType,
+              price: collection.priceCents ? (collection.priceCents / 100).toFixed(2) : "4.99",
+            };
+
+            return (
+              <Card key={collection.id}>
+                <CardHeader>
+                  <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
+                    <Link href={`/drinks/collections/${encodeURIComponent(collection.id)}`} className="underline underline-offset-2">
+                      {collection.name}
                     </Link>
-                    <Button variant="ghost" size="sm" onClick={() => void removeDrink(collection.id, item.drinkSlug)}>
-                      Remove
+                    <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
+                    <Badge variant="outline">{collection.isPublic ? "Public" : "Private"}</Badge>
+                    <Badge variant={accessTypeBadgeVariant(collection.accessType)}>
+                      {accessTypeLabel(collection.accessType)}
+                      {collection.accessType === "premium_purchase" ? ` · ${formatPrice(collection.priceCents)}` : ""}
+                    </Badge>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
+                  <div className="grid gap-3 rounded-md border p-3 md:grid-cols-[minmax(0,1fr)_180px_auto] md:items-end">
+                    <div className="space-y-2">
+                      <Label htmlFor={`access-type-${collection.id}`}>Access mode</Label>
+                      <select
+                        id={`access-type-${collection.id}`}
+                        value={current.accessType}
+                        onChange={(event) => setCollectionSettings((existing) => ({
+                          ...existing,
+                          [collection.id]: {
+                            ...current,
+                            accessType: event.target.value as CollectionAccessType,
+                          },
+                        }))}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="public">Public</option>
+                        <option value="premium_purchase">Premium Purchase</option>
+                        <option value="membership_only">Members Only</option>
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor={`price-${collection.id}`}>Price</Label>
+                      <Input
+                        id={`price-${collection.id}`}
+                        type="number"
+                        min="0.5"
+                        step="0.5"
+                        value={current.price}
+                        disabled={current.accessType !== "premium_purchase"}
+                        onChange={(event) => setCollectionSettings((existing) => ({
+                          ...existing,
+                          [collection.id]: {
+                            ...current,
+                            price: event.target.value,
+                          },
+                        }))}
+                      />
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => void updateCollectionAccess(collection)} disabled={updatingCollectionId === collection.id}>
+                      {updatingCollectionId === collection.id ? "Saving…" : "Save access"}
                     </Button>
                   </div>
-                ))}
-              </CardContent>
-            </Card>
-          ))}
+                  <p className="text-xs text-muted-foreground">
+                    {current.accessType === "membership_only"
+                      ? "Members Only hides one-off collection pricing and sends buyers toward the creator membership path."
+                      : current.accessType === "premium_purchase"
+                        ? "Premium Purchase keeps the one-off checkout flow active for this collection."
+                        : "Public removes both the paywall and membership lock."}
+                  </p>
+                  {collection.items.length === 0 ? <p className="text-sm text-muted-foreground">No drinks in this collection yet.</p> : null}
+                  {collection.items.slice(0, 4).map((item) => (
+                    <div key={`${collection.id}-${item.drinkSlug}`} className="flex items-center justify-between gap-2 text-sm">
+                      <Link href={item.drink?.route ?? `/drinks/recipe/${encodeURIComponent(item.drinkSlug)}`} className="underline underline-offset-2">
+                        {item.drink?.name ?? item.drinkSlug}
+                      </Link>
+                      <Button variant="ghost" size="sm" onClick={() => void removeDrink(collection.id, item.drinkSlug)}>
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            );
+          })}
         </CardContent>
       </Card>
     </div>

@@ -92,11 +92,29 @@ type ApplyPromoResponse = {
   pricing: PromoPricing;
 };
 
+type CreatorMembershipPlan = {
+  id: string;
+  name: string;
+  description: string | null;
+  priceCents: number;
+  billingInterval: "monthly" | "yearly";
+  isActive: boolean;
+  benefits: string[];
+};
+
+type CreatorMembershipRecord = {
+  id: string;
+  status: "active" | "canceled" | "expired" | "past_due";
+  endsAt: string | null;
+  accessActive: boolean;
+};
+
 type Collection = {
   id: string;
   name: string;
   description?: string | null;
   isPublic: boolean;
+  accessType: "public" | "premium_purchase" | "membership_only";
   isPremium: boolean;
   priceCents: number;
   isLocked?: boolean;
@@ -111,6 +129,8 @@ type Collection = {
   averageRating?: number;
   reviewCount?: number;
   checkout?: CollectionCheckoutSnapshot | null;
+  membershipPlan?: CreatorMembershipPlan | null;
+  viewerMembership?: CreatorMembershipRecord | null;
   userId: string;
   creatorUsername?: string | null;
   creatorAvatar?: string | null;
@@ -187,13 +207,13 @@ function messageForCheckoutState(status: CheckoutStatus, failureReason?: string 
       ? gift?.claimUrl
         ? "Payment verified. Your gift is ready to share."
         : "Payment verified. Your gift purchase is complete."
-      : "Payment verified. Your premium collection is now unlocked.";
+      : "Payment verified. Your collection is now unlocked.";
   }
   if (status === "failed") return failureReason || "Square reported that the payment failed.";
   if (status === "canceled") return failureReason || "Checkout was canceled before payment completed.";
   if (status === "refunded_pending") return failureReason || "A refund is pending for this purchase. Access is temporarily unavailable while Square finishes the refund lifecycle.";
-  if (status === "refunded") return failureReason || "This premium collection purchase was refunded, so access has been removed.";
-  if (status === "revoked") return failureReason || "Access to this premium collection has been revoked.";
+  if (status === "refunded") return failureReason || "This collection purchase was refunded, so access has been removed.";
+  if (status === "revoked") return failureReason || "Access to this collection has been revoked.";
   return "Payment submitted. We’re waiting for Square to confirm it. This page will unlock automatically once verification finishes.";
 }
 
@@ -711,7 +731,7 @@ export default function DrinkCollectionDetailPage() {
 
       if (payload?.owned) {
         setCheckoutStatus("completed");
-        setCheckoutMessage("You already own this premium collection.");
+        setCheckoutMessage("You already have access to this collection.");
         await loadCollection(collection.id, true);
         return;
       }
@@ -747,12 +767,13 @@ export default function DrinkCollectionDetailPage() {
     }
   }
 
-  const isLockedPremium = Boolean(collection?.isPremium && collection?.requiresUnlock);
+  const isLockedPremiumPurchase = Boolean(collection?.accessType === "premium_purchase" && collection?.requiresUnlock);
+  const isLockedMembershipOnly = Boolean(collection?.accessType === "membership_only" && collection?.requiresUnlock);
   const displayedOriginalAmountCents = promoPricing?.originalAmountCents ?? collection?.priceCents ?? 0;
   const displayedFinalAmountCents = promoPricing?.finalAmountCents ?? collection?.priceCents ?? 0;
   const displayedDiscountAmountCents = promoPricing?.discountAmountCents ?? 0;
   const activePromo = collection?.activePromoPricing ?? null;
-  const canWishlist = Boolean(user?.id && collection?.isPremium && !collection?.ownedByViewer && collection?.userId !== user.id);
+  const canWishlist = Boolean(user?.id && collection?.accessType === "premium_purchase" && !collection?.ownedByViewer && collection?.userId !== user.id);
   const reviewAverageRating = collection?.averageRating ?? 0;
   const reviewCount = collection?.reviewCount ?? 0;
   const canManageReview = Boolean(canReviewCollection && user?.id && collection?.userId !== user.id);
@@ -776,12 +797,12 @@ export default function DrinkCollectionDetailPage() {
               {collection.name}
               <Badge variant="outline">{collection.isPublic ? "Public" : "Private"}</Badge>
               <Badge variant="secondary">{collection.itemsCount} drinks</Badge>
-              {collection.isPremium ? <Badge>Premium Collection · {(collection.priceCents / 100).toFixed(2)}</Badge> : null}
+              {collection.accessType === "premium_purchase" ? <Badge>Premium Purchase · {(collection.priceCents / 100).toFixed(2)}</Badge> : collection.accessType === "membership_only" ? <Badge variant="secondary">Members Only</Badge> : null}
               {promoPricing ? <Badge variant="secondary">Promo {promoPricing.code} · {formatCurrency(displayedFinalAmountCents, promoPricing.currencyCode)}</Badge> : null}
               {!promoPricing && activePromo ? <Badge variant="secondary">Active promo {activePromo.code}</Badge> : null}
               {collection.ownedByViewer ? <Badge variant="secondary">{accessGrantLabel(collection.viewerPrimaryAccessGrant)}</Badge> : null}
               {collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
-              {!collection.ownedByViewer && isLockedPremium ? <Badge variant="outline">Locked</Badge> : null}
+              {!collection.ownedByViewer && (isLockedPremiumPurchase || isLockedMembershipOnly) ? <Badge variant="outline">Locked</Badge> : null}
             </CardTitle>
             {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
             <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
@@ -796,10 +817,10 @@ export default function DrinkCollectionDetailPage() {
                 </Link>
               ) : null}
             </div>
-            {collection.isPremium ? (
+            {collection.accessType !== "public" ? (
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>{formatCurrency(collection.priceCents)} list price</span>
+                  <span>{collection.accessType === "premium_purchase" ? `${formatCurrency(collection.priceCents)} list price` : "Membership perk"}</span>
                   <span>·</span>
                   <span>{collection.wishlistCount ?? 0} interested wishlists</span>
                   {collection.viewerPrimaryAccessGrant === "membership" ? (
@@ -822,11 +843,11 @@ export default function DrinkCollectionDetailPage() {
             ) : null}
           </CardHeader>
           <CardContent className="space-y-3">
-            {!isLockedPremium && checkoutMessage && checkoutStatus === "completed" ? (
+            {!(isLockedPremiumPurchase || isLockedMembershipOnly) && checkoutMessage && checkoutStatus === "completed" ? (
               <p className="text-sm text-emerald-600">{checkoutMessage}</p>
             ) : null}
 
-            {collection.isPremium && !collection.ownedByViewer ? (
+            {collection.accessType === "premium_purchase" && !collection.ownedByViewer ? (
               <div className="rounded-md border border-dashed p-3 text-sm">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="space-y-1">
@@ -864,10 +885,37 @@ export default function DrinkCollectionDetailPage() {
               </div>
             ) : null}
 
-            {isLockedPremium ? (
+            {isLockedMembershipOnly ? (
               <Card>
                 <CardContent className="space-y-3 p-4">
-                  <p className="text-sm text-muted-foreground">This premium collection is locked. Preview available below.</p>
+                  <p className="text-sm text-muted-foreground">This Members Only collection is locked. Preview available below.</p>
+                  <div className="rounded-md border border-dashed p-3 text-sm">
+                    <p className="font-medium">Join this creator&apos;s membership to unlock the full collection.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {collection.membershipPlan?.priceCents
+                        ? `Membership starts at ${formatCurrency(collection.membershipPlan.priceCents)}/${collection.membershipPlan.billingInterval === "yearly" ? "year" : "month"}.`
+                        : "Membership access is required for the full collection."}
+                    </p>
+                    {collection.viewerMembership?.accessActive ? (
+                      <p className="mt-2 text-xs text-emerald-700">Your membership is active, so this collection should unlock automatically on refresh.</p>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Link href={`/drinks/creator/${encodeURIComponent(collection.userId)}`}>
+                        <Button>Join Membership</Button>
+                      </Link>
+                      <Link href="/drinks/memberships">
+                        <Button variant="outline">Open memberships</Button>
+                      </Link>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
+
+            {isLockedPremiumPurchase ? (
+              <Card>
+                <CardContent className="space-y-3 p-4">
+                  <p className="text-sm text-muted-foreground">This premium purchase collection is locked. Preview available below.</p>
                   {activePromo ? (
                     <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 text-sm">
                       <p className="font-medium text-emerald-800">Active creator promo: {activePromo.code}</p>
@@ -993,13 +1041,13 @@ export default function DrinkCollectionDetailPage() {
                 <p className="text-xs text-muted-foreground">Added {new Date(item.addedAt).toLocaleDateString()}</p>
               </div>
             ))}
-            {isLockedPremium ? (
+            {isLockedPremiumPurchase || isLockedMembershipOnly ? (
               <p className="text-xs text-muted-foreground">
-                Showing preview ({collection.items.length} of {collection.itemsCount} drinks). Unlock to access the full collection.
+                Showing preview ({collection.items.length} of {collection.itemsCount} drinks). {collection.accessType === "membership_only" ? "Join the creator membership to open the full collection." : "Unlock to access the full collection."}
               </p>
             ) : null}
 
-            {collection.isPremium ? (
+            {collection.accessType !== "public" ? (
               <div className="space-y-4 rounded-md border-t pt-4">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="space-y-1">
@@ -1021,7 +1069,7 @@ export default function DrinkCollectionDetailPage() {
                     ) : collection.userId === user.id ? (
                       <p className="text-sm text-muted-foreground">Creators can view feedback here but cannot review their own collection.</p>
                     ) : collection.isLocked ? (
-                      <p className="text-sm text-muted-foreground">Unlock this premium collection to leave a verified review.</p>
+                      <p className="text-sm text-muted-foreground">{collection.accessType === "membership_only" ? "Join the creator membership to leave a verified review." : "Unlock this premium collection to leave a verified review."}</p>
                     ) : null}
                   </div>
                 </div>
@@ -1069,7 +1117,7 @@ export default function DrinkCollectionDetailPage() {
                         id="collection-review-body"
                         value={reviewBody}
                         onChange={(event) => setReviewBody(event.target.value.slice(0, 4000))}
-                        placeholder="What made this premium collection useful?"
+                        placeholder="What made this collection useful?"
                         rows={4}
                         maxLength={4000}
                       />

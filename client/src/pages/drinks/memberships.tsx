@@ -25,6 +25,15 @@ type MembershipPlan = {
   benefits: string[];
 };
 
+type MembershipCollection = {
+  id: string;
+  name: string;
+  route: string;
+  priceCents: number;
+  isPublic: boolean;
+  accessType: "membership_only";
+};
+
 type MembershipEntry = {
   membership: MembershipRecord;
   plan: MembershipPlan | null;
@@ -34,13 +43,7 @@ type MembershipEntry = {
     avatar: string | null;
     route: string;
   };
-  accessibleCollections: Array<{
-    id: string;
-    name: string;
-    route: string;
-    priceCents: number;
-    isPublic: boolean;
-  }>;
+  accessibleCollections: MembershipCollection[];
 };
 
 type MembershipsResponse = {
@@ -107,7 +110,7 @@ export default function DrinkMembershipsPage() {
         <Card>
           <CardHeader>
             <CardTitle>Creator Memberships</CardTitle>
-            <CardDescription>Sign in to see the creators you support through memberships.</CardDescription>
+            <CardDescription>Sign in to see the creators you support and the member-only collections you can open.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-wrap gap-2">
             <Link href="/auth/login"><Button>Sign in</Button></Link>
@@ -119,6 +122,12 @@ export default function DrinkMembershipsPage() {
   }
 
   const memberships = membershipsQuery.data?.memberships ?? [];
+  const activeMemberships = memberships.filter((entry) => entry.membership.accessActive);
+  const memberCollections = activeMemberships.flatMap((entry) => entry.accessibleCollections.map((collection) => ({
+    ...collection,
+    creatorUsername: entry.creator.username,
+    creatorRoute: entry.creator.route,
+  })));
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8">
@@ -126,7 +135,7 @@ export default function DrinkMembershipsPage() {
       <section className="space-y-2">
         <h1 className="text-3xl font-bold">My Creator Memberships</h1>
         <p className="text-sm text-muted-foreground">
-          Memberships unlock supported creators&apos; premium collections for the current paid term without replacing free drink discovery.
+          This is your subscriber library: active memberships, the creators you support, and the Members Only collections you can open right now.
         </p>
         <div className="flex flex-wrap gap-2 pt-1 text-sm">
           <Link href="/drinks/collections/purchased" className="underline underline-offset-2">Purchased collections</Link>
@@ -137,6 +146,27 @@ export default function DrinkMembershipsPage() {
         </div>
       </section>
 
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Active memberships</CardTitle>
+          </CardHeader>
+          <CardContent className="text-3xl font-semibold">{activeMemberships.length}</CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Supported creators</CardTitle>
+          </CardHeader>
+          <CardContent className="text-3xl font-semibold">{memberships.length}</CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Member-only collections</CardTitle>
+          </CardHeader>
+          <CardContent className="text-3xl font-semibold">{memberCollections.length}</CardContent>
+        </Card>
+      </div>
+
       {membershipsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading memberships…</p> : null}
       {membershipsQuery.isError ? <p className="text-sm text-destructive">{membershipsQuery.error instanceof Error ? membershipsQuery.error.message : "Unable to load memberships right now."}</p> : null}
 
@@ -144,10 +174,44 @@ export default function DrinkMembershipsPage() {
         <Card>
           <CardHeader>
             <CardTitle>No memberships yet</CardTitle>
-            <CardDescription>Join a creator membership from a public creator page to unlock ongoing premium collection access.</CardDescription>
+            <CardDescription>Join a creator membership from a public creator page to unlock member-only collections in one library.</CardDescription>
           </CardHeader>
           <CardContent>
             <Link href="/drinks/creators/trending"><Button>Browse creators</Button></Link>
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {memberships.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Member Library</CardTitle>
+            <CardDescription>Every Members Only collection that is currently unlocked by your active memberships.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {memberCollections.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No member-only collections are currently unlocked. If a membership has ended, its library entries will return when access becomes active again.</p>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                {memberCollections.map((collection) => (
+                  <Card key={`${collection.creatorRoute}-${collection.id}`}>
+                    <CardContent className="space-y-2 p-4">
+                      <Badge variant="secondary">Members Only</Badge>
+                      <div>
+                        <Link href={collection.route} className="font-medium underline underline-offset-2">{collection.name}</Link>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        From {collection.creatorUsername ? `@${collection.creatorUsername}` : "a creator"}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Link href={collection.route}><Button size="sm">Open collection</Button></Link>
+                        <Link href={collection.creatorRoute}><Button size="sm" variant="outline">View creator</Button></Link>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       ) : null}
@@ -173,17 +237,22 @@ export default function DrinkMembershipsPage() {
                 {entry.plan ? <Badge variant="secondary">{formatPrice(entry.plan.priceCents, entry.plan.billingInterval)}</Badge> : null}
                 <Badge variant="outline">Started {formatDate(entry.membership.startedAt)}</Badge>
                 <Badge variant="outline">Ends {formatDate(entry.membership.endsAt)}</Badge>
+                <Badge variant="outline">{entry.accessibleCollections.length} member-only collections</Badge>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
               {entry.plan?.description ? <p className="text-sm text-muted-foreground">{entry.plan.description}</p> : null}
               <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Unlocked premium collections</p>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Member-only collections</p>
                 {entry.accessibleCollections.length === 0 ? (
-                  <p className="mt-2 text-sm text-muted-foreground">This creator has not published premium collections yet.</p>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {entry.membership.accessActive
+                      ? "This creator has not published any member-only collections yet."
+                      : "Access is not currently active, so member-only collections are not unlocked right now."}
+                  </p>
                 ) : (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {entry.accessibleCollections.slice(0, 6).map((collection) => (
+                    {entry.accessibleCollections.slice(0, 8).map((collection) => (
                       <Link key={collection.id} href={collection.route} className="rounded-full border px-3 py-1 text-xs underline-offset-2 hover:underline">
                         {collection.name}
                       </Link>
@@ -193,6 +262,7 @@ export default function DrinkMembershipsPage() {
               </div>
               <div className="flex flex-wrap gap-2">
                 <Link href={entry.creator.route}><Button variant="outline">Open creator page</Button></Link>
+                {entry.accessibleCollections[0] ? <Link href={entry.accessibleCollections[0].route}><Button>Open member content</Button></Link> : null}
                 {entry.membership.accessActive ? (
                   <Button variant="ghost" onClick={() => cancelMutation.mutate(entry.membership.id)} disabled={cancelMutation.isPending}>
                     {cancelMutation.isPending ? "Updating…" : "Cancel membership"}
