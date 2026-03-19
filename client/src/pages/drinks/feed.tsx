@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 
+import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { useUser } from "@/contexts/UserContext";
@@ -18,6 +19,18 @@ type CreatorPostsFeedResponse = {
     members: boolean;
   };
   items: CreatorPostItem[];
+};
+
+type CreatorDropsFeedResponse = {
+  ok: boolean;
+  signedIn: boolean;
+  count: number;
+  visibility: {
+    public: boolean;
+    followers: boolean;
+    members: boolean;
+  };
+  items: CreatorDropItem[];
 };
 
 function readErrorMessage(error: unknown, fallback: string) {
@@ -40,11 +53,24 @@ export default function DrinkCreatorPostsFeedPage() {
     },
   });
 
+  const dropsQuery = useQuery<CreatorDropsFeedResponse>({
+    queryKey: ["/api/drinks/drops/feed", user?.id ?? "guest"],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/drops/feed", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || `Failed to load scheduled drops (${response.status})`);
+      }
+      return payload as CreatorDropsFeedResponse;
+    },
+  });
+
   if (userLoading) {
     return <div className="container mx-auto max-w-6xl px-4 py-8">Loading creator feed…</div>;
   }
 
   const posts = feedQuery.data?.items ?? [];
+  const upcomingDrops = (dropsQuery.data?.items ?? []).slice(0, 3);
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8" data-testid="drinks-creator-post-feed">
@@ -65,6 +91,7 @@ export default function DrinkCreatorPostsFeedPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/drinks/discover"><Button variant="outline">Discover hub</Button></Link>
+            <Link href="/drinks/drops"><Button variant="outline">Drops calendar</Button></Link>
             <Link href="/drinks/creator-dashboard#posts"><Button variant="outline">Creator dashboard</Button></Link>
             {!user ? <Link href="/auth/login"><Button>Sign in for your full feed</Button></Link> : null}
           </div>
@@ -115,6 +142,20 @@ export default function DrinkCreatorPostsFeedPage() {
             <p className="text-sm font-medium">Membership updates, collection launches, creator promos, and challenge notes</p>
           </div>
         </div>
+      ) : null}
+
+      {!dropsQuery.isLoading && upcomingDrops.length > 0 ? (
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <h2 className="text-xl font-semibold">Upcoming drops</h2>
+            <Link href="/drinks/drops" className="text-sm underline underline-offset-2">Open full drops calendar</Link>
+          </div>
+          <div className="space-y-3">
+            {upcomingDrops.map((drop) => (
+              <CreatorDropCard key={drop.id} drop={drop} />
+            ))}
+          </div>
+        </section>
       ) : null}
 
       {feedQuery.isSuccess && posts.length === 0 ? (

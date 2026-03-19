@@ -1309,6 +1309,32 @@ export const creatorPosts = pgTable(
   })
 );
 
+export const creatorDrops = pgTable(
+  "creator_drops",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    creatorUserId: varchar("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    description: text("description"),
+    dropType: text("drop_type").default("collection_launch").notNull(),
+    visibility: text("visibility").default("public").notNull(),
+    scheduledFor: timestamp("scheduled_for").notNull(),
+    linkedCollectionId: varchar("linked_collection_id").references(() => drinkCollections.id, { onDelete: "set null" }),
+    linkedChallengeId: varchar("linked_challenge_id").references(() => drinkChallenges.id, { onDelete: "set null" }),
+    linkedPromotionId: varchar("linked_promotion_id").references(() => drinkCollectionPromotions.id, { onDelete: "set null" }),
+    isPublished: boolean("is_published").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    creatorIdx: index("creator_drops_creator_idx").on(table.creatorUserId),
+    visibilityIdx: index("creator_drops_visibility_idx").on(table.visibility),
+    scheduledIdx: index("creator_drops_scheduled_for_idx").on(table.scheduledFor),
+    publishedScheduledIdx: index("creator_drops_published_scheduled_idx").on(table.isPublished, table.scheduledFor),
+    creatorScheduledIdx: index("creator_drops_creator_scheduled_idx").on(table.creatorUserId, table.scheduledFor),
+  })
+);
+
 export const creatorMembershipCheckoutSessions = pgTable(
   "creator_membership_checkout_sessions",
   {
@@ -2060,6 +2086,12 @@ export const insertCreatorPostSchema = createInsertSchema(creatorPosts).omit({
   updatedAt: true,
 });
 
+export const insertCreatorDropSchema = createInsertSchema(creatorDrops).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertDrinkBundleItemSchema = createInsertSchema(drinkBundleItems).omit({
   addedAt: true,
 });
@@ -2263,6 +2295,8 @@ export type CreatorMembership = typeof creatorMemberships.$inferSelect;
 export type InsertCreatorMembership = z.infer<typeof insertCreatorMembershipSchema>;
 export type CreatorPost = typeof creatorPosts.$inferSelect;
 export type InsertCreatorPost = z.infer<typeof insertCreatorPostSchema>;
+export type CreatorDrop = typeof creatorDrops.$inferSelect;
+export type InsertCreatorDrop = z.infer<typeof insertCreatorDropSchema>;
 export type DrinkBundle = typeof drinkBundles.$inferSelect;
 export type InsertDrinkBundle = z.infer<typeof insertDrinkBundleSchema>;
 export type DrinkBundleItem = typeof drinkBundleItems.$inferSelect;

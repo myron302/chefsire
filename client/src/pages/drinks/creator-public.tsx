@@ -3,6 +3,7 @@ import { Link, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useUser } from "@/contexts/UserContext";
+import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -161,6 +162,13 @@ interface CreatorPostsResponse {
   items: CreatorPostItem[];
 }
 
+interface CreatorDropsResponse {
+  ok: boolean;
+  creatorUserId: string;
+  count: number;
+  items: CreatorDropItem[];
+}
+
 function number(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
@@ -284,6 +292,21 @@ export default function PublicDrinkCreatorPage() {
     enabled: Boolean(creatorId),
   });
 
+  const creatorDropsQuery = useQuery<CreatorDropsResponse>({
+    queryKey: ["/api/drinks/drops/creator", creatorId, user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/drops/creator/${encodeURIComponent(creatorId)}`, {
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to load creator drops");
+      }
+      return payload as CreatorDropsResponse;
+    },
+    enabled: Boolean(creatorId),
+  });
+
   const publicBundlesQuery = useQuery<{ ok: boolean; bundles: PublicBundle[] }>({
     queryKey: ["/api/drinks/bundles/public", creatorId],
     queryFn: async () => {
@@ -376,6 +399,7 @@ export default function PublicDrinkCreatorPage() {
   const creatorCollections = publicCollectionsQuery.data?.collections ?? [];
   const creatorBundles = publicBundlesQuery.data?.bundles ?? [];
   const creatorPosts = creatorPostsQuery.data?.items ?? [];
+  const creatorDrops = creatorDropsQuery.data?.items ?? [];
   const premiumCollections = creatorCollections.filter((collection) => collection.accessType === "premium_purchase");
   const memberOnlyCollections = creatorCollections.filter((collection) => collection.accessType === "membership_only");
   const freeCollections = creatorCollections.filter((collection) => collection.accessType === "public");
@@ -388,6 +412,9 @@ export default function PublicDrinkCreatorPage() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-3xl font-bold">Creator Profile</h1>
         <div className="flex flex-wrap gap-2">
+          <Link href="/drinks/drops">
+            <Button variant="outline" size="sm">Drops Calendar</Button>
+          </Link>
           <Link href="/drinks/feed">
             <Button variant="outline" size="sm">Creator Feed</Button>
           </Link>
@@ -455,6 +482,9 @@ export default function PublicDrinkCreatorPage() {
               </Link>
               <Link href="#creator-posts">
                 <Button size="sm" variant="outline">View creator posts</Button>
+              </Link>
+              <Link href="#creator-drops">
+                <Button size="sm" variant="outline">Upcoming drops</Button>
               </Link>
               {memberOnlyCollections.length > 0 || premiumCollections.length > 0 ? (
                 <Link href="/drinks/collections/explore">
@@ -533,6 +563,46 @@ export default function PublicDrinkCreatorPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <section id="creator-drops" className="space-y-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-semibold">Upcoming drops</h2>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span>{creatorDrops.length} visible drops</span>
+            <Link href="/drinks/drops" className="underline underline-offset-2">Open drops calendar</Link>
+          </div>
+        </div>
+
+        {creatorDropsQuery.isLoading ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">Loading scheduled drops…</CardContent>
+          </Card>
+        ) : null}
+
+        {creatorDropsQuery.isError ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-destructive">
+              {creatorDropsQuery.error instanceof Error ? creatorDropsQuery.error.message : "Unable to load creator drops right now."}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {!creatorDropsQuery.isLoading && !creatorDropsQuery.isError && creatorDrops.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              No visible upcoming drops yet. Public visitors only see public drops; follower and member drops appear here only when your access allows it.
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {creatorDrops.length > 0 ? (
+          <div className="space-y-3">
+            {creatorDrops.map((drop) => (
+              <CreatorDropCard key={drop.id} drop={drop} showCreator={false} />
+            ))}
+          </div>
+        ) : null}
+      </section>
 
       <section id="creator-posts" className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">

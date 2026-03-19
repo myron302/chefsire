@@ -14,6 +14,7 @@ import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 import CreatorBundlesSection from "@/components/drinks/CreatorBundlesSection";
+import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 
 interface CreatorDrinkMetricsItem {
@@ -137,6 +138,13 @@ interface CreatorPostsResponse {
   creatorUserId: string;
   count: number;
   items: CreatorPostItem[];
+}
+
+interface CreatorDropsResponse {
+  ok: boolean;
+  creatorUserId: string;
+  count: number;
+  items: CreatorDropItem[];
 }
 
 interface CreatorMembershipPlan {
@@ -451,6 +459,20 @@ export default function CreatorDashboardPage() {
   });
   const [postMessage, setPostMessage] = React.useState("");
   const [postError, setPostError] = React.useState("");
+  const [dropForm, setDropForm] = React.useState({
+    id: "",
+    title: "",
+    description: "",
+    dropType: "collection_launch" as CreatorDropItem["dropType"],
+    visibility: "public" as CreatorDropItem["visibility"],
+    scheduledFor: "",
+    linkedCollectionId: "",
+    linkedChallengeId: "",
+    linkedPromotionId: "",
+    isPublished: true,
+  });
+  const [dropMessage, setDropMessage] = React.useState("");
+  const [dropError, setDropError] = React.useState("");
 
   const query = useQuery<CreatorDrinkMetricsResponse>({
     queryKey: ["/api/drinks/creator", user?.id ?? ""],
@@ -616,6 +638,21 @@ export default function CreatorDashboardPage() {
         throw new Error(payload?.error || payload?.message || `Failed to load creator posts (${response.status})`);
       }
       return payload as CreatorPostsResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
+  const creatorDropsQuery = useQuery<CreatorDropsResponse>({
+    queryKey: ["/api/drinks/drops/creator", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/drops/creator/${encodeURIComponent(user?.id ?? "")}`, {
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || `Failed to load creator drops (${response.status})`);
+      }
+      return payload as CreatorDropsResponse;
     },
     enabled: Boolean(user?.id),
   });
@@ -822,6 +859,109 @@ export default function CreatorDashboardPage() {
     },
   });
 
+  const saveDropMutation = useMutation({
+    mutationFn: async (payloadBody: {
+      id?: string;
+      title: string;
+      description?: string | null;
+      dropType: CreatorDropItem["dropType"];
+      visibility: CreatorDropItem["visibility"];
+      scheduledFor: string;
+      linkedCollectionId?: string | null;
+      linkedChallengeId?: string | null;
+      linkedPromotionId?: string | null;
+      isPublished: boolean;
+    }) => {
+      const isEditing = Boolean(payloadBody.id);
+      const response = await fetch(
+        isEditing
+          ? `/api/drinks/drops/${encodeURIComponent(payloadBody.id!)}`
+          : "/api/drinks/drops",
+        {
+          method: isEditing ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            title: payloadBody.title,
+            description: payloadBody.description || null,
+            dropType: payloadBody.dropType,
+            visibility: payloadBody.dropType === "member_drop" ? "members" : payloadBody.visibility,
+            scheduledFor: new Date(payloadBody.scheduledFor).toISOString(),
+            linkedCollectionId: payloadBody.linkedCollectionId || null,
+            linkedChallengeId: payloadBody.linkedChallengeId || null,
+            linkedPromotionId: payloadBody.linkedPromotionId || null,
+            isPublished: payloadBody.isPublished,
+          }),
+        },
+      );
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to save scheduled drop (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async (_, variables) => {
+      setDropMessage(variables.id ? "Scheduled drop updated." : "Scheduled drop created.");
+      setDropError("");
+      setDropForm({
+        id: "",
+        title: "",
+        description: "",
+        dropType: "collection_launch",
+        visibility: "public",
+        scheduledFor: "",
+        linkedCollectionId: "",
+        linkedChallengeId: "",
+        linkedPromotionId: "",
+        isPublished: true,
+      });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/drops/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/drops/feed", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setDropError(readErrorMessage(error, "Unable to save scheduled drop right now."));
+      setDropMessage("");
+    },
+  });
+
+  const deleteDropMutation = useMutation({
+    mutationFn: async (dropId: string) => {
+      const response = await fetch(`/api/drinks/drops/${encodeURIComponent(dropId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to delete scheduled drop (${response.status})`);
+      }
+      return payload;
+    },
+    onSuccess: async (payload: { deletedId?: string }) => {
+      if (payload?.deletedId && dropForm.id === payload.deletedId) {
+        setDropForm({
+          id: "",
+          title: "",
+          description: "",
+          dropType: "collection_launch",
+          visibility: "public",
+          scheduledFor: "",
+          linkedCollectionId: "",
+          linkedChallengeId: "",
+          linkedPromotionId: "",
+          isPublished: true,
+        });
+      }
+      setDropMessage("Scheduled drop deleted.");
+      setDropError("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/drops/creator", user?.id ?? ""] });
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/drops/feed", user?.id ?? ""] });
+    },
+    onError: (error) => {
+      setDropError(readErrorMessage(error, "Unable to delete scheduled drop right now."));
+      setDropMessage("");
+    },
+  });
+
   if (userLoading) {
     return <div className="container mx-auto p-6">Loading dashboard...</div>;
   }
@@ -930,17 +1070,22 @@ export default function CreatorDashboardPage() {
   const recentCreatorOrders = ordersQuery.data?.orders ?? [];
   const creatorPromotions = promotionsQuery.data?.promotions ?? [];
   const creatorPosts = creatorPostsQuery.data?.items ?? [];
+  const creatorDrops = creatorDropsQuery.data?.items ?? [];
   const challengeOptions = challengesQuery.data?.challenges ?? [];
   const premiumCollectionOptions = premiumPurchaseCollections.map((collection) => ({
     id: collection.id,
     name: collection.name ?? `Collection ${collection.id.slice(0, 8)}`,
     priceCents: collection.priceCents,
   }));
-  const postCollectionOptions = creatorCollections.map((collection) => ({
+  const creatorCollectionOptions = creatorCollections.map((collection) => ({
     id: collection.id,
     name: collection.name ?? `Collection ${collection.id.slice(0, 8)}`,
   }));
+  const postCollectionOptions = creatorCollectionOptions;
   const selectedPromotionCollectionId = promotionForm.collectionId || premiumCollectionOptions[0]?.id || "";
+  const selectedDropType = dropForm.dropType;
+  const selectedDropCollectionId = dropForm.linkedCollectionId;
+  const availableDropPromotions = creatorPromotions.filter((promotion) => !selectedDropCollectionId || promotion.collectionId === selectedDropCollectionId);
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
@@ -966,6 +1111,9 @@ export default function CreatorDashboardPage() {
           </Link>
           <Link href="/drinks/feed">
             <Button variant="outline" size="sm">Creator Feed</Button>
+          </Link>
+          <Link href="/drinks/drops">
+            <Button variant="outline" size="sm">Drops Calendar</Button>
           </Link>
         </div>
       </div>
@@ -1280,6 +1428,273 @@ export default function CreatorDashboardPage() {
                         disabled={deletePostMutation.isPending}
                       >
                         {deletePostMutation.isPending ? "Deleting…" : "Delete"}
+                      </Button>
+                    </>
+                  )}
+                />
+              ))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card id="drops">
+        <CardHeader>
+          <CardTitle>Scheduled Drops</CardTitle>
+          <CardDescription>
+            Schedule lightweight collection launches, promos, member drops, and challenge announcements so followers know what is coming without turning this into a giant calendar product.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="grid gap-2 sm:grid-cols-4">
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Upcoming drops</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorDrops.length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Public</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorDrops.filter((drop) => drop.visibility === "public").length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Followers</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorDrops.filter((drop) => drop.visibility === "followers").length)}</p>
+            </div>
+            <div className="rounded-md border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Members</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorDrops.filter((drop) => drop.visibility === "members").length)}</p>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),minmax(0,1.2fr)]">
+            <div className="space-y-4 rounded-lg border p-4">
+              <div className="space-y-1">
+                <h3 className="font-semibold">{dropForm.id ? "Edit scheduled drop" : "New scheduled drop"}</h3>
+                <p className="text-sm text-muted-foreground">
+                  Version one keeps this simple: title, timing, visibility, and optional links to a collection, challenge, or promo.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="drop-title">Title</Label>
+                <Input id="drop-title" value={dropForm.title} onChange={(event) => setDropForm((current) => ({ ...current, title: event.target.value }))} placeholder="Summer spritz collection launches Friday" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="drop-description">Description</Label>
+                <Textarea id="drop-description" value={dropForm.description} onChange={(event) => setDropForm((current) => ({ ...current, description: event.target.value }))} placeholder="Optional context for what is dropping and who should care." className="min-h-[120px]" />
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="drop-type">Drop type</Label>
+                  <select
+                    id="drop-type"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={dropForm.dropType}
+                    onChange={(event) => {
+                      const nextType = event.target.value as CreatorDropItem["dropType"];
+                      setDropForm((current) => ({
+                        ...current,
+                        dropType: nextType,
+                        visibility: nextType === "member_drop" ? "members" : current.visibility,
+                        linkedPromotionId: nextType === "promo_launch" ? current.linkedPromotionId : "",
+                      }));
+                    }}
+                  >
+                    <option value="collection_launch">Collection launch</option>
+                    <option value="promo_launch">Promo launch</option>
+                    <option value="member_drop">Member drop</option>
+                    <option value="challenge_launch">Challenge launch</option>
+                    <option value="update">Update</option>
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="drop-scheduled-for">Scheduled for</Label>
+                  <Input id="drop-scheduled-for" type="datetime-local" value={dropForm.scheduledFor} onChange={(event) => setDropForm((current) => ({ ...current, scheduledFor: event.target.value }))} />
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="drop-visibility">Visibility</Label>
+                  <select
+                    id="drop-visibility"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={dropForm.dropType === "member_drop" ? "members" : dropForm.visibility}
+                    onChange={(event) => setDropForm((current) => ({ ...current, visibility: event.target.value as CreatorDropItem["visibility"] }))}
+                    disabled={dropForm.dropType === "member_drop"}
+                  >
+                    <option value="public">Public</option>
+                    <option value="followers">Followers</option>
+                    <option value="members">Members</option>
+                  </select>
+                  <p className="text-xs text-muted-foreground">Public → anyone. Followers → followed users + you. Members → active members + you.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="drop-published">Publishing</Label>
+                  <select
+                    id="drop-published"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={dropForm.isPublished ? "published" : "draft"}
+                    onChange={(event) => setDropForm((current) => ({ ...current, isPublished: event.target.value === "published" }))}
+                  >
+                    <option value="published">Published in drops feed</option>
+                    <option value="draft">Draft only for me</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="drop-linked-collection">Linked collection</Label>
+                  <select
+                    id="drop-linked-collection"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={dropForm.linkedCollectionId}
+                    onChange={(event) => setDropForm((current) => ({ ...current, linkedCollectionId: event.target.value, linkedPromotionId: current.linkedPromotionId && event.target.value !== current.linkedCollectionId ? "" : current.linkedPromotionId }))}
+                  >
+                    <option value="">No linked collection</option>
+                    {creatorCollectionOptions.map((collection) => (
+                      <option key={collection.id} value={collection.id}>{collection.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="drop-linked-challenge">Linked challenge</Label>
+                  <select
+                    id="drop-linked-challenge"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={dropForm.linkedChallengeId}
+                    onChange={(event) => setDropForm((current) => ({ ...current, linkedChallengeId: event.target.value }))}
+                  >
+                    <option value="">No linked challenge</option>
+                    {challengeOptions.map((challenge) => (
+                      <option key={challenge.id} value={challenge.id}>{challenge.title}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="drop-linked-promotion">Linked promo</Label>
+                <select
+                  id="drop-linked-promotion"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={dropForm.linkedPromotionId}
+                  onChange={(event) => setDropForm((current) => ({ ...current, linkedPromotionId: event.target.value }))}
+                  disabled={selectedDropType !== "promo_launch"}
+                >
+                  <option value="">{selectedDropType === "promo_launch" ? "Select a promo" : "Promo links are only for promo launches"}</option>
+                  {availableDropPromotions.map((promotion) => (
+                    <option key={promotion.id} value={promotion.id}>{promotion.collectionName} · {promotion.code}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">Promo launches can optionally point at an active or upcoming collection promo code.</p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  onClick={() => {
+                    setDropMessage("");
+                    setDropError("");
+                    saveDropMutation.mutate({
+                      id: dropForm.id || undefined,
+                      title: dropForm.title.trim(),
+                      description: dropForm.description.trim(),
+                      dropType: dropForm.dropType,
+                      visibility: dropForm.dropType === "member_drop" ? "members" : dropForm.visibility,
+                      scheduledFor: dropForm.scheduledFor,
+                      linkedCollectionId: dropForm.linkedCollectionId || null,
+                      linkedChallengeId: dropForm.linkedChallengeId || null,
+                      linkedPromotionId: dropForm.linkedPromotionId || null,
+                      isPublished: dropForm.isPublished,
+                    });
+                  }}
+                  disabled={saveDropMutation.isPending || !dropForm.title.trim() || !dropForm.scheduledFor}
+                >
+                  {saveDropMutation.isPending ? "Saving drop…" : dropForm.id ? "Update drop" : "Create drop"}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setDropMessage("");
+                    setDropError("");
+                    setDropForm({
+                      id: "",
+                      title: "",
+                      description: "",
+                      dropType: "collection_launch",
+                      visibility: "public",
+                      scheduledFor: "",
+                      linkedCollectionId: "",
+                      linkedChallengeId: "",
+                      linkedPromotionId: "",
+                      isPublished: true,
+                    });
+                  }}
+                >
+                  Reset
+                </Button>
+                <Link href="/drinks/drops"><Button variant="ghost">Open drops page</Button></Link>
+              </div>
+
+              {dropMessage ? <p className="text-sm text-emerald-600">{dropMessage}</p> : null}
+              {dropError ? <p className="text-sm text-destructive">{dropError}</p> : null}
+            </div>
+
+            <div className="space-y-3">
+              {creatorDropsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading scheduled drops…</p> : null}
+              {creatorDropsQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(creatorDropsQuery.error, "Unable to load scheduled drops right now.")}</p> : null}
+              {!creatorDropsQuery.isLoading && !creatorDropsQuery.isError && creatorDrops.length === 0 ? (
+                <Card>
+                  <CardContent className="p-4 text-sm text-muted-foreground">
+                    No upcoming drops yet. Schedule a public launch, a follower-only teaser, or a member drop tied to a collection, promo, or challenge.
+                  </CardContent>
+                </Card>
+              ) : null}
+              {creatorDrops.map((drop) => (
+                <CreatorDropCard
+                  key={drop.id}
+                  drop={drop}
+                  showCreator={false}
+                  actions={(
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setDropMessage("");
+                          setDropError("");
+                          const scheduledDate = new Date(drop.scheduledFor);
+                          const localValue = Number.isNaN(scheduledDate.getTime()) ? "" : new Date(scheduledDate.getTime() - scheduledDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                          setDropForm({
+                            id: drop.id,
+                            title: drop.title,
+                            description: drop.description ?? "",
+                            dropType: drop.dropType,
+                            visibility: drop.visibility,
+                            scheduledFor: localValue,
+                            linkedCollectionId: drop.linkedCollection?.id ?? "",
+                            linkedChallengeId: drop.linkedChallenge?.id ?? "",
+                            linkedPromotionId: drop.linkedPromotion?.id ?? "",
+                            isPublished: drop.isPublished,
+                          });
+                          window.location.hash = "drops";
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setDropMessage("");
+                          setDropError("");
+                          deleteDropMutation.mutate(drop.id);
+                        }}
+                        disabled={deleteDropMutation.isPending}
+                      >
+                        {deleteDropMutation.isPending ? "Deleting…" : "Delete"}
                       </Button>
                     </>
                   )}
