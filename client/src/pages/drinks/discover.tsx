@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { Link } from "wouter";
-import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem, ShoppingBag, Newspaper, CalendarClock } from "lucide-react";
+import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem, ShoppingBag, Newspaper, CalendarClock, Archive } from "lucide-react";
 
 import { useUser } from "@/contexts/UserContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -72,6 +72,13 @@ const discoverLinks: DiscoverLink[] = [
     description: "Upcoming collection launches, promos, challenge drops, and member release timing.",
     href: "/drinks/drops",
     icon: CalendarClock,
+    activityHint: "New",
+  },
+  {
+    title: "Roadmap + Archive",
+    description: "See what creators have coming next, what is live now, and what already shipped.",
+    href: "/drinks/roadmap",
+    icon: Archive,
     activityHint: "New",
   },
   {

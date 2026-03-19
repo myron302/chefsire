@@ -1336,6 +1336,33 @@ export const creatorDrops = pgTable(
   })
 );
 
+export const creatorRoadmapItems = pgTable(
+  "creator_roadmap_items",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    creatorUserId: varchar("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    description: text("description"),
+    itemType: text("item_type").default("roadmap").notNull(),
+    visibility: text("visibility").default("public").notNull(),
+    linkedCollectionId: varchar("linked_collection_id").references(() => drinkCollections.id, { onDelete: "set null" }),
+    linkedChallengeId: varchar("linked_challenge_id").references(() => drinkChallenges.id, { onDelete: "set null" }),
+    scheduledFor: timestamp("scheduled_for"),
+    releasedAt: timestamp("released_at"),
+    status: text("status").default("upcoming").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    creatorIdx: index("creator_roadmap_items_creator_idx").on(table.creatorUserId),
+    visibilityIdx: index("creator_roadmap_items_visibility_idx").on(table.visibility),
+    statusIdx: index("creator_roadmap_items_status_idx").on(table.status),
+    creatorStatusIdx: index("creator_roadmap_items_creator_status_idx").on(table.creatorUserId, table.status),
+    scheduledIdx: index("creator_roadmap_items_scheduled_idx").on(table.scheduledFor),
+    releasedIdx: index("creator_roadmap_items_released_idx").on(table.releasedAt),
+  })
+);
+
 export const creatorMembershipCheckoutSessions = pgTable(
   "creator_membership_checkout_sessions",
   {
@@ -2093,6 +2120,12 @@ export const insertCreatorDropSchema = createInsertSchema(creatorDrops).omit({
   updatedAt: true,
 });
 
+export const insertCreatorRoadmapItemSchema = createInsertSchema(creatorRoadmapItems).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertDrinkBundleItemSchema = createInsertSchema(drinkBundleItems).omit({
   addedAt: true,
 });
@@ -2298,6 +2331,8 @@ export type CreatorPost = typeof creatorPosts.$inferSelect;
 export type InsertCreatorPost = z.infer<typeof insertCreatorPostSchema>;
 export type CreatorDrop = typeof creatorDrops.$inferSelect;
 export type InsertCreatorDrop = z.infer<typeof insertCreatorDropSchema>;
+export type CreatorRoadmapItem = typeof creatorRoadmapItems.$inferSelect;
+export type InsertCreatorRoadmapItem = z.infer<typeof insertCreatorRoadmapItemSchema>;
 export type DrinkBundle = typeof drinkBundles.$inferSelect;
 export type InsertDrinkBundle = z.infer<typeof insertDrinkBundleSchema>;
 export type DrinkBundleItem = typeof drinkBundleItems.$inferSelect;

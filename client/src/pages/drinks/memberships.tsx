@@ -146,6 +146,8 @@ export default function DrinkMembershipsPage() {
           <span className="text-muted-foreground">·</span>
           <Link href="/drinks/drops" className="underline underline-offset-2">Drops calendar</Link>
           <span className="text-muted-foreground">·</span>
+          <Link href="/drinks/roadmap" className="underline underline-offset-2">Roadmap + archive</Link>
+          <span className="text-muted-foreground">·</span>
           <Link href="/drinks/creators/trending" className="underline underline-offset-2">Discover creators</Link>
         </div>
       </section>
