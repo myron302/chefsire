@@ -58,6 +58,7 @@ interface PublicCollection {
   name: string;
   description?: string | null;
   isPublic: boolean;
+  accessType: "public" | "premium_purchase" | "membership_only";
   isPremium: boolean;
   priceCents: number;
   itemsCount: number;
@@ -321,7 +322,7 @@ export default function PublicDrinkCreatorPage() {
     if (!flag) return;
     const status = membershipStatusQuery.data?.checkout?.status;
     if (status === "completed") {
-      setMembershipMessage("Membership payment verified. Premium collections from this creator are now unlocked for your active term.");
+      setMembershipMessage("Membership payment verified. Member-only collections from this creator are now unlocked for your active term.");
     } else if (status === "failed" || status === "canceled") {
       setMembershipError(membershipStatusQuery.data?.checkout?.failureReason || "Square membership checkout did not complete.");
     } else {
@@ -351,8 +352,9 @@ export default function PublicDrinkCreatorPage() {
   const data = query.data;
   const creatorCollections = publicCollectionsQuery.data?.collections ?? [];
   const creatorBundles = publicBundlesQuery.data?.bundles ?? [];
-  const premiumCollections = creatorCollections.filter((collection) => collection.isPremium);
-  const freeCollections = creatorCollections.filter((collection) => !collection.isPremium);
+  const premiumCollections = creatorCollections.filter((collection) => collection.accessType === "premium_purchase");
+  const memberOnlyCollections = creatorCollections.filter((collection) => collection.accessType === "membership_only");
+  const freeCollections = creatorCollections.filter((collection) => collection.accessType === "public");
   const membershipPlan = membershipStatusQuery.data?.plan ?? null;
   const viewerMembership = membershipStatusQuery.data?.membership ?? null;
   const membershipActive = Boolean(viewerMembership?.accessActive);
@@ -411,7 +413,9 @@ export default function PublicDrinkCreatorPage() {
 
           <div className="rounded-md border bg-muted/30 p-3 text-sm space-y-2">
             <p className="font-medium">Creator storefront · {creatorCollections.length} public collections</p>
-            {premiumCollections.length > 0 ? (
+            {memberOnlyCollections.length > 0 ? (
+              <p className="text-muted-foreground">{memberOnlyCollections.length} member-only collections make this membership tangible, alongside {premiumCollections.length} premium purchase collections.</p>
+            ) : premiumCollections.length > 0 ? (
               <p className="text-muted-foreground">Premium collections available · browse and support this creator.</p>
             ) : (
               <p className="text-muted-foreground">Support this creator by following and exploring their collections.</p>
@@ -420,9 +424,9 @@ export default function PublicDrinkCreatorPage() {
               <Link href="#creator-collections">
                 <Button size="sm" variant="outline">View creator collections</Button>
               </Link>
-              {premiumCollections.length > 0 ? (
+              {memberOnlyCollections.length > 0 || premiumCollections.length > 0 ? (
                 <Link href="/drinks/collections/explore">
-                  <Button size="sm">Browse premium collections</Button>
+                  <Button size="sm">Browse collection storefront</Button>
                 </Link>
               ) : null}
               {user?.id !== data.userId ? <CreatorFollowButton creatorId={data.userId} /> : null}
@@ -444,16 +448,22 @@ export default function PublicDrinkCreatorPage() {
           <CardHeader>
             <CardTitle>{membershipPlan.name}</CardTitle>
             <CardDescription>
-              Lightweight creator membership powered by Square for an ongoing support path beyond one-off premium collection purchases.
+              Join this creator to unlock member-only collections and support them beyond one-off premium purchases.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
               <Badge>{formatCurrency(membershipPlan.priceCents)}/{membershipPlan.billingInterval === "yearly" ? "year" : "month"}</Badge>
               <Badge variant={membershipActive ? "secondary" : "outline"}>{membershipActive ? "Member access active" : "Membership available"}</Badge>
+              <Badge variant="secondary">{memberOnlyCollections.length} member-only collections</Badge>
               {viewerMembership?.endsAt ? <Badge variant="outline">Current term ends {formatDate(viewerMembership.endsAt)}</Badge> : null}
             </div>
             {membershipPlan.description ? <p className="text-sm text-muted-foreground">{membershipPlan.description}</p> : null}
+            <p className="text-sm text-muted-foreground">
+              {memberOnlyCollections.length > 0
+                ? `Membership currently includes ${memberOnlyCollections.length} public-facing member-only collection${memberOnlyCollections.length === 1 ? "" : "s"}.`
+                : "No member-only collections are published yet, but this membership is ready for creator perks."}
+            </p>
             <div className="grid gap-2 md:grid-cols-2">
               {membershipPlan.benefits.map((benefit) => (
                 <div key={benefit} className="rounded-md border bg-muted/20 p-3 text-sm text-muted-foreground">
@@ -480,13 +490,13 @@ export default function PublicDrinkCreatorPage() {
                 </Button>
               )}
               <Link href="#creator-collections">
-                <Button variant="ghost">See included premium collections</Button>
+                <Button variant="ghost">See member perks</Button>
               </Link>
             </div>
             {membershipMessage ? <p className="text-sm text-emerald-600">{membershipMessage}</p> : null}
             {membershipError ? <p className="text-sm text-destructive">{membershipError}</p> : null}
             <p className="text-xs text-muted-foreground">
-              Version one memberships unlock this creator&apos;s premium collections for the paid term. Renewals stay manual for now so finance reporting stays honest.
+              Version one memberships unlock this creator&apos;s Members Only collections for the paid term. Renewals stay manual for now so finance reporting stays honest.
             </p>
           </CardContent>
         </Card>
@@ -610,7 +620,8 @@ export default function PublicDrinkCreatorPage() {
           <h2 className="text-xl font-semibold">Collections by this creator</h2>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <span>{creatorCollections.length} items</span>
-            {premiumCollections.length > 0 ? <span>{premiumCollections.length} premium</span>  : null}
+            {memberOnlyCollections.length > 0 ? <span>{memberOnlyCollections.length} members only</span> : null}
+            {premiumCollections.length > 0 ? <span>{premiumCollections.length} premium purchase</span>  : null}
             <Link href="/drinks/collections/explore" className="underline underline-offset-2">Explore all</Link>
           </div>
         </div>
@@ -629,11 +640,51 @@ export default function PublicDrinkCreatorPage() {
 
         {!publicCollectionsQuery.isLoading && (publicCollectionsQuery.data?.collections?.length ?? 0) > 0 ? (
           <div className="space-y-5">
+            {memberOnlyCollections.length > 0 ? (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Member-only collections</h3>
+                  <span className="text-xs text-muted-foreground">Concrete membership value</span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {memberOnlyCollections.map((collection) => (
+                    <Card key={collection.id}>
+                      <CardContent className="space-y-2 p-4">
+                        <Link href={`/drinks/collections/${encodeURIComponent(collection.id)}`} className="font-medium underline underline-offset-2">
+                          {collection.name}
+                        </Link>
+                        {collection.description ? <p className="text-sm text-muted-foreground">{collection.description}</p> : null}
+                        <div className="flex flex-wrap gap-2">
+                          <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
+                          <Badge variant="secondary">Members Only</Badge>
+                          {collection.ownedByViewer ? <Badge variant="secondary">{accessGrantLabel(collection.viewerPrimaryAccessGrant)}</Badge> : null}
+                          {membershipActive ? <Badge variant="secondary">Member access active</Badge> : null}
+                        </div>
+                        <CollectionRatingSummary averageRating={collection.averageRating} reviewCount={collection.reviewCount} />
+                        <div className="flex flex-wrap gap-2">
+                          {membershipActive ? (
+                            <Link href={`/drinks/collections/${encodeURIComponent(collection.id)}`} className="text-xs underline underline-offset-2">Open member collection</Link>
+                          ) : !user ? (
+                            <Link href="/auth/login"><Button size="sm">Sign in to join</Button></Link>
+                          ) : (
+                            <Button size="sm" onClick={() => { setMembershipError(""); setMembershipMessage(""); joinMembershipMutation.mutate(); }} disabled={joinMembershipMutation.isPending}>
+                              {joinMembershipMutation.isPending ? "Opening Square…" : "Join Membership"}
+                            </Button>
+                          )}
+                          <Link href="/drinks/memberships" className="text-xs underline underline-offset-2">Open memberships</Link>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             {premiumCollections.length > 0 ? (
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Premium collections</h3>
-                  <span className="text-xs text-muted-foreground">Support this creator</span>
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Premium purchase collections</h3>
+                  <span className="text-xs text-muted-foreground">One-off checkout still available</span>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
                   {premiumCollections.map((collection) => (
@@ -647,7 +698,6 @@ export default function PublicDrinkCreatorPage() {
                           <Badge variant="secondary">{number(collection.itemsCount)} drinks</Badge>
                           <Badge>Premium · {formatCurrency(collection.priceCents)}</Badge>
                           {collection.ownedByViewer ? <Badge variant="secondary">{accessGrantLabel(collection.viewerPrimaryAccessGrant)}</Badge> : null}
-                          {membershipActive ? <Badge variant="secondary">Included with membership</Badge> : null}
                           {user && collection.isWishlisted ? <Badge variant="outline">Wishlisted</Badge> : null}
                           {collection.activePromoPricing ? <Badge variant="secondary">Promo {collection.activePromoPricing.code}</Badge> : null}
                         </div>

@@ -423,7 +423,7 @@ export default function CreatorDashboardPage() {
   const [promotionError, setPromotionError] = React.useState("");
   const [membershipPlanForm, setMembershipPlanForm] = React.useState({
     name: "Creator Membership",
-    description: "Unlock all of my premium drink collections while your membership is active.",
+    description: "Unlock my member-only drink collections while your membership is active.",
     priceCents: "1200",
     billingInterval: "monthly" as "monthly" | "yearly",
     isActive: true,
@@ -908,7 +908,7 @@ export default function CreatorDashboardPage() {
         <CardHeader>
           <CardTitle>Creator Membership</CardTitle>
           <CardDescription>
-            Offer a lightweight monthly or yearly membership that unlocks all of your premium collections while the paid term is active.
+            Offer a lightweight monthly or yearly membership that unlocks your member-only collections while the paid term is active.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -943,7 +943,7 @@ export default function CreatorDashboardPage() {
               </div>
               <div className="space-y-1 lg:col-span-2">
                 <Label htmlFor="membership-plan-description">Description</Label>
-                <Input id="membership-plan-description" value={membershipPlanForm.description} onChange={(event) => setMembershipPlanForm((current) => ({ ...current, description: event.target.value }))} placeholder="Unlock all of my premium collections." />
+                <Input id="membership-plan-description" value={membershipPlanForm.description} onChange={(event) => setMembershipPlanForm((current) => ({ ...current, description: event.target.value }))} placeholder="Unlock my member-only collections." />
               </div>
               <div className="space-y-1">
                 <Label htmlFor="membership-plan-price">Price cents</Label>
