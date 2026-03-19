@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import CreatorCollaborationAttribution, { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
 
 export type CreatorRoadmapItem = {
   id: string;
@@ -38,6 +39,7 @@ export type CreatorRoadmapItem = {
     title: string;
     route: string;
   } | null;
+  acceptedCollaboration?: AcceptedCreatorCollaboration | null;
 };
 
 function formatDateTime(value?: string | null) {
@@ -130,6 +132,7 @@ export default function CreatorRoadmapCard({ item, showCreator = true, actions }
                 {releasedLabel ? <Badge variant="outline">Released {releasedLabel}</Badge> : null}
               </div>
               <h3 className="text-lg font-semibold">{item.title}</h3>
+              <CreatorCollaborationAttribution collaboration={item.acceptedCollaboration ?? null} primaryCreatorUserId={item.creatorUserId} />
               {item.description ? <p className="whitespace-pre-wrap text-sm text-muted-foreground">{item.description}</p> : null}
             </div>
           </div>

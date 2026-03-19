@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import CreatorCollaborationAttribution, { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
 
 export type CreatorDropItem = {
   id: string;
@@ -43,6 +44,7 @@ export type CreatorDropItem = {
     startsAt: string | null;
     endsAt: string | null;
   } | null;
+  acceptedCollaboration?: AcceptedCreatorCollaboration | null;
 };
 
 function formatDateTime(value: string) {
@@ -117,6 +119,7 @@ export default function CreatorDropCard({ drop, showCreator = true, actions }: C
                 {drop.linkedPromotion ? <Badge variant="secondary">Code {drop.linkedPromotion.code}</Badge> : null}
               </div>
               <h3 className="text-lg font-semibold">{drop.title}</h3>
+              <CreatorCollaborationAttribution collaboration={drop.acceptedCollaboration ?? null} primaryCreatorUserId={drop.creatorUserId} />
               {drop.description ? <p className="whitespace-pre-wrap text-sm text-muted-foreground">{drop.description}</p> : null}
             </div>
           </div>
