@@ -4,6 +4,7 @@
 import { db } from "../db";
 import { eq } from "drizzle-orm";
 import {
+  creatorMemberships,
   drinkCollectionWishlists,
   follows,
   notifications,
@@ -16,6 +17,9 @@ export const DRINK_ALERT_TYPES = {
   followedCreatorPromo: "drink_collection_followed_creator_promo",
   followedCreatorPost: "drink_creator_followed_post",
   creatorMemberPost: "drink_creator_member_post",
+  followedCreatorDrop: "drink_creator_followed_drop",
+  creatorMemberDrop: "drink_creator_member_drop",
+  publicCreatorDrop: "drink_creator_public_drop",
 } as const;
 
 export type DrinkAlertType = (typeof DRINK_ALERT_TYPES)[keyof typeof DRINK_ALERT_TYPES];
@@ -73,6 +77,25 @@ async function loadFollowerRecipientIds(creatorUserId: string, excludedUserId?: 
 
   return [...new Set(
     rows
+      .map((row) => row.userId)
+      .filter((userId): userId is string => Boolean(userId) && userId !== excludedUserId),
+  )];
+}
+
+async function loadActiveMemberRecipientIds(creatorUserId: string, excludedUserId?: string | null) {
+  const now = new Date();
+  const rows = await db
+    .select({
+      userId: creatorMemberships.userId,
+      status: creatorMemberships.status,
+      endsAt: creatorMemberships.endsAt,
+    })
+    .from(creatorMemberships)
+    .where(eq(creatorMemberships.creatorUserId, creatorUserId));
+
+  return [...new Set(
+    rows
+      .filter((row) => (row.status === "active" || row.status === "canceled") && (!row.endsAt || row.endsAt > now))
       .map((row) => row.userId)
       .filter((userId): userId is string => Boolean(userId) && userId !== excludedUserId),
   )];
@@ -203,6 +226,67 @@ export async function sendFollowedCreatorPromoAlerts(params: {
         promotionId: params.promotionId,
         promotionCode: params.promotionCode,
         audience: "following",
+      },
+    })),
+  );
+}
+
+export async function sendCreatorDropAlerts(params: {
+  creatorUserId: string;
+  creatorUsername?: string | null;
+  creatorAvatar?: string | null;
+  dropId: string;
+  title: string;
+  visibility: "public" | "followers" | "members";
+  scheduledFor: string;
+}) {
+  const creatorHandle = params.creatorUsername ? `@${params.creatorUsername}` : "A creator";
+  const linkUrl = `/drinks/drops`;
+
+  if (params.visibility === "members") {
+    const recipientIds = await loadActiveMemberRecipientIds(params.creatorUserId, params.creatorUserId);
+    if (!recipientIds.length) return;
+
+    await sendBulkDrinkAlerts(
+      recipientIds.map((userId) => ({
+        userId,
+        type: DRINK_ALERT_TYPES.creatorMemberDrop,
+        title: "A creator you support scheduled a member drop",
+        message: `${creatorHandle} scheduled "${params.title}" for ${new Date(params.scheduledFor).toLocaleString()}.`,
+        linkUrl,
+        imageUrl: params.creatorAvatar ?? null,
+        metadata: {
+          creatorUserId: params.creatorUserId,
+          dropId: params.dropId,
+          visibility: params.visibility,
+          scheduledFor: params.scheduledFor,
+          audience: "membership",
+        },
+      })),
+    );
+    return;
+  }
+
+  const recipientIds = params.visibility === "followers"
+    ? await loadFollowerRecipientIds(params.creatorUserId, params.creatorUserId)
+    : await loadFollowerRecipientIds(params.creatorUserId, params.creatorUserId);
+
+  if (!recipientIds.length) return;
+
+  await sendBulkDrinkAlerts(
+    recipientIds.map((userId) => ({
+      userId,
+      type: params.visibility === "followers" ? DRINK_ALERT_TYPES.followedCreatorDrop : DRINK_ALERT_TYPES.publicCreatorDrop,
+      title: params.visibility === "followers" ? "A creator you follow scheduled a drop" : "A creator scheduled a public drop",
+      message: `${creatorHandle} scheduled "${params.title}" for ${new Date(params.scheduledFor).toLocaleString()}.`,
+      linkUrl,
+      imageUrl: params.creatorAvatar ?? null,
+      metadata: {
+        creatorUserId: params.creatorUserId,
+        dropId: params.dropId,
+        visibility: params.visibility,
+        scheduledFor: params.scheduledFor,
+        audience: params.visibility === "followers" ? "following" : "public_followers",
       },
     })),
   );

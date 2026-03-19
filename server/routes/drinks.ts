@@ -7,6 +7,7 @@ import { db } from "../db";
 import { getCanonicalDrinkBySlug } from "../services/canonical-drinks-index";
 import { 
   creatorMembershipCheckoutSessions,
+  creatorDrops,
   creatorMembershipPlans,
   creatorPosts,
   creatorMembershipSalesLedger,
@@ -37,6 +38,7 @@ import {
   drinkEvents,
   drinkRecipes,
   follows,
+  insertCreatorDropSchema,
   insertDrinkCollectionSchema,
   insertDrinkChallengeSchema,
   insertDrinkRecipeSchema,
@@ -50,6 +52,7 @@ import { WebhooksHelper } from "square";
 import { getSquareClient, getSquareConfigError, requireWebhookKey, squareConfig } from "../lib/square";
 import {
   DRINK_ALERT_TYPES,
+  sendCreatorDropAlerts,
   sendFollowedCreatorCollectionLaunchAlerts,
   sendFollowedCreatorPromoAlerts,
   sendWishlistPriceDropAlerts,
@@ -75,6 +78,8 @@ type CreatorMembershipStatus = "active" | "canceled" | "expired" | "past_due";
 type CreatorMembershipCheckoutStatus = "pending" | "completed" | "failed" | "canceled";
 type CreatorPostType = "update" | "promo" | "collection_launch" | "challenge" | "member_only";
 type CreatorPostVisibility = "public" | "followers" | "members";
+type CreatorDropType = "collection_launch" | "promo_launch" | "member_drop" | "challenge_launch" | "update";
+type CreatorDropVisibility = "public" | "followers" | "members";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
@@ -82,6 +87,7 @@ type DrinkCollectionPromotionRecord = typeof drinkCollectionPromotions.$inferSel
 type DrinkBundleCheckoutSessionRecord = typeof drinkBundleCheckoutSessions.$inferSelect;
 type DrinkGiftRecord = typeof drinkGifts.$inferSelect;
 type CreatorMembershipPlanRecord = typeof creatorMembershipPlans.$inferSelect;
+type CreatorDropRecord = typeof creatorDrops.$inferSelect;
 type CreatorPostRecord = typeof creatorPosts.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
 type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
@@ -535,6 +541,8 @@ const creatorMembershipPlanInputSchema = z.object({
 
 const creatorPostTypeSchema = z.enum(["update", "promo", "collection_launch", "challenge", "member_only"]);
 const creatorPostVisibilitySchema = z.enum(["public", "followers", "members"]);
+const creatorDropTypeSchema = z.enum(["collection_launch", "promo_launch", "member_drop", "challenge_launch", "update"]);
+const creatorDropVisibilitySchema = z.enum(["public", "followers", "members"]);
 
 const creatorPostBodyBaseSchema = z.object({
   title: z.string().trim().min(2).max(160),
@@ -555,6 +563,39 @@ const createCreatorPostBodySchema = creatorPostBodyBaseSchema.superRefine((value
 });
 
 const updateCreatorPostBodySchema = creatorPostBodyBaseSchema.partial().refine((value) => Object.values(value).some((field) => field !== undefined), {
+  message: "At least one field must be provided",
+});
+
+const creatorDropBodyBaseSchema = z.object({
+  title: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(5000).nullable().optional(),
+  dropType: creatorDropTypeSchema.default("collection_launch"),
+  visibility: creatorDropVisibilitySchema.default("public"),
+  scheduledFor: z.string().datetime({ offset: true }),
+  linkedCollectionId: z.string().trim().min(1).nullable().optional(),
+  linkedChallengeId: z.string().trim().min(1).nullable().optional(),
+  linkedPromotionId: z.string().trim().min(1).nullable().optional(),
+  isPublished: z.boolean().optional(),
+});
+
+const createCreatorDropBodySchema = creatorDropBodyBaseSchema.superRefine((value, ctx) => {
+  const scheduledFor = new Date(value.scheduledFor);
+  if (Number.isNaN(scheduledFor.getTime())) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scheduledFor"], message: "Scheduled date is invalid." });
+    return;
+  }
+  if (scheduledFor <= new Date()) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["scheduledFor"], message: "Drops must be scheduled for a future time." });
+  }
+  if (value.dropType === "collection_launch" && !value.linkedCollectionId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedCollectionId"], message: "Collection launch drops should link to a collection." });
+  }
+  if (value.dropType === "challenge_launch" && !value.linkedChallengeId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["linkedChallengeId"], message: "Challenge launch drops should link to a challenge." });
+  }
+});
+
+const updateCreatorDropBodySchema = creatorDropBodyBaseSchema.partial().refine((value) => Object.values(value).some((field) => field !== undefined), {
   message: "At least one field must be provided",
 });
 
@@ -1364,6 +1405,24 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_drops (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        title varchar(160) NOT NULL,
+        description text,
+        drop_type text NOT NULL DEFAULT 'collection_launch',
+        visibility text NOT NULL DEFAULT 'public',
+        scheduled_for timestamp NOT NULL,
+        linked_collection_id varchar REFERENCES drink_collections(id) ON DELETE SET NULL,
+        linked_challenge_id varchar REFERENCES drink_challenges(id) ON DELETE SET NULL,
+        linked_promotion_id varchar REFERENCES drink_collection_promotions(id) ON DELETE SET NULL,
+        is_published boolean NOT NULL DEFAULT true,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_bundles (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1491,6 +1550,11 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_posts_visibility_idx ON creator_posts(visibility);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_posts_creator_created_at_idx ON creator_posts(creator_user_id, created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_posts_visibility_created_at_idx ON creator_posts(visibility, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_creator_idx ON creator_drops(creator_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_visibility_idx ON creator_drops(visibility);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_scheduled_for_idx ON creator_drops(scheduled_for);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_published_scheduled_idx ON creator_drops(is_published, scheduled_for);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_creator_scheduled_idx ON creator_drops(creator_user_id, scheduled_for);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_user_idx ON creator_membership_checkout_sessions(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_creator_idx ON creator_membership_checkout_sessions(creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_membership_checkout_sessions_plan_idx ON creator_membership_checkout_sessions(plan_id);`);
@@ -1721,6 +1785,30 @@ function creatorPostAudienceLabel(post: Pick<CreatorPostRecord, "creatorUserId" 
   return "Public";
 }
 
+function canViewerSeeCreatorDrop(input: {
+  drop: Pick<CreatorDropRecord, "creatorUserId" | "visibility" | "isPublished" | "scheduledFor">;
+  viewerId?: string | null;
+  followedCreatorIds?: Set<string>;
+  memberCreatorIds?: Set<string>;
+}) {
+  const { drop, viewerId, followedCreatorIds = new Set<string>(), memberCreatorIds = new Set<string>() } = input;
+  if (viewerId && drop.creatorUserId === viewerId) return true;
+  if (!drop.isPublished) return false;
+  if (drop.scheduledFor <= new Date()) return false;
+  if (drop.visibility === "public") return true;
+  if (!viewerId) return false;
+  if (drop.visibility === "followers") return followedCreatorIds.has(drop.creatorUserId);
+  if (drop.visibility === "members") return memberCreatorIds.has(drop.creatorUserId);
+  return false;
+}
+
+function creatorDropAudienceLabel(drop: Pick<CreatorDropRecord, "creatorUserId" | "visibility">, viewerId?: string | null) {
+  if (viewerId && drop.creatorUserId === viewerId) return "You";
+  if (drop.visibility === "members") return "Members";
+  if (drop.visibility === "followers") return "Followers";
+  return "Public";
+}
+
 async function validateCreatorPostLinkedEntities(input: {
   creatorUserId: string;
   visibility?: CreatorPostVisibility | null;
@@ -1757,6 +1845,77 @@ async function validateCreatorPostLinkedEntities(input: {
   }
 }
 
+async function validateCreatorDropLinkedEntities(input: {
+  creatorUserId: string;
+  visibility?: CreatorDropVisibility | null;
+  dropType?: CreatorDropType | null;
+  linkedCollectionId?: string | null;
+  linkedChallengeId?: string | null;
+  linkedPromotionId?: string | null;
+}) {
+  if (!db) throw new Error("Database unavailable");
+
+  if (input.linkedCollectionId) {
+    const collectionRows = await db
+      .select({
+        id: drinkCollections.id,
+        isPublic: drinkCollections.isPublic,
+        accessType: drinkCollections.accessType,
+      })
+      .from(drinkCollections)
+      .where(and(eq(drinkCollections.id, input.linkedCollectionId), eq(drinkCollections.userId, input.creatorUserId)))
+      .limit(1);
+
+    const linkedCollection = collectionRows[0];
+    if (!linkedCollection) {
+      throw new Error("Linked collection must belong to the creator.");
+    }
+    if ((linkedCollection.accessType === "membership_only" || !linkedCollection.isPublic) && input.visibility !== "members") {
+      throw new Error("Member-only collections can only be linked from member-visible drops.");
+    }
+  }
+
+  if (input.linkedChallengeId) {
+    const challengeRows = await db
+      .select({ id: drinkChallenges.id })
+      .from(drinkChallenges)
+      .where(eq(drinkChallenges.id, input.linkedChallengeId))
+      .limit(1);
+
+    if (!challengeRows[0]) {
+      throw new Error("Linked challenge was not found.");
+    }
+  }
+
+  if (input.linkedPromotionId) {
+    const promotionRows = await db
+      .select({
+        id: drinkCollectionPromotions.id,
+        creatorUserId: drinkCollectionPromotions.creatorUserId,
+        collectionId: drinkCollectionPromotions.collectionId,
+      })
+      .from(drinkCollectionPromotions)
+      .where(eq(drinkCollectionPromotions.id, input.linkedPromotionId))
+      .limit(1);
+
+    const promotion = promotionRows[0];
+    if (!promotion || promotion.creatorUserId !== input.creatorUserId) {
+      throw new Error("Linked promotion must belong to the creator.");
+    }
+    if (input.linkedCollectionId && promotion.collectionId !== input.linkedCollectionId) {
+      throw new Error("Linked promotion must match the linked collection.");
+    }
+  }
+
+  if (input.dropType === "promo_launch" && !input.linkedPromotionId) {
+    throw new Error("Promo launch drops should link to a promotion.");
+  }
+
+  if (input.dropType === "member_drop" && input.visibility !== "members") {
+    throw new Error("Member drops must use members visibility.");
+  }
+}
+
 async function loadCreatorPostLinkedMaps(posts: CreatorPostRecord[]) {
   if (!db || posts.length === 0) {
     return {
@@ -1789,6 +1948,47 @@ async function loadCreatorPostLinkedMaps(posts: CreatorPostRecord[]) {
     creatorMap: new Map(creatorRows.map((row) => [row.id, row])),
     collectionMap: new Map(collectionRows.map((row) => [row.id, row])),
     challengeMap: new Map(challengeRows.map((row) => [row.id, row])),
+  };
+}
+
+async function loadCreatorDropLinkedMaps(drops: CreatorDropRecord[]) {
+  if (!db || drops.length === 0) {
+    return {
+      creatorMap: new Map<string, Awaited<ReturnType<typeof loadUserBasicProfile>>>(),
+      collectionMap: new Map<string, typeof drinkCollections.$inferSelect>(),
+      challengeMap: new Map<string, typeof drinkChallenges.$inferSelect>(),
+      promotionMap: new Map<string, typeof drinkCollectionPromotions.$inferSelect>(),
+    };
+  }
+
+  const creatorIds = [...new Set(drops.map((drop) => drop.creatorUserId).filter(Boolean))];
+  const collectionIds = [...new Set(drops.map((drop) => drop.linkedCollectionId).filter((value): value is string => Boolean(value)))];
+  const challengeIds = [...new Set(drops.map((drop) => drop.linkedChallengeId).filter((value): value is string => Boolean(value)))];
+  const promotionIds = [...new Set(drops.map((drop) => drop.linkedPromotionId).filter((value): value is string => Boolean(value)))];
+
+  const [creatorRows, collectionRows, challengeRows, promotionRows] = await Promise.all([
+    creatorIds.length === 0
+      ? Promise.resolve([] as Array<{ id: string; username: string | null; avatar: string | null }>)
+      : db
+        .select({ id: users.id, username: users.username, avatar: users.avatar })
+        .from(users)
+        .where(inArray(users.id, creatorIds)),
+    collectionIds.length === 0
+      ? Promise.resolve([] as Array<typeof drinkCollections.$inferSelect>)
+      : db.select().from(drinkCollections).where(inArray(drinkCollections.id, collectionIds)),
+    challengeIds.length === 0
+      ? Promise.resolve([] as Array<typeof drinkChallenges.$inferSelect>)
+      : db.select().from(drinkChallenges).where(inArray(drinkChallenges.id, challengeIds)),
+    promotionIds.length === 0
+      ? Promise.resolve([] as Array<typeof drinkCollectionPromotions.$inferSelect>)
+      : db.select().from(drinkCollectionPromotions).where(inArray(drinkCollectionPromotions.id, promotionIds)),
+  ]);
+
+  return {
+    creatorMap: new Map(creatorRows.map((row) => [row.id, row])),
+    collectionMap: new Map(collectionRows.map((row) => [row.id, row])),
+    challengeMap: new Map(challengeRows.map((row) => [row.id, row])),
+    promotionMap: new Map(promotionRows.map((row) => [row.id, row])),
   };
 }
 
@@ -1841,6 +2041,90 @@ function serializeCreatorPost(
       }
       : null,
   };
+}
+
+function serializeCreatorDrop(
+  drop: CreatorDropRecord,
+  options: {
+    viewerId?: string | null;
+    creator?: { id: string; username: string | null; avatar: string | null } | null;
+    linkedCollection?: typeof drinkCollections.$inferSelect | null;
+    linkedChallenge?: typeof drinkChallenges.$inferSelect | null;
+    linkedPromotion?: typeof drinkCollectionPromotions.$inferSelect | null;
+  } = {},
+) {
+  const creator = options.creator ?? null;
+  const linkedCollection = options.linkedCollection ?? null;
+  const linkedChallenge = options.linkedChallenge ?? null;
+  const linkedPromotion = options.linkedPromotion ?? null;
+
+  return {
+    id: drop.id,
+    creatorUserId: drop.creatorUserId,
+    title: drop.title,
+    description: drop.description ?? null,
+    dropType: drop.dropType as CreatorDropType,
+    visibility: drop.visibility as CreatorDropVisibility,
+    audienceLabel: creatorDropAudienceLabel(drop, options.viewerId),
+    scheduledFor: drop.scheduledFor.toISOString(),
+    isPublished: Boolean(drop.isPublished),
+    createdAt: drop.createdAt.toISOString(),
+    updatedAt: drop.updatedAt.toISOString(),
+    creator: creator
+      ? {
+        userId: creator.id,
+        username: creator.username ?? null,
+        avatar: creator.avatar ?? null,
+        route: `/drinks/creator/${encodeURIComponent(creator.id)}`,
+      }
+      : null,
+    linkedCollection: linkedCollection
+      ? {
+        id: linkedCollection.id,
+        name: linkedCollection.name,
+        accessType: collectionAccessTypeForRow(linkedCollection),
+        isPublic: Boolean(linkedCollection.isPublic),
+        route: `/drinks/collections/${encodeURIComponent(linkedCollection.id)}`,
+      }
+      : null,
+    linkedChallenge: linkedChallenge
+      ? {
+        id: linkedChallenge.id,
+        slug: linkedChallenge.slug,
+        title: linkedChallenge.title,
+        route: `/drinks/challenges/${encodeURIComponent(linkedChallenge.slug)}`,
+      }
+      : null,
+    linkedPromotion: linkedPromotion
+      ? {
+        id: linkedPromotion.id,
+        code: linkedPromotion.code,
+        startsAt: linkedPromotion.startsAt ? linkedPromotion.startsAt.toISOString() : null,
+        endsAt: linkedPromotion.endsAt ? linkedPromotion.endsAt.toISOString() : null,
+      }
+      : null,
+  };
+}
+
+async function maybeSendCreatorDropAlerts(drop: CreatorDropRecord) {
+  if (!db || !drop.isPublished) return;
+
+  const now = Date.now();
+  const scheduledTime = drop.scheduledFor.getTime();
+  const diff = scheduledTime - now;
+  const maxLeadWindowMs = 1000 * 60 * 60 * 48;
+  if (diff < 0 || diff > maxLeadWindowMs) return;
+
+  const creator = await loadUserBasicProfile(drop.creatorUserId);
+  await sendCreatorDropAlerts({
+    creatorUserId: drop.creatorUserId,
+    creatorUsername: creator?.username ?? null,
+    creatorAvatar: creator?.avatar ?? null,
+    dropId: drop.id,
+    title: drop.title,
+    visibility: drop.visibility as CreatorDropVisibility,
+    scheduledFor: drop.scheduledFor.toISOString(),
+  });
 }
 
 async function maybeSendCreatorPostAlerts(post: CreatorPostRecord) {
@@ -7051,6 +7335,296 @@ r.get("/creator-posts/feed", optionalAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/creator-posts/feed", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load creator posts feed"));
+  }
+});
+
+r.get("/drops/feed", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [drops, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      db.select().from(creatorDrops).where(gt(creatorDrops.scheduledFor, new Date())).orderBy(asc(creatorDrops.scheduledFor)).limit(240),
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+
+    const visibleDrops = drops.filter((drop) => canViewerSeeCreatorDrop({
+      drop,
+      viewerId,
+      followedCreatorIds,
+      memberCreatorIds,
+    }));
+
+    const prioritizedDrops = visibleDrops
+      .map((drop) => ({
+        drop,
+        priority: viewerId
+          ? drop.creatorUserId === viewerId
+            ? 0
+            : memberCreatorIds.has(drop.creatorUserId)
+              ? 1
+              : followedCreatorIds.has(drop.creatorUserId)
+                ? 2
+                : 3
+          : 3,
+      }))
+      .sort((a, b) => {
+        if (a.priority !== b.priority) return a.priority - b.priority;
+        return a.drop.scheduledFor.getTime() - b.drop.scheduledFor.getTime();
+      })
+      .map((entry) => entry.drop);
+
+    const maps = await loadCreatorDropLinkedMaps(prioritizedDrops);
+    const items = prioritizedDrops.map((drop) => serializeCreatorDrop(drop, {
+      viewerId,
+      creator: maps.creatorMap.get(drop.creatorUserId) ?? null,
+      linkedCollection: drop.linkedCollectionId ? maps.collectionMap.get(drop.linkedCollectionId) ?? null : null,
+      linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
+      linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
+    }));
+
+    return res.json({
+      ok: true,
+      signedIn: Boolean(viewerId),
+      count: items.length,
+      visibility: {
+        public: true,
+        followers: Boolean(viewerId),
+        members: Boolean(viewerId),
+      },
+      items,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops/feed", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load scheduled drops"));
+  }
+});
+
+r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const creatorUserId = String(req.params.userId ?? "").trim();
+    if (!creatorUserId) {
+      return res.status(400).json({ ok: false, error: "Creator userId is required." });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [drops, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      db.select().from(creatorDrops).where(and(eq(creatorDrops.creatorUserId, creatorUserId), gt(creatorDrops.scheduledFor, new Date()))).orderBy(asc(creatorDrops.scheduledFor)).limit(120),
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+
+    const visibleDrops = drops.filter((drop) => canViewerSeeCreatorDrop({
+      drop,
+      viewerId,
+      followedCreatorIds,
+      memberCreatorIds,
+    }));
+
+    const maps = await loadCreatorDropLinkedMaps(visibleDrops);
+    const items = visibleDrops.map((drop) => serializeCreatorDrop(drop, {
+      viewerId,
+      creator: maps.creatorMap.get(drop.creatorUserId) ?? null,
+      linkedCollection: drop.linkedCollectionId ? maps.collectionMap.get(drop.linkedCollectionId) ?? null : null,
+      linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
+      linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
+    }));
+
+    return res.json({
+      ok: true,
+      creatorUserId,
+      count: items.length,
+      items,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops/creator/:userId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator drops"));
+  }
+});
+
+r.post("/drops", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const parsed = createCreatorDropBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid creator drop payload." });
+    }
+
+    const payload = parsed.data;
+    const values = insertCreatorDropSchema.parse({
+      creatorUserId: req.user!.id,
+      title: payload.title.trim(),
+      description: payload.description?.trim() ? payload.description.trim() : null,
+      dropType: payload.dropType === "member_drop" ? "member_drop" : payload.dropType,
+      visibility: payload.dropType === "member_drop" ? "members" : payload.visibility,
+      scheduledFor: new Date(payload.scheduledFor),
+      linkedCollectionId: normalizeNullableForeignId(payload.linkedCollectionId),
+      linkedChallengeId: normalizeNullableForeignId(payload.linkedChallengeId),
+      linkedPromotionId: normalizeNullableForeignId(payload.linkedPromotionId),
+      isPublished: payload.isPublished ?? true,
+    });
+
+    await validateCreatorDropLinkedEntities({
+      creatorUserId: values.creatorUserId,
+      visibility: values.visibility as CreatorDropVisibility,
+      dropType: values.dropType as CreatorDropType,
+      linkedCollectionId: values.linkedCollectionId,
+      linkedChallengeId: values.linkedChallengeId,
+      linkedPromotionId: values.linkedPromotionId,
+    });
+
+    const inserted = await db.insert(creatorDrops).values({
+      ...values,
+      updatedAt: new Date(),
+    }).returning();
+    const drop = inserted[0];
+    if (!drop) {
+      return res.status(500).json({ ok: false, error: "Failed to create creator drop." });
+    }
+
+    await maybeSendCreatorDropAlerts(drop);
+    const maps = await loadCreatorDropLinkedMaps([drop]);
+    return res.status(201).json({
+      ok: true,
+      drop: serializeCreatorDrop(drop, {
+        viewerId: req.user!.id,
+        creator: maps.creatorMap.get(drop.creatorUserId) ?? null,
+        linkedCollection: drop.linkedCollectionId ? maps.collectionMap.get(drop.linkedCollectionId) ?? null : null,
+        linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
+        linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
+      }),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create creator drop"));
+  }
+});
+
+r.patch("/drops/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const dropId = String(req.params.id ?? "").trim();
+    if (!dropId) {
+      return res.status(400).json({ ok: false, error: "Drop id is required." });
+    }
+
+    const parsed = updateCreatorDropBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid creator drop payload." });
+    }
+
+    const existingRows = await db
+      .select()
+      .from(creatorDrops)
+      .where(and(eq(creatorDrops.id, dropId), eq(creatorDrops.creatorUserId, req.user!.id)))
+      .limit(1);
+
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ ok: false, error: "Creator drop not found." });
+    }
+
+    const payload = parsed.data;
+    const nextDropType = (payload.dropType ?? existing.dropType) as CreatorDropType;
+    const nextVisibility = (nextDropType === "member_drop" ? "members" : (payload.visibility ?? existing.visibility)) as CreatorDropVisibility;
+    const nextScheduledFor = payload.scheduledFor ? new Date(payload.scheduledFor) : existing.scheduledFor;
+
+    if (Number.isNaN(nextScheduledFor.getTime()) || nextScheduledFor <= new Date()) {
+      return res.status(400).json({ ok: false, error: "Drops must stay scheduled for a future time." });
+    }
+
+    const values = {
+      title: payload.title?.trim() ?? existing.title,
+      description: payload.description !== undefined ? (payload.description?.trim() ? payload.description.trim() : null) : existing.description,
+      dropType: nextDropType,
+      visibility: nextVisibility,
+      scheduledFor: nextScheduledFor,
+      linkedCollectionId: payload.linkedCollectionId !== undefined ? normalizeNullableForeignId(payload.linkedCollectionId) : existing.linkedCollectionId,
+      linkedChallengeId: payload.linkedChallengeId !== undefined ? normalizeNullableForeignId(payload.linkedChallengeId) : existing.linkedChallengeId,
+      linkedPromotionId: payload.linkedPromotionId !== undefined ? normalizeNullableForeignId(payload.linkedPromotionId) : existing.linkedPromotionId,
+      isPublished: payload.isPublished ?? existing.isPublished,
+      updatedAt: new Date(),
+    };
+
+    await validateCreatorDropLinkedEntities({
+      creatorUserId: req.user!.id,
+      visibility: values.visibility,
+      dropType: values.dropType,
+      linkedCollectionId: values.linkedCollectionId,
+      linkedChallengeId: values.linkedChallengeId,
+      linkedPromotionId: values.linkedPromotionId,
+    });
+
+    const updatedRows = await db
+      .update(creatorDrops)
+      .set(values)
+      .where(eq(creatorDrops.id, dropId))
+      .returning();
+
+    const drop = updatedRows[0];
+    if (drop && (existing.scheduledFor.getTime() !== drop.scheduledFor.getTime() || existing.visibility !== drop.visibility || existing.isPublished !== drop.isPublished)) {
+      await maybeSendCreatorDropAlerts(drop);
+    }
+
+    const maps = await loadCreatorDropLinkedMaps(drop ? [drop] : []);
+    return res.json({
+      ok: true,
+      drop: drop ? serializeCreatorDrop(drop, {
+        viewerId: req.user!.id,
+        creator: maps.creatorMap.get(drop.creatorUserId) ?? null,
+        linkedCollection: drop.linkedCollectionId ? maps.collectionMap.get(drop.linkedCollectionId) ?? null : null,
+        linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
+        linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
+      }) : null,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update creator drop"));
+  }
+});
+
+r.delete("/drops/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const dropId = String(req.params.id ?? "").trim();
+    if (!dropId) {
+      return res.status(400).json({ ok: false, error: "Drop id is required." });
+    }
+
+    const deletedRows = await db
+      .delete(creatorDrops)
+      .where(and(eq(creatorDrops.id, dropId), eq(creatorDrops.creatorUserId, req.user!.id)))
+      .returning({ id: creatorDrops.id });
+
+    if (!deletedRows[0]) {
+      return res.status(404).json({ ok: false, error: "Creator drop not found." });
+    }
+
+    return res.json({ ok: true, deletedId: deletedRows[0].id });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete creator drop"));
   }
 });
 

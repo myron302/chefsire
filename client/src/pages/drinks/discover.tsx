@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
 import { Link } from "wouter";
-import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem, ShoppingBag, Newspaper } from "lucide-react";
+import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem, ShoppingBag, Newspaper, CalendarClock } from "lucide-react";
 
 import { useUser } from "@/contexts/UserContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -65,6 +65,13 @@ const discoverLinks: DiscoverLink[] = [
     description: "Lightweight creator posts for updates, promos, launches, and member notes.",
     href: "/drinks/feed",
     icon: Newspaper,
+    activityHint: "New",
+  },
+  {
+    title: "Drops Calendar",
+    description: "Upcoming collection launches, promos, challenge drops, and member release timing.",
+    href: "/drinks/drops",
+    icon: CalendarClock,
     activityHint: "New",
   },
   {
@@ -174,6 +181,24 @@ export default function DrinksDiscoverPage() {
                 <Link href="/drinks/feed">
                   <Button variant="outline" className="w-full justify-between">
                     Open Creator Feed
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </Link>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <CalendarClock className="h-5 w-5 text-blue-600" />
+                  Drops Calendar
+                </CardTitle>
+                <CardDescription>Browse upcoming creator drops grouped by date and filtered by your access.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link href="/drinks/drops">
+                  <Button variant="outline" className="w-full justify-between">
+                    Open Drops Calendar
                     <ArrowRight className="h-4 w-4" />
                   </Button>
                 </Link>
