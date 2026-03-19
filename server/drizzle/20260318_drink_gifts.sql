@@ -1,7 +1,7 @@
-ALTER TABLE drink_collection_checkout_sessions
+ALTER TABLE IF EXISTS drink_collection_checkout_sessions
   ADD COLUMN IF NOT EXISTS purchase_type text NOT NULL DEFAULT 'self';
 
-ALTER TABLE drink_bundle_checkout_sessions
+ALTER TABLE IF EXISTS drink_bundle_checkout_sessions
   ADD COLUMN IF NOT EXISTS purchase_type text NOT NULL DEFAULT 'self';
 
 CREATE TABLE IF NOT EXISTS drink_gifts (
