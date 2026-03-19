@@ -4244,6 +4244,7 @@ async function loadWishlistedCollectionsForUser(userId: string) {
       collectionName: drinkCollections.name,
       collectionDescription: drinkCollections.description,
       collectionIsPublic: drinkCollections.isPublic,
+      collectionAccessType: drinkCollections.accessType,
       collectionIsPremium: drinkCollections.isPremium,
       collectionPriceCents: drinkCollections.priceCents,
       collectionUpdatedAt: drinkCollections.updatedAt,
@@ -4255,7 +4256,13 @@ async function loadWishlistedCollectionsForUser(userId: string) {
     .orderBy(desc(drinkCollectionWishlists.createdAt));
 
   const ownedCollectionIds = await loadOwnedCollectionIdsForUser(userId);
-  const filteredRows = rows.filter((row) => row.collectionIsPremium && !ownedCollectionIds.has(row.collectionId));
+  const filteredRows = rows.filter((row) => (
+    deriveCollectionAccessType({
+      accessType: row.collectionAccessType,
+      isPremium: row.collectionIsPremium,
+      fallback: row.collectionIsPremium ? "premium_purchase" : "public",
+    }) === "premium_purchase"
+  ) && !ownedCollectionIds.has(row.collectionId));
   const creatorMap = await loadCollectionCreatorsMap(filteredRows.map((row) => row.collectionUserId));
   const coverImagesMap = await loadCollectionCoverImagesMap(filteredRows.map((row) => row.collectionId));
   const activePromotionPricingMap = await loadActivePromotionPricingMap(
@@ -4265,6 +4272,7 @@ async function loadWishlistedCollectionsForUser(userId: string) {
       name: row.collectionName,
       description: row.collectionDescription,
       isPublic: row.collectionIsPublic,
+      accessType: row.collectionAccessType,
       isPremium: row.collectionIsPremium,
       priceCents: row.collectionPriceCents,
       updatedAt: row.collectionUpdatedAt,
@@ -4501,7 +4509,7 @@ async function loadCreatorCollectionOrders(userId: string) {
       userId: drinkCollections.userId,
     })
     .from(drinkCollections)
-    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.isPremium, true)));
+    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.accessType, "premium_purchase")));
 
   if (collectionRows.length === 0) {
     return [];
@@ -4573,7 +4581,7 @@ async function loadRecentCollectionReviewsForCreator(userId: string, limit = 5) 
     .from(drinkCollectionReviews)
     .innerJoin(drinkCollections, eq(drinkCollectionReviews.collectionId, drinkCollections.id))
     .innerJoin(users, eq(drinkCollectionReviews.userId, users.id))
-    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.isPremium, true)))
+    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.accessType, "premium_purchase")))
     .orderBy(desc(drinkCollectionReviews.createdAt))
     .limit(limit);
 
@@ -4613,7 +4621,7 @@ async function loadCreatorCollectionSalesSummary(userId: string) {
       createdAt: drinkCollections.createdAt,
     })
     .from(drinkCollections)
-    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.isPremium, true)))
+    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.accessType, "premium_purchase")))
     .orderBy(desc(drinkCollections.updatedAt));
 
   if (premiumCollections.length === 0) {
@@ -4764,7 +4772,7 @@ async function loadCreatorCollectionFinanceSummary(userId: string) {
       id: drinkCollections.id,
     })
     .from(drinkCollections)
-    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.isPremium, true)));
+    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.accessType, "premium_purchase")));
 
   const recentSales = await db
     .select({
@@ -4878,7 +4886,7 @@ async function loadCreatorCollectionFinanceSummary(userId: string) {
     })),
     reportingNotes: [
       "Finance totals only include ledger rows that are still in completed status, using the actual paid amount captured by Square.",
-      "Refunded, refund-pending, and revoked premium collection sales are separated from completed revenue totals and do not keep access active.",
+      "Refunded, refund-pending, and revoked Premium Purchase collection sales are separated from completed revenue totals and do not keep access active.",
       `Estimated platform fees and creator share use an internal ${PREMIUM_COLLECTION_PLATFORM_FEE_BPS / 100}% / ${PREMIUM_COLLECTION_CREATOR_SHARE_BPS / 100}% split for reporting readiness only.`,
       "No payouts are sent automatically yet. Square checkout captures sales, but creator transfers are not implemented in this dashboard.",
     ],
@@ -4934,7 +4942,7 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
       updatedAt: drinkCollections.updatedAt,
     })
     .from(drinkCollections)
-    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.isPremium, true)))
+    .where(and(eq(drinkCollections.userId, userId), eq(drinkCollections.accessType, "premium_purchase")))
     .orderBy(desc(drinkCollections.updatedAt));
 
   if (premiumCollections.length === 0) {
@@ -4965,9 +4973,9 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
         isPublic: boolean;
       }>,
       reportingNotes: [
-        "Collection views use tracked premium collection detail-page views from non-owner visitors and can include repeat visits.",
+        "Collection views use tracked Premium Purchase collection detail-page views from non-owner visitors and can include repeat visits.",
         "Checkout starts count each Square checkout session creation, including retries.",
-        "Completed purchases and refunded lifecycle counts come from the same premium collection ownership and sales records used in finance reporting.",
+        "Completed purchases and refunded lifecycle counts come from the same Premium Purchase collection ownership and sales records used in finance reporting.",
       ],
     };
   }
@@ -5069,7 +5077,7 @@ async function loadCreatorCollectionConversionAnalytics(userId: string) {
     },
     collections,
     reportingNotes: [
-      "Collection views use tracked premium collection detail-page views from non-owner visitors and can include repeat visits.",
+      "Collection views use tracked Premium Purchase collection detail-page views from non-owner visitors and can include repeat visits.",
       "Checkout starts count each Square checkout session creation, including retries.",
       "Completed purchases only include sales ledger rows still in completed status, so discounted checkouts flow through at the actual paid amount.",
       "Refunded count combines refunded, refund-pending, and revoked lifecycle states so analytics stay aligned with access and finance reporting.",
@@ -8673,16 +8681,16 @@ r.post("/collections/:id/wishlist", requireAuth, async (req, res) => {
     if (!collection.isPublic && !isOwner) {
       return res.status(403).json({ ok: false, error: "Collection is private" });
     }
-    if (!collection.isPremium) {
-      return res.status(400).json({ ok: false, error: "Only premium collections can be wishlisted" });
+    if (collection.accessType !== "premium_purchase") {
+      return res.status(400).json({ ok: false, error: "Only Premium Purchase collections can be wishlisted" });
     }
     if (isOwner) {
-      return res.status(400).json({ ok: false, error: "You cannot wishlist your own premium collection" });
+      return res.status(400).json({ ok: false, error: "You cannot wishlist your own Premium Purchase collection" });
     }
 
     const ownedCollectionIds = await loadOwnedCollectionIdsForUser(req.user!.id);
     if (ownedCollectionIds.has(collection.id)) {
-      return res.status(400).json({ ok: false, error: "You already own this premium collection" });
+      return res.status(400).json({ ok: false, error: "You already own this collection through a purchase, bundle, gift, or membership grant" });
     }
 
     const inserted = await db
