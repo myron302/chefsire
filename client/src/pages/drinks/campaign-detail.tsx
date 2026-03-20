@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
 
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
+import { CampaignWrapUpPanel, type CampaignRetrospectiveItem } from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignFollowButton from "@/components/drinks/CampaignFollowButton";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
@@ -107,6 +108,7 @@ interface CampaignDetailResponse {
     owner: CampaignMilestone[];
   };
   ownerAnalytics?: CampaignOwnerAnalytics | null;
+  ownerRetrospective?: CampaignRetrospectiveItem | null;
   ownerGoals: CampaignGoalItem[];
   recentUpdates: Array<{
     id: string;
@@ -380,6 +382,20 @@ export default function DrinkCampaignDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {query.data.ownerRetrospective ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Owner-only wrap-up</CardTitle>
+                <CardDescription>
+                  Private retrospective for completed or archived campaigns. This is only shown to the campaign owner and stays distinct from the live analytics and digest views.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CampaignWrapUpPanel item={query.data.ownerRetrospective} compact />
+              </CardContent>
+            </Card>
+          ) : null}
 
           {query.data.ownerAnalytics ? (
             <Card>

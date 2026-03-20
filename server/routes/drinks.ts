@@ -3947,6 +3947,92 @@ type CreatorCampaignWeeklyDigestSummary = {
   goalsCompletedThisWeek: number;
 };
 
+type CreatorCampaignRetrospectiveEndState = "completed" | "archived";
+
+type CreatorCampaignRetrospectiveInsightKind = "win" | "miss" | "lesson";
+
+type CreatorCampaignRetrospectiveInsight = {
+  kind: CreatorCampaignRetrospectiveInsightKind;
+  title: string;
+  message: string;
+  supportingSignals: string[];
+};
+
+type CreatorCampaignRetrospectiveAsset = {
+  targetType: "drop" | "collection";
+  targetId: string;
+  title: string;
+  route: string;
+  score: number;
+  metricLabel: string;
+  metricValue: number;
+  supportingSignals: string[];
+};
+
+type CreatorCampaignRetrospectiveVariant = {
+  variantId: string;
+  label: string;
+  headline: string | null;
+  ctaTargetType: CreatorCampaignCtaTargetType;
+  score: number;
+  metricLabel: string;
+  metricValue: number;
+  supportingSignals: string[];
+  note: string | null;
+};
+
+type CreatorCampaignRetrospectiveGoalSummary = {
+  completed: SerializedCreatorCampaignGoal[];
+  incomplete: SerializedCreatorCampaignGoal[];
+};
+
+type CreatorCampaignRetrospectiveItem = {
+  campaignId: string;
+  slug: string;
+  name: string;
+  route: string;
+  visibility: CreatorCampaignVisibility;
+  startsAt: string | null;
+  endsAt: string | null;
+  durationDays: number;
+  endState: CreatorCampaignRetrospectiveEndState;
+  followerGain: number;
+  totalRsvpInterest: number;
+  totalDropViews: number;
+  totalDropClicks: number;
+  linkedCollectionPurchases: number;
+  linkedCollectionPurchasesNote: string | null;
+  membershipConversions: number;
+  membershipConversionsNote: string | null;
+  milestonesReached: CreatorCampaignMilestone[];
+  goals: CreatorCampaignRetrospectiveGoalSummary;
+  bestPerformingAsset: CreatorCampaignRetrospectiveAsset | null;
+  strongestVariant: CreatorCampaignRetrospectiveVariant | null;
+  wins: CreatorCampaignRetrospectiveInsight[];
+  misses: CreatorCampaignRetrospectiveInsight[];
+  lessons: CreatorCampaignRetrospectiveInsight[];
+  linkedCounts: {
+    drops: number;
+    collections: number;
+    posts: number;
+    promos: number;
+    roadmap: number;
+    challenges: number;
+  };
+  reuseCandidate: boolean;
+  reuseReason: string | null;
+};
+
+type CreatorCampaignRetrospectiveSummary = {
+  totalRetrospectives: number;
+  completedCampaigns: number;
+  archivedCampaigns: number;
+  totalFollowerGain: number;
+  totalRsvpInterest: number;
+  totalApproximateConversions: number;
+  reuseCandidates: number;
+};
+
 type CreatorCampaignRecommendationType =
   | "add_drop"
   | "publish_update"
@@ -4965,6 +5051,519 @@ async function loadCreatorCampaignWeeklyDigest(creatorUserId: string) {
       "Goal completions are inferred when a campaign crossed a goal threshold during the last 7 days based on already-recorded campaign signals.",
     ],
     generatedAt: digestEndsAt.toISOString(),
+  };
+}
+
+function formatRetrospectiveSignalCount(label: string, value: number, approximate = false) {
+  return `${value} ${label}${approximate ? " (approx.)" : ""}`;
+}
+
+function summarizeRetrospectivePrimaryMetric(input: {
+  views: number;
+  clicks: number;
+  follows: number;
+  rsvps: number;
+  approximatePurchases: number;
+  approximateMemberships: number;
+}) {
+  const metrics = [
+    { label: "approx. memberships", value: input.approximateMemberships, weight: 8, approximate: true },
+    { label: "approx. purchases", value: input.approximatePurchases, weight: 7, approximate: true },
+    { label: "RSVPs", value: input.rsvps, weight: 6, approximate: false },
+    { label: "follows", value: input.follows, weight: 5, approximate: false },
+    { label: "clicks", value: input.clicks, weight: 4, approximate: false },
+    { label: "views", value: input.views, weight: 1, approximate: false },
+  ].filter((item) => item.value > 0);
+
+  const best = metrics.sort((a, b) => (b.value * b.weight) - (a.value * a.weight))[0] ?? null;
+  if (!best) {
+    return { metricLabel: "No recorded lift yet", metricValue: 0, approximate: false };
+  }
+  return {
+    metricLabel: best.label,
+    metricValue: best.value,
+    approximate: best.approximate,
+  };
+}
+
+function scoreRetrospectiveVariant(metrics: ReturnType<typeof serializeCreatorCampaignVariant>["metrics"]) {
+  return Math.round(
+    metrics.views * 0.25
+    + metrics.clicks * 2
+    + metrics.follows * 3
+    + metrics.rsvps * 4
+    + metrics.approximatePurchases * 5
+    + metrics.approximateMemberships * 6
+  );
+}
+
+function scoreRetrospectiveAsset(input: {
+  targetType: "drop" | "collection";
+  views?: number;
+  clicks?: number;
+  rsvps?: number;
+  purchases?: number;
+}) {
+  if (input.targetType === "collection") {
+    return Math.round((input.purchases ?? 0) * 6);
+  }
+
+  return Math.round(
+    (input.views ?? 0) * 0.25
+    + (input.clicks ?? 0) * 3
+    + (input.rsvps ?? 0) * 4
+  );
+}
+
+function buildCampaignRetrospectiveInsights(input: {
+  campaign: CreatorCampaignRecord;
+  analytics: CreatorCampaignAnalyticsItem;
+  milestonesReached: CreatorCampaignMilestone[];
+  goalsCompleted: SerializedCreatorCampaignGoal[];
+  goalsIncomplete: SerializedCreatorCampaignGoal[];
+  strongestVariant: CreatorCampaignRetrospectiveVariant | null;
+  bestAsset: CreatorCampaignRetrospectiveAsset | null;
+  durationDays: number;
+  memberFocused: boolean;
+  reuseCandidate: boolean;
+}) {
+  const wins: CreatorCampaignRetrospectiveInsight[] = [];
+  const misses: CreatorCampaignRetrospectiveInsight[] = [];
+  const lessons: CreatorCampaignRetrospectiveInsight[] = [];
+  const approximateConversions = input.analytics.purchasesFromLinkedCollections + input.analytics.membershipsFromCampaign;
+
+  const pushUnique = (bucket: CreatorCampaignRetrospectiveInsight[], item: CreatorCampaignRetrospectiveInsight) => {
+    if (!bucket.some((existing) => existing.title === item.title)) {
+      bucket.push(item);
+    }
+  };
+
+  if (input.analytics.followerCount >= 15) {
+    pushUnique(wins, {
+      kind: "win",
+      title: "Strong audience lift",
+      message: approximateConversions <= Math.max(1, Math.round(input.analytics.followerCount * 0.08))
+        ? "This campaign generated strong follows but weak conversion."
+        : "This campaign turned audience attention into meaningful follow growth.",
+      supportingSignals: [
+        `${input.analytics.followerCount} campaign followers`,
+        formatRetrospectiveSignalCount("approx. conversions", approximateConversions, approximateConversions > 0),
+      ],
+    });
+  }
+
+  if (input.memberFocused && input.analytics.membershipsFromCampaign > input.analytics.purchasesFromLinkedCollections) {
+    pushUnique(wins, {
+      kind: "win",
+      title: "Member-only content won this arc",
+      message: "Member-only content outperformed one-off purchase content.",
+      supportingSignals: [
+        formatRetrospectiveSignalCount("memberships", input.analytics.membershipsFromCampaign, true),
+        formatRetrospectiveSignalCount("purchases", input.analytics.purchasesFromLinkedCollections, true),
+      ],
+    });
+  }
+
+  if (input.goalsCompleted.length > 0) {
+    pushUnique(wins, {
+      kind: "win",
+      title: "Goals were actually closed out",
+      message: `${input.goalsCompleted.length} creator-set goal${input.goalsCompleted.length === 1 ? " was" : "s were"} completed before wrap-up.`,
+      supportingSignals: input.goalsCompleted.slice(0, 3).map((goal) => `${goal.label?.trim() || goal.metricLabel}: ${goal.currentValue}/${goal.targetValue}`),
+    });
+  }
+
+  if (input.analytics.followerCount >= 20 && approximateConversions <= 1 && input.analytics.totalDropClicks >= 10) {
+    pushUnique(misses, {
+      kind: "miss",
+      title: "Interest did not convert cleanly",
+      message: "This campaign generated strong follows but weak conversion.",
+      supportingSignals: [
+        `${input.analytics.followerCount} followers`,
+        `${input.analytics.totalDropClicks} clicks`,
+        formatRetrospectiveSignalCount("approx. conversions", approximateConversions, approximateConversions > 0),
+      ],
+    });
+  }
+
+  if (input.analytics.totalDropViews >= 40 && input.analytics.totalDropClicks <= Math.max(5, Math.round(input.analytics.totalDropViews * 0.08))) {
+    pushUnique(misses, {
+      kind: "miss",
+      title: "Drop traffic was mostly passive",
+      message: "People viewed linked drops, but the campaign story did not pull enough click-through intent.",
+      supportingSignals: [
+        `${input.analytics.totalDropViews} views`,
+        `${input.analytics.totalDropClicks} clicks`,
+      ],
+    });
+  }
+
+  if (input.goalsIncomplete.length > 0) {
+    const furthestGoal = [...input.goalsIncomplete].sort((a, b) => b.percentComplete - a.percentComplete)[0];
+    if (furthestGoal) {
+      pushUnique(misses, {
+        kind: "miss",
+        title: "One target still feels unfinished",
+        message: `${furthestGoal.label?.trim() || furthestGoal.metricLabel} ended at ${furthestGoal.percentComplete}% of target.`,
+        supportingSignals: [`${furthestGoal.currentValue}/${furthestGoal.targetValue} ${furthestGoal.metricLabel.toLowerCase()}`],
+      });
+    }
+  }
+
+  if (input.strongestVariant?.ctaTargetType === "rsvp" && input.strongestVariant.metricValue > 0) {
+    pushUnique(lessons, {
+      kind: "lesson",
+      title: "RSVP framing was the clearest hook",
+      message: "Your best-performing CTA variant emphasized RSVP.",
+      supportingSignals: input.strongestVariant.supportingSignals.slice(0, 3),
+    });
+  }
+
+  const followerMilestone = input.milestonesReached.find((milestone) => milestone.type === "campaign_followers_10" && milestone.achievedAt);
+  if (followerMilestone?.achievedAt && input.durationDays >= 14) {
+    const achievedAt = new Date(followerMilestone.achievedAt);
+    const campaignStart = input.campaign.startsAt ?? input.campaign.createdAt;
+    const daysToMilestone = Math.max(0, Math.round((achievedAt.getTime() - campaignStart.getTime()) / (24 * 60 * 60 * 1000)));
+    if (daysToMilestone <= Math.max(2, Math.round(input.durationDays * 0.25)) && input.analytics.totalDropClicks < Math.max(12, input.analytics.followerCount)) {
+      pushUnique(lessons, {
+        kind: "lesson",
+        title: "Momentum came early, then flattened",
+        message: "This campaign hit follower milestones quickly but stalled after launch.",
+        supportingSignals: [
+          `${daysToMilestone} day${daysToMilestone === 1 ? "" : "s"} to first follower milestone`,
+          `${input.analytics.totalDropClicks} linked clicks across ${input.durationDays} campaign days`,
+        ],
+      });
+    }
+  }
+
+  if (input.bestAsset) {
+    pushUnique(lessons, {
+      kind: "lesson",
+      title: "A reusable anchor emerged",
+      message: input.bestAsset.targetType === "collection"
+        ? "A linked collection was the strongest reusable conversion asset in this campaign."
+        : "One linked drop clearly carried the campaign’s strongest response.",
+      supportingSignals: input.bestAsset.supportingSignals.slice(0, 3),
+    });
+  }
+
+  if (input.reuseCandidate) {
+    pushUnique(lessons, {
+      kind: "lesson",
+      title: "Worth reusing",
+      message: "This archived campaign may be worth cloning.",
+      supportingSignals: [
+        `${input.analytics.campaignEngagementScore} engagement score`,
+        formatRetrospectiveSignalCount("approx. conversions", approximateConversions, approximateConversions > 0),
+      ],
+    });
+  }
+
+  return {
+    wins: wins.slice(0, 3),
+    misses: misses.slice(0, 3),
+    lessons: lessons.slice(0, 3),
+  };
+}
+
+async function loadCreatorCampaignRetrospectives(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const campaigns = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+    .orderBy(desc(creatorCampaigns.updatedAt))
+    .limit(120);
+
+  const completedCampaigns = campaigns.filter((campaign) => getCreatorCampaignState(campaign) === "past");
+  if (completedCampaigns.length === 0) {
+    return {
+      summary: {
+        totalRetrospectives: 0,
+        completedCampaigns: 0,
+        archivedCampaigns: 0,
+        totalFollowerGain: 0,
+        totalRsvpInterest: 0,
+        totalApproximateConversions: 0,
+        reuseCandidates: 0,
+      } satisfies CreatorCampaignRetrospectiveSummary,
+      items: [] as CreatorCampaignRetrospectiveItem[],
+      attributionNotes: [
+        "Retrospectives only surface campaigns whose state is already past, so analytics and weekly digest views stay separate from end-of-campaign wrap-up.",
+        "Follower gain and RSVP interest are direct campaign signals. Purchases and membership conversions remain clearly labeled as approximate wherever the platform only has proxy attribution.",
+        "Lessons are lightweight rules based on campaign follows, linked drop traffic, linked collection purchases, membership conversion proxies, goals, milestones, and CTA variant performance.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const performance = await loadCreatorCampaignPerformanceSnapshots(creatorUserId);
+  const performanceByCampaignId = new Map(performance.items.map((item) => [item.campaignId, item]));
+  const campaignIds = completedCampaigns.map((campaign) => campaign.id);
+
+  const [linkMap, goalRows, followRows, variantsByCampaignId] = await Promise.all([
+    loadCreatorCampaignLinksByCampaignIds(campaignIds),
+    db.select().from(creatorCampaignGoals).where(inArray(creatorCampaignGoals.campaignId, campaignIds)).orderBy(desc(creatorCampaignGoals.updatedAt), asc(creatorCampaignGoals.createdAt)),
+    db.select({
+      campaignId: creatorCampaignFollows.campaignId,
+      createdAt: creatorCampaignFollows.createdAt,
+    }).from(creatorCampaignFollows).where(inArray(creatorCampaignFollows.campaignId, campaignIds)).orderBy(asc(creatorCampaignFollows.createdAt)),
+    loadCreatorCampaignVariantsByCampaignIds(campaignIds),
+  ]);
+
+  const collectionIds = [...new Set(
+    completedCampaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId)),
+  )];
+  const dropIds = [...new Set(
+    completedCampaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "drop")
+      .map((link) => link.targetId)),
+  )];
+
+  const [collectionRows, dropRows, purchaseRows, dropEventRows, dropRsvpRows] = await Promise.all([
+    collectionIds.length
+      ? db.select({ id: drinkCollections.id, name: drinkCollections.name, accessType: drinkCollections.accessType }).from(drinkCollections).where(inArray(drinkCollections.id, collectionIds))
+      : Promise.resolve([] as Array<{ id: string; name: string; accessType: string | null }>),
+    dropIds.length
+      ? db.select({ id: creatorDrops.id, title: creatorDrops.title }).from(creatorDrops).where(inArray(creatorDrops.id, dropIds))
+      : Promise.resolve([] as Array<{ id: string; title: string }>),
+    collectionIds.length
+      ? db.select({ collectionId: drinkCollectionPurchases.collectionId, createdAt: drinkCollectionPurchases.createdAt, status: drinkCollectionPurchases.status }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds)).orderBy(asc(drinkCollectionPurchases.createdAt))
+      : Promise.resolve([] as Array<{ collectionId: string; createdAt: Date; status: string }>),
+    dropIds.length
+      ? db.select({ dropId: creatorDropEvents.dropId, eventType: creatorDropEvents.eventType, createdAt: creatorDropEvents.createdAt }).from(creatorDropEvents).where(inArray(creatorDropEvents.dropId, dropIds)).orderBy(asc(creatorDropEvents.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; eventType: string; createdAt: Date }>),
+    dropIds.length
+      ? db.select({ dropId: creatorDropRsvps.dropId, createdAt: creatorDropRsvps.createdAt }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).orderBy(asc(creatorDropRsvps.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; createdAt: Date }>),
+  ]);
+
+  const goalRowsByCampaignId = new Map<string, CreatorCampaignGoalRecord[]>();
+  for (const goal of goalRows) {
+    const current = goalRowsByCampaignId.get(goal.campaignId) ?? [];
+    current.push(goal);
+    goalRowsByCampaignId.set(goal.campaignId, current);
+  }
+
+  const followRowsByCampaignId = new Map<string, Array<{ createdAt: Date }>>();
+  for (const row of followRows) {
+    const current = followRowsByCampaignId.get(row.campaignId) ?? [];
+    current.push({ createdAt: row.createdAt });
+    followRowsByCampaignId.set(row.campaignId, current);
+  }
+
+  const purchaseRowsByCollectionId = new Map<string, Array<{ createdAt: Date; status: string }>>();
+  for (const row of purchaseRows) {
+    const current = purchaseRowsByCollectionId.get(row.collectionId) ?? [];
+    current.push({ createdAt: row.createdAt, status: row.status });
+    purchaseRowsByCollectionId.set(row.collectionId, current);
+  }
+
+  const dropEventsByDropId = new Map<string, { views: Array<{ createdAt: Date }>; clicks: Array<{ createdAt: Date }> }>();
+  for (const row of dropEventRows) {
+    const current = dropEventsByDropId.get(row.dropId) ?? { views: [], clicks: [] };
+    if (row.eventType === "view_drop") current.views.push({ createdAt: row.createdAt });
+    if (row.eventType === "click_drop_target") current.clicks.push({ createdAt: row.createdAt });
+    dropEventsByDropId.set(row.dropId, current);
+  }
+
+  const rsvpRowsByDropId = new Map<string, Array<{ createdAt: Date }>>();
+  for (const row of dropRsvpRows) {
+    const current = rsvpRowsByDropId.get(row.dropId) ?? [];
+    current.push({ createdAt: row.createdAt });
+    rsvpRowsByDropId.set(row.dropId, current);
+  }
+
+  const collectionMap = new Map(collectionRows.map((row) => [row.id, row]));
+  const dropMap = new Map(dropRows.map((row) => [row.id, row]));
+  const items: CreatorCampaignRetrospectiveItem[] = [];
+
+  for (const campaign of completedCampaigns) {
+    const analytics = performanceByCampaignId.get(campaign.id);
+    if (!analytics) continue;
+
+    const links = linkMap.get(campaign.id) ?? [];
+    const linkedDropIds = links.filter((link) => link.targetType === "drop").map((link) => link.targetId);
+    const linkedCollectionIds = links.filter((link) => link.targetType === "collection").map((link) => link.targetId);
+    const followerGain = (followRowsByCampaignId.get(campaign.id) ?? []).filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length;
+    const goals = (goalRowsByCampaignId.get(campaign.id) ?? []).map((goal) => serializeCreatorCampaignGoal(goal, analytics));
+    const completedGoals = goals.filter((goal) => goal.isComplete);
+    const incompleteGoals = goals.filter((goal) => !goal.isComplete);
+    const milestonesReached = analytics.milestones.filter((milestone) => milestone.achieved);
+
+    const variantRows = variantsByCampaignId.get(campaign.id) ?? [];
+    const variantMetrics = await loadCreatorCampaignVariantMetrics(campaign, variantRows);
+    const strongestVariant = [...variantRows]
+      .map((variant) => {
+        const metrics = variantMetrics.get(variant.id) ?? {
+          views: 0,
+          clicks: 0,
+          follows: 0,
+          rsvps: 0,
+          approximatePurchases: 0,
+          approximateMemberships: 0,
+        };
+        const primaryMetric = summarizeRetrospectivePrimaryMetric(metrics);
+        const supportingSignals = [
+          `${metrics.views} views`,
+          `${metrics.clicks} clicks`,
+          `${metrics.follows} follows`,
+          `${metrics.rsvps} RSVPs`,
+          formatRetrospectiveSignalCount("purchases", metrics.approximatePurchases, metrics.approximatePurchases > 0),
+          formatRetrospectiveSignalCount("memberships", metrics.approximateMemberships, metrics.approximateMemberships > 0),
+        ].filter((signal) => !/^0 /.test(signal));
+
+        return {
+          variantId: variant.id,
+          label: variant.label,
+          headline: variant.headline ?? null,
+          ctaTargetType: variant.ctaTargetType as CreatorCampaignCtaTargetType,
+          score: scoreRetrospectiveVariant(metrics),
+          metricLabel: primaryMetric.metricLabel,
+          metricValue: primaryMetric.metricValue,
+          supportingSignals,
+          note: (metrics.approximatePurchases > 0 || metrics.approximateMemberships > 0)
+            ? "Approximate purchases and memberships are credited when a signed-in user converted after clicking this CTA during the campaign window."
+            : null,
+        } satisfies CreatorCampaignRetrospectiveVariant;
+      })
+      .sort((a, b) => b.score - a.score)[0] ?? null;
+
+    const assetCandidates: CreatorCampaignRetrospectiveAsset[] = [
+      ...linkedDropIds.map((dropId) => {
+        const drop = dropMap.get(dropId);
+        const events = dropEventsByDropId.get(dropId) ?? { views: [], clicks: [] };
+        const rsvpRowsForDrop = rsvpRowsByDropId.get(dropId) ?? [];
+        const views = events.views.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length;
+        const clicks = events.clicks.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length;
+        const rsvps = rsvpRowsForDrop.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length;
+        const score = scoreRetrospectiveAsset({ targetType: "drop", views, clicks, rsvps });
+        const primaryMetric = rsvps > 0 ? { label: "RSVPs", value: rsvps } : clicks > 0 ? { label: "clicks", value: clicks } : { label: "views", value: views };
+
+        return {
+          targetType: "drop" as const,
+          targetId: dropId,
+          title: drop?.title ?? "Linked drop",
+          route: `/drinks/drops/${encodeURIComponent(dropId)}`,
+          score,
+          metricLabel: primaryMetric.label,
+          metricValue: primaryMetric.value,
+          supportingSignals: [`${views} views`, `${clicks} clicks`, `${rsvps} RSVPs`],
+        };
+      }),
+      ...linkedCollectionIds.map((collectionId) => {
+        const collection = collectionMap.get(collectionId);
+        const purchases = (purchaseRowsByCollectionId.get(collectionId) ?? []).filter((row) => (
+          row.status === "completed" && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)
+        )).length;
+        const score = scoreRetrospectiveAsset({ targetType: "collection", purchases });
+        return {
+          targetType: "collection" as const,
+          targetId: collectionId,
+          title: collection?.name ?? "Linked collection",
+          route: `/drinks/collections/${encodeURIComponent(collectionId)}`,
+          score,
+          metricLabel: "approx. purchases",
+          metricValue: purchases,
+          supportingSignals: [formatRetrospectiveSignalCount("purchases", purchases, true)],
+        };
+      }),
+    ].filter((item) => item.score > 0 || item.metricValue > 0);
+
+    const bestPerformingAsset = assetCandidates.sort((a, b) => b.score - a.score)[0] ?? null;
+    const durationStart = campaign.startsAt ?? campaign.createdAt;
+    const durationEnd = campaign.endsAt ?? campaign.updatedAt ?? new Date();
+    const durationDays = Math.max(1, Math.round((durationEnd.getTime() - durationStart.getTime()) / (24 * 60 * 60 * 1000)) || 1);
+    const linkedMemberOnlyCollectionsCount = linkedCollectionIds.filter((collectionId) => (collectionMap.get(collectionId)?.accessType ?? null) === "membership_only").length;
+    const memberFocused = campaign.visibility === "members" || analytics.membershipsFromCampaign > 0 || linkedMemberOnlyCollectionsCount > 0;
+    const reuseCandidate = analytics.purchasesFromLinkedCollections >= 3 || analytics.membershipsFromCampaign >= 3 || analytics.campaignEngagementScore >= 120;
+    const reuseReason = reuseCandidate
+      ? `Worth cloning: ${analytics.campaignEngagementScore} engagement score, ${analytics.purchasesFromLinkedCollections} linked purchases, and ${analytics.membershipsFromCampaign} membership conversions.`
+      : null;
+    const insights = buildCampaignRetrospectiveInsights({
+      campaign,
+      analytics: {
+        ...analytics,
+        followerCount: followerGain,
+      },
+      milestonesReached,
+      goalsCompleted: completedGoals,
+      goalsIncomplete: incompleteGoals,
+      strongestVariant,
+      bestAsset: bestPerformingAsset,
+      durationDays,
+      memberFocused,
+      reuseCandidate,
+    });
+
+    items.push({
+      campaignId: campaign.id,
+      slug: campaign.slug,
+      name: campaign.name,
+      route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      visibility: campaign.visibility as CreatorCampaignVisibility,
+      startsAt: campaign.startsAt ? campaign.startsAt.toISOString() : null,
+      endsAt: campaign.endsAt ? campaign.endsAt.toISOString() : null,
+      durationDays,
+      endState: campaign.isActive ? "completed" : "archived",
+      followerGain,
+      totalRsvpInterest: analytics.totalDropRsvps,
+      totalDropViews: analytics.totalDropViews,
+      totalDropClicks: analytics.totalDropClicks,
+      linkedCollectionPurchases: analytics.purchasesFromLinkedCollections,
+      linkedCollectionPurchasesNote: analytics.purchasesFromLinkedCollectionsNote,
+      membershipConversions: analytics.membershipsFromCampaign,
+      membershipConversionsNote: analytics.membershipsFromCampaignNote,
+      milestonesReached,
+      goals: {
+        completed: completedGoals,
+        incomplete: incompleteGoals,
+      },
+      bestPerformingAsset,
+      strongestVariant,
+      wins: insights.wins,
+      misses: insights.misses,
+      lessons: insights.lessons,
+      linkedCounts: {
+        drops: linkedDropIds.length,
+        collections: linkedCollectionIds.length,
+        posts: links.filter((link) => link.targetType === "post").length,
+        promos: links.filter((link) => link.targetType === "promo").length,
+        roadmap: links.filter((link) => link.targetType === "roadmap").length,
+        challenges: links.filter((link) => link.targetType === "challenge").length,
+      },
+      reuseCandidate,
+      reuseReason,
+    });
+  }
+
+  items.sort((a, b) => {
+    const aTime = new Date(a.endsAt ?? a.startsAt ?? 0).getTime();
+    const bTime = new Date(b.endsAt ?? b.startsAt ?? 0).getTime();
+    return bTime - aTime;
+  });
+
+  return {
+    summary: {
+      totalRetrospectives: items.length,
+      completedCampaigns: items.filter((item) => item.endState === "completed").length,
+      archivedCampaigns: items.filter((item) => item.endState === "archived").length,
+      totalFollowerGain: items.reduce((sum, item) => sum + item.followerGain, 0),
+      totalRsvpInterest: items.reduce((sum, item) => sum + item.totalRsvpInterest, 0),
+      totalApproximateConversions: items.reduce((sum, item) => sum + item.linkedCollectionPurchases + item.membershipConversions, 0),
+      reuseCandidates: items.filter((item) => item.reuseCandidate).length,
+    } satisfies CreatorCampaignRetrospectiveSummary,
+    items,
+    attributionNotes: [
+      "Retrospectives only surface campaigns whose state is already past, so analytics and weekly digest views stay separate from end-of-campaign wrap-up.",
+      "Follower gain and RSVP interest are direct campaign signals. Linked collection purchases and membership conversions are clearly labeled approximate whenever the platform only has proxy attribution.",
+      "Lessons are rules-based from campaign follows, linked drop traffic, linked collection purchases, membership conversion proxies, goals, milestones, and CTA variant performance.",
+    ],
+    generatedAt: new Date().toISOString(),
   };
 }
 
@@ -12802,6 +13401,40 @@ r.get("/campaigns/:id/goals", requireAuth, async (req, res) => {
   }
 });
 
+r.get("/campaigns/:id/retrospective", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    if (getCreatorCampaignState(campaign) !== "past") {
+      return res.status(400).json({ ok: false, error: "Retrospectives are only available after a campaign has ended or been archived." });
+    }
+
+    const retrospectives = await loadCreatorCampaignRetrospectives(req.user!.id);
+    const item = retrospectives.items.find((entry) => entry.campaignId === campaign.id) ?? null;
+
+    return res.json({
+      ok: true,
+      campaignId: campaign.id,
+      retrospective: item,
+      attributionNotes: retrospectives.attributionNotes,
+      generatedAt: retrospectives.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/retrospective", req, error);
+    const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
+    return res.status(status).json(collectionServerError(message, "Failed to load campaign retrospective"));
+  }
+});
+
 r.post("/campaigns/:id/goals", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -13022,6 +13655,9 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
     const ownerAnalytics = viewerId && viewerId === campaign.creatorUserId
       ? campaignSnapshot
       : null;
+    const ownerRetrospective = viewerId && viewerId === campaign.creatorUserId && getCreatorCampaignState(campaign) === "past"
+      ? (await loadCreatorCampaignRetrospectives(campaign.creatorUserId)).items.find((item) => item.campaignId === campaign.id) ?? null
+      : null;
     return res.json({
       ok: true,
       ...detail,
@@ -13034,6 +13670,7 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
         : [],
       recentUpdates: buildCreatorCampaignUpdateItems(detail),
       ownerAnalytics,
+      ownerRetrospective,
     });
   } catch (error) {
     const message = logCollectionRouteError("/campaigns/:slug", req, error);
@@ -16753,6 +17390,28 @@ r.get("/creator-dashboard/campaign-recommendations", requireAuth, async (req, re
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-recommendations", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign recommendations"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-retrospectives", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const retrospectives = await loadCreatorCampaignRetrospectives(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: retrospectives.summary,
+      items: retrospectives.items,
+      attributionNotes: retrospectives.attributionNotes,
+      generatedAt: retrospectives.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-retrospectives", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign retrospectives"));
   }
 });
 

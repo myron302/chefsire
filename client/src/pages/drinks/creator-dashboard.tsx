@@ -15,6 +15,7 @@ import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 import CreatorBundlesSection from "@/components/drinks/CreatorBundlesSection";
 import CampaignsDashboardSection from "@/components/drinks/CampaignsDashboardSection";
+import CampaignRetrospectivesSection from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignRecommendationsSection from "@/components/drinks/CampaignRecommendationsSection";
 import CampaignWeeklyDigestSection from "@/components/drinks/CampaignWeeklyDigestSection";
 import CampaignAnalyticsSection from "@/components/drinks/CampaignAnalyticsSection";
@@ -2337,6 +2338,7 @@ export default function CreatorDashboardPage() {
       </Card>
 
       <CampaignsDashboardSection />
+      <CampaignRetrospectivesSection />
       <CampaignWeeklyDigestSection />
       <CampaignRecommendationsSection />
 
