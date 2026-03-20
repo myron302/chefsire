@@ -3897,6 +3897,56 @@ type CreatorCampaignAnalyticsSummary = {
   totalCampaignMembershipConversions: number;
 };
 
+type CreatorCampaignWeeklyDigestMilestone = {
+  type: CreatorCampaignMilestoneType;
+  label: string;
+  achievedAt: string;
+  isPublic: boolean;
+};
+
+type CreatorCampaignWeeklyDigestGoal = {
+  id: string;
+  goalType: CreatorCampaignGoalType;
+  label: string;
+  targetValue: number;
+  completedAt: string | null;
+  metricLabel: string;
+  metricNote: string | null;
+};
+
+type CreatorCampaignWeeklyDigestItem = {
+  campaignId: string;
+  slug: string;
+  name: string;
+  route: string;
+  visibility: CreatorCampaignVisibility;
+  state: CreatorCampaignState;
+  wasActiveThisWeek: boolean;
+  newFollowersThisWeek: number;
+  newRsvpsThisWeek: number;
+  dropViewsThisWeek: number;
+  dropClicksThisWeek: number;
+  purchasesFromLinkedCollectionsThisWeek: number;
+  purchasesFromLinkedCollectionsThisWeekNote: string | null;
+  membershipConversionsThisWeek: number;
+  membershipConversionsThisWeekNote: string | null;
+  milestonesReachedThisWeek: CreatorCampaignWeeklyDigestMilestone[];
+  goalsCompletedThisWeek: CreatorCampaignWeeklyDigestGoal[];
+};
+
+type CreatorCampaignWeeklyDigestSummary = {
+  campaignsIncluded: number;
+  activeCampaignsThisWeek: number;
+  newCampaignFollowersThisWeek: number;
+  newRsvpsThisWeek: number;
+  dropViewsThisWeek: number;
+  dropClicksThisWeek: number;
+  purchasesFromLinkedCollectionsThisWeek: number;
+  membershipConversionsThisWeek: number;
+  milestonesReachedThisWeek: number;
+  goalsCompletedThisWeek: number;
+};
+
 type CreatorCampaignRecommendationType =
   | "add_drop"
   | "publish_update"
@@ -4057,6 +4107,21 @@ function findNthAchievementDate<T extends { createdAt: Date }>(rows: T[], target
   return rows[target - 1]?.createdAt ?? null;
 }
 
+function isDateWithinRange(value: Date, startsAt: Date, endsAt: Date) {
+  return value >= startsAt && value <= endsAt;
+}
+
+function campaignWasActiveWithinRange(
+  campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "createdAt" | "isActive">,
+  startsAt: Date,
+  endsAt: Date,
+) {
+  if (!campaign.isActive) return false;
+  const campaignStartsAt = campaign.startsAt ?? campaign.createdAt;
+  const campaignEndsAt = campaign.endsAt ?? endsAt;
+  return campaignStartsAt <= endsAt && campaignEndsAt >= startsAt;
+}
+
 function buildCreatorCampaignMilestones(input: {
   campaign: CreatorCampaignRecord;
   links: CreatorCampaignLinkRecord[];
@@ -4067,6 +4132,7 @@ function buildCreatorCampaignMilestones(input: {
   totalDropRsvps: number;
   rsvpRows: Array<{ createdAt: Date }>;
   totalDropClicks: number;
+  clickRows: Array<{ createdAt: Date }>;
   purchasesFromLinkedCollections: number;
   purchaseRows: Array<{ createdAt: Date }>;
   membershipsFromCampaign: number;
@@ -4185,7 +4251,7 @@ function buildCreatorCampaignMilestones(input: {
       shortLabel: "100 clicks",
       description: "Linked drops have generated 100 or more click-through events.",
       achieved: input.totalDropClicks >= 100,
-      achievedAt: null,
+      achievedAt: toMilestoneDate(findNthAchievementDate(input.clickRows, 100)),
       isPublic: false,
       currentValue: input.totalDropClicks,
       targetValue: 100,
@@ -4254,7 +4320,7 @@ async function loadCreatorCampaignPerformanceSnapshots(creatorUserId: string) {
       .map((link) => link.targetId)),
   )];
 
-  const [dropRows, collectionRows, eventRows, rsvpCountRows, rsvpActivityRows, purchaseRows] = await Promise.all([
+  const [dropRows, collectionRows, eventRows, eventActivityRows, rsvpCountRows, rsvpActivityRows, purchaseRows] = await Promise.all([
     dropIds.length
       ? db.select({
           id: creatorDrops.id,
@@ -4276,6 +4342,13 @@ async function loadCreatorCampaignPerformanceSnapshots(creatorUserId: string) {
           count: sql<number>`count(*)::int`,
         }).from(creatorDropEvents).where(inArray(creatorDropEvents.dropId, dropIds)).groupBy(creatorDropEvents.dropId, creatorDropEvents.eventType)
       : Promise.resolve([] as Array<{ dropId: string; eventType: string; count: number }>),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropEvents.dropId,
+          eventType: creatorDropEvents.eventType,
+          createdAt: creatorDropEvents.createdAt,
+        }).from(creatorDropEvents).where(inArray(creatorDropEvents.dropId, dropIds)).orderBy(asc(creatorDropEvents.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; eventType: string; createdAt: Date }>),
     dropIds.length
       ? db.select({
           dropId: creatorDropRsvps.dropId,
@@ -4329,6 +4402,14 @@ async function loadCreatorCampaignPerformanceSnapshots(creatorUserId: string) {
     rsvpRowsByDropId.set(rsvp.dropId, current);
   }
 
+  const clickRowsByDropId = new Map<string, Array<{ createdAt: Date }>>();
+  for (const event of eventActivityRows) {
+    if (event.eventType !== "click_drop_target") continue;
+    const current = clickRowsByDropId.get(event.dropId) ?? [];
+    current.push({ createdAt: event.createdAt });
+    clickRowsByDropId.set(event.dropId, current);
+  }
+
   const items = campaigns.map((campaign) => {
     const links = linkMap.get(campaign.id) ?? [];
     const dropLinkIds = links.filter((link) => link.targetType === "drop").map((link) => link.targetId);
@@ -4379,6 +4460,8 @@ async function loadCreatorCampaignPerformanceSnapshots(creatorUserId: string) {
       totalDropRsvps,
       rsvpRows: campaignRsvpRows,
       totalDropClicks,
+      clickRows: dropLinkIds.flatMap((dropId) => clickRowsByDropId.get(dropId) ?? [])
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
       purchasesFromLinkedCollections,
       purchaseRows: purchaseActivityRows,
       membershipsFromCampaign,
@@ -4452,6 +4535,437 @@ function isDateWithinCampaignAnalyticsWindow(value: Date, campaign: Pick<Creator
 
 async function loadCreatorCampaignAnalytics(creatorUserId: string) {
   return loadCreatorCampaignPerformanceSnapshots(creatorUserId);
+}
+
+function findGoalCompletionDate(rows: Array<{ createdAt: Date }>, targetValue: number, baselineCount = 0) {
+  if (targetValue <= 0 || baselineCount >= targetValue) return null;
+  const needed = targetValue - baselineCount;
+  return rows[needed - 1]?.createdAt ?? null;
+}
+
+function campaignGoalCountsForDigest(input: {
+  goalType: CreatorCampaignGoalType;
+  campaign: CreatorCampaignRecord;
+  followRows: Array<{ createdAt: Date }>;
+  rsvpRows: Array<{ createdAt: Date }>;
+  clickRows: Array<{ createdAt: Date }>;
+  viewRows: Array<{ createdAt: Date }>;
+  purchaseRows: Array<{ createdAt: Date; status: string }>;
+  membershipRows: Array<{ createdAt: Date }>;
+  digestStartsAt: Date;
+  digestEndsAt: Date;
+}) {
+  const inCampaignWindow = <T extends { createdAt: Date }>(rows: T[]) => rows.filter((row) => (
+    row.createdAt <= input.digestEndsAt && isDateWithinCampaignAnalyticsWindow(row.createdAt, input.campaign)
+  ));
+  const beforeDigestWindow = <T extends { createdAt: Date }>(rows: T[]) => inCampaignWindow(rows).filter((row) => row.createdAt < input.digestStartsAt);
+  const withinDigestWindow = <T extends { createdAt: Date }>(rows: T[]) => inCampaignWindow(rows).filter((row) => (
+    isDateWithinRange(row.createdAt, input.digestStartsAt, input.digestEndsAt)
+  ));
+
+  switch (input.goalType) {
+    case "followers":
+      return {
+        currentValue: inCampaignWindow(input.followRows).length,
+        baselineValue: beforeDigestWindow(input.followRows).length,
+        weeklyRows: withinDigestWindow(input.followRows),
+      };
+    case "rsvps":
+      return {
+        currentValue: inCampaignWindow(input.rsvpRows).length,
+        baselineValue: beforeDigestWindow(input.rsvpRows).length,
+        weeklyRows: withinDigestWindow(input.rsvpRows),
+      };
+    case "clicks":
+      return {
+        currentValue: inCampaignWindow(input.clickRows).length,
+        baselineValue: beforeDigestWindow(input.clickRows).length,
+        weeklyRows: withinDigestWindow(input.clickRows),
+      };
+    case "linked_drop_views":
+      return {
+        currentValue: inCampaignWindow(input.viewRows).length,
+        baselineValue: beforeDigestWindow(input.viewRows).length,
+        weeklyRows: withinDigestWindow(input.viewRows),
+      };
+    case "purchases": {
+      const purchaseRows = inCampaignWindow(input.purchaseRows.filter((row) => row.status === "completed"));
+      return {
+        currentValue: purchaseRows.length,
+        baselineValue: purchaseRows.filter((row) => row.createdAt < input.digestStartsAt).length,
+        weeklyRows: purchaseRows.filter((row) => isDateWithinRange(row.createdAt, input.digestStartsAt, input.digestEndsAt)),
+      };
+    }
+    case "membership_conversions": {
+      const membershipRows = inCampaignWindow(input.membershipRows);
+      return {
+        currentValue: membershipRows.length,
+        baselineValue: membershipRows.filter((row) => row.createdAt < input.digestStartsAt).length,
+        weeklyRows: membershipRows.filter((row) => isDateWithinRange(row.createdAt, input.digestStartsAt, input.digestEndsAt)),
+      };
+    }
+    default:
+      return {
+        currentValue: 0,
+        baselineValue: 0,
+        weeklyRows: [] as Array<{ createdAt: Date }>,
+      };
+  }
+}
+
+async function loadCreatorCampaignWeeklyDigest(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const digestEndsAt = new Date();
+  const digestStartsAt = new Date(digestEndsAt.getTime() - (7 * 24 * 60 * 60 * 1000));
+
+  const campaigns = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+    .orderBy(desc(creatorCampaigns.updatedAt))
+    .limit(120);
+
+  if (campaigns.length === 0) {
+    return {
+      window: {
+        startsAt: digestStartsAt.toISOString(),
+        endsAt: digestEndsAt.toISOString(),
+        days: 7,
+      },
+      summary: {
+        campaignsIncluded: 0,
+        activeCampaignsThisWeek: 0,
+        newCampaignFollowersThisWeek: 0,
+        newRsvpsThisWeek: 0,
+        dropViewsThisWeek: 0,
+        dropClicksThisWeek: 0,
+        purchasesFromLinkedCollectionsThisWeek: 0,
+        membershipConversionsThisWeek: 0,
+        milestonesReachedThisWeek: 0,
+        goalsCompletedThisWeek: 0,
+      } satisfies CreatorCampaignWeeklyDigestSummary,
+      items: [] as CreatorCampaignWeeklyDigestItem[],
+      attributionNotes: [
+        "Campaign followers and RSVPs are direct counts from explicit campaign follows and linked drop RSVP activity recorded in the last 7 days.",
+        "Drop views and clicks reuse linked drop analytics that already exist elsewhere in the drinks creator dashboard.",
+        "Linked collection purchases are approximate and count completed purchases on collections linked to the campaign during the last 7 days.",
+        "Membership conversions are approximate and only shown for member-focused campaigns, using memberships started in the last 7 days.",
+        "Goal completions are inferred when a campaign crossed a goal threshold during the last 7 days based on already-recorded campaign signals.",
+      ],
+      generatedAt: digestEndsAt.toISOString(),
+    };
+  }
+
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  const [linkMap, goalRows, followRows, membershipRows] = await Promise.all([
+    loadCreatorCampaignLinksByCampaignIds(campaignIds),
+    db.select().from(creatorCampaignGoals).where(inArray(creatorCampaignGoals.campaignId, campaignIds)).orderBy(desc(creatorCampaignGoals.updatedAt), asc(creatorCampaignGoals.createdAt)),
+    db.select({
+      campaignId: creatorCampaignFollows.campaignId,
+      createdAt: creatorCampaignFollows.createdAt,
+    }).from(creatorCampaignFollows).where(inArray(creatorCampaignFollows.campaignId, campaignIds)).orderBy(asc(creatorCampaignFollows.createdAt)),
+    db.select({
+      createdAt: creatorMemberships.createdAt,
+      status: creatorMemberships.status,
+    }).from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, creatorUserId)).orderBy(asc(creatorMemberships.createdAt)),
+  ]);
+
+  const dropIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "drop")
+      .map((link) => link.targetId)),
+  )];
+  const collectionIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId)),
+  )];
+
+  const [dropRows, collectionRows, eventRows, rsvpRows, purchaseRows] = await Promise.all([
+    dropIds.length
+      ? db.select({
+          id: creatorDrops.id,
+          dropType: creatorDrops.dropType,
+          isPublished: creatorDrops.isPublished,
+          scheduledFor: creatorDrops.scheduledFor,
+        }).from(creatorDrops).where(inArray(creatorDrops.id, dropIds))
+      : Promise.resolve([] as Array<Pick<CreatorDropRecord, "id" | "dropType" | "isPublished" | "scheduledFor">>),
+    collectionIds.length
+      ? db.select({
+          id: drinkCollections.id,
+          accessType: drinkCollections.accessType,
+        }).from(drinkCollections).where(inArray(drinkCollections.id, collectionIds))
+      : Promise.resolve([] as Array<{ id: string; accessType: string | null }>),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropEvents.dropId,
+          eventType: creatorDropEvents.eventType,
+          createdAt: creatorDropEvents.createdAt,
+        }).from(creatorDropEvents).where(inArray(creatorDropEvents.dropId, dropIds)).orderBy(asc(creatorDropEvents.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; eventType: string; createdAt: Date }>),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropRsvps.dropId,
+          createdAt: creatorDropRsvps.createdAt,
+        }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).orderBy(asc(creatorDropRsvps.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; createdAt: Date }>),
+    collectionIds.length
+      ? db.select({
+          collectionId: drinkCollectionPurchases.collectionId,
+          createdAt: drinkCollectionPurchases.createdAt,
+          status: drinkCollectionPurchases.status,
+        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds)).orderBy(asc(drinkCollectionPurchases.createdAt))
+      : Promise.resolve([] as Array<{ collectionId: string; createdAt: Date; status: string }>),
+  ]);
+
+  const dropMap = new Map(dropRows.map((row) => [row.id, row]));
+  const collectionMap = new Map(collectionRows.map((row) => [row.id, row]));
+
+  const followRowsByCampaignId = new Map<string, Array<{ createdAt: Date }>>();
+  for (const row of followRows) {
+    const current = followRowsByCampaignId.get(row.campaignId) ?? [];
+    current.push({ createdAt: row.createdAt });
+    followRowsByCampaignId.set(row.campaignId, current);
+  }
+
+  const goalRowsByCampaignId = new Map<string, CreatorCampaignGoalRecord[]>();
+  for (const goal of goalRows) {
+    const current = goalRowsByCampaignId.get(goal.campaignId) ?? [];
+    current.push(goal);
+    goalRowsByCampaignId.set(goal.campaignId, current);
+  }
+
+  const rsvpRowsByDropId = new Map<string, Array<{ createdAt: Date }>>();
+  for (const row of rsvpRows) {
+    const current = rsvpRowsByDropId.get(row.dropId) ?? [];
+    current.push({ createdAt: row.createdAt });
+    rsvpRowsByDropId.set(row.dropId, current);
+  }
+
+  const eventRowsByDropId = new Map<string, {
+    views: Array<{ createdAt: Date }>;
+    clicks: Array<{ createdAt: Date }>;
+  }>();
+  for (const row of eventRows) {
+    const current = eventRowsByDropId.get(row.dropId) ?? { views: [], clicks: [] };
+    if (row.eventType === "view_drop") current.views.push({ createdAt: row.createdAt });
+    if (row.eventType === "click_drop_target") current.clicks.push({ createdAt: row.createdAt });
+    eventRowsByDropId.set(row.dropId, current);
+  }
+
+  const purchaseRowsByCollectionId = new Map<string, Array<{ createdAt: Date; status: string }>>();
+  for (const row of purchaseRows) {
+    const current = purchaseRowsByCollectionId.get(row.collectionId) ?? [];
+    current.push({ createdAt: row.createdAt, status: row.status });
+    purchaseRowsByCollectionId.set(row.collectionId, current);
+  }
+
+  const filteredMembershipRows = membershipRows.map((row) => ({ createdAt: row.createdAt, status: row.status }));
+
+  const items = campaigns.map((campaign) => {
+    const links = linkMap.get(campaign.id) ?? [];
+    const dropLinkIds = links.filter((link) => link.targetType === "drop").map((link) => link.targetId);
+    const collectionLinkIds = links.filter((link) => link.targetType === "collection").map((link) => link.targetId);
+    const followActivityRows = followRowsByCampaignId.get(campaign.id) ?? [];
+    const rsvpActivityRows = dropLinkIds.flatMap((dropId) => rsvpRowsByDropId.get(dropId) ?? [])
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const clickActivityRows = dropLinkIds.flatMap((dropId) => eventRowsByDropId.get(dropId)?.clicks ?? [])
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const viewActivityRows = dropLinkIds.flatMap((dropId) => eventRowsByDropId.get(dropId)?.views ?? [])
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const purchaseActivityRows = collectionLinkIds.flatMap((collectionId) => purchaseRowsByCollectionId.get(collectionId) ?? [])
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    const isMemberFocusedCampaign = campaign.visibility === "members"
+      || dropLinkIds.some((dropId) => (dropMap.get(dropId)?.dropType ?? "") === "member_drop")
+      || collectionLinkIds.some((collectionId) => (collectionMap.get(collectionId)?.accessType ?? "") === "membership_only");
+    const membershipActivityRows = isMemberFocusedCampaign
+      ? filteredMembershipRows.filter((membership) => isDateWithinCampaignAnalyticsWindow(membership.createdAt, campaign))
+          .map((membership) => ({ createdAt: membership.createdAt }))
+      : [];
+
+    const newFollowersThisWeek = followActivityRows.filter((row) => isDateWithinRange(row.createdAt, digestStartsAt, digestEndsAt)).length;
+    const newRsvpsThisWeek = rsvpActivityRows.filter((row) => isDateWithinRange(row.createdAt, digestStartsAt, digestEndsAt)).length;
+    const dropViewsThisWeek = viewActivityRows.filter((row) => isDateWithinRange(row.createdAt, digestStartsAt, digestEndsAt)).length;
+    const dropClicksThisWeek = clickActivityRows.filter((row) => isDateWithinRange(row.createdAt, digestStartsAt, digestEndsAt)).length;
+    const purchasesThisWeek = purchaseActivityRows.filter((row) => (
+      row.status === "completed"
+      && isDateWithinRange(row.createdAt, digestStartsAt, digestEndsAt)
+      && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)
+    )).length;
+    const membershipsThisWeek = membershipActivityRows.filter((row) => isDateWithinRange(row.createdAt, digestStartsAt, digestEndsAt)).length;
+
+    const purchasesToDate = purchaseActivityRows.filter((row) => row.status === "completed" && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign))
+      .map((row) => ({ createdAt: row.createdAt }));
+
+    const milestonesReachedThisWeek = buildCreatorCampaignMilestones({
+      campaign,
+      links,
+      isMemberFocusedCampaign,
+      followerCount: followActivityRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length,
+      followRows: followActivityRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)),
+      dropRows: dropLinkIds.map((dropId) => dropMap.get(dropId)).filter((drop): drop is Pick<CreatorDropRecord, "id" | "dropType" | "isPublished" | "scheduledFor"> => Boolean(drop)),
+      totalDropRsvps: rsvpActivityRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length,
+      rsvpRows: rsvpActivityRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)),
+      totalDropClicks: clickActivityRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length,
+      clickRows: clickActivityRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)),
+      purchasesFromLinkedCollections: purchasesToDate.length,
+      purchaseRows: purchasesToDate,
+      membershipsFromCampaign: membershipActivityRows.length,
+      membershipRows: membershipActivityRows,
+    }).filter((milestone) => (
+      milestone.achieved
+      && Boolean(milestone.achievedAt)
+      && isDateWithinRange(new Date(milestone.achievedAt!), digestStartsAt, digestEndsAt)
+    )).map((milestone) => ({
+      type: milestone.type,
+      label: milestone.label,
+      achievedAt: milestone.achievedAt!,
+      isPublic: milestone.isPublic,
+    }));
+
+    const goalsCompletedThisWeek = (goalRowsByCampaignId.get(campaign.id) ?? []).flatMap((goal) => {
+      const goalProgress = campaignGoalCountsForDigest({
+        goalType: goal.goalType as CreatorCampaignGoalType,
+        campaign,
+        followRows: followActivityRows,
+        rsvpRows: rsvpActivityRows,
+        clickRows: clickActivityRows,
+        viewRows: viewActivityRows,
+        purchaseRows: purchaseActivityRows,
+        membershipRows: membershipActivityRows,
+        digestStartsAt,
+        digestEndsAt,
+      });
+      const targetValue = Number(goal.targetValue ?? 0);
+      if (targetValue <= 0 || goalProgress.currentValue < targetValue || goalProgress.baselineValue >= targetValue) {
+        return [];
+      }
+      const analyticsLikeItem = {
+        campaignId: campaign.id,
+        slug: campaign.slug,
+        name: campaign.name,
+        visibility: campaign.visibility as CreatorCampaignVisibility,
+        isActive: Boolean(campaign.isActive),
+        startsAt: campaign.startsAt ? campaign.startsAt.toISOString() : null,
+        endsAt: campaign.endsAt ? campaign.endsAt.toISOString() : null,
+        followerCount: followActivityRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length,
+        linkedDropsCount: dropLinkIds.length,
+        linkedPostsCount: links.filter((link) => link.targetType === "post").length,
+        linkedCollectionsCount: collectionLinkIds.length,
+        linkedChallengesCount: links.filter((link) => link.targetType === "challenge").length,
+        totalDropRsvps: rsvpActivityRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length,
+        totalDropViews: viewActivityRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length,
+        totalDropClicks: clickActivityRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length,
+        purchasesFromLinkedCollections: purchasesToDate.length,
+        purchasesFromLinkedCollectionsNote: collectionLinkIds.length
+          ? "Approximate: counts completed linked-collection purchases inside the campaign window."
+          : null,
+        membershipsFromCampaign: membershipActivityRows.length,
+        membershipsFromCampaignNote: isMemberFocusedCampaign
+          ? "Approximate: counts memberships that started during this campaign window for member-focused campaign content."
+          : null,
+        campaignEngagementScore: 0,
+        campaignEngagementScoreNote: "",
+        milestones: [],
+      } satisfies CreatorCampaignAnalyticsItem;
+      const progressMeta = buildCampaignGoalProgress(goal.goalType as CreatorCampaignGoalType, analyticsLikeItem);
+      return [{
+        id: goal.id,
+        goalType: goal.goalType as CreatorCampaignGoalType,
+        label: goal.label ?? progressMeta.metricLabel,
+        targetValue,
+        completedAt: findGoalCompletionDate(goalProgress.weeklyRows, targetValue, goalProgress.baselineValue)?.toISOString() ?? null,
+        metricLabel: progressMeta.metricLabel,
+        metricNote: progressMeta.metricNote,
+      } satisfies CreatorCampaignWeeklyDigestGoal];
+    });
+
+    return {
+      campaignId: campaign.id,
+      slug: campaign.slug,
+      name: campaign.name,
+      route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      visibility: campaign.visibility as CreatorCampaignVisibility,
+      state: getCreatorCampaignState(campaign),
+      wasActiveThisWeek: campaignWasActiveWithinRange(campaign, digestStartsAt, digestEndsAt),
+      newFollowersThisWeek,
+      newRsvpsThisWeek,
+      dropViewsThisWeek,
+      dropClicksThisWeek,
+      purchasesFromLinkedCollectionsThisWeek: purchasesThisWeek,
+      purchasesFromLinkedCollectionsThisWeekNote: collectionLinkIds.length
+        ? "Approximate: counts completed purchases on collections linked to this campaign during the last 7 days."
+        : null,
+      membershipConversionsThisWeek: membershipsThisWeek,
+      membershipConversionsThisWeekNote: isMemberFocusedCampaign
+        ? "Approximate: counts memberships started during the last 7 days while this campaign window was live."
+        : null,
+      milestonesReachedThisWeek,
+      goalsCompletedThisWeek,
+    } satisfies CreatorCampaignWeeklyDigestItem;
+  }).filter((item) => (
+    item.wasActiveThisWeek
+    || item.newFollowersThisWeek > 0
+    || item.newRsvpsThisWeek > 0
+    || item.dropViewsThisWeek > 0
+    || item.dropClicksThisWeek > 0
+    || item.purchasesFromLinkedCollectionsThisWeek > 0
+    || item.membershipConversionsThisWeek > 0
+    || item.milestonesReachedThisWeek.length > 0
+    || item.goalsCompletedThisWeek.length > 0
+  )).sort((a, b) => {
+    const aScore = (
+      (a.wasActiveThisWeek ? 5000 : 0)
+      + a.newFollowersThisWeek
+      + a.newRsvpsThisWeek * 2
+      + a.dropClicksThisWeek * 2
+      + a.purchasesFromLinkedCollectionsThisWeek * 4
+      + a.membershipConversionsThisWeek * 5
+      + a.milestonesReachedThisWeek.length * 8
+      + a.goalsCompletedThisWeek.length * 10
+    );
+    const bScore = (
+      (b.wasActiveThisWeek ? 5000 : 0)
+      + b.newFollowersThisWeek
+      + b.newRsvpsThisWeek * 2
+      + b.dropClicksThisWeek * 2
+      + b.purchasesFromLinkedCollectionsThisWeek * 4
+      + b.membershipConversionsThisWeek * 5
+      + b.milestonesReachedThisWeek.length * 8
+      + b.goalsCompletedThisWeek.length * 10
+    );
+    return bScore - aScore;
+  });
+
+  return {
+    window: {
+      startsAt: digestStartsAt.toISOString(),
+      endsAt: digestEndsAt.toISOString(),
+      days: 7,
+    },
+    summary: {
+      campaignsIncluded: items.length,
+      activeCampaignsThisWeek: items.filter((item) => item.wasActiveThisWeek).length,
+      newCampaignFollowersThisWeek: items.reduce((sum, item) => sum + item.newFollowersThisWeek, 0),
+      newRsvpsThisWeek: items.reduce((sum, item) => sum + item.newRsvpsThisWeek, 0),
+      dropViewsThisWeek: items.reduce((sum, item) => sum + item.dropViewsThisWeek, 0),
+      dropClicksThisWeek: items.reduce((sum, item) => sum + item.dropClicksThisWeek, 0),
+      purchasesFromLinkedCollectionsThisWeek: items.reduce((sum, item) => sum + item.purchasesFromLinkedCollectionsThisWeek, 0),
+      membershipConversionsThisWeek: items.reduce((sum, item) => sum + item.membershipConversionsThisWeek, 0),
+      milestonesReachedThisWeek: items.reduce((sum, item) => sum + item.milestonesReachedThisWeek.length, 0),
+      goalsCompletedThisWeek: items.reduce((sum, item) => sum + item.goalsCompletedThisWeek.length, 0),
+    } satisfies CreatorCampaignWeeklyDigestSummary,
+    items,
+    attributionNotes: [
+      "Campaign followers and RSVPs are direct counts from explicit campaign follows and linked drop RSVP activity recorded in the last 7 days.",
+      "Drop views and clicks reuse linked drop analytics that already exist elsewhere in the drinks creator dashboard.",
+      "Linked collection purchases are approximate and count completed purchases on collections linked to the campaign during the last 7 days.",
+      "Membership conversions are approximate and only shown for member-focused campaigns, using memberships started in the last 7 days.",
+      "Goal completions are inferred when a campaign crossed a goal threshold during the last 7 days based on already-recorded campaign signals.",
+    ],
+    generatedAt: digestEndsAt.toISOString(),
+  };
 }
 
 function recommendationPriorityRank(priority: CreatorCampaignRecommendationPriority) {
@@ -16194,6 +16708,29 @@ r.get("/creator-dashboard/campaign-analytics", requireAuth, async (req, res) => 
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-analytics", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign analytics"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-weekly-digest", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const digest = await loadCreatorCampaignWeeklyDigest(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      window: digest.window,
+      summary: digest.summary,
+      items: digest.items,
+      attributionNotes: digest.attributionNotes,
+      generatedAt: digest.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-weekly-digest", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign weekly digest"));
   }
 });
 
