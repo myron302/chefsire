@@ -1,13 +1,13 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 
+import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { useUser } from "@/contexts/UserContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-
 
 type RoadmapFeedResponse = {
   ok: boolean;
@@ -24,6 +24,18 @@ type RoadmapFeedResponse = {
     archived: number;
   };
   items: CreatorRoadmapItem[];
+};
+
+type DropsFeedResponse = {
+  ok: boolean;
+  signedIn: boolean;
+  count: number;
+  visibility: {
+    public: boolean;
+    followers: boolean;
+    members: boolean;
+  };
+  items: CreatorDropItem[];
 };
 
 function readErrorMessage(error: unknown, fallback: string) {
@@ -46,14 +58,29 @@ export default function DrinkRoadmapPage() {
     },
   });
 
+  const dropsQuery = useQuery<DropsFeedResponse>({
+    queryKey: ["/api/drinks/drops/feed", user?.id ?? "guest"],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/drops/feed", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || `Failed to load drops (${response.status})`);
+      }
+      return payload as DropsFeedResponse;
+    },
+  });
+
   if (userLoading) {
     return <div className="container mx-auto max-w-6xl px-4 py-8">Loading roadmap…</div>;
   }
 
   const items = roadmapQuery.data?.items ?? [];
+  const dropItems = dropsQuery.data?.items ?? [];
   const upcoming = items.filter((item) => item.status === "upcoming");
   const live = items.filter((item) => item.status === "live");
   const archived = items.filter((item) => item.status === "archived");
+  const liveDrops = dropItems.filter((drop) => drop.status === "live");
+  const archivedDrops = dropItems.filter((drop) => drop.status === "archived");
   const sections: Array<{ title: string; items: CreatorRoadmapItem[]; description: string }> = [
     { title: "Upcoming", items: upcoming, description: "What creators are signaling next." },
     { title: "Live Now", items: live, description: "Recent launches, active perks, and currently highlighted beats." },
@@ -69,10 +96,11 @@ export default function DrinkRoadmapPage() {
           <div className="space-y-2">
             <h1 className="text-3xl font-bold">Creator Roadmap + Archive</h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              Browse what creators are teasing next, what just went live, and what has already shipped across collections, promos, challenges, and member drops.
+              Browse what creators are teasing next, what just went live, and what has already shipped across roadmap notes plus dedicated drop pages and release replays.
             </p>
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline">Upcoming + live + archive</Badge>
+              <Badge variant="outline">Dedicated drop pages</Badge>
               <Badge variant="outline">Follower + member visibility respected</Badge>
               <Badge variant="outline">Lightweight storytelling layer</Badge>
             </div>
@@ -91,7 +119,7 @@ export default function DrinkRoadmapPage() {
             <CardHeader>
               <CardTitle>Public roadmap preview</CardTitle>
               <CardDescription>
-                Signed-out visitors see public roadmap items only. Sign in to unlock follower-only and member-only creator storytelling where you already have access.
+                Signed-out visitors see public roadmap items and public drop replays only. Sign in to unlock follower-only and member-only creator storytelling where you already have access.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -172,6 +200,40 @@ export default function DrinkRoadmapPage() {
           )}
         </section>
       ))}
+
+      {liveDrops.length > 0 ? (
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-semibold">Live drop pages</h2>
+              <p className="text-sm text-muted-foreground">Dedicated launch pages that are active right now.</p>
+            </div>
+            <Link href="/drinks/drops" className="text-sm underline underline-offset-2">Open drops calendar</Link>
+          </div>
+          <div className="space-y-3">
+            {liveDrops.map((drop) => (
+              <CreatorDropCard key={drop.id} drop={drop} />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {archivedDrops.length > 0 ? (
+        <section className="space-y-3">
+          <div className="flex items-baseline justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-semibold">Drop replays</h2>
+              <p className="text-sm text-muted-foreground">Recent replay pages keep release notes and links attached to the original drop story.</p>
+            </div>
+            <Link href="/drinks/drops" className="text-sm underline underline-offset-2">Open all drops</Link>
+          </div>
+          <div className="space-y-3">
+            {archivedDrops.map((drop) => (
+              <CreatorDropCard key={drop.id} drop={drop} />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

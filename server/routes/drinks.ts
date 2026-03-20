@@ -598,6 +598,7 @@ const creatorDropBodyBaseSchema = z.object({
   linkedCollectionId: z.string().trim().min(1).nullable().optional(),
   linkedChallengeId: z.string().trim().min(1).nullable().optional(),
   linkedPromotionId: z.string().trim().min(1).nullable().optional(),
+  recapNotes: z.string().trim().max(4000).nullable().optional(),
   isPublished: z.boolean().optional(),
 });
 
@@ -1789,6 +1790,7 @@ async function ensureDrinkCollectionsSchema() {
         linked_collection_id varchar REFERENCES drink_collections(id) ON DELETE SET NULL,
         linked_challenge_id varchar REFERENCES drink_challenges(id) ON DELETE SET NULL,
         linked_promotion_id varchar REFERENCES drink_collection_promotions(id) ON DELETE SET NULL,
+        recap_notes text,
         is_published boolean NOT NULL DEFAULT true,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
@@ -1971,6 +1973,7 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_posts_creator_created_at_idx ON creator_posts(creator_user_id, created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_posts_visibility_created_at_idx ON creator_posts(visibility, created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_creator_idx ON creator_drops(creator_user_id);`);
+    await db.execute(sql`ALTER TABLE creator_drops ADD COLUMN IF NOT EXISTS recap_notes text;`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_visibility_idx ON creator_drops(visibility);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_scheduled_for_idx ON creator_drops(scheduled_for);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_published_scheduled_idx ON creator_drops(is_published, scheduled_for);`);
@@ -2766,6 +2769,7 @@ function serializeCreatorDrop(
     creatorUserId: drop.creatorUserId,
     title: drop.title,
     description: drop.description ?? null,
+    recapNotes: drop.recapNotes ?? null,
     dropType: drop.dropType as CreatorDropType,
     visibility: drop.visibility as CreatorDropVisibility,
     status,
@@ -8220,6 +8224,7 @@ r.get("/drops/feed", optionalAuth, async (req, res) => {
       viewerId,
       followedCreatorIds,
       memberCreatorIds,
+      includeArchived: true,
       now,
     }));
 
@@ -8341,7 +8346,7 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
       viewerId,
       followedCreatorIds,
       memberCreatorIds,
-      includeArchived: isCreatorView,
+      includeArchived: true,
       now,
     }));
 
@@ -8644,6 +8649,7 @@ r.post("/drops", requireAuth, async (req, res) => {
       linkedCollectionId: normalizeNullableForeignId(payload.linkedCollectionId),
       linkedChallengeId: normalizeNullableForeignId(payload.linkedChallengeId),
       linkedPromotionId: normalizeNullableForeignId(payload.linkedPromotionId),
+      recapNotes: payload.recapNotes?.trim() ? payload.recapNotes.trim() : null,
       isPublished: payload.isPublished ?? true,
     });
 
@@ -8722,8 +8728,11 @@ r.patch("/drops/:id", requireAuth, async (req, res) => {
     const nextVisibility = (nextDropType === "member_drop" ? "members" : (payload.visibility ?? existing.visibility)) as CreatorDropVisibility;
     const nextScheduledFor = payload.scheduledFor ? new Date(payload.scheduledFor) : existing.scheduledFor;
 
-    if (Number.isNaN(nextScheduledFor.getTime()) || nextScheduledFor <= new Date()) {
-      return res.status(400).json({ ok: false, error: "Drops must stay scheduled for a future time." });
+    if (Number.isNaN(nextScheduledFor.getTime())) {
+      return res.status(400).json({ ok: false, error: "Drops must use a valid scheduled time." });
+    }
+    if (payload.scheduledFor !== undefined && nextScheduledFor <= new Date()) {
+      return res.status(400).json({ ok: false, error: "Only upcoming drops can be rescheduled into the future. Leave timing unchanged to update launch notes." });
     }
 
     const values = {
@@ -8735,6 +8744,7 @@ r.patch("/drops/:id", requireAuth, async (req, res) => {
       linkedCollectionId: payload.linkedCollectionId !== undefined ? normalizeNullableForeignId(payload.linkedCollectionId) : existing.linkedCollectionId,
       linkedChallengeId: payload.linkedChallengeId !== undefined ? normalizeNullableForeignId(payload.linkedChallengeId) : existing.linkedChallengeId,
       linkedPromotionId: payload.linkedPromotionId !== undefined ? normalizeNullableForeignId(payload.linkedPromotionId) : existing.linkedPromotionId,
+      recapNotes: payload.recapNotes !== undefined ? (payload.recapNotes?.trim() ? payload.recapNotes.trim() : null) : existing.recapNotes,
       isPublished: payload.isPublished ?? existing.isPublished,
       updatedAt: new Date(),
     };

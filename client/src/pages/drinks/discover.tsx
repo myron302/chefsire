@@ -69,7 +69,7 @@ const discoverLinks: DiscoverLink[] = [
   },
   {
     title: "Drops Calendar",
-    description: "Upcoming collection launches, promos, challenge drops, and member release timing.",
+    description: "Upcoming landing pages, live release surfaces, and replay recaps for creator drops.",
     href: "/drinks/drops",
     icon: CalendarClock,
     activityHint: "New",
@@ -200,7 +200,7 @@ export default function DrinksDiscoverPage() {
                   <CalendarClock className="h-5 w-5 text-blue-600" />
                   Drops Calendar
                 </CardTitle>
-                <CardDescription>Browse upcoming creator drops grouped by date and filtered by your access.</CardDescription>
+                <CardDescription>Browse dedicated creator drop pages for upcoming launches, live releases, and recent replays filtered by your access.</CardDescription>
               </CardHeader>
               <CardContent>
                 <Link href="/drinks/drops">

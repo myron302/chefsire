@@ -430,6 +430,9 @@ export default function PublicDrinkCreatorPage() {
   const creatorBundles = publicBundlesQuery.data?.bundles ?? [];
   const creatorPosts = creatorPostsQuery.data?.items ?? [];
   const creatorDrops = creatorDropsQuery.data?.items ?? [];
+  const liveCreatorDrops = creatorDrops.filter((drop) => drop.status === "live");
+  const upcomingCreatorDrops = creatorDrops.filter((drop) => drop.status === "upcoming");
+  const archivedCreatorDrops = creatorDrops.filter((drop) => drop.status === "archived");
   const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
   const collaborationHighlightsCount = [
     ...creatorCollections.filter((collection) => Boolean(collection.acceptedCollaboration)),
@@ -685,9 +688,9 @@ export default function PublicDrinkCreatorPage() {
 
       <section id="creator-drops" className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-xl font-semibold">Live + upcoming drops</h2>
+          <h2 className="text-xl font-semibold">Drop pages + replays</h2>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span>{creatorDrops.length} visible live/upcoming drops</span>
+            <span>{creatorDrops.length} visible drop pages</span>
             <Link href="/drinks/drops" className="underline underline-offset-2">Open drops calendar</Link>
           </div>
         </div>
@@ -709,18 +712,37 @@ export default function PublicDrinkCreatorPage() {
         {!creatorDropsQuery.isLoading && !creatorDropsQuery.isError && creatorDrops.length === 0 ? (
           <Card>
             <CardContent className="p-4 text-sm text-muted-foreground">
-              No visible live or upcoming drops yet. Public visitors only see public drops; follower and member drops appear here only when your access allows it.
+              No visible drop pages yet. Public visitors only see public drops; follower and member drop pages appear here only when your access allows it.
             </CardContent>
           </Card>
         ) : null}
 
-        {creatorDrops.length > 0 ? (
-          <div className="space-y-3">
-            {creatorDrops.map((drop) => (
-              <CreatorDropCard key={drop.id} drop={drop} showCreator={false} />
-            ))}
+        {[
+          ["Live now", liveCreatorDrops, "Launch surfaces that should send people directly into the released content."],
+          ["Upcoming", upcomingCreatorDrops, "Dedicated landing pages before launch with countdown and Notify-Me support."],
+          ["Recent replays", archivedCreatorDrops, "Past drop pages with recap notes and release links still intact."],
+        ].map(([title, group, description]) => (
+          <div key={title as string} className="space-y-3">
+            <div className="flex items-baseline justify-between gap-2">
+              <div>
+                <h3 className="text-lg font-semibold">{title}</h3>
+                <p className="text-sm text-muted-foreground">{description}</p>
+              </div>
+              <span className="text-sm text-muted-foreground">{(group as CreatorDropItem[]).length} drop{(group as CreatorDropItem[]).length === 1 ? "" : "s"}</span>
+            </div>
+            {(group as CreatorDropItem[]).length > 0 ? (
+              <div className="space-y-3">
+                {(group as CreatorDropItem[]).map((drop) => (
+                  <CreatorDropCard key={drop.id} drop={drop} showCreator={false} />
+                ))}
+              </div>
+            ) : creatorDrops.length > 0 ? (
+              <Card>
+                <CardContent className="p-4 text-sm text-muted-foreground">Nothing visible in this section right now.</CardContent>
+              </Card>
+            ) : null}
           </div>
-        ) : null}
+        ))}
       </section>
 
       <section id="creator-posts" className="space-y-3">

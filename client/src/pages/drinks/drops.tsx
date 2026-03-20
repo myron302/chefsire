@@ -50,6 +50,7 @@ export default function DrinkDropsPage() {
   const drops = dropsQuery.data?.items ?? [];
   const liveDrops = useMemo(() => drops.filter((drop) => drop.status === "live"), [drops]);
   const upcomingDrops = useMemo(() => drops.filter((drop) => drop.status === "upcoming"), [drops]);
+  const archivedDrops = useMemo(() => drops.filter((drop) => drop.status === "archived"), [drops]);
   const groupedUpcomingDrops = useMemo(
     () => upcomingDrops.reduce<Record<string, CreatorDropItem[]>>((acc, drop) => {
       const key = dayKey(drop.scheduledFor);
@@ -72,11 +73,12 @@ export default function DrinkDropsPage() {
           <div className="space-y-2">
             <h1 className="text-3xl font-bold">Creator drops</h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              Watch upcoming launches count down in real time, then let live drops automatically surface without creators manually babysitting every release.
+              Follow a drop through its full lifecycle: dedicated landing pages before launch, live release surfaces when active, and replay/recap pages after the window closes.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Badge variant="outline">Upcoming countdowns</Badge>
+              <Badge variant="outline">Dedicated drop pages</Badge>
               <Badge variant="outline">Automatic go-live</Badge>
+              <Badge variant="outline">Replay recaps</Badge>
               <Badge variant="outline">Follower + member visibility respected</Badge>
             </div>
           </div>
@@ -94,7 +96,7 @@ export default function DrinkDropsPage() {
             <CardHeader>
               <CardTitle>Public calendar preview</CardTitle>
               <CardDescription>
-                Signed-out visitors only see public drops. Sign in to unlock follower-only and member-only drops from creators you already support.
+                Signed-out visitors only see public drop pages. Sign in to unlock follower-only and member-only launch pages from creators you already support.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -102,7 +104,7 @@ export default function DrinkDropsPage() {
       </section>
 
       {dropsQuery.isSuccess ? (
-        <div className="grid gap-3 md:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-4">
           <div className="rounded-md border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Live now</p>
             <p className="text-2xl font-semibold">{liveDrops.length}</p>
@@ -110,6 +112,10 @@ export default function DrinkDropsPage() {
           <div className="rounded-md border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Upcoming</p>
             <p className="text-2xl font-semibold">{upcomingDrops.length}</p>
+          </div>
+          <div className="rounded-md border p-3">
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Recent replays</p>
+            <p className="text-2xl font-semibold">{archivedDrops.length}</p>
           </div>
           <div className="rounded-md border p-3">
             <p className="text-xs uppercase tracking-wide text-muted-foreground">Signed in</p>
@@ -120,7 +126,7 @@ export default function DrinkDropsPage() {
 
       {dropsQuery.isLoading ? (
         <Card>
-          <CardContent className="p-6 text-sm text-muted-foreground">Loading live and upcoming drops…</CardContent>
+          <CardContent className="p-6 text-sm text-muted-foreground">Loading live, upcoming, and replay drops…</CardContent>
         </Card>
       ) : null}
 
@@ -138,7 +144,7 @@ export default function DrinkDropsPage() {
             <CardTitle>No visible drops right now</CardTitle>
             <CardDescription>
               {user
-                ? "Follow creators or join memberships so live launches and countdowns have more signal here."
+                ? "Follow creators or join memberships so live launches, countdowns, and release replays have more signal here."
                 : "Creators have not published any public drops yet."}
             </CardDescription>
           </CardHeader>
@@ -154,7 +160,7 @@ export default function DrinkDropsPage() {
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2 className="text-xl font-semibold">Live now</h2>
-              <p className="text-sm text-muted-foreground">Drops that have automatically crossed their scheduled go-live time.</p>
+              <p className="text-sm text-muted-foreground">Drops that have crossed their go-live time and now act as live launch surfaces.</p>
             </div>
             <span className="text-sm text-muted-foreground">{liveDrops.length} live</span>
           </div>
@@ -171,7 +177,7 @@ export default function DrinkDropsPage() {
           <div className="flex items-center justify-between gap-2">
             <div>
               <h2 className="text-xl font-semibold">{label}</h2>
-              <p className="text-sm text-muted-foreground">Upcoming launches with lightweight countdown messaging.</p>
+              <p className="text-sm text-muted-foreground">Upcoming landing pages with countdown messaging and Notify-Me support.</p>
             </div>
             <span className="text-sm text-muted-foreground">{group.length} drop{group.length === 1 ? "" : "s"}</span>
           </div>
@@ -182,6 +188,23 @@ export default function DrinkDropsPage() {
           </div>
         </section>
       ))}
+
+      {archivedDrops.length > 0 ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-semibold">Recent replays</h2>
+              <p className="text-sm text-muted-foreground">Past drops keep their dedicated pages so recap notes and release destinations stay easy to revisit.</p>
+            </div>
+            <span className="text-sm text-muted-foreground">{archivedDrops.length} replay{archivedDrops.length === 1 ? "" : "s"}</span>
+          </div>
+          <div className="space-y-3">
+            {archivedDrops.map((drop) => (
+              <CreatorDropCard key={drop.id} drop={drop} />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
