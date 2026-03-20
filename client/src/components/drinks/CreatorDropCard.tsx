@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import CreatorCollaborationAttribution, { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
+import DropRsvpButton from "@/components/drinks/DropRsvpButton";
 
 export type CreatorDropItem = {
   id: string;
@@ -17,6 +18,8 @@ export type CreatorDropItem = {
   audienceLabel: string;
   scheduledFor: string;
   isPublished: boolean;
+  rsvpCount: number;
+  isRsvped: boolean;
   createdAt: string;
   updatedAt: string;
   creator: {
@@ -92,6 +95,8 @@ type CreatorDropCardProps = {
 };
 
 export default function CreatorDropCard({ drop, showCreator = true, actions }: CreatorDropCardProps) {
+  const hasLinkedDestination = Boolean(drop.linkedCollection || drop.linkedChallenge);
+
   return (
     <Card>
       <CardContent className="space-y-4 p-4">
@@ -115,6 +120,8 @@ export default function CreatorDropCard({ drop, showCreator = true, actions }: C
                 <Badge variant={drop.visibility === "public" ? "outline" : "default"}>{visibilityBadgeLabel(drop.visibility)}</Badge>
                 <Badge variant="outline">Scheduled {formatDateTime(drop.scheduledFor)}</Badge>
                 <Badge variant="outline">Visible to {drop.audienceLabel.toLowerCase()}</Badge>
+                <Badge variant="outline">{drop.rsvpCount} notified</Badge>
+                {drop.isRsvped ? <Badge variant="secondary">You’re notified</Badge> : null}
                 {!drop.isPublished ? <Badge variant="outline">Draft</Badge> : null}
                 {drop.linkedPromotion ? <Badge variant="secondary">Code {drop.linkedPromotion.code}</Badge> : null}
               </div>
@@ -124,10 +131,13 @@ export default function CreatorDropCard({ drop, showCreator = true, actions }: C
             </div>
           </div>
 
-          {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+          <div className="flex flex-wrap gap-2">
+            <DropRsvpButton drop={drop} />
+            {actions}
+          </div>
         </div>
 
-        {(drop.linkedCollection || drop.linkedChallenge) ? (
+        {hasLinkedDestination ? (
           <div className="flex flex-wrap gap-2">
             {drop.linkedCollection ? (
               <Link href={drop.linkedCollection.route}>
