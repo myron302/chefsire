@@ -20,7 +20,8 @@ export default function DropRsvpButton({ drop }: { drop: CreatorDropItem }) {
   const queryClient = useQueryClient();
 
   const isOwnDrop = user?.id === drop.creatorUserId;
-  const canToggle = Boolean(user?.id && !isOwnDrop && drop.isPublished);
+  const isUpcoming = drop.status === "upcoming";
+  const canToggle = Boolean(user?.id && !isOwnDrop && drop.isPublished && isUpcoming);
 
   const toggleMutation = useMutation({
     mutationFn: async () => {
@@ -59,6 +60,10 @@ export default function DropRsvpButton({ drop }: { drop: CreatorDropItem }) {
 
   if (isOwnDrop) {
     return <Button type="button" size="sm" variant="outline" disabled>{drop.rsvpCount} interested</Button>;
+  }
+
+  if (!isUpcoming) {
+    return <Button type="button" size="sm" variant="outline" disabled>{drop.status === "live" ? "Live now" : "Drop ended"}</Button>;
   }
 
   if (!user) {

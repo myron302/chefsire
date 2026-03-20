@@ -685,9 +685,9 @@ export default function PublicDrinkCreatorPage() {
 
       <section id="creator-drops" className="space-y-3">
         <div className="flex items-baseline justify-between gap-2">
-          <h2 className="text-xl font-semibold">Upcoming drops</h2>
+          <h2 className="text-xl font-semibold">Live + upcoming drops</h2>
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <span>{creatorDrops.length} visible drops</span>
+            <span>{creatorDrops.length} visible live/upcoming drops</span>
             <Link href="/drinks/drops" className="underline underline-offset-2">Open drops calendar</Link>
           </div>
         </div>
@@ -709,7 +709,7 @@ export default function PublicDrinkCreatorPage() {
         {!creatorDropsQuery.isLoading && !creatorDropsQuery.isError && creatorDrops.length === 0 ? (
           <Card>
             <CardContent className="p-4 text-sm text-muted-foreground">
-              No visible upcoming drops yet. Public visitors only see public drops; follower and member drops appear here only when your access allows it.
+              No visible live or upcoming drops yet. Public visitors only see public drops; follower and member drops appear here only when your access allows it.
             </CardContent>
           </Card>
         ) : null}
