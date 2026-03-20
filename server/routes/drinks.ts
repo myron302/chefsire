@@ -14,6 +14,7 @@ import {
   creatorPosts,
   creatorRoadmapItems,
   creatorCampaigns,
+  creatorCampaignTemplates,
   creatorCampaignLinks,
   creatorCampaignFollows,
   creatorCampaignCtaVariants,
@@ -52,6 +53,7 @@ import {
   insertCreatorCollaborationSchema,
   insertCreatorRoadmapItemSchema,
   insertCreatorCampaignSchema,
+  insertCreatorCampaignTemplateSchema,
   insertCreatorCampaignLinkSchema,
   insertCreatorCampaignFollowSchema,
   insertCreatorCampaignCtaVariantSchema,
@@ -113,6 +115,65 @@ type CreatorCollaborationType = "collection" | "drop" | "post" | "roadmap";
 type CreatorCollaborationStatus = "pending" | "accepted" | "declined" | "revoked";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
 type CreatorDropEventType = "view_drop" | "click_drop_target";
+type CreatorCampaignTemplateBlueprint = {
+  campaign: {
+    name: string;
+    description: string | null;
+    visibility: CreatorCampaignVisibility;
+    startsAt: string | null;
+    endsAt: string | null;
+    isActive: boolean;
+  };
+  links: Array<{ targetType: CreatorCampaignTargetType; targetId: string; sortOrder: number }>;
+  variants: Array<{
+    label: string;
+    headline: string | null;
+    subheadline: string | null;
+    ctaText: string;
+    ctaTargetType: CreatorCampaignCtaTargetType;
+    isActive: boolean;
+  }>;
+  linkedDrafts: {
+    drops: Array<{
+      sourceId: string;
+      title: string;
+      description: string | null;
+      dropType: CreatorDropType;
+      visibility: CreatorDropVisibility;
+      scheduledFor: string | null;
+      linkedCollectionId: string | null;
+      linkedChallengeId: string | null;
+      linkedPromotionId: string | null;
+      recapNotes: string | null;
+    }>;
+    posts: Array<{
+      sourceId: string;
+      title: string;
+      body: string;
+      postType: CreatorPostType;
+      visibility: CreatorPostVisibility;
+      linkedCollectionId: string | null;
+      linkedChallengeId: string | null;
+    }>;
+    roadmap: Array<{
+      sourceId: string;
+      title: string;
+      description: string | null;
+      itemType: CreatorRoadmapItemType;
+      visibility: CreatorRoadmapVisibility;
+      linkedCollectionId: string | null;
+      linkedChallengeId: string | null;
+      scheduledFor: string | null;
+      releasedAt: string | null;
+      status: CreatorRoadmapStatus;
+    }>;
+  };
+  defaults: {
+    resetDates: boolean;
+    copyLinkedDrafts: boolean;
+    copyCtaVariants: boolean;
+  };
+};
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
 type DrinkCollectionPromotionRecord = typeof drinkCollectionPromotions.$inferSelect;
@@ -124,6 +185,7 @@ type CreatorDropRsvpRecord = typeof creatorDropRsvps.$inferSelect;
 type CreatorPostRecord = typeof creatorPosts.$inferSelect;
 type CreatorRoadmapRecord = typeof creatorRoadmapItems.$inferSelect;
 type CreatorCampaignRecord = typeof creatorCampaigns.$inferSelect;
+type CreatorCampaignTemplateRecord = typeof creatorCampaignTemplates.$inferSelect;
 type CreatorCampaignLinkRecord = typeof creatorCampaignLinks.$inferSelect;
 type CreatorCampaignFollowRecord = typeof creatorCampaignFollows.$inferSelect;
 type CreatorCampaignCtaVariantRecord = typeof creatorCampaignCtaVariants.$inferSelect;
@@ -704,6 +766,80 @@ const updateCreatorCampaignBodySchema = creatorCampaignBodyBaseObjectSchema.part
   }
 });
 
+const creatorCampaignTemplateBlueprintSchema: z.ZodType<CreatorCampaignTemplateBlueprint> = z.object({
+  campaign: z.object({
+    name: z.string(),
+    description: z.string().nullable(),
+    visibility: creatorCampaignVisibilitySchema,
+    startsAt: z.string().nullable(),
+    endsAt: z.string().nullable(),
+    isActive: z.boolean(),
+  }),
+  links: z.array(z.object({
+    targetType: creatorCampaignTargetTypeSchema,
+    targetId: z.string(),
+    sortOrder: z.number().int(),
+  })),
+  variants: z.array(z.object({
+    label: z.string(),
+    headline: z.string().nullable(),
+    subheadline: z.string().nullable(),
+    ctaText: z.string(),
+    ctaTargetType: creatorCampaignCtaTargetTypeSchema,
+    isActive: z.boolean(),
+  })),
+  linkedDrafts: z.object({
+    drops: z.array(z.object({
+      sourceId: z.string(),
+      title: z.string(),
+      description: z.string().nullable(),
+      dropType: z.enum(["collection_launch", "promo_launch", "member_drop", "challenge_launch", "update"]),
+      visibility: z.enum(["public", "followers", "members"]),
+      scheduledFor: z.string().nullable(),
+      linkedCollectionId: z.string().nullable(),
+      linkedChallengeId: z.string().nullable(),
+      linkedPromotionId: z.string().nullable(),
+      recapNotes: z.string().nullable(),
+    })),
+    posts: z.array(z.object({
+      sourceId: z.string(),
+      title: z.string(),
+      body: z.string(),
+      postType: z.enum(["update", "promo", "collection_launch", "challenge", "member_only"]),
+      visibility: z.enum(["public", "followers", "members"]),
+      linkedCollectionId: z.string().nullable(),
+      linkedChallengeId: z.string().nullable(),
+    })),
+    roadmap: z.array(z.object({
+      sourceId: z.string(),
+      title: z.string(),
+      description: z.string().nullable(),
+      itemType: z.enum(["collection", "promo", "challenge", "member_drop", "update", "roadmap"]),
+      visibility: z.enum(["public", "followers", "members"]),
+      linkedCollectionId: z.string().nullable(),
+      linkedChallengeId: z.string().nullable(),
+      scheduledFor: z.string().nullable(),
+      releasedAt: z.string().nullable(),
+      status: z.enum(["upcoming", "live", "archived"]),
+    })),
+  }),
+  defaults: z.object({
+    resetDates: z.boolean(),
+    copyLinkedDrafts: z.boolean(),
+    copyCtaVariants: z.boolean(),
+  }),
+});
+
+const campaignTemplateActionBodySchema = z.object({
+  templateName: z.string().trim().min(2).max(160).optional(),
+  templateDescription: z.string().trim().max(500).nullable().optional(),
+  newName: z.string().trim().min(2).max(160).optional(),
+  newSlug: z.string().trim().min(2).max(160).optional(),
+  resetDates: z.boolean().optional(),
+  copyLinkedDrafts: z.boolean().optional(),
+  copyCtaVariants: z.boolean().optional(),
+});
+
 const creatorCampaignVariantBodySchema = z.object({
   label: z.string().trim().min(1, "Variant label is required.").max(120),
   headline: z.string().trim().max(160).nullable().optional(),
@@ -900,6 +1036,41 @@ async function ensureUniqueBundleSlug(baseValue: string, excludeBundleId?: strin
 
     const existing = rows[0];
     if (!existing || existing.id === excludeBundleId) {
+      return slug;
+    }
+    attempt += 1;
+  }
+
+  return `${baseSlug}-${crypto.randomUUID().slice(0, 8)}`;
+}
+
+function normalizeCampaignSlug(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 160);
+}
+
+async function ensureUniqueCreatorCampaignSlug(baseValue: string, excludeCampaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const baseSlug = normalizeCampaignSlug(baseValue) || "campaign";
+  let attempt = 0;
+
+  while (attempt < 25) {
+    const slug = attempt === 0 ? baseSlug : `${baseSlug}-${attempt + 1}`;
+    const rows = await db
+      .select({ id: creatorCampaigns.id })
+      .from(creatorCampaigns)
+      .where(eq(creatorCampaigns.slug, slug))
+      .limit(1);
+
+    const existing = rows[0];
+    if (!existing || existing.id === excludeCampaignId) {
       return slug;
     }
     attempt += 1;
@@ -1941,6 +2112,20 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_templates (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        source_campaign_id varchar REFERENCES creator_campaigns(id) ON DELETE SET NULL,
+        name varchar(160) NOT NULL,
+        description text,
+        blueprint jsonb NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT creator_campaign_templates_creator_name_idx UNIQUE (creator_user_id, name)
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_campaign_links (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
@@ -2170,6 +2355,9 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_visibility_idx ON creator_campaigns(visibility);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_active_idx ON creator_campaigns(is_active, starts_at, ends_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_creator_updated_at_idx ON creator_campaigns(creator_user_id, updated_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_idx ON creator_campaign_templates(creator_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_source_idx ON creator_campaign_templates(source_campaign_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_updated_at_idx ON creator_campaign_templates(creator_user_id, updated_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_campaign_idx ON creator_campaign_links(campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_target_idx ON creator_campaign_links(target_type, target_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_campaign_sort_idx ON creator_campaign_links(campaign_id, sort_order, created_at);`);
@@ -2955,6 +3143,291 @@ async function replaceCreatorCampaignLinks(campaignId: string, links: Array<{ ta
       sortOrder: link.sortOrder,
     })),
   );
+}
+
+async function loadCampaignForOwnerOrThrow(campaignId: string, creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+  const rows = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, creatorUserId)))
+    .limit(1);
+  const campaign = rows[0];
+  if (!campaign) {
+    throw new Error("Campaign not found.");
+  }
+  return campaign;
+}
+
+async function buildCampaignTemplateBlueprint(campaign: CreatorCampaignRecord): Promise<CreatorCampaignTemplateBlueprint> {
+  if (!db) throw new Error("Database unavailable");
+
+  const [links, variants] = await Promise.all([
+    db
+      .select()
+      .from(creatorCampaignLinks)
+      .where(eq(creatorCampaignLinks.campaignId, campaign.id))
+      .orderBy(asc(creatorCampaignLinks.sortOrder), asc(creatorCampaignLinks.createdAt)),
+    loadCreatorCampaignVariantsByCampaignIds([campaign.id]).then((map) => map.get(campaign.id) ?? []),
+  ]);
+
+  const dropIds = links.filter((link) => link.targetType === "drop").map((link) => link.targetId);
+  const postIds = links.filter((link) => link.targetType === "post").map((link) => link.targetId);
+  const roadmapIds = links.filter((link) => link.targetType === "roadmap").map((link) => link.targetId);
+
+  const [drops, posts, roadmap] = await Promise.all([
+    dropIds.length ? db.select().from(creatorDrops).where(inArray(creatorDrops.id, dropIds)) : Promise.resolve([] as CreatorDropRecord[]),
+    postIds.length ? db.select().from(creatorPosts).where(inArray(creatorPosts.id, postIds)) : Promise.resolve([] as CreatorPostRecord[]),
+    roadmapIds.length ? db.select().from(creatorRoadmapItems).where(inArray(creatorRoadmapItems.id, roadmapIds)) : Promise.resolve([] as CreatorRoadmapRecord[]),
+  ]);
+
+  const dropMap = new Map(drops.map((item) => [item.id, item]));
+  const postMap = new Map(posts.map((item) => [item.id, item]));
+  const roadmapMap = new Map(roadmap.map((item) => [item.id, item]));
+
+  return creatorCampaignTemplateBlueprintSchema.parse({
+    campaign: {
+      name: campaign.name,
+      description: campaign.description ?? null,
+      visibility: campaign.visibility,
+      startsAt: campaign.startsAt ? campaign.startsAt.toISOString() : null,
+      endsAt: campaign.endsAt ? campaign.endsAt.toISOString() : null,
+      isActive: Boolean(campaign.isActive),
+    },
+    links: links.map((link) => ({
+      targetType: link.targetType,
+      targetId: link.targetId,
+      sortOrder: Number(link.sortOrder ?? 0),
+    })),
+    variants: variants.map((variant) => ({
+      label: variant.label,
+      headline: variant.headline ?? null,
+      subheadline: variant.subheadline ?? null,
+      ctaText: variant.ctaText,
+      ctaTargetType: variant.ctaTargetType,
+      isActive: Boolean(variant.isActive),
+    })),
+    linkedDrafts: {
+      drops: links
+        .filter((link) => link.targetType === "drop")
+        .map((link) => dropMap.get(link.targetId))
+        .filter((item): item is CreatorDropRecord => Boolean(item))
+        .map((drop) => ({
+          sourceId: drop.id,
+          title: drop.title,
+          description: drop.description ?? null,
+          dropType: drop.dropType,
+          visibility: drop.visibility,
+          scheduledFor: drop.scheduledFor ? drop.scheduledFor.toISOString() : null,
+          linkedCollectionId: drop.linkedCollectionId ?? null,
+          linkedChallengeId: drop.linkedChallengeId ?? null,
+          linkedPromotionId: drop.linkedPromotionId ?? null,
+          recapNotes: drop.recapNotes ?? null,
+        })),
+      posts: links
+        .filter((link) => link.targetType === "post")
+        .map((link) => postMap.get(link.targetId))
+        .filter((item): item is CreatorPostRecord => Boolean(item))
+        .map((post) => ({
+          sourceId: post.id,
+          title: post.title,
+          body: post.body,
+          postType: post.postType,
+          visibility: post.visibility,
+          linkedCollectionId: post.linkedCollectionId ?? null,
+          linkedChallengeId: post.linkedChallengeId ?? null,
+        })),
+      roadmap: links
+        .filter((link) => link.targetType === "roadmap")
+        .map((link) => roadmapMap.get(link.targetId))
+        .filter((item): item is CreatorRoadmapRecord => Boolean(item))
+        .map((item) => ({
+          sourceId: item.id,
+          title: item.title,
+          description: item.description ?? null,
+          itemType: item.itemType,
+          visibility: item.visibility,
+          linkedCollectionId: item.linkedCollectionId ?? null,
+          linkedChallengeId: item.linkedChallengeId ?? null,
+          scheduledFor: item.scheduledFor ? item.scheduledFor.toISOString() : null,
+          releasedAt: item.releasedAt ? item.releasedAt.toISOString() : null,
+          status: item.status,
+        })),
+    },
+    defaults: {
+      resetDates: true,
+      copyLinkedDrafts: true,
+      copyCtaVariants: true,
+    },
+  });
+}
+
+function serializeCreatorCampaignTemplate(template: CreatorCampaignTemplateRecord) {
+  const blueprint = creatorCampaignTemplateBlueprintSchema.parse(template.blueprint);
+  return {
+    id: template.id,
+    creatorUserId: template.creatorUserId,
+    sourceCampaignId: template.sourceCampaignId ?? null,
+    name: template.name,
+    description: template.description ?? null,
+    campaignName: blueprint.campaign.name,
+    campaignDescription: blueprint.campaign.description,
+    visibility: blueprint.campaign.visibility,
+    defaults: blueprint.defaults,
+    counts: {
+      linkedItems: blueprint.links.length,
+      drops: blueprint.linkedDrafts.drops.length,
+      posts: blueprint.linkedDrafts.posts.length,
+      roadmap: blueprint.linkedDrafts.roadmap.length,
+      variants: blueprint.variants.length,
+    },
+    createdAt: template.createdAt.toISOString(),
+    updatedAt: template.updatedAt.toISOString(),
+  };
+}
+
+async function instantiateCampaignFromTemplate(input: {
+  creatorUserId: string;
+  blueprint: CreatorCampaignTemplateBlueprint;
+  newName?: string | null;
+  newSlug?: string | null;
+  resetDates?: boolean;
+  copyLinkedDrafts?: boolean;
+  copyCtaVariants?: boolean;
+}) {
+  if (!db) throw new Error("Database unavailable");
+
+  const resetDates = input.resetDates ?? input.blueprint.defaults.resetDates;
+  const copyLinkedDrafts = input.copyLinkedDrafts ?? input.blueprint.defaults.copyLinkedDrafts;
+  const copyCtaVariants = input.copyCtaVariants ?? input.blueprint.defaults.copyCtaVariants;
+
+  const baseName = input.newName?.trim() || `${input.blueprint.campaign.name} Draft`;
+  const slug = await ensureUniqueCreatorCampaignSlug(
+    input.newSlug?.trim() || baseName,
+  );
+
+  const insertedCampaignRows = await db.insert(creatorCampaigns).values(insertCreatorCampaignSchema.parse({
+    creatorUserId: input.creatorUserId,
+    slug,
+    name: baseName,
+    description: input.blueprint.campaign.description,
+    visibility: input.blueprint.campaign.visibility,
+    startsAt: resetDates || !input.blueprint.campaign.startsAt ? null : new Date(input.blueprint.campaign.startsAt),
+    endsAt: resetDates || !input.blueprint.campaign.endsAt ? null : new Date(input.blueprint.campaign.endsAt),
+    isActive: false,
+  })).returning();
+  const campaign = insertedCampaignRows[0];
+  if (!campaign) throw new Error("Failed to create campaign from template.");
+
+  const nextLinks: Array<{ targetType: CreatorCampaignTargetType; targetId: string; sortOrder: number }> = [];
+
+  for (const link of input.blueprint.links) {
+    if (!["collection", "promo", "challenge"].includes(link.targetType)) {
+      continue;
+    }
+    nextLinks.push({
+      targetType: link.targetType,
+      targetId: link.targetId,
+      sortOrder: nextLinks.length,
+    });
+  }
+
+  if (copyLinkedDrafts) {
+    for (const drop of input.blueprint.linkedDrafts.drops) {
+      const scheduledFor = resetDates ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) : (drop.scheduledFor ? new Date(drop.scheduledFor) : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+      await validateCreatorDropLinkedEntities({
+        creatorUserId: input.creatorUserId,
+        visibility: drop.visibility,
+        dropType: drop.dropType,
+        linkedCollectionId: drop.linkedCollectionId,
+        linkedChallengeId: drop.linkedChallengeId,
+        linkedPromotionId: drop.linkedPromotionId,
+      });
+      const inserted = await db.insert(creatorDrops).values(insertCreatorDropSchema.parse({
+        creatorUserId: input.creatorUserId,
+        title: `${drop.title} (Draft)`,
+        description: drop.description,
+        dropType: drop.dropType,
+        visibility: drop.visibility,
+        scheduledFor,
+        linkedCollectionId: drop.linkedCollectionId,
+        linkedChallengeId: drop.linkedChallengeId,
+        linkedPromotionId: drop.linkedPromotionId,
+        recapNotes: drop.recapNotes,
+        isPublished: false,
+      })).returning();
+      if (inserted[0]) {
+        nextLinks.push({ targetType: "drop", targetId: inserted[0].id, sortOrder: nextLinks.length });
+      }
+    }
+
+    for (const post of input.blueprint.linkedDrafts.posts) {
+      await validateCreatorPostLinkedEntities({
+        creatorUserId: input.creatorUserId,
+        visibility: post.visibility,
+        linkedCollectionId: post.linkedCollectionId,
+        linkedChallengeId: post.linkedChallengeId,
+      });
+      const inserted = await db.insert(creatorPosts).values({
+        creatorUserId: input.creatorUserId,
+        title: `${post.title} (Draft)`,
+        body: post.body,
+        postType: post.postType,
+        visibility: post.visibility,
+        linkedCollectionId: post.linkedCollectionId,
+        linkedChallengeId: post.linkedChallengeId,
+        updatedAt: new Date(),
+      }).returning();
+      if (inserted[0]) {
+        nextLinks.push({ targetType: "post", targetId: inserted[0].id, sortOrder: nextLinks.length });
+      }
+    }
+
+    for (const item of input.blueprint.linkedDrafts.roadmap) {
+      await validateCreatorRoadmapLinkedEntities({
+        creatorUserId: input.creatorUserId,
+        itemType: item.itemType,
+        visibility: item.visibility,
+        linkedCollectionId: item.linkedCollectionId,
+        linkedChallengeId: item.linkedChallengeId,
+      });
+      const inserted = await db.insert(creatorRoadmapItems).values(insertCreatorRoadmapItemSchema.parse({
+        creatorUserId: input.creatorUserId,
+        title: `${item.title} (Draft)`,
+        description: item.description,
+        itemType: item.itemType,
+        visibility: item.visibility,
+        linkedCollectionId: item.linkedCollectionId,
+        linkedChallengeId: item.linkedChallengeId,
+        scheduledFor: resetDates ? null : (item.scheduledFor ? new Date(item.scheduledFor) : null),
+        releasedAt: null,
+        status: "upcoming",
+      })).returning();
+      if (inserted[0]) {
+        nextLinks.push({ targetType: "roadmap", targetId: inserted[0].id, sortOrder: nextLinks.length });
+      }
+    }
+  }
+
+  await replaceCreatorCampaignLinks(campaign.id, nextLinks);
+
+  if (copyCtaVariants) {
+    const variants = input.blueprint.variants.slice(0, 6);
+    for (let index = 0; index < variants.length; index += 1) {
+      const variant = variants[index];
+      await db.insert(creatorCampaignCtaVariants).values(insertCreatorCampaignCtaVariantSchema.parse({
+        campaignId: campaign.id,
+        label: variant.label,
+        headline: variant.headline,
+        subheadline: variant.subheadline,
+        ctaText: variant.ctaText,
+        ctaTargetType: variant.ctaTargetType,
+        isActive: index === 0 ? true : Boolean(variant.isActive && !variants.slice(0, index).some((item) => item.isActive)),
+      }));
+    }
+  }
+
+  return campaign;
 }
 function creatorRoadmapAudienceLabel(item: Pick<CreatorRoadmapRecord, "creatorUserId" | "visibility">, viewerId?: string | null) {
   if (viewerId && item.creatorUserId === viewerId) return "You";
@@ -11446,6 +11919,205 @@ r.delete("/campaigns/:id", requireAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/campaigns/:id", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to delete creator campaign"));
+  }
+});
+
+r.get("/campaign-templates", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const templates = await db
+      .select()
+      .from(creatorCampaignTemplates)
+      .where(eq(creatorCampaignTemplates.creatorUserId, req.user!.id))
+      .orderBy(desc(creatorCampaignTemplates.updatedAt), desc(creatorCampaignTemplates.createdAt));
+
+    const campaigns = await db
+      .select()
+      .from(creatorCampaigns)
+      .where(eq(creatorCampaigns.creatorUserId, req.user!.id))
+      .orderBy(desc(creatorCampaigns.updatedAt))
+      .limit(3);
+
+    return res.json({
+      ok: true,
+      count: templates.length,
+      items: templates.map(serializeCreatorCampaignTemplate),
+      basedOnPastCampaigns: campaigns.map((campaign) => ({
+        id: campaign.id,
+        name: campaign.name,
+        slug: campaign.slug,
+        route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      })),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaign-templates", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign templates"));
+  }
+});
+
+r.post("/campaigns/:id/save-template", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const parsed = campaignTemplateActionBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid template payload." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const blueprint = await buildCampaignTemplateBlueprint(campaign);
+    const templateName = parsed.data.templateName?.trim() || `${campaign.name} Template`;
+
+    const inserted = await db.insert(creatorCampaignTemplates).values(insertCreatorCampaignTemplateSchema.parse({
+      creatorUserId: req.user!.id,
+      sourceCampaignId: campaign.id,
+      name: templateName,
+      description: parsed.data.templateDescription?.trim() || campaign.description || `Reusable arc based on ${campaign.name}.`,
+      blueprint,
+    })).onConflictDoUpdate({
+      target: [creatorCampaignTemplates.creatorUserId, creatorCampaignTemplates.name],
+      set: {
+        sourceCampaignId: campaign.id,
+        description: parsed.data.templateDescription?.trim() || campaign.description || `Reusable arc based on ${campaign.name}.`,
+        blueprint,
+        updatedAt: new Date(),
+      },
+    }).returning();
+
+    return res.status(201).json({
+      ok: true,
+      item: serializeCreatorCampaignTemplate(inserted[0]),
+      message: "Campaign template saved.",
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Failed to save campaign template";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/save-template", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to save campaign template"));
+  }
+});
+
+r.post("/campaigns/:id/clone", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const parsed = campaignTemplateActionBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid clone payload." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const blueprint = await buildCampaignTemplateBlueprint(campaign);
+    const clonedCampaign = await instantiateCampaignFromTemplate({
+      creatorUserId: req.user!.id,
+      blueprint,
+      newName: parsed.data.newName?.trim() || `${campaign.name} Copy`,
+      newSlug: parsed.data.newSlug?.trim(),
+      resetDates: parsed.data.resetDates ?? true,
+      copyLinkedDrafts: parsed.data.copyLinkedDrafts ?? true,
+      copyCtaVariants: parsed.data.copyCtaVariants ?? true,
+    });
+    const detail = await loadCreatorCampaignDetail(clonedCampaign, req.user!.id);
+
+    return res.status(201).json({
+      ok: true,
+      ...detail,
+      clonedFromCampaignId: campaign.id,
+      safety: {
+        followersCopied: false,
+        analyticsCopied: false,
+        purchasesCopied: false,
+        alertsCopied: false,
+        membershipsCopied: false,
+      },
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Failed to clone campaign";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/clone", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to clone campaign"));
+  }
+});
+
+r.post("/campaign-templates/:id/create-campaign", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const templateId = String(req.params.id ?? "").trim();
+    if (!templateId) {
+      return res.status(400).json({ ok: false, error: "Template id is required." });
+    }
+
+    const parsed = campaignTemplateActionBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid template usage payload." });
+    }
+
+    const templateRows = await db
+      .select()
+      .from(creatorCampaignTemplates)
+      .where(and(eq(creatorCampaignTemplates.id, templateId), eq(creatorCampaignTemplates.creatorUserId, req.user!.id)))
+      .limit(1);
+    const template = templateRows[0];
+    if (!template) {
+      return res.status(404).json({ ok: false, error: "Campaign template not found." });
+    }
+
+    const blueprint = creatorCampaignTemplateBlueprintSchema.parse(template.blueprint);
+    const createdCampaign = await instantiateCampaignFromTemplate({
+      creatorUserId: req.user!.id,
+      blueprint,
+      newName: parsed.data.newName?.trim() || `${blueprint.campaign.name} Draft`,
+      newSlug: parsed.data.newSlug?.trim(),
+      resetDates: parsed.data.resetDates,
+      copyLinkedDrafts: parsed.data.copyLinkedDrafts,
+      copyCtaVariants: parsed.data.copyCtaVariants,
+    });
+    await db.update(creatorCampaignTemplates).set({ updatedAt: new Date() }).where(eq(creatorCampaignTemplates.id, template.id));
+    const detail = await loadCreatorCampaignDetail(createdCampaign, req.user!.id);
+
+    return res.status(201).json({
+      ok: true,
+      templateId: template.id,
+      ...detail,
+      safety: {
+        followersCopied: false,
+        analyticsCopied: false,
+        purchasesCopied: false,
+        alertsCopied: false,
+        membershipsCopied: false,
+      },
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaign-templates/:id/create-campaign", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create campaign from template"));
   }
 });
 
