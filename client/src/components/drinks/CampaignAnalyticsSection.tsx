@@ -28,6 +28,19 @@ type CampaignAnalyticsItem = {
   membershipsFromCampaignNote: string | null;
   campaignEngagementScore: number;
   campaignEngagementScoreNote: string;
+  milestones: CampaignMilestone[];
+};
+
+type CampaignMilestone = {
+  type: string;
+  label: string;
+  shortLabel: string;
+  description: string;
+  achieved: boolean;
+  achievedAt: string | null;
+  isPublic: boolean;
+  currentValue: number | null;
+  targetValue: number | null;
 };
 
 interface CampaignAnalyticsResponse {
@@ -52,6 +65,12 @@ function formatDate(value: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+}
+
+function progressLabel(milestone: CampaignMilestone) {
+  if (milestone.targetValue && milestone.currentValue !== null) return `${milestone.currentValue}/${milestone.targetValue}`;
+  if (milestone.currentValue !== null) return String(milestone.currentValue);
+  return null;
 }
 
 export default function CampaignAnalyticsSection() {
@@ -113,6 +132,7 @@ export default function CampaignAnalyticsSection() {
                   <TableHead>Clicks</TableHead>
                   <TableHead>Purchases</TableHead>
                   <TableHead>Memberships</TableHead>
+                  <TableHead>Milestones</TableHead>
                   <TableHead>Score</TableHead>
                 </TableRow>
               </TableHeader>
@@ -157,6 +177,25 @@ export default function CampaignAnalyticsSection() {
                       <div>
                         <p>{item.membershipsFromCampaign}</p>
                         {item.membershipsFromCampaignNote ? <p className="text-xs text-muted-foreground">approximate</p> : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="space-y-2">
+                        <div className="flex flex-wrap gap-1">
+                          {item.milestones.filter((milestone) => milestone.achieved).slice(0, 4).map((milestone) => (
+                            <span key={milestone.type} className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+                              {milestone.shortLabel}
+                            </span>
+                          ))}
+                          {!item.milestones.some((milestone) => milestone.achieved) ? <span className="text-xs text-muted-foreground">No milestones yet</span> : null}
+                        </div>
+                        <div className="space-y-1">
+                          {item.milestones.filter((milestone) => !milestone.achieved).slice(0, 2).map((milestone) => (
+                            <p key={milestone.type} className="text-xs text-muted-foreground">
+                              Next: {milestone.shortLabel}{progressLabel(milestone) ? ` (${progressLabel(milestone)})` : ""}
+                            </p>
+                          ))}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>

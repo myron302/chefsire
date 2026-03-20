@@ -3089,6 +3089,7 @@ type CreatorCampaignAnalyticsItem = {
   membershipsFromCampaignNote: string | null;
   campaignEngagementScore: number;
   campaignEngagementScoreNote: string;
+  milestones: CreatorCampaignMilestone[];
 };
 
 type CreatorCampaignAnalyticsSummary = {
@@ -3101,19 +3102,180 @@ type CreatorCampaignAnalyticsSummary = {
   totalCampaignMembershipConversions: number;
 };
 
-function getCreatorCampaignAnalyticsWindow(campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "createdAt">) {
-  return {
-    startsAt: campaign.startsAt ?? campaign.createdAt,
-    endsAt: campaign.endsAt ?? new Date(),
-  };
+type CreatorCampaignMilestoneType =
+  | "campaign_live"
+  | "first_drop_live"
+  | "first_collection_linked"
+  | "first_sale_from_campaign"
+  | "first_membership_conversion"
+  | "member_campaign_launched"
+  | "campaign_followers_10"
+  | "campaign_followers_50"
+  | "campaign_followers_100"
+  | "campaign_rsvps_10"
+  | "campaign_rsvps_50"
+  | "campaign_clicks_100";
+
+type CreatorCampaignMilestone = {
+  type: CreatorCampaignMilestoneType;
+  label: string;
+  shortLabel: string;
+  description: string;
+  achieved: boolean;
+  achievedAt: string | null;
+  isPublic: boolean;
+  currentValue: number | null;
+  targetValue: number | null;
+};
+
+function toMilestoneDate(value?: Date | null) {
+  return value ? value.toISOString() : null;
 }
 
-function isDateWithinCampaignAnalyticsWindow(value: Date, campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "createdAt">) {
-  const window = getCreatorCampaignAnalyticsWindow(campaign);
-  return value >= window.startsAt && value <= window.endsAt;
+function findNthAchievementDate<T extends { createdAt: Date }>(rows: T[], target: number) {
+  if (rows.length < target || target <= 0) return null;
+  return rows[target - 1]?.createdAt ?? null;
 }
 
-async function loadCreatorCampaignAnalytics(creatorUserId: string) {
+function buildCreatorCampaignMilestones(input: {
+  campaign: CreatorCampaignRecord;
+  links: CreatorCampaignLinkRecord[];
+  isMemberFocusedCampaign: boolean;
+  followerCount: number;
+  followRows: Array<{ createdAt: Date }>;
+  dropRows: Array<Pick<CreatorDropRecord, "id" | "dropType" | "isPublished" | "scheduledFor">>;
+  totalDropRsvps: number;
+  rsvpRows: Array<{ createdAt: Date }>;
+  totalDropClicks: number;
+  purchasesFromLinkedCollections: number;
+  purchaseRows: Array<{ createdAt: Date }>;
+  membershipsFromCampaign: number;
+  membershipRows: Array<{ createdAt: Date }>;
+}) {
+  const now = new Date();
+  const state = getCreatorCampaignState(input.campaign, now);
+  const launchedAt = input.campaign.startsAt && input.campaign.startsAt <= now
+    ? input.campaign.startsAt
+    : state !== "upcoming"
+      ? input.campaign.createdAt
+      : null;
+  const sortedLiveDrops = input.dropRows
+    .filter((drop) => drop.isPublished && drop.scheduledFor <= now)
+    .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime());
+  const firstDropLiveAt = sortedLiveDrops[0]?.scheduledFor ?? null;
+  const firstCollectionLinkedAt = input.links
+    .filter((link) => link.targetType === "collection")
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())[0]?.createdAt ?? null;
+  const memberCampaignLaunchAt = input.isMemberFocusedCampaign && state !== "upcoming"
+    ? launchedAt ?? input.campaign.createdAt
+    : null;
+
+  const milestones: CreatorCampaignMilestone[] = [
+    {
+      type: "campaign_live",
+      label: state === "active" ? "Live now" : "Campaign launched",
+      shortLabel: state === "active" ? "Live now" : "Launched",
+      description: "The campaign has started and is actively part of the creator story arc.",
+      achieved: Boolean(launchedAt),
+      achievedAt: toMilestoneDate(launchedAt),
+      isPublic: true,
+      currentValue: null,
+      targetValue: null,
+    },
+    {
+      type: "first_drop_live",
+      label: "First drop live",
+      shortLabel: "Drop live",
+      description: "At least one linked drop has gone live inside this campaign.",
+      achieved: Boolean(firstDropLiveAt),
+      achievedAt: toMilestoneDate(firstDropLiveAt),
+      isPublic: true,
+      currentValue: Number(sortedLiveDrops.length),
+      targetValue: 1,
+    },
+    {
+      type: "first_collection_linked",
+      label: "Collection linked",
+      shortLabel: "Collection linked",
+      description: "The campaign has a linked collection for followers to explore or purchase.",
+      achieved: Boolean(firstCollectionLinkedAt),
+      achievedAt: toMilestoneDate(firstCollectionLinkedAt),
+      isPublic: true,
+      currentValue: input.links.filter((link) => link.targetType === "collection").length,
+      targetValue: 1,
+    },
+    {
+      type: "first_sale_from_campaign",
+      label: "First campaign sale",
+      shortLabel: "First sale",
+      description: "A linked collection has recorded its first completed purchase during the campaign window.",
+      achieved: input.purchasesFromLinkedCollections > 0,
+      achievedAt: toMilestoneDate(input.purchaseRows[0]?.createdAt ?? null),
+      isPublic: true,
+      currentValue: input.purchasesFromLinkedCollections,
+      targetValue: 1,
+    },
+    {
+      type: "first_membership_conversion",
+      label: "First membership conversion",
+      shortLabel: "First member",
+      description: "The campaign has driven its first membership conversion proxy.",
+      achieved: input.membershipsFromCampaign > 0,
+      achievedAt: toMilestoneDate(input.membershipRows[0]?.createdAt ?? null),
+      isPublic: false,
+      currentValue: input.membershipsFromCampaign,
+      targetValue: 1,
+    },
+    {
+      type: "member_campaign_launched",
+      label: "Member campaign launched",
+      shortLabel: "Member campaign",
+      description: "This campaign includes member-focused access or member drops.",
+      achieved: Boolean(memberCampaignLaunchAt),
+      achievedAt: toMilestoneDate(memberCampaignLaunchAt),
+      isPublic: false,
+      currentValue: null,
+      targetValue: null,
+    },
+    ...([10, 50, 100] as const).map((target) => ({
+      type: `campaign_followers_${target}` as const,
+      label: `${target} campaign followers`,
+      shortLabel: `${target} followers`,
+      description: `Followers are explicitly subscribing to this campaign story arc.`,
+      achieved: input.followerCount >= target,
+      achievedAt: toMilestoneDate(findNthAchievementDate(input.followRows, target)),
+      isPublic: true,
+      currentValue: input.followerCount,
+      targetValue: target,
+    })),
+    ...([10, 50] as const).map((target) => ({
+      type: `campaign_rsvps_${target}` as const,
+      label: `${target} RSVP interest`,
+      shortLabel: `${target} RSVPs`,
+      description: `Linked drops have collected ${target}+ RSVPs or Notify Me signups.`,
+      achieved: input.totalDropRsvps >= target,
+      achievedAt: toMilestoneDate(findNthAchievementDate(input.rsvpRows, target)),
+      isPublic: true,
+      currentValue: input.totalDropRsvps,
+      targetValue: target,
+    })),
+    {
+      type: "campaign_clicks_100",
+      label: "100 click-throughs",
+      shortLabel: "100 clicks",
+      description: "Linked drops have generated 100 or more click-through events.",
+      achieved: input.totalDropClicks >= 100,
+      achievedAt: null,
+      isPublic: false,
+      currentValue: input.totalDropClicks,
+      targetValue: 100,
+    },
+  ];
+
+  return milestones;
+}
+
+async function loadCreatorCampaignPerformanceSnapshots(creatorUserId: string) {
   if (!db) throw new Error("Database unavailable");
 
   const campaigns = await db
@@ -3140,6 +3302,7 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
         "Drop RSVP, view, and click metrics roll up linked drop analytics that already exist elsewhere in the creator dashboard.",
         "Purchases from linked collections are approximate and count completed purchases made during the campaign window.",
         "Membership conversions are approximate and only shown for member-focused campaigns that have member visibility, member drops, or members-only collections.",
+        "Milestones are derived from existing campaign analytics so creators get momentum badges without managing another system.",
         "Campaign engagement score is a lightweight weighted score for comparison, not a payout or attribution metric.",
       ],
       generatedAt: new Date().toISOString(),
@@ -3147,13 +3310,17 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
   }
 
   const campaignIds = campaigns.map((campaign) => campaign.id);
-  const [linkMap, followerCountMap, membershipRows] = await Promise.all([
+  const [linkMap, followerCountMap, followRows, membershipRows] = await Promise.all([
     loadCreatorCampaignLinksByCampaignIds(campaignIds),
     loadCampaignFollowerCountMap(campaignIds),
     db.select({
+      campaignId: creatorCampaignFollows.campaignId,
+      createdAt: creatorCampaignFollows.createdAt,
+    }).from(creatorCampaignFollows).where(inArray(creatorCampaignFollows.campaignId, campaignIds)).orderBy(asc(creatorCampaignFollows.createdAt)),
+    db.select({
       createdAt: creatorMemberships.createdAt,
       status: creatorMemberships.status,
-    }).from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, creatorUserId)),
+    }).from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, creatorUserId)).orderBy(asc(creatorMemberships.createdAt)),
   ]);
 
   const dropIds = [...new Set(
@@ -3167,13 +3334,15 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
       .map((link) => link.targetId)),
   )];
 
-  const [dropRows, collectionRows, eventRows, rsvpRows, purchaseRows] = await Promise.all([
+  const [dropRows, collectionRows, eventRows, rsvpCountRows, rsvpActivityRows, purchaseRows] = await Promise.all([
     dropIds.length
       ? db.select({
           id: creatorDrops.id,
           dropType: creatorDrops.dropType,
+          isPublished: creatorDrops.isPublished,
+          scheduledFor: creatorDrops.scheduledFor,
         }).from(creatorDrops).where(inArray(creatorDrops.id, dropIds))
-      : Promise.resolve([] as Array<{ id: string; dropType: string }>),
+      : Promise.resolve([] as Array<Pick<CreatorDropRecord, "id" | "dropType" | "isPublished" | "scheduledFor">>),
     collectionIds.length
       ? db.select({
           id: drinkCollections.id,
@@ -3193,18 +3362,24 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
           count: sql<number>`count(*)::int`,
         }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).groupBy(creatorDropRsvps.dropId)
       : Promise.resolve([] as Array<{ dropId: string; count: number }>),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropRsvps.dropId,
+          createdAt: creatorDropRsvps.createdAt,
+        }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).orderBy(asc(creatorDropRsvps.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; createdAt: Date }>),
     collectionIds.length
       ? db.select({
           collectionId: drinkCollectionPurchases.collectionId,
           createdAt: drinkCollectionPurchases.createdAt,
           status: drinkCollectionPurchases.status,
-        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds))
+        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds)).orderBy(asc(drinkCollectionPurchases.createdAt))
       : Promise.resolve([] as Array<{ collectionId: string; createdAt: Date; status: string }>),
   ]);
 
   const dropMap = new Map(dropRows.map((row) => [row.id, row]));
   const collectionMap = new Map(collectionRows.map((row) => [row.id, row]));
-  const rsvpCountMap = new Map(rsvpRows.map((row) => [row.dropId, Number(row.count ?? 0)]));
+  const rsvpCountMap = new Map(rsvpCountRows.map((row) => [row.dropId, Number(row.count ?? 0)]));
   const eventCountMap = new Map<string, { views: number; clicks: number }>();
   for (const row of eventRows) {
     const current = eventCountMap.get(row.dropId) ?? { views: 0, clicks: 0 };
@@ -3213,11 +3388,25 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
     eventCountMap.set(row.dropId, current);
   }
 
-  const purchasesByCollectionId = new Map<string, Array<{ createdAt: Date; status: string }>>();
+  const purchaseRowsByCollectionId = new Map<string, Array<{ createdAt: Date; status: string }>>();
   for (const purchase of purchaseRows) {
-    const current = purchasesByCollectionId.get(purchase.collectionId) ?? [];
+    const current = purchaseRowsByCollectionId.get(purchase.collectionId) ?? [];
     current.push({ createdAt: purchase.createdAt, status: purchase.status });
-    purchasesByCollectionId.set(purchase.collectionId, current);
+    purchaseRowsByCollectionId.set(purchase.collectionId, current);
+  }
+
+  const followRowsByCampaignId = new Map<string, Array<{ createdAt: Date }>>();
+  for (const follow of followRows) {
+    const current = followRowsByCampaignId.get(follow.campaignId) ?? [];
+    current.push({ createdAt: follow.createdAt });
+    followRowsByCampaignId.set(follow.campaignId, current);
+  }
+
+  const rsvpRowsByDropId = new Map<string, Array<{ createdAt: Date }>>();
+  for (const rsvp of rsvpActivityRows) {
+    const current = rsvpRowsByDropId.get(rsvp.dropId) ?? [];
+    current.push({ createdAt: rsvp.createdAt });
+    rsvpRowsByDropId.set(rsvp.dropId, current);
   }
 
   const items = campaigns.map((campaign) => {
@@ -3229,7 +3418,7 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
     const totalDropViews = dropLinkIds.reduce((sum, dropId) => sum + (eventCountMap.get(dropId)?.views ?? 0), 0);
     const totalDropClicks = dropLinkIds.reduce((sum, dropId) => sum + (eventCountMap.get(dropId)?.clicks ?? 0), 0);
     const purchasesFromLinkedCollections = collectionLinkIds.reduce((sum, collectionId) => {
-      const count = (purchasesByCollectionId.get(collectionId) ?? []).filter((purchase) => (
+      const count = (purchaseRowsByCollectionId.get(collectionId) ?? []).filter((purchase) => (
         purchase.status === "completed" && isDateWithinCampaignAnalyticsWindow(purchase.createdAt, campaign)
       )).length;
       return sum + count;
@@ -3237,9 +3426,10 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
     const isMemberFocusedCampaign = campaign.visibility === "members"
       || dropLinkIds.some((dropId) => (dropMap.get(dropId)?.dropType ?? "") === "member_drop")
       || collectionLinkIds.some((collectionId) => (collectionMap.get(collectionId)?.accessType ?? "") === "membership_only");
-    const membershipsFromCampaign = isMemberFocusedCampaign
-      ? membershipRows.filter((membership) => isDateWithinCampaignAnalyticsWindow(membership.createdAt, campaign)).length
-      : 0;
+    const membershipActivityRows = isMemberFocusedCampaign
+      ? membershipRows.filter((membership) => isDateWithinCampaignAnalyticsWindow(membership.createdAt, campaign))
+      : [];
+    const membershipsFromCampaign = membershipActivityRows.length;
     const campaignEngagementScore = Math.round(
       followerCount
       + totalDropRsvps * 2
@@ -3249,6 +3439,31 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
       + totalDropViews * 0.25
       + links.filter((link) => link.targetType === "post").length
     );
+
+    const purchaseActivityRows = collectionLinkIds.flatMap((collectionId) => (
+      purchaseRowsByCollectionId.get(collectionId) ?? []
+    )).filter((purchase) => (
+      purchase.status === "completed" && isDateWithinCampaignAnalyticsWindow(purchase.createdAt, campaign)
+    )).sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+    const campaignRsvpRows = dropLinkIds.flatMap((dropId) => rsvpRowsByDropId.get(dropId) ?? [])
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+    const milestones = buildCreatorCampaignMilestones({
+      campaign,
+      links,
+      isMemberFocusedCampaign,
+      followerCount,
+      followRows: followRowsByCampaignId.get(campaign.id) ?? [],
+      dropRows: dropLinkIds.map((dropId) => dropMap.get(dropId)).filter((drop): drop is Pick<CreatorDropRecord, "id" | "dropType" | "isPublished" | "scheduledFor"> => Boolean(drop)),
+      totalDropRsvps,
+      rsvpRows: campaignRsvpRows,
+      totalDropClicks,
+      purchasesFromLinkedCollections,
+      purchaseRows: purchaseActivityRows,
+      membershipsFromCampaign,
+      membershipRows: membershipActivityRows,
+    });
 
     return {
       campaignId: campaign.id,
@@ -3276,6 +3491,7 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
         : null,
       campaignEngagementScore,
       campaignEngagementScoreNote: "Weighted comparison score using followers, RSVP interest, click-throughs, and approximate conversions.",
+      milestones,
     } satisfies CreatorCampaignAnalyticsItem;
   });
 
@@ -3295,10 +3511,27 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
       "Drop RSVP, view, and click metrics roll up linked drop analytics that already exist elsewhere in the creator dashboard.",
       "Purchases from linked collections are approximate and count completed purchases made during the campaign window.",
       "Membership conversions are approximate and only shown for member-focused campaigns that have member visibility, member drops, or members-only collections.",
+      "Milestones are derived from existing campaign follows, linked drop RSVPs, click activity, and conversion proxies.",
       "Campaign engagement score is a lightweight weighted score for comparison, not a payout or attribution metric.",
     ],
     generatedAt: new Date().toISOString(),
   };
+}
+
+function getCreatorCampaignAnalyticsWindow(campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "createdAt">) {
+  return {
+    startsAt: campaign.startsAt ?? campaign.createdAt,
+    endsAt: campaign.endsAt ?? new Date(),
+  };
+}
+
+function isDateWithinCampaignAnalyticsWindow(value: Date, campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "createdAt">) {
+  const window = getCreatorCampaignAnalyticsWindow(campaign);
+  return value >= window.startsAt && value <= window.endsAt;
+}
+
+async function loadCreatorCampaignAnalytics(creatorUserId: string) {
+  return loadCreatorCampaignPerformanceSnapshots(creatorUserId);
 }
 
 async function loadCreatorCampaignDetail(campaign: CreatorCampaignRecord, viewerId?: string | null) {
@@ -10467,10 +10700,21 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
     }
 
     const detail = await loadCreatorCampaignDetail(campaign, viewerId);
+    const performance = await loadCreatorCampaignPerformanceSnapshots(campaign.creatorUserId);
+    const campaignSnapshot = performance.items.find((item) => item.campaignId === campaign.id) ?? null;
     const ownerAnalytics = viewerId && viewerId === campaign.creatorUserId
-      ? (await loadCreatorCampaignAnalytics(campaign.creatorUserId)).items.find((item) => item.campaignId === campaign.id) ?? null
+      ? campaignSnapshot
       : null;
-    return res.json({ ok: true, ...detail, recentUpdates: buildCreatorCampaignUpdateItems(detail), ownerAnalytics });
+    return res.json({
+      ok: true,
+      ...detail,
+      milestones: {
+        public: (campaignSnapshot?.milestones ?? []).filter((milestone) => milestone.isPublic && milestone.achieved),
+        owner: viewerId && viewerId === campaign.creatorUserId ? (campaignSnapshot?.milestones ?? []) : [],
+      },
+      recentUpdates: buildCreatorCampaignUpdateItems(detail),
+      ownerAnalytics,
+    });
   } catch (error) {
     const message = logCollectionRouteError("/campaigns/:slug", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load creator campaign"));
