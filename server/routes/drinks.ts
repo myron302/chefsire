@@ -3897,6 +3897,71 @@ type CreatorCampaignAnalyticsSummary = {
   totalCampaignMembershipConversions: number;
 };
 
+type CreatorCampaignBenchmarkSummaryItem = {
+  campaignId: string;
+  name: string;
+  slug: string;
+  route: string;
+  value: number;
+  label: string;
+  note: string | null;
+};
+
+type CreatorCampaignBenchmarkStrongestVariant = {
+  variantId: string;
+  label: string;
+  headline: string | null;
+  ctaTargetType: CreatorCampaignCtaTargetType;
+  metricLabel: string;
+  metricValue: number;
+  score: number;
+  note: string | null;
+};
+
+type CreatorCampaignBenchmarkItem = {
+  campaignId: string;
+  slug: string;
+  name: string;
+  route: string;
+  visibility: CreatorCampaignVisibility;
+  state: CreatorCampaignState;
+  followerCount: number;
+  followerGain: number;
+  totalDropRsvps: number;
+  totalDropViews: number;
+  totalDropClicks: number;
+  purchasesFromLinkedCollections: number;
+  purchasesFromLinkedCollectionsNote: string | null;
+  membershipsFromCampaign: number;
+  membershipsFromCampaignNote: string | null;
+  strongestCtaVariant: CreatorCampaignBenchmarkStrongestVariant | null;
+  milestonesReachedCount: number;
+  goalsCompletedCount: number;
+  campaignDurationDays: number;
+  engagementScore: number;
+  engagementScoreNote: string;
+  linkedDropsCount: number;
+  linkedCollectionsCount: number;
+  linkedPostsCount: number;
+  memberFocused: boolean;
+  benchmarkLabels: string[];
+  reusableTemplateCandidate: boolean;
+  reusableTemplateReason: string | null;
+};
+
+type CreatorCampaignBenchmarkSummary = {
+  totalCampaigns: number;
+  campaignsWithDrops: number;
+  memberFocusedCampaigns: number;
+  bestCampaignByFollowers: CreatorCampaignBenchmarkSummaryItem | null;
+  bestCampaignByRsvpInterest: CreatorCampaignBenchmarkSummaryItem | null;
+  bestCampaignByClickThroughs: CreatorCampaignBenchmarkSummaryItem | null;
+  bestCampaignByPurchases: CreatorCampaignBenchmarkSummaryItem | null;
+  bestCampaignByMemberships: CreatorCampaignBenchmarkSummaryItem | null;
+  bestCampaignByGoalCompletion: CreatorCampaignBenchmarkSummaryItem | null;
+  mostReusableCampaignCandidate: CreatorCampaignBenchmarkSummaryItem | null;
+};
+
 type CreatorCampaignWeeklyDigestMilestone = {
   type: CreatorCampaignMilestoneType;
   label: string;
@@ -4621,6 +4686,286 @@ function isDateWithinCampaignAnalyticsWindow(value: Date, campaign: Pick<Creator
 
 async function loadCreatorCampaignAnalytics(creatorUserId: string) {
   return loadCreatorCampaignPerformanceSnapshots(creatorUserId);
+}
+
+function buildCampaignBenchmarkSummaryItem(
+  item: CreatorCampaignBenchmarkItem | null,
+  value: number,
+  label: string,
+  note: string | null = null,
+): CreatorCampaignBenchmarkSummaryItem | null {
+  if (!item || value <= 0) return null;
+  return {
+    campaignId: item.campaignId,
+    name: item.name,
+    slug: item.slug,
+    route: item.route,
+    value,
+    label,
+    note,
+  };
+}
+
+function averageCampaignBenchmarkMetric(items: CreatorCampaignBenchmarkItem[], selector: (item: CreatorCampaignBenchmarkItem) => number) {
+  if (items.length === 0) return 0;
+  return items.reduce((sum, item) => sum + selector(item), 0) / items.length;
+}
+
+function benchmarkPrimaryVariantMetric(metrics: ReturnType<typeof serializeCreatorCampaignVariant>["metrics"]) {
+  const candidates = [
+    {
+      metricLabel: "approx. memberships",
+      metricValue: metrics.approximateMemberships,
+      score: metrics.approximateMemberships * 6,
+      note: metrics.approximateMemberships > 0
+        ? "Approximate memberships are credited when a clicked CTA is followed by a membership start during the campaign window."
+        : null,
+    },
+    {
+      metricLabel: "approx. purchases",
+      metricValue: metrics.approximatePurchases,
+      score: metrics.approximatePurchases * 5,
+      note: metrics.approximatePurchases > 0
+        ? "Approximate purchases are credited when a clicked CTA is followed by a linked collection purchase during the campaign window."
+        : null,
+    },
+    { metricLabel: "RSVPs", metricValue: metrics.rsvps, score: metrics.rsvps * 4, note: null },
+    { metricLabel: "follows", metricValue: metrics.follows, score: metrics.follows * 3, note: null },
+    { metricLabel: "clicks", metricValue: metrics.clicks, score: metrics.clicks * 2, note: null },
+    { metricLabel: "views", metricValue: metrics.views, score: metrics.views * 0.25, note: null },
+  ].sort((a, b) => b.score - a.score || b.metricValue - a.metricValue);
+
+  return candidates[0] ?? { metricLabel: "views", metricValue: 0, score: 0, note: null };
+}
+
+async function loadCreatorCampaignBenchmarks(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [performance, campaigns] = await Promise.all([
+    loadCreatorCampaignPerformanceSnapshots(creatorUserId),
+    db
+      .select()
+      .from(creatorCampaigns)
+      .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorCampaigns.updatedAt))
+      .limit(120),
+  ]);
+
+  if (campaigns.length === 0 || performance.items.length === 0) {
+    return {
+      summary: {
+        totalCampaigns: 0,
+        campaignsWithDrops: 0,
+        memberFocusedCampaigns: 0,
+        bestCampaignByFollowers: null,
+        bestCampaignByRsvpInterest: null,
+        bestCampaignByClickThroughs: null,
+        bestCampaignByPurchases: null,
+        bestCampaignByMemberships: null,
+        bestCampaignByGoalCompletion: null,
+        mostReusableCampaignCandidate: null,
+      } satisfies CreatorCampaignBenchmarkSummary,
+      items: [] as CreatorCampaignBenchmarkItem[],
+      insights: [] as string[],
+      attributionNotes: [
+        "Benchmarks compare only this creator's own campaigns; nothing here is a platform-wide rank.",
+        "Follower gain reflects campaign follows accumulated during each campaign window. In version one, that usually matches current follower count because unfollow history is not modeled separately.",
+        "Purchases from linked collections and memberships from campaigns stay clearly labeled as approximate whenever attribution is proxy-based.",
+        "Strongest CTA variants compare variants inside the creator's campaigns using existing CTA view, click, follow, RSVP, and proxy conversion signals.",
+      ],
+      generatedAt: performance.generatedAt,
+    };
+  }
+
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  const performanceByCampaignId = new Map(performance.items.map((item) => [item.campaignId, item]));
+  const [goalRows, linkMap, variantsByCampaignId, followRows] = await Promise.all([
+    db.select().from(creatorCampaignGoals).where(inArray(creatorCampaignGoals.campaignId, campaignIds)),
+    loadCreatorCampaignLinksByCampaignIds(campaignIds),
+    loadCreatorCampaignVariantsByCampaignIds(campaignIds),
+    db.select({
+      campaignId: creatorCampaignFollows.campaignId,
+      createdAt: creatorCampaignFollows.createdAt,
+    }).from(creatorCampaignFollows).where(inArray(creatorCampaignFollows.campaignId, campaignIds)).orderBy(asc(creatorCampaignFollows.createdAt)),
+  ]);
+
+  const goalRowsByCampaignId = new Map<string, CreatorCampaignGoalRecord[]>();
+  for (const goal of goalRows) {
+    const current = goalRowsByCampaignId.get(goal.campaignId) ?? [];
+    current.push(goal);
+    goalRowsByCampaignId.set(goal.campaignId, current);
+  }
+
+  const followRowsByCampaignId = new Map<string, Array<{ createdAt: Date }>>();
+  for (const row of followRows) {
+    const current = followRowsByCampaignId.get(row.campaignId) ?? [];
+    current.push({ createdAt: row.createdAt });
+    followRowsByCampaignId.set(row.campaignId, current);
+  }
+
+  const items: CreatorCampaignBenchmarkItem[] = [];
+  for (const campaign of campaigns) {
+    const analytics = performanceByCampaignId.get(campaign.id);
+    if (!analytics) continue;
+
+    const variantRows = variantsByCampaignId.get(campaign.id) ?? [];
+    const variantMetrics = await loadCreatorCampaignVariantMetrics(campaign, variantRows);
+    const strongestVariant = [...variantRows]
+      .map((variant) => {
+        const metrics = variantMetrics.get(variant.id) ?? {
+          views: 0,
+          clicks: 0,
+          follows: 0,
+          rsvps: 0,
+          approximatePurchases: 0,
+          approximateMemberships: 0,
+        };
+        const primaryMetric = benchmarkPrimaryVariantMetric(metrics);
+        return {
+          variantId: variant.id,
+          label: variant.label,
+          headline: variant.headline ?? null,
+          ctaTargetType: variant.ctaTargetType as CreatorCampaignCtaTargetType,
+          metricLabel: primaryMetric.metricLabel,
+          metricValue: primaryMetric.metricValue,
+          score: scoreRetrospectiveVariant(metrics),
+          note: primaryMetric.note,
+        } satisfies CreatorCampaignBenchmarkStrongestVariant;
+      })
+      .sort((a, b) => b.score - a.score || b.metricValue - a.metricValue)[0] ?? null;
+
+    const goals = (goalRowsByCampaignId.get(campaign.id) ?? []).map((goal) => serializeCreatorCampaignGoal(goal, analytics));
+    const goalsCompletedCount = goals.filter((goal) => goal.isComplete).length;
+    const milestonesReachedCount = analytics.milestones.filter((milestone) => milestone.achieved).length;
+    const durationStart = campaign.startsAt ?? campaign.createdAt;
+    const durationEnd = campaign.endsAt ?? new Date();
+    const campaignDurationDays = Math.max(1, Math.round((durationEnd.getTime() - durationStart.getTime()) / (24 * 60 * 60 * 1000)) || 1);
+    const links = linkMap.get(campaign.id) ?? [];
+    const memberFocused = analytics.visibility === "members"
+      || analytics.membershipsFromCampaign > 0
+      || links.some((link) => link.targetType === "collection" || link.targetType === "drop") && Boolean(analytics.membershipsFromCampaignNote);
+    const followerGain = (followRowsByCampaignId.get(campaign.id) ?? []).filter((row) => (
+      isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)
+    )).length;
+    const reusableTemplateCandidate = (
+      campaign.isActive === false
+      && (analytics.purchasesFromLinkedCollections >= 3 || analytics.membershipsFromCampaign >= 2 || analytics.campaignEngagementScore >= 120)
+    );
+    const reusableTemplateReason = reusableTemplateCandidate
+      ? `Archived/internal winner inside your own portfolio: ${analytics.campaignEngagementScore} engagement score, ${analytics.totalDropRsvps} RSVPs, and ${analytics.purchasesFromLinkedCollections + analytics.membershipsFromCampaign} approximate conversions.`
+      : null;
+
+    items.push({
+      campaignId: campaign.id,
+      slug: campaign.slug,
+      name: campaign.name,
+      route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      visibility: campaign.visibility as CreatorCampaignVisibility,
+      state: getCreatorCampaignState(campaign),
+      followerCount: analytics.followerCount,
+      followerGain,
+      totalDropRsvps: analytics.totalDropRsvps,
+      totalDropViews: analytics.totalDropViews,
+      totalDropClicks: analytics.totalDropClicks,
+      purchasesFromLinkedCollections: analytics.purchasesFromLinkedCollections,
+      purchasesFromLinkedCollectionsNote: analytics.purchasesFromLinkedCollectionsNote,
+      membershipsFromCampaign: analytics.membershipsFromCampaign,
+      membershipsFromCampaignNote: analytics.membershipsFromCampaignNote,
+      strongestCtaVariant: strongestVariant,
+      milestonesReachedCount,
+      goalsCompletedCount,
+      campaignDurationDays,
+      engagementScore: analytics.campaignEngagementScore,
+      engagementScoreNote: analytics.campaignEngagementScoreNote,
+      linkedDropsCount: analytics.linkedDropsCount,
+      linkedCollectionsCount: analytics.linkedCollectionsCount,
+      linkedPostsCount: analytics.linkedPostsCount,
+      memberFocused,
+      benchmarkLabels: [],
+      reusableTemplateCandidate,
+      reusableTemplateReason,
+    });
+  }
+
+  const byFollowers = [...items].sort((a, b) => b.followerCount - a.followerCount || b.followerGain - a.followerGain)[0] ?? null;
+  const byRsvps = [...items].sort((a, b) => b.totalDropRsvps - a.totalDropRsvps || b.totalDropClicks - a.totalDropClicks)[0] ?? null;
+  const byClicks = [...items].sort((a, b) => b.totalDropClicks - a.totalDropClicks || b.totalDropViews - a.totalDropViews)[0] ?? null;
+  const byPurchases = [...items].sort((a, b) => b.purchasesFromLinkedCollections - a.purchasesFromLinkedCollections || b.totalDropClicks - a.totalDropClicks)[0] ?? null;
+  const byMemberships = [...items].sort((a, b) => b.membershipsFromCampaign - a.membershipsFromCampaign || b.engagementScore - a.engagementScore)[0] ?? null;
+  const byGoals = [...items].sort((a, b) => b.goalsCompletedCount - a.goalsCompletedCount || b.milestonesReachedCount - a.milestonesReachedCount)[0] ?? null;
+  const byReuse = [...items].filter((item) => item.reusableTemplateCandidate)
+    .sort((a, b) => (
+      (b.engagementScore + (b.purchasesFromLinkedCollections + b.membershipsFromCampaign) * 10)
+      - (a.engagementScore + (a.purchasesFromLinkedCollections + a.membershipsFromCampaign) * 10)
+    ))[0] ?? null;
+
+  for (const item of items) {
+    if (byFollowers && item.campaignId === byFollowers.campaignId && item.followerCount > 0) item.benchmarkLabels.push("Top follower campaign");
+    if (byRsvps && item.campaignId === byRsvps.campaignId && item.totalDropRsvps > 0) item.benchmarkLabels.push("Best RSVP campaign");
+    if (byPurchases && item.campaignId === byPurchases.campaignId && item.purchasesFromLinkedCollections > 0) item.benchmarkLabels.push("Best conversion campaign");
+    if (byMemberships && item.campaignId === byMemberships.campaignId && item.membershipsFromCampaign > 0) item.benchmarkLabels.push("Best member campaign");
+    if (byReuse && item.campaignId === byReuse.campaignId) item.benchmarkLabels.push("Strongest reusable template candidate");
+  }
+
+  const insights: string[] = [];
+  const memberFocusedCampaigns = items.filter((item) => item.memberFocused);
+  const oneOffCampaigns = items.filter((item) => !item.memberFocused && item.linkedCollectionsCount > 0);
+  const memberFocusedAverage = averageCampaignBenchmarkMetric(memberFocusedCampaigns, (item) => item.membershipsFromCampaign + item.purchasesFromLinkedCollections);
+  const oneOffAverage = averageCampaignBenchmarkMetric(oneOffCampaigns, (item) => item.membershipsFromCampaign + item.purchasesFromLinkedCollections);
+  if (memberFocusedCampaigns.length > 0 && oneOffCampaigns.length > 0 && memberFocusedAverage > oneOffAverage * 1.15) {
+    insights.push("Within your own portfolio, member-focused campaigns are converting better than one-off purchase campaigns.");
+  }
+
+  const withDrops = items.filter((item) => item.linkedDropsCount > 0);
+  const withoutDrops = items.filter((item) => item.linkedDropsCount === 0);
+  const withDropsAvg = averageCampaignBenchmarkMetric(withDrops, (item) => item.engagementScore);
+  const withoutDropsAvg = averageCampaignBenchmarkMetric(withoutDrops, (item) => item.engagementScore);
+  if (withDrops.length > 0 && withoutDrops.length > 0 && withDropsAvg > withoutDropsAvg * 1.15) {
+    insights.push("Within your own campaigns, arcs with linked drops outperform arcs without drops on engagement score.");
+  }
+
+  const rsvpHeavy = items.filter((item) => item.totalDropRsvps >= Math.max(10, Math.round(item.followerCount * 0.25)));
+  const lightRsvp = items.filter((item) => item.totalDropRsvps < Math.max(10, Math.round(item.followerCount * 0.25)));
+  const rsvpHeavyClicks = averageCampaignBenchmarkMetric(rsvpHeavy, (item) => item.totalDropClicks);
+  const lightRsvpClicks = averageCampaignBenchmarkMetric(lightRsvp, (item) => item.totalDropClicks);
+  if (rsvpHeavy.length > 0 && lightRsvp.length > 0 && rsvpHeavyClicks > lightRsvpClicks * 1.15) {
+    insights.push("RSVP-heavy campaigns in your portfolio tend to drive stronger click-through than lighter-intent arcs.");
+  }
+
+  if (byReuse?.reusableTemplateReason) {
+    insights.push(`${byReuse.name} looks like your strongest archived candidate to clone or refresh: ${byReuse.reusableTemplateReason}`);
+  }
+
+  const summary = {
+    totalCampaigns: items.length,
+    campaignsWithDrops: withDrops.length,
+    memberFocusedCampaigns: memberFocusedCampaigns.length,
+    bestCampaignByFollowers: buildCampaignBenchmarkSummaryItem(byFollowers, byFollowers?.followerCount ?? 0, "campaign followers"),
+    bestCampaignByRsvpInterest: buildCampaignBenchmarkSummaryItem(byRsvps, byRsvps?.totalDropRsvps ?? 0, "linked drop RSVPs"),
+    bestCampaignByClickThroughs: buildCampaignBenchmarkSummaryItem(byClicks, byClicks?.totalDropClicks ?? 0, "linked drop clicks"),
+    bestCampaignByPurchases: buildCampaignBenchmarkSummaryItem(byPurchases, byPurchases?.purchasesFromLinkedCollections ?? 0, "approx. linked purchases", "Approximate purchase proxy from linked collections."),
+    bestCampaignByMemberships: buildCampaignBenchmarkSummaryItem(byMemberships, byMemberships?.membershipsFromCampaign ?? 0, "approx. memberships", "Approximate membership proxy from campaign-window membership starts."),
+    bestCampaignByGoalCompletion: buildCampaignBenchmarkSummaryItem(byGoals, byGoals?.goalsCompletedCount ?? 0, "goals completed"),
+    mostReusableCampaignCandidate: buildCampaignBenchmarkSummaryItem(byReuse, byReuse?.engagementScore ?? 0, "engagement score", byReuse?.reusableTemplateReason ?? null),
+  } satisfies CreatorCampaignBenchmarkSummary;
+
+  return {
+    summary,
+    items: items.sort((a, b) => (
+      b.engagementScore - a.engagementScore
+      || (b.purchasesFromLinkedCollections + b.membershipsFromCampaign) - (a.purchasesFromLinkedCollections + a.membershipsFromCampaign)
+      || b.totalDropClicks - a.totalDropClicks
+    )),
+    insights,
+    attributionNotes: [
+      "Benchmarks compare only this creator's own campaigns; nothing here is a platform-wide rank.",
+      "Follower gain reflects campaign follows accumulated during each campaign window. In version one, that usually matches current follower count because unfollow history is not modeled separately.",
+      "Purchases from linked collections and memberships from campaigns stay clearly labeled as approximate whenever attribution is proxy-based.",
+      "Strongest CTA variants compare variants inside the creator's campaigns using existing CTA view, click, follow, RSVP, and proxy conversion signals.",
+      "Reusable-template flags are rules-based from engagement score, RSVP interest, and approximate conversions so creators get a lightweight comparison layer instead of a separate BI stack.",
+    ],
+    generatedAt: performance.generatedAt,
+  };
 }
 
 function findGoalCompletionDate(rows: Array<{ createdAt: Date }>, targetValue: number, baselineCount = 0) {
@@ -17345,6 +17690,29 @@ r.get("/creator-dashboard/campaign-analytics", requireAuth, async (req, res) => 
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-analytics", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign analytics"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-benchmarks", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const benchmarks = await loadCreatorCampaignBenchmarks(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: benchmarks.summary,
+      items: benchmarks.items,
+      insights: benchmarks.insights,
+      attributionNotes: benchmarks.attributionNotes,
+      generatedAt: benchmarks.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-benchmarks", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign benchmarks"));
   }
 });
 
