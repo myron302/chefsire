@@ -16,6 +16,8 @@ import {
   creatorCampaigns,
   creatorCampaignLinks,
   creatorCampaignFollows,
+  creatorCampaignCtaVariants,
+  creatorCampaignVariantEvents,
   creatorDropEvents,
   creatorMembershipSalesLedger,
   creatorMemberships,
@@ -52,6 +54,8 @@ import {
   insertCreatorCampaignSchema,
   insertCreatorCampaignLinkSchema,
   insertCreatorCampaignFollowSchema,
+  insertCreatorCampaignCtaVariantSchema,
+  insertCreatorCampaignVariantEventSchema,
   insertCreatorDropEventSchema,
   insertDrinkCollectionSchema,
   insertDrinkChallengeSchema,
@@ -102,7 +106,9 @@ type CreatorRoadmapVisibility = "public" | "followers" | "members";
 type CreatorRoadmapStatus = "upcoming" | "live" | "archived";
 type CreatorCampaignVisibility = "public" | "followers" | "members";
 type CreatorCampaignTargetType = "collection" | "drop" | "promo" | "challenge" | "post" | "roadmap";
+type CreatorCampaignCtaTargetType = "follow" | "rsvp" | "collection" | "membership" | "drop" | "challenge";
 type CreatorCampaignState = "upcoming" | "active" | "past";
+type CreatorCampaignVariantEventType = "view_variant" | "click_variant_cta" | "follow_after_variant" | "rsvp_after_variant";
 type CreatorCollaborationType = "collection" | "drop" | "post" | "roadmap";
 type CreatorCollaborationStatus = "pending" | "accepted" | "declined" | "revoked";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
@@ -120,6 +126,8 @@ type CreatorRoadmapRecord = typeof creatorRoadmapItems.$inferSelect;
 type CreatorCampaignRecord = typeof creatorCampaigns.$inferSelect;
 type CreatorCampaignLinkRecord = typeof creatorCampaignLinks.$inferSelect;
 type CreatorCampaignFollowRecord = typeof creatorCampaignFollows.$inferSelect;
+type CreatorCampaignCtaVariantRecord = typeof creatorCampaignCtaVariants.$inferSelect;
+type CreatorCampaignVariantEventRecord = typeof creatorCampaignVariantEvents.$inferSelect;
 type CreatorDropEventRecord = typeof creatorDropEvents.$inferSelect;
 type CreatorCollaborationRecord = typeof creatorCollaborations.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
@@ -583,6 +591,7 @@ const creatorRoadmapVisibilitySchema = z.enum(["public", "followers", "members"]
 const creatorRoadmapStatusSchema = z.enum(["upcoming", "live", "archived"]);
 const creatorCampaignVisibilitySchema = z.enum(["public", "followers", "members"]);
 const creatorCampaignTargetTypeSchema = z.enum(["collection", "drop", "promo", "challenge", "post", "roadmap"]);
+const creatorCampaignCtaTargetTypeSchema = z.enum(["follow", "rsvp", "collection", "membership", "drop", "challenge"]);
 const creatorCollaborationTypeSchema = z.enum(["collection", "drop", "post", "roadmap"]);
 const creatorCollaborationStatusSchema = z.enum(["pending", "accepted", "declined", "revoked"]);
 
@@ -694,6 +703,20 @@ const updateCreatorCampaignBodySchema = creatorCampaignBodyBaseObjectSchema.part
     });
   }
 });
+
+const creatorCampaignVariantBodySchema = z.object({
+  label: z.string().trim().min(1, "Variant label is required.").max(120),
+  headline: z.string().trim().max(160).nullable().optional(),
+  subheadline: z.string().trim().max(500).nullable().optional(),
+  ctaText: z.string().trim().min(1, "CTA text is required.").max(120),
+  ctaTargetType: creatorCampaignCtaTargetTypeSchema.default("follow"),
+  isActive: z.boolean().optional(),
+});
+
+const updateCreatorCampaignVariantBodySchema = creatorCampaignVariantBodySchema.partial().refine(
+  (value) => Object.values(value).some((field) => field !== undefined),
+  { message: "Provide at least one variant field to update." },
+);
 
 const createCreatorRoadmapBodySchema = creatorRoadmapBodyBaseSchema.superRefine((value, ctx) => {
   if (value.itemType === "collection" && !value.linkedCollectionId) {
@@ -1940,6 +1963,34 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_cta_variants (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
+        label varchar(120) NOT NULL,
+        headline varchar(160),
+        subheadline text,
+        cta_text varchar(120) NOT NULL,
+        cta_target_type text NOT NULL DEFAULT 'follow',
+        is_active boolean NOT NULL DEFAULT false,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_variant_events (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
+        variant_id varchar NOT NULL REFERENCES creator_campaign_cta_variants(id) ON DELETE CASCADE,
+        event_type text NOT NULL,
+        user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+        session_key varchar(160),
+        metadata jsonb,
+        created_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_drop_events (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         drop_id varchar NOT NULL REFERENCES creator_drops(id) ON DELETE CASCADE,
@@ -2125,6 +2176,14 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_user_idx ON creator_campaign_follows(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_campaign_idx ON creator_campaign_follows(campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_campaign_created_at_idx ON creator_campaign_follows(campaign_id, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_cta_variants_campaign_idx ON creator_campaign_cta_variants(campaign_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_cta_variants_campaign_active_idx ON creator_campaign_cta_variants(campaign_id, is_active, updated_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_variant_events_campaign_idx ON creator_campaign_variant_events(campaign_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_variant_events_variant_idx ON creator_campaign_variant_events(variant_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_variant_events_event_type_idx ON creator_campaign_variant_events(event_type);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_variant_events_variant_event_created_at_idx ON creator_campaign_variant_events(variant_id, event_type, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_variant_events_user_idx ON creator_campaign_variant_events(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_variant_events_session_idx ON creator_campaign_variant_events(session_key);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_drop_idx ON creator_drop_events(drop_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_event_type_idx ON creator_drop_events(event_type);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_drop_event_created_at_idx ON creator_drop_events(drop_id, event_type, created_at);`);
@@ -2598,6 +2657,201 @@ async function loadCreatorCampaignLinksByCampaignIds(campaignIds: string[]) {
     map.set(row.campaignId, current);
   }
   return map;
+}
+
+function serializeCreatorCampaignVariant(variant: CreatorCampaignCtaVariantRecord, metrics?: {
+  views?: number;
+  clicks?: number;
+  follows?: number;
+  rsvps?: number;
+  approximatePurchases?: number;
+  approximateMemberships?: number;
+}) {
+  return {
+    id: variant.id,
+    campaignId: variant.campaignId,
+    label: variant.label,
+    headline: variant.headline ?? null,
+    subheadline: variant.subheadline ?? null,
+    ctaText: variant.ctaText,
+    ctaTargetType: variant.ctaTargetType as CreatorCampaignCtaTargetType,
+    isActive: Boolean(variant.isActive),
+    createdAt: variant.createdAt.toISOString(),
+    updatedAt: variant.updatedAt.toISOString(),
+    metrics: {
+      views: Number(metrics?.views ?? 0),
+      clicks: Number(metrics?.clicks ?? 0),
+      follows: Number(metrics?.follows ?? 0),
+      rsvps: Number(metrics?.rsvps ?? 0),
+      approximatePurchases: Number(metrics?.approximatePurchases ?? 0),
+      approximateMemberships: Number(metrics?.approximateMemberships ?? 0),
+    },
+  };
+}
+
+function getCampaignVariantSessionKey(req: Request) {
+  const sessionId = typeof (req as Request & { sessionID?: string }).sessionID === "string"
+    ? (req as Request & { sessionID?: string }).sessionID
+    : null;
+  const userAgent = String(req.get("user-agent") ?? "").slice(0, 80);
+  const ip = String(req.ip ?? "").slice(0, 40);
+  return [sessionId, ip, userAgent].filter(Boolean).join(":").slice(0, 160) || null;
+}
+
+async function loadCreatorCampaignVariantsByCampaignIds(campaignIds: string[]) {
+  if (!db || campaignIds.length === 0) return new Map<string, CreatorCampaignCtaVariantRecord[]>();
+
+  const rows = await db
+    .select()
+    .from(creatorCampaignCtaVariants)
+    .where(inArray(creatorCampaignCtaVariants.campaignId, campaignIds))
+    .orderBy(desc(creatorCampaignCtaVariants.isActive), asc(creatorCampaignCtaVariants.createdAt));
+
+  const map = new Map<string, CreatorCampaignCtaVariantRecord[]>();
+  for (const row of rows) {
+    const current = map.get(row.campaignId) ?? [];
+    current.push(row);
+    map.set(row.campaignId, current);
+  }
+  return map;
+}
+
+async function trackCreatorCampaignVariantEvent(input: {
+  campaignId: string;
+  variantId: string;
+  eventType: CreatorCampaignVariantEventType;
+  userId?: string | null;
+  sessionKey?: string | null;
+  metadata?: Record<string, unknown> | null;
+}) {
+  if (!db) return;
+  await db.insert(creatorCampaignVariantEvents).values(insertCreatorCampaignVariantEventSchema.parse({
+    campaignId: input.campaignId,
+    variantId: input.variantId,
+    eventType: input.eventType,
+    userId: input.userId ?? null,
+    sessionKey: input.sessionKey ?? null,
+    metadata: input.metadata ?? null,
+  }));
+}
+
+async function loadCreatorCampaignVariantMetrics(campaign: CreatorCampaignRecord, variants: CreatorCampaignCtaVariantRecord[]) {
+  if (!db || variants.length === 0) return new Map<string, ReturnType<typeof serializeCreatorCampaignVariant>["metrics"]>();
+
+  const variantIds = variants.map((variant) => variant.id);
+  const clickRowsPromise = db
+    .select({
+      variantId: creatorCampaignVariantEvents.variantId,
+      userId: creatorCampaignVariantEvents.userId,
+      createdAt: creatorCampaignVariantEvents.createdAt,
+    })
+    .from(creatorCampaignVariantEvents)
+    .where(and(
+      inArray(creatorCampaignVariantEvents.variantId, variantIds),
+      eq(creatorCampaignVariantEvents.eventType, "click_variant_cta"),
+    ))
+    .orderBy(asc(creatorCampaignVariantEvents.createdAt));
+
+  const eventRowsPromise = db
+    .select({
+      variantId: creatorCampaignVariantEvents.variantId,
+      eventType: creatorCampaignVariantEvents.eventType,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(creatorCampaignVariantEvents)
+    .where(inArray(creatorCampaignVariantEvents.variantId, variantIds))
+    .groupBy(creatorCampaignVariantEvents.variantId, creatorCampaignVariantEvents.eventType);
+
+  const collectionIds = new Set<string>();
+  const dropIds = new Set<string>();
+  for (const link of await db.select().from(creatorCampaignLinks).where(eq(creatorCampaignLinks.campaignId, campaign.id))) {
+    if (link.targetType === "collection") collectionIds.add(link.targetId);
+    if (link.targetType === "drop") dropIds.add(link.targetId);
+  }
+
+  const [eventRows, clickRows, purchaseRows, membershipRows] = await Promise.all([
+    eventRowsPromise,
+    clickRowsPromise,
+    collectionIds.size
+      ? db.select({
+          userId: drinkCollectionPurchases.userId,
+          createdAt: drinkCollectionPurchases.createdAt,
+          status: drinkCollectionPurchases.status,
+        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, [...collectionIds]))
+      : Promise.resolve([] as Array<{ userId: string; createdAt: Date; status: string }>),
+    db.select({
+      userId: creatorMemberships.userId,
+      createdAt: creatorMemberships.createdAt,
+      status: creatorMemberships.status,
+    }).from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, campaign.creatorUserId)),
+  ]);
+
+  const base = new Map<string, ReturnType<typeof serializeCreatorCampaignVariant>["metrics"]>();
+  for (const variant of variants) {
+    base.set(variant.id, {
+      views: 0,
+      clicks: 0,
+      follows: 0,
+      rsvps: 0,
+      approximatePurchases: 0,
+      approximateMemberships: 0,
+    });
+  }
+
+  for (const row of eventRows) {
+    const current = base.get(row.variantId);
+    if (!current) continue;
+    if (row.eventType === "view_variant") current.views = Number(row.count ?? 0);
+    if (row.eventType === "click_variant_cta") current.clicks = Number(row.count ?? 0);
+    if (row.eventType === "follow_after_variant") current.follows = Number(row.count ?? 0);
+    if (row.eventType === "rsvp_after_variant") current.rsvps = Number(row.count ?? 0);
+  }
+
+  const clicksByVariantAndUser = new Map<string, Date[]>();
+  for (const row of clickRows) {
+    if (!row.userId) continue;
+    const key = `${row.variantId}:${row.userId}`;
+    const current = clicksByVariantAndUser.get(key) ?? [];
+    current.push(row.createdAt);
+    clicksByVariantAndUser.set(key, current);
+  }
+
+  for (const purchase of purchaseRows) {
+    if (purchase.status !== "completed") continue;
+    for (const variant of variants) {
+      const clickTimes = clicksByVariantAndUser.get(`${variant.id}:${purchase.userId}`) ?? [];
+      if (clickTimes.some((clickedAt) => clickedAt <= purchase.createdAt && isDateWithinCampaignAnalyticsWindow(purchase.createdAt, campaign))) {
+        const current = base.get(variant.id);
+        if (current) current.approximatePurchases += 1;
+      }
+    }
+  }
+
+  for (const membership of membershipRows) {
+    if (!["active", "canceled"].includes(membership.status)) continue;
+    for (const variant of variants) {
+      const clickTimes = clicksByVariantAndUser.get(`${variant.id}:${membership.userId}`) ?? [];
+      if (clickTimes.some((clickedAt) => clickedAt <= membership.createdAt && isDateWithinCampaignAnalyticsWindow(membership.createdAt, campaign))) {
+        const current = base.get(variant.id);
+        if (current) current.approximateMemberships += 1;
+      }
+    }
+  }
+
+  return base;
+}
+
+async function loadCampaignVariantForTracking(campaignId: string, variantId?: string | null) {
+  if (!db || !campaignId || !variantId) return null;
+  const rows = await db
+    .select()
+    .from(creatorCampaignCtaVariants)
+    .where(and(
+      eq(creatorCampaignCtaVariants.id, variantId),
+      eq(creatorCampaignCtaVariants.campaignId, campaignId),
+    ))
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 async function loadCreatorCampaignSummaryMaps(campaigns: CreatorCampaignRecord[]) {
@@ -3542,6 +3796,8 @@ async function loadCreatorCampaignDetail(campaign: CreatorCampaignRecord, viewer
     .from(creatorCampaignLinks)
     .where(eq(creatorCampaignLinks.campaignId, campaign.id))
     .orderBy(asc(creatorCampaignLinks.sortOrder), asc(creatorCampaignLinks.createdAt));
+  const variants = (await loadCreatorCampaignVariantsByCampaignIds([campaign.id])).get(campaign.id) ?? [];
+  const variantMetrics = await loadCreatorCampaignVariantMetrics(campaign, variants);
 
   const collectionIds = [...new Set(links.filter((link) => link.targetType === "collection").map((link) => link.targetId))];
   const dropIds = [...new Set(links.filter((link) => link.targetType === "drop").map((link) => link.targetId))];
@@ -3642,6 +3898,7 @@ async function loadCreatorCampaignDetail(campaign: CreatorCampaignRecord, viewer
 
   const followerCountMap = await loadCampaignFollowerCountMap([campaign.id]);
   const followedCampaignIds = await loadFollowedCampaignIdsForUser(viewerId);
+  const activeVariantRecord = variants.find((variant) => variant.isActive) ?? null;
 
   const detail = {
     campaign: serializeCreatorCampaign(campaign, {
@@ -3655,6 +3912,13 @@ async function loadCreatorCampaignDetail(campaign: CreatorCampaignRecord, viewer
         return acc;
       }, {} as Partial<Record<CreatorCampaignTargetType, number>>),
     }),
+    activeVariant: activeVariantRecord ? serializeCreatorCampaignVariant(activeVariantRecord, variantMetrics.get(activeVariantRecord.id)) : null,
+    variants: variants.map((variant) => serializeCreatorCampaignVariant(variant, variantMetrics.get(variant.id))),
+    variantAttributionNotes: [
+      "Views and CTA clicks count tracked interactions with the active campaign CTA block.",
+      "Follows and RSVPs only increment when the action is taken from the tracked campaign CTA flow.",
+      "Purchases and memberships are approximate proxies based on a prior CTA click from the same signed-in user during the campaign window.",
+    ],
     linkedContent: {
       collections: visibleCollections.map((collection) => ({
         id: collection.id,
@@ -9867,6 +10131,20 @@ r.post("/drops/:id/rsvp", requireAuth, async (req, res) => {
       .values(values)
       .onConflictDoNothing({ target: [creatorDropRsvps.userId, creatorDropRsvps.dropId] });
 
+    const campaignId = typeof req.body?.campaignId === "string" ? req.body.campaignId.trim() : "";
+    const variantId = typeof req.body?.variantId === "string" ? req.body.variantId.trim() : "";
+    const variant = campaignId && variantId ? await loadCampaignVariantForTracking(campaignId, variantId) : null;
+    if (variant) {
+      await trackCreatorCampaignVariantEvent({
+        campaignId,
+        variantId,
+        eventType: "rsvp_after_variant",
+        userId: req.user!.id,
+        sessionKey: getCampaignVariantSessionKey(req),
+        metadata: { dropId },
+      });
+    }
+
     const countRows = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(creatorDropRsvps)
@@ -10624,10 +10902,23 @@ r.post("/campaigns/:id/follow", requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "Campaign not found." });
     }
 
+    const variantId = typeof req.body?.variantId === "string" ? req.body.variantId.trim() : "";
+    const variant = variantId ? await loadCampaignVariantForTracking(campaignId, variantId) : null;
+
     await db.insert(creatorCampaignFollows).values(insertCreatorCampaignFollowSchema.parse({
       userId: req.user!.id,
       campaignId,
     })).onConflictDoNothing();
+
+    if (variant) {
+      await trackCreatorCampaignVariantEvent({
+        campaignId,
+        variantId: variant.id,
+        eventType: "follow_after_variant",
+        userId: req.user!.id,
+        sessionKey: getCampaignVariantSessionKey(req),
+      });
+    }
 
     const followerCountMap = await loadCampaignFollowerCountMap([campaignId]);
     return res.status(201).json({
@@ -10669,6 +10960,295 @@ r.delete("/campaigns/:id/follow", requireAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/campaigns/:id/follow", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to unfollow campaign"));
+  }
+});
+
+r.get("/campaigns/:id/variants", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaignRows = await db
+      .select()
+      .from(creatorCampaigns)
+      .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, req.user!.id)))
+      .limit(1);
+    const campaign = campaignRows[0];
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const variants = (await loadCreatorCampaignVariantsByCampaignIds([campaignId])).get(campaignId) ?? [];
+    const metrics = await loadCreatorCampaignVariantMetrics(campaign, variants);
+
+    return res.json({
+      ok: true,
+      campaignId,
+      count: variants.length,
+      items: variants.map((variant) => serializeCreatorCampaignVariant(variant, metrics.get(variant.id))),
+      attributionNotes: [
+        "Views and CTA clicks are tracked directly on the campaign page CTA block.",
+        "Follows and RSVPs only count when the creator CTA triggered that action.",
+        "Purchases and memberships are approximate proxy counts based on a prior signed-in CTA click during the campaign window.",
+      ],
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/variants", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign CTA variants"));
+  }
+});
+
+r.post("/campaigns/:id/variants", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaignRows = await db
+      .select()
+      .from(creatorCampaigns)
+      .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, req.user!.id)))
+      .limit(1);
+    const campaign = campaignRows[0];
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const parsed = creatorCampaignVariantBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid campaign CTA variant payload." });
+    }
+
+    const existingCountRows = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(creatorCampaignCtaVariants)
+      .where(eq(creatorCampaignCtaVariants.campaignId, campaignId));
+    if (Number(existingCountRows[0]?.count ?? 0) >= 6) {
+      return res.status(400).json({ ok: false, error: "Version one supports up to 6 CTA variants per campaign." });
+    }
+
+    const shouldActivate = Boolean(parsed.data.isActive) || Number(existingCountRows[0]?.count ?? 0) === 0;
+    if (shouldActivate) {
+      await db
+        .update(creatorCampaignCtaVariants)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(creatorCampaignCtaVariants.campaignId, campaignId));
+    }
+
+    const inserted = await db.insert(creatorCampaignCtaVariants).values(insertCreatorCampaignCtaVariantSchema.parse({
+      campaignId,
+      label: parsed.data.label.trim(),
+      headline: parsed.data.headline?.trim() ? parsed.data.headline.trim() : null,
+      subheadline: parsed.data.subheadline?.trim() ? parsed.data.subheadline.trim() : null,
+      ctaText: parsed.data.ctaText.trim(),
+      ctaTargetType: parsed.data.ctaTargetType,
+      isActive: shouldActivate,
+    })).returning();
+
+    const variant = inserted[0];
+    if (!variant) {
+      return res.status(500).json({ ok: false, error: "Failed to create campaign CTA variant." });
+    }
+
+    return res.status(201).json({ ok: true, item: serializeCreatorCampaignVariant(variant) });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/variants", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create campaign CTA variant"));
+  }
+});
+
+r.patch("/campaigns/:id/variants/:variantId", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    const variantId = String(req.params.variantId ?? "").trim();
+    if (!campaignId || !variantId) {
+      return res.status(400).json({ ok: false, error: "Campaign id and variant id are required." });
+    }
+
+    const parsed = updateCreatorCampaignVariantBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid campaign CTA variant payload." });
+    }
+
+    const rows = await db
+      .select({
+        id: creatorCampaignCtaVariants.id,
+        label: creatorCampaignCtaVariants.label,
+        headline: creatorCampaignCtaVariants.headline,
+        subheadline: creatorCampaignCtaVariants.subheadline,
+        ctaText: creatorCampaignCtaVariants.ctaText,
+        ctaTargetType: creatorCampaignCtaVariants.ctaTargetType,
+        isActive: creatorCampaignCtaVariants.isActive,
+      })
+      .from(creatorCampaignCtaVariants)
+      .innerJoin(creatorCampaigns, eq(creatorCampaigns.id, creatorCampaignCtaVariants.campaignId))
+      .where(and(
+        eq(creatorCampaignCtaVariants.id, variantId),
+        eq(creatorCampaignCtaVariants.campaignId, campaignId),
+        eq(creatorCampaigns.creatorUserId, req.user!.id),
+      ))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      return res.status(404).json({ ok: false, error: "Campaign CTA variant not found." });
+    }
+
+    if (parsed.data.isActive === true) {
+      await db
+        .update(creatorCampaignCtaVariants)
+        .set({ isActive: false, updatedAt: new Date() })
+        .where(eq(creatorCampaignCtaVariants.campaignId, campaignId));
+    }
+
+    const updatedRows = await db
+      .update(creatorCampaignCtaVariants)
+      .set({
+        label: parsed.data.label !== undefined ? parsed.data.label.trim() : row.label,
+        headline: parsed.data.headline !== undefined ? (parsed.data.headline?.trim() ? parsed.data.headline.trim() : null) : row.headline,
+        subheadline: parsed.data.subheadline !== undefined ? (parsed.data.subheadline?.trim() ? parsed.data.subheadline.trim() : null) : row.subheadline,
+        ctaText: parsed.data.ctaText !== undefined ? parsed.data.ctaText.trim() : row.ctaText,
+        ctaTargetType: parsed.data.ctaTargetType ?? (row.ctaTargetType as CreatorCampaignCtaTargetType),
+        isActive: parsed.data.isActive ?? row.isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(creatorCampaignCtaVariants.id, variantId))
+      .returning();
+
+    const variant = updatedRows[0];
+    if (!variant) {
+      return res.status(500).json({ ok: false, error: "Failed to update campaign CTA variant." });
+    }
+
+    return res.json({ ok: true, item: serializeCreatorCampaignVariant(variant) });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/variants/:variantId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update campaign CTA variant"));
+  }
+});
+
+r.delete("/campaigns/:id/variants/:variantId", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    const variantId = String(req.params.variantId ?? "").trim();
+    if (!campaignId || !variantId) {
+      return res.status(400).json({ ok: false, error: "Campaign id and variant id are required." });
+    }
+
+    const rows = await db
+      .select({
+        campaignId: creatorCampaignCtaVariants.campaignId,
+        isActive: creatorCampaignCtaVariants.isActive,
+      })
+      .from(creatorCampaignCtaVariants)
+      .innerJoin(creatorCampaigns, eq(creatorCampaigns.id, creatorCampaignCtaVariants.campaignId))
+      .where(and(
+        eq(creatorCampaignCtaVariants.id, variantId),
+        eq(creatorCampaignCtaVariants.campaignId, campaignId),
+        eq(creatorCampaigns.creatorUserId, req.user!.id),
+      ))
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      return res.status(404).json({ ok: false, error: "Campaign CTA variant not found." });
+    }
+
+    await db.delete(creatorCampaignCtaVariants).where(eq(creatorCampaignCtaVariants.id, variantId));
+
+    if (row.isActive) {
+      const fallbackRows = await db
+        .select()
+        .from(creatorCampaignCtaVariants)
+        .where(eq(creatorCampaignCtaVariants.campaignId, campaignId))
+        .orderBy(asc(creatorCampaignCtaVariants.createdAt))
+        .limit(1);
+      if (fallbackRows[0]) {
+        await db
+          .update(creatorCampaignCtaVariants)
+          .set({ isActive: true, updatedAt: new Date() })
+          .where(eq(creatorCampaignCtaVariants.id, fallbackRows[0].id));
+      }
+    }
+
+    return res.json({ ok: true, deletedId: variantId });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/variants/:variantId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete campaign CTA variant"));
+  }
+});
+
+r.post("/campaigns/:id/variants/:variantId/events", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    const variantId = String(req.params.variantId ?? "").trim();
+    const parsed = z.object({
+      eventType: z.enum(["view_variant", "click_variant_cta"]),
+      metadata: z.record(z.unknown()).optional().nullable(),
+    }).safeParse(req.body ?? {});
+
+    if (!campaignId || !variantId) {
+      return res.status(400).json({ ok: false, error: "Campaign id and variant id are required." });
+    }
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid campaign variant event payload." });
+    }
+
+    const campaignRows = await db.select().from(creatorCampaigns).where(eq(creatorCampaigns.id, campaignId)).limit(1);
+    const campaign = campaignRows[0];
+    const variant = await loadCampaignVariantForTracking(campaignId, variantId);
+    if (!campaign || !variant) {
+      return res.status(404).json({ ok: false, error: "Campaign CTA variant not found." });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [followedCreatorIds, memberCreatorIds] = await Promise.all([
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+    if (!canViewerSeeCreatorCampaign({ campaign, viewerId, followedCreatorIds, memberCreatorIds })) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    await trackCreatorCampaignVariantEvent({
+      campaignId,
+      variantId,
+      eventType: parsed.data.eventType,
+      userId: viewerId,
+      sessionKey: getCampaignVariantSessionKey(req),
+      metadata: parsed.data.metadata ?? null,
+    });
+
+    return res.status(201).json({ ok: true });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/variants/:variantId/events", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to track campaign CTA event"));
   }
 });
 

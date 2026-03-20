@@ -1439,6 +1439,48 @@ export const creatorCampaignFollows = pgTable(
   })
 );
 
+export const creatorCampaignCtaVariants = pgTable(
+  "creator_campaign_cta_variants",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    campaignId: varchar("campaign_id").references(() => creatorCampaigns.id, { onDelete: "cascade" }).notNull(),
+    label: varchar("label", { length: 120 }).notNull(),
+    headline: varchar("headline", { length: 160 }),
+    subheadline: text("subheadline"),
+    ctaText: varchar("cta_text", { length: 120 }).notNull(),
+    ctaTargetType: text("cta_target_type").notNull().default("follow"),
+    isActive: boolean("is_active").default(false).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    campaignIdx: index("creator_campaign_cta_variants_campaign_idx").on(table.campaignId),
+    campaignActiveIdx: index("creator_campaign_cta_variants_campaign_active_idx").on(table.campaignId, table.isActive, table.updatedAt),
+  })
+);
+
+export const creatorCampaignVariantEvents = pgTable(
+  "creator_campaign_variant_events",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    campaignId: varchar("campaign_id").references(() => creatorCampaigns.id, { onDelete: "cascade" }).notNull(),
+    variantId: varchar("variant_id").references(() => creatorCampaignCtaVariants.id, { onDelete: "cascade" }).notNull(),
+    eventType: text("event_type").notNull(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+    sessionKey: varchar("session_key", { length: 160 }),
+    metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    campaignIdx: index("creator_campaign_variant_events_campaign_idx").on(table.campaignId),
+    variantIdx: index("creator_campaign_variant_events_variant_idx").on(table.variantId),
+    eventTypeIdx: index("creator_campaign_variant_events_event_type_idx").on(table.eventType),
+    variantEventCreatedIdx: index("creator_campaign_variant_events_variant_event_created_at_idx").on(table.variantId, table.eventType, table.createdAt),
+    userIdx: index("creator_campaign_variant_events_user_idx").on(table.userId),
+    sessionIdx: index("creator_campaign_variant_events_session_idx").on(table.sessionKey),
+  })
+);
+
 export const creatorDropEvents = pgTable(
   "creator_drop_events",
   {
@@ -2268,6 +2310,17 @@ export const insertCreatorCampaignFollowSchema = createInsertSchema(creatorCampa
   createdAt: true,
 });
 
+export const insertCreatorCampaignCtaVariantSchema = createInsertSchema(creatorCampaignCtaVariants).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCreatorCampaignVariantEventSchema = createInsertSchema(creatorCampaignVariantEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCreatorDropEventSchema = createInsertSchema(creatorDropEvents).omit({
   id: true,
   createdAt: true,
@@ -2494,6 +2547,10 @@ export type CreatorCampaignLink = typeof creatorCampaignLinks.$inferSelect;
 export type InsertCreatorCampaignLink = z.infer<typeof insertCreatorCampaignLinkSchema>;
 export type CreatorCampaignFollow = typeof creatorCampaignFollows.$inferSelect;
 export type InsertCreatorCampaignFollow = z.infer<typeof insertCreatorCampaignFollowSchema>;
+export type CreatorCampaignCtaVariant = typeof creatorCampaignCtaVariants.$inferSelect;
+export type InsertCreatorCampaignCtaVariant = z.infer<typeof insertCreatorCampaignCtaVariantSchema>;
+export type CreatorCampaignVariantEvent = typeof creatorCampaignVariantEvents.$inferSelect;
+export type InsertCreatorCampaignVariantEvent = z.infer<typeof insertCreatorCampaignVariantEventSchema>;
 export type CreatorDropEvent = typeof creatorDropEvents.$inferSelect;
 export type InsertCreatorDropEvent = z.infer<typeof insertCreatorDropEventSchema>;
 export type CreatorCollaboration = typeof creatorCollaborations.$inferSelect;

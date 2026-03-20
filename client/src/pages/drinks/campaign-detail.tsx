@@ -7,6 +7,7 @@ import CampaignFollowButton from "@/components/drinks/CampaignFollowButton";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
+import DropRsvpButton from "@/components/drinks/DropRsvpButton";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,27 @@ type CampaignMilestone = {
   targetValue: number | null;
 };
 
+type CampaignVariantItem = {
+  id: string;
+  campaignId: string;
+  label: string;
+  headline: string | null;
+  subheadline: string | null;
+  ctaText: string;
+  ctaTargetType: "follow" | "rsvp" | "collection" | "membership" | "drop" | "challenge";
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  metrics: {
+    views: number;
+    clicks: number;
+    follows: number;
+    rsvps: number;
+    approximatePurchases: number;
+    approximateMemberships: number;
+  };
+};
+
 interface CampaignDetailResponse {
   ok: boolean;
   campaign: CreatorCampaignItem;
@@ -61,6 +83,9 @@ interface CampaignDetailResponse {
     posts: CreatorPostItem[];
     roadmap: CreatorRoadmapItem[];
   };
+  activeVariant: CampaignVariantItem | null;
+  variants: CampaignVariantItem[];
+  variantAttributionNotes: string[];
   milestones: {
     public: CampaignMilestone[];
     owner: CampaignMilestone[];
@@ -90,6 +115,32 @@ function formatMilestoneDate(value: string | null) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
+function buildVariantDestination(data: CampaignDetailResponse) {
+  const variant = data.activeVariant;
+  if (!variant) return null;
+
+  switch (variant.ctaTargetType) {
+    case "collection":
+      return data.linkedContent.collections[0]
+        ? { href: data.linkedContent.collections[0].route, label: "collection" }
+        : null;
+    case "membership":
+      return data.campaign.creator
+        ? { href: `${data.campaign.creator.route}#membership`, label: "membership" }
+        : null;
+    case "drop":
+      return data.linkedContent.drops[0]
+        ? { href: data.linkedContent.drops[0].detailRoute, label: "drop" }
+        : null;
+    case "challenge":
+      return data.linkedContent.challenges[0]
+        ? { href: data.linkedContent.challenges[0].route, label: "challenge" }
+        : null;
+    default:
+      return null;
+  }
+}
+
 export default function DrinkCampaignDetailPage() {
   const [matched, params] = useRoute<{ slug: string }>("/drinks/campaigns/:slug");
   const { user } = useUser();
@@ -111,6 +162,40 @@ export default function DrinkCampaignDetailPage() {
   if (!matched) return null;
 
   const campaign = query.data?.campaign ?? null;
+  const activeVariant = query.data?.activeVariant ?? null;
+  const variantDestination = query.data ? buildVariantDestination(query.data) : null;
+
+  React.useEffect(() => {
+    if (!query.data?.activeVariant) return;
+
+    void fetch(
+      `/api/drinks/campaigns/${encodeURIComponent(query.data.campaign.id)}/variants/${encodeURIComponent(query.data.activeVariant.id)}/events`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ eventType: "view_variant" }),
+      },
+    );
+  }, [query.data]);
+
+  const trackVariantClick = React.useCallback(() => {
+    if (!query.data?.activeVariant) return;
+    void fetch(
+      `/api/drinks/campaigns/${encodeURIComponent(query.data.campaign.id)}/variants/${encodeURIComponent(query.data.activeVariant.id)}/events`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          eventType: "click_variant_cta",
+          metadata: {
+            ctaTargetType: query.data.activeVariant.ctaTargetType,
+          },
+        }),
+      },
+    );
+  }, [query.data]);
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8">
@@ -148,6 +233,59 @@ export default function DrinkCampaignDetailPage() {
               />
             )}
           />
+
+          {activeVariant ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>{activeVariant.headline ?? query.data.campaign.name}</CardTitle>
+                <CardDescription>
+                  {activeVariant.subheadline ?? "A lightweight CTA frame for this campaign. Metrics stay directional, and conversion labels remain honest about what is direct versus approximate."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <Badge variant="outline">Active CTA · {activeVariant.label}</Badge>
+                  <p className="text-sm text-muted-foreground">
+                    {activeVariant.ctaTargetType === "follow"
+                      ? "Follow actions are tracked directly from this campaign CTA."
+                      : activeVariant.ctaTargetType === "rsvp"
+                        ? "RSVP actions are tracked when this CTA sends someone into the linked drop reminder flow."
+                        : "CTA clicks are tracked directly here. Purchases and memberships remain approximate proxy reads after a signed-in CTA click."}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {activeVariant.ctaTargetType === "follow" ? (
+                    <CampaignFollowButton
+                      campaignId={campaign?.id}
+                      creatorUserId={campaign?.creatorUserId}
+                      size="default"
+                      followRequestBody={{ variantId: activeVariant.id }}
+                      onBeforeToggle={trackVariantClick}
+                      idleLabel={activeVariant.ctaText}
+                      activeLabel="Following"
+                    />
+                  ) : null}
+                  {activeVariant.ctaTargetType === "rsvp" && query.data.linkedContent.drops[0] ? (
+                    <DropRsvpButton
+                      drop={query.data.linkedContent.drops[0]}
+                      requestBody={{ campaignId: query.data.campaign.id, variantId: activeVariant.id }}
+                      onBeforeToggle={trackVariantClick}
+                      idleLabel={activeVariant.ctaText}
+                      activeLabel="RSVP saved"
+                    />
+                  ) : null}
+                  {variantDestination ? (
+                    <Link href={variantDestination.href}>
+                      <Button size="default" onClick={trackVariantClick}>{activeVariant.ctaText}</Button>
+                    </Link>
+                  ) : null}
+                  {!variantDestination && activeVariant.ctaTargetType !== "follow" && activeVariant.ctaTargetType !== "rsvp" ? (
+                    <Button size="default" variant="outline" disabled>No linked target yet</Button>
+                  ) : null}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>

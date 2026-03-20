@@ -18,12 +18,22 @@ export default function CampaignFollowButton({
   size = "sm",
   variant,
   className,
+  followRequestBody,
+  onBeforeToggle,
+  onFollowed,
+  idleLabel,
+  activeLabel,
 }: {
   campaignId: string | null | undefined;
   creatorUserId?: string | null;
   size?: "sm" | "default" | "lg" | "icon";
   variant?: "default" | "outline" | "secondary" | "ghost";
   className?: string;
+  followRequestBody?: Record<string, unknown> | null;
+  onBeforeToggle?: (() => void) | null;
+  onFollowed?: (() => void) | null;
+  idleLabel?: string;
+  activeLabel?: string;
 }) {
   const { user } = useUser();
   const queryClient = useQueryClient();
@@ -53,7 +63,9 @@ export default function CampaignFollowButton({
       const method = statusQuery.data?.isFollowing ? "DELETE" : "POST";
       const response = await fetch(`/api/drinks/campaigns/${encodeURIComponent(campaignId ?? "")}/follow`, {
         method,
+        headers: method === "POST" ? { "Content-Type": "application/json" } : undefined,
         credentials: "include",
+        body: method === "POST" && followRequestBody ? JSON.stringify(followRequestBody) : undefined,
       });
       const payload = await response.json().catch(() => null);
 
@@ -64,6 +76,7 @@ export default function CampaignFollowButton({
       return payload as CampaignFollowStatusResponse;
     },
     onSuccess: async (data) => {
+      if (data.isFollowing) onFollowed?.();
       queryClient.setQueryData(["/api/drinks/campaigns/follow-status", campaignId, user?.id ?? "guest"], data);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns"] }),
@@ -96,10 +109,13 @@ export default function CampaignFollowButton({
       size={size}
       variant={variant ?? (isFollowing ? "outline" : "default")}
       className={className}
-      onClick={() => toggleMutation.mutate()}
+      onClick={() => {
+        onBeforeToggle?.();
+        toggleMutation.mutate();
+      }}
       disabled={statusQuery.isLoading || toggleMutation.isPending}
     >
-      {toggleMutation.isPending ? "Saving…" : isFollowing ? "Following" : "Follow campaign"}
+      {toggleMutation.isPending ? "Saving…" : isFollowing ? (activeLabel ?? "Following") : (idleLabel ?? "Follow campaign")}
     </Button>
   );
 }
