@@ -14,7 +14,21 @@ type DropRsvpResponse = {
   rsvpCount: number;
 };
 
-export default function DropRsvpButton({ drop }: { drop: CreatorDropItem }) {
+export default function DropRsvpButton({
+  drop,
+  requestBody,
+  onBeforeToggle,
+  onRsvped,
+  idleLabel,
+  activeLabel,
+}: {
+  drop: CreatorDropItem;
+  requestBody?: Record<string, unknown> | null;
+  onBeforeToggle?: (() => void) | null;
+  onRsvped?: (() => void) | null;
+  idleLabel?: string;
+  activeLabel?: string;
+}) {
   const { user } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -27,7 +41,9 @@ export default function DropRsvpButton({ drop }: { drop: CreatorDropItem }) {
     mutationFn: async () => {
       const response = await fetch(`/api/drinks/drops/${encodeURIComponent(drop.id)}/rsvp`, {
         method: drop.isRsvped ? "DELETE" : "POST",
+        headers: !drop.isRsvped ? { "Content-Type": "application/json" } : undefined,
         credentials: "include",
+        body: !drop.isRsvped && requestBody ? JSON.stringify(requestBody) : undefined,
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
@@ -36,6 +52,7 @@ export default function DropRsvpButton({ drop }: { drop: CreatorDropItem }) {
       return payload as DropRsvpResponse;
     },
     onSuccess: async (payload) => {
+      if (payload.isRsvped) onRsvped?.();
       await queryClient.invalidateQueries({
         predicate: (query) => {
           const key = Array.isArray(query.queryKey) ? String(query.queryKey[0] ?? "") : "";
@@ -82,15 +99,18 @@ export default function DropRsvpButton({ drop }: { drop: CreatorDropItem }) {
       type="button"
       size="sm"
       variant={drop.isRsvped ? "outline" : "default"}
-      onClick={() => toggleMutation.mutate()}
+      onClick={() => {
+        onBeforeToggle?.();
+        toggleMutation.mutate();
+      }}
       disabled={!canToggle || toggleMutation.isPending}
     >
       {toggleMutation.isPending ? null : drop.isRsvped ? <BellOff className="mr-2 h-4 w-4" /> : <Bell className="mr-2 h-4 w-4" />}
       {toggleMutation.isPending
         ? "Saving…"
         : drop.isRsvped
-          ? "Notified"
-          : "Notify me"}
+          ? (activeLabel ?? "Notified")
+          : (idleLabel ?? "Notify me")}
     </Button>
   );
 }
