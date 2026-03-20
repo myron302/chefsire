@@ -1405,6 +1405,54 @@ export const creatorCampaigns = pgTable(
   })
 );
 
+export const creatorCampaignTemplates = pgTable(
+  "creator_campaign_templates",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    creatorUserId: varchar("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    sourceCampaignId: varchar("source_campaign_id").references(() => creatorCampaigns.id, { onDelete: "set null" }),
+    name: varchar("name", { length: 160 }).notNull(),
+    description: text("description"),
+    blueprint: jsonb("blueprint").$type<{
+      campaign: {
+        name: string;
+        description: string | null;
+        visibility: string;
+        startsAt: string | null;
+        endsAt: string | null;
+        isActive: boolean;
+      };
+      links: Array<{ targetType: string; targetId: string; sortOrder: number }>;
+      variants: Array<{
+        label: string;
+        headline: string | null;
+        subheadline: string | null;
+        ctaText: string;
+        ctaTargetType: string;
+        isActive: boolean;
+      }>;
+      linkedDrafts: {
+        drops: Array<Record<string, unknown>>;
+        posts: Array<Record<string, unknown>>;
+        roadmap: Array<Record<string, unknown>>;
+      };
+      defaults: {
+        resetDates: boolean;
+        copyLinkedDrafts: boolean;
+        copyCtaVariants: boolean;
+      };
+    }>().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    creatorIdx: index("creator_campaign_templates_creator_idx").on(table.creatorUserId),
+    sourceIdx: index("creator_campaign_templates_source_idx").on(table.sourceCampaignId),
+    creatorUpdatedIdx: index("creator_campaign_templates_creator_updated_at_idx").on(table.creatorUserId, table.updatedAt),
+    creatorNameIdx: uniqueIndex("creator_campaign_templates_creator_name_idx").on(table.creatorUserId, table.name),
+  })
+);
+
 export const creatorCampaignLinks = pgTable(
   "creator_campaign_links",
   {
@@ -2300,6 +2348,12 @@ export const insertCreatorCampaignSchema = createInsertSchema(creatorCampaigns).
   updatedAt: true,
 });
 
+export const insertCreatorCampaignTemplateSchema = createInsertSchema(creatorCampaignTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertCreatorCampaignLinkSchema = createInsertSchema(creatorCampaignLinks).omit({
   id: true,
   createdAt: true,
@@ -2543,6 +2597,8 @@ export type CreatorRoadmapItem = typeof creatorRoadmapItems.$inferSelect;
 export type InsertCreatorRoadmapItem = z.infer<typeof insertCreatorRoadmapItemSchema>;
 export type CreatorCampaign = typeof creatorCampaigns.$inferSelect;
 export type InsertCreatorCampaign = z.infer<typeof insertCreatorCampaignSchema>;
+export type CreatorCampaignTemplate = typeof creatorCampaignTemplates.$inferSelect;
+export type InsertCreatorCampaignTemplate = z.infer<typeof insertCreatorCampaignTemplateSchema>;
 export type CreatorCampaignLink = typeof creatorCampaignLinks.$inferSelect;
 export type InsertCreatorCampaignLink = z.infer<typeof insertCreatorCampaignLinkSchema>;
 export type CreatorCampaignFollow = typeof creatorCampaignFollows.$inferSelect;

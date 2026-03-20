@@ -55,6 +55,38 @@ type CampaignVariantsResponse = {
   attributionNotes: string[];
 };
 
+type CampaignTemplateItem = {
+  id: string;
+  creatorUserId: string;
+  sourceCampaignId: string | null;
+  name: string;
+  description: string | null;
+  campaignName: string;
+  campaignDescription: string | null;
+  visibility: CreatorCampaignItem["visibility"];
+  defaults: {
+    resetDates: boolean;
+    copyLinkedDrafts: boolean;
+    copyCtaVariants: boolean;
+  };
+  counts: {
+    linkedItems: number;
+    drops: number;
+    posts: number;
+    roadmap: number;
+    variants: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+};
+
+type CampaignTemplatesResponse = {
+  ok: boolean;
+  count: number;
+  items: CampaignTemplateItem[];
+  basedOnPastCampaigns: Array<{ id: string; name: string; slug: string; route: string }>;
+};
+
 function readErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
@@ -354,6 +386,17 @@ export default function CampaignsDashboardSection() {
     enabled: Boolean(user?.id),
   });
 
+  const templatesQuery = useQuery<CampaignTemplatesResponse>({
+    queryKey: ["/api/drinks/campaign-templates", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/campaign-templates", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load campaign templates (${response.status})`);
+      return payload as CampaignTemplatesResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
   const collectionsQuery = useQuery<{ items: Array<{ id: string; label: string }> }>({
     queryKey: ["/api/drinks/collections/mine", user?.id ?? ""],
     queryFn: async () => {
@@ -501,6 +544,101 @@ export default function CampaignsDashboardSection() {
     },
   });
 
+  const cloneMutation = useMutation({
+    mutationFn: async (campaign: CreatorCampaignItem) => {
+      const response = await fetch(`/api/drinks/campaigns/${encodeURIComponent(campaign.id)}/clone`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          newName: `${campaign.name} Copy`,
+          resetDates: true,
+          copyLinkedDrafts: true,
+          copyCtaVariants: true,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to clone campaign (${response.status})`);
+      return payload;
+    },
+    onSuccess: async (payload) => {
+      setMessage(`Campaign cloned into "${payload?.campaign?.name ?? "draft"}". Followers, analytics, and purchases were not copied.`);
+      setError("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns/creator", user?.id ?? ""] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaign-templates", user?.id ?? ""] }),
+      ]);
+      if (payload?.campaign?.id) {
+        setSelectedCampaignId(String(payload.campaign.id));
+      }
+    },
+    onError: (mutationError) => {
+      setError(readErrorMessage(mutationError, "Unable to clone campaign right now."));
+      setMessage("");
+    },
+  });
+
+  const saveTemplateMutation = useMutation({
+    mutationFn: async (campaign: CreatorCampaignItem) => {
+      const response = await fetch(`/api/drinks/campaigns/${encodeURIComponent(campaign.id)}/save-template`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          templateName: `${campaign.name} Template`,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to save template (${response.status})`);
+      return payload;
+    },
+    onSuccess: async (payload) => {
+      setMessage(`Saved template "${payload?.item?.name ?? "template"}".`);
+      setError("");
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaign-templates", user?.id ?? ""] });
+    },
+    onError: (mutationError) => {
+      setError(readErrorMessage(mutationError, "Unable to save template right now."));
+      setMessage("");
+    },
+  });
+
+  const useTemplateMutation = useMutation({
+    mutationFn: async (template: CampaignTemplateItem) => {
+      const response = await fetch(`/api/drinks/campaign-templates/${encodeURIComponent(template.id)}/create-campaign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          newName: `${template.campaignName} Draft`,
+          resetDates: template.defaults.resetDates,
+          copyLinkedDrafts: template.defaults.copyLinkedDrafts,
+          copyCtaVariants: template.defaults.copyCtaVariants,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to use template (${response.status})`);
+      return payload;
+    },
+    onSuccess: async (payload) => {
+      setMessage(`Created draft campaign "${payload?.campaign?.name ?? "campaign"}" from template.`);
+      setError("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns/creator", user?.id ?? ""] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaign-templates", user?.id ?? ""] }),
+      ]);
+      if (payload?.campaign?.id) {
+        setSelectedCampaignId(String(payload.campaign.id));
+      }
+    },
+    onError: (mutationError) => {
+      setError(readErrorMessage(mutationError, "Unable to create a campaign from this template right now."));
+      setMessage("");
+    },
+  });
+
   const loadCampaignIntoForm = React.useCallback(async (campaign: CreatorCampaignItem) => {
     setMessage("");
     setError("");
@@ -545,6 +683,7 @@ export default function CampaignsDashboardSection() {
   };
 
   const campaigns = campaignsQuery.data?.items ?? [];
+  const templates = templatesQuery.data?.items ?? [];
   const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? campaigns[0] ?? null;
 
   React.useEffect(() => {
@@ -657,6 +796,63 @@ export default function CampaignsDashboardSection() {
           </div>
 
           <div className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Templates / Reuse</CardTitle>
+                <CardDescription>
+                  Save a campaign as a reusable arc, or spin up a draft from a past launch without carrying over followers, analytics, purchases, or anything live.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {templatesQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading templates…</p> : null}
+                {templatesQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(templatesQuery.error, "Unable to load templates right now.")}</p> : null}
+                {templatesQuery.data?.basedOnPastCampaigns?.length ? (
+                  <div className="rounded-md border border-dashed p-3 text-sm">
+                    <p className="font-medium">Based on your past campaigns</p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {templatesQuery.data.basedOnPastCampaigns.map((item) => (
+                        <Button
+                          key={item.id}
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            const campaign = campaigns.find((entry) => entry.id === item.id);
+                            if (campaign) cloneMutation.mutate(campaign);
+                          }}
+                          disabled={cloneMutation.isPending}
+                        >
+                          Clone {item.name}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {!templatesQuery.isLoading && !templates.length ? (
+                  <p className="text-sm text-muted-foreground">No saved templates yet. Save a strong launch arc like Summer Cocktail Series or Zero-Proof January once, then reuse it next season.</p>
+                ) : null}
+                <div className="space-y-3">
+                  {templates.map((template) => (
+                    <div key={template.id} className="rounded-md border p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="space-y-1">
+                          <p className="font-medium">{template.name}</p>
+                          <p className="text-sm text-muted-foreground">{template.description ?? `Reusable starting point for ${template.campaignName}.`}</p>
+                          <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                            <span>{template.counts.linkedItems} linked items</span>
+                            <span>{template.counts.variants} CTA variants</span>
+                            <span>{template.visibility}</span>
+                            <span>{template.defaults.resetDates ? "resets dates" : "keeps dates"}</span>
+                          </div>
+                        </div>
+                        <Button size="sm" onClick={() => useTemplateMutation.mutate(template)} disabled={useTemplateMutation.isPending}>
+                          {useTemplateMutation.isPending ? "Creating…" : "Use Template"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
             <CampaignVariantManager campaign={selectedCampaign} onChanged={refreshCampaigns} />
             {campaignsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading campaigns…</p> : null}
             {campaignsQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(campaignsQuery.error, "Unable to load campaigns right now.")}</p> : null}
@@ -675,6 +871,8 @@ export default function CampaignsDashboardSection() {
                     </div>
                     <Button size="sm" variant={selectedCampaignId === campaign.id ? "default" : "outline"} onClick={() => setSelectedCampaignId(campaign.id)}>CTA variants</Button>
                     <Button size="sm" variant="outline" onClick={() => { void loadCampaignIntoForm(campaign); }}>Edit</Button>
+                    <Button size="sm" variant="outline" onClick={() => cloneMutation.mutate(campaign)} disabled={cloneMutation.isPending}>{cloneMutation.isPending ? "Cloning…" : "Clone Campaign"}</Button>
+                    <Button size="sm" variant="outline" onClick={() => saveTemplateMutation.mutate(campaign)} disabled={saveTemplateMutation.isPending}>{saveTemplateMutation.isPending ? "Saving…" : "Save as Template"}</Button>
                     <Button size="sm" variant="outline" onClick={() => deleteMutation.mutate(campaign.id)} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? "Deleting…" : "Delete"}</Button>
                   </>
                 )}
