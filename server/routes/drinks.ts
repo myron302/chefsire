@@ -656,7 +656,7 @@ const creatorCampaignLinkBodySchema = z.object({
   sortOrder: z.coerce.number().int().min(0).max(999).optional(),
 });
 
-const creatorCampaignBodyBaseSchema = z.object({
+const creatorCampaignBodyBaseObjectSchema = z.object({
   slug: z.string().trim().min(2, "Campaign slug is required.").max(160),
   name: z.string().trim().min(2, "Campaign name is required.").max(160),
   description: z.string().trim().max(2000).optional().nullable(),
@@ -665,7 +665,12 @@ const creatorCampaignBodyBaseSchema = z.object({
   endsAt: z.string().datetime().optional().nullable(),
   isActive: z.boolean().optional().default(true),
   links: z.array(creatorCampaignLinkBodySchema).max(48).optional().default([]),
-}).superRefine((value, ctx) => {
+});
+
+const validateCreatorCampaignDateRange = (
+  value: { startsAt?: string | null; endsAt?: string | null },
+  ctx: z.RefinementCtx,
+) => {
   if (value.startsAt && value.endsAt) {
     const startsAt = new Date(value.startsAt);
     const endsAt = new Date(value.endsAt);
@@ -673,11 +678,17 @@ const creatorCampaignBodyBaseSchema = z.object({
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "Campaign end date must be after the start date." });
     }
   }
-});
+};
 
-const createCreatorCampaignBodySchema = creatorCampaignBodyBaseSchema;
-const updateCreatorCampaignBodySchema = creatorCampaignBodyBaseSchema.partial().refine((value) => Object.values(value).some((field) => field !== undefined), {
-  message: "Provide at least one campaign field to update.",
+const createCreatorCampaignBodySchema = creatorCampaignBodyBaseObjectSchema.superRefine(validateCreatorCampaignDateRange);
+const updateCreatorCampaignBodySchema = creatorCampaignBodyBaseObjectSchema.partial().superRefine((value, ctx) => {
+  validateCreatorCampaignDateRange(value, ctx);
+  if (!Object.values(value).some((field) => field !== undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Provide at least one campaign field to update.",
+    });
+  }
 });
 
 const createCreatorRoadmapBodySchema = creatorRoadmapBodyBaseSchema.superRefine((value, ctx) => {
