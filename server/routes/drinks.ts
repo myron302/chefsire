@@ -3897,6 +3897,35 @@ type CreatorCampaignAnalyticsSummary = {
   totalCampaignMembershipConversions: number;
 };
 
+type CreatorCampaignRecommendationType =
+  | "add_drop"
+  | "publish_update"
+  | "improve_cta"
+  | "promote_membership"
+  | "add_member_only_collection"
+  | "launch_promo"
+  | "push_rsvp"
+  | "clone_successful_campaign"
+  | "refresh_archived_campaign"
+  | "celebrate_milestone";
+
+type CreatorCampaignRecommendationPriority = "high" | "medium" | "low";
+
+type CreatorCampaignRecommendation = {
+  campaignId: string;
+  campaignName: string;
+  campaignSlug: string;
+  campaignRoute: string;
+  campaignState: CreatorCampaignState;
+  recommendationType: CreatorCampaignRecommendationType;
+  priority: CreatorCampaignRecommendationPriority;
+  title: string;
+  message: string;
+  suggestedAction: string | null;
+  suggestedRoute: string | null;
+  supportingSignals: string[];
+};
+
 type CreatorCampaignMilestoneType =
   | "campaign_live"
   | "first_drop_live"
@@ -4423,6 +4452,391 @@ function isDateWithinCampaignAnalyticsWindow(value: Date, campaign: Pick<Creator
 
 async function loadCreatorCampaignAnalytics(creatorUserId: string) {
   return loadCreatorCampaignPerformanceSnapshots(creatorUserId);
+}
+
+function recommendationPriorityRank(priority: CreatorCampaignRecommendationPriority) {
+  switch (priority) {
+    case "high":
+      return 3;
+    case "medium":
+      return 2;
+    case "low":
+    default:
+      return 1;
+  }
+}
+
+function uniqueRecommendationKey(item: CreatorCampaignRecommendation) {
+  return `${item.campaignId}:${item.recommendationType}`;
+}
+
+export async function loadCreatorCampaignRecommendations(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const performance = await loadCreatorCampaignPerformanceSnapshots(creatorUserId);
+  if (performance.items.length === 0) {
+    return {
+      summary: {
+        totalCampaigns: 0,
+        campaignsWithRecommendations: 0,
+        totalRecommendations: 0,
+      },
+      items: [] as CreatorCampaignRecommendation[],
+      attributionNotes: [
+        "Recommendations are lightweight and rules-based, using the campaign analytics already tracked in the drinks platform.",
+        "Goals stay creator-defined, milestones stay system-derived, and recommendations only suggest possible next moves.",
+      ],
+      generatedAt: performance.generatedAt,
+    };
+  }
+
+  const campaigns = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+    .orderBy(desc(creatorCampaigns.updatedAt))
+    .limit(120);
+
+  const campaignById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  const linkMap = await loadCreatorCampaignLinksByCampaignIds(campaignIds);
+  const goalRows = campaignIds.length
+    ? await db
+      .select()
+      .from(creatorCampaignGoals)
+      .where(inArray(creatorCampaignGoals.campaignId, campaignIds))
+      .orderBy(desc(creatorCampaignGoals.updatedAt), asc(creatorCampaignGoals.createdAt))
+    : [];
+
+  const collectionIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId)),
+  )];
+  const collections = collectionIds.length
+    ? await db
+      .select({
+        id: drinkCollections.id,
+        accessType: drinkCollections.accessType,
+      })
+      .from(drinkCollections)
+      .where(inArray(drinkCollections.id, collectionIds))
+    : [];
+  const collectionMap = new Map(collections.map((collection) => [collection.id, collection]));
+
+  const goalsByCampaignId = new Map<string, CreatorCampaignGoalRecord[]>();
+  for (const goal of goalRows) {
+    const current = goalsByCampaignId.get(goal.campaignId) ?? [];
+    current.push(goal);
+    goalsByCampaignId.set(goal.campaignId, current);
+  }
+
+  const recommendations: CreatorCampaignRecommendation[] = [];
+  const seen = new Set<string>();
+
+  const pushRecommendation = (item: CreatorCampaignRecommendation) => {
+    const key = uniqueRecommendationKey(item);
+    if (seen.has(key)) return;
+    seen.add(key);
+    recommendations.push(item);
+  };
+
+  for (const analytics of performance.items) {
+    const campaign = campaignById.get(analytics.campaignId);
+    if (!campaign) continue;
+
+    const links = linkMap.get(campaign.id) ?? [];
+    const state = getCreatorCampaignState(campaign);
+    const route = `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`;
+    const linkedPromosCount = links.filter((link) => link.targetType === "promo").length;
+    const linkedPostsCount = links.filter((link) => link.targetType === "post").length;
+    const linkedRoadmapCount = links.filter((link) => link.targetType === "roadmap").length;
+    const linkedMemberOnlyCollectionsCount = links.filter((link) => (
+      link.targetType === "collection" && (collectionMap.get(link.targetId)?.accessType ?? null) === "membership_only"
+    )).length;
+    const memberFocused = analytics.visibility === "members" || analytics.membershipsFromCampaign > 0 || linkedMemberOnlyCollectionsCount > 0;
+    const goals = (goalsByCampaignId.get(campaign.id) ?? []).map((goal) => serializeCreatorCampaignGoal(goal, analytics));
+    const behindGoals = goals.filter((goal) => !goal.isComplete && goal.percentComplete < 60);
+    const completeMilestones = analytics.milestones.filter((milestone) => milestone.achieved);
+    const celebratableMilestone = [...completeMilestones]
+      .sort((a, b) => {
+        const aTime = a.achievedAt ? new Date(a.achievedAt).getTime() : 0;
+        const bTime = b.achievedAt ? new Date(b.achievedAt).getTime() : 0;
+        return bTime - aTime;
+      })[0];
+    const hasMeaningfulMomentum = analytics.followerCount >= 10 || analytics.totalDropRsvps >= 10 || analytics.purchasesFromLinkedCollections > 0;
+    const clickToPurchaseRate = analytics.totalDropClicks > 0
+      ? analytics.purchasesFromLinkedCollections / analytics.totalDropClicks
+      : 0;
+
+    if ((state === "active" || state === "upcoming") && analytics.followerCount >= 25 && analytics.linkedDropsCount < 1) {
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: "add_drop",
+        priority: analytics.followerCount >= 75 ? "high" : "medium",
+        title: "Consider adding a drop",
+        message: `This campaign already has ${analytics.followerCount} followers but no linked drops yet. A lightweight drop could give people a concrete next touchpoint.`,
+        suggestedAction: "Add a linked drop or scheduled release moment",
+        suggestedRoute: "/drinks/creator-dashboard#campaigns",
+        supportingSignals: [
+          `${analytics.followerCount} campaign followers`,
+          `${analytics.linkedDropsCount} linked drops`,
+        ],
+      });
+    }
+
+    if ((state === "active" || state === "upcoming") && analytics.linkedDropsCount > 0 && analytics.followerCount >= 20 && analytics.totalDropRsvps < Math.max(5, Math.round(analytics.followerCount * 0.2))) {
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: "push_rsvp",
+        priority: "medium",
+        title: "This campaign may benefit from a stronger RSVP push",
+        message: `The campaign has ${analytics.followerCount} followers and ${analytics.linkedDropsCount} linked drop${analytics.linkedDropsCount === 1 ? "" : "s"}, but RSVP interest is still modest at ${analytics.totalDropRsvps}. A clearer RSVP hook could help convert passive interest into launch intent.`,
+        suggestedAction: "Highlight RSVP / Notify Me in the next campaign touchpoint",
+        suggestedRoute: route,
+        supportingSignals: [
+          `${analytics.followerCount} followers`,
+          `${analytics.totalDropRsvps} total RSVPs`,
+        ],
+      });
+    }
+
+    if ((state === "active" || state === "upcoming") && analytics.totalDropClicks >= 20 && analytics.purchasesFromLinkedCollections === 0) {
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: "improve_cta",
+        priority: "high",
+        title: "This campaign may benefit from a stronger CTA",
+        message: `People are clicking through (${analytics.totalDropClicks} linked clicks), but those visits have not turned into purchases yet. A tighter CTA framing could better connect the story arc to the collection or drop outcome.`,
+        suggestedAction: "Test a new CTA variant or sharpen the campaign framing",
+        suggestedRoute: "/drinks/creator-dashboard#campaigns",
+        supportingSignals: [
+          `${analytics.totalDropClicks} linked clicks`,
+          `${analytics.purchasesFromLinkedCollections} purchases`,
+        ],
+      });
+    } else if ((state === "active" || state === "upcoming") && analytics.totalDropClicks >= 30 && clickToPurchaseRate > 0 && clickToPurchaseRate < 0.08) {
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: "launch_promo",
+        priority: linkedPromosCount === 0 ? "high" : "medium",
+        title: linkedPromosCount === 0 ? "Consider pairing this campaign with a promo" : "A refreshed promo angle may help",
+        message: `This campaign is generating attention (${analytics.totalDropClicks} clicks) but only ${analytics.purchasesFromLinkedCollections} purchase${analytics.purchasesFromLinkedCollections === 1 ? "" : "s"} so far. A lightweight promo or clearer conversion hook may help close the gap.`,
+        suggestedAction: linkedPromosCount === 0 ? "Launch a simple promo tied to the campaign" : "Refresh the promo framing or offer",
+        suggestedRoute: linkedPromosCount === 0 ? "/drinks/creator-dashboard#promotions" : route,
+        supportingSignals: [
+          `${analytics.totalDropClicks} linked clicks`,
+          `${analytics.purchasesFromLinkedCollections} purchases`,
+          `${linkedPromosCount} linked promos`,
+        ],
+      });
+    }
+
+    if (memberFocused && linkedMemberOnlyCollectionsCount === 0) {
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: "add_member_only_collection",
+        priority: "medium",
+        title: "Consider linking a member-only collection",
+        message: "This campaign already leans member-focused, but it does not yet link a member-only collection. Adding one could give the membership story a clearer destination.",
+        suggestedAction: "Add or link a member-only collection",
+        suggestedRoute: "/drinks/collections",
+        supportingSignals: [
+          `visibility: ${analytics.visibility}`,
+          `${linkedMemberOnlyCollectionsCount} member-only collections linked`,
+        ],
+      });
+    }
+
+    if (memberFocused && analytics.followerCount >= 15 && analytics.membershipsFromCampaign < 3) {
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: "promote_membership",
+        priority: analytics.membershipsFromCampaign === 0 ? "high" : "medium",
+        title: "This campaign could surface membership more clearly",
+        message: `The campaign is attracting audience attention (${analytics.followerCount} followers) but only ${analytics.membershipsFromCampaign} membership conversion${analytics.membershipsFromCampaign === 1 ? "" : "s"} so far. A member-focused post or CTA may help clarify the value.`,
+        suggestedAction: "Publish a member-value touchpoint or update the campaign CTA",
+        suggestedRoute: "/drinks/creator-dashboard#membership",
+        supportingSignals: [
+          `${analytics.followerCount} followers`,
+          `${analytics.membershipsFromCampaign} membership conversions`,
+        ],
+      });
+    }
+
+    if ((state === "active" || state === "upcoming") && hasMeaningfulMomentum && linkedPostsCount === 0) {
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: "publish_update",
+        priority: "medium",
+        title: "A creator update could help this campaign stay visible",
+        message: `This campaign has early momentum (${analytics.followerCount} followers, ${analytics.totalDropRsvps} RSVPs) but no linked campaign update yet. A short post could keep the story arc active without overbuilding the workflow.`,
+        suggestedAction: "Publish a lightweight creator update",
+        suggestedRoute: "/drinks/creator-dashboard#posts",
+        supportingSignals: [
+          `${linkedPostsCount} linked posts`,
+          `${analytics.followerCount} followers`,
+          `${analytics.totalDropRsvps} RSVPs`,
+        ],
+      });
+    }
+
+    if (celebratableMilestone && linkedPostsCount === 0) {
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: "celebrate_milestone",
+        priority: "medium",
+        title: "You’ve hit a milestone — a creator post could help capitalize on it",
+        message: `The campaign has already reached "${celebratableMilestone.shortLabel}". Sharing that momentum in a quick creator update may help carry the next wave of attention forward.`,
+        suggestedAction: "Celebrate the milestone with a creator post or recap",
+        suggestedRoute: "/drinks/creator-dashboard#posts",
+        supportingSignals: [
+          `Milestone: ${celebratableMilestone.shortLabel}`,
+          `${completeMilestones.length} achieved milestones`,
+        ],
+      });
+    }
+
+    const topBehindGoal = [...behindGoals].sort((a, b) => a.percentComplete - b.percentComplete)[0];
+    if (topBehindGoal) {
+      const metricGap = Math.max(0, topBehindGoal.targetValue - topBehindGoal.currentValue);
+      const goalAction = (() => {
+        switch (topBehindGoal.goalType) {
+          case "followers":
+            return "Consider adding a campaign update or a new CTA hook to bring more followers into the arc.";
+          case "rsvps":
+            return "Consider emphasizing RSVP / Notify Me in the next drop touchpoint.";
+          case "clicks":
+            return "Consider refreshing the CTA or adding a more direct action prompt.";
+          case "purchases":
+            return "Consider pairing the campaign with a promo or clearer purchase framing.";
+          case "membership_conversions":
+            return "Consider making the member benefit more explicit in the campaign narrative.";
+          case "linked_drop_views":
+            return "Consider adding another linked drop or roadmap moment to create more traffic opportunities.";
+          default:
+            return "Consider making the next campaign action more explicit.";
+        }
+      })();
+
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: topBehindGoal.goalType === "membership_conversions" ? "promote_membership" : "publish_update",
+        priority: topBehindGoal.percentComplete < 25 ? "high" : "medium",
+        title: `One goal looks behind pace: ${topBehindGoal.label?.trim() || topBehindGoal.metricLabel}`,
+        message: `${topBehindGoal.currentValue} of ${topBehindGoal.targetValue} ${topBehindGoal.metricLabel.toLowerCase()} have landed so far (${topBehindGoal.percentComplete}%). ${goalAction}`,
+        suggestedAction: topBehindGoal.goalType === "purchases"
+          ? "Review CTA or promo options for this campaign"
+          : topBehindGoal.goalType === "rsvps"
+            ? "Add an RSVP-oriented touchpoint"
+            : "Add a practical next campaign touchpoint",
+        suggestedRoute: route,
+        supportingSignals: [
+          `${topBehindGoal.percentComplete}% of goal`,
+          `${metricGap} remaining to target`,
+        ],
+      });
+    }
+
+    if (state === "past" && (analytics.purchasesFromLinkedCollections >= 3 || analytics.membershipsFromCampaign >= 3 || analytics.campaignEngagementScore >= 120)) {
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: "clone_successful_campaign",
+        priority: "medium",
+        title: "This archived campaign looks reusable",
+        message: `The campaign performed well enough to reuse: ${analytics.purchasesFromLinkedCollections} purchases, ${analytics.membershipsFromCampaign} membership conversions, and a ${analytics.campaignEngagementScore} engagement score. Cloning it could save setup time for a follow-up season.`,
+        suggestedAction: "Clone the campaign and reset the dates for a new run",
+        suggestedRoute: "/drinks/creator-dashboard#campaigns",
+        supportingSignals: [
+          `${analytics.purchasesFromLinkedCollections} purchases`,
+          `${analytics.membershipsFromCampaign} memberships`,
+          `${analytics.campaignEngagementScore} engagement score`,
+        ],
+      });
+    } else if (state === "past" && analytics.campaignEngagementScore >= 30 && linkedRoadmapCount === 0) {
+      pushRecommendation({
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        campaignState: state,
+        recommendationType: "refresh_archived_campaign",
+        priority: "low",
+        title: "This archived campaign may be worth refreshing",
+        message: "The campaign found some traction, but it currently ends without a fresh follow-up path. A refreshed archive recap, roadmap item, or new season could keep the idea alive.",
+        suggestedAction: "Add a follow-up roadmap note or start a refreshed version",
+        suggestedRoute: "/drinks/creator-dashboard#campaigns",
+        supportingSignals: [
+          `${analytics.campaignEngagementScore} engagement score`,
+          `${linkedRoadmapCount} linked roadmap items`,
+        ],
+      });
+    }
+  }
+
+  recommendations.sort((a, b) => {
+    const priorityDiff = recommendationPriorityRank(b.priority) - recommendationPriorityRank(a.priority);
+    if (priorityDiff !== 0) return priorityDiff;
+    const aCampaign = performance.items.find((item) => item.campaignId === a.campaignId);
+    const bCampaign = performance.items.find((item) => item.campaignId === b.campaignId);
+    return Number(bCampaign?.campaignEngagementScore ?? 0) - Number(aCampaign?.campaignEngagementScore ?? 0);
+  });
+
+  return {
+    summary: {
+      totalCampaigns: performance.items.length,
+      campaignsWithRecommendations: new Set(recommendations.map((item) => item.campaignId)).size,
+      totalRecommendations: recommendations.length,
+    },
+    items: recommendations.slice(0, 18),
+    attributionNotes: [
+      "Recommendations are intentionally lightweight and rules-based, not generated by a large AI orchestration layer.",
+      "Signals come from campaign follows, linked drop RSVP / click / view metrics, linked collection purchases, membership conversion proxies, goals progress, and campaign milestones.",
+      "Goals remain creator-set targets. Milestones remain system-derived achievements. Recommendations simply suggest possible next moves.",
+      "Purchase and membership recommendations stay approximate wherever the underlying campaign analytics are approximate.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 async function loadCreatorCampaignDetail(campaign: CreatorCampaignRecord, viewerId?: string | null) {
@@ -15780,6 +16194,28 @@ r.get("/creator-dashboard/campaign-analytics", requireAuth, async (req, res) => 
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-analytics", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign analytics"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-recommendations", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const recommendations = await loadCreatorCampaignRecommendations(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: recommendations.summary,
+      items: recommendations.items,
+      attributionNotes: recommendations.attributionNotes,
+      generatedAt: recommendations.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-recommendations", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign recommendations"));
   }
 });
 
