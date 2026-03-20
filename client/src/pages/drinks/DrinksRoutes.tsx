@@ -21,6 +21,7 @@ import DrinkDropDetailPage from "@/pages/drinks/drop-detail";
 import DrinkRoadmapPage from "@/pages/drinks/roadmap";
 import DrinkCampaignsPage from "@/pages/drinks/campaigns";
 import DrinkCampaignDetailPage from "@/pages/drinks/campaign-detail";
+import DrinkCampaignFollowingPage from "@/pages/drinks/campaign-following";
 import DrinksRemixDiscoveryPage from "@/pages/drinks/remixes";
 import MostRemixedDrinksPage from "@/pages/drinks/most-remixed";
 import TrendingCreatorsPage from "@/pages/drinks/creators-trending";
@@ -207,6 +208,7 @@ export default function DrinksRoutes() {
         <Route path="/drinks/feed" component={DrinkCreatorPostsFeedPage} />
         <Route path="/drinks/drops/:id" component={DrinkDropDetailPage} />
         <Route path="/drinks/drops" component={DrinkDropsPage} />
+        <Route path="/drinks/campaigns/following" component={DrinkCampaignFollowingPage} />
         <Route path="/drinks/campaigns/:slug" component={DrinkCampaignDetailPage} />
         <Route path="/drinks/campaigns" component={DrinkCampaignsPage} />
         <Route path="/drinks/roadmap" component={DrinkRoadmapPage} />

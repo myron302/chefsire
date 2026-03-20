@@ -27,7 +27,7 @@ export default function DrinkCampaignsPage() {
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8">
-      <DrinksPlatformNav current="creator" />
+      <DrinksPlatformNav current="campaigns" />
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -39,6 +39,7 @@ export default function DrinkCampaignsPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/drinks/discover"><Button variant="outline">Discover hub</Button></Link>
+            {user ? <Link href="/drinks/campaigns/following"><Button variant="outline">Followed campaigns</Button></Link> : null}
             <Link href="/drinks/creator-dashboard#campaigns"><Button>Manage my campaigns</Button></Link>
           </div>
         </div>
