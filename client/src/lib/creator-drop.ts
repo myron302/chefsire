@@ -50,3 +50,60 @@ export function getCreatorDropScheduleMessage(value: string, status: CreatorDrop
   if (status === "archived") return `Went live ${formatted}`;
   return `Starts ${formatted}`;
 }
+
+export function getCreatorDropStatusLabel(status: CreatorDropStatus) {
+  switch (status) {
+    case "live":
+      return "Live now";
+    case "archived":
+      return "Released";
+    case "upcoming":
+    default:
+      return "Upcoming";
+  }
+}
+
+export function getCreatorDropLifecycleHeading(status: CreatorDropStatus) {
+  switch (status) {
+    case "live":
+      return "Launch is live";
+    case "archived":
+      return "Launch replay";
+    case "upcoming":
+    default:
+      return "Launch landing page";
+  }
+}
+
+export function getCreatorDropLifecycleDescription(status: CreatorDropStatus) {
+  switch (status) {
+    case "live":
+      return "This drop has crossed its go-live time and should send people straight into the release.";
+    case "archived":
+      return "This release has moved into replay mode so recap notes and launch destinations stay easy to revisit.";
+    case "upcoming":
+    default:
+      return "This page acts as the dedicated destination before launch so creators can build anticipation without replacing posts, alerts, or roadmap updates.";
+  }
+}
+
+export function getCreatorDropPrimaryActionLabel(status: CreatorDropStatus, destination: "collection" | "challenge" | "promo" | "drop") {
+  if (destination === "collection") {
+    if (status === "live") return "Open live collection";
+    if (status === "archived") return "Replay collection release";
+    return "Preview launch collection";
+  }
+  if (destination === "challenge") {
+    if (status === "live") return "Join live challenge";
+    if (status === "archived") return "Replay challenge launch";
+    return "Preview linked challenge";
+  }
+  if (destination === "promo") {
+    if (status === "live") return "Use live promo";
+    if (status === "archived") return "Review promo release";
+    return "Preview linked promo";
+  }
+  if (status === "archived") return "Open replay page";
+  if (status === "live") return "Open launch page";
+  return "Open landing page";
+}

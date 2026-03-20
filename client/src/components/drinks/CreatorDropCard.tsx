@@ -10,7 +10,9 @@ import DropRsvpButton from "@/components/drinks/DropRsvpButton";
 import {
   formatCreatorDropDateTime,
   getCreatorDropCountdownLabel,
+  getCreatorDropPrimaryActionLabel,
   getCreatorDropScheduleMessage,
+  getCreatorDropStatusLabel,
   type CreatorDropStatus,
 } from "@/lib/creator-drop";
 
@@ -19,6 +21,7 @@ export type CreatorDropItem = {
   creatorUserId: string;
   title: string;
   description: string | null;
+  recapNotes: string | null;
   dropType: "collection_launch" | "promo_launch" | "member_drop" | "challenge_launch" | "update";
   visibility: "public" | "followers" | "members";
   status: CreatorDropStatus;
@@ -86,18 +89,6 @@ function visibilityBadgeLabel(visibility: CreatorDropItem["visibility"]) {
   }
 }
 
-function statusBadgeLabel(status: CreatorDropStatus) {
-  switch (status) {
-    case "live":
-      return "Live now";
-    case "archived":
-      return "Archived";
-    case "upcoming":
-    default:
-      return "Upcoming";
-  }
-}
-
 function initials(value?: string | null) {
   return value?.slice(0, 2).toUpperCase() || "DR";
 }
@@ -109,10 +100,15 @@ type CreatorDropCardProps = {
 };
 
 export default function CreatorDropCard({ drop, showCreator = true, actions }: CreatorDropCardProps) {
-  const hasLinkedDestination = Boolean(drop.linkedCollection || drop.linkedChallenge);
   const countdownLabel = getCreatorDropCountdownLabel(drop.scheduledFor, drop.status);
   const scheduleMessage = getCreatorDropScheduleMessage(drop.scheduledFor, drop.status);
   const statusVariant = drop.status === "live" ? "default" : drop.status === "archived" ? "outline" : "secondary";
+  const primaryLinkedRoute = drop.linkedCollection?.route ?? drop.linkedChallenge?.route ?? null;
+  const primaryLinkedLabel = drop.linkedCollection
+    ? getCreatorDropPrimaryActionLabel(drop.status, "collection")
+    : drop.linkedChallenge
+      ? getCreatorDropPrimaryActionLabel(drop.status, "challenge")
+      : null;
 
   return (
     <Card>
@@ -133,7 +129,7 @@ export default function CreatorDropCard({ drop, showCreator = true, actions }: C
 
             <div className="space-y-2">
               <div className="flex flex-wrap gap-2">
-                <Badge variant={statusVariant}>{statusBadgeLabel(drop.status)}</Badge>
+                <Badge variant={statusVariant}>{getCreatorDropStatusLabel(drop.status)}</Badge>
                 <Badge variant="secondary">{dropTypeLabel(drop.dropType)}</Badge>
                 <Badge variant={drop.visibility === "public" ? "outline" : "default"}>{visibilityBadgeLabel(drop.visibility)}</Badge>
                 <Badge variant="outline">{countdownLabel}</Badge>
@@ -143,10 +139,17 @@ export default function CreatorDropCard({ drop, showCreator = true, actions }: C
                 {drop.isRsvped ? <Badge variant="secondary">You’re notified</Badge> : null}
                 {!drop.isPublished ? <Badge variant="outline">Draft</Badge> : null}
                 {drop.linkedPromotion ? <Badge variant="secondary">Code {drop.linkedPromotion.code}</Badge> : null}
+                {drop.recapNotes ? <Badge variant="outline">Recap added</Badge> : null}
               </div>
               <h3 className="text-lg font-semibold">{drop.title}</h3>
               <CreatorCollaborationAttribution collaboration={drop.acceptedCollaboration ?? null} primaryCreatorUserId={drop.creatorUserId} />
               {drop.description ? <p className="whitespace-pre-wrap text-sm text-muted-foreground">{drop.description}</p> : null}
+              {drop.status === "archived" && drop.recapNotes ? (
+                <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                  <p className="mb-1 font-medium text-foreground">Launch recap</p>
+                  <p className="whitespace-pre-wrap">{drop.recapNotes}</p>
+                </div>
+              ) : null}
               <p className="text-sm font-medium text-foreground">{formatCreatorDropDateTime(drop.scheduledFor)}</p>
             </div>
           </div>
@@ -154,25 +157,27 @@ export default function CreatorDropCard({ drop, showCreator = true, actions }: C
           <div className="flex flex-wrap gap-2">
             <DropRsvpButton drop={drop} />
             <Link href={drop.detailRoute}>
-              <Button type="button" size="sm" variant="outline">View drop</Button>
+              <Button type="button" size="sm" variant={drop.status === "live" ? "default" : "outline"}>
+                {drop.status === "archived" ? "Open replay" : drop.status === "live" ? "Open launch page" : "View drop"}
+              </Button>
             </Link>
             {actions}
           </div>
         </div>
 
-        {hasLinkedDestination ? (
+        {(primaryLinkedRoute || drop.linkedPromotion) ? (
           <div className="flex flex-wrap gap-2">
-            {drop.linkedCollection ? (
-              <Link href={drop.linkedCollection.route}>
+            {primaryLinkedRoute && primaryLinkedLabel ? (
+              <Link href={primaryLinkedRoute}>
                 <Button variant={drop.status === "live" ? "default" : "outline"} size="sm">
-                  {drop.status === "live" ? "Open live collection" : `Collection · ${drop.linkedCollection.name}`}
+                  {primaryLinkedLabel}
                 </Button>
               </Link>
             ) : null}
-            {drop.linkedChallenge ? (
-              <Link href={drop.linkedChallenge.route}>
-                <Button variant={drop.status === "live" ? "default" : "outline"} size="sm">
-                  {drop.status === "live" ? "Open live challenge" : `Challenge · ${drop.linkedChallenge.title}`}
+            {drop.linkedPromotion ? (
+              <Link href={drop.detailRoute}>
+                <Button variant="outline" size="sm">
+                  {getCreatorDropPrimaryActionLabel(drop.status, "promo")} · {drop.linkedPromotion.code}
                 </Button>
               </Link>
             ) : null}

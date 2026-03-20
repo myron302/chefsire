@@ -70,7 +70,10 @@ export default function DrinkCreatorPostsFeedPage() {
   }
 
   const posts = feedQuery.data?.items ?? [];
-  const upcomingDrops = (dropsQuery.data?.items ?? []).slice(0, 3);
+  const allDrops = dropsQuery.data?.items ?? [];
+  const liveDrops = allDrops.filter((drop) => drop.status === "live").slice(0, 2);
+  const upcomingDrops = allDrops.filter((drop) => drop.status === "upcoming").slice(0, 3);
+  const replayDrops = allDrops.filter((drop) => drop.status === "archived" && drop.recapNotes).slice(0, 2);
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8" data-testid="drinks-creator-post-feed">
@@ -144,17 +147,54 @@ export default function DrinkCreatorPostsFeedPage() {
         </div>
       ) : null}
 
-      {!dropsQuery.isLoading && upcomingDrops.length > 0 ? (
-        <section className="space-y-3">
+      {!dropsQuery.isLoading && (liveDrops.length > 0 || upcomingDrops.length > 0 || replayDrops.length > 0) ? (
+        <section className="space-y-4">
           <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-xl font-semibold">Live + upcoming drops</h2>
+            <h2 className="text-xl font-semibold">Drop storytelling</h2>
             <Link href="/drinks/drops" className="text-sm underline underline-offset-2">Open full drops calendar</Link>
           </div>
-          <div className="space-y-3">
-            {upcomingDrops.map((drop) => (
-              <CreatorDropCard key={drop.id} drop={drop} />
-            ))}
-          </div>
+
+          {liveDrops.length > 0 ? (
+            <div className="space-y-3">
+              <div>
+                <h3 className="font-semibold">Live now</h3>
+                <p className="text-sm text-muted-foreground">Give active releases stronger placement without duplicating every launch across the feed.</p>
+              </div>
+              <div className="space-y-3">
+                {liveDrops.map((drop) => (
+                  <CreatorDropCard key={drop.id} drop={drop} />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {upcomingDrops.length > 0 ? (
+            <div className="space-y-3">
+              <div>
+                <h3 className="font-semibold">Upcoming drop pages</h3>
+                <p className="text-sm text-muted-foreground">Countdown pages stay lightweight while still giving followers a dedicated launch destination.</p>
+              </div>
+              <div className="space-y-3">
+                {upcomingDrops.map((drop) => (
+                  <CreatorDropCard key={drop.id} drop={drop} />
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {replayDrops.length > 0 ? (
+            <div className="space-y-3">
+              <div>
+                <h3 className="font-semibold">Recent replays</h3>
+                <p className="text-sm text-muted-foreground">A small replay lane surfaces drop recap pages without spamming duplicate launch content.</p>
+              </div>
+              <div className="space-y-3">
+                {replayDrops.map((drop) => (
+                  <CreatorDropCard key={drop.id} drop={drop} />
+                ))}
+              </div>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

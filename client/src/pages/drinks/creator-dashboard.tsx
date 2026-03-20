@@ -549,6 +549,7 @@ export default function CreatorDashboardPage() {
     id: "",
     title: "",
     description: "",
+    recapNotes: "",
     dropType: "collection_launch" as CreatorDropItem["dropType"],
     visibility: "public" as CreatorDropItem["visibility"],
     scheduledFor: "",
@@ -1024,9 +1025,10 @@ export default function CreatorDashboardPage() {
       id?: string;
       title: string;
       description?: string | null;
+      recapNotes?: string | null;
       dropType: CreatorDropItem["dropType"];
       visibility: CreatorDropItem["visibility"];
-      scheduledFor: string;
+      scheduledFor?: string;
       linkedCollectionId?: string | null;
       linkedChallengeId?: string | null;
       linkedPromotionId?: string | null;
@@ -1044,9 +1046,10 @@ export default function CreatorDashboardPage() {
           body: JSON.stringify({
             title: payloadBody.title,
             description: payloadBody.description || null,
+            recapNotes: payloadBody.recapNotes || null,
             dropType: payloadBody.dropType,
             visibility: payloadBody.dropType === "member_drop" ? "members" : payloadBody.visibility,
-            scheduledFor: new Date(payloadBody.scheduledFor).toISOString(),
+            ...(payloadBody.scheduledFor ? { scheduledFor: new Date(payloadBody.scheduledFor).toISOString() } : {}),
             linkedCollectionId: payloadBody.linkedCollectionId || null,
             linkedChallengeId: payloadBody.linkedChallengeId || null,
             linkedPromotionId: payloadBody.linkedPromotionId || null,
@@ -1067,6 +1070,7 @@ export default function CreatorDashboardPage() {
         id: "",
         title: "",
         description: "",
+        recapNotes: "",
         dropType: "collection_launch",
         visibility: "public",
         scheduledFor: "",
@@ -1102,6 +1106,7 @@ export default function CreatorDashboardPage() {
           id: "",
           title: "",
           description: "",
+          recapNotes: "",
           dropType: "collection_launch",
           visibility: "public",
           scheduledFor: "",
@@ -1422,6 +1427,9 @@ export default function CreatorDashboardPage() {
   const creatorPromotions = promotionsQuery.data?.promotions ?? [];
   const creatorPosts = creatorPostsQuery.data?.items ?? [];
   const creatorDrops = creatorDropsQuery.data?.items ?? [];
+  const creatorDropsUpcomingCount = creatorDrops.filter((drop) => drop.status === "upcoming").length;
+  const creatorDropsLiveCount = creatorDrops.filter((drop) => drop.status === "live").length;
+  const creatorDropsArchivedCount = creatorDrops.filter((drop) => drop.status === "archived").length;
   const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
   const collaborationIncoming = collaborationsQuery.data?.incoming ?? [];
   const collaborationOutgoing = collaborationsQuery.data?.outgoing ?? [];
@@ -1454,6 +1462,8 @@ export default function CreatorDashboardPage() {
   const selectedPromotionCollectionId = promotionForm.collectionId || premiumCollectionOptions[0]?.id || "";
   const selectedDropType = dropForm.dropType;
   const selectedDropCollectionId = dropForm.linkedCollectionId;
+  const editingDrop = creatorDrops.find((drop) => drop.id === dropForm.id) ?? null;
+  const isEditingNonUpcomingDrop = Boolean(editingDrop && editingDrop.status !== "upcoming");
   const availableDropPromotions = creatorPromotions.filter((promotion) => !selectedDropCollectionId || promotion.collectionId === selectedDropCollectionId);
 
   return (
@@ -2023,25 +2033,25 @@ export default function CreatorDashboardPage() {
         <CardHeader>
           <CardTitle>Scheduled Drops</CardTitle>
           <CardDescription>
-            Schedule lightweight collection launches, promos, member drops, and challenge announcements so followers know what is coming without turning this into a giant calendar product.
+            Schedule lightweight collection launches, promos, member drops, and challenge announcements so followers know what is coming, then add simple replay notes once the release has gone live.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           <div className="grid gap-2 sm:grid-cols-4">
             <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Upcoming drops</p>
-              <p className="text-xl font-semibold">{metricNumber(creatorDrops.length)}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Upcoming</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorDropsUpcomingCount)}</p>
             </div>
             <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Public</p>
-              <p className="text-xl font-semibold">{metricNumber(creatorDrops.filter((drop) => drop.visibility === "public").length)}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Live now</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorDropsLiveCount)}</p>
             </div>
             <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Followers</p>
-              <p className="text-xl font-semibold">{metricNumber(creatorDrops.filter((drop) => drop.visibility === "followers").length)}</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Archived</p>
+              <p className="text-xl font-semibold">{metricNumber(creatorDropsArchivedCount)}</p>
             </div>
             <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Members</p>
+              <p className="text-xs uppercase tracking-wide text-muted-foreground">Member visibility</p>
               <p className="text-xl font-semibold">{metricNumber(creatorDrops.filter((drop) => drop.visibility === "members").length)}</p>
             </div>
           </div>
@@ -2049,11 +2059,24 @@ export default function CreatorDashboardPage() {
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),minmax(0,1.2fr)]">
             <div className="space-y-4 rounded-lg border p-4">
               <div className="space-y-1">
-                <h3 className="font-semibold">{dropForm.id ? "Edit scheduled drop" : "New scheduled drop"}</h3>
+                <h3 className="font-semibold">{dropForm.id ? "Edit drop page" : "New scheduled drop"}</h3>
                 <p className="text-sm text-muted-foreground">
-                  Version one keeps this simple: title, timing, visibility, and optional links to a collection, challenge, or promo.
+                  Version one stays simple: title, timing, visibility, linked entities, and lightweight recap notes that can be added once the launch is live or past.
                 </p>
               </div>
+
+              {editingDrop ? (
+                <div className="rounded-md border bg-muted/30 p-3 text-sm">
+                  <p className="font-medium">Current lifecycle state: {editingDrop.status === "upcoming" ? "Upcoming" : editingDrop.status === "live" ? "Live now" : "Archived / replay"}</p>
+                  <p className="text-muted-foreground">
+                    {editingDrop.status === "upcoming"
+                      ? "Upcoming drops can still be rescheduled or fully edited before launch."
+                      : editingDrop.status === "live"
+                        ? "Live drops keep their original launch time locked so you can add highlight text without breaking go-live behavior."
+                        : "Archived drops stay editable for recap notes and linked release context, while the original launch time remains fixed."}
+                  </p>
+                </div>
+              ) : null}
 
               <div className="space-y-2">
                 <Label htmlFor="drop-title">Title</Label>
@@ -2063,6 +2086,18 @@ export default function CreatorDashboardPage() {
               <div className="space-y-2">
                 <Label htmlFor="drop-description">Description</Label>
                 <Textarea id="drop-description" value={dropForm.description} onChange={(event) => setDropForm((current) => ({ ...current, description: event.target.value }))} placeholder="Optional context for what is dropping and who should care." className="min-h-[120px]" />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="drop-recap-notes">Launch recap / release notes</Label>
+                <Textarea
+                  id="drop-recap-notes"
+                  value={dropForm.recapNotes}
+                  onChange={(event) => setDropForm((current) => ({ ...current, recapNotes: event.target.value }))}
+                  placeholder="Add lightweight recap notes, launch highlights, or release context once this drop is live or archived."
+                  className="min-h-[120px]"
+                />
+                <p className="text-xs text-muted-foreground">Simple text only for version one. This shows on the replay page and can also act as a live launch highlight.</p>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
@@ -2091,7 +2126,14 @@ export default function CreatorDashboardPage() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="drop-scheduled-for">Scheduled for</Label>
-                  <Input id="drop-scheduled-for" type="datetime-local" value={dropForm.scheduledFor} onChange={(event) => setDropForm((current) => ({ ...current, scheduledFor: event.target.value }))} />
+                  <Input
+                    id="drop-scheduled-for"
+                    type="datetime-local"
+                    value={dropForm.scheduledFor}
+                    onChange={(event) => setDropForm((current) => ({ ...current, scheduledFor: event.target.value }))}
+                    disabled={isEditingNonUpcomingDrop}
+                  />
+                  {isEditingNonUpcomingDrop ? <p className="text-xs text-muted-foreground">Launch timing is locked after go-live so recap updates do not break lifecycle automation.</p> : null}
                 </div>
               </div>
 
@@ -2170,7 +2212,7 @@ export default function CreatorDashboardPage() {
                     <option key={promotion.id} value={promotion.id}>{promotion.collectionName} · {promotion.code}</option>
                   ))}
                 </select>
-                <p className="text-xs text-muted-foreground">Promo launches can optionally point at an active or upcoming collection promo code.</p>
+                <p className="text-xs text-muted-foreground">Promo launches can point at an active or upcoming collection promo code.</p>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -2182,9 +2224,10 @@ export default function CreatorDashboardPage() {
                       id: dropForm.id || undefined,
                       title: dropForm.title.trim(),
                       description: dropForm.description.trim(),
+                      recapNotes: dropForm.recapNotes.trim(),
                       dropType: dropForm.dropType,
                       visibility: dropForm.dropType === "member_drop" ? "members" : dropForm.visibility,
-                      scheduledFor: dropForm.scheduledFor,
+                      scheduledFor: isEditingNonUpcomingDrop ? undefined : dropForm.scheduledFor,
                       linkedCollectionId: dropForm.linkedCollectionId || null,
                       linkedChallengeId: dropForm.linkedChallengeId || null,
                       linkedPromotionId: dropForm.linkedPromotionId || null,
@@ -2204,6 +2247,7 @@ export default function CreatorDashboardPage() {
                       id: "",
                       title: "",
                       description: "",
+                      recapNotes: "",
                       dropType: "collection_launch",
                       visibility: "public",
                       scheduledFor: "",
@@ -2252,6 +2296,7 @@ export default function CreatorDashboardPage() {
                             id: drop.id,
                             title: drop.title,
                             description: drop.description ?? "",
+                            recapNotes: drop.recapNotes ?? "",
                             dropType: drop.dropType,
                             visibility: drop.visibility,
                             scheduledFor: localValue,
@@ -2262,9 +2307,8 @@ export default function CreatorDashboardPage() {
                           });
                           window.location.hash = "drops";
                         }}
-                        disabled={drop.status !== "upcoming"}
                       >
-                        {drop.status === "upcoming" ? "Edit" : "Locked"}
+                        {drop.status === "upcoming" ? "Edit" : drop.recapNotes ? "Edit recap" : "Add recap"}
                       </Button>
                       <Button
                         size="sm"
