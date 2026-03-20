@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
 
 interface FollowingFeedItem {
   id: string;
@@ -28,6 +29,23 @@ interface FollowingFeedResponse {
   ok: boolean;
   followingCount: number;
   items: FollowingFeedItem[];
+}
+
+interface FollowedCampaignResponse {
+  ok: boolean;
+  count: number;
+  items: Array<{
+    campaign: CreatorCampaignItem;
+    recentUpdates: Array<{
+      id: string;
+      targetType: "drop" | "post" | "roadmap" | "promo";
+      label: string;
+      title: string;
+      description: string | null;
+      timestamp: string | null;
+      route: string;
+    }>;
+  }>;
 }
 
 function metricNumber(value: number | null | undefined): string {
@@ -62,6 +80,19 @@ export default function FollowingDrinksFeedPage() {
         throw new Error(String(message));
       }
       return payload as FollowingFeedResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
+  const followedCampaignsQuery = useQuery<FollowedCampaignResponse>({
+    queryKey: ["/api/drinks/campaigns/following", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/campaigns/following", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || `Failed to load followed campaigns (${response.status})`);
+      }
+      return payload as FollowedCampaignResponse;
     },
     enabled: Boolean(user?.id),
   });
@@ -101,6 +132,7 @@ export default function FollowingDrinksFeedPage() {
   }
 
   const { followingCount, items } = query.data;
+  const followedCampaigns = followedCampaignsQuery.data?.items ?? [];
   const safeItems = Array.isArray(items) ? items : [];
 
   return (
@@ -119,6 +151,46 @@ export default function FollowingDrinksFeedPage() {
       </div>
 
       <DrinksPlatformNav current="following" />
+
+      {followedCampaigns.length > 0 ? (
+        <section className="space-y-4">
+          <div className="flex items-baseline justify-between gap-2">
+            <div>
+              <h2 className="text-xl font-semibold">Campaign arcs you follow</h2>
+              <p className="text-sm text-muted-foreground">Themed seasons and launch stories you explicitly opted into.</p>
+            </div>
+            <Link href="/drinks/campaigns/following"><Button size="sm" variant="outline">Open all followed campaigns</Button></Link>
+          </div>
+
+          <div className="grid gap-4">
+            {followedCampaigns.slice(0, 2).map((item) => (
+              <Card key={item.campaign.id}>
+                <CardContent className="space-y-4 p-4">
+                  <CreatorCampaignCard campaign={item.campaign} />
+                  {item.recentUpdates.length > 0 ? (
+                    <div className="grid gap-2 md:grid-cols-3">
+                      {item.recentUpdates.slice(0, 3).map((update) => (
+                        <Link key={update.id} href={update.route}>
+                          <div className="rounded-md border p-3 transition-colors hover:border-primary/40">
+                            <div className="flex flex-wrap gap-2">
+                              <Badge variant="outline">{update.label}</Badge>
+                              {update.timestamp ? <Badge variant="secondary">{formatDate(update.timestamp)}</Badge> : null}
+                            </div>
+                            <p className="mt-2 font-medium">{update.title}</p>
+                            {update.description ? <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{update.description}</p> : null}
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No visible campaign updates yet.</p>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       {safeItems.length === 0 ? (
         <Card>

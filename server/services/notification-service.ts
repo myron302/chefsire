@@ -4,6 +4,7 @@
 import { db } from "../db";
 import { eq } from "drizzle-orm";
 import {
+  creatorCampaignFollows,
   creatorDropRsvps,
   creatorMemberships,
   drinkCollectionWishlists,
@@ -23,6 +24,7 @@ export const DRINK_ALERT_TYPES = {
   publicCreatorDrop: "drink_creator_public_drop",
   rsvpedDropLive: "drink_creator_drop_rsvp_live",
   rsvpedDropReminder: "drink_creator_drop_rsvp_reminder",
+  followedCampaignUpdate: "drink_campaign_followed_update",
 } as const;
 
 export type DrinkAlertType = (typeof DRINK_ALERT_TYPES)[keyof typeof DRINK_ALERT_TYPES];
@@ -109,6 +111,19 @@ async function loadRsvpRecipientIds(dropId: string, excludedUserId?: string | nu
     .select({ userId: creatorDropRsvps.userId })
     .from(creatorDropRsvps)
     .where(eq(creatorDropRsvps.dropId, dropId));
+
+  return [...new Set(
+    rows
+      .map((row) => row.userId)
+      .filter((userId): userId is string => Boolean(userId) && userId !== excludedUserId),
+  )];
+}
+
+async function loadCampaignFollowerRecipientIds(campaignId: string, excludedUserId?: string | null) {
+  const rows = await db
+    .select({ userId: creatorCampaignFollows.userId })
+    .from(creatorCampaignFollows)
+    .where(eq(creatorCampaignFollows.campaignId, campaignId));
 
   return [...new Set(
     rows
@@ -337,6 +352,43 @@ export async function sendRsvpedDropLiveAlerts(params: {
         creatorUserId: params.creatorUserId,
         audience: "rsvp",
         event: "live",
+      },
+    })),
+  );
+}
+
+export async function sendFollowedCampaignUpdateAlerts(params: {
+  campaignId: string;
+  campaignName: string;
+  creatorUserId: string;
+  creatorUsername?: string | null;
+  creatorAvatar?: string | null;
+  title: string;
+  message: string;
+  linkUrl: string;
+  recipientIds?: string[];
+  metadata?: Record<string, any>;
+}) {
+  const recipientIds = params.recipientIds?.length
+    ? [...new Set(params.recipientIds.filter((userId) => Boolean(userId) && userId !== params.creatorUserId))]
+    : await loadCampaignFollowerRecipientIds(params.campaignId, params.creatorUserId);
+
+  if (!recipientIds.length) return;
+
+  await sendBulkDrinkAlerts(
+    recipientIds.map((userId) => ({
+      userId,
+      type: DRINK_ALERT_TYPES.followedCampaignUpdate,
+      title: params.title,
+      message: params.message,
+      linkUrl: params.linkUrl,
+      imageUrl: params.creatorAvatar ?? null,
+      metadata: {
+        campaignId: params.campaignId,
+        campaignName: params.campaignName,
+        creatorUserId: params.creatorUserId,
+        audience: "campaign_follow",
+        ...(params.metadata ?? {}),
       },
     })),
   );

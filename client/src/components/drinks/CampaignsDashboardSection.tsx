@@ -268,7 +268,7 @@ export default function CampaignsDashboardSection() {
           <div className="rounded-md border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Campaigns</p><p className="text-xl font-semibold">{campaigns.length}</p></div>
           <div className="rounded-md border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Active</p><p className="text-xl font-semibold">{campaigns.filter((item) => item.state === "active").length}</p></div>
           <div className="rounded-md border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Upcoming</p><p className="text-xl font-semibold">{campaigns.filter((item) => item.state === "upcoming").length}</p></div>
-          <div className="rounded-md border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Past</p><p className="text-xl font-semibold">{campaigns.filter((item) => item.state === "past").length}</p></div>
+          <div className="rounded-md border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Interest</p><p className="text-xl font-semibold">{campaigns.reduce((sum, item) => sum + item.followerCount, 0)}</p></div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),minmax(0,1.2fr)]">
@@ -360,6 +360,9 @@ export default function CampaignsDashboardSection() {
                 showCreator={false}
                 actions={(
                   <>
+                    <div className="flex items-center rounded-md border px-3 text-xs text-muted-foreground">
+                      {campaign.followerCount} following
+                    </div>
                     <Button size="sm" variant="outline" onClick={() => { void loadCampaignIntoForm(campaign); }}>Edit</Button>
                     <Button size="sm" variant="outline" onClick={() => deleteMutation.mutate(campaign.id)} disabled={deleteMutation.isPending}>{deleteMutation.isPending ? "Deleting…" : "Delete"}</Button>
                   </>

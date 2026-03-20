@@ -15,6 +15,7 @@ import {
   creatorRoadmapItems,
   creatorCampaigns,
   creatorCampaignLinks,
+  creatorCampaignFollows,
   creatorDropEvents,
   creatorMembershipSalesLedger,
   creatorMemberships,
@@ -50,6 +51,7 @@ import {
   insertCreatorRoadmapItemSchema,
   insertCreatorCampaignSchema,
   insertCreatorCampaignLinkSchema,
+  insertCreatorCampaignFollowSchema,
   insertCreatorDropEventSchema,
   insertDrinkCollectionSchema,
   insertDrinkChallengeSchema,
@@ -67,6 +69,7 @@ import {
   sendCreatorDropAlerts,
   sendFollowedCreatorCollectionLaunchAlerts,
   sendFollowedCreatorPromoAlerts,
+  sendFollowedCampaignUpdateAlerts,
   sendRsvpedDropLiveAlerts,
   sendWishlistPriceDropAlerts,
   sendWishlistPromoAlerts,
@@ -116,6 +119,7 @@ type CreatorPostRecord = typeof creatorPosts.$inferSelect;
 type CreatorRoadmapRecord = typeof creatorRoadmapItems.$inferSelect;
 type CreatorCampaignRecord = typeof creatorCampaigns.$inferSelect;
 type CreatorCampaignLinkRecord = typeof creatorCampaignLinks.$inferSelect;
+type CreatorCampaignFollowRecord = typeof creatorCampaignFollows.$inferSelect;
 type CreatorDropEventRecord = typeof creatorDropEvents.$inferSelect;
 type CreatorCollaborationRecord = typeof creatorCollaborations.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
@@ -1425,6 +1429,22 @@ async function maybeNotifyPromoActivation(input: {
       promotionCode: nextPromotion.code,
     }),
   ]);
+
+  await maybeSendCampaignLinkedContentAlerts({
+    targetType: "promo",
+    targetId: nextPromotion.id,
+    contentVisibility: "public",
+    title: "A campaign you follow has a live promo",
+    message: `${creator?.username ? `@${creator.username}` : "A creator"} started promo code ${nextPromotion.code} inside a campaign you follow.`,
+    creatorUserId: collection.userId,
+    creatorUsername: creator?.username ?? null,
+    creatorAvatar: creator?.avatar ?? null,
+    metadata: {
+      promotionId: nextPromotion.id,
+      collectionId: collection.id,
+      event: "promo_started",
+    },
+  });
 }
 
 function logCollectionRouteError(route: string, req: any, error: unknown) {
@@ -1910,6 +1930,16 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_follows (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
+        created_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT creator_campaign_follows_user_campaign_idx UNIQUE (user_id, campaign_id)
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_drop_events (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         drop_id varchar NOT NULL REFERENCES creator_drops(id) ON DELETE CASCADE,
@@ -2092,6 +2122,9 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_campaign_idx ON creator_campaign_links(campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_target_idx ON creator_campaign_links(target_type, target_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_campaign_sort_idx ON creator_campaign_links(campaign_id, sort_order, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_user_idx ON creator_campaign_follows(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_campaign_idx ON creator_campaign_follows(campaign_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_campaign_created_at_idx ON creator_campaign_follows(campaign_id, created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_drop_idx ON creator_drop_events(drop_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_event_type_idx ON creator_drop_events(event_type);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_drop_event_created_at_idx ON creator_drop_events(drop_id, event_type, created_at);`);
@@ -2308,6 +2341,30 @@ async function loadActiveMembershipCreatorIdsForUser(userId?: string | null) {
   return new Set(memberships.map((membership) => membership.creatorUserId).filter(Boolean));
 }
 
+async function loadFollowedCampaignIdsForUser(userId?: string | null) {
+  if (!db || !userId) return new Set<string>();
+  const rows = await db
+    .select({ campaignId: creatorCampaignFollows.campaignId })
+    .from(creatorCampaignFollows)
+    .where(eq(creatorCampaignFollows.userId, userId));
+  return new Set(rows.map((row) => row.campaignId).filter(Boolean));
+}
+
+async function loadCampaignFollowerCountMap(campaignIds: string[]) {
+  if (!db || campaignIds.length === 0) return new Map<string, number>();
+
+  const rows = await db
+    .select({
+      campaignId: creatorCampaignFollows.campaignId,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(creatorCampaignFollows)
+    .where(inArray(creatorCampaignFollows.campaignId, campaignIds))
+    .groupBy(creatorCampaignFollows.campaignId);
+
+  return new Map(rows.map((row) => [row.campaignId, Number(row.count ?? 0)]));
+}
+
 function canViewerSeeCreatorPost(input: {
   post: Pick<CreatorPostRecord, "creatorUserId" | "visibility">;
   viewerId?: string | null;
@@ -2474,9 +2531,12 @@ function serializeCreatorCampaign(
     viewerId?: string | null;
     creator?: { id: string; username: string | null; avatar: string | null } | null;
     counts?: Partial<Record<CreatorCampaignTargetType, number>>;
+    followerCount?: number;
+    isFollowing?: boolean;
   } = {},
 ) {
   const counts = options.counts ?? {};
+  const isOwner = Boolean(options.viewerId && campaign.creatorUserId === options.viewerId);
   return {
     id: campaign.id,
     creatorUserId: campaign.creatorUserId,
@@ -2490,6 +2550,10 @@ function serializeCreatorCampaign(
     isActive: Boolean(campaign.isActive),
     state: getCreatorCampaignState(campaign),
     route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+    followerCount: Number(options.followerCount ?? 0),
+    isFollowing: Boolean(options.isFollowing),
+    isOwner,
+    canFollow: Boolean(options.viewerId && !isOwner),
     counts: {
       collections: Number(counts.collection ?? 0),
       drops: Number(counts.drop ?? 0),
@@ -2539,6 +2603,7 @@ async function loadCreatorCampaignLinksByCampaignIds(campaignIds: string[]) {
 async function loadCreatorCampaignSummaryMaps(campaigns: CreatorCampaignRecord[]) {
   const creatorMap = await loadCreatorProfilesMap([...new Set(campaigns.map((campaign) => campaign.creatorUserId).filter(Boolean))]);
   const linkMap = await loadCreatorCampaignLinksByCampaignIds(campaigns.map((campaign) => campaign.id));
+  const followerCountMap = await loadCampaignFollowerCountMap(campaigns.map((campaign) => campaign.id));
   const countsMap = new Map<string, Partial<Record<CreatorCampaignTargetType, number>>>();
 
   for (const campaign of campaigns) {
@@ -2555,6 +2620,7 @@ async function loadCreatorCampaignSummaryMaps(campaigns: CreatorCampaignRecord[]
     creatorMap,
     linkMap,
     countsMap,
+    followerCountMap,
   };
 }
 
@@ -3099,16 +3165,22 @@ async function loadCreatorCampaignDetail(campaign: CreatorCampaignRecord, viewer
       code: promotion.code,
       collectionId: promotion.collectionId,
       collectionName: collectionMap.get(promotion.collectionId)?.name ?? "Collection",
+      createdAt: promotion.createdAt ? promotion.createdAt.toISOString() : null,
       startsAt: promotion.startsAt ? promotion.startsAt.toISOString() : null,
       endsAt: promotion.endsAt ? promotion.endsAt.toISOString() : null,
       isActive: Boolean(promotion.isActive),
       route: `/drinks/collections/${encodeURIComponent(promotion.collectionId)}`,
     }));
 
+  const followerCountMap = await loadCampaignFollowerCountMap([campaign.id]);
+  const followedCampaignIds = await loadFollowedCampaignIdsForUser(viewerId);
+
   const detail = {
     campaign: serializeCreatorCampaign(campaign, {
       viewerId,
       creator: creatorMap.get(campaign.creatorUserId) ?? null,
+      followerCount: followerCountMap.get(campaign.id) ?? 0,
+      isFollowing: followedCampaignIds.has(campaign.id),
       counts: links.reduce((acc, link) => {
         const key = link.targetType as CreatorCampaignTargetType;
         acc[key] = Number(acc[key] ?? 0) + 1;
@@ -3163,6 +3235,178 @@ async function loadCreatorCampaignDetail(campaign: CreatorCampaignRecord, viewer
   };
 
   return detail;
+}
+
+type CreatorCampaignUpdateItem = {
+  id: string;
+  targetType: "drop" | "post" | "roadmap" | "promo";
+  label: string;
+  title: string;
+  description: string | null;
+  timestamp: string | null;
+  route: string;
+};
+
+function buildCreatorCampaignUpdateItems(detail: Awaited<ReturnType<typeof loadCreatorCampaignDetail>>) {
+  const updates: CreatorCampaignUpdateItem[] = [
+    ...detail.linkedContent.drops.map((drop) => ({
+      id: `drop:${drop.id}`,
+      targetType: "drop" as const,
+      label: drop.status === "live" ? "Drop live" : drop.status === "upcoming" ? "Drop scheduled" : "Drop replay",
+      title: drop.title,
+      description: drop.description ?? drop.recapNotes ?? null,
+      timestamp: drop.scheduledFor ?? drop.updatedAt ?? drop.createdAt,
+      route: drop.detailRoute,
+    })),
+    ...detail.linkedContent.posts.map((post) => ({
+      id: `post:${post.id}`,
+      targetType: "post" as const,
+      label: post.postType === "member_only" ? "Member post" : "Campaign post",
+      title: post.title,
+      description: post.body ?? null,
+      timestamp: post.updatedAt ?? post.createdAt,
+      route: post.linkedCollection?.route ?? post.linkedChallenge?.route ?? detail.campaign.route,
+    })),
+    ...detail.linkedContent.roadmap.map((item) => ({
+      id: `roadmap:${item.id}`,
+      targetType: "roadmap" as const,
+      label: item.status === "upcoming" ? "Roadmap note" : item.status === "live" ? "Roadmap live" : "Roadmap archive",
+      title: item.title,
+      description: item.description ?? null,
+      timestamp: item.releasedAt ?? item.scheduledFor ?? item.updatedAt ?? item.createdAt,
+      route: item.linkedCollection?.route ?? item.linkedChallenge?.route ?? "/drinks/roadmap",
+    })),
+    ...detail.linkedContent.promos.map((promo) => ({
+      id: `promo:${promo.id}`,
+      targetType: "promo" as const,
+      label: promo.isActive ? "Promo active" : "Promo linked",
+      title: `Promo code ${promo.code}`,
+      description: `Applies to ${promo.collectionName}.`,
+      timestamp: promo.startsAt ?? promo.createdAt ?? null,
+      route: promo.route,
+    })),
+  ];
+
+  return updates
+    .sort((a, b) => new Date(b.timestamp ?? 0).getTime() - new Date(a.timestamp ?? 0).getTime())
+    .slice(0, 8);
+}
+
+async function loadCampaignAlertRecipientIds(
+  campaign: Pick<CreatorCampaignRecord, "id" | "creatorUserId" | "visibility">,
+  contentVisibility: "public" | "followers" | "members",
+) {
+  if (!db) return [];
+
+  const followRows = await db
+    .select({ userId: creatorCampaignFollows.userId })
+    .from(creatorCampaignFollows)
+    .where(eq(creatorCampaignFollows.campaignId, campaign.id));
+
+  let recipientIds = [...new Set(
+    followRows
+      .map((row) => row.userId)
+      .filter((userId): userId is string => Boolean(userId) && userId !== campaign.creatorUserId),
+  )];
+
+  if (!recipientIds.length) return [];
+
+  const requiredAudience = campaign.visibility === "members" || contentVisibility === "members"
+    ? "members"
+    : campaign.visibility === "followers" || contentVisibility === "followers"
+      ? "followers"
+      : "public";
+
+  if (requiredAudience === "followers") {
+    const followerRows = await db
+      .select({ userId: follows.followerId })
+      .from(follows)
+      .where(and(eq(follows.followingId, campaign.creatorUserId), inArray(follows.followerId, recipientIds)));
+    recipientIds = followerRows.map((row) => row.userId).filter(Boolean);
+  } else if (requiredAudience === "members") {
+    const membershipRows = await db
+      .select()
+      .from(creatorMemberships)
+      .where(and(eq(creatorMemberships.creatorUserId, campaign.creatorUserId), inArray(creatorMemberships.userId, recipientIds)));
+    const activeMemberSet = new Set(
+      membershipRows
+        .filter((membership) => isCreatorMembershipActiveRecord(membership))
+        .map((membership) => membership.userId)
+        .filter(Boolean),
+    );
+    recipientIds = recipientIds.filter((userId) => activeMemberSet.has(userId));
+  }
+
+  return recipientIds;
+}
+
+async function maybeSendCampaignLinkedContentAlerts(input: {
+  targetType: "drop" | "post" | "promo";
+  targetId: string;
+  contentVisibility: "public" | "followers" | "members";
+  title: string;
+  message: string;
+  creatorUserId: string;
+  creatorUsername?: string | null;
+  creatorAvatar?: string | null;
+  metadata?: Record<string, any>;
+}) {
+  if (!db) return;
+
+  const linkRows = await db
+    .select({ campaignId: creatorCampaignLinks.campaignId })
+    .from(creatorCampaignLinks)
+    .where(and(eq(creatorCampaignLinks.targetType, input.targetType), eq(creatorCampaignLinks.targetId, input.targetId)));
+
+  const campaignIds = [...new Set(linkRows.map((row) => row.campaignId).filter(Boolean))];
+  if (!campaignIds.length) return;
+
+  const campaigns = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(inArray(creatorCampaigns.id, campaignIds));
+
+  for (const campaign of campaigns) {
+    let recipientIds = await loadCampaignAlertRecipientIds(campaign, input.contentVisibility);
+    if (!recipientIds.length) continue;
+
+    const eventKey = typeof input.metadata?.event === "string" ? input.metadata.event : null;
+    if (eventKey) {
+      const existingRows = await db
+        .select({ userId: notifications.userId })
+        .from(notifications)
+        .where(and(
+          eq(notifications.type, DRINK_ALERT_TYPES.followedCampaignUpdate),
+          inArray(notifications.userId, recipientIds),
+          sql`${notifications.metadata}->>'campaignId' = ${campaign.id}`,
+          sql`${notifications.metadata}->>'targetType' = ${input.targetType}`,
+          sql`${notifications.metadata}->>'targetId' = ${input.targetId}`,
+          sql`${notifications.metadata}->>'event' = ${eventKey}`,
+        ));
+
+      const existingUserIds = new Set(existingRows.map((row) => row.userId).filter(Boolean));
+      recipientIds = recipientIds.filter((userId) => !existingUserIds.has(userId));
+      if (!recipientIds.length) continue;
+    }
+
+    await sendFollowedCampaignUpdateAlerts({
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      creatorUserId: input.creatorUserId,
+      creatorUsername: input.creatorUsername ?? null,
+      creatorAvatar: input.creatorAvatar ?? null,
+      title: input.title,
+      message: input.message,
+      linkUrl: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      recipientIds,
+      metadata: {
+        targetType: input.targetType,
+        targetId: input.targetId,
+        contentVisibility: input.contentVisibility,
+        ...input.metadata,
+      },
+    });
+  }
 }
 
 function serializeCreatorPost(
@@ -3367,6 +3611,22 @@ async function maybeSendCreatorDropAlerts(drop: CreatorDropRecord) {
     visibility: drop.visibility as CreatorDropVisibility,
     scheduledFor: drop.scheduledFor.toISOString(),
   });
+
+  await maybeSendCampaignLinkedContentAlerts({
+    targetType: "drop",
+    targetId: drop.id,
+    contentVisibility: drop.visibility as "public" | "followers" | "members",
+    title: "A campaign you follow has a drop update",
+    message: `${creator?.username ? `@${creator.username}` : "A creator"} scheduled "${drop.title}" inside a campaign you follow.`,
+    creatorUserId: drop.creatorUserId,
+    creatorUsername: creator?.username ?? null,
+    creatorAvatar: creator?.avatar ?? null,
+    metadata: {
+      dropId: drop.id,
+      event: getCreatorDropStatus(drop) === "live" ? "drop_live" : "drop_scheduled",
+      scheduledFor: drop.scheduledFor.toISOString(),
+    },
+  });
 }
 
 async function maybeSendCreatorDropRsvpLiveAlerts() {
@@ -3446,15 +3706,51 @@ async function maybeSendCreatorDropRsvpLiveAlerts() {
       creatorAvatar: creator?.avatar ?? null,
       recipientIds: pendingRecipientIds,
     });
+
+    await maybeSendCampaignLinkedContentAlerts({
+      targetType: "drop",
+      targetId: drop.id,
+      contentVisibility: drop.visibility as "public" | "followers" | "members",
+      title: "A campaign you follow has gone live",
+      message: `${creator?.username ? `@${creator.username}` : "A creator"} just took "${drop.title}" live inside a campaign you follow.`,
+      creatorUserId: drop.creatorUserId,
+      creatorUsername: creator?.username ?? null,
+      creatorAvatar: creator?.avatar ?? null,
+      metadata: {
+        dropId: drop.id,
+        event: "drop_live",
+        scheduledFor: drop.scheduledFor.toISOString(),
+      },
+    });
   }
 }
 
 async function maybeSendCreatorPostAlerts(post: CreatorPostRecord) {
   if (!db) return;
-  if (post.postType !== "promo" && post.postType !== "collection_launch" && post.visibility !== "members") return;
 
   const creator = await loadUserBasicProfile(post.creatorUserId);
   const creatorHandle = creator?.username ? `@${creator.username}` : "A creator";
+  const shouldSendCreatorAudienceAlert = post.postType === "promo" || post.postType === "collection_launch" || post.visibility === "members";
+
+  if (!shouldSendCreatorAudienceAlert) {
+    await maybeSendCampaignLinkedContentAlerts({
+      targetType: "post",
+      targetId: post.id,
+      contentVisibility: post.visibility as "public" | "followers" | "members",
+      title: "A campaign you follow has a new update",
+      message: `${creatorHandle} published "${post.title}" inside a campaign you follow.`,
+      creatorUserId: post.creatorUserId,
+      creatorUsername: creator?.username ?? null,
+      creatorAvatar: creator?.avatar ?? null,
+      metadata: {
+        creatorPostId: post.id,
+        event: "post_published",
+        postType: post.postType,
+      },
+    });
+    return;
+  }
+
   const linkUrl = post.linkedCollectionId
     ? `/drinks/collections/${encodeURIComponent(post.linkedCollectionId)}`
     : `/drinks/creator/${encodeURIComponent(post.creatorUserId)}`;
@@ -3522,6 +3818,22 @@ async function maybeSendCreatorPostAlerts(post: CreatorPostRecord) {
     })),
   ).catch((error) => {
     console.error("Failed to send creator post alerts:", error);
+  });
+
+  await maybeSendCampaignLinkedContentAlerts({
+    targetType: "post",
+    targetId: post.id,
+    contentVisibility: post.visibility as "public" | "followers" | "members",
+    title: "A campaign you follow has a new update",
+    message: `${creatorHandle} published "${post.title}" inside a campaign you follow.`,
+    creatorUserId: post.creatorUserId,
+    creatorUsername: creator?.username ?? null,
+    creatorAvatar: creator?.avatar ?? null,
+    metadata: {
+      creatorPostId: post.id,
+      event: "post_published",
+      postType: post.postType,
+    },
   });
 }
 
@@ -9636,10 +9948,11 @@ r.get("/campaigns", optionalAuth, async (req, res) => {
     }
 
     const viewerId = req.user?.id ?? null;
-    const [campaigns, followedCreatorIds, memberCreatorIds] = await Promise.all([
+    const [campaigns, followedCreatorIds, memberCreatorIds, followedCampaignIds] = await Promise.all([
       db.select().from(creatorCampaigns).orderBy(desc(creatorCampaigns.updatedAt)).limit(160),
       loadFollowedCreatorIdsForUser(viewerId),
       loadActiveMembershipCreatorIdsForUser(viewerId),
+      loadFollowedCampaignIdsForUser(viewerId),
     ]);
 
     const visibleCampaigns = campaigns.filter((campaign) => canViewerSeeCreatorCampaign({
@@ -9657,6 +9970,8 @@ r.get("/campaigns", optionalAuth, async (req, res) => {
         viewerId,
         creator: maps.creatorMap.get(campaign.creatorUserId) ?? null,
         counts: maps.countsMap.get(campaign.id),
+        followerCount: maps.followerCountMap.get(campaign.id) ?? 0,
+        isFollowing: followedCampaignIds.has(campaign.id),
       })),
     });
   } catch (error) {
@@ -9678,10 +9993,11 @@ r.get("/campaigns/creator/:userId", optionalAuth, async (req, res) => {
     }
 
     const viewerId = req.user?.id ?? null;
-    const [campaigns, followedCreatorIds, memberCreatorIds] = await Promise.all([
+    const [campaigns, followedCreatorIds, memberCreatorIds, followedCampaignIds] = await Promise.all([
       db.select().from(creatorCampaigns).where(eq(creatorCampaigns.creatorUserId, creatorUserId)).orderBy(desc(creatorCampaigns.updatedAt)).limit(80),
       loadFollowedCreatorIdsForUser(viewerId),
       loadActiveMembershipCreatorIdsForUser(viewerId),
+      loadFollowedCampaignIdsForUser(viewerId),
     ]);
 
     const visibleCampaigns = campaigns.filter((campaign) => canViewerSeeCreatorCampaign({
@@ -9700,11 +10016,191 @@ r.get("/campaigns/creator/:userId", optionalAuth, async (req, res) => {
         viewerId,
         creator: maps.creatorMap.get(campaign.creatorUserId) ?? null,
         counts: maps.countsMap.get(campaign.id),
+        followerCount: maps.followerCountMap.get(campaign.id) ?? 0,
+        isFollowing: followedCampaignIds.has(campaign.id),
       })),
     });
   } catch (error) {
     const message = logCollectionRouteError("/campaigns/creator/:userId", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load creator campaigns"));
+  }
+});
+
+r.get("/campaigns/following", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const viewerId = req.user!.id;
+    const [followRows, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      db
+        .select({ campaignId: creatorCampaignFollows.campaignId, createdAt: creatorCampaignFollows.createdAt })
+        .from(creatorCampaignFollows)
+        .where(eq(creatorCampaignFollows.userId, viewerId))
+        .orderBy(desc(creatorCampaignFollows.createdAt))
+        .limit(120),
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+
+    const campaignIds = followRows.map((row) => row.campaignId).filter(Boolean);
+    if (campaignIds.length === 0) {
+      return res.json({ ok: true, count: 0, items: [] });
+    }
+
+    const campaigns = await db
+      .select()
+      .from(creatorCampaigns)
+      .where(inArray(creatorCampaigns.id, campaignIds));
+
+    const visibleCampaigns = campaigns.filter((campaign) => canViewerSeeCreatorCampaign({
+      campaign,
+      viewerId,
+      followedCreatorIds,
+      memberCreatorIds,
+    }));
+
+    const campaignMap = new Map(visibleCampaigns.map((campaign) => [campaign.id, campaign]));
+    const orderedCampaigns = followRows
+      .map((row) => campaignMap.get(row.campaignId))
+      .filter((campaign): campaign is CreatorCampaignRecord => Boolean(campaign));
+
+    const details = await Promise.all(orderedCampaigns.map((campaign) => loadCreatorCampaignDetail(campaign, viewerId)));
+
+    return res.json({
+      ok: true,
+      count: details.length,
+      items: details.map((detail) => ({
+        campaign: detail.campaign,
+        recentUpdates: buildCreatorCampaignUpdateItems(detail).slice(0, 3),
+        linkedCounts: detail.campaign.counts,
+      })),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/following", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load followed campaigns"));
+  }
+});
+
+r.get("/campaigns/:id/follow-status", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaignRows = await db.select().from(creatorCampaigns).where(eq(creatorCampaigns.id, campaignId)).limit(1);
+    const campaign = campaignRows[0];
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [followedCreatorIds, memberCreatorIds, followerCountMap, followedCampaignIds] = await Promise.all([
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+      loadCampaignFollowerCountMap([campaignId]),
+      loadFollowedCampaignIdsForUser(viewerId),
+    ]);
+
+    if (!canViewerSeeCreatorCampaign({ campaign, viewerId, followedCreatorIds, memberCreatorIds })) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    return res.json({
+      ok: true,
+      campaignId,
+      isFollowing: viewerId ? followedCampaignIds.has(campaignId) : false,
+      followerCount: followerCountMap.get(campaignId) ?? 0,
+      canFollow: Boolean(viewerId && viewerId !== campaign.creatorUserId),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/follow-status", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign follow status"));
+  }
+});
+
+r.post("/campaigns/:id/follow", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaignRows = await db.select().from(creatorCampaigns).where(eq(creatorCampaigns.id, campaignId)).limit(1);
+    const campaign = campaignRows[0];
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+    if (campaign.creatorUserId === req.user!.id) {
+      return res.status(400).json({ ok: false, error: "Creators do not need to follow their own campaigns." });
+    }
+
+    const [followedCreatorIds, memberCreatorIds] = await Promise.all([
+      loadFollowedCreatorIdsForUser(req.user!.id),
+      loadActiveMembershipCreatorIdsForUser(req.user!.id),
+    ]);
+    if (!canViewerSeeCreatorCampaign({ campaign, viewerId: req.user!.id, followedCreatorIds, memberCreatorIds })) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    await db.insert(creatorCampaignFollows).values(insertCreatorCampaignFollowSchema.parse({
+      userId: req.user!.id,
+      campaignId,
+    })).onConflictDoNothing();
+
+    const followerCountMap = await loadCampaignFollowerCountMap([campaignId]);
+    return res.status(201).json({
+      ok: true,
+      campaignId,
+      isFollowing: true,
+      followerCount: followerCountMap.get(campaignId) ?? 0,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/follow", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to follow campaign"));
+  }
+});
+
+r.delete("/campaigns/:id/follow", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    await db.delete(creatorCampaignFollows).where(and(
+      eq(creatorCampaignFollows.campaignId, campaignId),
+      eq(creatorCampaignFollows.userId, req.user!.id),
+    ));
+
+    const followerCountMap = await loadCampaignFollowerCountMap([campaignId]);
+    return res.json({
+      ok: true,
+      campaignId,
+      isFollowing: false,
+      followerCount: followerCountMap.get(campaignId) ?? 0,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/follow", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to unfollow campaign"));
   }
 });
 
@@ -9736,7 +10232,7 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
     }
 
     const detail = await loadCreatorCampaignDetail(campaign, viewerId);
-    return res.json({ ok: true, ...detail });
+    return res.json({ ok: true, ...detail, recentUpdates: buildCreatorCampaignUpdateItems(detail) });
   } catch (error) {
     const message = logCollectionRouteError("/campaigns/:slug", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load creator campaign"));
