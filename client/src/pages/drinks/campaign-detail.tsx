@@ -13,6 +13,30 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useUser } from "@/contexts/UserContext";
 
+type CampaignOwnerAnalytics = {
+  campaignId: string;
+  slug: string;
+  name: string;
+  visibility: "public" | "followers" | "members";
+  isActive: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  followerCount: number;
+  linkedDropsCount: number;
+  linkedPostsCount: number;
+  linkedCollectionsCount: number;
+  linkedChallengesCount: number;
+  totalDropRsvps: number;
+  totalDropViews: number;
+  totalDropClicks: number;
+  purchasesFromLinkedCollections: number;
+  purchasesFromLinkedCollectionsNote: string | null;
+  membershipsFromCampaign: number;
+  membershipsFromCampaignNote: string | null;
+  campaignEngagementScore: number;
+  campaignEngagementScoreNote: string;
+};
+
 interface CampaignDetailResponse {
   ok: boolean;
   campaign: CreatorCampaignItem;
@@ -24,6 +48,7 @@ interface CampaignDetailResponse {
     posts: CreatorPostItem[];
     roadmap: CreatorRoadmapItem[];
   };
+  ownerAnalytics?: CampaignOwnerAnalytics | null;
   recentUpdates: Array<{
     id: string;
     targetType: "drop" | "post" | "roadmap" | "promo";
@@ -124,6 +149,29 @@ export default function DrinkCampaignDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {query.data.ownerAnalytics ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Owner-only campaign performance</CardTitle>
+                <CardDescription>Visible only to the campaign owner. Purchase and membership conversion counts are clearly marked as approximate proxies.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
+                  <div className="rounded-md border p-3 text-sm"><p className="font-medium">Campaign followers</p><p className="text-2xl font-semibold">{query.data.ownerAnalytics.followerCount}</p></div>
+                  <div className="rounded-md border p-3 text-sm"><p className="font-medium">Linked drops</p><p className="text-2xl font-semibold">{query.data.ownerAnalytics.linkedDropsCount}</p></div>
+                  <div className="rounded-md border p-3 text-sm"><p className="font-medium">RSVP interest</p><p className="text-2xl font-semibold">{query.data.ownerAnalytics.totalDropRsvps}</p></div>
+                  <div className="rounded-md border p-3 text-sm"><p className="font-medium">Drop click-throughs</p><p className="text-2xl font-semibold">{query.data.ownerAnalytics.totalDropClicks}</p></div>
+                  <div className="rounded-md border p-3 text-sm"><p className="font-medium">Purchases from linked collections</p><p className="text-2xl font-semibold">{query.data.ownerAnalytics.purchasesFromLinkedCollections}</p><p className="mt-1 text-xs text-muted-foreground">{query.data.ownerAnalytics.purchasesFromLinkedCollectionsNote ?? "No linked premium purchase proxy in this campaign yet."}</p></div>
+                  <div className="rounded-md border p-3 text-sm"><p className="font-medium">Membership conversions</p><p className="text-2xl font-semibold">{query.data.ownerAnalytics.membershipsFromCampaign}</p><p className="mt-1 text-xs text-muted-foreground">{query.data.ownerAnalytics.membershipsFromCampaignNote ?? "Only shown for member-focused campaigns."}</p></div>
+                </div>
+                <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground">Campaign engagement score</p>
+                  <p className="mt-1">{query.data.ownerAnalytics.campaignEngagementScore} · {query.data.ownerAnalytics.campaignEngagementScoreNote}</p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card>
             <CardHeader>
