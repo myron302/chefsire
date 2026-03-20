@@ -89,6 +89,28 @@ type CampaignGoalItem = {
   metricNote: string | null;
 };
 
+type CampaignHealthItem = {
+  campaignId: string;
+  healthState: "thriving" | "healthy" | "watch" | "at_risk" | "completed";
+  healthScore: number;
+  status: "upcoming" | "active" | "past";
+  primaryConcern: string | null;
+  primaryStrength: string | null;
+  watchReasons: string[];
+  strengthReasons: string[];
+  recentActivityAt: string | null;
+  followerMomentum: "surging" | "up" | "flat" | "down" | "quiet";
+  rsvpMomentum: "surging" | "up" | "flat" | "down" | "quiet";
+  clickMomentum: "surging" | "up" | "flat" | "down" | "quiet";
+  goalsOnTrack: number;
+  goalsBehind: number;
+  recommendation: {
+    title: string;
+    suggestedAction: string | null;
+    suggestedRoute: string | null;
+  } | null;
+};
+
 interface CampaignDetailResponse {
   ok: boolean;
   campaign: CreatorCampaignItem;
@@ -109,6 +131,7 @@ interface CampaignDetailResponse {
   };
   ownerAnalytics?: CampaignOwnerAnalytics | null;
   ownerRetrospective?: CampaignRetrospectiveItem | null;
+  ownerHealth?: CampaignHealthItem | null;
   ownerGoals: CampaignGoalItem[];
   recentUpdates: Array<{
     id: string;
@@ -132,6 +155,44 @@ function formatMilestoneDate(value: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
+}
+
+function campaignHealthBadgeVariant(state: CampaignHealthItem["healthState"]): "default" | "secondary" | "destructive" | "outline" {
+  switch (state) {
+    case "thriving":
+      return "default";
+    case "healthy":
+      return "secondary";
+    case "at_risk":
+      return "destructive";
+    case "watch":
+    case "completed":
+    default:
+      return "outline";
+  }
+}
+
+function campaignHealthLabel(state: CampaignHealthItem["healthState"]) {
+  switch (state) {
+    case "at_risk":
+      return "At risk";
+    case "thriving":
+      return "Thriving";
+    case "healthy":
+      return "Healthy";
+    case "watch":
+      return "Watch";
+    case "completed":
+    default:
+      return "Completed";
+  }
+}
+
+function formatHealthDateTime(value: string | null) {
+  if (!value) return "No recent activity";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "No recent activity";
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
 function buildVariantDestination(data: CampaignDetailResponse) {
@@ -382,6 +443,61 @@ export default function DrinkCampaignDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {query.data.ownerHealth ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Owner-only campaign health</CardTitle>
+                <CardDescription>
+                  Private current-status read for this campaign. This stays separate from analytics totals, weekly digest snapshots, benchmarks, and recommendations.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={campaignHealthBadgeVariant(query.data.ownerHealth.healthState)}>{campaignHealthLabel(query.data.ownerHealth.healthState)}</Badge>
+                  <Badge variant="outline">Health score {query.data.ownerHealth.healthScore}</Badge>
+                  <Badge variant="outline">{query.data.ownerHealth.status}</Badge>
+                  <span className="text-sm text-muted-foreground">Last activity {formatHealthDateTime(query.data.ownerHealth.recentActivityAt)}</span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="rounded-md bg-muted/30 p-3 text-sm">
+                    <p className="font-medium text-foreground">Primary strength</p>
+                    <p className="mt-1 text-muted-foreground">{query.data.ownerHealth.primaryStrength ?? "No standout strength yet — the campaign is still gathering signal."}</p>
+                  </div>
+                  <div className="rounded-md bg-muted/30 p-3 text-sm">
+                    <p className="font-medium text-foreground">Primary concern</p>
+                    <p className="mt-1 text-muted-foreground">{query.data.ownerHealth.primaryConcern ?? "No major warning sign right now."}</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                  <span className="rounded-full border px-2 py-1">Follower momentum: {query.data.ownerHealth.followerMomentum}</span>
+                  <span className="rounded-full border px-2 py-1">RSVP momentum: {query.data.ownerHealth.rsvpMomentum}</span>
+                  <span className="rounded-full border px-2 py-1">Click momentum: {query.data.ownerHealth.clickMomentum}</span>
+                  <span className="rounded-full border px-2 py-1">Goals on track: {query.data.ownerHealth.goalsOnTrack}</span>
+                  {query.data.ownerHealth.goalsBehind > 0 ? <span className="rounded-full border px-2 py-1">Goals behind: {query.data.ownerHealth.goalsBehind}</span> : null}
+                </div>
+                {query.data.ownerHealth.watchReasons.length ? (
+                  <div className="space-y-2 rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">Watchlist reasons</p>
+                    <ul className="list-disc space-y-1 pl-5">
+                      {query.data.ownerHealth.watchReasons.slice(0, 3).map((reason) => <li key={reason}>{reason}</li>)}
+                    </ul>
+                  </div>
+                ) : null}
+                {query.data.ownerHealth.recommendation ? (
+                  <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">Linked next-step idea</p>
+                    <p className="mt-1">{query.data.ownerHealth.recommendation.title}</p>
+                    {query.data.ownerHealth.recommendation.suggestedRoute ? (
+                      <div className="mt-2">
+                        <Link href={query.data.ownerHealth.recommendation.suggestedRoute}><Button size="sm" variant="outline">{query.data.ownerHealth.recommendation.suggestedAction ?? "Open suggestion"}</Button></Link>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
 
           {query.data.ownerRetrospective ? (
             <Card>
