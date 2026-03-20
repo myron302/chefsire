@@ -87,6 +87,7 @@ type CreatorPostType = "update" | "promo" | "collection_launch" | "challenge" | 
 type CreatorPostVisibility = "public" | "followers" | "members";
 type CreatorDropType = "collection_launch" | "promo_launch" | "member_drop" | "challenge_launch" | "update";
 type CreatorDropVisibility = "public" | "followers" | "members";
+type CreatorDropStatus = "upcoming" | "live" | "archived";
 type CreatorRoadmapItemType = "collection" | "promo" | "challenge" | "member_drop" | "update" | "roadmap";
 type CreatorRoadmapVisibility = "public" | "followers" | "members";
 type CreatorRoadmapStatus = "upcoming" | "live" | "archived";
@@ -108,6 +109,8 @@ type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
 type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
 type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
 type DrinkCollectionAccessType = "public" | "premium_purchase" | "membership_only";
+
+const CREATOR_DROP_ARCHIVE_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
 
 type ResolvedCollectionPurchaseContext = {
   collection: typeof drinkCollections.$inferSelect;
@@ -2215,16 +2218,46 @@ function creatorPostAudienceLabel(post: Pick<CreatorPostRecord, "creatorUserId" 
   return "Public";
 }
 
+function creatorDropSortTime(drop: Pick<CreatorDropRecord, "scheduledFor">) {
+  return drop.scheduledFor.getTime();
+}
+
+function getCreatorDropStatus(drop: Pick<CreatorDropRecord, "isPublished" | "scheduledFor">, now = new Date()): CreatorDropStatus {
+  const scheduledTime = creatorDropSortTime(drop);
+  const nowTime = now.getTime();
+
+  if (!drop.isPublished || scheduledTime > nowTime) return "upcoming";
+  if (scheduledTime <= nowTime - CREATOR_DROP_ARCHIVE_WINDOW_MS) return "archived";
+  return "live";
+}
+
+function isCreatorDropVisibleForLifecycle(drop: Pick<CreatorDropRecord, "isPublished" | "scheduledFor">, options: {
+  now?: Date;
+  includeArchived?: boolean;
+} = {}) {
+  if (!drop.isPublished) return false;
+  const status = getCreatorDropStatus(drop, options.now);
+  return options.includeArchived ? true : status !== "archived";
+}
+
 function canViewerSeeCreatorDrop(input: {
   drop: Pick<CreatorDropRecord, "creatorUserId" | "visibility" | "isPublished" | "scheduledFor">;
   viewerId?: string | null;
   followedCreatorIds?: Set<string>;
   memberCreatorIds?: Set<string>;
+  includeArchived?: boolean;
+  now?: Date;
 }) {
-  const { drop, viewerId, followedCreatorIds = new Set<string>(), memberCreatorIds = new Set<string>() } = input;
+  const {
+    drop,
+    viewerId,
+    followedCreatorIds = new Set<string>(),
+    memberCreatorIds = new Set<string>(),
+    includeArchived = false,
+    now,
+  } = input;
   if (viewerId && drop.creatorUserId === viewerId) return true;
-  if (!drop.isPublished) return false;
-  if (drop.scheduledFor <= new Date()) return false;
+  if (!isCreatorDropVisibleForLifecycle(drop, { now, includeArchived })) return false;
   if (drop.visibility === "public") return true;
   if (!viewerId) return false;
   if (drop.visibility === "followers") return followedCreatorIds.has(drop.creatorUserId);
@@ -2262,6 +2295,7 @@ async function loadCreatorDropForViewer(dropId: string, viewerId?: string | null
     viewerId,
     followedCreatorIds,
     memberCreatorIds,
+    includeArchived: true,
   });
 
   if (!isCreator && !canView) return null;
@@ -2725,6 +2759,8 @@ function serializeCreatorDrop(
   const linkedChallenge = options.linkedChallenge ?? null;
   const linkedPromotion = options.linkedPromotion ?? null;
 
+  const status = getCreatorDropStatus(drop);
+
   return {
     id: drop.id,
     creatorUserId: drop.creatorUserId,
@@ -2732,8 +2768,10 @@ function serializeCreatorDrop(
     description: drop.description ?? null,
     dropType: drop.dropType as CreatorDropType,
     visibility: drop.visibility as CreatorDropVisibility,
+    status,
     audienceLabel: creatorDropAudienceLabel(drop, options.viewerId),
     scheduledFor: drop.scheduledFor.toISOString(),
+    detailRoute: `/drinks/drops/${encodeURIComponent(drop.id)}`,
     isPublished: Boolean(drop.isPublished),
     rsvpCount: Math.max(0, Number(options.rsvpCount ?? 0)),
     isRsvped: Boolean(options.isRsvped),
@@ -2857,7 +2895,7 @@ async function maybeSendCreatorDropRsvpLiveAlerts() {
   if (!db) return;
 
   const now = new Date();
-  const liveWindowStart = new Date(now.getTime() - (1000 * 60 * 60 * 24 * 7));
+  const liveWindowStart = new Date(now.getTime() - CREATOR_DROP_ARCHIVE_WINDOW_MS);
   const dueDrops = await db
     .select()
     .from(creatorDrops)
@@ -8165,8 +8203,14 @@ r.get("/drops/feed", optionalAuth, async (req, res) => {
     await maybeSendCreatorDropRsvpLiveAlerts();
 
     const viewerId = req.user?.id ?? null;
+    const now = new Date();
+    const visibleWindowStart = new Date(now.getTime() - CREATOR_DROP_ARCHIVE_WINDOW_MS);
     const [drops, followedCreatorIds, memberCreatorIds] = await Promise.all([
-      db.select().from(creatorDrops).where(gt(creatorDrops.scheduledFor, new Date())).orderBy(asc(creatorDrops.scheduledFor)).limit(240),
+      db.select()
+        .from(creatorDrops)
+        .where(and(eq(creatorDrops.isPublished, true), gt(creatorDrops.scheduledFor, visibleWindowStart)))
+        .orderBy(asc(creatorDrops.scheduledFor))
+        .limit(240),
       loadFollowedCreatorIdsForUser(viewerId),
       loadActiveMembershipCreatorIdsForUser(viewerId),
     ]);
@@ -8176,11 +8220,19 @@ r.get("/drops/feed", optionalAuth, async (req, res) => {
       viewerId,
       followedCreatorIds,
       memberCreatorIds,
+      now,
     }));
+
+    const statusPriority: Record<CreatorDropStatus, number> = {
+      live: 0,
+      upcoming: 1,
+      archived: 2,
+    };
 
     const prioritizedDrops = visibleDrops
       .map((drop) => ({
         drop,
+        status: getCreatorDropStatus(drop, now),
         priority: viewerId
           ? drop.creatorUserId === viewerId
             ? 0
@@ -8192,7 +8244,13 @@ r.get("/drops/feed", optionalAuth, async (req, res) => {
           : 3,
       }))
       .sort((a, b) => {
+        if (statusPriority[a.status] !== statusPriority[b.status]) {
+          return statusPriority[a.status] - statusPriority[b.status];
+        }
         if (a.priority !== b.priority) return a.priority - b.priority;
+        if (a.status === "live") {
+          return b.drop.scheduledFor.getTime() - a.drop.scheduledFor.getTime();
+        }
         return a.drop.scheduledFor.getTime() - b.drop.scheduledFor.getTime();
       })
       .map((entry) => entry.drop);
@@ -8244,6 +8302,9 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
     }
 
     const viewerId = req.user?.id ?? null;
+    const now = new Date();
+    const visibleWindowStart = new Date(now.getTime() - CREATOR_DROP_ARCHIVE_WINDOW_MS);
+    const isCreatorView = viewerId === creatorUserId;
     const [acceptedCollaborations, followedCreatorIds, memberCreatorIds] = await Promise.all([
       loadAcceptedCollaborationsForCreator(creatorUserId),
       loadFollowedCreatorIdsForUser(viewerId),
@@ -8255,15 +8316,23 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
     const ownDrops = await db
       .select()
       .from(creatorDrops)
-      .where(and(eq(creatorDrops.creatorUserId, creatorUserId), gt(creatorDrops.scheduledFor, new Date())))
-      .orderBy(asc(creatorDrops.scheduledFor))
-      .limit(120);
+      .where(
+        isCreatorView
+          ? eq(creatorDrops.creatorUserId, creatorUserId)
+          : and(eq(creatorDrops.creatorUserId, creatorUserId), gt(creatorDrops.scheduledFor, visibleWindowStart)),
+      )
+      .orderBy(desc(creatorDrops.scheduledFor))
+      .limit(160);
     const collaborativeDrops = acceptedDropIds.length > 0
       ? await db
           .select()
           .from(creatorDrops)
-          .where(and(inArray(creatorDrops.id, acceptedDropIds), gt(creatorDrops.scheduledFor, new Date())))
-          .orderBy(asc(creatorDrops.scheduledFor))
+          .where(
+            isCreatorView
+              ? inArray(creatorDrops.id, acceptedDropIds)
+              : and(inArray(creatorDrops.id, acceptedDropIds), gt(creatorDrops.scheduledFor, visibleWindowStart)),
+          )
+          .orderBy(desc(creatorDrops.scheduledFor))
       : [];
     const drops = [...new Map([...ownDrops, ...collaborativeDrops].map((drop) => [drop.id, drop])).values()];
 
@@ -8272,13 +8341,32 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
       viewerId,
       followedCreatorIds,
       memberCreatorIds,
+      includeArchived: isCreatorView,
+      now,
     }));
 
+    const statusPriority: Record<CreatorDropStatus, number> = {
+      live: 0,
+      upcoming: 1,
+      archived: 2,
+    };
+    const sortedDrops = [...visibleDrops].sort((a, b) => {
+      const aStatus = getCreatorDropStatus(a, now);
+      const bStatus = getCreatorDropStatus(b, now);
+      if (statusPriority[aStatus] !== statusPriority[bStatus]) {
+        return statusPriority[aStatus] - statusPriority[bStatus];
+      }
+      if (aStatus === "live" || aStatus === "archived") {
+        return b.scheduledFor.getTime() - a.scheduledFor.getTime();
+      }
+      return a.scheduledFor.getTime() - b.scheduledFor.getTime();
+    });
+
     const [maps, rsvpMaps] = await Promise.all([
-      loadCreatorDropLinkedMaps(visibleDrops),
-      loadCreatorDropRsvpMaps(visibleDrops, viewerId),
+      loadCreatorDropLinkedMaps(sortedDrops),
+      loadCreatorDropRsvpMaps(sortedDrops, viewerId),
     ]);
-    const items = visibleDrops.map((drop) => serializeCreatorDrop(drop, {
+    const items = sortedDrops.map((drop) => serializeCreatorDrop(drop, {
       viewerId,
       creator: maps.creatorMap.get(drop.creatorUserId) ?? null,
       linkedCollection: drop.linkedCollectionId ? maps.collectionMap.get(drop.linkedCollectionId) ?? null : null,
@@ -8298,6 +8386,50 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/drops/creator/:userId", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load creator drops"));
+  }
+});
+
+r.get("/drops/:id", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    await maybeSendCreatorDropRsvpLiveAlerts();
+
+    const dropId = String(req.params.id ?? "").trim();
+    if (!dropId) {
+      return res.status(400).json({ ok: false, error: "Drop id is required." });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const access = await loadCreatorDropForViewer(dropId, viewerId);
+    if (!access) {
+      return res.status(404).json({ ok: false, error: "Drop not found." });
+    }
+
+    const [maps, rsvpMaps] = await Promise.all([
+      loadCreatorDropLinkedMaps([access.drop]),
+      loadCreatorDropRsvpMaps([access.drop], viewerId),
+    ]);
+
+    return res.json({
+      ok: true,
+      drop: serializeCreatorDrop(access.drop, {
+        viewerId,
+        creator: maps.creatorMap.get(access.drop.creatorUserId) ?? null,
+        linkedCollection: access.drop.linkedCollectionId ? maps.collectionMap.get(access.drop.linkedCollectionId) ?? null : null,
+        linkedChallenge: access.drop.linkedChallengeId ? maps.challengeMap.get(access.drop.linkedChallengeId) ?? null : null,
+        linkedPromotion: access.drop.linkedPromotionId ? maps.promotionMap.get(access.drop.linkedPromotionId) ?? null : null,
+        acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`drop:${access.drop.id}`) ?? null, maps.collaborationProfileMap),
+        rsvpCount: rsvpMaps.rsvpCountMap.get(access.drop.id) ?? 0,
+        isRsvped: rsvpMaps.viewerRsvpSet.has(access.drop.id),
+      }),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator drop"));
   }
 });
 
@@ -8416,7 +8548,7 @@ r.post("/drops/:id/rsvp", requireAuth, async (req, res) => {
     }
 
     const access = await loadCreatorDropForViewer(dropId, req.user!.id);
-    if (!access || access.drop.scheduledFor <= new Date()) {
+    if (!access || getCreatorDropStatus(access.drop) !== "upcoming") {
       return res.status(404).json({ ok: false, error: "Drop not found." });
     }
 

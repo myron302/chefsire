@@ -147,7 +147,7 @@ export default function DrinkCreatorPostsFeedPage() {
       {!dropsQuery.isLoading && upcomingDrops.length > 0 ? (
         <section className="space-y-3">
           <div className="flex items-baseline justify-between gap-2">
-            <h2 className="text-xl font-semibold">Upcoming drops</h2>
+            <h2 className="text-xl font-semibold">Live + upcoming drops</h2>
             <Link href="/drinks/drops" className="text-sm underline underline-offset-2">Open full drops calendar</Link>
           </div>
           <div className="space-y-3">

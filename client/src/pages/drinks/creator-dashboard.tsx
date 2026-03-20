@@ -2229,7 +2229,7 @@ export default function CreatorDashboardPage() {
               {!creatorDropsQuery.isLoading && !creatorDropsQuery.isError && creatorDrops.length === 0 ? (
                 <Card>
                   <CardContent className="p-4 text-sm text-muted-foreground">
-                    No upcoming drops yet. Schedule a public launch, a follower-only teaser, or a member drop tied to a collection, promo, or challenge.
+                    No drops yet. Schedule a public launch, a follower-only teaser, or a member drop tied to a collection, promo, or challenge, and the dashboard will label each one as upcoming, live, or archived automatically.
                   </CardContent>
                 </Card>
               ) : null}
@@ -2262,8 +2262,9 @@ export default function CreatorDashboardPage() {
                           });
                           window.location.hash = "drops";
                         }}
+                        disabled={drop.status !== "upcoming"}
                       >
-                        Edit
+                        {drop.status === "upcoming" ? "Edit" : "Locked"}
                       </Button>
                       <Button
                         size="sm"
