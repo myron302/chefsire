@@ -17,6 +17,7 @@ import {
   creatorCampaignTemplates,
   creatorCampaignLinks,
   creatorCampaignFollows,
+  creatorCampaignGoals,
   creatorCampaignCtaVariants,
   creatorCampaignVariantEvents,
   creatorDropEvents,
@@ -56,6 +57,7 @@ import {
   insertCreatorCampaignTemplateSchema,
   insertCreatorCampaignLinkSchema,
   insertCreatorCampaignFollowSchema,
+  insertCreatorCampaignGoalSchema,
   insertCreatorCampaignCtaVariantSchema,
   insertCreatorCampaignVariantEventSchema,
   insertCreatorDropEventSchema,
@@ -110,6 +112,7 @@ type CreatorCampaignVisibility = "public" | "followers" | "members";
 type CreatorCampaignTargetType = "collection" | "drop" | "promo" | "challenge" | "post" | "roadmap";
 type CreatorCampaignCtaTargetType = "follow" | "rsvp" | "collection" | "membership" | "drop" | "challenge";
 type CreatorCampaignState = "upcoming" | "active" | "past";
+type CreatorCampaignGoalType = "followers" | "rsvps" | "clicks" | "purchases" | "membership_conversions" | "linked_drop_views";
 type CreatorCampaignVariantEventType = "view_variant" | "click_variant_cta" | "follow_after_variant" | "rsvp_after_variant";
 type CreatorCollaborationType = "collection" | "drop" | "post" | "roadmap";
 type CreatorCollaborationStatus = "pending" | "accepted" | "declined" | "revoked";
@@ -188,6 +191,7 @@ type CreatorCampaignRecord = typeof creatorCampaigns.$inferSelect;
 type CreatorCampaignTemplateRecord = typeof creatorCampaignTemplates.$inferSelect;
 type CreatorCampaignLinkRecord = typeof creatorCampaignLinks.$inferSelect;
 type CreatorCampaignFollowRecord = typeof creatorCampaignFollows.$inferSelect;
+type CreatorCampaignGoalRecord = typeof creatorCampaignGoals.$inferSelect;
 type CreatorCampaignCtaVariantRecord = typeof creatorCampaignCtaVariants.$inferSelect;
 type CreatorCampaignVariantEventRecord = typeof creatorCampaignVariantEvents.$inferSelect;
 type CreatorDropEventRecord = typeof creatorDropEvents.$inferSelect;
@@ -654,6 +658,7 @@ const creatorRoadmapStatusSchema = z.enum(["upcoming", "live", "archived"]);
 const creatorCampaignVisibilitySchema = z.enum(["public", "followers", "members"]);
 const creatorCampaignTargetTypeSchema = z.enum(["collection", "drop", "promo", "challenge", "post", "roadmap"]);
 const creatorCampaignCtaTargetTypeSchema = z.enum(["follow", "rsvp", "collection", "membership", "drop", "challenge"]);
+const creatorCampaignGoalTypeSchema = z.enum(["followers", "rsvps", "clicks", "purchases", "membership_conversions", "linked_drop_views"]);
 const creatorCollaborationTypeSchema = z.enum(["collection", "drop", "post", "roadmap"]);
 const creatorCollaborationStatusSchema = z.enum(["pending", "accepted", "declined", "revoked"]);
 
@@ -852,6 +857,17 @@ const creatorCampaignVariantBodySchema = z.object({
 const updateCreatorCampaignVariantBodySchema = creatorCampaignVariantBodySchema.partial().refine(
   (value) => Object.values(value).some((field) => field !== undefined),
   { message: "Provide at least one variant field to update." },
+);
+
+const creatorCampaignGoalBodySchema = z.object({
+  goalType: creatorCampaignGoalTypeSchema,
+  targetValue: z.coerce.number().int().positive("Target value must be greater than zero."),
+  label: z.string().trim().max(160).nullable().optional(),
+});
+
+const updateCreatorCampaignGoalBodySchema = creatorCampaignGoalBodySchema.partial().refine(
+  (value) => Object.values(value).some((field) => field !== undefined),
+  { message: "Provide at least one goal field to update." },
 );
 
 const createCreatorRoadmapBodySchema = creatorRoadmapBodyBaseSchema.superRefine((value, ctx) => {
@@ -2148,6 +2164,18 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_goals (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
+        goal_type text NOT NULL,
+        target_value integer NOT NULL,
+        label varchar(160),
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_campaign_cta_variants (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
@@ -2364,6 +2392,9 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_user_idx ON creator_campaign_follows(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_campaign_idx ON creator_campaign_follows(campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_campaign_created_at_idx ON creator_campaign_follows(campaign_id, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_goals_campaign_idx ON creator_campaign_goals(campaign_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_goals_campaign_type_idx ON creator_campaign_goals(campaign_id, goal_type);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_goals_campaign_updated_at_idx ON creator_campaign_goals(campaign_id, updated_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_cta_variants_campaign_idx ON creator_campaign_cta_variants(campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_cta_variants_campaign_active_idx ON creator_campaign_cta_variants(campaign_id, is_active, updated_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_variant_events_campaign_idx ON creator_campaign_variant_events(campaign_id);`);
@@ -3159,6 +3190,20 @@ async function loadCampaignForOwnerOrThrow(campaignId: string, creatorUserId: st
   return campaign;
 }
 
+async function loadCreatorCampaignGoalsByCampaignId(campaignId: string) {
+  if (!db) throw new Error("Database unavailable");
+  return db
+    .select()
+    .from(creatorCampaignGoals)
+    .where(eq(creatorCampaignGoals.campaignId, campaignId))
+    .orderBy(desc(creatorCampaignGoals.updatedAt), asc(creatorCampaignGoals.createdAt));
+}
+
+async function loadCampaignAnalyticsItemForOwner(campaign: CreatorCampaignRecord) {
+  const snapshots = await loadCreatorCampaignPerformanceSnapshots(campaign.creatorUserId);
+  return snapshots.items.find((item) => item.campaignId === campaign.id) ?? null;
+}
+
 async function buildCampaignTemplateBlueprint(campaign: CreatorCampaignRecord): Promise<CreatorCampaignTemplateBlueprint> {
   if (!db) throw new Error("Database unavailable");
 
@@ -3819,6 +3864,29 @@ type CreatorCampaignAnalyticsItem = {
   milestones: CreatorCampaignMilestone[];
 };
 
+type CreatorCampaignGoalProgress = {
+  currentValue: number;
+  percentComplete: number;
+  isComplete: boolean;
+  metricLabel: string;
+  metricNote: string | null;
+};
+
+type SerializedCreatorCampaignGoal = {
+  id: string;
+  campaignId: string;
+  goalType: CreatorCampaignGoalType;
+  targetValue: number;
+  label: string | null;
+  createdAt: string;
+  updatedAt: string;
+  currentValue: number;
+  percentComplete: number;
+  isComplete: boolean;
+  metricLabel: string;
+  metricNote: string | null;
+};
+
 type CreatorCampaignAnalyticsSummary = {
   totalCampaigns: number;
   activeCampaigns: number;
@@ -3857,6 +3925,102 @@ type CreatorCampaignMilestone = {
 
 function toMilestoneDate(value?: Date | null) {
   return value ? value.toISOString() : null;
+}
+
+function buildCampaignGoalProgress(goalType: CreatorCampaignGoalType, analytics: CreatorCampaignAnalyticsItem): CreatorCampaignGoalProgress {
+  switch (goalType) {
+    case "followers":
+      return {
+        currentValue: analytics.followerCount,
+        percentComplete: 0,
+        isComplete: false,
+        metricLabel: "Campaign followers",
+        metricNote: "Direct: counts explicit campaign follows.",
+      };
+    case "rsvps":
+      return {
+        currentValue: analytics.totalDropRsvps,
+        percentComplete: 0,
+        isComplete: false,
+        metricLabel: "Linked drop RSVPs",
+        metricNote: "Direct: rolls up linked drop RSVP / Notify Me activity.",
+      };
+    case "clicks":
+      return {
+        currentValue: analytics.totalDropClicks,
+        percentComplete: 0,
+        isComplete: false,
+        metricLabel: "Linked drop clicks",
+        metricNote: "Direct: click-throughs from linked drop analytics.",
+      };
+    case "purchases":
+      return {
+        currentValue: analytics.purchasesFromLinkedCollections,
+        percentComplete: 0,
+        isComplete: false,
+        metricLabel: "Linked collection purchases",
+        metricNote: analytics.purchasesFromLinkedCollectionsNote,
+      };
+    case "membership_conversions":
+      return {
+        currentValue: analytics.membershipsFromCampaign,
+        percentComplete: 0,
+        isComplete: false,
+        metricLabel: "Membership conversions",
+        metricNote: analytics.membershipsFromCampaignNote,
+      };
+    case "linked_drop_views":
+      return {
+        currentValue: analytics.totalDropViews,
+        percentComplete: 0,
+        isComplete: false,
+        metricLabel: "Linked drop views",
+        metricNote: "Directional: rolls up existing linked drop view events.",
+      };
+    default:
+      return {
+        currentValue: 0,
+        percentComplete: 0,
+        isComplete: false,
+        metricLabel: "Progress",
+        metricNote: null,
+      };
+  }
+}
+
+function serializeCreatorCampaignGoal(
+  goal: CreatorCampaignGoalRecord,
+  analytics: CreatorCampaignAnalyticsItem | null,
+): SerializedCreatorCampaignGoal {
+  const baseProgress = analytics
+    ? buildCampaignGoalProgress(goal.goalType as CreatorCampaignGoalType, analytics)
+    : {
+        currentValue: 0,
+        percentComplete: 0,
+        isComplete: false,
+        metricLabel: "Progress",
+        metricNote: null,
+      };
+  const targetValue = Number(goal.targetValue ?? 0);
+  const percentComplete = targetValue > 0
+    ? Math.min(100, Math.round((baseProgress.currentValue / targetValue) * 1000) / 10)
+    : 0;
+  const isComplete = targetValue > 0 && baseProgress.currentValue >= targetValue;
+
+  return {
+    id: goal.id,
+    campaignId: goal.campaignId,
+    goalType: goal.goalType as CreatorCampaignGoalType,
+    targetValue,
+    label: goal.label ?? null,
+    createdAt: goal.createdAt.toISOString(),
+    updatedAt: goal.updatedAt.toISOString(),
+    currentValue: baseProgress.currentValue,
+    percentComplete,
+    isComplete,
+    metricLabel: baseProgress.metricLabel,
+    metricNote: baseProgress.metricNote,
+  };
 }
 
 function findNthAchievementDate<T extends { createdAt: Date }>(rows: T[], target: number) {
@@ -11672,6 +11836,175 @@ r.delete("/campaigns/:id/variants/:variantId", requireAuth, async (req, res) => 
   }
 });
 
+r.get("/campaigns/:id/goals", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const [goalRows, analytics] = await Promise.all([
+      loadCreatorCampaignGoalsByCampaignId(campaign.id),
+      loadCampaignAnalyticsItemForOwner(campaign),
+    ]);
+
+    return res.json({
+      ok: true,
+      campaignId: campaign.id,
+      count: goalRows.length,
+      items: goalRows.map((goal) => serializeCreatorCampaignGoal(goal, analytics)),
+      attributionNotes: [
+        "Goal progress is derived from the campaign analytics already tracked in the drinks platform.",
+        "Purchase and membership conversion goals stay approximate whenever the underlying campaign analytics are approximate.",
+      ],
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Unknown error";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/goals", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign goals"));
+  }
+});
+
+r.post("/campaigns/:id/goals", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const parsed = creatorCampaignGoalBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid campaign goal payload." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const insertedRows = await db.insert(creatorCampaignGoals).values(insertCreatorCampaignGoalSchema.parse({
+      campaignId: campaign.id,
+      goalType: parsed.data.goalType,
+      targetValue: parsed.data.targetValue,
+      label: parsed.data.label?.trim() ? parsed.data.label.trim() : null,
+    })).returning();
+    const inserted = insertedRows[0];
+    const analytics = await loadCampaignAnalyticsItemForOwner(campaign);
+
+    return res.status(201).json({
+      ok: true,
+      item: serializeCreatorCampaignGoal(inserted, analytics),
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Unknown error";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/goals", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create campaign goal"));
+  }
+});
+
+r.patch("/campaigns/:id/goals/:goalId", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    const goalId = String(req.params.goalId ?? "").trim();
+    if (!campaignId || !goalId) {
+      return res.status(400).json({ ok: false, error: "Campaign id and goal id are required." });
+    }
+
+    const parsed = updateCreatorCampaignGoalBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid campaign goal payload." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const existingRows = await db
+      .select()
+      .from(creatorCampaignGoals)
+      .where(and(eq(creatorCampaignGoals.id, goalId), eq(creatorCampaignGoals.campaignId, campaign.id)))
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ ok: false, error: "Campaign goal not found." });
+    }
+
+    const updatedRows = await db
+      .update(creatorCampaignGoals)
+      .set({
+        goalType: parsed.data.goalType ?? (existing.goalType as CreatorCampaignGoalType),
+        targetValue: parsed.data.targetValue ?? existing.targetValue,
+        label: parsed.data.label !== undefined ? (parsed.data.label?.trim() ? parsed.data.label.trim() : null) : existing.label,
+        updatedAt: new Date(),
+      })
+      .where(eq(creatorCampaignGoals.id, goalId))
+      .returning();
+    const updated = updatedRows[0];
+    if (!updated) {
+      return res.status(500).json({ ok: false, error: "Failed to update campaign goal." });
+    }
+
+    const analytics = await loadCampaignAnalyticsItemForOwner(campaign);
+    return res.json({ ok: true, item: serializeCreatorCampaignGoal(updated, analytics) });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Unknown error";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/goals/:goalId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update campaign goal"));
+  }
+});
+
+r.delete("/campaigns/:id/goals/:goalId", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    const goalId = String(req.params.goalId ?? "").trim();
+    if (!campaignId || !goalId) {
+      return res.status(400).json({ ok: false, error: "Campaign id and goal id are required." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const deletedRows = await db
+      .delete(creatorCampaignGoals)
+      .where(and(eq(creatorCampaignGoals.id, goalId), eq(creatorCampaignGoals.campaignId, campaign.id)))
+      .returning({ id: creatorCampaignGoals.id });
+
+    if (!deletedRows[0]) {
+      return res.status(404).json({ ok: false, error: "Campaign goal not found." });
+    }
+
+    return res.json({ ok: true, goalId });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Unknown error";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/goals/:goalId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete campaign goal"));
+  }
+});
+
 r.post("/campaigns/:id/variants/:variantId/events", optionalAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -11755,6 +12088,9 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
     const detail = await loadCreatorCampaignDetail(campaign, viewerId);
     const performance = await loadCreatorCampaignPerformanceSnapshots(campaign.creatorUserId);
     const campaignSnapshot = performance.items.find((item) => item.campaignId === campaign.id) ?? null;
+    const ownerGoalRows = viewerId && viewerId === campaign.creatorUserId
+      ? await loadCreatorCampaignGoalsByCampaignId(campaign.id)
+      : [];
     const ownerAnalytics = viewerId && viewerId === campaign.creatorUserId
       ? campaignSnapshot
       : null;
@@ -11765,6 +12101,9 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
         public: (campaignSnapshot?.milestones ?? []).filter((milestone) => milestone.isPublic && milestone.achieved),
         owner: viewerId && viewerId === campaign.creatorUserId ? (campaignSnapshot?.milestones ?? []) : [],
       },
+      ownerGoals: viewerId && viewerId === campaign.creatorUserId
+        ? ownerGoalRows.map((goal) => serializeCreatorCampaignGoal(goal, campaignSnapshot))
+        : [],
       recentUpdates: buildCreatorCampaignUpdateItems(detail),
       ownerAnalytics,
     });
