@@ -35,6 +35,19 @@ type CampaignOwnerAnalytics = {
   membershipsFromCampaignNote: string | null;
   campaignEngagementScore: number;
   campaignEngagementScoreNote: string;
+  milestones: CampaignMilestone[];
+};
+
+type CampaignMilestone = {
+  type: string;
+  label: string;
+  shortLabel: string;
+  description: string;
+  achieved: boolean;
+  achievedAt: string | null;
+  isPublic: boolean;
+  currentValue: number | null;
+  targetValue: number | null;
 };
 
 interface CampaignDetailResponse {
@@ -47,6 +60,10 @@ interface CampaignDetailResponse {
     challenges: Array<{ id: string; slug: string; title: string; route: string }>;
     posts: CreatorPostItem[];
     roadmap: CreatorRoadmapItem[];
+  };
+  milestones: {
+    public: CampaignMilestone[];
+    owner: CampaignMilestone[];
   };
   ownerAnalytics?: CampaignOwnerAnalytics | null;
   recentUpdates: Array<{
@@ -64,6 +81,13 @@ function describeState(campaign: CreatorCampaignItem) {
   if (campaign.state === "upcoming") return "This story arc is queued up and will become more relevant as the linked drops and notes roll in.";
   if (campaign.state === "past") return "This arc has moved into recap mode, but the linked drops, posts, and roadmap notes still tell the full launch story.";
   return "This campaign is actively shaping the creator's current release story across drops, promos, posts, and roadmap moments.";
+}
+
+function formatMilestoneDate(value: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(date);
 }
 
 export default function DrinkCampaignDetailPage() {
@@ -127,6 +151,46 @@ export default function DrinkCampaignDetailPage() {
 
           <Card>
             <CardHeader>
+              <CardTitle>Momentum badges</CardTitle>
+              <CardDescription>
+                Lightweight social proof for this campaign so followers can quickly see whether the story arc is live, gathering attention, or already converting.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {query.data.milestones.public.length ? (
+                <div className="flex flex-wrap gap-2">
+                  {query.data.milestones.public.map((milestone) => (
+                    <Badge key={milestone.type} variant={milestone.type === "campaign_live" ? "default" : "secondary"} className="px-3 py-1">
+                      {milestone.shortLabel}
+                      {formatMilestoneDate(milestone.achievedAt) ? ` · ${formatMilestoneDate(milestone.achievedAt)}` : ""}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  This campaign is still early. As followers, RSVPs, launches, and first conversions arrive, lightweight badges will appear here.
+                </p>
+              )}
+
+              {query.data.milestones.public.length ? (
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {query.data.milestones.public.map((milestone) => (
+                    <div key={milestone.type} className="rounded-md border p-3 text-sm">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge variant={milestone.type === "campaign_live" ? "default" : "outline"}>{milestone.shortLabel}</Badge>
+                        {formatMilestoneDate(milestone.achievedAt) ? <span className="text-xs text-muted-foreground">{formatMilestoneDate(milestone.achievedAt)}</span> : null}
+                      </div>
+                      <p className="mt-2 font-medium">{milestone.label}</p>
+                      <p className="mt-1 text-muted-foreground">{milestone.description}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Story arc overview</CardTitle>
               <CardDescription>{describeState(query.data.campaign)}</CardDescription>
             </CardHeader>
@@ -169,6 +233,37 @@ export default function DrinkCampaignDetailPage() {
                   <p className="font-medium text-foreground">Campaign engagement score</p>
                   <p className="mt-1">{query.data.ownerAnalytics.campaignEngagementScore} · {query.data.ownerAnalytics.campaignEngagementScoreNote}</p>
                 </div>
+                {query.data.ownerAnalytics.milestones.length ? (
+                  <div className="space-y-3 rounded-md border border-dashed p-4">
+                    <div>
+                      <p className="font-medium">Owner milestone state</p>
+                      <p className="text-sm text-muted-foreground">Public badges stay lightweight; this owner view also shows campaign-specific thresholds and conversion milestones still in progress.</p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                      {query.data.ownerAnalytics.milestones.map((milestone) => {
+                        const progressLabel = milestone.targetValue && milestone.currentValue !== null
+                          ? `${milestone.currentValue}/${milestone.targetValue}`
+                          : milestone.currentValue !== null
+                            ? String(milestone.currentValue)
+                            : null;
+                        return (
+                          <div key={milestone.type} className="rounded-md border p-3 text-sm">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant={milestone.achieved ? "default" : "outline"}>{milestone.shortLabel}</Badge>
+                              <Badge variant="outline">{milestone.isPublic ? "Public-safe" : "Owner-only"}</Badge>
+                            </div>
+                            <p className="mt-2 font-medium">{milestone.label}</p>
+                            <p className="mt-1 text-muted-foreground">{milestone.description}</p>
+                            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                              {progressLabel ? <span>Progress {progressLabel}</span> : null}
+                              {formatMilestoneDate(milestone.achievedAt) ? <span>Unlocked {formatMilestoneDate(milestone.achievedAt)}</span> : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </CardContent>
             </Card>
           ) : null}
