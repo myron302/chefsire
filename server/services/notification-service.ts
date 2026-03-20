@@ -4,6 +4,7 @@
 import { db } from "../db";
 import { eq } from "drizzle-orm";
 import {
+  creatorDropRsvps,
   creatorMemberships,
   drinkCollectionWishlists,
   follows,
@@ -20,6 +21,8 @@ export const DRINK_ALERT_TYPES = {
   followedCreatorDrop: "drink_creator_followed_drop",
   creatorMemberDrop: "drink_creator_member_drop",
   publicCreatorDrop: "drink_creator_public_drop",
+  rsvpedDropLive: "drink_creator_drop_rsvp_live",
+  rsvpedDropReminder: "drink_creator_drop_rsvp_reminder",
 } as const;
 
 export type DrinkAlertType = (typeof DRINK_ALERT_TYPES)[keyof typeof DRINK_ALERT_TYPES];
@@ -96,6 +99,19 @@ async function loadActiveMemberRecipientIds(creatorUserId: string, excludedUserI
   return [...new Set(
     rows
       .filter((row) => (row.status === "active" || row.status === "canceled") && (!row.endsAt || row.endsAt > now))
+      .map((row) => row.userId)
+      .filter((userId): userId is string => Boolean(userId) && userId !== excludedUserId),
+  )];
+}
+
+async function loadRsvpRecipientIds(dropId: string, excludedUserId?: string | null) {
+  const rows = await db
+    .select({ userId: creatorDropRsvps.userId })
+    .from(creatorDropRsvps)
+    .where(eq(creatorDropRsvps.dropId, dropId));
+
+  return [...new Set(
+    rows
       .map((row) => row.userId)
       .filter((userId): userId is string => Boolean(userId) && userId !== excludedUserId),
   )];
@@ -287,6 +303,40 @@ export async function sendCreatorDropAlerts(params: {
         visibility: params.visibility,
         scheduledFor: params.scheduledFor,
         audience: params.visibility === "followers" ? "following" : "public_followers",
+      },
+    })),
+  );
+}
+
+export async function sendRsvpedDropLiveAlerts(params: {
+  dropId: string;
+  title: string;
+  creatorUserId: string;
+  creatorUsername?: string | null;
+  creatorAvatar?: string | null;
+  recipientIds?: string[];
+}) {
+  const recipientIds = params.recipientIds?.length
+    ? [...new Set(params.recipientIds.filter((userId) => Boolean(userId) && userId !== params.creatorUserId))]
+    : await loadRsvpRecipientIds(params.dropId, params.creatorUserId);
+  if (!recipientIds.length) return;
+
+  const creatorHandle = params.creatorUsername ? `@${params.creatorUsername}` : "A creator";
+
+  await sendBulkDrinkAlerts(
+    recipientIds.map((userId) => ({
+      userId,
+      type: DRINK_ALERT_TYPES.rsvpedDropLive,
+      title: "A drop you RSVP’d for is now live",
+      message: `${creatorHandle}'s "${params.title}" is live now.`,
+      linkUrl: "/drinks/drops",
+      imageUrl: params.creatorAvatar ?? null,
+      priority: "high",
+      metadata: {
+        dropId: params.dropId,
+        creatorUserId: params.creatorUserId,
+        audience: "rsvp",
+        event: "live",
       },
     })),
   );

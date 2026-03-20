@@ -15,7 +15,9 @@ type DrinkAlertType =
   | "drink_collection_followed_creator_launch"
   | "drink_collection_followed_creator_promo"
   | "drink_creator_followed_post"
-  | "drink_creator_member_post";
+  | "drink_creator_member_post"
+  | "drink_creator_drop_rsvp_live"
+  | "drink_creator_drop_rsvp_reminder";
 
 type DrinkAlert = {
   id: string;
@@ -60,6 +62,10 @@ function typeMeta(type: DrinkAlertType) {
       return { label: "Creator promo", icon: Megaphone, badge: "outline" as const, why: "A creator you follow launched a promo." };
     case "drink_creator_member_post":
       return { label: "Member update", icon: BellDot, badge: "default" as const, why: "You actively support this creator." };
+    case "drink_creator_drop_rsvp_live":
+      return { label: "Drop live", icon: BellDot, badge: "default" as const, why: "You RSVP’d to this drop." };
+    case "drink_creator_drop_rsvp_reminder":
+      return { label: "Drop reminder", icon: BellDot, badge: "outline" as const, why: "You asked to be reminded about this drop." };
     case "drink_creator_followed_post":
     default:
       return { label: "Creator post", icon: Users, badge: "outline" as const, why: "A creator you follow published a new update." };

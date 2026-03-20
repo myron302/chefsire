@@ -1,6 +1,6 @@
 // server/routes/drinks.ts
 import { Router, type Request } from "express";
-import { and, asc, desc, eq, gt, ilike, inArray, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
 import { db } from "../db";
@@ -9,6 +9,7 @@ import {
   creatorMembershipCheckoutSessions,
   creatorCollaborations,
   creatorDrops,
+  creatorDropRsvps,
   creatorMembershipPlans,
   creatorPosts,
   creatorRoadmapItems,
@@ -41,6 +42,7 @@ import {
   drinkRecipes,
   follows,
   insertCreatorDropSchema,
+  insertCreatorDropRsvpSchema,
   insertCreatorCollaborationSchema,
   insertCreatorRoadmapItemSchema,
   insertDrinkCollectionSchema,
@@ -59,6 +61,7 @@ import {
   sendCreatorDropAlerts,
   sendFollowedCreatorCollectionLaunchAlerts,
   sendFollowedCreatorPromoAlerts,
+  sendRsvpedDropLiveAlerts,
   sendWishlistPriceDropAlerts,
   sendWishlistPromoAlerts,
 } from "../services/notification-service";
@@ -97,6 +100,7 @@ type DrinkBundleCheckoutSessionRecord = typeof drinkBundleCheckoutSessions.$infe
 type DrinkGiftRecord = typeof drinkGifts.$inferSelect;
 type CreatorMembershipPlanRecord = typeof creatorMembershipPlans.$inferSelect;
 type CreatorDropRecord = typeof creatorDrops.$inferSelect;
+type CreatorDropRsvpRecord = typeof creatorDropRsvps.$inferSelect;
 type CreatorPostRecord = typeof creatorPosts.$inferSelect;
 type CreatorRoadmapRecord = typeof creatorRoadmapItems.$inferSelect;
 type CreatorCollaborationRecord = typeof creatorCollaborations.$inferSelect;
@@ -1789,6 +1793,16 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_drop_rsvps (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        drop_id varchar NOT NULL REFERENCES creator_drops(id) ON DELETE CASCADE,
+        created_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT creator_drop_rsvps_user_drop_idx UNIQUE (user_id, drop_id)
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_roadmap_items (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1958,6 +1972,9 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_scheduled_for_idx ON creator_drops(scheduled_for);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_published_scheduled_idx ON creator_drops(is_published, scheduled_for);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drops_creator_scheduled_idx ON creator_drops(creator_user_id, scheduled_for);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_rsvps_user_idx ON creator_drop_rsvps(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_rsvps_drop_idx ON creator_drop_rsvps(drop_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_rsvps_drop_created_at_idx ON creator_drop_rsvps(drop_id, created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_creator_idx ON creator_roadmap_items(creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_visibility_idx ON creator_roadmap_items(visibility);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_status_idx ON creator_roadmap_items(status);`);
@@ -2220,6 +2237,42 @@ function creatorDropAudienceLabel(drop: Pick<CreatorDropRecord, "creatorUserId" 
   if (drop.visibility === "members") return "Members";
   if (drop.visibility === "followers") return "Followers";
   return "Public";
+}
+
+async function loadCreatorDropForViewer(dropId: string, viewerId?: string | null) {
+  if (!db || !dropId) return null;
+
+  const rows = await db
+    .select()
+    .from(creatorDrops)
+    .where(eq(creatorDrops.id, dropId))
+    .limit(1);
+
+  const drop = rows[0];
+  if (!drop) return null;
+
+  const [followedCreatorIds, memberCreatorIds] = await Promise.all([
+    loadFollowedCreatorIdsForUser(viewerId),
+    loadActiveMembershipCreatorIdsForUser(viewerId),
+  ]);
+
+  const isCreator = Boolean(viewerId && drop.creatorUserId === viewerId);
+  const canView = canViewerSeeCreatorDrop({
+    drop,
+    viewerId,
+    followedCreatorIds,
+    memberCreatorIds,
+  });
+
+  if (!isCreator && !canView) return null;
+
+  return {
+    drop,
+    viewerId: viewerId ?? null,
+    isCreator,
+    followedCreatorIds,
+    memberCreatorIds,
+  };
 }
 
 function canViewerSeeCreatorRoadmapItem(input: {
@@ -2517,6 +2570,45 @@ async function loadCreatorDropLinkedMaps(drops: CreatorDropRecord[]) {
   };
 }
 
+async function loadCreatorDropRsvpMaps(drops: CreatorDropRecord[], viewerId?: string | null) {
+  if (!db || drops.length === 0) {
+    return {
+      rsvpCountMap: new Map<string, number>(),
+      viewerRsvpSet: new Set<string>(),
+    };
+  }
+
+  const dropIds = [...new Set(drops.map((drop) => drop.id).filter(Boolean))];
+  if (dropIds.length === 0) {
+    return {
+      rsvpCountMap: new Map<string, number>(),
+      viewerRsvpSet: new Set<string>(),
+    };
+  }
+
+  const [countRows, viewerRows] = await Promise.all([
+    db
+      .select({
+        dropId: creatorDropRsvps.dropId,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(creatorDropRsvps)
+      .where(inArray(creatorDropRsvps.dropId, dropIds))
+      .groupBy(creatorDropRsvps.dropId),
+    viewerId
+      ? db
+          .select({ dropId: creatorDropRsvps.dropId })
+          .from(creatorDropRsvps)
+          .where(and(eq(creatorDropRsvps.userId, viewerId), inArray(creatorDropRsvps.dropId, dropIds)))
+      : Promise.resolve([] as Array<{ dropId: string }>),
+  ]);
+
+  return {
+    rsvpCountMap: new Map(countRows.map((row) => [row.dropId, Number(row.count ?? 0)])),
+    viewerRsvpSet: new Set(viewerRows.map((row) => row.dropId).filter(Boolean)),
+  };
+}
+
 async function loadCreatorRoadmapLinkedMaps(items: CreatorRoadmapRecord[]) {
   if (!db || items.length === 0) {
     return {
@@ -2624,6 +2716,8 @@ function serializeCreatorDrop(
     linkedChallenge?: typeof drinkChallenges.$inferSelect | null;
     linkedPromotion?: typeof drinkCollectionPromotions.$inferSelect | null;
     acceptedCollaboration?: ReturnType<typeof serializeAcceptedCollaboration> | null;
+    rsvpCount?: number;
+    isRsvped?: boolean;
   } = {},
 ) {
   const creator = options.creator ?? null;
@@ -2641,6 +2735,8 @@ function serializeCreatorDrop(
     audienceLabel: creatorDropAudienceLabel(drop, options.viewerId),
     scheduledFor: drop.scheduledFor.toISOString(),
     isPublished: Boolean(drop.isPublished),
+    rsvpCount: Math.max(0, Number(options.rsvpCount ?? 0)),
+    isRsvped: Boolean(options.isRsvped),
     createdAt: drop.createdAt.toISOString(),
     updatedAt: drop.updatedAt.toISOString(),
     creator: creator
@@ -2755,6 +2851,86 @@ async function maybeSendCreatorDropAlerts(drop: CreatorDropRecord) {
     visibility: drop.visibility as CreatorDropVisibility,
     scheduledFor: drop.scheduledFor.toISOString(),
   });
+}
+
+async function maybeSendCreatorDropRsvpLiveAlerts() {
+  if (!db) return;
+
+  const now = new Date();
+  const liveWindowStart = new Date(now.getTime() - (1000 * 60 * 60 * 24 * 7));
+  const dueDrops = await db
+    .select()
+    .from(creatorDrops)
+    .where(
+      and(
+        eq(creatorDrops.isPublished, true),
+        lte(creatorDrops.scheduledFor, now),
+        gt(creatorDrops.scheduledFor, liveWindowStart),
+      ),
+    )
+    .orderBy(desc(creatorDrops.scheduledFor))
+    .limit(80);
+
+  for (const drop of dueDrops) {
+    const rsvpRows = await db
+      .select({ userId: creatorDropRsvps.userId })
+      .from(creatorDropRsvps)
+      .where(eq(creatorDropRsvps.dropId, drop.id));
+
+    let recipientIds = [...new Set(
+      rsvpRows
+        .map((row) => row.userId)
+        .filter((userId): userId is string => Boolean(userId) && userId !== drop.creatorUserId),
+    )];
+
+    if (!recipientIds.length) continue;
+
+    if (drop.visibility === "followers") {
+      const followerRows = await db
+        .select({ userId: follows.followerId })
+        .from(follows)
+        .where(and(eq(follows.followingId, drop.creatorUserId), inArray(follows.followerId, recipientIds)));
+      recipientIds = followerRows.map((row) => row.userId).filter(Boolean);
+    } else if (drop.visibility === "members") {
+      const membershipRows = await db
+        .select()
+        .from(creatorMemberships)
+        .where(eq(creatorMemberships.creatorUserId, drop.creatorUserId));
+      const activeMemberSet = new Set(
+        membershipRows
+          .filter((membership) => isCreatorMembershipActiveRecord(membership))
+          .map((membership) => membership.userId)
+          .filter(Boolean),
+      );
+      recipientIds = recipientIds.filter((userId) => activeMemberSet.has(userId));
+    }
+
+    if (!recipientIds.length) continue;
+
+    const existingRows = await db
+      .select({ userId: notifications.userId })
+      .from(notifications)
+      .where(and(
+        eq(notifications.type, DRINK_ALERT_TYPES.rsvpedDropLive),
+        inArray(notifications.userId, recipientIds),
+        sql`${notifications.metadata}->>'dropId' = ${drop.id}`,
+        sql`${notifications.metadata}->>'event' = 'live'`,
+      ));
+
+    const existingUserIds = new Set(existingRows.map((row) => row.userId).filter(Boolean));
+    const pendingRecipientIds = recipientIds.filter((userId) => !existingUserIds.has(userId));
+    if (!pendingRecipientIds.length) continue;
+
+    const creator = await loadUserBasicProfile(drop.creatorUserId);
+    await sendRsvpedDropLiveAlerts({
+      dropId: drop.id,
+      title: drop.title,
+      creatorUserId: drop.creatorUserId,
+      creatorUsername: creator?.username ?? null,
+      creatorAvatar: creator?.avatar ?? null,
+      recipientIds: pendingRecipientIds,
+    });
+  }
 }
 
 async function maybeSendCreatorPostAlerts(post: CreatorPostRecord) {
@@ -7986,6 +8162,8 @@ r.get("/drops/feed", optionalAuth, async (req, res) => {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
 
+    await maybeSendCreatorDropRsvpLiveAlerts();
+
     const viewerId = req.user?.id ?? null;
     const [drops, followedCreatorIds, memberCreatorIds] = await Promise.all([
       db.select().from(creatorDrops).where(gt(creatorDrops.scheduledFor, new Date())).orderBy(asc(creatorDrops.scheduledFor)).limit(240),
@@ -8019,7 +8197,10 @@ r.get("/drops/feed", optionalAuth, async (req, res) => {
       })
       .map((entry) => entry.drop);
 
-    const maps = await loadCreatorDropLinkedMaps(prioritizedDrops);
+    const [maps, rsvpMaps] = await Promise.all([
+      loadCreatorDropLinkedMaps(prioritizedDrops),
+      loadCreatorDropRsvpMaps(prioritizedDrops, viewerId),
+    ]);
     const items = prioritizedDrops.map((drop) => serializeCreatorDrop(drop, {
       viewerId,
       creator: maps.creatorMap.get(drop.creatorUserId) ?? null,
@@ -8027,6 +8208,8 @@ r.get("/drops/feed", optionalAuth, async (req, res) => {
       linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
       linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
       acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`drop:${drop.id}`) ?? null, maps.collaborationProfileMap),
+      rsvpCount: rsvpMaps.rsvpCountMap.get(drop.id) ?? 0,
+      isRsvped: rsvpMaps.viewerRsvpSet.has(drop.id),
     }));
 
     return res.json({
@@ -8052,6 +8235,8 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
+
+    await maybeSendCreatorDropRsvpLiveAlerts();
 
     const creatorUserId = String(req.params.userId ?? "").trim();
     if (!creatorUserId) {
@@ -8089,7 +8274,10 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
       memberCreatorIds,
     }));
 
-    const maps = await loadCreatorDropLinkedMaps(visibleDrops);
+    const [maps, rsvpMaps] = await Promise.all([
+      loadCreatorDropLinkedMaps(visibleDrops),
+      loadCreatorDropRsvpMaps(visibleDrops, viewerId),
+    ]);
     const items = visibleDrops.map((drop) => serializeCreatorDrop(drop, {
       viewerId,
       creator: maps.creatorMap.get(drop.creatorUserId) ?? null,
@@ -8097,6 +8285,8 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
       linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
       linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
       acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`drop:${drop.id}`) ?? null, maps.collaborationProfileMap),
+      rsvpCount: rsvpMaps.rsvpCountMap.get(drop.id) ?? 0,
+      isRsvped: rsvpMaps.viewerRsvpSet.has(drop.id),
     }));
 
     return res.json({
@@ -8108,6 +8298,194 @@ r.get("/drops/creator/:userId", optionalAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/drops/creator/:userId", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load creator drops"));
+  }
+});
+
+r.get("/drops/:id/rsvp-status", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const dropId = String(req.params.id ?? "").trim();
+    if (!dropId) {
+      return res.status(400).json({ ok: false, error: "Drop id is required." });
+    }
+
+    const access = await loadCreatorDropForViewer(dropId, req.user!.id);
+    if (!access) {
+      return res.status(404).json({ ok: false, error: "Drop not found." });
+    }
+
+    const [countRows, viewerRows] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(creatorDropRsvps)
+        .where(eq(creatorDropRsvps.dropId, dropId)),
+      db
+        .select({ id: creatorDropRsvps.id })
+        .from(creatorDropRsvps)
+        .where(and(eq(creatorDropRsvps.dropId, dropId), eq(creatorDropRsvps.userId, req.user!.id)))
+        .limit(1),
+    ]);
+
+    return res.json({
+      ok: true,
+      dropId,
+      isRsvped: Boolean(viewerRows[0]),
+      rsvpCount: Number(countRows[0]?.count ?? 0),
+      canManageInterest: access.isCreator,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops/:id/rsvp-status", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load drop RSVP status"));
+  }
+});
+
+r.get("/drops/:id/rsvps", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const dropId = String(req.params.id ?? "").trim();
+    if (!dropId) {
+      return res.status(400).json({ ok: false, error: "Drop id is required." });
+    }
+
+    const rows = await db
+      .select()
+      .from(creatorDrops)
+      .where(and(eq(creatorDrops.id, dropId), eq(creatorDrops.creatorUserId, req.user!.id)))
+      .limit(1);
+
+    if (!rows[0]) {
+      return res.status(404).json({ ok: false, error: "Drop not found." });
+    }
+
+    const [countRows, rsvpRows] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(creatorDropRsvps)
+        .where(eq(creatorDropRsvps.dropId, dropId)),
+      db
+        .select({
+          id: creatorDropRsvps.id,
+          userId: creatorDropRsvps.userId,
+          createdAt: creatorDropRsvps.createdAt,
+          username: users.username,
+          avatar: users.avatar,
+        })
+        .from(creatorDropRsvps)
+        .innerJoin(users, eq(users.id, creatorDropRsvps.userId))
+        .where(eq(creatorDropRsvps.dropId, dropId))
+        .orderBy(desc(creatorDropRsvps.createdAt))
+        .limit(50),
+    ]);
+
+    return res.json({
+      ok: true,
+      dropId,
+      rsvpCount: Number(countRows[0]?.count ?? 0),
+      items: rsvpRows.map((row) => ({
+        id: row.id,
+        userId: row.userId,
+        createdAt: row.createdAt.toISOString(),
+        username: row.username ?? null,
+        avatar: row.avatar ?? null,
+      })),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops/:id/rsvps", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load drop RSVPs"));
+  }
+});
+
+r.post("/drops/:id/rsvp", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const dropId = String(req.params.id ?? "").trim();
+    if (!dropId) {
+      return res.status(400).json({ ok: false, error: "Drop id is required." });
+    }
+
+    const access = await loadCreatorDropForViewer(dropId, req.user!.id);
+    if (!access || access.drop.scheduledFor <= new Date()) {
+      return res.status(404).json({ ok: false, error: "Drop not found." });
+    }
+
+    if (!access.drop.isPublished && !access.isCreator) {
+      return res.status(404).json({ ok: false, error: "Drop not found." });
+    }
+
+    const values = insertCreatorDropRsvpSchema.parse({
+      userId: req.user!.id,
+      dropId,
+    });
+
+    await db
+      .insert(creatorDropRsvps)
+      .values(values)
+      .onConflictDoNothing({ target: [creatorDropRsvps.userId, creatorDropRsvps.dropId] });
+
+    const countRows = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(creatorDropRsvps)
+      .where(eq(creatorDropRsvps.dropId, dropId));
+
+    return res.status(201).json({
+      ok: true,
+      dropId,
+      isRsvped: true,
+      rsvpCount: Number(countRows[0]?.count ?? 0),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops/:id/rsvp", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to RSVP to drop"));
+  }
+});
+
+r.delete("/drops/:id/rsvp", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const dropId = String(req.params.id ?? "").trim();
+    if (!dropId) {
+      return res.status(400).json({ ok: false, error: "Drop id is required." });
+    }
+
+    const access = await loadCreatorDropForViewer(dropId, req.user!.id);
+    if (!access) {
+      return res.status(404).json({ ok: false, error: "Drop not found." });
+    }
+
+    await db
+      .delete(creatorDropRsvps)
+      .where(and(eq(creatorDropRsvps.dropId, dropId), eq(creatorDropRsvps.userId, req.user!.id)));
+
+    const countRows = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(creatorDropRsvps)
+      .where(eq(creatorDropRsvps.dropId, dropId));
+
+    return res.json({
+      ok: true,
+      dropId,
+      isRsvped: false,
+      rsvpCount: Number(countRows[0]?.count ?? 0),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops/:id/rsvp", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to remove drop RSVP"));
   }
 });
 
@@ -8156,7 +8534,10 @@ r.post("/drops", requireAuth, async (req, res) => {
     }
 
     await maybeSendCreatorDropAlerts(drop);
-    const maps = await loadCreatorDropLinkedMaps([drop]);
+    const [maps, rsvpMaps] = await Promise.all([
+      loadCreatorDropLinkedMaps([drop]),
+      loadCreatorDropRsvpMaps([drop], req.user!.id),
+    ]);
     return res.status(201).json({
       ok: true,
       drop: serializeCreatorDrop(drop, {
@@ -8166,6 +8547,8 @@ r.post("/drops", requireAuth, async (req, res) => {
         linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
         linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
         acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`drop:${drop.id}`) ?? null, maps.collaborationProfileMap),
+        rsvpCount: rsvpMaps.rsvpCountMap.get(drop.id) ?? 0,
+        isRsvped: rsvpMaps.viewerRsvpSet.has(drop.id),
       }),
     });
   } catch (error) {
@@ -8244,7 +8627,10 @@ r.patch("/drops/:id", requireAuth, async (req, res) => {
       await maybeSendCreatorDropAlerts(drop);
     }
 
-    const maps = await loadCreatorDropLinkedMaps(drop ? [drop] : []);
+    const [maps, rsvpMaps] = await Promise.all([
+      loadCreatorDropLinkedMaps(drop ? [drop] : []),
+      loadCreatorDropRsvpMaps(drop ? [drop] : [], req.user!.id),
+    ]);
     return res.json({
       ok: true,
       drop: drop ? serializeCreatorDrop(drop, {
@@ -8254,6 +8640,8 @@ r.patch("/drops/:id", requireAuth, async (req, res) => {
         linkedChallenge: drop.linkedChallengeId ? maps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
         linkedPromotion: drop.linkedPromotionId ? maps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
         acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`drop:${drop.id}`) ?? null, maps.collaborationProfileMap),
+        rsvpCount: rsvpMaps.rsvpCountMap.get(drop.id) ?? 0,
+        isRsvped: rsvpMaps.viewerRsvpSet.has(drop.id),
       }) : null,
     });
   } catch (error) {
@@ -9893,6 +10281,8 @@ r.get("/alerts", requireAuth, async (req, res) => {
     if (!db) {
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
+
+    await maybeSendCreatorDropRsvpLiveAlerts();
 
     const limitParam = Number(req.query?.limit);
     const limit = Number.isFinite(limitParam) ? Math.max(1, Math.min(limitParam, 100)) : 50;

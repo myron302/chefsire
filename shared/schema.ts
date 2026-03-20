@@ -1336,6 +1336,22 @@ export const creatorDrops = pgTable(
   })
 );
 
+export const creatorDropRsvps = pgTable(
+  "creator_drop_rsvps",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    dropId: varchar("drop_id").references(() => creatorDrops.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("creator_drop_rsvps_user_idx").on(table.userId),
+    dropIdx: index("creator_drop_rsvps_drop_idx").on(table.dropId),
+    userDropIdx: uniqueIndex("creator_drop_rsvps_user_drop_idx").on(table.userId, table.dropId),
+    dropCreatedIdx: index("creator_drop_rsvps_drop_created_at_idx").on(table.dropId, table.createdAt),
+  })
+);
+
 export const creatorRoadmapItems = pgTable(
   "creator_roadmap_items",
   {
@@ -2146,6 +2162,11 @@ export const insertCreatorDropSchema = createInsertSchema(creatorDrops).omit({
   updatedAt: true,
 });
 
+export const insertCreatorDropRsvpSchema = createInsertSchema(creatorDropRsvps).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCreatorRoadmapItemSchema = createInsertSchema(creatorRoadmapItems).omit({
   id: true,
   createdAt: true,
@@ -2363,6 +2384,8 @@ export type CreatorPost = typeof creatorPosts.$inferSelect;
 export type InsertCreatorPost = z.infer<typeof insertCreatorPostSchema>;
 export type CreatorDrop = typeof creatorDrops.$inferSelect;
 export type InsertCreatorDrop = z.infer<typeof insertCreatorDropSchema>;
+export type CreatorDropRsvp = typeof creatorDropRsvps.$inferSelect;
+export type InsertCreatorDropRsvp = z.infer<typeof insertCreatorDropRsvpSchema>;
 export type CreatorRoadmapItem = typeof creatorRoadmapItems.$inferSelect;
 export type InsertCreatorRoadmapItem = z.infer<typeof insertCreatorRoadmapItemSchema>;
 export type CreatorCollaboration = typeof creatorCollaborations.$inferSelect;
