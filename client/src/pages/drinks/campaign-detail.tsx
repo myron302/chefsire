@@ -12,6 +12,7 @@ import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
 
 type CampaignOwnerAnalytics = {
@@ -72,6 +73,21 @@ type CampaignVariantItem = {
   };
 };
 
+type CampaignGoalItem = {
+  id: string;
+  campaignId: string;
+  goalType: "followers" | "rsvps" | "clicks" | "purchases" | "membership_conversions" | "linked_drop_views";
+  targetValue: number;
+  label: string | null;
+  createdAt: string;
+  updatedAt: string;
+  currentValue: number;
+  percentComplete: number;
+  isComplete: boolean;
+  metricLabel: string;
+  metricNote: string | null;
+};
+
 interface CampaignDetailResponse {
   ok: boolean;
   campaign: CreatorCampaignItem;
@@ -91,6 +107,7 @@ interface CampaignDetailResponse {
     owner: CampaignMilestone[];
   };
   ownerAnalytics?: CampaignOwnerAnalytics | null;
+  ownerGoals: CampaignGoalItem[];
   recentUpdates: Array<{
     id: string;
     targetType: "drop" | "post" | "roadmap" | "promo";
@@ -139,6 +156,18 @@ function buildVariantDestination(data: CampaignDetailResponse) {
     default:
       return null;
   }
+}
+
+function campaignGoalLabel(goal: CampaignGoalItem) {
+  return goal.label?.trim()
+    || ({
+      followers: "Campaign followers",
+      rsvps: "Linked drop RSVPs",
+      clicks: "Linked drop clicks",
+      purchases: "Linked collection purchases",
+      membership_conversions: "Membership conversions",
+      linked_drop_views: "Linked drop views",
+    }[goal.goalType] ?? goal.goalType);
 }
 
 export default function DrinkCampaignDetailPage() {
@@ -371,6 +400,31 @@ export default function DrinkCampaignDetailPage() {
                   <p className="font-medium text-foreground">Campaign engagement score</p>
                   <p className="mt-1">{query.data.ownerAnalytics.campaignEngagementScore} · {query.data.ownerAnalytics.campaignEngagementScoreNote}</p>
                 </div>
+                {query.data.ownerGoals.length ? (
+                  <div className="space-y-3 rounded-md border border-dashed p-4">
+                    <div>
+                      <p className="font-medium">Goals / progress</p>
+                      <p className="text-sm text-muted-foreground">Creator-set targets stay private to the owner view. They complement milestones instead of replacing them.</p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      {query.data.ownerGoals.map((goal) => (
+                        <div key={goal.id} className="rounded-md border p-3 text-sm">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Badge variant={goal.isComplete ? "default" : "outline"}>{campaignGoalLabel(goal)}</Badge>
+                            {goal.isComplete ? <Badge variant="secondary">Complete</Badge> : null}
+                          </div>
+                          <p className="mt-2 font-medium">{goal.metricLabel}</p>
+                          <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                            <span>{goal.currentValue} / {goal.targetValue}</span>
+                            <span>{goal.percentComplete}%</span>
+                          </div>
+                          <Progress value={goal.percentComplete} className="mt-2 h-2" />
+                          {goal.metricNote ? <p className="mt-2 text-xs text-muted-foreground">{goal.metricNote}</p> : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 {query.data.ownerAnalytics.milestones.length ? (
                   <div className="space-y-3 rounded-md border border-dashed p-4">
                     <div>

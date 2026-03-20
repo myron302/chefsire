@@ -1487,6 +1487,24 @@ export const creatorCampaignFollows = pgTable(
   })
 );
 
+export const creatorCampaignGoals = pgTable(
+  "creator_campaign_goals",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    campaignId: varchar("campaign_id").references(() => creatorCampaigns.id, { onDelete: "cascade" }).notNull(),
+    goalType: text("goal_type").notNull(),
+    targetValue: integer("target_value").notNull(),
+    label: varchar("label", { length: 160 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    campaignIdx: index("creator_campaign_goals_campaign_idx").on(table.campaignId),
+    campaignTypeIdx: index("creator_campaign_goals_campaign_type_idx").on(table.campaignId, table.goalType),
+    campaignUpdatedIdx: index("creator_campaign_goals_campaign_updated_at_idx").on(table.campaignId, table.updatedAt),
+  })
+);
+
 export const creatorCampaignCtaVariants = pgTable(
   "creator_campaign_cta_variants",
   {
@@ -2362,6 +2380,12 @@ export const insertCreatorCampaignLinkSchema = createInsertSchema(creatorCampaig
 export const insertCreatorCampaignFollowSchema = createInsertSchema(creatorCampaignFollows).omit({
   id: true,
   createdAt: true,
+});
+
+export const insertCreatorCampaignGoalSchema = createInsertSchema(creatorCampaignGoals).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 export const insertCreatorCampaignCtaVariantSchema = createInsertSchema(creatorCampaignCtaVariants).omit({
