@@ -1423,6 +1423,22 @@ export const creatorCampaignLinks = pgTable(
   })
 );
 
+export const creatorCampaignFollows = pgTable(
+  "creator_campaign_follows",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    campaignId: varchar("campaign_id").references(() => creatorCampaigns.id, { onDelete: "cascade" }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("creator_campaign_follows_user_idx").on(table.userId),
+    campaignIdx: index("creator_campaign_follows_campaign_idx").on(table.campaignId),
+    userCampaignIdx: uniqueIndex("creator_campaign_follows_user_campaign_idx").on(table.userId, table.campaignId),
+    campaignCreatedIdx: index("creator_campaign_follows_campaign_created_at_idx").on(table.campaignId, table.createdAt),
+  })
+);
+
 export const creatorDropEvents = pgTable(
   "creator_drop_events",
   {
@@ -2247,6 +2263,11 @@ export const insertCreatorCampaignLinkSchema = createInsertSchema(creatorCampaig
   createdAt: true,
 });
 
+export const insertCreatorCampaignFollowSchema = createInsertSchema(creatorCampaignFollows).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCreatorDropEventSchema = createInsertSchema(creatorDropEvents).omit({
   id: true,
   createdAt: true,
@@ -2471,6 +2492,8 @@ export type CreatorCampaign = typeof creatorCampaigns.$inferSelect;
 export type InsertCreatorCampaign = z.infer<typeof insertCreatorCampaignSchema>;
 export type CreatorCampaignLink = typeof creatorCampaignLinks.$inferSelect;
 export type InsertCreatorCampaignLink = z.infer<typeof insertCreatorCampaignLinkSchema>;
+export type CreatorCampaignFollow = typeof creatorCampaignFollows.$inferSelect;
+export type InsertCreatorCampaignFollow = z.infer<typeof insertCreatorCampaignFollowSchema>;
 export type CreatorDropEvent = typeof creatorDropEvents.$inferSelect;
 export type InsertCreatorDropEvent = z.infer<typeof insertCreatorDropEventSchema>;
 export type CreatorCollaboration = typeof creatorCollaborations.$inferSelect;

@@ -3,10 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
 
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
+import CampaignFollowButton from "@/components/drinks/CampaignFollowButton";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useUser } from "@/contexts/UserContext";
@@ -22,6 +24,15 @@ interface CampaignDetailResponse {
     posts: CreatorPostItem[];
     roadmap: CreatorRoadmapItem[];
   };
+  recentUpdates: Array<{
+    id: string;
+    targetType: "drop" | "post" | "roadmap" | "promo";
+    label: string;
+    title: string;
+    description: string | null;
+    timestamp: string | null;
+    route: string;
+  }>;
 }
 
 function describeState(campaign: CreatorCampaignItem) {
@@ -50,9 +61,11 @@ export default function DrinkCampaignDetailPage() {
 
   if (!matched) return null;
 
+  const campaign = query.data?.campaign ?? null;
+
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8">
-      <DrinksPlatformNav current="creator" />
+      <DrinksPlatformNav current="campaigns" />
 
       <section className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -64,6 +77,7 @@ export default function DrinkCampaignDetailPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Link href="/drinks/discover"><Button variant="outline">Discover hub</Button></Link>
+            <Link href="/drinks/campaigns/following"><Button variant="outline">Followed campaigns</Button></Link>
             <Link href="/drinks/drops"><Button variant="outline">Drops calendar</Button></Link>
             {query.data?.campaign.creator ? <Link href={query.data.campaign.creator.route}><Button>Creator page</Button></Link> : null}
           </div>
@@ -75,17 +89,30 @@ export default function DrinkCampaignDetailPage() {
 
       {query.data ? (
         <>
-          <CreatorCampaignCard campaign={query.data.campaign} />
+          <CreatorCampaignCard
+            campaign={query.data.campaign}
+            actions={(
+              <CampaignFollowButton
+                campaignId={campaign?.id}
+                creatorUserId={campaign?.creatorUserId}
+                variant={campaign?.isFollowing ? "outline" : "default"}
+              />
+            )}
+          />
 
           <Card>
             <CardHeader>
               <CardTitle>Story arc overview</CardTitle>
               <CardDescription>{describeState(query.data.campaign)}</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-3">
+            <CardContent className="grid gap-3 md:grid-cols-4">
               <div className="rounded-md border p-3 text-sm">
                 <p className="font-medium">Visibility</p>
                 <p className="text-muted-foreground">{query.data.campaign.visibility === "public" ? "Visible to everyone." : query.data.campaign.visibility === "followers" ? "Visible to followed users + creator." : "Visible to active members + creator."}</p>
+              </div>
+              <div className="rounded-md border p-3 text-sm">
+                <p className="font-medium">Campaign follow</p>
+                <p className="text-muted-foreground">{query.data.campaign.followerCount} people are following this arc for themed updates and launch intent.</p>
               </div>
               <div className="rounded-md border p-3 text-sm">
                 <p className="font-medium">Linked surfaces</p>
@@ -95,6 +122,28 @@ export default function DrinkCampaignDetailPage() {
                 <p className="font-medium">Access safety</p>
                 <p className="text-muted-foreground">Follower/member-linked content still respects the underlying visibility and collection access rules.</p>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent campaign updates</CardTitle>
+              <CardDescription>Clean, lightweight movement across the linked story arc without replacing drops, posts, roadmap, or alerts.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {query.data.recentUpdates.length === 0 ? <p className="text-sm text-muted-foreground">No visible campaign updates yet.</p> : null}
+              {query.data.recentUpdates.map((update) => (
+                <Link key={update.id} href={update.route}>
+                  <div className="rounded-md border p-3 transition-colors hover:border-primary/40">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{update.label}</Badge>
+                      {update.timestamp ? <Badge variant="secondary">{new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(update.timestamp))}</Badge> : null}
+                    </div>
+                    <p className="mt-2 font-medium">{update.title}</p>
+                    {update.description ? <p className="mt-1 line-clamp-3 text-sm text-muted-foreground">{update.description}</p> : null}
+                  </div>
+                </Link>
+              ))}
             </CardContent>
           </Card>
 
