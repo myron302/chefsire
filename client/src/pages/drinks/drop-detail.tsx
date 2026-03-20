@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
 
@@ -52,6 +52,16 @@ export default function DrinkDropDetailPage() {
   });
 
   const drop = query.data?.drop;
+  useEffect(() => {
+    if (!dropId || !query.data?.drop) return;
+    void fetch(`/api/drinks/drops/${encodeURIComponent(dropId)}/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ eventType: "view_drop" }),
+    }).catch(() => undefined);
+  }, [dropId, query.data?.drop]);
+
   const primaryDestination = useMemo(() => {
     if (!drop) return null;
     if (drop.linkedCollection) {
@@ -70,6 +80,16 @@ export default function DrinkDropDetailPage() {
     }
     return null;
   }, [drop]);
+
+  const trackClick = (targetType: "collection" | "challenge" | "promo", targetId?: string | null) => {
+    if (!dropId) return;
+    void fetch(`/api/drinks/drops/${encodeURIComponent(dropId)}/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ eventType: "click_drop_target", targetType, targetId: targetId ?? null }),
+    }).catch(() => undefined);
+  };
 
   if (!matched) return null;
 
@@ -152,7 +172,7 @@ export default function DrinkDropDetailPage() {
                 <div className="flex flex-wrap gap-2">
                   <DropRsvpButton drop={drop} />
                   {primaryDestination ? (
-                    <Link href={primaryDestination.href}><Button>{primaryDestination.label}</Button></Link>
+                    <Link href={primaryDestination.href}><Button onClick={() => trackClick(drop.linkedCollection ? "collection" : "challenge", drop.linkedCollection?.id ?? drop.linkedChallenge?.id)}>{primaryDestination.label}</Button></Link>
                   ) : null}
                   {!primaryDestination ? <Link href={drop.creator?.route ?? "/drinks/drops"}><Button variant="outline">Open creator page</Button></Link> : null}
                 </div>
@@ -238,7 +258,7 @@ export default function DrinkDropDetailPage() {
                   <div className="space-y-2 rounded-md border p-3">
                     <p className="font-medium">Collection · {drop.linkedCollection.name}</p>
                     <p className="text-muted-foreground">Access: {drop.linkedCollection.accessType.replaceAll("_", " ")}</p>
-                    <Link href={drop.linkedCollection.route}><Button size="sm" variant="outline">{getCreatorDropPrimaryActionLabel(drop.status, "collection")}</Button></Link>
+                    <Link href={drop.linkedCollection.route}><Button size="sm" variant="outline" onClick={() => trackClick("collection", drop.linkedCollection?.id)}>{getCreatorDropPrimaryActionLabel(drop.status, "collection")}</Button></Link>
                   </div>
                 ) : null}
 
@@ -246,7 +266,7 @@ export default function DrinkDropDetailPage() {
                   <div className="space-y-2 rounded-md border p-3">
                     <p className="font-medium">Challenge · {drop.linkedChallenge.title}</p>
                     <p className="text-muted-foreground">Challenge drops can turn this page into a live participation CTA the moment the launch activates.</p>
-                    <Link href={drop.linkedChallenge.route}><Button size="sm" variant="outline">{getCreatorDropPrimaryActionLabel(drop.status, "challenge")}</Button></Link>
+                    <Link href={drop.linkedChallenge.route}><Button size="sm" variant="outline" onClick={() => trackClick("challenge", drop.linkedChallenge?.id)}>{getCreatorDropPrimaryActionLabel(drop.status, "challenge")}</Button></Link>
                   </div>
                 ) : null}
 
@@ -257,7 +277,7 @@ export default function DrinkDropDetailPage() {
                       Starts {drop.linkedPromotion.startsAt ? formatCreatorDropDateTime(drop.linkedPromotion.startsAt) : "with this drop"}
                       {drop.linkedPromotion.endsAt ? ` · Ends ${formatCreatorDropDateTime(drop.linkedPromotion.endsAt)}` : ""}.
                     </p>
-                    <Link href={drop.detailRoute}><Button size="sm" variant="outline">{getCreatorDropPrimaryActionLabel(drop.status, "promo")}</Button></Link>
+                    <Link href={drop.detailRoute}><Button size="sm" variant="outline" onClick={() => trackClick("promo", drop.linkedPromotion?.id)}>{getCreatorDropPrimaryActionLabel(drop.status, "promo")}</Button></Link>
                   </div>
                 ) : null}
 

@@ -13,6 +13,9 @@ import {
   creatorMembershipPlans,
   creatorPosts,
   creatorRoadmapItems,
+  creatorCampaigns,
+  creatorCampaignLinks,
+  creatorDropEvents,
   creatorMembershipSalesLedger,
   creatorMemberships,
   drinkBundleCheckoutSessions,
@@ -45,6 +48,9 @@ import {
   insertCreatorDropRsvpSchema,
   insertCreatorCollaborationSchema,
   insertCreatorRoadmapItemSchema,
+  insertCreatorCampaignSchema,
+  insertCreatorCampaignLinkSchema,
+  insertCreatorDropEventSchema,
   insertDrinkCollectionSchema,
   insertDrinkChallengeSchema,
   insertDrinkRecipeSchema,
@@ -91,9 +97,13 @@ type CreatorDropStatus = "upcoming" | "live" | "archived";
 type CreatorRoadmapItemType = "collection" | "promo" | "challenge" | "member_drop" | "update" | "roadmap";
 type CreatorRoadmapVisibility = "public" | "followers" | "members";
 type CreatorRoadmapStatus = "upcoming" | "live" | "archived";
+type CreatorCampaignVisibility = "public" | "followers" | "members";
+type CreatorCampaignTargetType = "collection" | "drop" | "promo" | "challenge" | "post" | "roadmap";
+type CreatorCampaignState = "upcoming" | "active" | "past";
 type CreatorCollaborationType = "collection" | "drop" | "post" | "roadmap";
 type CreatorCollaborationStatus = "pending" | "accepted" | "declined" | "revoked";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
+type CreatorDropEventType = "view_drop" | "click_drop_target";
 
 type DrinkCollectionCheckoutSessionRecord = typeof drinkCollectionCheckoutSessions.$inferSelect;
 type DrinkCollectionPromotionRecord = typeof drinkCollectionPromotions.$inferSelect;
@@ -104,6 +114,9 @@ type CreatorDropRecord = typeof creatorDrops.$inferSelect;
 type CreatorDropRsvpRecord = typeof creatorDropRsvps.$inferSelect;
 type CreatorPostRecord = typeof creatorPosts.$inferSelect;
 type CreatorRoadmapRecord = typeof creatorRoadmapItems.$inferSelect;
+type CreatorCampaignRecord = typeof creatorCampaigns.$inferSelect;
+type CreatorCampaignLinkRecord = typeof creatorCampaignLinks.$inferSelect;
+type CreatorDropEventRecord = typeof creatorDropEvents.$inferSelect;
 type CreatorCollaborationRecord = typeof creatorCollaborations.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
 type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
@@ -564,6 +577,8 @@ const creatorDropVisibilitySchema = z.enum(["public", "followers", "members"]);
 const creatorRoadmapItemTypeSchema = z.enum(["collection", "promo", "challenge", "member_drop", "update", "roadmap"]);
 const creatorRoadmapVisibilitySchema = z.enum(["public", "followers", "members"]);
 const creatorRoadmapStatusSchema = z.enum(["upcoming", "live", "archived"]);
+const creatorCampaignVisibilitySchema = z.enum(["public", "followers", "members"]);
+const creatorCampaignTargetTypeSchema = z.enum(["collection", "drop", "promo", "challenge", "post", "roadmap"]);
 const creatorCollaborationTypeSchema = z.enum(["collection", "drop", "post", "roadmap"]);
 const creatorCollaborationStatusSchema = z.enum(["pending", "accepted", "declined", "revoked"]);
 
@@ -633,6 +648,36 @@ const creatorRoadmapBodyBaseSchema = z.object({
   scheduledFor: z.string().datetime({ offset: true }).nullable().optional(),
   releasedAt: z.string().datetime({ offset: true }).nullable().optional(),
   status: creatorRoadmapStatusSchema.default("upcoming"),
+});
+
+const creatorCampaignLinkBodySchema = z.object({
+  targetType: creatorCampaignTargetTypeSchema,
+  targetId: z.string().trim().min(1, "Linked content is required."),
+  sortOrder: z.coerce.number().int().min(0).max(999).optional(),
+});
+
+const creatorCampaignBodyBaseSchema = z.object({
+  slug: z.string().trim().min(2, "Campaign slug is required.").max(160),
+  name: z.string().trim().min(2, "Campaign name is required.").max(160),
+  description: z.string().trim().max(2000).optional().nullable(),
+  visibility: creatorCampaignVisibilitySchema.default("public"),
+  startsAt: z.string().datetime().optional().nullable(),
+  endsAt: z.string().datetime().optional().nullable(),
+  isActive: z.boolean().optional().default(true),
+  links: z.array(creatorCampaignLinkBodySchema).max(48).optional().default([]),
+}).superRefine((value, ctx) => {
+  if (value.startsAt && value.endsAt) {
+    const startsAt = new Date(value.startsAt);
+    const endsAt = new Date(value.endsAt);
+    if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt < startsAt) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "Campaign end date must be after the start date." });
+    }
+  }
+});
+
+const createCreatorCampaignBodySchema = creatorCampaignBodyBaseSchema;
+const updateCreatorCampaignBodySchema = creatorCampaignBodyBaseSchema.partial().refine((value) => Object.values(value).some((field) => field !== undefined), {
+  message: "Provide at least one campaign field to update.",
 });
 
 const createCreatorRoadmapBodySchema = creatorRoadmapBodyBaseSchema.superRefine((value, ctx) => {
@@ -1826,6 +1871,46 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaigns (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        slug varchar(200) NOT NULL,
+        name varchar(160) NOT NULL,
+        description text,
+        visibility text NOT NULL DEFAULT 'public',
+        starts_at timestamp,
+        ends_at timestamp,
+        is_active boolean NOT NULL DEFAULT true,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_links (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
+        target_type text NOT NULL,
+        target_id varchar(200) NOT NULL,
+        sort_order integer NOT NULL DEFAULT 0,
+        created_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT creator_campaign_links_campaign_target_idx UNIQUE (campaign_id, target_type, target_id)
+      );
+    `);
+
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_drop_events (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        drop_id varchar NOT NULL REFERENCES creator_drops(id) ON DELETE CASCADE,
+        event_type text NOT NULL,
+        user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+        target_type text,
+        target_id varchar(200),
+        created_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_collaborations (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         owner_creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1987,6 +2072,19 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_creator_status_idx ON creator_roadmap_items(creator_user_id, status);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_scheduled_idx ON creator_roadmap_items(scheduled_for);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_roadmap_items_released_idx ON creator_roadmap_items(released_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_creator_idx ON creator_campaigns(creator_user_id);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_campaigns_slug_idx ON creator_campaigns(slug);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_campaigns_creator_slug_idx ON creator_campaigns(creator_user_id, slug);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_visibility_idx ON creator_campaigns(visibility);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_active_idx ON creator_campaigns(is_active, starts_at, ends_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_creator_updated_at_idx ON creator_campaigns(creator_user_id, updated_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_campaign_idx ON creator_campaign_links(campaign_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_target_idx ON creator_campaign_links(target_type, target_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_campaign_sort_idx ON creator_campaign_links(campaign_id, sort_order, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_drop_idx ON creator_drop_events(drop_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_event_type_idx ON creator_drop_events(event_type);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_drop_event_created_at_idx ON creator_drop_events(drop_id, event_type, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_user_idx ON creator_drop_events(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_collaborations_owner_idx ON creator_collaborations(owner_creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_collaborations_collaborator_idx ON creator_collaborations(collaborator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_collaborations_status_idx ON creator_collaborations(status);`);
@@ -2327,6 +2425,206 @@ function canViewerSeeCreatorRoadmapItem(input: {
   return false;
 }
 
+function canViewerSeeCreatorCampaign(input: {
+  campaign: Pick<CreatorCampaignRecord, "creatorUserId" | "visibility">;
+  viewerId?: string | null;
+  followedCreatorIds?: Set<string>;
+  memberCreatorIds?: Set<string>;
+}) {
+  const { campaign, viewerId, followedCreatorIds = new Set<string>(), memberCreatorIds = new Set<string>() } = input;
+  if (viewerId && campaign.creatorUserId === viewerId) return true;
+  if (campaign.visibility === "public") return true;
+  if (!viewerId) return false;
+  if (campaign.visibility === "followers") return followedCreatorIds.has(campaign.creatorUserId);
+  if (campaign.visibility === "members") return memberCreatorIds.has(campaign.creatorUserId);
+  return false;
+}
+
+function creatorCampaignAudienceLabel(campaign: Pick<CreatorCampaignRecord, "creatorUserId" | "visibility">, viewerId?: string | null) {
+  if (viewerId && campaign.creatorUserId === viewerId) return "You";
+  if (campaign.visibility === "members") return "Members";
+  if (campaign.visibility === "followers") return "Followers";
+  return "Public";
+}
+
+function getCreatorCampaignState(campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "isActive">, now = new Date()): CreatorCampaignState {
+  if (!campaign.isActive) {
+    if (campaign.startsAt && campaign.startsAt > now) return "upcoming";
+    return "past";
+  }
+  if (campaign.startsAt && campaign.startsAt > now) return "upcoming";
+  if (campaign.endsAt && campaign.endsAt < now) return "past";
+  return "active";
+}
+
+function serializeCreatorCampaign(
+  campaign: CreatorCampaignRecord,
+  options: {
+    viewerId?: string | null;
+    creator?: { id: string; username: string | null; avatar: string | null } | null;
+    counts?: Partial<Record<CreatorCampaignTargetType, number>>;
+  } = {},
+) {
+  const counts = options.counts ?? {};
+  return {
+    id: campaign.id,
+    creatorUserId: campaign.creatorUserId,
+    slug: campaign.slug,
+    name: campaign.name,
+    description: campaign.description ?? null,
+    visibility: campaign.visibility as CreatorCampaignVisibility,
+    audienceLabel: creatorCampaignAudienceLabel(campaign, options.viewerId),
+    startsAt: campaign.startsAt ? campaign.startsAt.toISOString() : null,
+    endsAt: campaign.endsAt ? campaign.endsAt.toISOString() : null,
+    isActive: Boolean(campaign.isActive),
+    state: getCreatorCampaignState(campaign),
+    route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+    counts: {
+      collections: Number(counts.collection ?? 0),
+      drops: Number(counts.drop ?? 0),
+      promos: Number(counts.promo ?? 0),
+      challenges: Number(counts.challenge ?? 0),
+      posts: Number(counts.post ?? 0),
+      roadmap: Number(counts.roadmap ?? 0),
+      total: Number(
+        (counts.collection ?? 0)
+        + (counts.drop ?? 0)
+        + (counts.promo ?? 0)
+        + (counts.challenge ?? 0)
+        + (counts.post ?? 0)
+        + (counts.roadmap ?? 0)
+      ),
+    },
+    createdAt: campaign.createdAt.toISOString(),
+    updatedAt: campaign.updatedAt.toISOString(),
+    creator: options.creator
+      ? {
+        userId: options.creator.id,
+        username: options.creator.username ?? null,
+        avatar: options.creator.avatar ?? null,
+        route: `/drinks/creator/${encodeURIComponent(options.creator.id)}`,
+      }
+      : null,
+  };
+}
+
+async function loadCreatorCampaignLinksByCampaignIds(campaignIds: string[]) {
+  if (!db || campaignIds.length === 0) return new Map<string, CreatorCampaignLinkRecord[]>();
+  const rows = await db
+    .select()
+    .from(creatorCampaignLinks)
+    .where(inArray(creatorCampaignLinks.campaignId, campaignIds))
+    .orderBy(asc(creatorCampaignLinks.sortOrder), asc(creatorCampaignLinks.createdAt));
+
+  const map = new Map<string, CreatorCampaignLinkRecord[]>();
+  for (const row of rows) {
+    const current = map.get(row.campaignId) ?? [];
+    current.push(row);
+    map.set(row.campaignId, current);
+  }
+  return map;
+}
+
+async function loadCreatorCampaignSummaryMaps(campaigns: CreatorCampaignRecord[]) {
+  const creatorMap = await loadCreatorProfilesMap([...new Set(campaigns.map((campaign) => campaign.creatorUserId).filter(Boolean))]);
+  const linkMap = await loadCreatorCampaignLinksByCampaignIds(campaigns.map((campaign) => campaign.id));
+  const countsMap = new Map<string, Partial<Record<CreatorCampaignTargetType, number>>>();
+
+  for (const campaign of campaigns) {
+    const links = linkMap.get(campaign.id) ?? [];
+    const counts: Partial<Record<CreatorCampaignTargetType, number>> = {};
+    for (const link of links) {
+      const targetType = link.targetType as CreatorCampaignTargetType;
+      counts[targetType] = Number(counts[targetType] ?? 0) + 1;
+    }
+    countsMap.set(campaign.id, counts);
+  }
+
+  return {
+    creatorMap,
+    linkMap,
+    countsMap,
+  };
+}
+
+async function validateCreatorCampaignLinks(creatorUserId: string, links: Array<{ targetType: CreatorCampaignTargetType; targetId: string }>) {
+  if (!db || links.length === 0) return;
+
+  for (const link of links) {
+    switch (link.targetType) {
+      case "collection": {
+        const rows = await db
+          .select({ id: drinkCollections.id })
+          .from(drinkCollections)
+          .where(and(eq(drinkCollections.id, link.targetId), eq(drinkCollections.userId, creatorUserId)))
+          .limit(1);
+        if (!rows[0]) throw new Error("Linked collection campaigns must point to one of your collections.");
+        break;
+      }
+      case "drop": {
+        const rows = await db
+          .select({ id: creatorDrops.id })
+          .from(creatorDrops)
+          .where(and(eq(creatorDrops.id, link.targetId), eq(creatorDrops.creatorUserId, creatorUserId)))
+          .limit(1);
+        if (!rows[0]) throw new Error("Linked drops must belong to the creator.");
+        break;
+      }
+      case "promo": {
+        const rows = await db
+          .select({ id: drinkCollectionPromotions.id })
+          .from(drinkCollectionPromotions)
+          .where(and(eq(drinkCollectionPromotions.id, link.targetId), eq(drinkCollectionPromotions.creatorUserId, creatorUserId)))
+          .limit(1);
+        if (!rows[0]) throw new Error("Linked promos must belong to the creator.");
+        break;
+      }
+      case "post": {
+        const rows = await db
+          .select({ id: creatorPosts.id })
+          .from(creatorPosts)
+          .where(and(eq(creatorPosts.id, link.targetId), eq(creatorPosts.creatorUserId, creatorUserId)))
+          .limit(1);
+        if (!rows[0]) throw new Error("Linked posts must belong to the creator.");
+        break;
+      }
+      case "roadmap": {
+        const rows = await db
+          .select({ id: creatorRoadmapItems.id })
+          .from(creatorRoadmapItems)
+          .where(and(eq(creatorRoadmapItems.id, link.targetId), eq(creatorRoadmapItems.creatorUserId, creatorUserId)))
+          .limit(1);
+        if (!rows[0]) throw new Error("Linked roadmap items must belong to the creator.");
+        break;
+      }
+      case "challenge": {
+        const rows = await db
+          .select({ id: drinkChallenges.id })
+          .from(drinkChallenges)
+          .where(eq(drinkChallenges.id, link.targetId))
+          .limit(1);
+        if (!rows[0]) throw new Error("Linked challenge was not found.");
+        break;
+      }
+      default:
+        throw new Error("Unsupported campaign content type.");
+    }
+  }
+}
+
+async function replaceCreatorCampaignLinks(campaignId: string, links: Array<{ targetType: CreatorCampaignTargetType; targetId: string; sortOrder: number }>) {
+  if (!db) throw new Error("Database unavailable");
+  await db.delete(creatorCampaignLinks).where(eq(creatorCampaignLinks.campaignId, campaignId));
+  if (!links.length) return;
+  await db.insert(creatorCampaignLinks).values(
+    links.map((link) => insertCreatorCampaignLinkSchema.parse({
+      campaignId,
+      targetType: link.targetType,
+      targetId: link.targetId,
+      sortOrder: link.sortOrder,
+    })),
+  );
+}
 function creatorRoadmapAudienceLabel(item: Pick<CreatorRoadmapRecord, "creatorUserId" | "visibility">, viewerId?: string | null) {
   if (viewerId && item.creatorUserId === viewerId) return "You";
   if (item.visibility === "members") return "Members";
@@ -2689,6 +2987,171 @@ async function loadCreatorRoadmapLinkedMaps(items: CreatorRoadmapRecord[]) {
     collaborationMap,
     collaborationProfileMap,
   };
+}
+
+async function loadCreatorCampaignDetail(campaign: CreatorCampaignRecord, viewerId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const links = await db
+    .select()
+    .from(creatorCampaignLinks)
+    .where(eq(creatorCampaignLinks.campaignId, campaign.id))
+    .orderBy(asc(creatorCampaignLinks.sortOrder), asc(creatorCampaignLinks.createdAt));
+
+  const collectionIds = [...new Set(links.filter((link) => link.targetType === "collection").map((link) => link.targetId))];
+  const dropIds = [...new Set(links.filter((link) => link.targetType === "drop").map((link) => link.targetId))];
+  const promoIds = [...new Set(links.filter((link) => link.targetType === "promo").map((link) => link.targetId))];
+  const challengeIds = [...new Set(links.filter((link) => link.targetType === "challenge").map((link) => link.targetId))];
+  const postIds = [...new Set(links.filter((link) => link.targetType === "post").map((link) => link.targetId))];
+  const roadmapIds = [...new Set(links.filter((link) => link.targetType === "roadmap").map((link) => link.targetId))];
+
+  const [
+    creatorMap,
+    followedCreatorIds,
+    memberCreatorIds,
+    collectionAccessMap,
+    collectionRows,
+    dropRows,
+    promoRows,
+    challengeRows,
+    postRows,
+    roadmapRows,
+  ] = await Promise.all([
+    loadCreatorProfilesMap([campaign.creatorUserId]),
+    loadFollowedCreatorIdsForUser(viewerId),
+    loadActiveMembershipCreatorIdsForUser(viewerId),
+    loadCollectionAccessMapForUser(viewerId),
+    collectionIds.length ? db.select().from(drinkCollections).where(inArray(drinkCollections.id, collectionIds)) : Promise.resolve([] as Array<typeof drinkCollections.$inferSelect>),
+    dropIds.length ? db.select().from(creatorDrops).where(inArray(creatorDrops.id, dropIds)) : Promise.resolve([] as CreatorDropRecord[]),
+    promoIds.length ? db.select().from(drinkCollectionPromotions).where(inArray(drinkCollectionPromotions.id, promoIds)) : Promise.resolve([] as Array<typeof drinkCollectionPromotions.$inferSelect>),
+    challengeIds.length ? db.select().from(drinkChallenges).where(inArray(drinkChallenges.id, challengeIds)) : Promise.resolve([] as Array<typeof drinkChallenges.$inferSelect>),
+    postIds.length ? db.select().from(creatorPosts).where(inArray(creatorPosts.id, postIds)) : Promise.resolve([] as CreatorPostRecord[]),
+    roadmapIds.length ? db.select().from(creatorRoadmapItems).where(inArray(creatorRoadmapItems.id, roadmapIds)) : Promise.resolve([] as CreatorRoadmapRecord[]),
+  ]);
+
+  const collectionMap = new Map(collectionRows.map((row) => [row.id, row]));
+  const dropMap = new Map(dropRows.map((row) => [row.id, row]));
+  const promoMap = new Map(promoRows.map((row) => [row.id, row]));
+  const challengeMap = new Map(challengeRows.map((row) => [row.id, row]));
+  const postMap = new Map(postRows.map((row) => [row.id, row]));
+  const roadmapMap = new Map(roadmapRows.map((row) => [row.id, row]));
+
+  const visibleDrops = dropRows.filter((drop) => canViewerSeeCreatorDrop({
+    drop,
+    viewerId,
+    followedCreatorIds,
+    memberCreatorIds,
+    includeArchived: true,
+  }));
+  const visiblePosts = postRows.filter((post) => canViewerSeeCreatorPost({ post, viewerId, followedCreatorIds, memberCreatorIds }));
+  const visibleRoadmap = sortCreatorRoadmapItems(roadmapRows.filter((item) => canViewerSeeCreatorRoadmapItem({
+    item,
+    viewerId,
+    followedCreatorIds,
+    memberCreatorIds,
+  })));
+
+  const [dropLinkedMaps, dropRsvpMaps, postLinkedMaps, roadmapLinkedMaps] = await Promise.all([
+    loadCreatorDropLinkedMaps(visibleDrops),
+    loadCreatorDropRsvpMaps(visibleDrops, viewerId),
+    loadCreatorPostLinkedMaps(visiblePosts),
+    loadCreatorRoadmapLinkedMaps(visibleRoadmap),
+  ]);
+
+  const visibleCollections = links
+    .filter((link) => link.targetType === "collection")
+    .map((link) => collectionMap.get(link.targetId))
+    .filter((collection): collection is typeof drinkCollections.$inferSelect => {
+      if (!collection) return false;
+      if (viewerId && collection.userId === viewerId) return true;
+      const grants = collectionAccessMap.get(collection.id);
+      if (collection.accessType === "membership_only" && !grants?.has("membership")) return false;
+      if (!collection.isPublic && !grants?.size) return false;
+      return true;
+    });
+
+  const visiblePromos = links
+    .filter((link) => link.targetType === "promo")
+    .map((link) => promoMap.get(link.targetId))
+    .filter((promotion): promotion is typeof drinkCollectionPromotions.$inferSelect => {
+      if (!promotion) return false;
+      const linkedCollection = collectionMap.get(promotion.collectionId);
+      if (!linkedCollection) return false;
+      if (viewerId && linkedCollection.userId === viewerId) return true;
+      const grants = collectionAccessMap.get(linkedCollection.id);
+      if (linkedCollection.accessType === "membership_only" && !grants?.has("membership")) return false;
+      if (!linkedCollection.isPublic && !grants?.size) return false;
+      return true;
+    })
+    .map((promotion) => ({
+      id: promotion.id,
+      code: promotion.code,
+      collectionId: promotion.collectionId,
+      collectionName: collectionMap.get(promotion.collectionId)?.name ?? "Collection",
+      startsAt: promotion.startsAt ? promotion.startsAt.toISOString() : null,
+      endsAt: promotion.endsAt ? promotion.endsAt.toISOString() : null,
+      isActive: Boolean(promotion.isActive),
+      route: `/drinks/collections/${encodeURIComponent(promotion.collectionId)}`,
+    }));
+
+  const detail = {
+    campaign: serializeCreatorCampaign(campaign, {
+      viewerId,
+      creator: creatorMap.get(campaign.creatorUserId) ?? null,
+      counts: links.reduce((acc, link) => {
+        const key = link.targetType as CreatorCampaignTargetType;
+        acc[key] = Number(acc[key] ?? 0) + 1;
+        return acc;
+      }, {} as Partial<Record<CreatorCampaignTargetType, number>>),
+    }),
+    linkedContent: {
+      collections: visibleCollections.map((collection) => ({
+        id: collection.id,
+        name: collection.name,
+        description: collection.description ?? null,
+        accessType: collectionAccessTypeForRow(collection),
+        isPublic: Boolean(collection.isPublic),
+        route: `/drinks/collections/${encodeURIComponent(collection.id)}`,
+      })),
+      drops: visibleDrops.map((drop) => serializeCreatorDrop(drop, {
+        viewerId,
+        creator: dropLinkedMaps.creatorMap.get(drop.creatorUserId) ?? null,
+        linkedCollection: drop.linkedCollectionId ? dropLinkedMaps.collectionMap.get(drop.linkedCollectionId) ?? null : null,
+        linkedChallenge: drop.linkedChallengeId ? dropLinkedMaps.challengeMap.get(drop.linkedChallengeId) ?? null : null,
+        linkedPromotion: drop.linkedPromotionId ? dropLinkedMaps.promotionMap.get(drop.linkedPromotionId) ?? null : null,
+        acceptedCollaboration: serializeAcceptedCollaboration(dropLinkedMaps.collaborationMap.get(`drop:${drop.id}`) ?? null, dropLinkedMaps.collaborationProfileMap),
+        rsvpCount: dropRsvpMaps.rsvpCountMap.get(drop.id) ?? 0,
+        isRsvped: dropRsvpMaps.viewerRsvpSet.has(drop.id),
+      })),
+      promos: visiblePromos,
+      challenges: links
+        .filter((link) => link.targetType === "challenge")
+        .map((link) => challengeMap.get(link.targetId))
+        .filter((challenge): challenge is typeof drinkChallenges.$inferSelect => Boolean(challenge))
+        .map((challenge) => ({
+          id: challenge.id,
+          slug: challenge.slug,
+          title: challenge.title,
+          route: `/drinks/challenges/${encodeURIComponent(challenge.slug)}`,
+        })),
+      posts: visiblePosts.map((post) => serializeCreatorPost(post, {
+        viewerId,
+        creator: postLinkedMaps.creatorMap.get(post.creatorUserId) ?? null,
+        linkedCollection: post.linkedCollectionId ? postLinkedMaps.collectionMap.get(post.linkedCollectionId) ?? null : null,
+        linkedChallenge: post.linkedChallengeId ? postLinkedMaps.challengeMap.get(post.linkedChallengeId) ?? null : null,
+        acceptedCollaboration: serializeAcceptedCollaboration(postLinkedMaps.collaborationMap.get(`post:${post.id}`) ?? null, postLinkedMaps.collaborationProfileMap),
+      })),
+      roadmap: visibleRoadmap.map((item) => serializeCreatorRoadmapItem(item, {
+        viewerId,
+        creator: roadmapLinkedMaps.creatorMap.get(item.creatorUserId) ?? null,
+        linkedCollection: item.linkedCollectionId ? roadmapLinkedMaps.collectionMap.get(item.linkedCollectionId) ?? null : null,
+        linkedChallenge: item.linkedChallengeId ? roadmapLinkedMaps.challengeMap.get(item.linkedChallengeId) ?? null : null,
+        acceptedCollaboration: serializeAcceptedCollaboration(roadmapLinkedMaps.collaborationMap.get(`roadmap:${item.id}`) ?? null, roadmapLinkedMaps.collaborationProfileMap),
+      })),
+    },
+  };
+
+  return detail;
 }
 
 function serializeCreatorPost(
@@ -8438,6 +8901,48 @@ r.get("/drops/:id", optionalAuth, async (req, res) => {
   }
 });
 
+r.post("/drops/:id/events", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const dropId = String(req.params.id ?? "").trim();
+    const parsed = z.object({
+      eventType: z.enum(["view_drop", "click_drop_target"]),
+      targetType: z.enum(["collection", "challenge", "promo", "campaign"]).optional().nullable(),
+      targetId: z.string().trim().optional().nullable(),
+    }).safeParse(req.body ?? {});
+
+    if (!dropId) {
+      return res.status(400).json({ ok: false, error: "Drop id is required." });
+    }
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid drop event payload." });
+    }
+
+    const access = await loadCreatorDropForViewer(dropId, req.user?.id ?? null);
+    if (!access) {
+      return res.status(404).json({ ok: false, error: "Drop not found." });
+    }
+
+    const values = insertCreatorDropEventSchema.parse({
+      dropId,
+      eventType: parsed.data.eventType,
+      userId: req.user?.id ?? null,
+      targetType: parsed.data.targetType ?? null,
+      targetId: parsed.data.targetId ?? null,
+    });
+    await db.insert(creatorDropEvents).values(values);
+
+    return res.status(201).json({ ok: true });
+  } catch (error) {
+    const message = logCollectionRouteError("/drops/:id/events", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to track drop event"));
+  }
+});
+
 r.get("/drops/:id/rsvp-status", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -9109,6 +9614,269 @@ r.delete("/roadmap/:id", requireAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/roadmap/:id", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to delete roadmap item"));
+  }
+});
+
+r.get("/campaigns", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [campaigns, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      db.select().from(creatorCampaigns).orderBy(desc(creatorCampaigns.updatedAt)).limit(160),
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+
+    const visibleCampaigns = campaigns.filter((campaign) => canViewerSeeCreatorCampaign({
+      campaign,
+      viewerId,
+      followedCreatorIds,
+      memberCreatorIds,
+    }));
+    const maps = await loadCreatorCampaignSummaryMaps(visibleCampaigns);
+
+    return res.json({
+      ok: true,
+      count: visibleCampaigns.length,
+      items: visibleCampaigns.map((campaign) => serializeCreatorCampaign(campaign, {
+        viewerId,
+        creator: maps.creatorMap.get(campaign.creatorUserId) ?? null,
+        counts: maps.countsMap.get(campaign.id),
+      })),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator campaigns"));
+  }
+});
+
+r.get("/campaigns/creator/:userId", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const creatorUserId = String(req.params.userId ?? "").trim();
+    if (!creatorUserId) {
+      return res.status(400).json({ ok: false, error: "Creator userId is required." });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [campaigns, followedCreatorIds, memberCreatorIds] = await Promise.all([
+      db.select().from(creatorCampaigns).where(eq(creatorCampaigns.creatorUserId, creatorUserId)).orderBy(desc(creatorCampaigns.updatedAt)).limit(80),
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+
+    const visibleCampaigns = campaigns.filter((campaign) => canViewerSeeCreatorCampaign({
+      campaign,
+      viewerId,
+      followedCreatorIds,
+      memberCreatorIds,
+    }));
+    const maps = await loadCreatorCampaignSummaryMaps(visibleCampaigns);
+
+    return res.json({
+      ok: true,
+      creatorUserId,
+      count: visibleCampaigns.length,
+      items: visibleCampaigns.map((campaign) => serializeCreatorCampaign(campaign, {
+        viewerId,
+        creator: maps.creatorMap.get(campaign.creatorUserId) ?? null,
+        counts: maps.countsMap.get(campaign.id),
+      })),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/creator/:userId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator campaigns"));
+  }
+});
+
+r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const slug = String(req.params.slug ?? "").trim();
+    if (!slug) {
+      return res.status(400).json({ ok: false, error: "Campaign slug is required." });
+    }
+
+    const campaignRows = await db.select().from(creatorCampaigns).where(eq(creatorCampaigns.slug, slug)).limit(1);
+    const campaign = campaignRows[0];
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [followedCreatorIds, memberCreatorIds] = await Promise.all([
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+    if (!canViewerSeeCreatorCampaign({ campaign, viewerId, followedCreatorIds, memberCreatorIds })) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const detail = await loadCreatorCampaignDetail(campaign, viewerId);
+    return res.json({ ok: true, ...detail });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:slug", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load creator campaign"));
+  }
+});
+
+r.post("/campaigns", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const parsed = createCreatorCampaignBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid campaign payload." });
+    }
+
+    const payload = parsed.data;
+    const links = [...new Map((payload.links ?? []).map((link, index) => [`${link.targetType}:${link.targetId}`, {
+      targetType: link.targetType,
+      targetId: link.targetId.trim(),
+      sortOrder: Number(link.sortOrder ?? index),
+    }])).values()] as Array<{ targetType: CreatorCampaignTargetType; targetId: string; sortOrder: number }>;
+
+    await validateCreatorCampaignLinks(req.user!.id, links);
+
+    const values = insertCreatorCampaignSchema.parse({
+      creatorUserId: req.user!.id,
+      slug: payload.slug.trim().toLowerCase(),
+      name: payload.name.trim(),
+      description: payload.description?.trim() ? payload.description.trim() : null,
+      visibility: payload.visibility,
+      startsAt: payload.startsAt ? new Date(payload.startsAt) : null,
+      endsAt: payload.endsAt ? new Date(payload.endsAt) : null,
+      isActive: payload.isActive ?? true,
+    });
+
+    const inserted = await db.insert(creatorCampaigns).values({
+      ...values,
+      updatedAt: new Date(),
+    }).returning();
+    const campaign = inserted[0];
+    if (!campaign) {
+      return res.status(500).json({ ok: false, error: "Failed to create campaign." });
+    }
+
+    await replaceCreatorCampaignLinks(campaign.id, links);
+    const detail = await loadCreatorCampaignDetail(campaign, req.user!.id);
+    return res.status(201).json({ ok: true, ...detail });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create creator campaign"));
+  }
+});
+
+r.patch("/campaigns/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const parsed = updateCreatorCampaignBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid campaign payload." });
+    }
+
+    const existingRows = await db
+      .select()
+      .from(creatorCampaigns)
+      .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, req.user!.id)))
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const payload = parsed.data;
+    const links = payload.links
+      ? [...new Map(payload.links.map((link, index) => [`${link.targetType}:${link.targetId}`, {
+          targetType: link.targetType,
+          targetId: link.targetId.trim(),
+          sortOrder: Number(link.sortOrder ?? index),
+        }])).values()] as Array<{ targetType: CreatorCampaignTargetType; targetId: string; sortOrder: number }>
+      : null;
+    if (links) {
+      await validateCreatorCampaignLinks(req.user!.id, links);
+    }
+
+    const nextSlug = payload.slug !== undefined ? payload.slug.trim().toLowerCase() : existing.slug;
+    const updatedRows = await db
+      .update(creatorCampaigns)
+      .set({
+        slug: nextSlug,
+        name: payload.name !== undefined ? payload.name.trim() : existing.name,
+        description: payload.description !== undefined ? (payload.description?.trim() ? payload.description.trim() : null) : existing.description,
+        visibility: payload.visibility ?? (existing.visibility as CreatorCampaignVisibility),
+        startsAt: payload.startsAt !== undefined ? (payload.startsAt ? new Date(payload.startsAt) : null) : existing.startsAt,
+        endsAt: payload.endsAt !== undefined ? (payload.endsAt ? new Date(payload.endsAt) : null) : existing.endsAt,
+        isActive: payload.isActive ?? existing.isActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(creatorCampaigns.id, campaignId))
+      .returning();
+
+    const campaign = updatedRows[0];
+    if (!campaign) {
+      return res.status(500).json({ ok: false, error: "Failed to update campaign." });
+    }
+    if (links) {
+      await replaceCreatorCampaignLinks(campaign.id, links);
+    }
+    const detail = await loadCreatorCampaignDetail(campaign, req.user!.id);
+    return res.json({ ok: true, ...detail });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update creator campaign"));
+  }
+});
+
+r.delete("/campaigns/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const deletedRows = await db
+      .delete(creatorCampaigns)
+      .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, req.user!.id)))
+      .returning({ id: creatorCampaigns.id });
+
+    if (!deletedRows[0]) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    return res.json({ ok: true, deletedId: deletedRows[0].id });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete creator campaign"));
   }
 });
 
@@ -12410,6 +13178,134 @@ r.get("/bundles/checkout-sessions/:sessionId/status", requireAuth, async (req, r
   } catch (error) {
     const message = logCollectionRouteError("/bundles/checkout-sessions/:sessionId/status", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to verify bundle checkout"));
+  }
+});
+
+r.get("/creator-dashboard/drop-analytics", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const creatorUserId = req.user!.id;
+    const drops = await db
+      .select()
+      .from(creatorDrops)
+      .where(eq(creatorDrops.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorDrops.scheduledFor))
+      .limit(160);
+
+    const dropIds = drops.map((drop) => drop.id);
+    const linkedCollectionIds = [...new Set(drops.map((drop) => drop.linkedCollectionId).filter((value): value is string => Boolean(value)))];
+
+    const [eventRows, rsvpRows, notificationRows, purchaseRows, membershipRows] = await Promise.all([
+      dropIds.length
+        ? db.select({
+            dropId: creatorDropEvents.dropId,
+            eventType: creatorDropEvents.eventType,
+            count: sql<number>`count(*)::int`,
+          }).from(creatorDropEvents).where(inArray(creatorDropEvents.dropId, dropIds)).groupBy(creatorDropEvents.dropId, creatorDropEvents.eventType)
+        : Promise.resolve([] as Array<{ dropId: string; eventType: string; count: number }>),
+      dropIds.length
+        ? db.select({ dropId: creatorDropRsvps.dropId, count: sql<number>`count(*)::int` }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).groupBy(creatorDropRsvps.dropId)
+        : Promise.resolve([] as Array<{ dropId: string; count: number }>),
+      dropIds.length
+        ? db.select({
+            dropId: sql<string>`${notifications.metadata}->>'dropId'`,
+            count: sql<number>`count(*)::int`,
+          }).from(notifications).where(
+            or(...dropIds.map((id) => sql`${notifications.metadata}->>'dropId' = ${id}`)),
+          ).groupBy(sql`${notifications.metadata}->>'dropId'`)
+        : Promise.resolve([] as Array<{ dropId: string; count: number }>),
+      linkedCollectionIds.length
+        ? db.select({
+            collectionId: drinkCollectionPurchases.collectionId,
+            createdAt: drinkCollectionPurchases.createdAt,
+            status: drinkCollectionPurchases.status,
+          }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, linkedCollectionIds))
+        : Promise.resolve([] as Array<{ collectionId: string; createdAt: Date; status: string }>),
+      db.select({
+        creatorUserId: creatorMemberships.creatorUserId,
+        createdAt: creatorMemberships.createdAt,
+        status: creatorMemberships.status,
+      }).from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, creatorUserId)),
+    ]);
+
+    const eventCountMap = new Map<string, { viewCount: number; linkedClicksCount: number }>();
+    for (const row of eventRows) {
+      const current = eventCountMap.get(row.dropId) ?? { viewCount: 0, linkedClicksCount: 0 };
+      if (row.eventType === "view_drop") current.viewCount = Number(row.count ?? 0);
+      if (row.eventType === "click_drop_target") current.linkedClicksCount = Number(row.count ?? 0);
+      eventCountMap.set(row.dropId, current);
+    }
+    const rsvpCountMap = new Map(rsvpRows.map((row) => [row.dropId, Number(row.count ?? 0)]));
+    const alertsSentMap = new Map(notificationRows.map((row) => [row.dropId, Number(row.count ?? 0)]));
+    const purchasesByCollection = new Map<string, Array<{ createdAt: Date; status: string }>>();
+    for (const row of purchaseRows) {
+      const current = purchasesByCollection.get(row.collectionId) ?? [];
+      current.push({ createdAt: row.createdAt, status: row.status });
+      purchasesByCollection.set(row.collectionId, current);
+    }
+
+    const items = drops.map((drop) => {
+      const metrics = eventCountMap.get(drop.id) ?? { viewCount: 0, linkedClicksCount: 0 };
+      const rsvpCount = rsvpCountMap.get(drop.id) ?? 0;
+      const alertsSentCount = alertsSentMap.get(drop.id) ?? 0;
+      const linkedPurchases = drop.linkedCollectionId
+        ? (purchasesByCollection.get(drop.linkedCollectionId) ?? []).filter((purchase) => purchase.createdAt >= drop.scheduledFor && purchase.status === "completed")
+        : [];
+      const membershipConversions = drop.dropType === "member_drop"
+        ? membershipRows.filter((membership) => membership.status === "active" && membership.createdAt >= drop.scheduledFor).length
+        : 0;
+      const funnelBase = metrics.viewCount > 0 ? metrics.viewCount : rsvpCount > 0 ? rsvpCount : 0;
+      const conversionRate = funnelBase > 0 ? Number((((linkedPurchases.length + membershipConversions) / funnelBase) * 100).toFixed(1)) : null;
+
+      return {
+        dropId: drop.id,
+        title: drop.title,
+        status: getCreatorDropStatus(drop),
+        scheduledFor: drop.scheduledFor.toISOString(),
+        liveAt: drop.isPublished && drop.scheduledFor <= new Date() ? drop.scheduledFor.toISOString() : null,
+        rsvpCount,
+        viewCount: metrics.viewCount,
+        alertsSentCount,
+        linkedClicksCount: metrics.linkedClicksCount,
+        purchaseCount: linkedPurchases.length,
+        membershipConversionsCount: membershipConversions,
+        membershipConversionsNote: drop.dropType === "member_drop" ? "Approximate: counts memberships started after this member drop went live." : null,
+        purchaseAttributionNote: drop.linkedCollectionId ? "Approximate: counts completed purchases of the linked collection after this drop's launch time." : null,
+        conversionRate,
+        linkedCollectionId: drop.linkedCollectionId ?? null,
+        linkedPromotionId: drop.linkedPromotionId ?? null,
+      };
+    });
+
+    return res.json({
+      ok: true,
+      userId: creatorUserId,
+      summary: {
+        totalDrops: items.length,
+        upcomingDrops: items.filter((item) => item.status === "upcoming").length,
+        liveDrops: items.filter((item) => item.status === "live").length,
+        archivedDrops: items.filter((item) => item.status === "archived").length,
+        totalViews: items.reduce((sum, item) => sum + item.viewCount, 0),
+        totalRsvps: items.reduce((sum, item) => sum + item.rsvpCount, 0),
+        totalAlertsSent: items.reduce((sum, item) => sum + item.alertsSentCount, 0),
+        totalLinkedClicks: items.reduce((sum, item) => sum + item.linkedClicksCount, 0),
+        totalPurchasesFromDrops: items.reduce((sum, item) => sum + item.purchaseCount, 0),
+        totalMembershipConversions: items.reduce((sum, item) => sum + item.membershipConversionsCount, 0),
+      },
+      attributionNotes: [
+        "Drop views and click-throughs are counted from dedicated drop pages.",
+        "Purchases from linked release are approximate and count completed linked-collection purchases after the drop launch time.",
+        "Membership conversions are approximate and only shown for member drops.",
+      ],
+      items,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/drop-analytics", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load drop launch analytics"));
   }
 });
 

@@ -3,6 +3,7 @@ import { Link, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useUser } from "@/contexts/UserContext";
+import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
@@ -184,6 +185,13 @@ interface CreatorRoadmapResponse {
   items: CreatorRoadmapItem[];
 }
 
+interface CreatorCampaignsResponse {
+  ok: boolean;
+  creatorUserId: string;
+  count: number;
+  items: CreatorCampaignItem[];
+}
+
 function number(value: number): string {
   return new Intl.NumberFormat().format(value);
 }
@@ -337,6 +345,21 @@ export default function PublicDrinkCreatorPage() {
     enabled: Boolean(creatorId),
   });
 
+  const creatorCampaignsQuery = useQuery<CreatorCampaignsResponse>({
+    queryKey: ["/api/drinks/campaigns/creator", creatorId, user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch(`/api/drinks/campaigns/creator/${encodeURIComponent(creatorId)}`, {
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to load creator campaigns");
+      }
+      return payload as CreatorCampaignsResponse;
+    },
+    enabled: Boolean(creatorId),
+  });
+
   const publicBundlesQuery = useQuery<{ ok: boolean; bundles: PublicBundle[] }>({
     queryKey: ["/api/drinks/bundles/public", creatorId],
     queryFn: async () => {
@@ -433,6 +456,7 @@ export default function PublicDrinkCreatorPage() {
   const liveCreatorDrops = creatorDrops.filter((drop) => drop.status === "live");
   const upcomingCreatorDrops = creatorDrops.filter((drop) => drop.status === "upcoming");
   const archivedCreatorDrops = creatorDrops.filter((drop) => drop.status === "archived");
+  const creatorCampaigns = creatorCampaignsQuery.data?.items ?? [];
   const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
   const collaborationHighlightsCount = [
     ...creatorCollections.filter((collection) => Boolean(collection.acceptedCollaboration)),
@@ -549,6 +573,9 @@ export default function PublicDrinkCreatorPage() {
               <Link href="#creator-roadmap">
                 <Button size="sm" variant="outline">Roadmap + archive</Button>
               </Link>
+              <Link href="#creator-campaigns">
+                <Button size="sm" variant="outline">Campaigns</Button>
+              </Link>
               {memberOnlyCollections.length > 0 || premiumCollections.length > 0 ? (
                 <Link href="/drinks/collections/explore">
                   <Button size="sm">Browse collection storefront</Button>
@@ -626,6 +653,44 @@ export default function PublicDrinkCreatorPage() {
           </CardContent>
         </Card>
       ) : null}
+
+      <section id="creator-campaigns" className="space-y-4">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-xl font-semibold">Campaigns / Seasons</h2>
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            <span>{creatorCampaigns.length} visible campaigns</span>
+            <Link href="/drinks/discover" className="underline underline-offset-2">Open discover hub</Link>
+          </div>
+        </div>
+
+        {creatorCampaignsQuery.isLoading ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">Loading campaigns…</CardContent>
+          </Card>
+        ) : null}
+
+        {creatorCampaignsQuery.isError ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-destructive">
+              {creatorCampaignsQuery.error instanceof Error ? creatorCampaignsQuery.error.message : "Unable to load creator campaigns right now."}
+            </CardContent>
+          </Card>
+        ) : null}
+
+        {!creatorCampaignsQuery.isLoading && !creatorCampaignsQuery.isError && creatorCampaigns.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              No visible campaigns yet. Public visitors only see public arcs; follower and member campaigns show up here only when your access allows it.
+            </CardContent>
+          </Card>
+        ) : null}
+
+        <div className="space-y-3">
+          {creatorCampaigns.map((campaign) => (
+            <CreatorCampaignCard key={campaign.id} campaign={campaign} showCreator={false} />
+          ))}
+        </div>
+      </section>
 
       <section id="creator-roadmap" className="space-y-4">
         <div className="flex items-baseline justify-between gap-2">
