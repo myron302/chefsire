@@ -3066,6 +3066,241 @@ async function loadCreatorRoadmapLinkedMaps(items: CreatorRoadmapRecord[]) {
   };
 }
 
+
+type CreatorCampaignAnalyticsItem = {
+  campaignId: string;
+  slug: string;
+  name: string;
+  visibility: CreatorCampaignVisibility;
+  isActive: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+  followerCount: number;
+  linkedDropsCount: number;
+  linkedPostsCount: number;
+  linkedCollectionsCount: number;
+  linkedChallengesCount: number;
+  totalDropRsvps: number;
+  totalDropViews: number;
+  totalDropClicks: number;
+  purchasesFromLinkedCollections: number;
+  purchasesFromLinkedCollectionsNote: string | null;
+  membershipsFromCampaign: number;
+  membershipsFromCampaignNote: string | null;
+  campaignEngagementScore: number;
+  campaignEngagementScoreNote: string;
+};
+
+type CreatorCampaignAnalyticsSummary = {
+  totalCampaigns: number;
+  activeCampaigns: number;
+  totalCampaignFollowers: number;
+  totalCampaignDropRsvps: number;
+  totalCampaignClicks: number;
+  totalCampaignPurchases: number;
+  totalCampaignMembershipConversions: number;
+};
+
+function getCreatorCampaignAnalyticsWindow(campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "createdAt">) {
+  return {
+    startsAt: campaign.startsAt ?? campaign.createdAt,
+    endsAt: campaign.endsAt ?? new Date(),
+  };
+}
+
+function isDateWithinCampaignAnalyticsWindow(value: Date, campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "createdAt">) {
+  const window = getCreatorCampaignAnalyticsWindow(campaign);
+  return value >= window.startsAt && value <= window.endsAt;
+}
+
+async function loadCreatorCampaignAnalytics(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const campaigns = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+    .orderBy(desc(creatorCampaigns.updatedAt))
+    .limit(120);
+
+  if (campaigns.length === 0) {
+    return {
+      summary: {
+        totalCampaigns: 0,
+        activeCampaigns: 0,
+        totalCampaignFollowers: 0,
+        totalCampaignDropRsvps: 0,
+        totalCampaignClicks: 0,
+        totalCampaignPurchases: 0,
+        totalCampaignMembershipConversions: 0,
+      } satisfies CreatorCampaignAnalyticsSummary,
+      items: [] as CreatorCampaignAnalyticsItem[],
+      attributionNotes: [
+        "Campaign follower counts come from explicit campaign follows.",
+        "Drop RSVP, view, and click metrics roll up linked drop analytics that already exist elsewhere in the creator dashboard.",
+        "Purchases from linked collections are approximate and count completed purchases made during the campaign window.",
+        "Membership conversions are approximate and only shown for member-focused campaigns that have member visibility, member drops, or members-only collections.",
+        "Campaign engagement score is a lightweight weighted score for comparison, not a payout or attribution metric.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  const [linkMap, followerCountMap, membershipRows] = await Promise.all([
+    loadCreatorCampaignLinksByCampaignIds(campaignIds),
+    loadCampaignFollowerCountMap(campaignIds),
+    db.select({
+      createdAt: creatorMemberships.createdAt,
+      status: creatorMemberships.status,
+    }).from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, creatorUserId)),
+  ]);
+
+  const dropIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "drop")
+      .map((link) => link.targetId)),
+  )];
+  const collectionIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId)),
+  )];
+
+  const [dropRows, collectionRows, eventRows, rsvpRows, purchaseRows] = await Promise.all([
+    dropIds.length
+      ? db.select({
+          id: creatorDrops.id,
+          dropType: creatorDrops.dropType,
+        }).from(creatorDrops).where(inArray(creatorDrops.id, dropIds))
+      : Promise.resolve([] as Array<{ id: string; dropType: string }>),
+    collectionIds.length
+      ? db.select({
+          id: drinkCollections.id,
+          accessType: drinkCollections.accessType,
+        }).from(drinkCollections).where(inArray(drinkCollections.id, collectionIds))
+      : Promise.resolve([] as Array<{ id: string; accessType: string | null }>),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropEvents.dropId,
+          eventType: creatorDropEvents.eventType,
+          count: sql<number>`count(*)::int`,
+        }).from(creatorDropEvents).where(inArray(creatorDropEvents.dropId, dropIds)).groupBy(creatorDropEvents.dropId, creatorDropEvents.eventType)
+      : Promise.resolve([] as Array<{ dropId: string; eventType: string; count: number }>),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropRsvps.dropId,
+          count: sql<number>`count(*)::int`,
+        }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).groupBy(creatorDropRsvps.dropId)
+      : Promise.resolve([] as Array<{ dropId: string; count: number }>),
+    collectionIds.length
+      ? db.select({
+          collectionId: drinkCollectionPurchases.collectionId,
+          createdAt: drinkCollectionPurchases.createdAt,
+          status: drinkCollectionPurchases.status,
+        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds))
+      : Promise.resolve([] as Array<{ collectionId: string; createdAt: Date; status: string }>),
+  ]);
+
+  const dropMap = new Map(dropRows.map((row) => [row.id, row]));
+  const collectionMap = new Map(collectionRows.map((row) => [row.id, row]));
+  const rsvpCountMap = new Map(rsvpRows.map((row) => [row.dropId, Number(row.count ?? 0)]));
+  const eventCountMap = new Map<string, { views: number; clicks: number }>();
+  for (const row of eventRows) {
+    const current = eventCountMap.get(row.dropId) ?? { views: 0, clicks: 0 };
+    if (row.eventType === "view_drop") current.views = Number(row.count ?? 0);
+    if (row.eventType === "click_drop_target") current.clicks = Number(row.count ?? 0);
+    eventCountMap.set(row.dropId, current);
+  }
+
+  const purchasesByCollectionId = new Map<string, Array<{ createdAt: Date; status: string }>>();
+  for (const purchase of purchaseRows) {
+    const current = purchasesByCollectionId.get(purchase.collectionId) ?? [];
+    current.push({ createdAt: purchase.createdAt, status: purchase.status });
+    purchasesByCollectionId.set(purchase.collectionId, current);
+  }
+
+  const items = campaigns.map((campaign) => {
+    const links = linkMap.get(campaign.id) ?? [];
+    const dropLinkIds = links.filter((link) => link.targetType === "drop").map((link) => link.targetId);
+    const collectionLinkIds = links.filter((link) => link.targetType === "collection").map((link) => link.targetId);
+    const followerCount = followerCountMap.get(campaign.id) ?? 0;
+    const totalDropRsvps = dropLinkIds.reduce((sum, dropId) => sum + (rsvpCountMap.get(dropId) ?? 0), 0);
+    const totalDropViews = dropLinkIds.reduce((sum, dropId) => sum + (eventCountMap.get(dropId)?.views ?? 0), 0);
+    const totalDropClicks = dropLinkIds.reduce((sum, dropId) => sum + (eventCountMap.get(dropId)?.clicks ?? 0), 0);
+    const purchasesFromLinkedCollections = collectionLinkIds.reduce((sum, collectionId) => {
+      const count = (purchasesByCollectionId.get(collectionId) ?? []).filter((purchase) => (
+        purchase.status === "completed" && isDateWithinCampaignAnalyticsWindow(purchase.createdAt, campaign)
+      )).length;
+      return sum + count;
+    }, 0);
+    const isMemberFocusedCampaign = campaign.visibility === "members"
+      || dropLinkIds.some((dropId) => (dropMap.get(dropId)?.dropType ?? "") === "member_drop")
+      || collectionLinkIds.some((collectionId) => (collectionMap.get(collectionId)?.accessType ?? "") === "membership_only");
+    const membershipsFromCampaign = isMemberFocusedCampaign
+      ? membershipRows.filter((membership) => isDateWithinCampaignAnalyticsWindow(membership.createdAt, campaign)).length
+      : 0;
+    const campaignEngagementScore = Math.round(
+      followerCount
+      + totalDropRsvps * 2
+      + totalDropClicks * 3
+      + purchasesFromLinkedCollections * 5
+      + membershipsFromCampaign * 6
+      + totalDropViews * 0.25
+      + links.filter((link) => link.targetType === "post").length
+    );
+
+    return {
+      campaignId: campaign.id,
+      slug: campaign.slug,
+      name: campaign.name,
+      visibility: campaign.visibility as CreatorCampaignVisibility,
+      isActive: Boolean(campaign.isActive),
+      startsAt: campaign.startsAt ? campaign.startsAt.toISOString() : null,
+      endsAt: campaign.endsAt ? campaign.endsAt.toISOString() : null,
+      followerCount,
+      linkedDropsCount: dropLinkIds.length,
+      linkedPostsCount: links.filter((link) => link.targetType === "post").length,
+      linkedCollectionsCount: collectionLinkIds.length,
+      linkedChallengesCount: links.filter((link) => link.targetType === "challenge").length,
+      totalDropRsvps,
+      totalDropViews,
+      totalDropClicks,
+      purchasesFromLinkedCollections,
+      purchasesFromLinkedCollectionsNote: collectionLinkIds.length
+        ? "Approximate: counts completed linked-collection purchases inside the campaign window."
+        : null,
+      membershipsFromCampaign,
+      membershipsFromCampaignNote: isMemberFocusedCampaign
+        ? "Approximate: counts memberships that started during this campaign window for member-focused campaign content."
+        : null,
+      campaignEngagementScore,
+      campaignEngagementScoreNote: "Weighted comparison score using followers, RSVP interest, click-throughs, and approximate conversions.",
+    } satisfies CreatorCampaignAnalyticsItem;
+  });
+
+  return {
+    summary: {
+      totalCampaigns: items.length,
+      activeCampaigns: campaigns.filter((campaign) => getCreatorCampaignState(campaign) === "active").length,
+      totalCampaignFollowers: items.reduce((sum, item) => sum + item.followerCount, 0),
+      totalCampaignDropRsvps: items.reduce((sum, item) => sum + item.totalDropRsvps, 0),
+      totalCampaignClicks: items.reduce((sum, item) => sum + item.totalDropClicks, 0),
+      totalCampaignPurchases: items.reduce((sum, item) => sum + item.purchasesFromLinkedCollections, 0),
+      totalCampaignMembershipConversions: items.reduce((sum, item) => sum + item.membershipsFromCampaign, 0),
+    } satisfies CreatorCampaignAnalyticsSummary,
+    items,
+    attributionNotes: [
+      "Campaign follower counts come from explicit campaign follows.",
+      "Drop RSVP, view, and click metrics roll up linked drop analytics that already exist elsewhere in the creator dashboard.",
+      "Purchases from linked collections are approximate and count completed purchases made during the campaign window.",
+      "Membership conversions are approximate and only shown for member-focused campaigns that have member visibility, member drops, or members-only collections.",
+      "Campaign engagement score is a lightweight weighted score for comparison, not a payout or attribution metric.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 async function loadCreatorCampaignDetail(campaign: CreatorCampaignRecord, viewerId?: string | null) {
   if (!db) throw new Error("Database unavailable");
 
@@ -10232,7 +10467,10 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
     }
 
     const detail = await loadCreatorCampaignDetail(campaign, viewerId);
-    return res.json({ ok: true, ...detail, recentUpdates: buildCreatorCampaignUpdateItems(detail) });
+    const ownerAnalytics = viewerId && viewerId === campaign.creatorUserId
+      ? (await loadCreatorCampaignAnalytics(campaign.creatorUserId)).items.find((item) => item.campaignId === campaign.id) ?? null
+      : null;
+    return res.json({ ok: true, ...detail, recentUpdates: buildCreatorCampaignUpdateItems(detail), ownerAnalytics });
   } catch (error) {
     const message = logCollectionRouteError("/campaigns/:slug", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load creator campaign"));
@@ -13685,6 +13923,28 @@ r.get("/bundles/checkout-sessions/:sessionId/status", requireAuth, async (req, r
   } catch (error) {
     const message = logCollectionRouteError("/bundles/checkout-sessions/:sessionId/status", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to verify bundle checkout"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-analytics", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const analytics = await loadCreatorCampaignAnalytics(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: analytics.summary,
+      items: analytics.items,
+      attributionNotes: analytics.attributionNotes,
+      generatedAt: analytics.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-analytics", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign analytics"));
   }
 });
 
