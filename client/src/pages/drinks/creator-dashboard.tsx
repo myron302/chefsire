@@ -14,6 +14,8 @@ import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 import CreatorBundlesSection from "@/components/drinks/CreatorBundlesSection";
+import CampaignsDashboardSection from "@/components/drinks/CampaignsDashboardSection";
+import DropLaunchAnalyticsSection from "@/components/drinks/DropLaunchAnalyticsSection";
 import { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
@@ -2330,6 +2332,10 @@ export default function CreatorDashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+      <CampaignsDashboardSection />
+
+      <DropLaunchAnalyticsSection />
 
       <Card id="roadmap">
         <CardHeader>

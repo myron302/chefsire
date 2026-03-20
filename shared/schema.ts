@@ -1380,6 +1380,68 @@ export const creatorRoadmapItems = pgTable(
   })
 );
 
+export const creatorCampaigns = pgTable(
+  "creator_campaigns",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    creatorUserId: varchar("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    slug: varchar("slug", { length: 200 }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    description: text("description"),
+    visibility: text("visibility").default("public").notNull(),
+    startsAt: timestamp("starts_at"),
+    endsAt: timestamp("ends_at"),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    creatorIdx: index("creator_campaigns_creator_idx").on(table.creatorUserId),
+    slugIdx: uniqueIndex("creator_campaigns_slug_idx").on(table.slug),
+    creatorSlugIdx: uniqueIndex("creator_campaigns_creator_slug_idx").on(table.creatorUserId, table.slug),
+    visibilityIdx: index("creator_campaigns_visibility_idx").on(table.visibility),
+    activeIdx: index("creator_campaigns_active_idx").on(table.isActive, table.startsAt, table.endsAt),
+    creatorUpdatedIdx: index("creator_campaigns_creator_updated_at_idx").on(table.creatorUserId, table.updatedAt),
+  })
+);
+
+export const creatorCampaignLinks = pgTable(
+  "creator_campaign_links",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    campaignId: varchar("campaign_id").references(() => creatorCampaigns.id, { onDelete: "cascade" }).notNull(),
+    targetType: text("target_type").notNull(),
+    targetId: varchar("target_id", { length: 200 }).notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    campaignIdx: index("creator_campaign_links_campaign_idx").on(table.campaignId),
+    targetIdx: index("creator_campaign_links_target_idx").on(table.targetType, table.targetId),
+    campaignSortIdx: index("creator_campaign_links_campaign_sort_idx").on(table.campaignId, table.sortOrder, table.createdAt),
+    campaignTargetIdx: uniqueIndex("creator_campaign_links_campaign_target_idx").on(table.campaignId, table.targetType, table.targetId),
+  })
+);
+
+export const creatorDropEvents = pgTable(
+  "creator_drop_events",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    dropId: varchar("drop_id").references(() => creatorDrops.id, { onDelete: "cascade" }).notNull(),
+    eventType: text("event_type").notNull(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+    targetType: text("target_type"),
+    targetId: varchar("target_id", { length: 200 }),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    dropIdx: index("creator_drop_events_drop_idx").on(table.dropId),
+    eventTypeIdx: index("creator_drop_events_event_type_idx").on(table.eventType),
+    dropEventCreatedIdx: index("creator_drop_events_drop_event_created_at_idx").on(table.dropId, table.eventType, table.createdAt),
+    userIdx: index("creator_drop_events_user_idx").on(table.userId),
+  })
+);
+
 export const creatorCollaborations = pgTable(
   "creator_collaborations",
   {
@@ -2174,6 +2236,22 @@ export const insertCreatorRoadmapItemSchema = createInsertSchema(creatorRoadmapI
   updatedAt: true,
 });
 
+export const insertCreatorCampaignSchema = createInsertSchema(creatorCampaigns).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertCreatorCampaignLinkSchema = createInsertSchema(creatorCampaignLinks).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertCreatorDropEventSchema = createInsertSchema(creatorDropEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCreatorCollaborationSchema = createInsertSchema(creatorCollaborations).omit({
   id: true,
   createdAt: true,
@@ -2389,6 +2467,12 @@ export type CreatorDropRsvp = typeof creatorDropRsvps.$inferSelect;
 export type InsertCreatorDropRsvp = z.infer<typeof insertCreatorDropRsvpSchema>;
 export type CreatorRoadmapItem = typeof creatorRoadmapItems.$inferSelect;
 export type InsertCreatorRoadmapItem = z.infer<typeof insertCreatorRoadmapItemSchema>;
+export type CreatorCampaign = typeof creatorCampaigns.$inferSelect;
+export type InsertCreatorCampaign = z.infer<typeof insertCreatorCampaignSchema>;
+export type CreatorCampaignLink = typeof creatorCampaignLinks.$inferSelect;
+export type InsertCreatorCampaignLink = z.infer<typeof insertCreatorCampaignLinkSchema>;
+export type CreatorDropEvent = typeof creatorDropEvents.$inferSelect;
+export type InsertCreatorDropEvent = z.infer<typeof insertCreatorDropEventSchema>;
 export type CreatorCollaboration = typeof creatorCollaborations.$inferSelect;
 export type InsertCreatorCollaboration = z.infer<typeof insertCreatorCollaborationSchema>;
 export type DrinkBundle = typeof drinkBundles.$inferSelect;
