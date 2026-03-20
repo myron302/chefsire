@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CalendarRange, Flame, GlassWater, Lock, Users } from "lucide-react";
+import { CalendarRange, Flame, GlassWater, Heart, Lock, Users } from "lucide-react";
 import { Link } from "wouter";
 
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,10 @@ export type CreatorCampaignItem = {
   isActive: boolean;
   state: "upcoming" | "active" | "past";
   route: string;
+  followerCount: number;
+  isFollowing: boolean;
+  isOwner: boolean;
+  canFollow: boolean;
   counts: {
     collections: number;
     drops: number;
@@ -88,6 +92,7 @@ export default function CreatorCampaignCard({ campaign, actions, showCreator = t
               {!campaign.isActive ? <Badge variant="outline">Inactive</Badge> : null}
               <Badge variant="outline" className="gap-1"><CalendarRange className="h-3.5 w-3.5" />{formatDateRange(campaign.startsAt, campaign.endsAt)}</Badge>
               <Badge variant="outline" className="gap-1"><Flame className="h-3.5 w-3.5" />{campaign.counts.total} linked item{campaign.counts.total === 1 ? "" : "s"}</Badge>
+              <Badge variant={campaign.isFollowing ? "secondary" : "outline"} className="gap-1"><Heart className="h-3.5 w-3.5" />{campaign.followerCount} following</Badge>
             </div>
             <div>
               <h3 className="text-lg font-semibold">{campaign.name}</h3>
