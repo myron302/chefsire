@@ -111,6 +111,24 @@ type CampaignHealthItem = {
   } | null;
 };
 
+type CampaignRecoveryPlan = {
+  campaignId: string;
+  campaignName: string;
+  campaignRoute: string;
+  healthState: "thriving" | "healthy" | "watch" | "at_risk" | "completed";
+  actionState: "action_needed" | "monitor" | "no_action_needed";
+  rescuePriority: "urgent" | "high" | "medium" | "low" | "none";
+  riskReason: string | null;
+  confidenceNote: string | null;
+  suggestedActions: Array<{
+    actionType: string;
+    label: string;
+    description: string;
+    suggestedRoute: string | null;
+    supportingSignals: string[];
+  }>;
+};
+
 interface CampaignDetailResponse {
   ok: boolean;
   campaign: CreatorCampaignItem;
@@ -132,6 +150,7 @@ interface CampaignDetailResponse {
   ownerAnalytics?: CampaignOwnerAnalytics | null;
   ownerRetrospective?: CampaignRetrospectiveItem | null;
   ownerHealth?: CampaignHealthItem | null;
+  ownerRecoveryPlan?: CampaignRecoveryPlan | null;
   ownerGoals: CampaignGoalItem[];
   recentUpdates: Array<{
     id: string;
@@ -493,6 +512,56 @@ export default function DrinkCampaignDetailPage() {
                         <Link href={query.data.ownerHealth.recommendation.suggestedRoute}><Button size="sm" variant="outline">{query.data.ownerHealth.recommendation.suggestedAction ?? "Open suggestion"}</Button></Link>
                       </div>
                     ) : null}
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {query.data.ownerRecoveryPlan && (query.data.ownerRecoveryPlan.healthState === "watch" || query.data.ownerRecoveryPlan.healthState === "at_risk") ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Owner-only recovery plan</CardTitle>
+                <CardDescription>
+                  Focused rescue actions for this specific campaign. This stays private to the owner and remains separate from the broader recommendation list.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge variant={campaignHealthBadgeVariant(query.data.ownerRecoveryPlan.healthState)}>{campaignHealthLabel(query.data.ownerRecoveryPlan.healthState)}</Badge>
+                  <Badge variant={query.data.ownerRecoveryPlan.rescuePriority === "urgent" ? "destructive" : query.data.ownerRecoveryPlan.rescuePriority === "high" ? "default" : query.data.ownerRecoveryPlan.rescuePriority === "medium" ? "secondary" : "outline"}>
+                    {query.data.ownerRecoveryPlan.rescuePriority.replaceAll("_", " ")}
+                  </Badge>
+                </div>
+                <div className="rounded-md bg-muted/30 p-3 text-sm">
+                  <p className="font-medium text-foreground">Why recovery is showing</p>
+                  <p className="mt-1 text-muted-foreground">{query.data.ownerRecoveryPlan.riskReason ?? "This campaign has slipped into a watch / at-risk state and needs a tighter rescue sequence."}</p>
+                </div>
+                <div className="space-y-3">
+                  {query.data.ownerRecoveryPlan.suggestedActions.map((action, index) => (
+                    <div key={`${action.actionType}-${index}`} className="rounded-md border p-3 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium text-foreground">Step {index + 1}: {action.label}</p>
+                        <Badge variant="outline" className="capitalize">{action.actionType.replaceAll("_", " ")}</Badge>
+                      </div>
+                      <p className="mt-2 text-muted-foreground">{action.description}</p>
+                      {action.supportingSignals.length ? (
+                        <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          {action.supportingSignals.map((signal) => <span key={signal} className="rounded-full border px-2 py-1">{signal}</span>)}
+                        </div>
+                      ) : null}
+                      {action.suggestedRoute ? (
+                        <div className="mt-3">
+                          <Link href={action.suggestedRoute}><Button size="sm" variant="outline">Open action</Button></Link>
+                        </div>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+                {query.data.ownerRecoveryPlan.confidenceNote ? (
+                  <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">How this plan was derived</p>
+                    <p className="mt-1">{query.data.ownerRecoveryPlan.confidenceNote}</p>
                   </div>
                 ) : null}
               </CardContent>
