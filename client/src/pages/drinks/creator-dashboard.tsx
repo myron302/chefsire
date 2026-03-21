@@ -14,6 +14,7 @@ import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 import CreatorBundlesSection from "@/components/drinks/CreatorBundlesSection";
+import CampaignActionCenterSection from "@/components/drinks/CampaignActionCenterSection";
 import CampaignsDashboardSection from "@/components/drinks/CampaignsDashboardSection";
 import CampaignRetrospectivesSection from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignRecommendationsSection from "@/components/drinks/CampaignRecommendationsSection";
@@ -1511,6 +1512,8 @@ export default function CreatorDashboardPage() {
       </div>
 
       <DrinksPlatformNav current="dashboard" />
+
+      <CampaignActionCenterSection />
 
       <CreatorBundlesSection />
 
