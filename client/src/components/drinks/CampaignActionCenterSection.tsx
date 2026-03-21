@@ -1,9 +1,10 @@
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import {
   Archive,
   ArrowUpRight,
+  CheckCircle2,
   Copy,
   Goal,
   Megaphone,
@@ -18,6 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 
 export type CampaignActionCenterItem = {
@@ -25,6 +27,7 @@ export type CampaignActionCenterItem = {
   campaignName: string;
   campaignSlug: string;
   campaignRoute: string;
+  actionKey: string;
   actionType:
     | "add_drop"
     | "publish_update"
@@ -39,6 +42,8 @@ export type CampaignActionCenterItem = {
     | "close_with_recap"
     | "refresh_campaign_copy"
     | "review_goal_progress";
+  sourceKey: string;
+  sourceSignature: string;
   title: string;
   message: string;
   priority: "urgent" | "high" | "medium" | "low";
@@ -48,6 +53,8 @@ export type CampaignActionCenterItem = {
   targetLabel: string | null;
   supportingSignals: string[];
   sourceContexts: string[];
+  state: "open" | "dismissed" | "snoozed" | "completed";
+  snoozedUntil: string | null;
 };
 
 type CampaignActionCenterResponse = {
@@ -61,8 +68,13 @@ type CampaignActionCenterResponse = {
     highCount: number;
     mediumCount: number;
     lowCount: number;
+    hiddenCount: number;
+    snoozedCount: number;
+    dismissedCount: number;
+    completedCount: number;
   };
   items: CampaignActionCenterItem[];
+  recentlyCompleted: CampaignActionCenterItem[];
   attributionNotes: string[];
   generatedAt: string;
 };
@@ -134,6 +146,13 @@ function actionIcon(actionType: CampaignActionCenterItem["actionType"]) {
   }
 }
 
+function formatSnoozeLabel(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return `Snoozed until ${parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+}
+
 const QUICK_SHORTCUTS = [
   { href: "/drinks/creator-dashboard#campaigns", label: "Campaigns", description: "Edit arcs, links, and clone-ready campaigns.", icon: <Sparkles className="h-4 w-4" aria-hidden /> },
   { href: "/drinks/creator-dashboard#drops", label: "Drops", description: "Add a launch beat or RSVP destination.", icon: <Rocket className="h-4 w-4" aria-hidden /> },
@@ -151,6 +170,9 @@ export default function CampaignActionCenterSection({
   description = "Prioritized next moves for your campaigns. This is the action layer only — health, recommendations, recovery, and lifecycle guidance still stay in their own sections.",
 }: CampaignActionCenterSectionProps) {
   const { user } = useUser();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [pendingActionKey, setPendingActionKey] = React.useState<string | null>(null);
 
   const query = useQuery<CampaignActionCenterResponse>({
     queryKey: ["/api/drinks/creator-dashboard/campaign-action-center", campaignId ?? "all", user?.id ?? ""],
@@ -166,7 +188,66 @@ export default function CampaignActionCenterSection({
     enabled: Boolean(user?.id),
   });
 
+  const actionStateMutation = useMutation({
+    mutationFn: async ({
+      actionKey,
+      verb,
+      body,
+    }: {
+      actionKey: string;
+      verb: "dismiss" | "snooze" | "complete" | "reopen";
+      body?: Record<string, unknown>;
+    }) => {
+      const response = await fetch(`/api/drinks/creator-dashboard/campaign-actions/${encodeURIComponent(actionKey)}/${verb}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body ?? {}),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || payload?.message || `Failed to ${verb} action`);
+      }
+      return payload as { ok: boolean; state: string; snoozedUntil?: string };
+    },
+    onSuccess: async (_, variables) => {
+      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-action-center"] });
+      setPendingActionKey(null);
+      const label = variables.verb === "dismiss"
+        ? "Action dismissed"
+        : variables.verb === "snooze"
+          ? "Action snoozed for 7 days"
+          : variables.verb === "complete"
+            ? "Action marked done"
+            : "Action reopened";
+      toast({ title: label });
+    },
+    onError: (error) => {
+      setPendingActionKey(null);
+      toast({
+        title: "Could not update action",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateActionState = React.useCallback((item: CampaignActionCenterItem, verb: "dismiss" | "snooze" | "complete" | "reopen") => {
+    setPendingActionKey(item.actionKey);
+    actionStateMutation.mutate({
+      actionKey: item.actionKey,
+      verb,
+      body: verb === "snooze"
+        ? { campaignId: item.campaignId, durationDays: 7 }
+        : { campaignId: item.campaignId },
+    });
+  }, [actionStateMutation]);
+
   const items = React.useMemo(() => (compact ? (query.data?.items ?? []).slice(0, 4) : (query.data?.items ?? []).slice(0, 8)), [compact, query.data?.items]);
+  const recentlyCompleted = React.useMemo(
+    () => (compact ? (query.data?.recentlyCompleted ?? []).slice(0, 2) : (query.data?.recentlyCompleted ?? []).slice(0, 4)),
+    [compact, query.data?.recentlyCompleted],
+  );
 
   return (
     <Card id={campaignId ? undefined : "campaign-action-center"}>
@@ -180,6 +261,7 @@ export default function CampaignActionCenterSection({
             <div className="flex flex-wrap gap-2">
               {query.data.summary.urgentCount > 0 ? <Badge variant="destructive">{query.data.summary.urgentCount} urgent</Badge> : null}
               {query.data.summary.highCount > 0 ? <Badge variant="default">{query.data.summary.highCount} high</Badge> : null}
+              {query.data.summary.hiddenCount > 0 ? <Badge variant="secondary">{query.data.summary.hiddenCount} hidden</Badge> : null}
               <Badge variant="outline">{query.data.summary.campaignsWithActions} campaigns</Badge>
             </div>
           ) : null}
@@ -208,7 +290,7 @@ export default function CampaignActionCenterSection({
         {query.isLoading ? <p className="text-sm text-muted-foreground">Loading prioritized campaign actions…</p> : null}
         {query.isError ? <p className="text-sm text-destructive">{query.error instanceof Error ? query.error.message : "Unable to load campaign actions right now."}</p> : null}
 
-        {query.data && items.length === 0 ? (
+        {query.data && items.length === 0 && recentlyCompleted.length === 0 ? (
           <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">
             No action cards are queued right now. That means the recommendation, recovery, lifecycle, goal, and milestone layers are not currently converging on a concrete next move.
           </div>
@@ -217,7 +299,7 @@ export default function CampaignActionCenterSection({
         {items.length > 0 ? (
           <div className={compact ? "space-y-3" : "grid gap-3 xl:grid-cols-2"}>
             {items.map((item) => (
-              <div key={`${item.campaignId}:${item.actionType}`} className="rounded-lg border p-4">
+              <div key={item.actionKey} className="rounded-lg border p-4">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
@@ -266,8 +348,83 @@ export default function CampaignActionCenterSection({
                     Consolidated from {item.sourceContexts.join(" · ")}.
                   </p>
                 ) : null}
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3">
+                  <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                    {formatSnoozeLabel(item.snoozedUntil) ? (
+                      <span className="rounded-full border px-2 py-1">{formatSnoozeLabel(item.snoozedUntil)}</span>
+                    ) : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateActionState(item, "dismiss")}
+                      disabled={actionStateMutation.isPending && pendingActionKey === item.actionKey}
+                    >
+                      Dismiss
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => updateActionState(item, "snooze")}
+                      disabled={actionStateMutation.isPending && pendingActionKey === item.actionKey}
+                    >
+                      Snooze 7d
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => updateActionState(item, "complete")}
+                      disabled={actionStateMutation.isPending && pendingActionKey === item.actionKey}
+                    >
+                      Mark done
+                    </Button>
+                  </div>
+                </div>
               </div>
             ))}
+          </div>
+        ) : null}
+
+        {recentlyCompleted.length > 0 ? (
+          <div className="rounded-lg border bg-muted/20 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-medium text-foreground">Recently completed</p>
+                <p className="text-xs text-muted-foreground">
+                  Completed actions stay out of the main queue until the underlying signal changes.
+                </p>
+              </div>
+              {query.data?.summary.completedCount ? <Badge variant="outline">{query.data.summary.completedCount} completed</Badge> : null}
+            </div>
+            <div className="mt-3 space-y-2">
+              {recentlyCompleted.map((item) => (
+                <div key={`${item.actionKey}:completed`} className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-background p-3 text-sm">
+                  <div className="space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" aria-hidden />
+                      <span className="font-medium">{item.title}</span>
+                      <Badge variant="outline">{item.campaignName}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{item.message}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Link href={item.targetRoute ?? item.campaignRoute}>
+                      <Button size="sm" variant="ghost">Open</Button>
+                    </Link>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => updateActionState(item, "reopen")}
+                      disabled={actionStateMutation.isPending && pendingActionKey === item.actionKey}
+                    >
+                      Reopen
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 
