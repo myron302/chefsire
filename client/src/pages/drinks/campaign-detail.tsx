@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
 
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
+import { CampaignLifecycleSuggestionPanel, type CampaignLifecycleSuggestion } from "@/components/drinks/CampaignLifecycleSuggestionsSection";
 import { CampaignWrapUpPanel, type CampaignRetrospectiveItem } from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignFollowButton from "@/components/drinks/CampaignFollowButton";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
@@ -150,6 +151,7 @@ interface CampaignDetailResponse {
   ownerAnalytics?: CampaignOwnerAnalytics | null;
   ownerRetrospective?: CampaignRetrospectiveItem | null;
   ownerHealth?: CampaignHealthItem | null;
+  ownerLifecycleSuggestion?: CampaignLifecycleSuggestion | null;
   ownerRecoveryPlan?: CampaignRecoveryPlan | null;
   ownerGoals: CampaignGoalItem[];
   recentUpdates: Array<{
@@ -514,6 +516,20 @@ export default function DrinkCampaignDetailPage() {
                     ) : null}
                   </div>
                 ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {query.data.ownerLifecycleSuggestion ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Owner-only lifecycle hint</CardTitle>
+                <CardDescription>
+                  Private lifecycle guidance for what this campaign likely wants next. This stays distinct from health, recommendations, recovery, and wrap-up analytics.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <CampaignLifecycleSuggestionPanel suggestion={query.data.ownerLifecycleSuggestion} compact />
               </CardContent>
             </Card>
           ) : null}
