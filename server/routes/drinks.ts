@@ -4286,6 +4286,57 @@ type CreatorCampaignRecoveryPlan = {
   generatedFrom: string[];
 };
 
+type CreatorCampaignActionCenterSourceType =
+  | "recommendation"
+  | "recovery"
+  | "lifecycle"
+  | "goal"
+  | "milestone"
+  | "health";
+
+type CreatorCampaignActionCenterActionType =
+  | "add_drop"
+  | "publish_update"
+  | "strengthen_cta"
+  | "launch_promo"
+  | "push_rsvp"
+  | "add_member_only_collection"
+  | "promote_membership"
+  | "celebrate_milestone"
+  | "clone_campaign"
+  | "archive_campaign"
+  | "close_with_recap"
+  | "refresh_campaign_copy"
+  | "review_goal_progress";
+
+type CreatorCampaignActionCenterPriority = "urgent" | "high" | "medium" | "low";
+
+type CreatorCampaignActionCenterItem = {
+  campaignId: string;
+  campaignName: string;
+  campaignSlug: string;
+  campaignRoute: string;
+  actionType: CreatorCampaignActionCenterActionType;
+  title: string;
+  message: string;
+  priority: CreatorCampaignActionCenterPriority;
+  sourceType: CreatorCampaignActionCenterSourceType;
+  sourceTypes: CreatorCampaignActionCenterSourceType[];
+  targetRoute: string | null;
+  targetLabel: string | null;
+  supportingSignals: string[];
+  sourceContexts: string[];
+};
+
+type CreatorCampaignActionCenterSummary = {
+  totalActions: number;
+  campaignsWithActions: number;
+  urgentCount: number;
+  highCount: number;
+  mediumCount: number;
+  lowCount: number;
+};
+
 type CreatorCampaignMilestoneType =
   | "campaign_live"
   | "first_drop_live"
@@ -18926,6 +18977,416 @@ export async function loadCreatorCampaignRecoveryPlans(creatorUserId: string) {
   };
 }
 
+function campaignActionPriorityRank(priority: CreatorCampaignActionCenterPriority) {
+  switch (priority) {
+    case "urgent":
+      return 4;
+    case "high":
+      return 3;
+    case "medium":
+      return 2;
+    case "low":
+    default:
+      return 1;
+  }
+}
+
+function actionCenterPriorityFromRecommendation(
+  priority: CreatorCampaignRecommendationPriority,
+  healthState?: CreatorCampaignHealthState | null,
+): CreatorCampaignActionCenterPriority {
+  if (healthState === "at_risk" && priority === "high") return "urgent";
+  if (healthState === "watch" && priority === "high") return "high";
+  return priority;
+}
+
+function actionCenterPriorityFromLifecycle(
+  confidence: CreatorCampaignLifecycleConfidence,
+  healthState?: CreatorCampaignHealthState | null,
+): CreatorCampaignActionCenterPriority {
+  if (healthState === "at_risk" && confidence === "high") return "high";
+  if (confidence === "high") return "high";
+  if (confidence === "medium") return "medium";
+  return "low";
+}
+
+function sourceTypeWeight(sourceType: CreatorCampaignActionCenterSourceType) {
+  switch (sourceType) {
+    case "recovery":
+      return 6;
+    case "goal":
+      return 5;
+    case "lifecycle":
+      return 4;
+    case "recommendation":
+      return 3;
+    case "health":
+      return 2;
+    case "milestone":
+    default:
+      return 1;
+  }
+}
+
+function normalizeActionCenterRoute(route: string | null | undefined, fallbackRoute: string) {
+  return route ?? fallbackRoute;
+}
+
+function uniqueStringList(values: Array<string | null | undefined>, limit = 5) {
+  return [...new Set(values.filter((value): value is string => Boolean(value?.trim())).map((value) => value.trim()))].slice(0, limit);
+}
+
+type ActionCenterDraft = CreatorCampaignActionCenterItem;
+
+function mergeCampaignActionCenterItem(
+  items: Map<string, CreatorCampaignActionCenterItem>,
+  candidate: ActionCenterDraft,
+) {
+  const key = `${candidate.campaignId}:${candidate.actionType}`;
+  const existing = items.get(key);
+  if (!existing) {
+    items.set(key, {
+      ...candidate,
+      sourceTypes: [...candidate.sourceTypes],
+      supportingSignals: [...candidate.supportingSignals],
+      sourceContexts: [...candidate.sourceContexts],
+    });
+    return;
+  }
+
+  const existingPriority = campaignActionPriorityRank(existing.priority);
+  const candidatePriority = campaignActionPriorityRank(candidate.priority);
+  const candidateWins = candidatePriority > existingPriority
+    || (candidatePriority === existingPriority && sourceTypeWeight(candidate.sourceType) > sourceTypeWeight(existing.sourceType));
+
+  items.set(key, {
+    ...existing,
+    title: candidateWins ? candidate.title : existing.title,
+    message: candidateWins ? candidate.message : existing.message,
+    priority: candidateWins ? candidate.priority : existing.priority,
+    sourceType: candidateWins ? candidate.sourceType : existing.sourceType,
+    targetRoute: candidateWins ? candidate.targetRoute : existing.targetRoute ?? candidate.targetRoute,
+    targetLabel: candidateWins ? candidate.targetLabel : existing.targetLabel ?? candidate.targetLabel,
+    sourceTypes: uniqueStringList([...existing.sourceTypes, ...candidate.sourceTypes]) as CreatorCampaignActionCenterSourceType[],
+    supportingSignals: uniqueStringList([...existing.supportingSignals, ...candidate.supportingSignals]),
+    sourceContexts: uniqueStringList([...existing.sourceContexts, ...candidate.sourceContexts]),
+  });
+}
+
+function recommendationToActionType(recommendationType: CreatorCampaignRecommendationType): CreatorCampaignActionCenterActionType {
+  switch (recommendationType) {
+    case "add_drop":
+      return "add_drop";
+    case "publish_update":
+      return "publish_update";
+    case "improve_cta":
+      return "strengthen_cta";
+    case "promote_membership":
+      return "promote_membership";
+    case "add_member_only_collection":
+      return "add_member_only_collection";
+    case "launch_promo":
+      return "launch_promo";
+    case "push_rsvp":
+      return "push_rsvp";
+    case "clone_successful_campaign":
+      return "clone_campaign";
+    case "refresh_archived_campaign":
+      return "refresh_campaign_copy";
+    case "celebrate_milestone":
+    default:
+      return "celebrate_milestone";
+  }
+}
+
+function recoveryToActionType(actionType: CreatorCampaignRecoveryActionType): CreatorCampaignActionCenterActionType {
+  switch (actionType) {
+    case "publish_update":
+      return "publish_update";
+    case "add_drop":
+      return "add_drop";
+    case "strengthen_cta":
+      return "strengthen_cta";
+    case "launch_promo":
+      return "launch_promo";
+    case "push_rsvp":
+      return "push_rsvp";
+    case "add_member_only_collection":
+      return "add_member_only_collection";
+    case "promote_membership":
+      return "promote_membership";
+    case "clone_and_refresh":
+      return "clone_campaign";
+    case "close_out_campaign":
+      return "close_with_recap";
+    case "celebrate_milestone":
+    default:
+      return "celebrate_milestone";
+  }
+}
+
+function lifecycleToActionType(actionType: CreatorCampaignLifecycleAction): CreatorCampaignActionCenterActionType | null {
+  switch (actionType) {
+    case "add_phase_two_drop":
+      return "add_drop";
+    case "shift_to_membership":
+      return "promote_membership";
+    case "launch_promo_push":
+      return "launch_promo";
+    case "archive_campaign":
+      return "archive_campaign";
+    case "clone_for_next_season":
+    case "convert_to_template":
+      return "clone_campaign";
+    case "refresh_cta":
+      return "strengthen_cta";
+    case "close_with_recap":
+      return "close_with_recap";
+    case "keep_running":
+    default:
+      return null;
+  }
+}
+
+export async function loadCreatorCampaignActionCenter(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [
+    campaigns,
+    recommendations,
+    recoveryPlans,
+    lifecycle,
+    health,
+    performance,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(creatorCampaigns)
+      .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorCampaigns.updatedAt))
+      .limit(120),
+    loadCreatorCampaignRecommendations(creatorUserId),
+    loadCreatorCampaignRecoveryPlans(creatorUserId),
+    loadCreatorCampaignLifecycleSuggestions(creatorUserId),
+    loadCreatorCampaignHealth(creatorUserId),
+    loadCreatorCampaignPerformanceSnapshots(creatorUserId),
+  ]);
+
+  const filteredCampaigns = campaignId
+    ? campaigns.filter((campaign) => campaign.id === campaignId)
+    : campaigns;
+  const allowedCampaignIds = new Set(filteredCampaigns.map((campaign) => campaign.id));
+  const performanceByCampaignId = new Map(performance.items.map((item) => [item.campaignId, item]));
+  const healthByCampaignId = new Map(health.items.map((item) => [item.campaignId, item]));
+  const now = new Date();
+
+  const goalRows = allowedCampaignIds.size
+    ? await db
+      .select()
+      .from(creatorCampaignGoals)
+      .where(inArray(creatorCampaignGoals.campaignId, [...allowedCampaignIds]))
+      .orderBy(desc(creatorCampaignGoals.updatedAt), asc(creatorCampaignGoals.createdAt))
+    : [];
+
+  const goalsByCampaignId = new Map<string, CreatorCampaignGoalRecord[]>();
+  for (const goal of goalRows) {
+    const current = goalsByCampaignId.get(goal.campaignId) ?? [];
+    current.push(goal);
+    goalsByCampaignId.set(goal.campaignId, current);
+  }
+
+  const actionMap = new Map<string, CreatorCampaignActionCenterItem>();
+
+  for (const item of recommendations.items) {
+    if (!allowedCampaignIds.has(item.campaignId)) continue;
+    const healthItem = healthByCampaignId.get(item.campaignId) ?? null;
+    const actionType = recommendationToActionType(item.recommendationType);
+    mergeCampaignActionCenterItem(actionMap, {
+      campaignId: item.campaignId,
+      campaignName: item.campaignName,
+      campaignSlug: item.campaignSlug,
+      campaignRoute: item.campaignRoute,
+      actionType,
+      title: item.title,
+      message: item.message,
+      priority: actionCenterPriorityFromRecommendation(item.priority, healthItem?.healthState),
+      sourceType: "recommendation",
+      sourceTypes: ["recommendation"],
+      targetRoute: normalizeActionCenterRoute(item.suggestedRoute, item.campaignRoute),
+      targetLabel: item.suggestedAction ?? "Open recommendation",
+      supportingSignals: item.supportingSignals,
+      sourceContexts: [`Recommendation: ${item.title}`],
+    });
+  }
+
+  for (const plan of recoveryPlans.items) {
+    if (!allowedCampaignIds.has(plan.campaignId) || plan.actionState === "no_action_needed") continue;
+    for (const action of plan.suggestedActions) {
+      mergeCampaignActionCenterItem(actionMap, {
+        campaignId: plan.campaignId,
+        campaignName: plan.campaignName,
+        campaignSlug: plan.campaignSlug,
+        campaignRoute: plan.campaignRoute,
+        actionType: recoveryToActionType(action.actionType),
+        title: `${action.label} for ${plan.campaignName}`,
+        message: `${action.description}${plan.riskReason ? ` ${plan.riskReason}` : ""}`,
+        priority: plan.rescuePriority === "none" ? "low" : plan.rescuePriority,
+        sourceType: "recovery",
+        sourceTypes: ["recovery"],
+        targetRoute: normalizeActionCenterRoute(action.suggestedRoute, plan.campaignRoute),
+        targetLabel: action.label,
+        supportingSignals: action.supportingSignals,
+        sourceContexts: [
+          `Recovery: ${plan.rescuePriority.replaceAll("_", " ")} priority`,
+          ...(plan.riskReason ? [plan.riskReason] : []),
+        ],
+      });
+    }
+  }
+
+  for (const item of lifecycle.items) {
+    if (!allowedCampaignIds.has(item.campaignId)) continue;
+    const actionType = lifecycleToActionType(item.suggestedLifecycleAction);
+    if (!actionType) continue;
+    const healthItem = healthByCampaignId.get(item.campaignId) ?? null;
+    mergeCampaignActionCenterItem(actionMap, {
+      campaignId: item.campaignId,
+      campaignName: item.campaignName,
+      campaignSlug: item.campaignSlug,
+      campaignRoute: item.campaignRoute,
+      actionType,
+      title: item.title,
+      message: item.message,
+      priority: actionCenterPriorityFromLifecycle(item.confidence, healthItem?.healthState),
+      sourceType: "lifecycle",
+      sourceTypes: ["lifecycle"],
+      targetRoute: normalizeActionCenterRoute(item.suggestedRoute, item.campaignRoute),
+      targetLabel: item.suggestedLifecycleAction === "convert_to_template" ? "Reuse this campaign" : "Open lifecycle move",
+      supportingSignals: item.supportingSignals,
+      sourceContexts: [`Lifecycle: ${item.inferredPhase.replaceAll("_", " ")}`],
+    });
+  }
+
+  for (const campaign of filteredCampaigns) {
+    const analytics = performanceByCampaignId.get(campaign.id);
+    const healthItem = healthByCampaignId.get(campaign.id);
+    const route = `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`;
+    const goals = analytics
+      ? (goalsByCampaignId.get(campaign.id) ?? []).map((goal) => serializeCreatorCampaignGoal(goal, analytics))
+      : [];
+    const behindGoals = goals.filter((goal) => !goal.isComplete && goal.percentComplete < 100);
+    const topBehindGoal = [...behindGoals].sort((a, b) => a.percentComplete - b.percentComplete)[0] ?? null;
+
+    if (topBehindGoal) {
+      mergeCampaignActionCenterItem(actionMap, {
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        actionType: "review_goal_progress",
+        title: `Review goal pace for ${campaign.name}`,
+        message: `${topBehindGoal.label?.trim() || topBehindGoal.metricLabel} is at ${topBehindGoal.percentComplete}% of target, so this campaign likely needs a practical next move chosen by the creator.`,
+        priority: topBehindGoal.percentComplete < 35 || healthItem?.healthState === "at_risk"
+          ? "high"
+          : topBehindGoal.percentComplete < 60 || healthItem?.healthState === "watch"
+            ? "medium"
+            : "low",
+        sourceType: "goal",
+        sourceTypes: ["goal"],
+        targetRoute: route,
+        targetLabel: "Review goals",
+        supportingSignals: [
+          `${topBehindGoal.currentValue} / ${topBehindGoal.targetValue} ${topBehindGoal.metricLabel.toLowerCase()}`,
+          `${behindGoals.length} goal${behindGoals.length === 1 ? "" : "s"} behind pace`,
+        ],
+        sourceContexts: [`Goal: ${topBehindGoal.label?.trim() || topBehindGoal.metricLabel}`],
+      });
+    } else if (healthItem && (healthItem.healthState === "watch" || healthItem.healthState === "at_risk")) {
+      mergeCampaignActionCenterItem(actionMap, {
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        actionType: "review_goal_progress",
+        title: `Review watchlist context for ${campaign.name}`,
+        message: `This campaign is currently ${healthItem.healthState.replaceAll("_", " ")}. The action center keeps that status distinct from recommendations and recovery by pointing you back to the campaign's concrete goals and state.`,
+        priority: healthItem.healthState === "at_risk" ? "high" : "medium",
+        sourceType: "health",
+        sourceTypes: ["health"],
+        targetRoute: route,
+        targetLabel: "Open campaign status",
+        supportingSignals: uniqueStringList([
+          healthItem.primaryConcern,
+          healthItem.watchReasons[0],
+          `${healthItem.goalsBehind} goals behind`,
+        ]),
+        sourceContexts: [`Health: ${healthItem.healthState.replaceAll("_", " ")}`],
+      });
+    }
+
+    const recentMilestone = analytics?.milestones
+      .filter((milestone) => milestone.achieved)
+      .sort((a, b) => {
+        const aTime = a.achievedAt ? new Date(a.achievedAt).getTime() : 0;
+        const bTime = b.achievedAt ? new Date(b.achievedAt).getTime() : 0;
+        return bTime - aTime;
+      })[0] ?? null;
+    const recentMilestoneDays = recentMilestone?.achievedAt
+      ? activityAgeInDays(new Date(recentMilestone.achievedAt), now)
+      : Number.POSITIVE_INFINITY;
+
+    if (recentMilestone && recentMilestoneDays <= 14) {
+      mergeCampaignActionCenterItem(actionMap, {
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: route,
+        actionType: "celebrate_milestone",
+        title: `Celebrate ${recentMilestone.shortLabel}`,
+        message: `This campaign recently reached "${recentMilestone.shortLabel}". A lightweight creator update can turn that milestone into another practical touchpoint without adding new workflow overhead.`,
+        priority: recentMilestoneDays <= 5 ? "high" : "medium",
+        sourceType: "milestone",
+        sourceTypes: ["milestone"],
+        targetRoute: "/drinks/creator-dashboard#posts",
+        targetLabel: "Post an update",
+        supportingSignals: [
+          `Milestone: ${recentMilestone.shortLabel}`,
+          recentMilestone.achievedAt ? `Hit ${new Date(recentMilestone.achievedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "Recently achieved",
+        ],
+        sourceContexts: [`Milestone: ${recentMilestone.label}`],
+      });
+    }
+  }
+
+  const items = [...actionMap.values()].sort((a, b) => {
+    const priorityDiff = campaignActionPriorityRank(b.priority) - campaignActionPriorityRank(a.priority);
+    if (priorityDiff !== 0) return priorityDiff;
+    const aHealth = healthByCampaignId.get(a.campaignId);
+    const bHealth = healthByCampaignId.get(b.campaignId);
+    return healthWatchWeight(bHealth?.healthState ?? "completed") - healthWatchWeight(aHealth?.healthState ?? "completed")
+      || sourceTypeWeight(b.sourceType) - sourceTypeWeight(a.sourceType)
+      || a.campaignName.localeCompare(b.campaignName);
+  });
+
+  return {
+    summary: {
+      totalActions: items.length,
+      campaignsWithActions: new Set(items.map((item) => item.campaignId)).size,
+      urgentCount: items.filter((item) => item.priority === "urgent").length,
+      highCount: items.filter((item) => item.priority === "high").length,
+      mediumCount: items.filter((item) => item.priority === "medium").length,
+      lowCount: items.filter((item) => item.priority === "low").length,
+    } satisfies CreatorCampaignActionCenterSummary,
+    items,
+    attributionNotes: [
+      "Action center is a practical next-move layer built by consolidating signals from recommendations, recovery plans, lifecycle suggestions, goals, milestones, and watchlist status.",
+      "Health still describes current status. Recommendations still provide guidance. Recovery plans still handle rescue steps. Lifecycle suggestions still describe phase-change guidance. The action center only prioritizes the next concrete move.",
+      "Actions are deduped by campaign plus action type so overlapping CTA, promo, membership, or wrap-up prompts collapse into one card instead of spamming multiple dashboard sections.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 r.get("/creator-dashboard/campaign-analytics", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -19080,6 +19541,41 @@ r.get("/creator-dashboard/campaign-lifecycle-suggestions", requireAuth, async (r
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-lifecycle-suggestions", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign lifecycle suggestions"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-action-center", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId.trim() : "";
+    if (campaignId) {
+      const ownedCampaign = await db
+        .select({ id: creatorCampaigns.id })
+        .from(creatorCampaigns)
+        .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, req.user!.id)))
+        .limit(1);
+      if (!ownedCampaign[0]) {
+        return res.status(404).json({ ok: false, error: "Campaign not found." });
+      }
+    }
+
+    const actionCenter = await loadCreatorCampaignActionCenter(req.user!.id, campaignId || null);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      campaignId: campaignId || null,
+      summary: actionCenter.summary,
+      items: actionCenter.items,
+      attributionNotes: actionCenter.attributionNotes,
+      generatedAt: actionCenter.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-action-center", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign action center"));
   }
 });
 

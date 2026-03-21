@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
 
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
+import CampaignActionCenterSection from "@/components/drinks/CampaignActionCenterSection";
 import { CampaignLifecycleSuggestionPanel, type CampaignLifecycleSuggestion } from "@/components/drinks/CampaignLifecycleSuggestionsSection";
 import { CampaignWrapUpPanel, type CampaignRetrospectiveItem } from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignFollowButton from "@/components/drinks/CampaignFollowButton";
@@ -346,6 +347,16 @@ export default function DrinkCampaignDetailPage() {
               />
             )}
           />
+
+          {user?.id && user.id === query.data.campaign.creatorUserId ? (
+            <CampaignActionCenterSection
+              campaignId={query.data.campaign.id}
+              compact
+              showShortcuts={false}
+              title="Owner-only quick actions"
+              description="Private, campaign-scoped next moves consolidated from the action center. This stays focused on practical operations for this campaign only."
+            />
+          ) : null}
 
           {activeVariant ? (
             <Card>
