@@ -1,4 +1,4 @@
-import { drinkRouteRegistry, type DrinkRouteRegistryEntry } from "./index";
+import { drinkRouteRegistry, type DrinkRouteRegistryEntry } from "./route-registry";
 import { slugifyDrinkName, type DrinkRecipe } from "./types";
 
 export type CanonicalDrinkRecipeEntry = {
