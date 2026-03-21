@@ -1608,6 +1608,198 @@
       "image": null,
       "route": "/drinks/recipe/yoga-flow-blend"
     },
+    "beetroot nitric oxide lift": {
+      "name": "Beetroot Nitric Oxide Lift",
+      "slug": "beetroot-nitric-oxide-lift",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/beetroot-nitric-oxide-lift"
+    },
+    "cold brew citrus surge": {
+      "name": "Cold Brew Citrus Surge",
+      "slug": "cold-brew-citrus-surge",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/cold-brew-citrus-surge"
+    },
+    "banana oat carb smoothie": {
+      "name": "Banana Oat Carb Smoothie",
+      "slug": "banana-oat-carb-smoothie",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1502741338009-cac2772e18bc?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/banana-oat-carb-smoothie"
+    },
+    "matcha maca focus blend": {
+      "name": "Matcha Maca Focus Blend",
+      "slug": "matcha-maca-focus-blend",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1515823064-d6e0c04616a7?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/matcha-maca-focus-blend"
+    },
+    "watermelon citrulline punch": {
+      "name": "Watermelon Citrulline Punch",
+      "slug": "watermelon-citrulline-punch",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1563114773-84221bd62daa?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/watermelon-citrulline-punch"
+    },
+    "espresso banana fuel": {
+      "name": "Espresso Banana Fuel",
+      "slug": "espresso-banana-fuel",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/espresso-banana-fuel"
+    },
+    "chocolate milk recovery classic": {
+      "name": "Chocolate Milk Recovery Classic",
+      "slug": "chocolate-milk-recovery-classic",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1514995669114-6081e934b693?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/chocolate-milk-recovery-classic"
+    },
+    "tart cherry turmeric reset": {
+      "name": "Tart Cherry Turmeric Reset",
+      "slug": "tart-cherry-turmeric-reset",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/tart-cherry-turmeric-reset"
+    },
+    "greek yogurt berry rebuild": {
+      "name": "Greek Yogurt Berry Rebuild",
+      "slug": "greek-yogurt-berry-rebuild",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/greek-yogurt-berry-rebuild"
+    },
+    "coconut water electrolyte reset": {
+      "name": "Coconut Water Electrolyte Reset",
+      "slug": "coconut-water-electrolyte-reset",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/coconut-water-electrolyte-reset"
+    },
+    "banana peanut butter recovery shake": {
+      "name": "Banana Peanut Butter Recovery Shake",
+      "slug": "banana-peanut-butter-recovery-shake",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1577805947697-89e18249d767?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/banana-peanut-butter-recovery-shake"
+    },
+    "collagen berry boost": {
+      "name": "Collagen Berry Boost",
+      "slug": "collagen-berry-boost",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1547592180-85f173990554?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/collagen-berry-boost"
+    },
+    "diy sports drink": {
+      "name": "DIY Sports Drink",
+      "slug": "diy-sports-drink",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/diy-sports-drink"
+    },
+    "watermelon mint hydrator": {
+      "name": "Watermelon Mint Hydrator",
+      "slug": "watermelon-mint-hydrator",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1563114773-84221bd62daa?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/watermelon-mint-hydrator"
+    },
+    "coconut mango electrolyte slush": {
+      "name": "Coconut Mango Electrolyte Slush",
+      "slug": "coconut-mango-electrolyte-slush",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1502741338009-cac2772e18bc?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/coconut-mango-electrolyte-slush"
+    },
+    "pink salt lemon rehydrator": {
+      "name": "Pink Salt Lemon Rehydrator",
+      "slug": "pink-salt-lemon-rehydrator",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/pink-salt-lemon-rehydrator"
+    },
+    "green tea electrolyte cooler": {
+      "name": "Green Tea Electrolyte Cooler",
+      "slug": "green-tea-electrolyte-cooler",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1515823064-d6e0c04616a7?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/green-tea-electrolyte-cooler"
+    },
+    "cucumber celery hydration juice": {
+      "name": "Cucumber Celery Hydration Juice",
+      "slug": "cucumber-celery-hydration-juice",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1622484211443-76c4deea5047?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/cucumber-celery-hydration-juice"
+    },
+    "ashwagandha golden latte": {
+      "name": "Ashwagandha Golden Latte",
+      "slug": "ashwagandha-golden-latte",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1514995669114-6081e934b693?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/ashwagandha-golden-latte"
+    },
+    "lion’s mane mushroom coffee": {
+      "name": "Lion’s Mane Mushroom Coffee",
+      "slug": "lions-mane-mushroom-coffee",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/lions-mane-mushroom-coffee"
+    },
+    "maca cacao energy bomb": {
+      "name": "Maca Cacao Energy Bomb",
+      "slug": "maca-cacao-energy-bomb",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1547592180-85f173990554?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/maca-cacao-energy-bomb"
+    },
+    "cordyceps pre-performance tonic": {
+      "name": "Cordyceps Pre-Performance Tonic",
+      "slug": "cordyceps-pre-performance-tonic",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/cordyceps-pre-performance-tonic"
+    },
+    "rhodiola citrus stress shield": {
+      "name": "Rhodiola Citrus Stress Shield",
+      "slug": "rhodiola-citrus-stress-shield",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1502741338009-cac2772e18bc?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/rhodiola-citrus-stress-shield"
+    },
+    "schisandra berry energy elixir": {
+      "name": "Schisandra Berry Energy Elixir",
+      "slug": "schisandra-berry-energy-elixir",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/schisandra-berry-energy-elixir"
+    },
     "old fashioned": {
       "name": "Old Fashioned",
       "slug": "old-fashioned",
@@ -4610,6 +4802,198 @@
       "image": null,
       "route": "/drinks/recipe/yoga-flow-blend"
     },
+    "beetroot-nitric-oxide-lift": {
+      "name": "Beetroot Nitric Oxide Lift",
+      "slug": "beetroot-nitric-oxide-lift",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/beetroot-nitric-oxide-lift"
+    },
+    "cold-brew-citrus-surge": {
+      "name": "Cold Brew Citrus Surge",
+      "slug": "cold-brew-citrus-surge",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/cold-brew-citrus-surge"
+    },
+    "banana-oat-carb-smoothie": {
+      "name": "Banana Oat Carb Smoothie",
+      "slug": "banana-oat-carb-smoothie",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1502741338009-cac2772e18bc?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/banana-oat-carb-smoothie"
+    },
+    "matcha-maca-focus-blend": {
+      "name": "Matcha Maca Focus Blend",
+      "slug": "matcha-maca-focus-blend",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1515823064-d6e0c04616a7?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/matcha-maca-focus-blend"
+    },
+    "watermelon-citrulline-punch": {
+      "name": "Watermelon Citrulline Punch",
+      "slug": "watermelon-citrulline-punch",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1563114773-84221bd62daa?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/watermelon-citrulline-punch"
+    },
+    "espresso-banana-fuel": {
+      "name": "Espresso Banana Fuel",
+      "slug": "espresso-banana-fuel",
+      "sourceRoute": "/drinks/workout-drinks/pre-workout",
+      "sourceTitle": "Pre-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/espresso-banana-fuel"
+    },
+    "chocolate-milk-recovery-classic": {
+      "name": "Chocolate Milk Recovery Classic",
+      "slug": "chocolate-milk-recovery-classic",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1514995669114-6081e934b693?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/chocolate-milk-recovery-classic"
+    },
+    "tart-cherry-turmeric-reset": {
+      "name": "Tart Cherry Turmeric Reset",
+      "slug": "tart-cherry-turmeric-reset",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/tart-cherry-turmeric-reset"
+    },
+    "greek-yogurt-berry-rebuild": {
+      "name": "Greek Yogurt Berry Rebuild",
+      "slug": "greek-yogurt-berry-rebuild",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1505253716362-afaea1d3d1af?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/greek-yogurt-berry-rebuild"
+    },
+    "coconut-water-electrolyte-reset": {
+      "name": "Coconut Water Electrolyte Reset",
+      "slug": "coconut-water-electrolyte-reset",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/coconut-water-electrolyte-reset"
+    },
+    "banana-peanut-butter-recovery-shake": {
+      "name": "Banana Peanut Butter Recovery Shake",
+      "slug": "banana-peanut-butter-recovery-shake",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1577805947697-89e18249d767?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/banana-peanut-butter-recovery-shake"
+    },
+    "collagen-berry-boost": {
+      "name": "Collagen Berry Boost",
+      "slug": "collagen-berry-boost",
+      "sourceRoute": "/drinks/workout-drinks/post-workout",
+      "sourceTitle": "Post-Workout Drinks",
+      "image": "https://images.unsplash.com/photo-1547592180-85f173990554?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/collagen-berry-boost"
+    },
+    "diy-sports-drink": {
+      "name": "DIY Sports Drink",
+      "slug": "diy-sports-drink",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1544145945-f90425340c7e?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/diy-sports-drink"
+    },
+    "watermelon-mint-hydrator": {
+      "name": "Watermelon Mint Hydrator",
+      "slug": "watermelon-mint-hydrator",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1563114773-84221bd62daa?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/watermelon-mint-hydrator"
+    },
+    "coconut-mango-electrolyte-slush": {
+      "name": "Coconut Mango Electrolyte Slush",
+      "slug": "coconut-mango-electrolyte-slush",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1502741338009-cac2772e18bc?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/coconut-mango-electrolyte-slush"
+    },
+    "pink-salt-lemon-rehydrator": {
+      "name": "Pink Salt Lemon Rehydrator",
+      "slug": "pink-salt-lemon-rehydrator",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/pink-salt-lemon-rehydrator"
+    },
+    "green-tea-electrolyte-cooler": {
+      "name": "Green Tea Electrolyte Cooler",
+      "slug": "green-tea-electrolyte-cooler",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1515823064-d6e0c04616a7?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/green-tea-electrolyte-cooler"
+    },
+    "cucumber-celery-hydration-juice": {
+      "name": "Cucumber Celery Hydration Juice",
+      "slug": "cucumber-celery-hydration-juice",
+      "sourceRoute": "/drinks/workout-drinks/hydration",
+      "sourceTitle": "Hydration Drinks",
+      "image": "https://images.unsplash.com/photo-1622484211443-76c4deea5047?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/cucumber-celery-hydration-juice"
+    },
+    "ashwagandha-golden-latte": {
+      "name": "Ashwagandha Golden Latte",
+      "slug": "ashwagandha-golden-latte",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1514995669114-6081e934b693?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/ashwagandha-golden-latte"
+    },
+    "lions-mane-mushroom-coffee": {
+      "name": "Lion’s Mane Mushroom Coffee",
+      "slug": "lions-mane-mushroom-coffee",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/lions-mane-mushroom-coffee"
+    },
+    "maca-cacao-energy-bomb": {
+      "name": "Maca Cacao Energy Bomb",
+      "slug": "maca-cacao-energy-bomb",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1547592180-85f173990554?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/maca-cacao-energy-bomb"
+    },
+    "cordyceps-pre-performance-tonic": {
+      "name": "Cordyceps Pre-Performance Tonic",
+      "slug": "cordyceps-pre-performance-tonic",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1490645935967-10de6ba17061?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/cordyceps-pre-performance-tonic"
+    },
+    "rhodiola-citrus-stress-shield": {
+      "name": "Rhodiola Citrus Stress Shield",
+      "slug": "rhodiola-citrus-stress-shield",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1502741338009-cac2772e18bc?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/rhodiola-citrus-stress-shield"
+    },
+    "schisandra-berry-energy-elixir": {
+      "name": "Schisandra Berry Energy Elixir",
+      "slug": "schisandra-berry-energy-elixir",
+      "sourceRoute": "/drinks/workout-drinks/energy-boosters",
+      "sourceTitle": "Energy Booster Drinks",
+      "image": "https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=400&h=300&fit=crop",
+      "route": "/drinks/recipe/schisandra-berry-energy-elixir"
+    },
     "old-fashioned": {
       "name": "Old Fashioned",
       "slug": "old-fashioned",
@@ -6167,6 +6551,22 @@
     {
       "route": "/drinks/smoothies/workout",
       "title": "Workout Smoothies"
+    },
+    {
+      "route": "/drinks/workout-drinks/energy-boosters",
+      "title": "Energy Booster Drinks"
+    },
+    {
+      "route": "/drinks/workout-drinks/hydration",
+      "title": "Hydration Drinks"
+    },
+    {
+      "route": "/drinks/workout-drinks/post-workout",
+      "title": "Post-Workout Drinks"
+    },
+    {
+      "route": "/drinks/workout-drinks/pre-workout",
+      "title": "Pre-Workout Drinks"
     }
   ],
   "duplicates": [
@@ -6321,5 +6721,5 @@
       "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
     }
   ],
-  "generatedAt": "2026-03-20T22:05:33.907Z"
+  "generatedAt": "2026-03-21T14:27:16.375Z"
 }

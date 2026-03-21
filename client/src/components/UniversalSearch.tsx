@@ -44,14 +44,16 @@ export default function UniversalSearch({
     'smoothies': Leaf,
     'protein-shakes': Dumbbell,
     'detoxes': Droplets,
-    'potent-potables': Coffee
+    'potent-potables': Coffee,
+    'workout-drinks': Dumbbell
   };
 
   const categoryColors = {
     'smoothies': 'bg-green-100 text-green-800',
     'protein-shakes': 'bg-blue-100 text-blue-800',
     'detoxes': 'bg-purple-100 text-purple-800',
-    'potent-potables': 'bg-orange-100 text-orange-800'
+    'potent-potables': 'bg-orange-100 text-orange-800',
+    'workout-drinks': 'bg-orange-100 text-orange-800'
   };
 
   const filterOptions = [

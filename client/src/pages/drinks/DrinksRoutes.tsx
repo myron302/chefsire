@@ -71,6 +71,12 @@ import DetoxJuices from "@/pages/drinks/detoxes/juice";
 import DetoxTeas from "@/pages/drinks/detoxes/tea";
 import DetoxWaters from "@/pages/drinks/detoxes/water";
 
+import WorkoutDrinksHub from "@/pages/drinks/workout-drinks";
+import PreWorkoutDrinks from "@/pages/drinks/workout-drinks/pre-workout";
+import PostWorkoutDrinks from "@/pages/drinks/workout-drinks/post-workout";
+import HydrationDrinks from "@/pages/drinks/workout-drinks/hydration";
+import EnergyBoosterDrinks from "@/pages/drinks/workout-drinks/energy-boosters";
+
 import CocktailsPage from "@/pages/drinks/potent-potables/cocktails";
 import CognacBrandyPage from "@/pages/drinks/potent-potables/cognac-brandy";
 import MartinisPage from "@/pages/drinks/potent-potables/martinis";
@@ -178,6 +184,22 @@ function ProteinShakesSection() {
   );
 }
 
+
+function WorkoutDrinksSection() {
+  return (
+    <Switch>
+      <Route path="/drinks/workout-drinks/pre-workout" component={PreWorkoutDrinks} />
+      <Route path="/drinks/workout-drinks/post-workout" component={PostWorkoutDrinks} />
+      <Route path="/drinks/workout-drinks/hydration" component={HydrationDrinks} />
+      <Route path="/drinks/workout-drinks/energy-boosters" component={EnergyBoosterDrinks} />
+      <Route path="/drinks/workout-drinks" component={WorkoutDrinksHub} />
+      <Route>
+        <Redirect to="/drinks/workout-drinks" />
+      </Route>
+    </Switch>
+  );
+}
+
 function DetoxesSection() {
   return (
     <Switch>
@@ -240,6 +262,9 @@ export default function DrinksRoutes() {
 
         <Route path="/drinks/detoxes">{() => <DetoxesSection />}</Route>
         <Route path="/drinks/detoxes/:subcategory">{() => <DetoxesSection />}</Route>
+
+        <Route path="/drinks/workout-drinks">{() => <WorkoutDrinksSection />}</Route>
+        <Route path="/drinks/workout-drinks/:subcategory">{() => <WorkoutDrinksSection />}</Route>
 
         <Route path="/drinks/potent-potables">{() => <PotentPotablesSection />}</Route>
         <Route path="/drinks/potent-potables/:subcategory">{() => <PotentPotablesSection />}</Route>
