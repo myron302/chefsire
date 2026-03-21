@@ -4196,6 +4196,47 @@ type CreatorCampaignHealthSummary = {
   completedCount: number;
 };
 
+type CreatorCampaignRecoveryActionType =
+  | "publish_update"
+  | "add_drop"
+  | "strengthen_cta"
+  | "launch_promo"
+  | "push_rsvp"
+  | "add_member_only_collection"
+  | "promote_membership"
+  | "celebrate_milestone"
+  | "clone_and_refresh"
+  | "close_out_campaign";
+
+type CreatorCampaignRecoveryPlanAction = {
+  actionType: CreatorCampaignRecoveryActionType;
+  label: string;
+  description: string;
+  suggestedRoute: string | null;
+  supportingSignals: string[];
+};
+
+type CreatorCampaignRecoveryPriority = "urgent" | "high" | "medium" | "low" | "none";
+
+type CreatorCampaignRecoveryPlanState = "action_needed" | "monitor" | "no_action_needed";
+
+type CreatorCampaignRecoveryPlan = {
+  campaignId: string;
+  campaignName: string;
+  campaignSlug: string;
+  campaignRoute: string;
+  status: CreatorCampaignState;
+  healthState: CreatorCampaignHealthState;
+  healthScore: number;
+  actionState: CreatorCampaignRecoveryPlanState;
+  riskReason: string | null;
+  rescuePriority: CreatorCampaignRecoveryPriority;
+  suggestedActions: CreatorCampaignRecoveryPlanAction[];
+  confidenceNote: string | null;
+  recommendationTitle: string | null;
+  generatedFrom: string[];
+};
+
 type CreatorCampaignMilestoneType =
   | "campaign_live"
   | "first_drop_live"
@@ -14577,12 +14618,17 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
     const ownerGoalRows = viewerId && viewerId === campaign.creatorUserId
       ? await loadCreatorCampaignGoalsByCampaignId(campaign.id)
       : [];
+    const ownerHealthCollection = viewerId && viewerId === campaign.creatorUserId
+      ? await loadCreatorCampaignHealth(campaign.creatorUserId)
+      : null;
+    const ownerHealth = ownerHealthCollection?.items.find((item) => item.campaignId === campaign.id) ?? null;
     const ownerAnalytics = viewerId && viewerId === campaign.creatorUserId
       ? campaignSnapshot
       : null;
     const ownerRetrospective = viewerId && viewerId === campaign.creatorUserId && getCreatorCampaignState(campaign) === "past"
       ? (await loadCreatorCampaignRetrospectives(campaign.creatorUserId)).items.find((item) => item.campaignId === campaign.id) ?? null
       : null;
+    const ownerRecoveryPlan = ownerHealth ? buildCampaignRecoveryPlan(ownerHealth) : null;
     return res.json({
       ok: true,
       ...detail,
@@ -14596,9 +14642,8 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
       recentUpdates: buildCreatorCampaignUpdateItems(detail),
       ownerAnalytics,
       ownerRetrospective,
-      ownerHealth: viewerId && viewerId === campaign.creatorUserId
-        ? (await loadCreatorCampaignHealth(campaign.creatorUserId)).items.find((item) => item.campaignId === campaign.id) ?? null
-        : null,
+      ownerHealth,
+      ownerRecoveryPlan,
     });
   } catch (error) {
     const message = logCollectionRouteError("/campaigns/:slug", req, error);
@@ -18254,6 +18299,286 @@ r.get("/bundles/checkout-sessions/:sessionId/status", requireAuth, async (req, r
   }
 });
 
+
+function recoveryPriorityRank(priority: CreatorCampaignRecoveryPriority) {
+  switch (priority) {
+    case "urgent":
+      return 4;
+    case "high":
+      return 3;
+    case "medium":
+      return 2;
+    case "low":
+      return 1;
+    case "none":
+    default:
+      return 0;
+  }
+}
+
+function healthWatchWeight(state: CreatorCampaignHealthState) {
+  switch (state) {
+    case "at_risk":
+      return 3;
+    case "watch":
+      return 2;
+    case "healthy":
+      return 1;
+    case "thriving":
+    case "completed":
+    default:
+      return 0;
+  }
+}
+
+function buildCampaignRecoveryAction(input: {
+  actionType: CreatorCampaignRecoveryActionType;
+  label: string;
+  description: string;
+  suggestedRoute: string | null;
+  supportingSignals?: string[];
+}) {
+  return {
+    actionType: input.actionType,
+    label: input.label,
+    description: input.description,
+    suggestedRoute: input.suggestedRoute,
+    supportingSignals: (input.supportingSignals ?? []).slice(0, 3),
+  } satisfies CreatorCampaignRecoveryPlanAction;
+}
+
+function buildCampaignRecoveryPlan(item: CreatorCampaignHealthItem): CreatorCampaignRecoveryPlan {
+  const riskReason = item.watchReasons[0] ?? item.primaryConcern ?? null;
+  const actions: CreatorCampaignRecoveryPlanAction[] = [];
+  const hasAction = (actionType: CreatorCampaignRecoveryActionType) => actions.some((action) => action.actionType === actionType);
+  const pushAction = (action: CreatorCampaignRecoveryPlanAction | null | undefined) => {
+    if (!action || hasAction(action.actionType)) return;
+    actions.push(action);
+  };
+
+  const recommendationType = item.recommendation?.recommendationType ?? null;
+  const recommendationRoute = item.recommendation?.suggestedRoute ?? item.route;
+  const confidenceSignals = [riskReason, ...(item.watchReasons ?? [])].filter((value): value is string => Boolean(value));
+
+  if (recommendationType === "publish_update"
+    || item.linkedPostsCount === 0
+    || item.watchReasons.some((reason) => reason.includes("No recent drops or updates"))
+    || item.watchReasons.some((reason) => reason.includes("gone quiet"))) {
+    pushAction(buildCampaignRecoveryAction({
+      actionType: "publish_update",
+      label: "Publish an update",
+      description: "Re-open the campaign story with a short creator update before asking for a harder conversion action.",
+      suggestedRoute: recommendationType === "publish_update" ? recommendationRoute : "/drinks/creator-dashboard#posts",
+      supportingSignals: [
+        item.linkedPostsCount === 0 ? "No linked creator updates yet" : `${item.linkedPostsCount} linked update${item.linkedPostsCount === 1 ? "" : "s"}`,
+        item.recentActivityAt ? `Last activity ${new Date(item.recentActivityAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "No recent campaign activity",
+      ],
+    }));
+  }
+
+  if (recommendationType === "add_drop"
+    || (item.linkedDropsCount === 0 && (item.status === "active" || item.status === "upcoming"))) {
+    pushAction(buildCampaignRecoveryAction({
+      actionType: "add_drop",
+      label: "Add a drop",
+      description: "Give followers a concrete launch moment before pushing harder promotional asks.",
+      suggestedRoute: recommendationType === "add_drop" ? recommendationRoute : "/drinks/creator-dashboard#campaigns",
+      supportingSignals: [
+        `${item.linkedDropsCount} linked drops`,
+        `${item.recentFollowers} recent followers`,
+      ],
+    }));
+  }
+
+  if (recommendationType === "improve_cta"
+    || item.watchReasons.some((reason) => reason.includes("weak conversion"))
+    || item.watchReasons.some((reason) => reason.includes("into clicks"))) {
+    pushAction(buildCampaignRecoveryAction({
+      actionType: "strengthen_cta",
+      label: "Strengthen CTA",
+      description: "Tighten the campaign framing or CTA variant before layering in discount or promo pressure.",
+      suggestedRoute: recommendationRoute,
+      supportingSignals: [
+        `${item.recentClicks} recent clicks`,
+        `${item.recentPurchases} recent purchases`,
+      ],
+    }));
+  }
+
+  if (recommendationType === "push_rsvp"
+    || (item.linkedDropsCount > 0 && item.recentRsvps <= Math.max(1, Math.floor(item.recentFollowers / 3)) && item.healthState !== "completed")) {
+    pushAction(buildCampaignRecoveryAction({
+      actionType: "push_rsvp",
+      label: "Push RSVP / Notify Me",
+      description: "After the campaign has a live drop or fresh update, make the RSVP path more explicit.",
+      suggestedRoute: recommendationType === "push_rsvp" ? recommendationRoute : item.route,
+      supportingSignals: [
+        `${item.linkedDropsCount} linked drops`,
+        `${item.recentRsvps} recent RSVPs`,
+      ],
+    }));
+  }
+
+  if (recommendationType === "launch_promo"
+    || (item.recentClicks >= 8 && item.recentPurchases === 0 && item.linkedPromosCount === 0)) {
+    pushAction(buildCampaignRecoveryAction({
+      actionType: "launch_promo",
+      label: item.linkedPromosCount > 0 ? "Refresh promo angle" : "Launch a promo",
+      description: "Use a lightweight offer only after the CTA and destination are clear enough to convert attention.",
+      suggestedRoute: recommendationType === "launch_promo" ? recommendationRoute : "/drinks/creator-dashboard#promotions",
+      supportingSignals: [
+        `${item.recentClicks} recent clicks`,
+        `${item.linkedPromosCount} linked promos`,
+      ],
+    }));
+  }
+
+  if (recommendationType === "add_member_only_collection"
+    || (item.visibility === "members" && item.linkedCollectionsCount === 0)) {
+    pushAction(buildCampaignRecoveryAction({
+      actionType: "add_member_only_collection",
+      label: "Add a member-only collection",
+      description: "Member-focused campaigns need a clear members-only destination, not just a private label.",
+      suggestedRoute: recommendationType === "add_member_only_collection" ? recommendationRoute : "/drinks/collections",
+      supportingSignals: [
+        `Visibility: ${item.visibility}`,
+        `${item.linkedCollectionsCount} linked collections`,
+      ],
+    }));
+  }
+
+  if (recommendationType === "promote_membership"
+    || (item.visibility === "members" && item.recentMemberships === 0 && item.recentFollowers > 0)) {
+    pushAction(buildCampaignRecoveryAction({
+      actionType: "promote_membership",
+      label: "Promote membership",
+      description: "Spell out the member value inside the campaign once the member destination is in place.",
+      suggestedRoute: recommendationType === "promote_membership" ? recommendationRoute : "/drinks/creator-dashboard#membership",
+      supportingSignals: [
+        `${item.recentFollowers} recent followers`,
+        `${item.recentMemberships} recent memberships`,
+      ],
+    }));
+  }
+
+  if (recommendationType === "celebrate_milestone" || (item.milestoneCount > 0 && item.healthState === "watch" && item.linkedPostsCount === 0)) {
+    pushAction(buildCampaignRecoveryAction({
+      actionType: "celebrate_milestone",
+      label: "Celebrate a milestone",
+      description: "If the campaign has a real proof point already, use it to rebuild momentum with a quick highlight post.",
+      suggestedRoute: recommendationType === "celebrate_milestone" ? recommendationRoute : "/drinks/creator-dashboard#posts",
+      supportingSignals: [
+        `${item.milestoneCount} achieved milestone${item.milestoneCount === 1 ? "" : "s"}`,
+        `${item.completedGoalCount} completed goals`,
+      ],
+    }));
+  }
+
+  if (item.status === "past") {
+    if (item.healthScore <= 55 || item.healthState === "at_risk" || item.watchReasons.length > 0) {
+      pushAction(buildCampaignRecoveryAction({
+        actionType: "close_out_campaign",
+        label: "Close out the campaign",
+        description: "Underperforming archived campaigns should end cleanly so the creator can move attention elsewhere.",
+        suggestedRoute: item.route,
+        supportingSignals: [
+          item.primaryConcern ?? "Archived campaign still reads as unresolved",
+        ],
+      }));
+    }
+    if (recommendationType === "clone_successful_campaign" || recommendationType === "refresh_archived_campaign" || item.completedGoalCount > 0 || item.milestoneCount > 0) {
+      pushAction(buildCampaignRecoveryAction({
+        actionType: "clone_and_refresh",
+        label: "Clone and refresh",
+        description: "Keep what worked, reset the dates, and relaunch as a lighter follow-up season instead of rebuilding from scratch.",
+        suggestedRoute: "/drinks/creator-dashboard#campaigns",
+        supportingSignals: [
+          `${item.completedGoalCount} completed goals`,
+          `${item.milestoneCount} achieved milestones`,
+        ],
+      }));
+    }
+  }
+
+  actions.sort((a, b) => {
+    const order: CreatorCampaignRecoveryActionType[] = [
+      "publish_update",
+      "add_drop",
+      "strengthen_cta",
+      "push_rsvp",
+      "launch_promo",
+      "add_member_only_collection",
+      "promote_membership",
+      "celebrate_milestone",
+      "clone_and_refresh",
+      "close_out_campaign",
+    ];
+    return order.indexOf(a.actionType) - order.indexOf(b.actionType);
+  });
+
+  const actionState: CreatorCampaignRecoveryPlanState = item.healthState === "watch" || item.healthState === "at_risk"
+    ? (actions.length > 0 ? "action_needed" : "monitor")
+    : "no_action_needed";
+  const rescuePriority: CreatorCampaignRecoveryPriority = item.healthState === "at_risk"
+    ? (actions.length >= 2 ? "urgent" : "high")
+    : item.healthState === "watch"
+      ? (actions.length >= 2 ? "high" : actions.length === 1 ? "medium" : "low")
+      : "none";
+
+  const confidenceNote = actionState === "no_action_needed"
+    ? "No recovery plan needed right now — this campaign reads healthy enough in the existing health layer."
+    : confidenceSignals.length
+      ? `Built from existing health signals: ${confidenceSignals.slice(0, 2).join(" • ")}.`
+      : item.recommendation?.title
+        ? `Built from the linked recommendation signal: ${item.recommendation.title}.`
+        : "Built from existing health/watch signals already tracked for this campaign.";
+
+  return {
+    campaignId: item.campaignId,
+    campaignName: item.name,
+    campaignSlug: item.slug,
+    campaignRoute: item.route,
+    status: item.status,
+    healthState: item.healthState,
+    healthScore: item.healthScore,
+    actionState,
+    riskReason,
+    rescuePriority,
+    suggestedActions: item.healthState === "watch" || item.healthState === "at_risk" ? actions.slice(0, 4) : [],
+    confidenceNote,
+    recommendationTitle: item.recommendation?.title ?? null,
+    generatedFrom: ["campaign_health", ...(item.recommendation ? ["campaign_recommendations"] : [])],
+  };
+}
+
+export async function loadCreatorCampaignRecoveryPlans(creatorUserId: string) {
+  const health = await loadCreatorCampaignHealth(creatorUserId);
+  const plans = health.items.map(buildCampaignRecoveryPlan).sort((a, b) => {
+    return healthWatchWeight(b.healthState) - healthWatchWeight(a.healthState)
+      || recoveryPriorityRank(b.rescuePriority) - recoveryPriorityRank(a.rescuePriority)
+      || b.suggestedActions.length - a.suggestedActions.length
+      || a.healthScore - b.healthScore;
+  });
+
+  return {
+    summary: {
+      totalCampaigns: plans.length,
+      actionNeededCount: plans.filter((plan) => plan.actionState === "action_needed").length,
+      monitorCount: plans.filter((plan) => plan.actionState === "monitor").length,
+      noActionNeededCount: plans.filter((plan) => plan.actionState === "no_action_needed").length,
+      atRiskCount: plans.filter((plan) => plan.healthState === "at_risk").length,
+      watchCount: plans.filter((plan) => plan.healthState === "watch").length,
+    },
+    items: plans,
+    attributionNotes: [
+      "Recovery plans are a focused rescue layer for watch / at-risk campaigns only, built from the existing health and recommendation signals already tracked in the drinks platform.",
+      "Health describes current status. Recommendations remain general next-step ideas. Recovery plans turn slipping-state signals into a short ordered rescue path.",
+      "Sequencing stays rules-based and lightweight: refresh the story or destination first, then push RSVP / promo / conversion asks.",
+    ],
+    generatedAt: health.generatedAt,
+  };
+}
+
 r.get("/creator-dashboard/campaign-analytics", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -18342,6 +18667,28 @@ r.get("/creator-dashboard/campaign-health", requireAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-health", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign health"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-recovery-plans", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const recoveryPlans = await loadCreatorCampaignRecoveryPlans(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: recoveryPlans.summary,
+      items: recoveryPlans.items,
+      attributionNotes: recoveryPlans.attributionNotes,
+      generatedAt: recoveryPlans.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-recovery-plans", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign recovery plans"));
   }
 });
 
