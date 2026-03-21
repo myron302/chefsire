@@ -12,6 +12,13 @@ type DrinkIndexEntry = {
   slug: string;
   image: string | null;
 };
+type CanonicalDrinkRecipeEntry = {
+  slug: string;
+  name: string;
+  sourceRoute: string;
+  sourceTitle: string;
+  recipe: Record<string, unknown>;
+};
 type DrinkRoute = { route: string; title: string };
 type DuplicateEntry = {
   key: string;
@@ -27,14 +34,21 @@ type DrinkIndexFile = {
   duplicates: DuplicateEntry[];
   generatedAt: string;
 };
+type CanonicalDrinkFile = {
+  entries: CanonicalDrinkRecipeEntry[];
+  bySlug: Record<string, CanonicalDrinkRecipeEntry>;
+  generatedAt: string;
+};
 
 type DrinkRecipeLike = { name?: string; image?: unknown; imageUrl?: unknown };
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 const drinksDataDirPath = path.join(repoRoot, "client", "src", "data", "drinks");
-const generatedDirPath = path.join(repoRoot, "server", "generated");
-const generatedFilePath = path.join(generatedDirPath, "drink-index.json");
+const serverGeneratedDirPath = path.join(repoRoot, "server", "generated");
+const clientGeneratedDirPath = path.join(repoRoot, "client", "src", "generated");
+const generatedFilePath = path.join(serverGeneratedDirPath, "drink-index.json");
+const generatedCanonicalFilePath = path.join(clientGeneratedDirPath, "drink-canonical.json");
 
 function normalizeKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -75,6 +89,58 @@ function buildCanonicalSlug(name: string, sourceRoute: string, usedSlugs: Set<st
   return `${baseSlug}-${suffix}`;
 }
 
+function asStringList(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item).trim()).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    return value
+      .split(/\r?\n|\.(?=\s|$)/)
+      .map((part) => part.trim())
+      .filter(Boolean);
+  }
+
+  return [];
+}
+
+function normalizeRecipe(recipe: Record<string, unknown>, sourceTitle: string): Record<string, unknown> {
+  const nestedRecipe = recipe?.recipe as { measurements?: unknown[]; directions?: unknown } | undefined;
+  const nestedMeasurements = Array.isArray(nestedRecipe?.measurements)
+    ? nestedRecipe.measurements
+        .map((measurement) => {
+          const entry = measurement as Record<string, unknown>;
+          const amount = String(entry?.amount ?? "").trim();
+          const unit = String(entry?.unit ?? "").trim();
+          const item = String(entry?.item ?? "").trim();
+          const note = String(entry?.note ?? "").trim();
+          const line = [amount, unit, item].filter(Boolean).join(" ").trim();
+          if (!line) return "";
+          return note ? `${line} (${note})` : line;
+        })
+        .filter(Boolean)
+    : [];
+
+  const normalizedIngredients = asStringList(recipe?.ingredients);
+  const normalizedInstructions = asStringList(recipe?.instructions);
+  const fallbackIngredients = nestedMeasurements;
+  const fallbackInstructions = asStringList(
+    nestedRecipe?.directions ?? recipe?.steps ?? recipe?.method
+  );
+  const defaultInstruction = `Follow the preparation method shown on the ${sourceTitle} card and serve immediately.`;
+
+  return {
+    ...recipe,
+    ingredients: normalizedIngredients.length > 0 ? normalizedIngredients : fallbackIngredients,
+    instructions:
+      normalizedInstructions.length > 0
+        ? normalizedInstructions
+        : fallbackInstructions.length > 0
+          ? fallbackInstructions
+          : [defaultInstruction],
+  };
+}
+
 async function loadRouteRecipes(routeEntry: DrinkRouteRegistryEntry): Promise<DrinkRecipeLike[]> {
   const modulePath = path.join(drinksDataDirPath, `${routeEntry.dataModulePath}.ts`);
   const moduleFileUrl = pathToFileURL(modulePath).href;
@@ -97,6 +163,8 @@ async function loadRouteRecipes(routeEntry: DrinkRouteRegistryEntry): Promise<Dr
 async function main() {
   const recipes: Record<string, DrinkIndexEntry> = {};
   const bySlug: Record<string, DrinkIndexEntry> = {};
+  const canonicalEntries: CanonicalDrinkRecipeEntry[] = [];
+  const canonicalBySlug: Record<string, CanonicalDrinkRecipeEntry> = {};
   const duplicates: DuplicateEntry[] = [];
   const usedCanonicalSlugs = new Set<string>();
 
@@ -127,6 +195,15 @@ async function main() {
           route: `/drinks/recipe/${slug}`
         };
         bySlug[slug] = recipes[key];
+        const canonicalEntry: CanonicalDrinkRecipeEntry = {
+          slug,
+          name,
+          sourceRoute: routeEntry.route,
+          sourceTitle: routeEntry.title,
+          recipe: normalizeRecipe(recipe as Record<string, unknown>, routeEntry.title),
+        };
+        canonicalEntries.push(canonicalEntry);
+        canonicalBySlug[slug] = canonicalEntry;
       } else if (recipes[key].sourceRoute !== routeEntry.route) {
         duplicates.push({
           key,
@@ -149,9 +226,16 @@ async function main() {
     duplicates,
     generatedAt: new Date().toISOString()
   };
+  const canonicalOutput: CanonicalDrinkFile = {
+    entries: canonicalEntries,
+    bySlug: canonicalBySlug,
+    generatedAt: output.generatedAt,
+  };
 
-  fs.mkdirSync(generatedDirPath, { recursive: true });
+  fs.mkdirSync(serverGeneratedDirPath, { recursive: true });
+  fs.mkdirSync(clientGeneratedDirPath, { recursive: true });
   writeAtomically(generatedFilePath, `${JSON.stringify(output, null, 2)}\n`);
+  writeAtomically(generatedCanonicalFilePath, `${JSON.stringify(canonicalOutput, null, 2)}\n`);
 
   console.log(
     `[generate-drink-index] Indexed ${Object.keys(recipes).length} recipes across ${output.routes.length} routes (${duplicates.length} duplicates).`
