@@ -1505,6 +1505,30 @@ export const creatorCampaignGoals = pgTable(
   })
 );
 
+export const creatorCampaignActionStates = pgTable(
+  "creator_campaign_action_states",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    campaignId: varchar("campaign_id").references(() => creatorCampaigns.id, { onDelete: "cascade" }).notNull(),
+    actionType: text("action_type").notNull(),
+    actionKey: varchar("action_key", { length: 240 }).notNull(),
+    sourceKey: text("source_key"),
+    sourceSignature: text("source_signature"),
+    state: text("state").default("open").notNull(),
+    snoozedUntil: timestamp("snoozed_until"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    userIdx: index("creator_campaign_action_states_user_idx").on(table.userId),
+    campaignIdx: index("creator_campaign_action_states_campaign_idx").on(table.campaignId),
+    stateIdx: index("creator_campaign_action_states_state_idx").on(table.userId, table.state, table.updatedAt),
+    snoozedIdx: index("creator_campaign_action_states_snoozed_idx").on(table.userId, table.snoozedUntil),
+    userActionIdx: uniqueIndex("creator_campaign_action_states_user_action_idx").on(table.userId, table.actionKey),
+  })
+);
+
 export const creatorCampaignCtaVariants = pgTable(
   "creator_campaign_cta_variants",
   {
@@ -2388,6 +2412,12 @@ export const insertCreatorCampaignGoalSchema = createInsertSchema(creatorCampaig
   updatedAt: true,
 });
 
+export const insertCreatorCampaignActionStateSchema = createInsertSchema(creatorCampaignActionStates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertCreatorCampaignCtaVariantSchema = createInsertSchema(creatorCampaignCtaVariants).omit({
   id: true,
   createdAt: true,
@@ -2627,6 +2657,8 @@ export type CreatorCampaignLink = typeof creatorCampaignLinks.$inferSelect;
 export type InsertCreatorCampaignLink = z.infer<typeof insertCreatorCampaignLinkSchema>;
 export type CreatorCampaignFollow = typeof creatorCampaignFollows.$inferSelect;
 export type InsertCreatorCampaignFollow = z.infer<typeof insertCreatorCampaignFollowSchema>;
+export type CreatorCampaignActionState = typeof creatorCampaignActionStates.$inferSelect;
+export type InsertCreatorCampaignActionState = z.infer<typeof insertCreatorCampaignActionStateSchema>;
 export type CreatorCampaignCtaVariant = typeof creatorCampaignCtaVariants.$inferSelect;
 export type InsertCreatorCampaignCtaVariant = z.infer<typeof insertCreatorCampaignCtaVariantSchema>;
 export type CreatorCampaignVariantEvent = typeof creatorCampaignVariantEvents.$inferSelect;

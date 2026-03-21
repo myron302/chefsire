@@ -1,6 +1,7 @@
 // server/routes/drinks.ts
 import { Router, type Request } from "express";
 import { and, asc, desc, eq, gt, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import crypto from "node:crypto";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
 import { db } from "../db";
@@ -18,6 +19,7 @@ import {
   creatorCampaignLinks,
   creatorCampaignFollows,
   creatorCampaignGoals,
+  creatorCampaignActionStates,
   creatorCampaignCtaVariants,
   creatorCampaignVariantEvents,
   creatorDropEvents,
@@ -58,6 +60,7 @@ import {
   insertCreatorCampaignLinkSchema,
   insertCreatorCampaignFollowSchema,
   insertCreatorCampaignGoalSchema,
+  insertCreatorCampaignActionStateSchema,
   insertCreatorCampaignCtaVariantSchema,
   insertCreatorCampaignVariantEventSchema,
   insertCreatorDropEventSchema,
@@ -2176,6 +2179,23 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_action_states (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
+        action_type text NOT NULL,
+        action_key varchar(240) NOT NULL,
+        source_key text,
+        source_signature text,
+        state text NOT NULL DEFAULT 'open',
+        snoozed_until timestamp,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT creator_campaign_action_states_user_action_idx UNIQUE (user_id, action_key)
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_campaign_cta_variants (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
@@ -2189,6 +2209,11 @@ async function ensureDrinkCollectionsSchema() {
         updated_at timestamp NOT NULL DEFAULT now()
       );
     `);
+
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_action_states_user_idx ON creator_campaign_action_states (user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_action_states_campaign_idx ON creator_campaign_action_states (campaign_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_action_states_state_idx ON creator_campaign_action_states (user_id, state, updated_at DESC);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_action_states_snoozed_idx ON creator_campaign_action_states (user_id, snoozed_until);`);
 
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_campaign_variant_events (
@@ -4316,7 +4341,10 @@ type CreatorCampaignActionCenterItem = {
   campaignName: string;
   campaignSlug: string;
   campaignRoute: string;
+  actionKey: string;
   actionType: CreatorCampaignActionCenterActionType;
+  sourceKey: string;
+  sourceSignature: string;
   title: string;
   message: string;
   priority: CreatorCampaignActionCenterPriority;
@@ -4326,6 +4354,8 @@ type CreatorCampaignActionCenterItem = {
   targetLabel: string | null;
   supportingSignals: string[];
   sourceContexts: string[];
+  state: "open" | "dismissed" | "snoozed" | "completed";
+  snoozedUntil: string | null;
 };
 
 type CreatorCampaignActionCenterSummary = {
@@ -4335,7 +4365,13 @@ type CreatorCampaignActionCenterSummary = {
   highCount: number;
   mediumCount: number;
   lowCount: number;
+  hiddenCount: number;
+  snoozedCount: number;
+  dismissedCount: number;
+  completedCount: number;
 };
+
+type CreatorCampaignActionStateValue = "open" | "dismissed" | "snoozed" | "completed";
 
 type CreatorCampaignMilestoneType =
   | "campaign_live"
@@ -19036,20 +19072,54 @@ function uniqueStringList(values: Array<string | null | undefined>, limit = 5) {
   return [...new Set(values.filter((value): value is string => Boolean(value?.trim())).map((value) => value.trim()))].slice(0, limit);
 }
 
-type ActionCenterDraft = CreatorCampaignActionCenterItem;
+function buildCampaignActionKey(campaignId: string, actionType: CreatorCampaignActionCenterActionType) {
+  return `${campaignId}:${actionType}`;
+}
+
+function buildCampaignActionSignature(input: {
+  campaignId: string;
+  actionType: CreatorCampaignActionCenterActionType;
+  sourceKey: string;
+  priority: CreatorCampaignActionCenterPriority;
+  title: string;
+  message: string;
+  targetRoute: string | null;
+  supportingSignals: string[];
+}) {
+  return crypto.createHash("sha256").update(JSON.stringify(input), "utf8").digest("hex");
+}
+
+type ActionCenterDraft = Omit<CreatorCampaignActionCenterItem, "actionKey" | "sourceKey" | "sourceSignature" | "state" | "snoozedUntil"> & {
+  sourceKeys: string[];
+};
 
 function mergeCampaignActionCenterItem(
   items: Map<string, CreatorCampaignActionCenterItem>,
   candidate: ActionCenterDraft,
 ) {
-  const key = `${candidate.campaignId}:${candidate.actionType}`;
+  const key = buildCampaignActionKey(candidate.campaignId, candidate.actionType);
   const existing = items.get(key);
   if (!existing) {
+    const sourceKey = uniqueStringList(candidate.sourceKeys, 8).sort().join("||");
     items.set(key, {
       ...candidate,
+      actionKey: key,
+      sourceKey,
+      sourceSignature: buildCampaignActionSignature({
+        campaignId: candidate.campaignId,
+        actionType: candidate.actionType,
+        sourceKey,
+        priority: candidate.priority,
+        title: candidate.title,
+        message: candidate.message,
+        targetRoute: candidate.targetRoute,
+        supportingSignals: uniqueStringList(candidate.supportingSignals, 8),
+      }),
       sourceTypes: [...candidate.sourceTypes],
       supportingSignals: [...candidate.supportingSignals],
       sourceContexts: [...candidate.sourceContexts],
+      state: "open",
+      snoozedUntil: null,
     });
     return;
   }
@@ -19059,6 +19129,8 @@ function mergeCampaignActionCenterItem(
   const candidateWins = candidatePriority > existingPriority
     || (candidatePriority === existingPriority && sourceTypeWeight(candidate.sourceType) > sourceTypeWeight(existing.sourceType));
 
+  const sourceKey = uniqueStringList([...existing.sourceKey.split("||"), ...candidate.sourceKeys], 8).sort().join("||");
+  const mergedSignals = uniqueStringList([...existing.supportingSignals, ...candidate.supportingSignals]);
   items.set(key, {
     ...existing,
     title: candidateWins ? candidate.title : existing.title,
@@ -19067,9 +19139,22 @@ function mergeCampaignActionCenterItem(
     sourceType: candidateWins ? candidate.sourceType : existing.sourceType,
     targetRoute: candidateWins ? candidate.targetRoute : existing.targetRoute ?? candidate.targetRoute,
     targetLabel: candidateWins ? candidate.targetLabel : existing.targetLabel ?? candidate.targetLabel,
+    sourceKey,
     sourceTypes: uniqueStringList([...existing.sourceTypes, ...candidate.sourceTypes]) as CreatorCampaignActionCenterSourceType[],
-    supportingSignals: uniqueStringList([...existing.supportingSignals, ...candidate.supportingSignals]),
+    supportingSignals: mergedSignals,
     sourceContexts: uniqueStringList([...existing.sourceContexts, ...candidate.sourceContexts]),
+    sourceSignature: buildCampaignActionSignature({
+      campaignId: candidate.campaignId,
+      actionType: candidate.actionType,
+      sourceKey,
+      priority: candidateWins ? candidate.priority : existing.priority,
+      title: candidateWins ? candidate.title : existing.title,
+      message: candidateWins ? candidate.message : existing.message,
+      targetRoute: candidateWins ? candidate.targetRoute : existing.targetRoute ?? candidate.targetRoute,
+      supportingSignals: mergedSignals,
+    }),
+    state: "open",
+    snoozedUntil: null,
   });
 }
 
@@ -19148,7 +19233,7 @@ function lifecycleToActionType(actionType: CreatorCampaignLifecycleAction): Crea
   }
 }
 
-export async function loadCreatorCampaignActionCenter(creatorUserId: string, campaignId?: string | null) {
+async function loadCreatorCampaignActionCenterRaw(creatorUserId: string, campaignId?: string | null) {
   if (!db) throw new Error("Database unavailable");
 
   const [
@@ -19215,6 +19300,7 @@ export async function loadCreatorCampaignActionCenter(creatorUserId: string, cam
       targetRoute: normalizeActionCenterRoute(item.suggestedRoute, item.campaignRoute),
       targetLabel: item.suggestedAction ?? "Open recommendation",
       supportingSignals: item.supportingSignals,
+      sourceKeys: [`recommendation:${item.recommendationType}`],
       sourceContexts: [`Recommendation: ${item.title}`],
     });
   }
@@ -19236,6 +19322,10 @@ export async function loadCreatorCampaignActionCenter(creatorUserId: string, cam
         targetRoute: normalizeActionCenterRoute(action.suggestedRoute, plan.campaignRoute),
         targetLabel: action.label,
         supportingSignals: action.supportingSignals,
+        sourceKeys: [
+          `recovery:${action.actionType}`,
+          `recovery-priority:${plan.rescuePriority}`,
+        ],
         sourceContexts: [
           `Recovery: ${plan.rescuePriority.replaceAll("_", " ")} priority`,
           ...(plan.riskReason ? [plan.riskReason] : []),
@@ -19263,6 +19353,10 @@ export async function loadCreatorCampaignActionCenter(creatorUserId: string, cam
       targetRoute: normalizeActionCenterRoute(item.suggestedRoute, item.campaignRoute),
       targetLabel: item.suggestedLifecycleAction === "convert_to_template" ? "Reuse this campaign" : "Open lifecycle move",
       supportingSignals: item.supportingSignals,
+      sourceKeys: [
+        `lifecycle:${item.suggestedLifecycleAction}`,
+        `phase:${item.inferredPhase}`,
+      ],
       sourceContexts: [`Lifecycle: ${item.inferredPhase.replaceAll("_", " ")}`],
     });
   }
@@ -19299,6 +19393,10 @@ export async function loadCreatorCampaignActionCenter(creatorUserId: string, cam
           `${topBehindGoal.currentValue} / ${topBehindGoal.targetValue} ${topBehindGoal.metricLabel.toLowerCase()}`,
           `${behindGoals.length} goal${behindGoals.length === 1 ? "" : "s"} behind pace`,
         ],
+        sourceKeys: [
+          `goal:${topBehindGoal.goalType}`,
+          `goal-count:${behindGoals.length}`,
+        ],
         sourceContexts: [`Goal: ${topBehindGoal.label?.trim() || topBehindGoal.metricLabel}`],
       });
     } else if (healthItem && (healthItem.healthState === "watch" || healthItem.healthState === "at_risk")) {
@@ -19320,6 +19418,10 @@ export async function loadCreatorCampaignActionCenter(creatorUserId: string, cam
           healthItem.watchReasons[0],
           `${healthItem.goalsBehind} goals behind`,
         ]),
+        sourceKeys: [
+          `health:${healthItem.healthState}`,
+          `goals-behind:${healthItem.goalsBehind}`,
+        ],
         sourceContexts: [`Health: ${healthItem.healthState.replaceAll("_", " ")}`],
       });
     }
@@ -19353,6 +19455,7 @@ export async function loadCreatorCampaignActionCenter(creatorUserId: string, cam
           `Milestone: ${recentMilestone.shortLabel}`,
           recentMilestone.achievedAt ? `Hit ${new Date(recentMilestone.achievedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : "Recently achieved",
         ],
+        sourceKeys: [`milestone:${recentMilestone.type}`],
         sourceContexts: [`Milestone: ${recentMilestone.label}`],
       });
     }
@@ -19369,14 +19472,6 @@ export async function loadCreatorCampaignActionCenter(creatorUserId: string, cam
   });
 
   return {
-    summary: {
-      totalActions: items.length,
-      campaignsWithActions: new Set(items.map((item) => item.campaignId)).size,
-      urgentCount: items.filter((item) => item.priority === "urgent").length,
-      highCount: items.filter((item) => item.priority === "high").length,
-      mediumCount: items.filter((item) => item.priority === "medium").length,
-      lowCount: items.filter((item) => item.priority === "low").length,
-    } satisfies CreatorCampaignActionCenterSummary,
     items,
     attributionNotes: [
       "Action center is a practical next-move layer built by consolidating signals from recommendations, recovery plans, lifecycle suggestions, goals, milestones, and watchlist status.",
@@ -19385,6 +19480,175 @@ export async function loadCreatorCampaignActionCenter(creatorUserId: string, cam
     ],
     generatedAt: new Date().toISOString(),
   };
+}
+
+function summarizeCreatorCampaignActionCenter(
+  items: CreatorCampaignActionCenterItem[],
+  hiddenSummary?: Partial<Pick<CreatorCampaignActionCenterSummary, "hiddenCount" | "snoozedCount" | "dismissedCount" | "completedCount">>,
+) {
+  return {
+    totalActions: items.length,
+    campaignsWithActions: new Set(items.map((item) => item.campaignId)).size,
+    urgentCount: items.filter((item) => item.priority === "urgent").length,
+    highCount: items.filter((item) => item.priority === "high").length,
+    mediumCount: items.filter((item) => item.priority === "medium").length,
+    lowCount: items.filter((item) => item.priority === "low").length,
+    hiddenCount: hiddenSummary?.hiddenCount ?? 0,
+    snoozedCount: hiddenSummary?.snoozedCount ?? 0,
+    dismissedCount: hiddenSummary?.dismissedCount ?? 0,
+    completedCount: hiddenSummary?.completedCount ?? 0,
+  } satisfies CreatorCampaignActionCenterSummary;
+}
+
+function resolveCreatorCampaignActionState(
+  item: CreatorCampaignActionCenterItem,
+  stateRecord: typeof creatorCampaignActionStates.$inferSelect | undefined,
+  now: Date,
+) {
+  if (!stateRecord) {
+    return { visible: true, item };
+  }
+
+  if (stateRecord.state === "snoozed" && stateRecord.snoozedUntil && stateRecord.snoozedUntil > now) {
+    return {
+      visible: false,
+      bucket: "snoozed" as const,
+      item: {
+        ...item,
+        state: "snoozed" as const,
+        snoozedUntil: stateRecord.snoozedUntil.toISOString(),
+      },
+    };
+  }
+
+  const signatureMatches = stateRecord.sourceSignature === item.sourceSignature;
+  if ((stateRecord.state === "dismissed" || stateRecord.state === "completed") && signatureMatches) {
+    return {
+      visible: false,
+      bucket: stateRecord.state,
+      item: {
+        ...item,
+        state: stateRecord.state as CreatorCampaignActionStateValue,
+        snoozedUntil: stateRecord.snoozedUntil ? stateRecord.snoozedUntil.toISOString() : null,
+      },
+    };
+  }
+
+  return { visible: true, item };
+}
+
+export async function loadCreatorCampaignActionCenter(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const raw = await loadCreatorCampaignActionCenterRaw(creatorUserId, campaignId);
+  const actionKeys = raw.items.map((item) => item.actionKey);
+  const stateRows = actionKeys.length
+    ? await db
+      .select()
+      .from(creatorCampaignActionStates)
+      .where(and(
+        eq(creatorCampaignActionStates.userId, creatorUserId),
+        inArray(creatorCampaignActionStates.actionKey, actionKeys),
+      ))
+    : [];
+
+  const statesByActionKey = new Map(stateRows.map((row) => [row.actionKey, row]));
+  const now = new Date();
+  const visibleItems: CreatorCampaignActionCenterItem[] = [];
+  const recentlyCompleted: Array<{ item: CreatorCampaignActionCenterItem; updatedAt: number }> = [];
+  const hiddenSummary = {
+    hiddenCount: 0,
+    snoozedCount: 0,
+    dismissedCount: 0,
+    completedCount: 0,
+  };
+
+  for (const item of raw.items) {
+    const resolved = resolveCreatorCampaignActionState(item, statesByActionKey.get(item.actionKey), now);
+    if (resolved.visible) {
+      visibleItems.push(resolved.item);
+      continue;
+    }
+    hiddenSummary.hiddenCount += 1;
+    if (resolved.bucket === "snoozed") hiddenSummary.snoozedCount += 1;
+    if (resolved.bucket === "dismissed") hiddenSummary.dismissedCount += 1;
+    if (resolved.bucket === "completed") {
+      hiddenSummary.completedCount += 1;
+      recentlyCompleted.push({
+        item: resolved.item,
+        updatedAt: statesByActionKey.get(item.actionKey)?.updatedAt?.getTime?.() ?? 0,
+      });
+    }
+  }
+
+  return {
+    summary: summarizeCreatorCampaignActionCenter(visibleItems, hiddenSummary),
+    items: visibleItems,
+    recentlyCompleted: recentlyCompleted
+      .sort((a, b) => b.updatedAt - a.updatedAt || a.item.campaignName.localeCompare(b.item.campaignName))
+      .map((entry) => entry.item)
+      .slice(0, campaignId ? 4 : 6),
+    attributionNotes: [
+      ...raw.attributionNotes,
+      "Action tracking only affects surfacing. Dismissed, snoozed, and completed states reduce repeat noise without rewriting the underlying analytics or recommendation logic.",
+    ],
+    generatedAt: raw.generatedAt,
+  };
+}
+
+const campaignActionSnoozeSchema = z.object({
+  campaignId: z.string().trim().min(1).optional(),
+  durationDays: z.coerce.number().int().min(1).max(30).optional(),
+  snoozedUntil: z.string().datetime().optional(),
+});
+
+const campaignActionStateUpdateSchema = z.object({
+  campaignId: z.string().trim().min(1).optional(),
+});
+
+async function loadCreatorCampaignActionCandidate(
+  creatorUserId: string,
+  actionKey: string,
+  campaignId?: string | null,
+) {
+  const raw = await loadCreatorCampaignActionCenterRaw(creatorUserId, campaignId ?? null);
+  return raw.items.find((item) => item.actionKey === actionKey) ?? null;
+}
+
+async function upsertCreatorCampaignActionState(input: {
+  userId: string;
+  item: CreatorCampaignActionCenterItem;
+  state: CreatorCampaignActionStateValue;
+  snoozedUntil?: Date | null;
+}) {
+  if (!db) throw new Error("Database unavailable");
+
+  const payload = insertCreatorCampaignActionStateSchema.parse({
+    userId: input.userId,
+    campaignId: input.item.campaignId,
+    actionType: input.item.actionType,
+    actionKey: input.item.actionKey,
+    sourceKey: input.item.sourceKey,
+    sourceSignature: input.item.sourceSignature,
+    state: input.state,
+    snoozedUntil: input.snoozedUntil ?? null,
+  });
+
+  await db
+    .insert(creatorCampaignActionStates)
+    .values(payload)
+    .onConflictDoUpdate({
+      target: [creatorCampaignActionStates.userId, creatorCampaignActionStates.actionKey],
+      set: {
+        campaignId: input.item.campaignId,
+        actionType: input.item.actionType,
+        sourceKey: input.item.sourceKey,
+        sourceSignature: input.item.sourceSignature,
+        state: input.state,
+        snoozedUntil: input.snoozedUntil ?? null,
+        updatedAt: new Date(),
+      },
+    });
 }
 
 r.get("/creator-dashboard/campaign-analytics", requireAuth, async (req, res) => {
@@ -19570,12 +19834,148 @@ r.get("/creator-dashboard/campaign-action-center", requireAuth, async (req, res)
       campaignId: campaignId || null,
       summary: actionCenter.summary,
       items: actionCenter.items,
+      recentlyCompleted: actionCenter.recentlyCompleted,
       attributionNotes: actionCenter.attributionNotes,
       generatedAt: actionCenter.generatedAt,
     });
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-action-center", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign action center"));
+  }
+});
+
+r.post("/creator-dashboard/campaign-actions/:actionKey/dismiss", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const actionKey = decodeURIComponent(req.params.actionKey ?? "").trim();
+    const payload = campaignActionStateUpdateSchema.safeParse(req.body ?? {});
+    if (!actionKey || !payload.success) {
+      return res.status(400).json({ ok: false, error: "Invalid action request." });
+    }
+
+    const item = await loadCreatorCampaignActionCandidate(req.user!.id, actionKey, payload.data.campaignId ?? null);
+    if (!item) {
+      return res.status(404).json({ ok: false, error: "Campaign action not found." });
+    }
+
+    await upsertCreatorCampaignActionState({
+      userId: req.user!.id,
+      item,
+      state: "dismissed",
+      snoozedUntil: null,
+    });
+
+    return res.json({ ok: true, actionKey: item.actionKey, state: "dismissed" });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-actions/:actionKey/dismiss", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to dismiss campaign action"));
+  }
+});
+
+r.post("/creator-dashboard/campaign-actions/:actionKey/snooze", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const actionKey = decodeURIComponent(req.params.actionKey ?? "").trim();
+    const payload = campaignActionSnoozeSchema.safeParse(req.body ?? {});
+    if (!actionKey || !payload.success) {
+      return res.status(400).json({ ok: false, error: "Invalid snooze request." });
+    }
+
+    const item = await loadCreatorCampaignActionCandidate(req.user!.id, actionKey, payload.data.campaignId ?? null);
+    if (!item) {
+      return res.status(404).json({ ok: false, error: "Campaign action not found." });
+    }
+
+    const snoozedUntil = payload.data.snoozedUntil
+      ? new Date(payload.data.snoozedUntil)
+      : new Date(Date.now() + (payload.data.durationDays ?? 7) * 24 * 60 * 60 * 1000);
+    if (Number.isNaN(snoozedUntil.getTime())) {
+      return res.status(400).json({ ok: false, error: "Invalid snooze date." });
+    }
+
+    await upsertCreatorCampaignActionState({
+      userId: req.user!.id,
+      item,
+      state: "snoozed",
+      snoozedUntil,
+    });
+
+    return res.json({ ok: true, actionKey: item.actionKey, state: "snoozed", snoozedUntil: snoozedUntil.toISOString() });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-actions/:actionKey/snooze", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to snooze campaign action"));
+  }
+});
+
+r.post("/creator-dashboard/campaign-actions/:actionKey/complete", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const actionKey = decodeURIComponent(req.params.actionKey ?? "").trim();
+    const payload = campaignActionStateUpdateSchema.safeParse(req.body ?? {});
+    if (!actionKey || !payload.success) {
+      return res.status(400).json({ ok: false, error: "Invalid action request." });
+    }
+
+    const item = await loadCreatorCampaignActionCandidate(req.user!.id, actionKey, payload.data.campaignId ?? null);
+    if (!item) {
+      return res.status(404).json({ ok: false, error: "Campaign action not found." });
+    }
+
+    await upsertCreatorCampaignActionState({
+      userId: req.user!.id,
+      item,
+      state: "completed",
+      snoozedUntil: null,
+    });
+
+    return res.json({ ok: true, actionKey: item.actionKey, state: "completed" });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-actions/:actionKey/complete", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to complete campaign action"));
+  }
+});
+
+r.post("/creator-dashboard/campaign-actions/:actionKey/reopen", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const actionKey = decodeURIComponent(req.params.actionKey ?? "").trim();
+    const payload = campaignActionStateUpdateSchema.safeParse(req.body ?? {});
+    if (!actionKey || !payload.success) {
+      return res.status(400).json({ ok: false, error: "Invalid action request." });
+    }
+
+    const item = await loadCreatorCampaignActionCandidate(req.user!.id, actionKey, payload.data.campaignId ?? null);
+    if (!item) {
+      return res.status(404).json({ ok: false, error: "Campaign action not found." });
+    }
+
+    await upsertCreatorCampaignActionState({
+      userId: req.user!.id,
+      item,
+      state: "open",
+      snoozedUntil: null,
+    });
+
+    return res.json({ ok: true, actionKey: item.actionKey, state: "open" });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-actions/:actionKey/reopen", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to reopen campaign action"));
   }
 });
 
