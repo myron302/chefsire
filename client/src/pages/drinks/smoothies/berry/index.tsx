@@ -17,6 +17,7 @@ import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import TrendingDrinksByCategory from "@/components/drinks/TrendingDrinksByCategory";
+import { berrySmoothies } from '@/data/drinks/smoothies/berry';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -57,12 +58,12 @@ const parseIngredient = (ingredient: string): Measured => {
   const fractionMap: Record<string, number> = {
     '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
   };
-  
+
   const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
   if (parts.length < 2) return m('1', 'item', ingredient);
 
   let amountStr = parts[0];
-  let amount: number | string = fractionMap[amountStr] ?? 
+  let amount: number | string = fractionMap[amountStr] ??
     (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
 
   let unit = parts[1];
@@ -80,213 +81,11 @@ const parseIngredient = (ingredient: string): Measured => {
     item = item.replace('(optional)', '').trim();
     return m(amount, unit, item, 'optional');
   }
-  
+
   return m(amount, unit, item);
 };
 
 // Enhanced berry smoothies data with ALL recipes from both pages
-export const berrySmoothies = [
-  {
-    id: 'berry-1',
-    name: 'Triple Berry Blast',
-    description: 'Strawberry, blueberry, and raspberry power',
-    ingredients: [
-      '1 cup strawberries',
-      '1/2 cup blueberries', 
-      '1/2 cup raspberries',
-      '1/2 banana',
-      '1 cup almond milk',
-      '1 cup ice'
-    ],
-    benefits: ['Antioxidant powerhouse', 'Heart health', 'Brain boost', 'Anti-inflammatory'],
-    nutrition: { calories: 220, protein: 5, carbs: 45, fiber: 10, sugar: 28, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.9,
-    reviews: 523,
-    berryType: 'Mixed Berries',
-    featured: true,
-    trending: true,
-    bestTime: 'Morning/Afternoon',
-    image: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop',
-    estimatedCost: 3.20
-  },
-  {
-    id: 'berry-2',
-    name: 'Strawberry Fields',
-    description: 'Classic strawberry smoothie perfection',
-    ingredients: [
-      '2 cups strawberries',
-      '1/2 cup Greek yogurt',
-      '1/4 cup oats',
-      '1 tbsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['Vitamin C boost', 'Protein rich', 'Sustained energy', 'Heart healthy'],
-    nutrition: { calories: 280, protein: 12, carbs: 48, fiber: 8, sugar: 30, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.8,
-    reviews: 412,
-    berryType: 'Strawberry',
-    featured: true,
-    bestTime: 'Morning',
-    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
-    estimatedCost: 2.90
-  },
-  {
-    id: 'berry-3',
-    name: 'Blueberry Bliss',
-    description: 'Brain-boosting blueberry blend',
-    ingredients: [
-      '1.5 cups blueberries',
-      '1/2 cup coconut milk',
-      '1/4 cup cashews',
-      '1 tbsp chia seeds',
-      '1 cup ice'
-    ],
-    benefits: ['Brain health', 'Memory boost', 'Antioxidants', 'Omega-3s'],
-    nutrition: { calories: 310, protein: 8, carbs: 42, fiber: 11, sugar: 25, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 367,
-    berryType: 'Blueberry',
-    trending: true,
-    bestTime: 'Morning',
-    image: 'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=400&h=300&fit=crop',
-    estimatedCost: 3.50
-  },
-  {
-    id: 'berry-4',
-    name: 'Raspberry Revival',
-    description: 'Tart raspberry refreshment',
-    ingredients: [
-      '1.5 cups raspberries',
-      '1/2 cup Greek yogurt',
-      '1/4 cup spinach',
-      '1 tbsp maple syrup',
-      '1 cup ice'
-    ],
-    benefits: ['Digestive health', 'Fiber rich', 'Weight management', 'Vitamin C'],
-    nutrition: { calories: 200, protein: 10, carbs: 35, fiber: 12, sugar: 18, added_sugar: 8 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.6,
-    reviews: 289,
-    berryType: 'Raspberry',
-    bestTime: 'Afternoon',
-    estimatedCost: 3.10
-  },
-  {
-    id: 'berry-5',
-    name: 'Blackberry Boost',
-    description: 'Rich blackberry nutrition bomb',
-    ingredients: [
-      '1.5 cups blackberries',
-      '1/2 banana',
-      '1/2 cup oat milk',
-      '1 tbsp almond butter',
-      '1 cup ice'
-    ],
-    benefits: ['Vitamin K', 'Bone health', 'Antioxidants', 'Healthy fats'],
-    nutrition: { calories: 260, protein: 7, carbs: 44, fiber: 13, sugar: 22, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 198,
-    berryType: 'Blackberry',
-    bestTime: 'Morning',
-    estimatedCost: 3.30
-  },
-  {
-    id: 'berry-6',
-    name: 'Açaí Power Bowl',
-    description: 'Superfood açaí smoothie bowl',
-    ingredients: [
-      '2 açaí packets',
-      '1/2 cup blueberries',
-      '1/2 banana',
-      '1/4 cup granola topping',
-      '1/2 cup apple juice'
-    ],
-    benefits: ['Superfood power', 'Energy boost', 'Antioxidants', 'Instagram-worthy'],
-    nutrition: { calories: 350, protein: 6, carbs: 62, fiber: 9, sugar: 35, added_sugar: 15 },
-    difficulty: 'Medium',
-    prepTime: 5,
-    rating: 4.9,
-    reviews: 645,
-    berryType: 'Açaí',
-    featured: true,
-    trending: true,
-    bestTime: 'Morning',
-    estimatedCost: 4.50
-  },
-  {
-    id: 'berry-7',
-    name: 'Berry Green Fusion',
-    description: 'Berries meet green nutrition',
-    ingredients: [
-      '1 cup mixed berries',
-      '1 cup spinach',
-      '1/2 avocado',
-      '1 cup coconut water',
-      '1 cup ice'
-    ],
-    benefits: ['Hidden greens', 'Complete nutrition', 'Healthy fats', 'Detoxifying'],
-    nutrition: { calories: 240, protein: 5, carbs: 38, fiber: 11, sugar: 20, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.5,
-    reviews: 234,
-    berryType: 'Mixed Berries',
-    bestTime: 'Morning',
-    estimatedCost: 3.80
-  },
-  {
-    id: 'berry-8',
-    name: 'Strawberry Banana Classic',
-    description: 'The timeless favorite combination',
-    ingredients: [
-      '1.5 cups strawberries',
-      '1 banana',
-      '1 cup milk',
-      '1/2 cup vanilla yogurt',
-      '1 cup ice'
-    ],
-    benefits: ['Classic taste', 'Kid-friendly', 'Potassium', 'Calcium'],
-    nutrition: { calories: 290, protein: 11, carbs: 52, fiber: 7, sugar: 38, added_sugar: 10 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 756,
-    berryType: 'Strawberry',
-    bestTime: 'Anytime',
-    estimatedCost: 2.70
-  },
-  {
-    id: 'berry-9',
-    name: 'Cranberry Citrus Zing',
-    description: 'Tart cranberries with orange kick',
-    ingredients: [
-      '1 cup cranberries',
-      '1 orange',
-      '1/2 cup Greek yogurt',
-      '1 tbsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['UTI prevention', 'Immune boost', 'Vitamin C', 'Refreshing'],
-    nutrition: { calories: 210, protein: 9, carbs: 40, fiber: 6, sugar: 28, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.4,
-    reviews: 145,
-    berryType: 'Cranberry',
-    bestTime: 'Morning',
-    estimatedCost: 3.20
-  }
-];
-
 const berryTypes = [
   { id: 'mixed', name: 'Mixed Berries', description: 'Combination of different berries' },
   { id: 'strawberry', name: 'Strawberry', description: 'Sweet and vitamin C rich' },
@@ -336,8 +135,8 @@ const berryAdvantages = [
 ];
 
 export default function BerrySmoothiesPage() {
-  const { 
-    addToFavorites, 
+  const {
+    addToFavorites,
     isFavorite,
     addToRecentlyViewed,
     userProgress,
@@ -353,7 +152,7 @@ export default function BerrySmoothiesPage() {
   const [sortBy, setSortBy] = useState<'rating' | 'fiber' | 'cost' | 'calories'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'berry-types'|'benefits'|'featured'|'trending'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -364,7 +163,7 @@ export default function BerrySmoothiesPage() {
   const smoothieRecipesWithMeasurements = useMemo(() => {
     return berrySmoothies.map((s) => {
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
-      
+
       // Normalize everything to { amount, unit, item, note }
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
@@ -558,10 +357,10 @@ export default function BerrySmoothiesPage() {
                 <Badge className="bg-red-100 text-red-700 border-red-200">Antioxidant Rich</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -584,7 +383,7 @@ export default function BerrySmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION - Top Level Drink Categories */}
         <Card className="bg-gradient-to-r from-red-50 to-rose-50 border-red-200">
           <CardContent className="p-4">
@@ -768,7 +567,7 @@ export default function BerrySmoothiesPage() {
                       <option value={300}>Under 300 cal</option>
                       <option value={350}>Under 350 cal</option>
                     </select>
-                    
+
                     <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
                       <input
                         type="checkbox"
@@ -778,7 +577,7 @@ export default function BerrySmoothiesPage() {
                       Natural Sweeteners
                     </label>
 
-                    <select 
+                    <select
                       className="px-3 py-2 border border-gray-300 rounded-md text-sm bg-white"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
@@ -830,13 +629,13 @@ export default function BerrySmoothiesPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2">
                         <Badge className="bg-red-100 text-red-700 border-red-200">{smoothie.berryType}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
@@ -1102,21 +901,21 @@ export default function BerrySmoothiesPage() {
             {featuredSmoothies.map(smoothie => (
               <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative h-48">
-                  <img 
-                    src={smoothie.image} 
+                  <img
+                    src={smoothie.image}
                     alt={smoothie.name}
                     className="w-full h-full object-cover"
                   />
                   <Badge className="absolute top-4 left-4 bg-red-500 text-white">Featured</Badge>
                 </div>
-                
+
                 <CardHeader>
                   <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-red-500 hover:bg-red-600 text-white"
                     onClick={() => openRecipeModal(smoothie)}
                   >
@@ -1143,9 +942,9 @@ export default function BerrySmoothiesPage() {
                     <Badge className="bg-red-500 text-white">🔥 Trending</Badge>
                   </div>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-red-500 hover:bg-red-600 text-white"
                     onClick={() => openRecipeModal(smoothie)}
                   >

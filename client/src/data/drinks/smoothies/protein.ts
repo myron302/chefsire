@@ -1,1 +1,187 @@
-export { proteinSmoothies } from "../../../pages/drinks/smoothies/protein";
+export const proteinSmoothies = [
+  {
+    id: 'protein-1',
+    name: 'Muscle Builder Max',
+    description: 'High-protein blend for muscle growth and recovery',
+    ingredients: [
+      '2 scoops vanilla protein powder',
+      '1 cup Greek yogurt',
+      '1 banana',
+      '2 tbsp almond butter',
+      '1 cup almond milk',
+      '1 tbsp chia seeds'
+    ],
+    benefits: ['Muscle Growth', 'Recovery', 'Sustained Energy', 'Strength'],
+    nutrition: { calories: 420, protein: 38, carbs: 32, fiber: 8, sugar: 18, added_sugar: 2 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.8,
+    reviews: 567,
+    proteinType: 'Whey Protein',
+    featured: true,
+    trending: true,
+    bestTime: 'Post-Workout',
+    image: 'https://images.unsplash.com/photo-1579684947554-1e6aea584f44?w=400&h=300&fit=crop',
+    estimatedCost: 3.50
+  },
+  {
+    id: 'protein-2',
+    name: 'Chocolate Peanut Power',
+    description: 'Rich chocolate and peanut butter protein delight',
+    ingredients: [
+      '2 scoops chocolate protein powder',
+      '2 tbsp peanut butter',
+      '1 cup milk',
+      '1/2 banana',
+      '1 tbsp cocoa powder',
+      '1 cup ice'
+    ],
+    benefits: ['Strength', 'Energy Boost', 'Muscle Repair', 'Satiety'],
+    nutrition: { calories: 380, protein: 35, carbs: 24, fiber: 5, sugar: 14, added_sugar: 3 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.9,
+    reviews: 623,
+    proteinType: 'Casein Protein',
+    featured: true,
+    bestTime: 'Post-Workout',
+    image: 'https://images.unsplash.com/photo-1570978561297-5b17d1a39976?w=400&h=300&fit=crop',
+    estimatedCost: 3.20
+  },
+  {
+    id: 'protein-3',
+    name: 'Berry Protein Blast',
+    description: 'Antioxidant-rich berries with clean protein',
+    ingredients: [
+      '1.5 scoops vanilla protein',
+      '1 cup mixed berries',
+      '1/2 cup Greek yogurt',
+      '1 cup coconut water',
+      '1 tbsp honey',
+      '1 cup spinach'
+    ],
+    benefits: ['Antioxidants', 'Recovery', 'Immune Support', 'Lean Muscle'],
+    nutrition: { calories: 320, protein: 28, carbs: 36, fiber: 7, sugar: 22, added_sugar: 8 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 445,
+    proteinType: 'Plant Protein',
+    trending: true,
+    bestTime: 'Breakfast',
+    estimatedCost: 3.80
+  },
+  {
+    id: 'protein-4',
+    name: 'Green Protein Machine',
+    description: 'Superfood greens meet muscle-building protein',
+    ingredients: [
+      '1 scoop vanilla protein',
+      '2 cups spinach',
+      '1/2 avocado',
+      '1 cup almond milk',
+      '1 tbsp hemp seeds',
+      '1/2 green apple'
+    ],
+    benefits: ['Muscle Recovery', 'Healthy Fats', 'Fiber Rich', 'Alkalizing'],
+    nutrition: { calories: 280, protein: 25, carbs: 18, fiber: 9, sugar: 12, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.6,
+    reviews: 389,
+    proteinType: 'Plant Protein',
+    bestTime: 'Morning',
+    estimatedCost: 3.40
+  },
+  {
+    id: 'protein-5',
+    name: 'Tropical Gains',
+    description: 'Island flavors with serious protein power',
+    ingredients: [
+      '2 scoops vanilla protein',
+      '1 cup pineapple',
+      '1/2 cup mango',
+      '1 cup coconut milk',
+      '1 tbsp coconut flakes',
+      '1 cup ice'
+    ],
+    benefits: ['Muscle Growth', 'Electrolytes', 'Digestive Health', 'Energy'],
+    nutrition: { calories: 350, protein: 30, carbs: 38, fiber: 4, sugar: 28, added_sugar: 2 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.5,
+    reviews: 312,
+    proteinType: 'Whey Protein',
+    trending: true,
+    bestTime: 'Pre-Workout',
+    estimatedCost: 3.60
+  },
+  {
+    id: 'protein-6',
+    name: 'Coffee Protein Energizer',
+    description: 'Morning coffee meets muscle fuel',
+    ingredients: [
+      '1.5 scoops mocha protein',
+      '1 cup cold brew coffee',
+      '1/2 banana',
+      '1/4 cup oats',
+      '1 cup almond milk',
+      '1 tsp cinnamon'
+    ],
+    benefits: ['Energy Boost', 'Mental Focus', 'Muscle Fuel', 'Metabolism'],
+    nutrition: { calories: 290, protein: 26, carbs: 32, fiber: 6, sugar: 14, added_sugar: 1 },
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.8,
+    reviews: 498,
+    proteinType: 'Whey Protein',
+    featured: true,
+    bestTime: 'Morning',
+    estimatedCost: 2.90
+  },
+  {
+    id: 'protein-7',
+    name: 'Overnight Oats Protein',
+    description: 'Creamy overnight oats protein shake',
+    ingredients: [
+      '1 scoop vanilla protein',
+      '1/2 cup oats',
+      '1 cup milk',
+      '1 tbsp chia seeds',
+      '1/2 cup berries',
+      '1 tsp maple syrup'
+    ],
+    benefits: ['Sustained Energy', 'Muscle Repair', 'Fiber Rich', 'Gut Health'],
+    nutrition: { calories: 410, protein: 32, carbs: 48, fiber: 10, sugar: 18, added_sugar: 6 },
+    difficulty: 'Easy',
+    prepTime: 2,
+    rating: 4.7,
+    reviews: 423,
+    proteinType: 'Casein Protein',
+    bestTime: 'Breakfast',
+    estimatedCost: 2.80
+  },
+  {
+    id: 'protein-8',
+    name: 'Pumpkin Spice Protein',
+    description: 'Seasonal favorite with muscle-building benefits',
+    ingredients: [
+      '1.5 scoops vanilla protein',
+      '1/2 cup pumpkin puree',
+      '1 cup almond milk',
+      '1 tsp pumpkin spice',
+      '1 tbsp maple syrup',
+      '1/4 tsp vanilla extract'
+    ],
+    benefits: ['Muscle Recovery', 'Antioxidants', 'Vitamin A', 'Seasonal'],
+    nutrition: { calories: 270, protein: 24, carbs: 28, fiber: 5, sugar: 16, added_sugar: 8 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 367,
+    proteinType: 'Plant Protein',
+    trending: true,
+    bestTime: 'Any Time',
+    estimatedCost: 3.10
+  }
+];

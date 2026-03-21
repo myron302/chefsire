@@ -12,6 +12,7 @@ import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
+import { proteinSmoothies } from '@/data/drinks/smoothies/protein';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -52,12 +53,12 @@ const parseIngredient = (ingredient: string): Measured => {
   const fractionMap: Record<string, number> = {
     '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
   };
-  
+
   const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
   if (parts.length < 2) return m('1', 'item', ingredient);
 
   let amountStr = parts[0];
-  let amount: number | string = fractionMap[amountStr] ?? 
+  let amount: number | string = fractionMap[amountStr] ??
     (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
 
   let unit = parts[1];
@@ -75,199 +76,11 @@ const parseIngredient = (ingredient: string): Measured => {
     item = item.replace('(optional)', '').trim();
     return m(amount, unit, item, 'optional');
   }
-  
+
   return m(amount, unit, item);
 };
 
 // Enhanced protein smoothies data with proper measurements
-export const proteinSmoothies = [
-  {
-    id: 'protein-1',
-    name: 'Muscle Builder Max',
-    description: 'High-protein blend for muscle growth and recovery',
-    ingredients: [
-      '2 scoops vanilla protein powder',
-      '1 cup Greek yogurt',
-      '1 banana',
-      '2 tbsp almond butter',
-      '1 cup almond milk',
-      '1 tbsp chia seeds'
-    ],
-    benefits: ['Muscle Growth', 'Recovery', 'Sustained Energy', 'Strength'],
-    nutrition: { calories: 420, protein: 38, carbs: 32, fiber: 8, sugar: 18, added_sugar: 2 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.8,
-    reviews: 567,
-    proteinType: 'Whey Protein',
-    featured: true,
-    trending: true,
-    bestTime: 'Post-Workout',
-    image: 'https://images.unsplash.com/photo-1579684947554-1e6aea584f44?w=400&h=300&fit=crop',
-    estimatedCost: 3.50
-  },
-  {
-    id: 'protein-2',
-    name: 'Chocolate Peanut Power',
-    description: 'Rich chocolate and peanut butter protein delight',
-    ingredients: [
-      '2 scoops chocolate protein powder',
-      '2 tbsp peanut butter',
-      '1 cup milk',
-      '1/2 banana',
-      '1 tbsp cocoa powder',
-      '1 cup ice'
-    ],
-    benefits: ['Strength', 'Energy Boost', 'Muscle Repair', 'Satiety'],
-    nutrition: { calories: 380, protein: 35, carbs: 24, fiber: 5, sugar: 14, added_sugar: 3 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.9,
-    reviews: 623,
-    proteinType: 'Casein Protein',
-    featured: true,
-    bestTime: 'Post-Workout',
-    image: 'https://images.unsplash.com/photo-1570978561297-5b17d1a39976?w=400&h=300&fit=crop',
-    estimatedCost: 3.20
-  },
-  {
-    id: 'protein-3',
-    name: 'Berry Protein Blast',
-    description: 'Antioxidant-rich berries with clean protein',
-    ingredients: [
-      '1.5 scoops vanilla protein',
-      '1 cup mixed berries',
-      '1/2 cup Greek yogurt',
-      '1 cup coconut water',
-      '1 tbsp honey',
-      '1 cup spinach'
-    ],
-    benefits: ['Antioxidants', 'Recovery', 'Immune Support', 'Lean Muscle'],
-    nutrition: { calories: 320, protein: 28, carbs: 36, fiber: 7, sugar: 22, added_sugar: 8 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 445,
-    proteinType: 'Plant Protein',
-    trending: true,
-    bestTime: 'Breakfast',
-    estimatedCost: 3.80
-  },
-  {
-    id: 'protein-4',
-    name: 'Green Protein Machine',
-    description: 'Superfood greens meet muscle-building protein',
-    ingredients: [
-      '1 scoop vanilla protein',
-      '2 cups spinach',
-      '1/2 avocado',
-      '1 cup almond milk',
-      '1 tbsp hemp seeds',
-      '1/2 green apple'
-    ],
-    benefits: ['Muscle Recovery', 'Healthy Fats', 'Fiber Rich', 'Alkalizing'],
-    nutrition: { calories: 280, protein: 25, carbs: 18, fiber: 9, sugar: 12, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.6,
-    reviews: 389,
-    proteinType: 'Plant Protein',
-    bestTime: 'Morning',
-    estimatedCost: 3.40
-  },
-  {
-    id: 'protein-5',
-    name: 'Tropical Gains',
-    description: 'Island flavors with serious protein power',
-    ingredients: [
-      '2 scoops vanilla protein',
-      '1 cup pineapple',
-      '1/2 cup mango',
-      '1 cup coconut milk',
-      '1 tbsp coconut flakes',
-      '1 cup ice'
-    ],
-    benefits: ['Muscle Growth', 'Electrolytes', 'Digestive Health', 'Energy'],
-    nutrition: { calories: 350, protein: 30, carbs: 38, fiber: 4, sugar: 28, added_sugar: 2 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.5,
-    reviews: 312,
-    proteinType: 'Whey Protein',
-    trending: true,
-    bestTime: 'Pre-Workout',
-    estimatedCost: 3.60
-  },
-  {
-    id: 'protein-6',
-    name: 'Coffee Protein Energizer',
-    description: 'Morning coffee meets muscle fuel',
-    ingredients: [
-      '1.5 scoops mocha protein',
-      '1 cup cold brew coffee',
-      '1/2 banana',
-      '1/4 cup oats',
-      '1 cup almond milk',
-      '1 tsp cinnamon'
-    ],
-    benefits: ['Energy Boost', 'Mental Focus', 'Muscle Fuel', 'Metabolism'],
-    nutrition: { calories: 290, protein: 26, carbs: 32, fiber: 6, sugar: 14, added_sugar: 1 },
-    difficulty: 'Medium',
-    prepTime: 5,
-    rating: 4.8,
-    reviews: 498,
-    proteinType: 'Whey Protein',
-    featured: true,
-    bestTime: 'Morning',
-    estimatedCost: 2.90
-  },
-  {
-    id: 'protein-7',
-    name: 'Overnight Oats Protein',
-    description: 'Creamy overnight oats protein shake',
-    ingredients: [
-      '1 scoop vanilla protein',
-      '1/2 cup oats',
-      '1 cup milk',
-      '1 tbsp chia seeds',
-      '1/2 cup berries',
-      '1 tsp maple syrup'
-    ],
-    benefits: ['Sustained Energy', 'Muscle Repair', 'Fiber Rich', 'Gut Health'],
-    nutrition: { calories: 410, protein: 32, carbs: 48, fiber: 10, sugar: 18, added_sugar: 6 },
-    difficulty: 'Easy',
-    prepTime: 2,
-    rating: 4.7,
-    reviews: 423,
-    proteinType: 'Casein Protein',
-    bestTime: 'Breakfast',
-    estimatedCost: 2.80
-  },
-  {
-    id: 'protein-8',
-    name: 'Pumpkin Spice Protein',
-    description: 'Seasonal favorite with muscle-building benefits',
-    ingredients: [
-      '1.5 scoops vanilla protein',
-      '1/2 cup pumpkin puree',
-      '1 cup almond milk',
-      '1 tsp pumpkin spice',
-      '1 tbsp maple syrup',
-      '1/4 tsp vanilla extract'
-    ],
-    benefits: ['Muscle Recovery', 'Antioxidants', 'Vitamin A', 'Seasonal'],
-    nutrition: { calories: 270, protein: 24, carbs: 28, fiber: 5, sugar: 16, added_sugar: 8 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.6,
-    reviews: 367,
-    proteinType: 'Plant Protein',
-    trending: true,
-    bestTime: 'Any Time',
-    estimatedCost: 3.10
-  }
-];
-
 const proteinTypes = [
   { id: 'whey', name: 'Whey Protein', description: 'Fast-absorbing dairy protein' },
   { id: 'casein', name: 'Casein Protein', description: 'Slow-digesting milk protein' },
@@ -315,8 +128,8 @@ const proteinBenefits = [
 ];
 
 export default function ProteinSmoothiesPage() {
-  const { 
-    addToFavorites, 
+  const {
+    addToFavorites,
     isFavorite,
     addToRecentlyViewed,
     userProgress,
@@ -332,7 +145,7 @@ export default function ProteinSmoothiesPage() {
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'fiber'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'protein-types'|'goals'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -343,7 +156,7 @@ export default function ProteinSmoothiesPage() {
   const smoothieRecipesWithMeasurements = useMemo(() => {
     return proteinSmoothies.map((s) => {
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
-      
+
       // Normalize everything to { amount, unit, item, note }
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
@@ -538,10 +351,10 @@ export default function ProteinSmoothiesPage() {
                 <Badge className="bg-blue-100 text-blue-800">Muscle Fuel</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -564,7 +377,7 @@ export default function ProteinSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION - Top Level Sites */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
@@ -703,9 +516,9 @@ export default function ProteinSmoothiesPage() {
                       className="pl-10 h-12 text-base"
                     />
                   </div>
-                  
+
                   <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedProteinType}
                       onChange={(e) => setSelectedProteinType(e.target.value)}
@@ -716,7 +529,7 @@ export default function ProteinSmoothiesPage() {
                       ))}
                     </select>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedGoal}
                       onChange={(e) => setSelectedGoal(e.target.value)}
@@ -726,8 +539,8 @@ export default function ProteinSmoothiesPage() {
                         <option key={goal.id} value={goal.name}>{goal.name}</option>
                       ))}
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={minProtein}
                       onChange={(e) => {
@@ -741,8 +554,8 @@ export default function ProteinSmoothiesPage() {
                       <option value={30}>30g+ Protein</option>
                       <option value={35}>35g+ Protein</option>
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => {
@@ -757,7 +570,7 @@ export default function ProteinSmoothiesPage() {
                       <option value={450}>Under 450 cal</option>
                     </select>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
@@ -807,13 +620,13 @@ export default function ProteinSmoothiesPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2">
                         <Badge className="bg-blue-100 text-blue-800">{smoothie.proteinType}</Badge>
                         {smoothie.trending && <Badge className="bg-orange-100 text-orange-800">Trending</Badge>}
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
@@ -973,7 +786,7 @@ export default function ProteinSmoothiesPage() {
 
                       {/* Make Smoothie Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-blue-600 hover:bg-blue-700"
                           onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                         >
@@ -981,14 +794,14 @@ export default function ProteinSmoothiesPage() {
                           Make Smoothie (+35 XP)
                         </Button>
                       </div>
-                    
+
                       {canonicalSlug ? (
-                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                             Canonical Recipe
                           </Link>
                           <span>•</span>
-                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                             Remix
                           </Link>
                         </div>
@@ -1063,21 +876,21 @@ export default function ProteinSmoothiesPage() {
             {featuredSmoothies.map(smoothie => (
               <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative h-48">
-                  <img 
-                    src={smoothie.image} 
+                  <img
+                    src={smoothie.image}
                     alt={smoothie.name}
                     className="w-full h-full object-cover"
                   />
                   <Badge className="absolute top-4 left-4 bg-blue-500 text-white">Featured</Badge>
                 </div>
-                
+
                 <CardHeader>
                   <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-blue-600 hover:bg-blue-700"
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                   >

@@ -1,1 +1,201 @@
-export { berrySmoothies } from "../../../pages/drinks/smoothies/berry";
+export const berrySmoothies = [
+  {
+    id: 'berry-1',
+    name: 'Triple Berry Blast',
+    description: 'Strawberry, blueberry, and raspberry power',
+    ingredients: [
+      '1 cup strawberries',
+      '1/2 cup blueberries',
+      '1/2 cup raspberries',
+      '1/2 banana',
+      '1 cup almond milk',
+      '1 cup ice'
+    ],
+    benefits: ['Antioxidant powerhouse', 'Heart health', 'Brain boost', 'Anti-inflammatory'],
+    nutrition: { calories: 220, protein: 5, carbs: 45, fiber: 10, sugar: 28, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.9,
+    reviews: 523,
+    berryType: 'Mixed Berries',
+    featured: true,
+    trending: true,
+    bestTime: 'Morning/Afternoon',
+    image: 'https://images.unsplash.com/photo-1505252585461-04db1eb84625?w=400&h=300&fit=crop',
+    estimatedCost: 3.20
+  },
+  {
+    id: 'berry-2',
+    name: 'Strawberry Fields',
+    description: 'Classic strawberry smoothie perfection',
+    ingredients: [
+      '2 cups strawberries',
+      '1/2 cup Greek yogurt',
+      '1/4 cup oats',
+      '1 tbsp honey',
+      '1 cup ice'
+    ],
+    benefits: ['Vitamin C boost', 'Protein rich', 'Sustained energy', 'Heart healthy'],
+    nutrition: { calories: 280, protein: 12, carbs: 48, fiber: 8, sugar: 30, added_sugar: 12 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.8,
+    reviews: 412,
+    berryType: 'Strawberry',
+    featured: true,
+    bestTime: 'Morning',
+    image: 'https://images.unsplash.com/photo-1553530666-ba11a7da3888?w=400&h=300&fit=crop',
+    estimatedCost: 2.90
+  },
+  {
+    id: 'berry-3',
+    name: 'Blueberry Bliss',
+    description: 'Brain-boosting blueberry blend',
+    ingredients: [
+      '1.5 cups blueberries',
+      '1/2 cup coconut milk',
+      '1/4 cup cashews',
+      '1 tbsp chia seeds',
+      '1 cup ice'
+    ],
+    benefits: ['Brain health', 'Memory boost', 'Antioxidants', 'Omega-3s'],
+    nutrition: { calories: 310, protein: 8, carbs: 42, fiber: 11, sugar: 25, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 367,
+    berryType: 'Blueberry',
+    trending: true,
+    bestTime: 'Morning',
+    image: 'https://images.unsplash.com/photo-1590301157890-4810ed352733?w=400&h=300&fit=crop',
+    estimatedCost: 3.50
+  },
+  {
+    id: 'berry-4',
+    name: 'Raspberry Revival',
+    description: 'Tart raspberry refreshment',
+    ingredients: [
+      '1.5 cups raspberries',
+      '1/2 cup Greek yogurt',
+      '1/4 cup spinach',
+      '1 tbsp maple syrup',
+      '1 cup ice'
+    ],
+    benefits: ['Digestive health', 'Fiber rich', 'Weight management', 'Vitamin C'],
+    nutrition: { calories: 200, protein: 10, carbs: 35, fiber: 12, sugar: 18, added_sugar: 8 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 289,
+    berryType: 'Raspberry',
+    bestTime: 'Afternoon',
+    estimatedCost: 3.10
+  },
+  {
+    id: 'berry-5',
+    name: 'Blackberry Boost',
+    description: 'Rich blackberry nutrition bomb',
+    ingredients: [
+      '1.5 cups blackberries',
+      '1/2 banana',
+      '1/2 cup oat milk',
+      '1 tbsp almond butter',
+      '1 cup ice'
+    ],
+    benefits: ['Vitamin K', 'Bone health', 'Antioxidants', 'Healthy fats'],
+    nutrition: { calories: 260, protein: 7, carbs: 44, fiber: 13, sugar: 22, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 198,
+    berryType: 'Blackberry',
+    bestTime: 'Morning',
+    estimatedCost: 3.30
+  },
+  {
+    id: 'berry-6',
+    name: 'Açaí Power Bowl',
+    description: 'Superfood açaí smoothie bowl',
+    ingredients: [
+      '2 açaí packets',
+      '1/2 cup blueberries',
+      '1/2 banana',
+      '1/4 cup granola topping',
+      '1/2 cup apple juice'
+    ],
+    benefits: ['Superfood power', 'Energy boost', 'Antioxidants', 'Instagram-worthy'],
+    nutrition: { calories: 350, protein: 6, carbs: 62, fiber: 9, sugar: 35, added_sugar: 15 },
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 645,
+    berryType: 'Açaí',
+    featured: true,
+    trending: true,
+    bestTime: 'Morning',
+    estimatedCost: 4.50
+  },
+  {
+    id: 'berry-7',
+    name: 'Berry Green Fusion',
+    description: 'Berries meet green nutrition',
+    ingredients: [
+      '1 cup mixed berries',
+      '1 cup spinach',
+      '1/2 avocado',
+      '1 cup coconut water',
+      '1 cup ice'
+    ],
+    benefits: ['Hidden greens', 'Complete nutrition', 'Healthy fats', 'Detoxifying'],
+    nutrition: { calories: 240, protein: 5, carbs: 38, fiber: 11, sugar: 20, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.5,
+    reviews: 234,
+    berryType: 'Mixed Berries',
+    bestTime: 'Morning',
+    estimatedCost: 3.80
+  },
+  {
+    id: 'berry-8',
+    name: 'Strawberry Banana Classic',
+    description: 'The timeless favorite combination',
+    ingredients: [
+      '1.5 cups strawberries',
+      '1 banana',
+      '1 cup milk',
+      '1/2 cup vanilla yogurt',
+      '1 cup ice'
+    ],
+    benefits: ['Classic taste', 'Kid-friendly', 'Potassium', 'Calcium'],
+    nutrition: { calories: 290, protein: 11, carbs: 52, fiber: 7, sugar: 38, added_sugar: 10 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.8,
+    reviews: 756,
+    berryType: 'Strawberry',
+    bestTime: 'Anytime',
+    estimatedCost: 2.70
+  },
+  {
+    id: 'berry-9',
+    name: 'Cranberry Citrus Zing',
+    description: 'Tart cranberries with orange kick',
+    ingredients: [
+      '1 cup cranberries',
+      '1 orange',
+      '1/2 cup Greek yogurt',
+      '1 tbsp honey',
+      '1 cup ice'
+    ],
+    benefits: ['UTI prevention', 'Immune boost', 'Vitamin C', 'Refreshing'],
+    nutrition: { calories: 210, protein: 9, carbs: 40, fiber: 6, sugar: 28, added_sugar: 12 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.4,
+    reviews: 145,
+    berryType: 'Cranberry',
+    bestTime: 'Morning',
+    estimatedCost: 3.20
+  }
+];

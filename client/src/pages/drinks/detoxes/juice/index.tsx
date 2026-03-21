@@ -16,6 +16,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { detoxJuices } from '@/data/drinks/detoxes/juice';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -104,266 +105,11 @@ const detoxTypes = [
 ];
 
 // ---------- Detox Juices Data ----------
-export const detoxJuices = [
-  {
-    id: 'green-detox-1',
-    name: 'Green Cleanse Elixir',
-    description: 'Powerful chlorophyll-rich blend for deep cellular cleansing',
-    nutrition: { calories: 85, protein: 2, carbs: 18, fat: 1, fiber: 4 },
-    difficulty: 'Easy',
-    prepTime: 8,
-    rating: 4.8,
-    reviews: 342,
-    trending: true,
-    featured: true,
-    detoxType: 'Deep Cleanse',
-    detoxLevel: 'Intense',
-    category: 'Green',
-    bestTime: 'Morning (empty stomach)',
-    duration: '3-5 days',
-    estimatedCost: 3.50,
-    ingredients: ['2 cups kale', '1 cucumber', '2 celery stalks', '1 green apple', '1 lemon', '1 inch ginger'],
-    benefits: ['Liver detoxification', 'Alkalizing', 'Digestive cleanse', 'Skin clarity'],
-    specialInstructions: 'Drink immediately after juicing for maximum enzyme activity'
-  },
-  {
-    id: 'liver-flush-1',
-    name: 'Liver Flush Tonic',
-    description: 'Targeted liver support with bitter herbs and citrus',
-    nutrition: { calories: 95, protein: 1, carbs: 22, fat: 0, fiber: 3 },
-    difficulty: 'Easy',
-    prepTime: 7,
-    rating: 4.6,
-    reviews: 287,
-    trending: false,
-    featured: false,
-    detoxType: 'Liver Support',
-    detoxLevel: 'Moderate',
-    category: 'Citrus',
-    bestTime: 'Between meals',
-    duration: '7-10 days',
-    estimatedCost: 4.20,
-    ingredients: ['1 grapefruit', '2 lemons', '1 beet', '1 carrot', '1 inch turmeric'],
-    benefits: ['Liver cleansing', 'Gallbladder support', 'Antioxidant boost', 'Inflammation reduction'],
-    specialInstructions: 'Best consumed 2 hours after meals'
-  },
-  {
-    id: 'digestive-rescue',
-    name: 'Digestive Rescue Juice',
-    description: 'Soothing blend for gut health and digestive restoration',
-    nutrition: { calories: 78, protein: 2, carbs: 16, fat: 1, fiber: 5 },
-    difficulty: 'Easy',
-    prepTime: 6,
-    rating: 4.7,
-    reviews: 198,
-    trending: true,
-    featured: false,
-    detoxType: 'Digestive',
-    detoxLevel: 'Gentle',
-    category: 'Root',
-    bestTime: 'Before meals',
-    duration: 'Ongoing',
-    estimatedCost: 3.80,
-    ingredients: ['1 fennel bulb', '2 carrots', '1 pear', '1 inch ginger', '1 tsp aloe vera'],
-    benefits: ['Gut healing', 'Anti-inflammatory', 'Bloating relief', 'Digestive enzyme support'],
-    specialInstructions: 'Sip slowly 20 minutes before main meals'
-  },
-  {
-    id: 'immunity-shield',
-    name: 'Immunity Shield Booster',
-    description: 'Vitamin C powerhouse for immune system fortification',
-    nutrition: { calories: 112, protein: 2, carbs: 26, fat: 1, fiber: 4 },
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.9,
-    reviews: 423,
-    trending: false,
-    featured: true,
-    detoxType: 'Immune Support',
-    detoxLevel: 'Moderate',
-    category: 'Citrus',
-    bestTime: 'Morning or when feeling run down',
-    duration: 'Seasonal',
-    estimatedCost: 4.50,
-    ingredients: ['3 oranges', '1 lemon', '2 carrots', '1 inch ginger', '1 tsp manuka honey'],
-    benefits: ['Immune boosting', 'Antiviral', 'Vitamin C rich', 'Energy enhancement'],
-    specialInstructions: 'Consume daily during cold/flu season'
-  },
-  {
-    id: 'red-radiance',
-    name: 'Red Radiance Cleanse',
-    description: 'Antioxidant-rich red juice for cellular protection',
-    nutrition: { calories: 105, protein: 2, carbs: 24, fat: 1, fiber: 5 },
-    difficulty: 'Easy',
-    prepTime: 9,
-    rating: 4.5,
-    reviews: 156,
-    trending: false,
-    featured: false,
-    detoxType: 'Deep Cleanse',
-    detoxLevel: 'Moderate',
-    category: 'Red',
-    bestTime: 'Afternoon',
-    duration: '5-7 days',
-    estimatedCost: 5.20,
-    ingredients: ['2 beets', '3 carrots', '1 apple', '1 cup strawberries', '1 lemon'],
-    benefits: ['Blood purification', 'Antioxidant rich', 'Skin health', 'Circulation boost'],
-    specialInstructions: 'Stain alert: beet juice can temporarily color urine'
-  },
-  {
-    id: 'kidney-cleanser',
-    name: 'Kidney Cleanser Elixir',
-    description: 'Gentle diuretic blend to support kidney function and flush toxins',
-    nutrition: { calories: 65, protein: 1, carbs: 15, fat: 0, fiber: 3 },
-    difficulty: 'Easy',
-    prepTime: 6,
-    rating: 4.4,
-    reviews: 134,
-    trending: true,
-    featured: false,
-    detoxType: 'Deep Cleanse',
-    detoxLevel: 'Gentle',
-    category: 'Green',
-    bestTime: 'Morning and afternoon',
-    duration: '3-7 days',
-    estimatedCost: 3.20,
-    ingredients: ['1 cucumber', '2 celery stalks', '1 pear', '1 lemon', '1 cup watermelon', 'sprig of parsley'],
-    benefits: ['Kidney support', 'Natural diuretic', 'Hydration', 'Electrolyte balance'],
-    specialInstructions: 'Drink 2-3 times daily during cleanse period'
-  },
-  {
-    id: 'skin-glow-elixir',
-    name: 'Skin Glow Elixir',
-    description: 'Beauty-focused juice for radiant skin and collagen support',
-    nutrition: { calories: 120, protein: 3, carbs: 28, fat: 1, fiber: 6 },
-    difficulty: 'Medium',
-    prepTime: 10,
-    rating: 4.8,
-    reviews: 278,
-    trending: true,
-    featured: true,
-    detoxType: 'Beauty Detox',
-    detoxLevel: 'Moderate',
-    category: 'Red',
-    bestTime: 'Morning',
-    duration: 'Ongoing',
-    estimatedCost: 6.50,
-    ingredients: ['2 carrots', '1 cup papaya', '1 orange', '1 tbsp chia seeds', '1 inch turmeric', '1 cup spinach'],
-    benefits: ['Collagen production', 'Skin hydration', 'Anti-aging', 'Vitamin A & C boost'],
-    specialInstructions: 'Add chia seeds after juicing for fiber benefits'
-  },
-  {
-    id: 'adrenal-revive',
-    name: 'Adrenal Revive Tonic',
-    description: 'Adaptogenic juice to support adrenal function and stress resilience',
-    nutrition: { calories: 88, protein: 2, carbs: 20, fat: 1, fiber: 4 },
-    difficulty: 'Medium',
-    prepTime: 8,
-    rating: 4.6,
-    reviews: 189,
-    trending: false,
-    featured: false,
-    detoxType: 'Stress Support',
-    detoxLevel: 'Gentle',
-    category: 'Root',
-    bestTime: 'Morning or during stress',
-    duration: '2-4 weeks',
-    estimatedCost: 5.80,
-    ingredients: ['1 sweet potato', '2 carrots', '1 orange', '1 tsp maca powder', '1 inch ashwagandha root'],
-    benefits: ['Adrenal support', 'Stress adaptation', 'Energy balance', 'Hormone regulation'],
-    specialInstructions: 'Best consumed before stressful events or in the morning'
-  },
-  {
-    id: 'heavy-metal-cleanse',
-    name: 'Heavy Metal Cleanse',
-    description: 'Chelating juice to help remove environmental toxins and heavy metals',
-    nutrition: { calories: 95, protein: 2, carbs: 21, fat: 1, fiber: 5 },
-    difficulty: 'Hard',
-    prepTime: 12,
-    rating: 4.3,
-    reviews: 97,
-    trending: false,
-    featured: false,
-    detoxType: 'Deep Cleanse',
-    detoxLevel: 'Intense',
-    category: 'Green',
-    bestTime: 'Under supervision',
-    duration: 'Medical supervision required',
-    estimatedCost: 7.20,
-    ingredients: ['2 cups cilantro', '1 cup parsley', '2 celery stalks', '1 lemon', '1 green apple', '1 tsp chlorella'],
-    benefits: ['Heavy metal chelation', 'Antioxidant protection', 'Liver support', 'Cellular detox'],
-    specialInstructions: 'CONSULT HEALTHCARE PROVIDER - Intensive detox protocol'
-  },
-  {
-    id: 'morning-glory',
-    name: 'Morning Glory Energizer',
-    description: 'Morning juice to kickstart metabolism and provide natural energy',
-    nutrition: { calories: 92, protein: 2, carbs: 20, fat: 1, fiber: 4 },
-    difficulty: 'Easy',
-    prepTime: 7,
-    rating: 4.7,
-    reviews: 312,
-    trending: true,
-    featured: false,
-    detoxType: 'Metabolic',
-    detoxLevel: 'Gentle',
-    category: 'Green',
-    bestTime: 'Morning',
-    duration: 'Daily',
-    estimatedCost: 4.10,
-    ingredients: ['2 cups spinach', '1 green apple', '1/2 lemon', '1 inch ginger', '1 tbsp wheatgrass powder'],
-    benefits: ['Metabolism boost', 'Natural energy', 'Alkalizing', 'Mental clarity'],
-    specialInstructions: 'Best consumed on empty stomach for maximum absorption'
-  },
-  {
-    id: 'sunset-serenity',
-    name: 'Sunset Serenity Juice',
-    description: 'Evening juice to promote relaxation and overnight detoxification',
-    nutrition: { calories: 78, protein: 1, carbs: 18, fat: 1, fiber: 3 },
-    difficulty: 'Easy',
-    prepTime: 6,
-    rating: 4.5,
-    reviews: 201,
-    trending: false,
-    featured: false,
-    detoxType: 'Relaxation',
-    detoxLevel: 'Gentle',
-    category: 'Red',
-    bestTime: 'Evening',
-    duration: 'Daily',
-    estimatedCost: 3.90,
-    ingredients: ['1 beet', '2 carrots', '1/2 cup cherries', '1 tsp lavender', '1 cup coconut water'],
-    benefits: ['Relaxation support', 'Sleep quality', 'Overnight detox', 'Blood sugar balance'],
-    specialInstructions: 'Consume 1-2 hours before bedtime for best results'
-  },
-  {
-    id: 'gut-hero',
-    name: 'Gut Hero Restorer',
-    description: 'Specialized juice for gut microbiome and digestive system healing',
-    nutrition: { calories: 85, protein: 2, carbs: 19, fat: 1, fiber: 5 },
-    difficulty: 'Medium',
-    prepTime: 9,
-    rating: 4.6,
-    reviews: 178,
-    trending: true,
-    featured: true,
-    detoxType: 'Digestive',
-    detoxLevel: 'Moderate',
-    category: 'Root',
-    bestTime: 'Between meals',
-    duration: '2-4 weeks',
-    estimatedCost: 5.50,
-    ingredients: ['1 cabbage', '2 carrots', '1 pear', '1 inch ginger', '1 tsp slippery elm', '1 cup kefir'],
-    benefits: ['Gut microbiome', 'Leaky gut support', 'Inflammation reduction', 'Digestive healing'],
-    specialInstructions: 'Add kefir after juicing for probiotic benefits'
-  }
-];
-
 export default function DetoxJuicesPage() {
-  const { 
-    addToFavorites, 
-    isFavorite, 
-    addToRecentlyViewed, 
+  const {
+    addToFavorites,
+    isFavorite,
+    addToRecentlyViewed,
     userProgress,
     addPoints,
     incrementDrinksMade
@@ -377,7 +123,7 @@ export default function DetoxJuicesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -480,7 +226,7 @@ export default function DetoxJuicesPage() {
       const matchesCategory = !selectedCategory || juice.category?.toLowerCase().includes(selectedCategory.toLowerCase());
       const matchesIntensity = detoxIntensity[0] === 'Any' || juice.detoxLevel === detoxIntensity[0];
       const matchesCalories = juice.nutrition.calories <= maxCalories;
-      
+
       return matchesSearch && matchesType && matchesCategory && matchesIntensity && matchesCalories;
     });
 
@@ -558,10 +304,10 @@ export default function DetoxJuicesPage() {
                 <Badge className="bg-green-100 text-green-800">Cleansing</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -584,7 +330,7 @@ export default function DetoxJuicesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
@@ -703,9 +449,9 @@ export default function DetoxJuicesPage() {
                       className="pl-10 h-12 text-base"
                     />
                   </div>
-                  
+
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={selectedDetoxType}
                       onChange={(e) => setSelectedDetoxType(e.target.value)}
@@ -720,8 +466,8 @@ export default function DetoxJuicesPage() {
                       <option value="Metabolic">Metabolic</option>
                       <option value="Relaxation">Relaxation</option>
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={selectedCategory}
                       onChange={(e) => setSelectedCategory(e.target.value)}
@@ -732,8 +478,8 @@ export default function DetoxJuicesPage() {
                       <option value="Citrus">Citrus Juices</option>
                       <option value="Red">Red Juices</option>
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={detoxIntensity[0]}
                       onChange={(e) => setDetoxIntensity([e.target.value])}
@@ -743,8 +489,8 @@ export default function DetoxJuicesPage() {
                       <option value="Moderate">Moderate</option>
                       <option value="Gentle">Gentle</option>
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => setMaxCalories(Number(e.target.value))}
@@ -756,8 +502,8 @@ export default function DetoxJuicesPage() {
                       <option value={125}>Under 125 cal</option>
                       <option value={150}>Under 150 cal</option>
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
@@ -806,7 +552,7 @@ export default function DetoxJuicesPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(juice.id) ? 'fill-red-500 text-red-500' : ''}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2 mb-2">
                         <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
                         <Badge variant="outline">{juice.detoxLevel}</Badge>
@@ -825,7 +571,7 @@ export default function DetoxJuicesPage() {
                         </Badge>
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
@@ -976,7 +722,7 @@ export default function DetoxJuicesPage() {
 
                       {/* Make Juice Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-green-600 hover:bg-green-700"
                           onClick={(e) => { e.stopPropagation(); openRecipeModal(juice); }}
                         >
@@ -996,11 +742,11 @@ export default function DetoxJuicesPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {detoxTypes.map(type => {
               const Icon = type.icon;
-              const typeJuices = detoxJuices.filter(juice => 
+              const typeJuices = detoxJuices.filter(juice =>
                 juice.detoxLevel === type.intensity ||
                 juice.detoxType?.toLowerCase().includes(type.name.toLowerCase())
               );
-              
+
               return (
                 <Card key={type.id} className="hover:shadow-lg transition-shadow">
                   <CardHeader>
@@ -1010,19 +756,19 @@ export default function DetoxJuicesPage() {
                       <p className="text-sm text-gray-600">{type.description}</p>
                     </div>
                   </CardHeader>
-                  
+
                   <CardContent>
                     <div className="space-y-3 mb-4">
                       <div className="text-center bg-gray-50 p-3 rounded-lg">
                         <div className="text-sm font-medium text-gray-700 mb-1">Intensity</div>
                         <div className="text-lg font-bold text-green-600">{type.intensity}</div>
                       </div>
-                      
+
                       <div className="text-center bg-blue-50 p-3 rounded-lg">
                         <div className="text-sm font-medium text-gray-700 mb-1">Duration</div>
                         <div className="text-sm text-blue-800">{type.duration}</div>
                       </div>
-                      
+
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Benefits:</h4>
                         <div className="flex flex-wrap gap-1">
@@ -1034,13 +780,13 @@ export default function DetoxJuicesPage() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="text-center">
                       <div className={`text-2xl font-bold ${type.color} mb-1`}>
                         {typeJuices.length}
                       </div>
                       <div className="text-sm text-gray-600 mb-3">Available Recipes</div>
-                      <Button 
+                      <Button
                         className="w-full"
                         onClick={() => {
                           setDetoxIntensity([type.intensity]);
@@ -1081,11 +827,11 @@ export default function DetoxJuicesPage() {
                     <Badge className="bg-white text-green-800">{juice.nutrition.calories} Cal</Badge>
                   </div>
                 </div>
-                
+
                 <CardHeader>
                   <CardTitle className="text-xl">{juice.name}</CardTitle>
                   <p className="text-gray-600">{juice.description}</p>
-                  
+
                   <div className="flex items-center gap-2 mt-2">
                     <Badge className="bg-green-100 text-green-800">{juice.detoxType}</Badge>
                     <Badge variant="outline">{juice.detoxLevel}</Badge>
@@ -1096,7 +842,7 @@ export default function DetoxJuicesPage() {
                     </div>
                   </div>
                 </CardHeader>
-                
+
                 <CardContent>
                   <div className="grid grid-cols-4 gap-4 mb-6 p-4 bg-green-50 rounded-lg">
                     <div className="text-center">
@@ -1154,7 +900,7 @@ export default function DetoxJuicesPage() {
                   </div>
 
                   <div className="flex gap-3">
-                    <Button 
+                    <Button
                       className="flex-1 bg-green-600 hover:bg-green-700"
                       onClick={(e) => { e.stopPropagation(); openRecipeModal(juice); }}
                     >

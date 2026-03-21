@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { 
+import {
   IceCream, Heart, Star, Search, Share2, ArrowLeft,
   Camera, Cookie, ChefHat, X, Check, Zap, Activity, Sun, Sparkles, Trophy, Crown, Leaf,
   Clipboard, RotateCcw
@@ -16,355 +16,15 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
-import { 
+import { dessertSmoothies } from '@/data/drinks/smoothies/dessert';
+import {
   dessertTypes,
   dessertCategories,
   smoothieSubcategories,
-  otherDrinkHubs 
+  otherDrinkHubs
 } from '../../data/smoothies';
 
 // Hardcoded 12 dessert smoothie recipes to ensure they all show up
-export const dessertSmoothies = [
-  {
-    id: "1",
-    name: "Chocolate Banana Smoothie",
-    description: "A classic chocolate and banana blend that's creamy and satisfying.",
-    ingredients: [
-      "1 frozen banana",
-      "2 tablespoons cocoa powder",
-      "½ cup plain Greek yogurt",
-      "1 cup unsweetened almond milk"
-    ],
-    nutrition: {
-      calories: 250,
-      protein: 15,
-      added_sugar: 0
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.7,
-    reviews: 120,
-    bestTime: "Anytime",
-    benefits: ["Energy boost", "Heart healthy"],
-    trending: true,
-    dessertType: "Chocolate",
-    category: "Dessert",
-    estimatedCost: 2.0,
-    image: "https://images.unsplash.com/photo-1596392803986-3a548b6c07f5?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "2",
-    name: "Chocolate Mint Smoothie",
-    description: "Refreshing mint combined with rich chocolate for a cool treat.",
-    ingredients: [
-      "2 tablespoons cocoa powder",
-      "1 frozen banana",
-      "½ cup fresh mint leaves",
-      "1 cup unsweetened almond milk"
-    ],
-    nutrition: {
-      calories: 220,
-      protein: 8,
-      added_sugar: 0
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.6,
-    reviews: 95,
-    bestTime: "Morning",
-    benefits: ["Digestive aid", "Refreshing"],
-    trending: false,
-    dessertType: "Mint Chocolate",
-    category: "Dessert",
-    estimatedCost: 1.8,
-    image: "https://images.unsplash.com/photo-1595981335254-8a596b296416?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "3",
-    name: "Chocolate Avocado Smoothie",
-    description: "Creamy avocado adds richness to this chocolate delight.",
-    ingredients: [
-      "½ ripe avocado",
-      "1 cup fresh spinach leaves",
-      "2 tablespoons cocoa powder",
-      "1 cup unsweetened almond milk"
-    ],
-    nutrition: {
-      calories: 280,
-      protein: 6,
-      added_sugar: 0
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.5,
-    reviews: 85,
-    bestTime: "Afternoon",
-    benefits: ["Healthy fats", "Nutrient dense"],
-    trending: true,
-    dessertType: "Chocolate Avocado",
-    category: "Dessert",
-    estimatedCost: 2.2,
-    image: "https://images.unsplash.com/photo-1562440499-64c109a3adb5?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "4",
-    name: "Chocolate Cherry Smoothie",
-    description: "Tart cherries meet chocolate for a decadent flavor.",
-    ingredients: [
-      "1 cup frozen cherries",
-      "2 tablespoons cocoa powder",
-      "¼ cup almond butter",
-      "1 cup unsweetened almond milk"
-    ],
-    nutrition: {
-      calories: 320,
-      protein: 12,
-      added_sugar: 0
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.8,
-    reviews: 110,
-    bestTime: "Evening",
-    benefits: ["Antioxidants", "Muscle recovery"],
-    trending: false,
-    dessertType: "Chocolate Cherry",
-    category: "Dessert",
-    estimatedCost: 2.5,
-    image: "https://images.unsplash.com/photo-1599946347374-1c6be64c5ee4?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "5",
-    name: "Chocolate Espresso Smoothie",
-    description: "A caffeinated chocolate boost with espresso.",
-    ingredients: [
-      "1 shot of espresso",
-      "2 tablespoons cocoa powder",
-      "1 frozen banana",
-      "1 cup unsweetened almond milk",
-      "1 tablespoon agave nectar (optional)"
-    ],
-    nutrition: {
-      calories: 240,
-      protein: 5,
-      added_sugar: 5
-    },
-    difficulty: "Medium",
-    prepTime: 7,
-    rating: 4.7,
-    reviews: 100,
-    bestTime: "Morning",
-    benefits: ["Energy boost", "Focus"],
-    trending: true,
-    dessertType: "Chocolate Espresso",
-    category: "Dessert",
-    estimatedCost: 2.0,
-    image: "https://images.unsplash.com/photo-1596392803986-3a548b6c07f5?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "6",
-    name: "Chocolate Strawberry Smoothie",
-    description: "Sweet strawberries enhance the chocolate flavor.",
-    ingredients: [
-      "1 banana",
-      "4 large strawberries",
-      "¼ cup plain Greek yogurt",
-      "½ teaspoon vanilla extract",
-      "2-3 teaspoons cocoa powder"
-    ],
-    nutrition: {
-      calories: 210,
-      protein: 10,
-      added_sugar: 0
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.6,
-    reviews: 90,
-    bestTime: "Anytime",
-    benefits: ["Vitamin C", "Antioxidants"],
-    trending: false,
-    dessertType: "Chocolate Strawberry",
-    category: "Dessert",
-    estimatedCost: 1.5,
-    image: "https://images.unsplash.com/photo-1599946347374-1c6be64c5ee4?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "7",
-    name: "Mexican Hot Chocolate Smoothie",
-    description: "Spicy cinnamon and cayenne in a chocolate base.",
-    ingredients: [
-      "2 tablespoons cocoa powder",
-      "1 frozen banana",
-      "¼ teaspoon ground cinnamon",
-      "⅛ teaspoon ground cayenne pepper",
-      "¼ cup almond butter",
-      "1 cup unsweetened almond milk",
-      "1 tablespoon maple syrup (optional)"
-    ],
-    nutrition: {
-      calories: 300,
-      protein: 10,
-      added_sugar: 5
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.5,
-    reviews: 80,
-    bestTime: "Evening",
-    benefits: ["Metabolism boost", "Warming"],
-    trending: true,
-    dessertType: "Spicy Chocolate",
-    category: "Dessert",
-    estimatedCost: 2.3,
-    image: "https://images.unsplash.com/photo-1562440499-64c109a3adb5?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "8",
-    name: "Chocolate Protein Smoothie",
-    description: "High-protein chocolate smoothie for post-workout.",
-    ingredients: [
-      "1 cup ice",
-      "1 cup coconut milk",
-      "2 tablespoons cocoa powder",
-      "2 tablespoons chia seeds",
-      "2 scoops chocolate flavored protein powder",
-      "½ banana, frozen",
-      "Handful of kale"
-    ],
-    nutrition: {
-      calories: 350,
-      protein: 30,
-      added_sugar: 0
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.8,
-    reviews: 150,
-    bestTime: "Post-Workout",
-    benefits: ["Muscle repair", "Satiating"],
-    trending: false,
-    dessertType: "Protein Chocolate",
-    category: "Dessert",
-    estimatedCost: 3.0,
-    image: "https://images.unsplash.com/photo-1596392803986-3a548b6c07f5?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "9",
-    name: "Chocolate Matcha Smoothie",
-    description: "Earthy matcha paired with chocolate.",
-    ingredients: [
-      "1 tablespoon cocoa powder",
-      "1 teaspoon matcha powder",
-      "1 frozen banana",
-      "¼ cup coconut milk",
-      "½ cup unsweetened almond milk"
-    ],
-    nutrition: {
-      calories: 230,
-      protein: 7,
-      added_sugar: 0
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.4,
-    reviews: 70,
-    bestTime: "Morning",
-    benefits: ["Antioxidants", "Energy"],
-    trending: true,
-    dessertType: "Matcha Chocolate",
-    category: "Dessert",
-    estimatedCost: 2.1,
-    image: "https://images.unsplash.com/photo-1599946347374-1c6be64c5ee4?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "10",
-    name: "Raspberry Chocolate Smoothie",
-    description: "Tart raspberries with rich chocolate.",
-    ingredients: [
-      "1 cup frozen raspberries (or berry mixture)",
-      "1 cup almond milk",
-      "handful spinach or other greens",
-      "1 tablespoon almond butter",
-      "1 tablespoon cocoa powder",
-      "1 scoop protein powder",
-      "Ice if desired"
-    ],
-    nutrition: {
-      calories: 280,
-      protein: 20,
-      added_sugar: 0
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.7,
-    reviews: 105,
-    bestTime: "Anytime",
-    benefits: ["Fiber rich", "Antioxidants"],
-    trending: false,
-    dessertType: "Berry Chocolate",
-    category: "Dessert",
-    estimatedCost: 2.4,
-    image: "https://images.unsplash.com/photo-1562440499-64c109a3adb5?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "11",
-    name: "Chocolate Orange Smoothie",
-    description: "Citrusy orange complements chocolate.",
-    ingredients: [
-      "2 tablespoons cocoa powder",
-      "1 frozen banana",
-      "½ cup fresh orange juice",
-      "1 cup unsweetened almond milk"
-    ],
-    nutrition: {
-      calories: 260,
-      protein: 6,
-      added_sugar: 0
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.6,
-    reviews: 90,
-    bestTime: "Morning",
-    benefits: ["Vitamin C", "Immune boost"],
-    trending: true,
-    dessertType: "Citrus Chocolate",
-    category: "Dessert",
-    estimatedCost: 1.9,
-    image: "https://images.unsplash.com/photo-1596392803986-3a548b6c07f5?w=400&h=400&fit=crop&auto=format"
-  },
-  {
-    id: "12",
-    name: "Chocolate Peanut Butter Smoothie",
-    description: "Nutty peanut butter with chocolate goodness.",
-    ingredients: [
-      "1 cup unsweetened almond milk",
-      "1 scoop chocolate protein powder",
-      "1 tablespoon cocoa powder",
-      "2 tablespoons peanut butter",
-      "½ cup plain Greek yogurt",
-      "½ cup ice cubes"
-    ],
-    nutrition: {
-      calories: 340,
-      protein: 25,
-      added_sugar: 0
-    },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.9,
-    reviews: 200,
-    bestTime: "Post-Workout",
-    benefits: ["Satiating", "Protein rich"],
-    trending: false,
-    dessertType: "Peanut Butter Chocolate",
-    category: "Dessert",
-    estimatedCost: 2.6,
-    image: "https://images.unsplash.com/photo-1599946347374-1c6be64c5ee4?w=400&h=400&fit=crop&auto=format"
-  }
-];
-
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
@@ -404,12 +64,12 @@ const parseIngredient = (ingredient: string): Measured => {
   const fractionMap: Record<string, number> = {
     '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
   };
-  
+
   const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
   if (parts.length < 2) return m('1', 'item', ingredient);
 
   let amountStr = parts[0];
-  let amount: number | string = fractionMap[amountStr] ?? 
+  let amount: number | string = fractionMap[amountStr] ??
     (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
 
   let unit = parts[1];
@@ -427,13 +87,13 @@ const parseIngredient = (ingredient: string): Measured => {
     item = item.replace('(for color)', '').trim();
     return m(amount, unit, item, 'for color');
   }
-  
+
   return m(amount, unit, item);
 };
 
 export default function DessertSmoothiesPage() {
-  const { 
-    addToFavorites, 
+  const {
+    addToFavorites,
     isFavorite,
     addToRecentlyViewed,
     userProgress,
@@ -449,7 +109,7 @@ export default function DessertSmoothiesPage() {
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'dessert-types'|'categories'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -461,7 +121,7 @@ export default function DessertSmoothiesPage() {
     return dessertSmoothies.map((s) => {
       // FIXED: Handle various data shapes for ingredients
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
-      
+
       // Normalize everything to { amount, unit, item, note }
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
@@ -668,10 +328,10 @@ export default function DessertSmoothiesPage() {
                 <Badge className="bg-pink-100 text-pink-800">Guilt-Free</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -694,7 +354,7 @@ export default function DessertSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
@@ -809,9 +469,9 @@ export default function DessertSmoothiesPage() {
                       className="pl-10 h-12 text-base"
                     />
                   </div>
-                  
+
                   <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedDessertType}
                       onChange={(e) => setSelectedDessertType(e.target.value)}
@@ -822,7 +482,7 @@ export default function DessertSmoothiesPage() {
                       ))}
                     </select>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedCategory}
                       onChange={(e) => setSelectedCategory(e.target.value)}
@@ -832,9 +492,9 @@ export default function DessertSmoothiesPage() {
                         <option key={c.id} value={c.name}>{c.name}</option>
                       ))}
                     </select>
-                    
+
                     {/* FIXED: Calorie filter with 'all' option */}
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => {
@@ -850,7 +510,7 @@ export default function DessertSmoothiesPage() {
                       <option value={400}>Under 400 cal</option>
                       <option value={450}>Under 450 cal</option>
                     </select>
-                    
+
                     <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
                       <input
                         type="checkbox"
@@ -860,7 +520,7 @@ export default function DessertSmoothiesPage() {
                       Natural
                     </label>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
@@ -910,13 +570,13 @@ export default function DessertSmoothiesPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2 mb-2">
                         <Badge className="bg-pink-100 text-pink-800">{smoothie.dessertType}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
@@ -1075,7 +735,7 @@ export default function DessertSmoothiesPage() {
 
                       {/* Make Smoothie Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-pink-600 hover:bg-pink-700"
                           onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                         >
@@ -1111,7 +771,7 @@ export default function DessertSmoothiesPage() {
                         <div className="text-sm font-medium text-gray-700 mb-1">Key Benefit</div>
                         <div className="text-lg font-bold text-pink-600">{type.keyBenefit}</div>
                       </div>
-                      
+
                       <div>
                         <h4 className="font-semibold text-sm mb-2">Healthy Ingredients:</h4>
                         <div className="flex flex-wrap gap-1">
@@ -1123,18 +783,18 @@ export default function DessertSmoothiesPage() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <Button className="w-full" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
 
                     {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                           Canonical Recipe
                         </Link>
                         <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                           Remix
                         </Link>
                       </div>
@@ -1170,7 +830,7 @@ export default function DessertSmoothiesPage() {
                         <div className="text-lg font-bold text-pink-600">{category.calorieRange}</div>
                       </div>
                     </div>
-                    
+
                     <Button className="w-full" onClick={() => setActiveTab('browse')}>
                       View {category.name}
                     </Button>
@@ -1186,21 +846,21 @@ export default function DessertSmoothiesPage() {
             {featuredSmoothies.map(smoothie => (
               <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative h-48">
-                  <img 
-                    src={smoothie.image} 
+                  <img
+                    src={smoothie.image}
                     alt={smoothie.name}
                     className="w-full h-full object-cover"
                   />
                   <Badge className="absolute top-4 left-4 bg-pink-500 text-white">Featured</Badge>
                 </div>
-                
+
                 <CardHeader>
                   <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-pink-600 hover:bg-pink-700"
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                   >

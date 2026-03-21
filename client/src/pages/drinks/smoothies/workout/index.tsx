@@ -6,8 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { 
-  Dumbbell, Clock, Users, Trophy, Heart, Star, 
+import {
+  Dumbbell, Clock, Users, Trophy, Heart, Star,
   Search, Filter, Share2, ArrowLeft, Activity,
   BarChart3, Sparkles, Plus, Camera, Zap, X, Check,
   Apple, Sun, Leaf, Palmtree, Droplets, Clipboard, RotateCcw,
@@ -17,6 +17,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { workoutSmoothies } from '@/data/drinks/smoothies/workout';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -57,12 +58,12 @@ const parseIngredient = (ingredient: string): Measured => {
   const fractionMap: Record<string, number> = {
     '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
   };
-  
+
   const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
   if (parts.length < 2) return m('1', 'item', ingredient);
 
   let amountStr = parts[0];
-  let amount: number | string = fractionMap[amountStr] ?? 
+  let amount: number | string = fractionMap[amountStr] ??
     (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
 
   let unit = parts[1];
@@ -80,206 +81,11 @@ const parseIngredient = (ingredient: string): Measured => {
     item = item.replace('(optional)', '').trim();
     return m(amount, unit, item, 'optional');
   }
-  
+
   return m(amount, unit, item);
 };
 
 // Enhanced workout smoothies data with proper measurements
-export const workoutSmoothies = [
-  {
-    id: 'workout-1',
-    name: 'Pre-Workout Power Blend',
-    description: 'Energy-boosting smoothie for intense workouts',
-    ingredients: [
-      '1 banana',
-      '1/2 cup oats',
-      '1 tbsp peanut butter',
-      '1 cup almond milk',
-      '1 tsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['Sustained energy', 'Complex carbs', 'Healthy fats', 'Pre-workout fuel'],
-    nutrition: { calories: 350, protein: 12, carbs: 48, fiber: 7, sugar: 24, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 523,
-    workoutType: 'Pre-Workout',
-    energyLevel: 'High',
-    featured: true,
-    trending: true,
-    bestTime: '30-60 min before workout',
-    image: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=400&h=300&fit=crop',
-    estimatedCost: 3.20
-  },
-  {
-    id: 'workout-2',
-    name: 'Post-Workout Recovery',
-    description: 'Protein-packed recovery smoothie',
-    ingredients: [
-      '1 cup mixed berries',
-      '1 scoop protein powder',
-      '1 banana',
-      '1 cup coconut water',
-      '1 tbsp chia seeds',
-      '1 cup ice'
-    ],
-    benefits: ['Muscle recovery', 'Protein synthesis', 'Rehydration', 'Antioxidants'],
-    nutrition: { calories: 320, protein: 25, carbs: 42, fiber: 8, sugar: 28, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.9,
-    reviews: 687,
-    workoutType: 'Post-Workout',
-    energyLevel: 'Recovery',
-    featured: true,
-    bestTime: 'Within 30 min after workout',
-    estimatedCost: 4.50
-  },
-  {
-    id: 'workout-3',
-    name: 'HIIT Energy Booster',
-    description: 'Quick energy for high-intensity training',
-    ingredients: [
-      '1/2 cup pineapple',
-      '1/2 banana',
-      '1 cup spinach',
-      '1/2 cup coconut water',
-      '1 tbsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['Quick energy', 'Electrolytes', 'Natural sugars', 'Hydration'],
-    nutrition: { calories: 180, protein: 3, carbs: 42, fiber: 4, sugar: 35, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 412,
-    workoutType: 'Pre-Workout',
-    energyLevel: 'Very High',
-    trending: true,
-    bestTime: '15-30 min before workout',
-    estimatedCost: 2.80
-  },
-  {
-    id: 'workout-4',
-    name: 'Endurance Builder',
-    description: 'Sustained energy for long workouts',
-    ingredients: [
-      '1/2 cup oats',
-      '1 banana',
-      '2 tbsp almond butter',
-      '1 cup milk',
-      '1 tsp cinnamon',
-      '1 cup ice'
-    ],
-    benefits: ['Long-lasting energy', 'Slow-release carbs', 'Healthy fats', 'Stamina boost'],
-    nutrition: { calories: 420, protein: 15, carbs: 52, fiber: 9, sugar: 28, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.6,
-    reviews: 298,
-    workoutType: 'Endurance',
-    energyLevel: 'Sustained',
-    bestTime: '1 hour before workout',
-    estimatedCost: 3.60
-  },
-  {
-    id: 'workout-5',
-    name: 'Strength Training Fuel',
-    description: 'Muscle-building pre-workout blend',
-    ingredients: [
-      '1 cup Greek yogurt',
-      '1/2 cup oats',
-      '1 banana',
-      '2 tbsp peanut butter',
-      '1/2 cup milk',
-      '1 cup ice'
-    ],
-    benefits: ['Muscle fuel', 'Protein rich', 'Energy boost', 'Strength support'],
-    nutrition: { calories: 480, protein: 28, carbs: 58, fiber: 7, sugar: 32, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.8,
-    reviews: 534,
-    workoutType: 'Strength',
-    energyLevel: 'High',
-    featured: true,
-    bestTime: '45 min before workout',
-    estimatedCost: 4.20
-  },
-  {
-    id: 'workout-6',
-    name: 'Cardio Crush',
-    description: 'Light and energizing for cardio sessions',
-    ingredients: [
-      '1 cup watermelon',
-      '1/2 cup strawberries',
-      '1/2 banana',
-      '1 cup coconut water',
-      '1 tbsp lime juice',
-      '1 cup ice'
-    ],
-    benefits: ['Hydration', 'Natural electrolytes', 'Light energy', 'Fat burning support'],
-    nutrition: { calories: 160, protein: 3, carbs: 38, fiber: 4, sugar: 30, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.5,
-    reviews: 367,
-    workoutType: 'Cardio',
-    energyLevel: 'Medium',
-    bestTime: '30 min before cardio',
-    estimatedCost: 2.50
-  },
-  {
-    id: 'workout-7',
-    name: 'Recovery Greens',
-    description: 'Anti-inflammatory post-workout blend',
-    ingredients: [
-      '2 cups spinach',
-      '1/2 avocado',
-      '1/2 banana',
-      '1 cup coconut water',
-      '1 tbsp ginger',
-      '1 tsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['Reduces inflammation', 'Aids recovery', 'Nutrient dense', 'Alkalizing'],
-    nutrition: { calories: 240, protein: 5, carbs: 32, fiber: 10, sugar: 18, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 445,
-    workoutType: 'Recovery',
-    energyLevel: 'Recovery',
-    bestTime: 'After workout',
-    estimatedCost: 3.80
-  },
-  {
-    id: 'workout-8',
-    name: 'Yoga Flow Blend',
-    description: 'Light and energizing for yoga practice',
-    ingredients: [
-      '1 cup mango',
-      '1/2 cup pineapple',
-      '1/2 cup spinach',
-      '1 cup coconut water',
-      '1 tsp matcha powder',
-      '1 cup ice'
-    ],
-    benefits: ['Gentle energy', 'Mindful fuel', 'Antioxidants', 'Calm focus'],
-    nutrition: { calories: 200, protein: 4, carbs: 44, fiber: 5, sugar: 36, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 389,
-    workoutType: 'Yoga',
-    energyLevel: 'Gentle',
-    trending: true,
-    bestTime: '30-60 min before practice',
-    estimatedCost: 3.40
-  }
-];
-
 const workoutTypes = [
   {
     id: 'pre-workout',
@@ -376,8 +182,8 @@ const workoutAdvantages = [
 ];
 
 export default function WorkoutSmoothiesPage() {
-  const { 
-    addToFavorites, 
+  const {
+    addToFavorites,
     isFavorite,
     addToRecentlyViewed,
     userProgress,
@@ -393,7 +199,7 @@ export default function WorkoutSmoothiesPage() {
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'workout-types'|'benefits'|'featured'|'trending'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -404,7 +210,7 @@ export default function WorkoutSmoothiesPage() {
   const smoothieRecipesWithMeasurements = useMemo(() => {
     return workoutSmoothies.map((s) => {
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
-      
+
       // Normalize everything to { amount, unit, item, note }
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
@@ -598,10 +404,10 @@ export default function WorkoutSmoothiesPage() {
                 <Badge className="bg-sky-100 text-sky-800">Performance</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -624,7 +430,7 @@ export default function WorkoutSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION - Top Level Drink Categories */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
@@ -764,9 +570,9 @@ export default function WorkoutSmoothiesPage() {
                       className="pl-10 h-12 text-base"
                     />
                   </div>
-                  
+
                   <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedWorkoutType}
                       onChange={(e) => setSelectedWorkoutType(e.target.value)}
@@ -777,7 +583,7 @@ export default function WorkoutSmoothiesPage() {
                       ))}
                     </select>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedBenefit}
                       onChange={(e) => setSelectedBenefit(e.target.value)}
@@ -787,8 +593,8 @@ export default function WorkoutSmoothiesPage() {
                         <option key={benefit.id} value={benefit.name}>{benefit.name}</option>
                       ))}
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => {
@@ -802,7 +608,7 @@ export default function WorkoutSmoothiesPage() {
                       <option value={300}>Under 300 cal</option>
                       <option value={350}>Under 350 cal</option>
                     </select>
-                    
+
                     <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
                       <input
                         type="checkbox"
@@ -812,7 +618,7 @@ export default function WorkoutSmoothiesPage() {
                       Natural Sweeteners
                     </label>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
@@ -862,14 +668,14 @@ export default function WorkoutSmoothiesPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2">
                         <Badge className="bg-sky-100 text-sky-800">{smoothie.workoutType}</Badge>
                         <Badge variant="outline">{smoothie.energyLevel}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
@@ -1029,7 +835,7 @@ export default function WorkoutSmoothiesPage() {
 
                       {/* Make Smoothie Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-sky-600 hover:bg-sky-700"
                           onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                         >
@@ -1071,12 +877,12 @@ export default function WorkoutSmoothiesPage() {
                     </Button>
 
                     {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                           Canonical Recipe
                         </Link>
                         <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                           Remix
                         </Link>
                       </div>
@@ -1125,22 +931,22 @@ export default function WorkoutSmoothiesPage() {
               <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative h-48">
                   {smoothie.image && (
-                    <img 
-                      src={smoothie.image} 
+                    <img
+                      src={smoothie.image}
                       alt={smoothie.name}
                       className="w-full h-full object-cover"
                     />
                   )}
                   <Badge className="absolute top-4 left-4 bg-sky-500 text-white">Featured</Badge>
                 </div>
-                
+
                 <CardHeader>
                   <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-sky-600 hover:bg-sky-700"
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                   >
@@ -1167,9 +973,9 @@ export default function WorkoutSmoothiesPage() {
                     <Badge className="bg-red-500 text-white">🔥 Trending</Badge>
                   </div>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-sky-600 hover:bg-sky-700"
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                   >
