@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { 
+import {
   Droplets, Leaf, Heart, Star, Search, Share2, ArrowLeft,
   Camera, Zap, Sparkles, X, Check, Apple, Sun, Crown, Activity, Trophy, IceCream,
   Clipboard, RotateCcw, Wine, Flame, Dumbbell, Sprout
@@ -16,6 +16,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { greenSmoothies } from '@/data/drinks/smoothies/green';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -56,12 +57,12 @@ const parseIngredient = (ingredient: string): Measured => {
   const fractionMap: Record<string, number> = {
     '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
   };
-  
+
   const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
   if (parts.length < 2) return m('1', 'item', ingredient);
 
   let amountStr = parts[0];
-  let amount: number | string = fractionMap[amountStr] ?? 
+  let amount: number | string = fractionMap[amountStr] ??
     (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
 
   let unit = parts[1];
@@ -79,200 +80,11 @@ const parseIngredient = (ingredient: string): Measured => {
     item = item.replace('(optional)', '').trim();
     return m(amount, unit, item, 'optional');
   }
-  
+
   return m(amount, unit, item);
 };
 
 // Enhanced green smoothies data with proper measurements
-export const greenSmoothies = [
-  {
-    id: 'green-1',
-    name: 'Classic Green Goddess',
-    description: 'Perfect balance of greens and natural sweetness',
-    ingredients: [
-      '2 cups spinach',
-      '1 cup kale',
-      '1 banana',
-      '1 green apple',
-      '1/2 lemon juice',
-      '1 cup coconut water'
-    ],
-    benefits: ['Alkalizing', 'Energy Boost', 'Digestive Health', 'Vitamin Rich'],
-    nutrition: { calories: 180, protein: 4, carbs: 38, fiber: 8, sugar: 22, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.8,
-    reviews: 623,
-    greenType: 'Leafy Greens',
-    featured: true,
-    trending: true,
-    bestTime: 'Morning',
-    image: 'https://images.unsplash.com/photo-1570194065650-2c0d4f1a07a9?w=400&h=300&fit=crop',
-    estimatedCost: 2.80
-  },
-  {
-    id: 'green-2',
-    name: 'Tropical Green Dream',
-    description: 'Tropical fruits meet superfood greens',
-    ingredients: [
-      '2 cups spinach',
-      '1 cup pineapple',
-      '1/2 mango',
-      '1/2 banana',
-      '1 cup coconut water',
-      '1 tbsp chia seeds'
-    ],
-    benefits: ['Immune Support', 'Hydration', 'Antioxidants', 'Fiber Rich'],
-    nutrition: { calories: 220, protein: 5, carbs: 45, fiber: 9, sugar: 32, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 534,
-    greenType: 'Tropical Greens',
-    featured: true,
-    bestTime: 'Morning',
-    image: 'https://images.unsplash.com/photo-1638176066669-12e8bd6bb1e3?w=400&h=300&fit=crop',
-    estimatedCost: 3.20
-  },
-  {
-    id: 'green-3',
-    name: 'Green Machine Detox',
-    description: 'Deep cleansing with powerful greens',
-    ingredients: [
-      '1 cup kale',
-      '1 cup romaine',
-      '1/2 cucumber',
-      '1/2 green apple',
-      '1 inch ginger',
-      '1/2 lemon juice',
-      '1 cup water'
-    ],
-    benefits: ['Detoxifying', 'Liver Support', 'Anti-inflammatory', 'Cleansing'],
-    nutrition: { calories: 120, protein: 3, carbs: 25, fiber: 6, sugar: 14, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.6,
-    reviews: 478,
-    greenType: 'Detox Greens',
-    trending: true,
-    bestTime: 'Morning',
-    estimatedCost: 2.50
-  },
-  {
-    id: 'green-4',
-    name: 'Avocado Green Cream',
-    description: 'Creamy avocado base for ultimate smoothness',
-    ingredients: [
-      '1 cup spinach',
-      '1/2 avocado',
-      '1 banana',
-      '1 cup almond milk',
-      '1 tbsp honey',
-      '1 tsp spirulina'
-    ],
-    benefits: ['Healthy Fats', 'Creamy Texture', 'Brain Health', 'Satiety'],
-    nutrition: { calories: 280, protein: 6, carbs: 32, fiber: 11, sugar: 18, added_sugar: 8 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.9,
-    reviews: 389,
-    greenType: 'Creamy Greens',
-    bestTime: 'Breakfast',
-    estimatedCost: 3.40
-  },
-  {
-    id: 'green-5',
-    name: 'Berry Green Fusion',
-    description: 'Antioxidant berries meet nutrient greens',
-    ingredients: [
-      '2 cups mixed greens',
-      '1 cup mixed berries',
-      '1/2 banana',
-      '1 cup coconut milk',
-      '1 tbsp flax seeds',
-      '1 tsp maca powder'
-    ],
-    benefits: ['Antioxidants', 'Energy', 'Hormone Balance', 'Omega-3'],
-    nutrition: { calories: 240, protein: 5, carbs: 35, fiber: 10, sugar: 20, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.5,
-    reviews: 312,
-    greenType: 'Berry Greens',
-    trending: true,
-    bestTime: 'Any Time',
-    estimatedCost: 3.60
-  },
-  {
-    id: 'green-6',
-    name: 'Citrus Green Zing',
-    description: 'Bright citrus flavors with green power',
-    ingredients: [
-      '2 cups spinach',
-      '1 orange',
-      '1/2 grapefruit',
-      '1/2 lime juice',
-      '1 cup water',
-      '1 tbsp hemp seeds'
-    ],
-    benefits: ['Vitamin C', 'Alkalizing', 'Immune Boost', 'Electrolytes'],
-    nutrition: { calories: 160, protein: 6, carbs: 28, fiber: 7, sugar: 16, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.4,
-    reviews: 267,
-    greenType: 'Citrus Greens',
-    featured: true,
-    bestTime: 'Morning',
-    estimatedCost: 2.90
-  },
-  {
-    id: 'green-7',
-    name: 'Green Protein Power',
-    description: 'Greens meet plant-based protein',
-    ingredients: [
-      '2 cups kale',
-      '1 scoop plant protein',
-      '1 banana',
-      '1 cup almond milk',
-      '1 tbsp almond butter',
-      '1 tsp matcha'
-    ],
-    benefits: ['Muscle Support', 'Sustained Energy', 'Metabolism', 'Focus'],
-    nutrition: { calories: 320, protein: 24, carbs: 28, fiber: 8, sugar: 14, added_sugar: 1 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 423,
-    greenType: 'Protein Greens',
-    bestTime: 'Post-Workout',
-    estimatedCost: 3.80
-  },
-  {
-    id: 'green-8',
-    name: 'Minty Green Refresh',
-    description: 'Cooling mint with hydrating greens',
-    ingredients: [
-      '2 cups spinach',
-      'Handful mint leaves',
-      '1/2 cucumber',
-      '1 green apple',
-      '1 cup coconut water',
-      '1/2 lime juice'
-    ],
-    benefits: ['Refreshing', 'Hydration', 'Digestive Aid', 'Cooling'],
-    nutrition: { calories: 130, protein: 3, carbs: 28, fiber: 6, sugar: 18, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 356,
-    greenType: 'Hydrating Greens',
-    trending: true,
-    bestTime: 'Afternoon',
-    estimatedCost: 2.70
-  }
-];
-
 const greenTypes = [
   { id: 'leafy', name: 'Leafy Greens', description: 'Spinach, kale, and lettuces' },
   { id: 'tropical', name: 'Tropical Greens', description: 'Pineapple, mango with greens' },
@@ -320,8 +132,8 @@ const greenBenefits = [
 ];
 
 export default function GreenSmoothiesPage() {
-  const { 
-    addToFavorites, 
+  const {
+    addToFavorites,
     isFavorite,
     addToRecentlyViewed,
     userProgress,
@@ -337,7 +149,7 @@ export default function GreenSmoothiesPage() {
   const [sortBy, setSortBy] = useState<'rating' | 'fiber' | 'calories' | 'cost'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'green-types'|'benefits'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -348,7 +160,7 @@ export default function GreenSmoothiesPage() {
   const smoothieRecipesWithMeasurements = useMemo(() => {
     return greenSmoothies.map((s) => {
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
-      
+
       // Normalize everything to { amount, unit, item, note }
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
@@ -543,10 +355,10 @@ export default function GreenSmoothiesPage() {
                 <Badge className="bg-green-100 text-green-800">Superfood</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -569,7 +381,7 @@ export default function GreenSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION - Top Level Sites */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
@@ -708,9 +520,9 @@ export default function GreenSmoothiesPage() {
                       className="pl-10 h-12 text-base"
                     />
                   </div>
-                  
+
                   <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedGreenType}
                       onChange={(e) => setSelectedGreenType(e.target.value)}
@@ -721,7 +533,7 @@ export default function GreenSmoothiesPage() {
                       ))}
                     </select>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedBenefit}
                       onChange={(e) => setSelectedBenefit(e.target.value)}
@@ -731,8 +543,8 @@ export default function GreenSmoothiesPage() {
                         <option key={benefit.id} value={benefit.name}>{benefit.name}</option>
                       ))}
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => {
@@ -746,7 +558,7 @@ export default function GreenSmoothiesPage() {
                       <option value={250}>Under 250 cal</option>
                       <option value={300}>Under 300 cal</option>
                     </select>
-                    
+
                     <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
                       <input
                         type="checkbox"
@@ -756,7 +568,7 @@ export default function GreenSmoothiesPage() {
                       Natural Sweeteners
                     </label>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
@@ -806,13 +618,13 @@ export default function GreenSmoothiesPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2">
                         <Badge className="bg-green-100 text-green-800">{smoothie.greenType}</Badge>
                         {smoothie.trending && <Badge className="bg-orange-100 text-orange-800">Trending</Badge>}
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
@@ -972,7 +784,7 @@ export default function GreenSmoothiesPage() {
 
                       {/* Make Smoothie Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-green-600 hover:bg-green-700"
                           onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                         >
@@ -980,14 +792,14 @@ export default function GreenSmoothiesPage() {
                           Make Smoothie (+25 XP)
                         </Button>
                       </div>
-                    
+
                       {canonicalSlug ? (
-                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                             Canonical Recipe
                           </Link>
                           <span>•</span>
-                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                             Remix
                           </Link>
                         </div>
@@ -1062,21 +874,21 @@ export default function GreenSmoothiesPage() {
             {featuredSmoothies.map(smoothie => (
               <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative h-48">
-                  <img 
-                    src={smoothie.image} 
+                  <img
+                    src={smoothie.image}
                     alt={smoothie.name}
                     className="w-full h-full object-cover"
                   />
                   <Badge className="absolute top-4 left-4 bg-green-500 text-white">Featured</Badge>
                 </div>
-                
+
                 <CardHeader>
                   <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-green-600 hover:bg-green-700"
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                   >

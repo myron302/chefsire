@@ -1,1 +1,180 @@
-export { specialtyDrinks } from "../../../pages/drinks/caffeinated/specialty";
+export const specialtyDrinks = [
+  {
+    id: 'affogato',
+    name: 'Affogato',
+    description: 'Espresso poured over vanilla ice cream',
+    ingredients: [
+      '2 shot espresso',
+      '2 scoop vanilla ice cream'
+    ],
+    benefits: ['Dessert coffee', 'Indulgent', 'Italian classic', 'Sweet treat'],
+    nutrition: { calories: 220, protein: 5, carbs: 28, fiber: 0, sugar: 24, added_sugar: 18 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.9,
+    reviews: 1876,
+    drinkType: 'Dessert',
+    caffeineLevel: 'Medium',
+    featured: true,
+    trending: true,
+    bestTime: 'Dessert',
+    estimatedCost: 3.50
+  },
+  {
+    id: 'turkish-coffee',
+    name: 'Turkish Coffee',
+    description: 'Finely ground coffee brewed in cezve',
+    ingredients: [
+      '2 tbsp finely ground coffee',
+      '1 cup cold water',
+      '1 tsp sugar',
+      '¼ tsp cardamom'
+    ],
+    benefits: ['Traditional', 'Strong flavor', 'Cultural experience', 'Aromatic'],
+    nutrition: { calories: 20, protein: 0, carbs: 5, fiber: 0, sugar: 5, added_sugar: 4 },
+    difficulty: 'Medium',
+    prepTime: 8,
+    rating: 4.7,
+    reviews: 956,
+    drinkType: 'Traditional',
+    caffeineLevel: 'Very High',
+    featured: true,
+    trending: false,
+    bestTime: 'Morning',
+    estimatedCost: 1.50
+  },
+  {
+    id: 'vietnamese-coffee',
+    name: 'Vietnamese Coffee',
+    description: 'Dark roast with sweetened condensed milk',
+    ingredients: [
+      '3 tbsp coarse ground coffee',
+      '¾ cup hot water',
+      '2 tbsp sweetened condensed milk',
+      '1 cup ice'
+    ],
+    benefits: ['Sweet & strong', 'Unique flavor', 'Refreshing', 'Energizing'],
+    nutrition: { calories: 140, protein: 3, carbs: 22, fiber: 0, sugar: 22, added_sugar: 18 },
+    difficulty: 'Medium',
+    prepTime: 10,
+    rating: 4.8,
+    reviews: 1234,
+    drinkType: 'International',
+    caffeineLevel: 'Very High',
+    featured: true,
+    trending: true,
+    bestTime: 'Afternoon',
+    estimatedCost: 2.20
+  },
+  {
+    id: 'cortado',
+    name: 'Cortado',
+    description: 'Equal parts espresso and steamed milk',
+    ingredients: [
+      '2 shot espresso',
+      '2 oz steamed milk'
+    ],
+    benefits: ['Balanced', 'Smooth', 'Spanish classic', 'Not too milky'],
+    nutrition: { calories: 40, protein: 2, carbs: 3, fiber: 0, sugar: 3, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 876,
+    drinkType: 'Traditional',
+    caffeineLevel: 'Medium',
+    featured: false,
+    trending: true,
+    bestTime: 'Morning',
+    estimatedCost: 2.50
+  },
+  {
+    id: 'red-eye',
+    name: 'Red Eye',
+    description: 'Drip coffee with a shot of espresso',
+    ingredients: [
+      '1 cup drip coffee',
+      '1 shot espresso'
+    ],
+    benefits: ['Extra caffeine', 'Bold', 'Wake-up call', 'Energizing'],
+    nutrition: { calories: 10, protein: 1, carbs: 1, fiber: 0, sugar: 0, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 2,
+    rating: 4.5,
+    reviews: 654,
+    drinkType: 'High Caffeine',
+    caffeineLevel: 'Very High',
+    featured: false,
+    trending: false,
+    bestTime: 'Early Morning',
+    estimatedCost: 2.00
+  },
+  {
+    id: 'nitro-cold-brew',
+    name: 'Nitro Cold Brew',
+    description: 'Cold brew infused with nitrogen',
+    ingredients: [
+      '2 cup cold brew coffee',
+      'nitrogen infusion'
+    ],
+    benefits: ['Creamy texture', 'No milk needed', 'Smooth', 'Low acidity'],
+    nutrition: { calories: 5, protein: 0, carbs: 1, fiber: 0, sugar: 0, added_sugar: 0 },
+    difficulty: 'Hard',
+    prepTime: 2,
+    rating: 4.8,
+    reviews: 1543,
+    drinkType: 'Modern',
+    caffeineLevel: 'High',
+    featured: false,
+    trending: true,
+    bestTime: 'Anytime',
+    estimatedCost: 3.50
+  },
+  {
+    id: 'dalgona-coffee',
+    name: 'Dalgona Coffee',
+    description: 'Whipped instant coffee over milk',
+    ingredients: [
+      '2 tbsp instant coffee',
+      '2 tbsp sugar',
+      '2 tbsp hot water',
+      '1 cup milk',
+      '1 cup ice'
+    ],
+    benefits: ['Trendy', 'Whipped texture', 'Sweet', 'Instagram-worthy'],
+    nutrition: { calories: 150, protein: 8, carbs: 24, fiber: 0, sugar: 24, added_sugar: 12 },
+    difficulty: 'Medium',
+    prepTime: 10,
+    rating: 4.6,
+    reviews: 2341,
+    drinkType: 'Trendy',
+    caffeineLevel: 'Medium',
+    featured: false,
+    trending: true,
+    bestTime: 'Afternoon',
+    estimatedCost: 1.50
+  },
+  {
+    id: 'cafe-de-olla',
+    name: 'Café de Olla',
+    description: 'Mexican coffee with cinnamon and piloncillo',
+    ingredients: [
+      '¼ cup coarse ground coffee',
+      '4 cup water',
+      '2 oz piloncillo',
+      '2 cinnamon stick',
+      '2 star anise'
+    ],
+    benefits: ['Spiced', 'Traditional', 'Warming', 'Sweet & aromatic'],
+    nutrition: { calories: 60, protein: 0, carbs: 15, fiber: 0, sugar: 14, added_sugar: 14 },
+    difficulty: 'Medium',
+    prepTime: 15,
+    rating: 4.7,
+    reviews: 543,
+    drinkType: 'International',
+    caffeineLevel: 'Medium',
+    featured: false,
+    trending: false,
+    bestTime: 'Morning',
+    estimatedCost: 2.00
+  }
+];

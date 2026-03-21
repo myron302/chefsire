@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { 
+import {
   Apple, Leaf, Heart, Star, Search, Share2, ArrowLeft,
   Camera, Zap, Sparkles, X, Check, Crown, Activity, IceCream,
   Clipboard, RotateCcw, Wine, Flame, Droplets
@@ -16,6 +16,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { detoxSmoothies } from '@/data/drinks/smoothies/detox';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -56,12 +57,12 @@ const parseIngredient = (ingredient: string): Measured => {
   const fractionMap: Record<string, number> = {
     '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
   };
-  
+
   const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
   if (parts.length < 2) return m('1', 'item', ingredient);
 
   let amountStr = parts[0];
-  let amount: number | string = fractionMap[amountStr] ?? 
+  let amount: number | string = fractionMap[amountStr] ??
     (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
 
   let unit = parts[1];
@@ -79,197 +80,11 @@ const parseIngredient = (ingredient: string): Measured => {
     item = item.replace('(optional)', '').trim();
     return m(amount, unit, item, 'optional');
   }
-  
+
   return m(amount, unit, item);
 };
 
 // Enhanced detox smoothies data - ACTUAL SMOOTHIES with creamy bases
-export const detoxSmoothies = [
-  {
-    id: 'detox-green-smoothie',
-    name: 'Green Detox Smoothie',
-    description: 'Creamy green smoothie with avocado and spinach',
-    ingredients: [
-      '1 cup spinach',
-      '1/2 avocado',
-      '1 banana',
-      '1 cup almond milk',
-      '1 tbsp chia seeds',
-      '1 cup ice'
-    ],
-    benefits: ['Liver detox', 'Healthy fats', 'Fiber rich', 'Alkalizing'],
-    nutrition: { calories: 280, protein: 6, carbs: 32, fiber: 12, sugar: 14, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 412,
-    smoothieType: 'Green Detox',
-    featured: true,
-    trending: true,
-    bestTime: 'Morning',
-    image: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=400&h=300&fit=crop',
-    estimatedCost: 3.20
-  },
-  {
-    id: 'turmeric-golden-smoothie',
-    name: 'Golden Turmeric Smoothie',
-    description: 'Creamy turmeric and mango anti-inflammatory blend',
-    ingredients: [
-      '1 cup mango',
-      '1 banana',
-      '1 tsp turmeric',
-      '1/2 tsp cinnamon',
-      '1 cup coconut milk',
-      '1 cup ice'
-    ],
-    benefits: ['Anti-inflammatory', 'Immune boost', 'Antioxidants', 'Digestive aid'],
-    nutrition: { calories: 240, protein: 3, carbs: 42, fiber: 6, sugar: 28, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.8,
-    reviews: 356,
-    smoothieType: 'Spice Detox',
-    featured: true,
-    bestTime: 'Morning',
-    estimatedCost: 3.50
-  },
-  {
-    id: 'berry-cleanse-smoothie',
-    name: 'Berry Cleanse Smoothie',
-    description: 'Mixed berry smoothie with Greek yogurt',
-    ingredients: [
-      '1 cup mixed berries',
-      '1/2 cup Greek yogurt',
-      '1 banana',
-      '1 cup almond milk',
-      '1 tbsp flax seeds',
-      '1 cup ice'
-    ],
-    benefits: ['Antioxidants', 'Probiotics', 'Fiber rich', 'Gut health'],
-    nutrition: { calories: 290, protein: 15, carbs: 48, fiber: 10, sugar: 26, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.6,
-    reviews: 298,
-    smoothieType: 'Berry Detox',
-    trending: true,
-    bestTime: 'Morning/Afternoon',
-    estimatedCost: 3.80
-  },
-  {
-    id: 'green-tea-detox-smoothie',
-    name: 'Green Tea Detox Smoothie',
-    description: 'Matcha green tea smoothie with banana and spinach',
-    ingredients: [
-      '1 tsp matcha powder',
-      '1 banana',
-      '1 cup spinach',
-      '1 cup coconut milk',
-      '1 tbsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['Antioxidants', 'Metabolism boost', 'Calm energy', 'Detoxifying'],
-    nutrition: { calories: 220, protein: 5, carbs: 38, fiber: 6, sugar: 22, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.7,
-    reviews: 423,
-    smoothieType: 'Tea Detox',
-    bestTime: 'Morning',
-    estimatedCost: 3.40
-  },
-  {
-    id: 'pineapple-ginger-smoothie',
-    name: 'Pineapple Ginger Smoothie',
-    description: 'Tropical pineapple smoothie with fresh ginger',
-    ingredients: [
-      '1.5 cups pineapple',
-      '1 banana',
-      '1 inch ginger',
-      '1 cup coconut water',
-      '1/2 cup Greek yogurt',
-      '1 cup ice'
-    ],
-    benefits: ['Digestive enzymes', 'Anti-inflammatory', 'Immune support', 'Hydrating'],
-    nutrition: { calories: 260, protein: 8, carbs: 52, fiber: 5, sugar: 36, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 389,
-    smoothieType: 'Tropical Detox',
-    trending: true,
-    bestTime: 'Morning/Afternoon',
-    estimatedCost: 3.60
-  },
-  {
-    id: 'avocado-spinach-smoothie',
-    name: 'Avocado Spinach Smoothie',
-    description: 'Creamy avocado and spinach detox blend',
-    ingredients: [
-      '1/2 avocado',
-      '2 cups spinach',
-      '1 green apple',
-      '1 cup almond milk',
-      '1 tbsp lemon juice',
-      '1 cup ice'
-    ],
-    benefits: ['Healthy fats', 'Chlorophyll rich', 'Alkalizing', 'Satiety'],
-    nutrition: { calories: 320, protein: 6, carbs: 38, fiber: 14, sugar: 20, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.5,
-    reviews: 267,
-    smoothieType: 'Green Detox',
-    bestTime: 'Morning',
-    estimatedCost: 3.30
-  },
-  {
-    id: 'blueberry-spinach-smoothie',
-    name: 'Blueberry Spinach Smoothie',
-    description: 'Antioxidant-rich blueberry and spinach blend',
-    ingredients: [
-      '1 cup blueberries',
-      '2 cups spinach',
-      '1 banana',
-      '1 cup oat milk',
-      '1 tbsp chia seeds',
-      '1 cup ice'
-    ],
-    benefits: ['Antioxidants', 'Brain health', 'Fiber rich', 'Anti-inflammatory'],
-    nutrition: { calories: 280, protein: 7, carbs: 52, fiber: 12, sugar: 30, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 445,
-    smoothieType: 'Berry Detox',
-    featured: true,
-    bestTime: 'Morning',
-    estimatedCost: 3.40
-  },
-  {
-    id: 'kale-pineapple-smoothie',
-    name: 'Kale Pineapple Smoothie',
-    description: 'Nutrient-dense kale with sweet pineapple',
-    ingredients: [
-      '2 cups kale',
-      '1 cup pineapple',
-      '1 banana',
-      '1 cup coconut water',
-      '1 tbsp hemp seeds',
-      '1 cup ice'
-    ],
-    benefits: ['Vitamin K', 'Digestive enzymes', 'Mineral rich', 'Hydrating'],
-    nutrition: { calories: 240, protein: 8, carbs: 46, fiber: 8, sugar: 28, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.6,
-    reviews: 312,
-    smoothieType: 'Green Detox',
-    bestTime: 'Morning',
-    estimatedCost: 3.20
-  }
-];
-
 const detoxTypes = [
   { id: 'green', name: 'Green Detox', description: 'Spinach, kale, and greens' },
   { id: 'berry', name: 'Berry Detox', description: 'Antioxidant berry blends' },
@@ -307,8 +122,8 @@ const allSmoothieSubcategories = [
 ];
 
 export default function DetoxSmoothiesPage() {
-  const { 
-    addToFavorites, 
+  const {
+    addToFavorites,
     isFavorite,
     addToRecentlyViewed,
     userProgress,
@@ -324,7 +139,7 @@ export default function DetoxSmoothiesPage() {
   const [sortBy, setSortBy] = useState<'rating' | 'fiber' | 'cost' | 'calories'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'detox-types'|'benefits'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -335,7 +150,7 @@ export default function DetoxSmoothiesPage() {
   const smoothieRecipesWithMeasurements = useMemo(() => {
     return detoxSmoothies.map((s) => {
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
-      
+
       // Normalize everything to { amount, unit, item, note }
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
@@ -528,10 +343,10 @@ export default function DetoxSmoothiesPage() {
                 <Badge className="bg-gray-100 text-gray-700 border-gray-300">Cleansing</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -554,7 +369,7 @@ export default function DetoxSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION - Top Level Sites */}
         <Card className="bg-gradient-to-r from-gray-50 to-slate-50 border-gray-200">
           <CardContent className="p-4">
@@ -669,9 +484,9 @@ export default function DetoxSmoothiesPage() {
                       className="pl-10 h-12 text-base"
                     />
                   </div>
-                  
+
                   <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedDetoxType}
                       onChange={(e) => setSelectedDetoxType(e.target.value)}
@@ -682,7 +497,7 @@ export default function DetoxSmoothiesPage() {
                       ))}
                     </select>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedBenefit}
                       onChange={(e) => setSelectedBenefit(e.target.value)}
@@ -692,8 +507,8 @@ export default function DetoxSmoothiesPage() {
                         <option key={benefit.id} value={benefit.name}>{benefit.name}</option>
                       ))}
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => {
@@ -707,7 +522,7 @@ export default function DetoxSmoothiesPage() {
                       <option value={300}>Under 300 cal</option>
                       <option value={350}>Under 350 cal</option>
                     </select>
-                    
+
                     <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
                       <input
                         type="checkbox"
@@ -717,7 +532,7 @@ export default function DetoxSmoothiesPage() {
                       Natural Sweeteners
                     </label>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
@@ -767,13 +582,13 @@ export default function DetoxSmoothiesPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2">
                         <Badge className="bg-gray-100 text-gray-700 border-gray-300">{smoothie.smoothieType}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
@@ -933,7 +748,7 @@ export default function DetoxSmoothiesPage() {
 
                       {/* Make Smoothie Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-gray-600 hover:bg-gray-700 text-white"
                           onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                         >
@@ -941,14 +756,14 @@ export default function DetoxSmoothiesPage() {
                           Make Smoothie (+25 XP)
                         </Button>
                       </div>
-                    
+
                       {canonicalSlug ? (
-                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                             Canonical Recipe
                           </Link>
                           <span>•</span>
-                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                             Remix
                           </Link>
                         </div>
@@ -1026,22 +841,22 @@ export default function DetoxSmoothiesPage() {
               <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative h-48">
                   {smoothie.image && (
-                    <img 
-                      src={smoothie.image} 
+                    <img
+                      src={smoothie.image}
                       alt={smoothie.name}
                       className="w-full h-full object-cover"
                     />
                   )}
                   <Badge className="absolute top-4 left-4 bg-gray-600 text-white">Featured</Badge>
                 </div>
-                
+
                 <CardHeader>
                   <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-gray-600 hover:bg-gray-700 text-white"
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                   >

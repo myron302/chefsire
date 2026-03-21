@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { 
+import {
   Palmtree, Sun, Heart, Star, Search, Share2, ArrowLeft,
   Camera, Zap, Waves, Droplets, X, Check, Apple, Leaf, Sparkles,
   Clipboard, RotateCcw, Crown, Activity, Wine, Flame
@@ -15,6 +15,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { tropicalSmoothies } from '@/data/drinks/smoothies/tropical';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -55,12 +56,12 @@ const parseIngredient = (ingredient: string): Measured => {
   const fractionMap: Record<string, number> = {
     '½': 0.5, '⅓': 1/3, '⅔': 2/3, '¼': 0.25, '¾': 0.75, '⅛': 0.125
   };
-  
+
   const parts = ingredient.trim().replace(/\sof\s/i, ' ').split(/\s+/);
   if (parts.length < 2) return m('1', 'item', ingredient);
 
   let amountStr = parts[0];
-  let amount: number | string = fractionMap[amountStr] ?? 
+  let amount: number | string = fractionMap[amountStr] ??
     (isNaN(Number(amountStr)) ? amountStr : Number(amountStr));
 
   let unit = parts[1];
@@ -78,191 +79,11 @@ const parseIngredient = (ingredient: string): Measured => {
     item = item.replace('(optional)', '').trim();
     return m(amount, unit, item, 'optional');
   }
-  
+
   return m(amount, unit, item);
 };
 
 // Enhanced tropical smoothies data with proper measurements
-export const tropicalSmoothies = [
-  {
-    id: 'tropical-1',
-    name: 'Island Paradise',
-    description: 'Mango, pineapple, and coconut blend',
-    ingredients: [
-      '1 cup mango chunks',
-      '1/2 cup pineapple',
-      '1/4 cup coconut milk',
-      '1/2 banana',
-      '1 cup ice'
-    ],
-    benefits: ['Vitamin C boost', 'Immune support', 'Tropical energy', 'Hydrating'],
-    nutrition: { calories: 280, protein: 4, carbs: 58, fiber: 5, sugar: 45, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 342,
-    flavor: 'Sweet & Tropical',
-    featured: true,
-    trending: true,
-    bestTime: 'Morning/Afternoon',
-    image: 'https://images.unsplash.com/photo-1546548970-71785318a17b?w=400&h=300&fit=crop',
-    estimatedCost: 3.50
-  },
-  {
-    id: 'tropical-2',
-    name: 'Piña Colada Dream',
-    description: 'Classic tropical vacation in a glass',
-    ingredients: [
-      '1 cup pineapple chunks',
-      '1/2 cup coconut cream',
-      '1/4 cup Greek yogurt',
-      '1 tbsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['Digestive enzymes', 'Creamy satisfaction', 'Energy boost', 'Tropical flavor'],
-    nutrition: { calories: 320, protein: 8, carbs: 52, fiber: 4, sugar: 42, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.9,
-    reviews: 445,
-    flavor: 'Creamy Coconut',
-    featured: true,
-    bestTime: 'Afternoon',
-    image: 'https://images.unsplash.com/photo-1534353473418-4cfa6c56fd38?w=400&h=300&fit=crop',
-    estimatedCost: 3.80
-  },
-  {
-    id: 'tropical-3',
-    name: 'Mango Madness',
-    description: 'Pure mango bliss with tropical twist',
-    ingredients: [
-      '1.5 cups mango',
-      '1/2 cup orange juice',
-      '1/4 cup passion fruit',
-      '1 tbsp lime juice',
-      '1 cup ice'
-    ],
-    benefits: ['Antioxidant rich', 'Vitamin A', 'Eye health', 'Skin glow'],
-    nutrition: { calories: 240, protein: 3, carbs: 56, fiber: 6, sugar: 48, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 298,
-    flavor: 'Sweet Mango',
-    bestTime: 'Morning',
-    image: 'https://images.unsplash.com/photo-1600271886742-f049cd451bba?w=400&h=300&fit=crop',
-    estimatedCost: 3.20
-  },
-  {
-    id: 'tropical-4',
-    name: 'Passionfruit Paradise',
-    description: 'Exotic passionfruit with pineapple',
-    ingredients: [
-      '3 passionfruit',
-      '1 cup pineapple',
-      '1/2 banana',
-      '1/2 cup coconut water',
-      '1 cup ice'
-    ],
-    benefits: ['Exotic flavor', 'Vitamin C', 'Hydration', 'Digestive support'],
-    nutrition: { calories: 260, protein: 4, carbs: 60, fiber: 8, sugar: 44, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.6,
-    reviews: 187,
-    flavor: 'Tangy Tropical',
-    trending: true,
-    bestTime: 'Afternoon',
-    estimatedCost: 4.00
-  },
-  {
-    id: 'tropical-5',
-    name: 'Hawaiian Sunrise',
-    description: 'Papaya, guava, and citrus sunshine',
-    ingredients: [
-      '1 cup papaya',
-      '1/2 cup guava juice',
-      '1/2 orange',
-      '1 tbsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['Digestive enzymes', 'Immune boost', 'Morning energy', 'Tropical vibes'],
-    nutrition: { calories: 220, protein: 3, carbs: 52, fiber: 5, sugar: 40, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.5,
-    reviews: 156,
-    flavor: 'Citrus Tropical',
-    bestTime: 'Morning',
-    estimatedCost: 3.60
-  },
-  {
-    id: 'tropical-6',
-    name: 'Coconut Beach Bliss',
-    description: 'Creamy coconut with tropical fruits',
-    ingredients: [
-      '1/2 cup coconut milk',
-      '1 cup mixed tropical fruit',
-      '1/2 banana',
-      '1 tbsp coconut flakes',
-      '1 cup ice'
-    ],
-    benefits: ['Healthy fats', 'Sustained energy', 'Creamy texture', 'Tropical escape'],
-    nutrition: { calories: 340, protein: 5, carbs: 48, fiber: 6, sugar: 38, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.8,
-    reviews: 234,
-    flavor: 'Creamy Coconut',
-    featured: true,
-    bestTime: 'Afternoon',
-    estimatedCost: 3.90
-  },
-  {
-    id: 'tropical-7',
-    name: 'Dragon Fruit Delight',
-    description: 'Vibrant pink dragon fruit blend',
-    ingredients: [
-      '1 dragon fruit',
-      '1/2 cup pineapple',
-      '1/2 banana',
-      '1/2 cup coconut water',
-      '1 cup ice'
-    ],
-    benefits: ['Antioxidants', 'Instagram-worthy', 'Vitamin C', 'Exotic taste'],
-    nutrition: { calories: 200, protein: 3, carbs: 48, fiber: 7, sugar: 35, added_sugar: 0 },
-    difficulty: 'Medium',
-    prepTime: 5,
-    rating: 4.9,
-    reviews: 389,
-    flavor: 'Mild Sweet',
-    trending: true,
-    bestTime: 'Morning/Afternoon',
-    estimatedCost: 4.50
-  },
-  {
-    id: 'tropical-8',
-    name: 'Tropical Green Fusion',
-    description: 'Spinach meets tropical paradise',
-    ingredients: [
-      '1 cup spinach',
-      '1 cup mango',
-      '1/2 pineapple',
-      '1/2 cup coconut water',
-      '1 cup ice'
-    ],
-    benefits: ['Green nutrition', 'Tropical taste', 'Vitamin boost', 'Hidden veggies'],
-    nutrition: { calories: 210, protein: 4, carbs: 50, fiber: 6, sugar: 38, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.6,
-    reviews: 267,
-    flavor: 'Tropical Green',
-    bestTime: 'Morning',
-    estimatedCost: 3.30
-  }
-];
-
 const tropicalFlavors = [
   { id: 'sweet', name: 'Sweet & Tropical', description: 'Naturally sweet tropical fruits' },
   { id: 'creamy', name: 'Creamy Coconut', description: 'Rich coconut-based blends' },
@@ -310,8 +131,8 @@ const tropicalAdvantages = [
 ];
 
 export default function TropicalSmoothiesPage() {
-  const { 
-    addToFavorites, 
+  const {
+    addToFavorites,
     isFavorite,
     addToRecentlyViewed,
     userProgress,
@@ -327,7 +148,7 @@ export default function TropicalSmoothiesPage() {
   const [sortBy, setSortBy] = useState<'rating' | 'fiber' | 'cost' | 'calories'>('rating');
   const [activeTab, setActiveTab] = useState<'browse'|'flavors'|'benefits'|'featured'|'trending'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -338,7 +159,7 @@ export default function TropicalSmoothiesPage() {
   const smoothieRecipesWithMeasurements = useMemo(() => {
     return tropicalSmoothies.map((s) => {
       const rawList = Array.isArray(s.ingredients) ? s.ingredients : [];
-      
+
       // Normalize everything to { amount, unit, item, note }
       const measurements = rawList.map((ing: any) => {
         if (typeof ing === 'string') return parseIngredient(ing);
@@ -532,10 +353,10 @@ export default function TropicalSmoothiesPage() {
                 <Badge className="bg-purple-100 text-purple-800">Island Vibes</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -558,7 +379,7 @@ export default function TropicalSmoothiesPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION - Top Level Drink Categories */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
@@ -698,9 +519,9 @@ export default function TropicalSmoothiesPage() {
                       className="pl-10 h-12 text-base"
                     />
                   </div>
-                  
+
                   <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-2">
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedFlavor}
                       onChange={(e) => setSelectedFlavor(e.target.value)}
@@ -711,7 +532,7 @@ export default function TropicalSmoothiesPage() {
                       ))}
                     </select>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={selectedBenefit}
                       onChange={(e) => setSelectedBenefit(e.target.value)}
@@ -721,8 +542,8 @@ export default function TropicalSmoothiesPage() {
                         <option key={benefit.id} value={benefit.name}>{benefit.name}</option>
                       ))}
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={maxCalories}
                       onChange={(e) => {
@@ -736,7 +557,7 @@ export default function TropicalSmoothiesPage() {
                       <option value={300}>Under 300 cal</option>
                       <option value={350}>Under 350 cal</option>
                     </select>
-                    
+
                     <label className="flex items-center gap-2 px-3 py-2 border border-gray-300 rounded-md text-sm bg-white">
                       <input
                         type="checkbox"
@@ -746,7 +567,7 @@ export default function TropicalSmoothiesPage() {
                       Natural Sweeteners
                     </label>
 
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm bg-white whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value as any)}
@@ -796,13 +617,13 @@ export default function TropicalSmoothiesPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(smoothie.id) ? 'fill-red-500 text-red-500' : 'text-gray-400'}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2">
                         <Badge className="bg-purple-100 text-purple-800">{smoothie.flavor}</Badge>
                         {smoothie.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       {/* Nutrition Grid */}
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
@@ -962,7 +783,7 @@ export default function TropicalSmoothiesPage() {
 
                       {/* Make Smoothie Button */}
                       <div className="mt-3">
-                        <Button 
+                        <Button
                           className="w-full bg-purple-600 hover:bg-purple-700"
                           onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                         >
@@ -970,14 +791,14 @@ export default function TropicalSmoothiesPage() {
                           Make Smoothie (+25 XP)
                         </Button>
                       </div>
-                    
+
                       {canonicalSlug ? (
-                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                             Canonical Recipe
                           </Link>
                           <span>•</span>
-                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                             Remix
                           </Link>
                         </div>
@@ -1054,21 +875,21 @@ export default function TropicalSmoothiesPage() {
             {featuredSmoothies.map(smoothie => (
               <Card key={smoothie.id} className="overflow-hidden hover:shadow-xl transition-shadow">
                 <div className="relative h-48">
-                  <img 
-                    src={smoothie.image} 
+                  <img
+                    src={smoothie.image}
                     alt={smoothie.name}
                     className="w-full h-full object-cover"
                   />
                   <Badge className="absolute top-4 left-4 bg-purple-500 text-white">Featured</Badge>
                 </div>
-                
+
                 <CardHeader>
                   <CardTitle>{smoothie.name}</CardTitle>
                   <p className="text-gray-600">{smoothie.description}</p>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-purple-600 hover:bg-purple-700"
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                   >
@@ -1095,9 +916,9 @@ export default function TropicalSmoothiesPage() {
                     <Badge className="bg-red-500 text-white">🔥 Trending</Badge>
                   </div>
                 </CardHeader>
-                
+
                 <CardContent>
-                  <Button 
+                  <Button
                     className="w-full bg-purple-600 hover:bg-purple-700"
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(smoothie); }}
                   >

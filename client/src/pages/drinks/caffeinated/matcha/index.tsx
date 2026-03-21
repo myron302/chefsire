@@ -31,6 +31,7 @@ import { useDrinks } from "@/contexts/DrinksContext";
 import UniversalSearch from "@/components/UniversalSearch";
 import RecipeKit from "@/components/recipes/RecipeKit";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { matchaDrinks } from '@/data/drinks/caffeinated/matcha';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -97,66 +98,6 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // ---------- Data ----------
-export const matchaDrinks = [
-  {
-    id: "classic-matcha-latte",
-    name: "Classic Matcha Latte",
-    description: "Creamy matcha with steamed milk and a smooth finish",
-    ingredients: ["1 tsp matcha powder", "2 tbsp hot water", "8 oz milk", "1 tsp honey (optional)"],
-    benefits: ["Calm focus", "Antioxidants", "Steady energy", "Creamy"],
-    nutrition: { calories: 170, caffeine: 70, carbs: 14, sugar: 12, added_sugar: 0 },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.8,
-    reviews: 1624,
-    drinkType: "Latte",
-    energyLevel: "Medium",
-    featured: true,
-    trending: true,
-    bestTime: "Morning",
-    image: "https://images.unsplash.com/photo-1582576163090-09d3b6f8f9b3?w=900&h=600&fit=crop",
-    estimatedCost: 3.75,
-  },
-  {
-    id: "iced-matcha-latte",
-    name: "Iced Matcha Latte",
-    description: "Refreshing chilled matcha with milk over ice",
-    ingredients: ["1 tsp matcha powder", "2 tbsp hot water", "8 oz milk", "1 cup ice"],
-    benefits: ["Refreshing", "Smooth", "Steady caffeine", "Antioxidants"],
-    nutrition: { calories: 160, caffeine: 70, carbs: 13, sugar: 11, added_sugar: 0 },
-    difficulty: "Easy",
-    prepTime: 5,
-    rating: 4.7,
-    reviews: 1242,
-    drinkType: "Iced",
-    energyLevel: "Medium",
-    featured: true,
-    trending: true,
-    bestTime: "Afternoon",
-    image: "https://images.unsplash.com/photo-1551024601-bec78aea704b?w=900&h=600&fit=crop",
-    estimatedCost: 3.75,
-  },
-  {
-    id: "ceremonial-matcha",
-    name: "Ceremonial Matcha",
-    description: "Traditional whisked matcha — pure and vibrant",
-    ingredients: ["1 tsp ceremonial matcha", "3 oz hot water"],
-    benefits: ["Clean taste", "Focus", "Antioxidants", "Low calories"],
-    nutrition: { calories: 10, caffeine: 70, carbs: 2, sugar: 0, added_sugar: 0 },
-    difficulty: "Medium",
-    prepTime: 4,
-    rating: 4.9,
-    reviews: 988,
-    drinkType: "Pure",
-    energyLevel: "Medium",
-    featured: true,
-    trending: false,
-    bestTime: "Morning",
-    image: "https://images.unsplash.com/photo-1528826194825-47f0f9f4be11?w=900&h=600&fit=crop",
-    estimatedCost: 2.25,
-  },
-];
-
 const drinkTypes = [
   { id: "pure", name: "Pure", icon: Leaf, description: "Traditional whisked matcha" },
   { id: "latte", name: "Latte", icon: Heart, description: "Creamy milk-based matcha" },
@@ -746,14 +687,14 @@ export default function MatchaDrinksPage() {
                           Make Drink (+25 XP)
                         </Button>
                       </div>
-                    
+
                       {canonicalSlug ? (
-                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                          <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                             Canonical Recipe
                           </Link>
                           <span>•</span>
-                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                          <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                             Remix
                           </Link>
                         </div>

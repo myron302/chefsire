@@ -17,6 +17,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { energyDrinks } from '@/data/drinks/caffeinated/energy';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -84,194 +85,6 @@ const parseIngredient = (ingredient: string): Measured => {
 
 // Energy coffee drinks data
 // Energy drinks data
-export const energyDrinks = [
-  {
-    id: 'classic-energy-coffee',
-    name: 'Classic Energy Coffee',
-    description: 'Strong coffee with energy blend',
-    ingredients: [
-      '2 cup strong brewed coffee',
-      '1 scoop energy powder',
-      '1 tbsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['High caffeine', 'B-vitamins', 'Energy boost', 'Focus'],
-    nutrition: { calories: 80, protein: 1, carbs: 18, fiber: 0, sugar: 16, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.6,
-    reviews: 1432,
-    drinkType: 'Classic Energy',
-    caffeineLevel: 'Very High',
-    featured: true,
-    trending: true,
-    bestTime: 'Pre-Workout',
-    estimatedCost: 2.50
-  },
-  {
-    id: 'preworkout-coffee',
-    name: 'Pre-Workout Coffee',
-    description: 'Coffee with pre-workout blend',
-    ingredients: [
-      '2 cup cold brew coffee',
-      '1 scoop pre-workout',
-      '½ cup coconut water',
-      '1 cup ice'
-    ],
-    benefits: ['Workout energy', 'Performance', 'Endurance', 'Focus'],
-    nutrition: { calories: 90, protein: 2, carbs: 20, fiber: 0, sugar: 10, added_sugar: 8 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 2341,
-    drinkType: 'Pre-Workout',
-    caffeineLevel: 'Very High',
-    featured: true,
-    trending: true,
-    bestTime: 'Pre-Workout',
-    estimatedCost: 3.00
-  },
-  {
-    id: 'guarana-coffee',
-    name: 'Guarana Coffee',
-    description: 'Coffee with natural guarana extract',
-    ingredients: [
-      '2 cup brewed coffee',
-      '1 tbsp guarana powder',
-      '1 tbsp agave syrup',
-      '1 cup ice'
-    ],
-    benefits: ['Natural energy', 'Sustained release', 'Mental clarity', 'Antioxidants'],
-    nutrition: { calories: 70, protein: 0, carbs: 17, fiber: 0, sugar: 14, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.5,
-    reviews: 876,
-    drinkType: 'Natural Energy',
-    caffeineLevel: 'Very High',
-    featured: true,
-    trending: false,
-    bestTime: 'Morning',
-    estimatedCost: 2.80
-  },
-  {
-    id: 'taurine-coffee',
-    name: 'Taurine Coffee Blend',
-    description: 'Coffee enhanced with taurine',
-    ingredients: [
-      '2 cup cold brew coffee',
-      '1000 mg taurine',
-      '1 tbsp simple syrup',
-      '1 cup ice'
-    ],
-    benefits: ['Enhanced focus', 'Energy', 'Performance', 'Alertness'],
-    nutrition: { calories: 60, protein: 0, carbs: 15, fiber: 0, sugar: 14, added_sugar: 14 },
-    difficulty: 'Easy',
-    prepTime: 2,
-    rating: 4.7,
-    reviews: 1234,
-    drinkType: 'Enhanced',
-    caffeineLevel: 'Very High',
-    featured: false,
-    trending: true,
-    bestTime: 'Pre-Workout',
-    estimatedCost: 2.60
-  },
-  {
-    id: 'green-tea-energy',
-    name: 'Green Tea Energy Blend',
-    description: 'Matcha and coffee energy combo',
-    ingredients: [
-      '1 tsp matcha powder',
-      '1 shot espresso',
-      '1 cup almond milk',
-      '1 tbsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['Double caffeine', 'L-theanine', 'Smooth energy', 'Antioxidants'],
-    nutrition: { calories: 100, protein: 2, carbs: 18, fiber: 1, sugar: 15, added_sugar: 12 },
-    difficulty: 'Medium',
-    prepTime: 5,
-    rating: 4.8,
-    reviews: 1543,
-    drinkType: 'Hybrid',
-    caffeineLevel: 'Very High',
-    featured: false,
-    trending: true,
-    bestTime: 'Morning',
-    estimatedCost: 3.20
-  },
-  {
-    id: 'bcaa-coffee',
-    name: 'BCAA Coffee',
-    description: 'Coffee with branched-chain amino acids',
-    ingredients: [
-      '2 cup cold brew coffee',
-      '1 scoop BCAA powder',
-      '1 tbsp coconut oil',
-      '1 cup ice'
-    ],
-    benefits: ['Muscle recovery', 'Energy', 'Protein synthesis', 'Performance'],
-    nutrition: { calories: 150, protein: 5, carbs: 8, fiber: 0, sugar: 2, added_sugar: 0 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.6,
-    reviews: 765,
-    drinkType: 'Recovery',
-    caffeineLevel: 'High',
-    featured: false,
-    trending: false,
-    bestTime: 'Post-Workout',
-    estimatedCost: 3.50
-  },
-  {
-    id: 'rocket-fuel-coffee',
-    name: 'Rocket Fuel Coffee',
-    description: 'Maximum caffeine coffee blend',
-    ingredients: [
-      '3 shot espresso',
-      '1 cup cold brew coffee',
-      '1 scoop energy powder',
-      '1 cup ice'
-    ],
-    benefits: ['Extreme energy', 'Maximum caffeine', 'Long-lasting', 'Intense focus'],
-    nutrition: { calories: 50, protein: 1, carbs: 12, fiber: 0, sugar: 10, added_sugar: 10 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.9,
-    reviews: 2156,
-    drinkType: 'Extreme',
-    caffeineLevel: 'Extreme',
-    featured: false,
-    trending: true,
-    bestTime: 'Early Morning',
-    estimatedCost: 3.80
-  },
-  {
-    id: 'yerba-mate-coffee',
-    name: 'Yerba Mate Coffee',
-    description: 'Coffee and yerba mate fusion',
-    ingredients: [
-      '1 cup brewed coffee',
-      '1 cup yerba mate tea',
-      '1 tbsp honey',
-      '1 cup ice'
-    ],
-    benefits: ['Dual caffeine', 'Natural energy', 'Smooth boost', 'Antioxidants'],
-    nutrition: { calories: 55, protein: 0, carbs: 14, fiber: 0, sugar: 12, added_sugar: 12 },
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.7,
-    reviews: 987,
-    drinkType: 'Hybrid',
-    caffeineLevel: 'Very High',
-    featured: false,
-    trending: false,
-    bestTime: 'Afternoon',
-    estimatedCost: 2.40
-  }
-];
-
 const energyTypes = [
   {
     id: 'classic-energy',
@@ -1040,12 +853,12 @@ export default function EnergyPage() {
                     </Button>
 
                     {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                           Canonical Recipe
                         </Link>
                         <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                           Remix
                         </Link>
                       </div>

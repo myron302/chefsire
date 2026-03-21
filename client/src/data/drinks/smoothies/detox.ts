@@ -1,1 +1,185 @@
-export { detoxSmoothies } from "../../../pages/drinks/smoothies/detox";
+export const detoxSmoothies = [
+  {
+    id: 'detox-green-smoothie',
+    name: 'Green Detox Smoothie',
+    description: 'Creamy green smoothie with avocado and spinach',
+    ingredients: [
+      '1 cup spinach',
+      '1/2 avocado',
+      '1 banana',
+      '1 cup almond milk',
+      '1 tbsp chia seeds',
+      '1 cup ice'
+    ],
+    benefits: ['Liver detox', 'Healthy fats', 'Fiber rich', 'Alkalizing'],
+    nutrition: { calories: 280, protein: 6, carbs: 32, fiber: 12, sugar: 14, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 412,
+    smoothieType: 'Green Detox',
+    featured: true,
+    trending: true,
+    bestTime: 'Morning',
+    image: 'https://images.unsplash.com/photo-1610970881699-44a5587cabec?w=400&h=300&fit=crop',
+    estimatedCost: 3.20
+  },
+  {
+    id: 'turmeric-golden-smoothie',
+    name: 'Golden Turmeric Smoothie',
+    description: 'Creamy turmeric and mango anti-inflammatory blend',
+    ingredients: [
+      '1 cup mango',
+      '1 banana',
+      '1 tsp turmeric',
+      '1/2 tsp cinnamon',
+      '1 cup coconut milk',
+      '1 cup ice'
+    ],
+    benefits: ['Anti-inflammatory', 'Immune boost', 'Antioxidants', 'Digestive aid'],
+    nutrition: { calories: 240, protein: 3, carbs: 42, fiber: 6, sugar: 28, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.8,
+    reviews: 356,
+    smoothieType: 'Spice Detox',
+    featured: true,
+    bestTime: 'Morning',
+    estimatedCost: 3.50
+  },
+  {
+    id: 'berry-cleanse-smoothie',
+    name: 'Berry Cleanse Smoothie',
+    description: 'Mixed berry smoothie with Greek yogurt',
+    ingredients: [
+      '1 cup mixed berries',
+      '1/2 cup Greek yogurt',
+      '1 banana',
+      '1 cup almond milk',
+      '1 tbsp flax seeds',
+      '1 cup ice'
+    ],
+    benefits: ['Antioxidants', 'Probiotics', 'Fiber rich', 'Gut health'],
+    nutrition: { calories: 290, protein: 15, carbs: 48, fiber: 10, sugar: 26, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 298,
+    smoothieType: 'Berry Detox',
+    trending: true,
+    bestTime: 'Morning/Afternoon',
+    estimatedCost: 3.80
+  },
+  {
+    id: 'green-tea-detox-smoothie',
+    name: 'Green Tea Detox Smoothie',
+    description: 'Matcha green tea smoothie with banana and spinach',
+    ingredients: [
+      '1 tsp matcha powder',
+      '1 banana',
+      '1 cup spinach',
+      '1 cup coconut milk',
+      '1 tbsp honey',
+      '1 cup ice'
+    ],
+    benefits: ['Antioxidants', 'Metabolism boost', 'Calm energy', 'Detoxifying'],
+    nutrition: { calories: 220, protein: 5, carbs: 38, fiber: 6, sugar: 22, added_sugar: 12 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 423,
+    smoothieType: 'Tea Detox',
+    bestTime: 'Morning',
+    estimatedCost: 3.40
+  },
+  {
+    id: 'pineapple-ginger-smoothie',
+    name: 'Pineapple Ginger Smoothie',
+    description: 'Tropical pineapple smoothie with fresh ginger',
+    ingredients: [
+      '1.5 cups pineapple',
+      '1 banana',
+      '1 inch ginger',
+      '1 cup coconut water',
+      '1/2 cup Greek yogurt',
+      '1 cup ice'
+    ],
+    benefits: ['Digestive enzymes', 'Anti-inflammatory', 'Immune support', 'Hydrating'],
+    nutrition: { calories: 260, protein: 8, carbs: 52, fiber: 5, sugar: 36, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.8,
+    reviews: 389,
+    smoothieType: 'Tropical Detox',
+    trending: true,
+    bestTime: 'Morning/Afternoon',
+    estimatedCost: 3.60
+  },
+  {
+    id: 'avocado-spinach-smoothie',
+    name: 'Avocado Spinach Smoothie',
+    description: 'Creamy avocado and spinach detox blend',
+    ingredients: [
+      '1/2 avocado',
+      '2 cups spinach',
+      '1 green apple',
+      '1 cup almond milk',
+      '1 tbsp lemon juice',
+      '1 cup ice'
+    ],
+    benefits: ['Healthy fats', 'Chlorophyll rich', 'Alkalizing', 'Satiety'],
+    nutrition: { calories: 320, protein: 6, carbs: 38, fiber: 14, sugar: 20, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.5,
+    reviews: 267,
+    smoothieType: 'Green Detox',
+    bestTime: 'Morning',
+    estimatedCost: 3.30
+  },
+  {
+    id: 'blueberry-spinach-smoothie',
+    name: 'Blueberry Spinach Smoothie',
+    description: 'Antioxidant-rich blueberry and spinach blend',
+    ingredients: [
+      '1 cup blueberries',
+      '2 cups spinach',
+      '1 banana',
+      '1 cup oat milk',
+      '1 tbsp chia seeds',
+      '1 cup ice'
+    ],
+    benefits: ['Antioxidants', 'Brain health', 'Fiber rich', 'Anti-inflammatory'],
+    nutrition: { calories: 280, protein: 7, carbs: 52, fiber: 12, sugar: 30, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.7,
+    reviews: 445,
+    smoothieType: 'Berry Detox',
+    featured: true,
+    bestTime: 'Morning',
+    estimatedCost: 3.40
+  },
+  {
+    id: 'kale-pineapple-smoothie',
+    name: 'Kale Pineapple Smoothie',
+    description: 'Nutrient-dense kale with sweet pineapple',
+    ingredients: [
+      '2 cups kale',
+      '1 cup pineapple',
+      '1 banana',
+      '1 cup coconut water',
+      '1 tbsp hemp seeds',
+      '1 cup ice'
+    ],
+    benefits: ['Vitamin K', 'Digestive enzymes', 'Mineral rich', 'Hydrating'],
+    nutrition: { calories: 240, protein: 8, carbs: 46, fiber: 8, sugar: 28, added_sugar: 0 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 312,
+    smoothieType: 'Green Detox',
+    bestTime: 'Morning',
+    estimatedCost: 3.20
+  }
+];

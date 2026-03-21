@@ -17,6 +17,7 @@ import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { otherDrinkHubs, teaTypes } from '../../data/detoxes';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { detoxTeas } from '@/data/drinks/detoxes/tea';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -53,222 +54,11 @@ const toMetric = (unit: string, amount: number) => {
 };
 
 // ---------- Detox Teas Data (with 4 new recipes) ----------
-export const detoxTeas = [
-  {
-    id: 'green-detox-tea',
-    name: 'Green Tea Metabolism Boost',
-    description: 'Antioxidant-rich green tea with metabolism-enhancing herbs',
-    nutrition: { calories: 2, protein: 0, carbs: 0, fat: 0, fiber: 0, caffeine: 35 },
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.7,
-    reviews: 423,
-    trending: true,
-    featured: true,
-    teaType: 'Green Tea',
-    detoxFocus: 'Metabolic',
-    category: 'Green',
-    bestTime: 'Morning or before workout',
-    duration: 'Daily',
-    estimatedCost: 1.20,
-    brewTemp: '175°F (80°C)',
-    steepTime: '3-4 minutes',
-    ingredients: ['1 tsp green tea leaves', '1 cup water', '1 slice lemon', '1 tsp honey'],
-    benefits: ['Metabolism boost', 'Antioxidant rich', 'Fat burning', 'Energy enhancement'],
-    specialInstructions: 'Do not oversteep to avoid bitterness'
-  },
-  {
-    id: 'dandelion-detox',
-    name: 'Dandelion Root Cleanse',
-    description: 'Liver-cleansing herbal tea with dandelion and burdock',
-    nutrition: { calories: 5, protein: 0, carbs: 1, fat: 0, fiber: 0, caffeine: 0 },
-    difficulty: 'Easy',
-    prepTime: 8,
-    rating: 4.5,
-    reviews: 287,
-    trending: false,
-    featured: false,
-    teaType: 'Herbal',
-    detoxFocus: 'Liver',
-    category: 'Root',
-    bestTime: 'Between meals',
-    duration: '2-3 weeks',
-    estimatedCost: 1.80,
-    brewTemp: '212°F (100°C)',
-    steepTime: '7-10 minutes',
-    ingredients: ['1 tbsp dandelion root', '1 tsp burdock root', '2 cups water', '1 cinnamon stick'],
-    benefits: ['Liver detoxification', 'Digestive aid', 'Anti-inflammatory', 'Skin health'],
-    specialInstructions: 'Best consumed warm for maximum liver benefits'
-  },
-  {
-    id: 'ginger-turmeric-blend',
-    name: 'Ginger Turmeric Anti-inflammatory',
-    description: 'Warming spice blend for inflammation reduction and digestion',
-    nutrition: { calories: 8, protein: 0, carbs: 2, fat: 0, fiber: 0, caffeine: 0 },
-    difficulty: 'Easy',
-    prepTime: 10,
-    rating: 4.8,
-    reviews: 512,
-    trending: true,
-    featured: true,
-    teaType: 'Herbal',
-    detoxFocus: 'Anti-inflammatory',
-    category: 'Spice',
-    bestTime: 'After meals',
-    duration: 'Ongoing',
-    estimatedCost: 2.50,
-    brewTemp: '212°F (100°C)',
-    steepTime: '8-12 minutes',
-    ingredients: ['1 inch fresh ginger', '1 tsp turmeric powder', '2 cups water', '1 tsp honey', 'pinch black pepper'],
-    benefits: ['Anti-inflammatory', 'Digestive support', 'Immune boosting', 'Pain relief'],
-    specialInstructions: 'Add black pepper to enhance turmeric absorption'
-  },
-  {
-    id: 'peppermint-digestive',
-    name: 'Peppermint Digestive Aid',
-    description: 'Soothing mint tea for digestive comfort and bloating relief',
-    nutrition: { calories: 2, protein: 0, carbs: 0, fat: 0, fiber: 0, caffeine: 0 },
-    difficulty: 'Easy',
-    prepTime: 5,
-    rating: 4.6,
-    reviews: 398,
-    trending: false,
-    featured: false,
-    teaType: 'Herbal',
-    detoxFocus: 'Digestive',
-    category: 'Mint',
-    bestTime: 'After meals or before bed',
-    duration: 'As needed',
-    estimatedCost: 1.50,
-    brewTemp: '212°F (100°C)',
-    steepTime: '5-7 minutes',
-    ingredients: ['1 tbsp fresh peppermint leaves', '1 cup water', '1 tsp fennel seeds'],
-    benefits: ['Digestive comfort', 'Bloating relief', 'Stress reduction', 'Fresh breath'],
-    specialInstructions: 'Steep covered to preserve volatile oils'
-  },
-  {
-    id: 'white-tea-antioxidant',
-    name: 'White Tea Antioxidant Boost',
-    description: 'Delicate white tea with high antioxidant content for cellular protection',
-    nutrition: { calories: 3, protein: 0, carbs: 1, fat: 0, fiber: 0, caffeine: 25 },
-    difficulty: 'Medium',
-    prepTime: 7,
-    rating: 4.4,
-    reviews: 234,
-    trending: false,
-    featured: false,
-    teaType: 'White Tea',
-    detoxFocus: 'Antioxidant',
-    category: 'White',
-    bestTime: 'Morning or afternoon',
-    duration: 'Daily',
-    estimatedCost: 3.20,
-    brewTemp: '185°F (85°C)',
-    steepTime: '4-6 minutes',
-    ingredients: ['1 tsp white tea leaves', '1 cup water', '1 rose bud', '1 tsp raw honey'],
-    benefits: ['Antioxidant protection', 'Skin health', 'Anti-aging', 'Gentle energy'],
-    specialInstructions: 'Use lower temperature to preserve delicate flavors'
-  },
-  // NEW RECIPES START HERE
-  {
-    id: 'hibiscus-liver-cleanse',
-    name: 'Hibiscus Liver Cleanse',
-    description: 'Vibrant hibiscus tea with liver-supporting herbs and citrus',
-    nutrition: { calories: 6, protein: 0, carbs: 2, fat: 0, fiber: 0, caffeine: 0 },
-    difficulty: 'Easy',
-    prepTime: 8,
-    rating: 4.7,
-    reviews: 189,
-    trending: true,
-    featured: false,
-    teaType: 'Herbal',
-    detoxFocus: 'Liver',
-    category: 'Floral',
-    bestTime: 'Morning or between meals',
-    duration: '1-2 weeks',
-    estimatedCost: 2.80,
-    brewTemp: '212°F (100°C)',
-    steepTime: '6-8 minutes',
-    ingredients: ['2 tbsp dried hibiscus', '1 cup water', '1 slice orange', '1 tsp honey', 'sprig of mint'],
-    benefits: ['Liver detoxification', 'Blood pressure support', 'Rich in vitamin C', 'Diuretic properties'],
-    specialInstructions: 'Can be served hot or iced'
-  },
-  {
-    id: 'chamomile-sleep-tonic',
-    name: 'Chamomile Sleep Tonic',
-    description: 'Calming bedtime tea for restful sleep and nervous system support',
-    nutrition: { calories: 3, protein: 0, carbs: 1, fat: 0, fiber: 0, caffeine: 0 },
-    difficulty: 'Easy',
-    prepTime: 6,
-    rating: 4.9,
-    reviews: 345,
-    trending: true,
-    featured: true,
-    teaType: 'Herbal',
-    detoxFocus: 'Relaxation',
-    category: 'Floral',
-    bestTime: '30 minutes before bed',
-    duration: 'Daily',
-    estimatedCost: 2.20,
-    brewTemp: '212°F (100°C)',
-    steepTime: '8-10 minutes',
-    ingredients: ['2 tbsp chamomile flowers', '1 cup water', '1 tsp lavender buds', '1 tsp raw honey'],
-    benefits: ['Sleep support', 'Stress reduction', 'Digestive calm', 'Anti-anxiety'],
-    specialInstructions: 'Steep longer for stronger sedative effects'
-  },
-  {
-    id: 'matcha-energy-elixir',
-    name: 'Matcha Energy Elixir',
-    description: 'Premium matcha green tea for sustained energy and mental clarity',
-    nutrition: { calories: 4, protein: 1, carbs: 1, fat: 0, fiber: 0, caffeine: 70 },
-    difficulty: 'Medium',
-    prepTime: 4,
-    rating: 4.8,
-    reviews: 278,
-    trending: false,
-    featured: false,
-    teaType: 'Green Tea',
-    detoxFocus: 'Energy',
-    category: 'Green',
-    bestTime: 'Morning or pre-workout',
-    duration: 'Daily',
-    estimatedCost: 4.50,
-    brewTemp: '175°F (80°C)',
-    steepTime: 'Whisk until frothy',
-    ingredients: ['1 tsp ceremonial matcha', '1/2 cup hot water', '1/2 cup almond milk', '1 tsp honey'],
-    benefits: ['Sustained energy', 'Mental clarity', 'Metabolism boost', 'Antioxidant rich'],
-    specialInstructions: 'Whisk vigorously to prevent clumping and create froth'
-  },
-  {
-    id: 'rooibos-immune-defense',
-    name: 'Rooibos Immune Defense',
-    description: 'Caffeine-free rooibos with immune-boosting herbs and spices',
-    nutrition: { calories: 5, protein: 0, carbs: 1, fat: 0, fiber: 0, caffeine: 0 },
-    difficulty: 'Easy',
-    prepTime: 7,
-    rating: 4.6,
-    reviews: 167,
-    trending: false,
-    featured: false,
-    teaType: 'Herbal',
-    detoxFocus: 'Immune',
-    category: 'Red',
-    bestTime: 'Any time of day',
-    duration: 'Seasonal or daily',
-    estimatedCost: 3.00,
-    brewTemp: '212°F (100°C)',
-    steepTime: '5-7 minutes',
-    ingredients: ['1 tbsp rooibos tea', '1 cup water', '1 slice lemon', '1 inch ginger', '1 tsp honey'],
-    benefits: ['Immune support', 'Antioxidant rich', 'Caffeine-free energy', 'Anti-inflammatory'],
-    specialInstructions: 'Can withstand longer steeping without bitterness'
-  }
-];
-
 export default function DetoxTeasPage() {
-  const { 
-    addToFavorites, 
-    isFavorite, 
-    addToRecentlyViewed, 
+  const {
+    addToFavorites,
+    isFavorite,
+    addToRecentlyViewed,
     userProgress,
     addPoints,
     incrementDrinksMade
@@ -281,7 +71,7 @@ export default function DetoxTeasPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -382,10 +172,10 @@ export default function DetoxTeasPage() {
                            tea.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = !selectedTeaType || tea.teaType?.toLowerCase().includes(selectedTeaType.toLowerCase());
       const matchesFocus = !selectedFocus || tea.detoxFocus?.toLowerCase().includes(selectedFocus.toLowerCase());
-      const matchesCaffeine = caffeineLevel[0] === 'Any' || 
+      const matchesCaffeine = caffeineLevel[0] === 'Any' ||
         (caffeineLevel[0] === 'Caffeinated' && (tea.nutrition.caffeine || 0) > 0) ||
         (caffeineLevel[0] === 'Caffeine-Free' && (tea.nutrition.caffeine || 0) === 0);
-      
+
       return matchesSearch && matchesType && matchesFocus && matchesCaffeine;
     });
 
@@ -461,10 +251,10 @@ export default function DetoxTeasPage() {
                 <Badge className="bg-amber-100 text-amber-800">Cleansing</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -487,7 +277,7 @@ export default function DetoxTeasPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
@@ -606,9 +396,9 @@ export default function DetoxTeasPage() {
                       className="pl-10 h-12 text-base"
                     />
                   </div>
-                  
+
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={selectedTeaType}
                       onChange={(e) => setSelectedTeaType(e.target.value)}
@@ -619,8 +409,8 @@ export default function DetoxTeasPage() {
                       <option value="White Tea">White Tea</option>
                       <option value="Oolong">Oolong</option>
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={selectedFocus}
                       onChange={(e) => setSelectedFocus(e.target.value)}
@@ -634,8 +424,8 @@ export default function DetoxTeasPage() {
                       <option value="Energy">Energy</option>
                       <option value="Immune">Immune</option>
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={caffeineLevel[0]}
                       onChange={(e) => setCaffeineLevel([e.target.value])}
@@ -644,8 +434,8 @@ export default function DetoxTeasPage() {
                       <option value="Caffeinated">Caffeinated</option>
                       <option value="Caffeine-Free">Caffeine-Free</option>
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
@@ -694,7 +484,7 @@ export default function DetoxTeasPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(tea.id) ? 'fill-red-500 text-red-500' : ''}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2 mb-2">
                         <Badge className="bg-amber-100 text-amber-800">{tea.teaType}</Badge>
                         <Badge variant="outline">{tea.detoxFocus}</Badge>
@@ -702,7 +492,7 @@ export default function DetoxTeasPage() {
                         {tea.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
@@ -962,14 +752,14 @@ export default function DetoxTeasPage() {
                             View Recipe
                           </Button>
                         </div>
-                      
+
                   {canonicalSlug ? (
-                    <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                      <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                    <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                      <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                         Canonical Recipe
                       </Link>
                       <span>•</span>
-                      <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                      <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                         Remix
                       </Link>
                     </div>

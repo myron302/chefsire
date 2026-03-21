@@ -1,1 +1,186 @@
-export { teaDrinks } from "../../../pages/drinks/caffeinated/tea";
+export const teaDrinks = [
+  {
+    id: 'classic-green-tea',
+    name: 'Classic Green Tea',
+    description: 'Pure and refreshing green tea',
+    ingredients: [
+      '1 green tea bag',
+      '2 cup hot water',
+      '1 tsp honey',
+      '1 lemon wedge'
+    ],
+    benefits: ['Antioxidants', 'Metabolism boost', 'Mental clarity', 'Natural energy'],
+    nutrition: { calories: 25, protein: 0, carbs: 6, fiber: 0, sugar: 6, added_sugar: 6 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.8,
+    reviews: 1156,
+    drinkType: 'Green Tea',
+    caffeineLevel: 'Medium',
+    featured: true,
+    trending: true,
+    bestTime: 'Morning',
+    estimatedCost: 0.50
+  },
+  {
+    id: 'earl-grey-tea',
+    name: 'Earl Grey Tea',
+    description: 'Bergamot-infused black tea',
+    ingredients: [
+      '1 Earl Grey tea bag',
+      '2 cup hot water',
+      '1 tbsp milk',
+      '1 tsp sugar'
+    ],
+    benefits: ['Energy boost', 'Focus', 'Classic flavor', 'Stress relief'],
+    nutrition: { calories: 30, protein: 1, carbs: 7, fiber: 0, sugar: 7, added_sugar: 4 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 892,
+    drinkType: 'Black Tea',
+    caffeineLevel: 'High',
+    featured: false,
+    trending: true,
+    bestTime: 'Morning',
+    estimatedCost: 0.60
+  },
+  {
+    id: 'chamomile-tea',
+    name: 'Chamomile Tea',
+    description: 'Calming herbal tea for relaxation',
+    ingredients: [
+      '1 chamomile tea bag',
+      '2 cup hot water',
+      '1 tsp honey',
+      '½ lemon'
+    ],
+    benefits: ['Relaxation', 'Sleep aid', 'Stress relief', 'Caffeine-free'],
+    nutrition: { calories: 20, protein: 0, carbs: 5, fiber: 0, sugar: 5, added_sugar: 5 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.6,
+    reviews: 734,
+    drinkType: 'Herbal',
+    caffeineLevel: 'None',
+    featured: true,
+    trending: false,
+    bestTime: 'Evening',
+    estimatedCost: 0.70
+  },
+  {
+    id: 'jasmine-tea',
+    name: 'Jasmine Tea',
+    description: 'Fragrant floral green tea',
+    ingredients: [
+      '1 jasmine tea bag',
+      '2 cup hot water',
+      '½ tsp honey',
+      '1 mint sprig'
+    ],
+    benefits: ['Aromatic', 'Antioxidants', 'Mood lifting', 'Gentle energy'],
+    nutrition: { calories: 15, protein: 0, carbs: 4, fiber: 0, sugar: 3, added_sugar: 3 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.5,
+    reviews: 567,
+    drinkType: 'Green Tea',
+    caffeineLevel: 'Medium',
+    featured: false,
+    trending: false,
+    bestTime: 'Afternoon',
+    estimatedCost: 0.80
+  },
+  {
+    id: 'chai-tea-latte',
+    name: 'Chai Tea Latte',
+    description: 'Spiced tea with steamed milk',
+    ingredients: [
+      '1 chai tea bag',
+      '1 cup hot water',
+      '1 cup steamed milk',
+      '2 tbsp honey',
+      '¼ tsp cinnamon'
+    ],
+    benefits: ['Spiced flavor', 'Warming', 'Energy boost', 'Comforting'],
+    nutrition: { calories: 180, protein: 8, carbs: 32, fiber: 0, sugar: 30, added_sugar: 24 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 1423,
+    drinkType: 'Chai',
+    caffeineLevel: 'Medium',
+    featured: true,
+    trending: true,
+    bestTime: 'Afternoon',
+    estimatedCost: 1.50
+  },
+  {
+    id: 'peppermint-tea',
+    name: 'Peppermint Tea',
+    description: 'Refreshing minty herbal tea',
+    ingredients: [
+      '1 peppermint tea bag',
+      '2 cup hot water',
+      '1 tsp honey',
+      '1 mint sprig'
+    ],
+    benefits: ['Digestive aid', 'Refreshing', 'Caffeine-free', 'Soothing'],
+    nutrition: { calories: 20, protein: 0, carbs: 5, fiber: 0, sugar: 5, added_sugar: 5 },
+    difficulty: 'Easy',
+    prepTime: 3,
+    rating: 4.4,
+    reviews: 498,
+    drinkType: 'Herbal',
+    caffeineLevel: 'None',
+    featured: false,
+    trending: false,
+    bestTime: 'Evening',
+    estimatedCost: 0.60
+  },
+  {
+    id: 'oolong-tea',
+    name: 'Oolong Tea',
+    description: 'Traditional semi-oxidized tea',
+    ingredients: [
+      '1 oolong tea bag',
+      '2 cup hot water',
+      '½ tsp honey'
+    ],
+    benefits: ['Metabolism', 'Weight management', 'Focus', 'Smooth flavor'],
+    nutrition: { calories: 15, protein: 0, carbs: 4, fiber: 0, sugar: 3, added_sugar: 3 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.6,
+    reviews: 612,
+    drinkType: 'Oolong',
+    caffeineLevel: 'Medium',
+    featured: false,
+    trending: true,
+    bestTime: 'Afternoon',
+    estimatedCost: 0.90
+  },
+  {
+    id: 'english-breakfast-tea',
+    name: 'English Breakfast Tea',
+    description: 'Bold black tea blend',
+    ingredients: [
+      '1 English Breakfast tea bag',
+      '2 cup hot water',
+      '2 tbsp milk',
+      '1 tsp sugar'
+    ],
+    benefits: ['Strong flavor', 'Morning energy', 'Focus', 'Classic blend'],
+    nutrition: { calories: 35, protein: 1, carbs: 8, fiber: 0, sugar: 8, added_sugar: 4 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 987,
+    drinkType: 'Black Tea',
+    caffeineLevel: 'High',
+    featured: false,
+    trending: false,
+    bestTime: 'Morning',
+    estimatedCost: 0.60
+  }
+];

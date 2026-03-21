@@ -15,7 +15,8 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
-import { otherDrinkHubs, infusedWaters, waterTypes } from '../../data/detoxes';
+import { otherDrinkHubs, waterTypes } from '../../data/detoxes';
+import { infusedWaters } from '@/data/drinks/detoxes/water';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
 // ---------- Helpers ----------
@@ -53,10 +54,10 @@ const toMetric = (unit: string, amount: number) => {
 };
 
 export default function DetoxWatersPage() {
-  const { 
-    addToFavorites, 
-    isFavorite, 
-    addToRecentlyViewed, 
+  const {
+    addToFavorites,
+    isFavorite,
+    addToRecentlyViewed,
     userProgress,
     addPoints,
     incrementDrinksMade
@@ -68,7 +69,7 @@ export default function DetoxWatersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
-  
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -169,7 +170,7 @@ export default function DetoxWatersPage() {
                            water.description.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType = !selectedWaterType || water.waterType?.toLowerCase().includes(selectedWaterType.toLowerCase());
       const matchesCategory = !selectedCategory || water.category?.toLowerCase().includes(selectedCategory.toLowerCase());
-      
+
       return matchesSearch && matchesType && matchesCategory;
     });
 
@@ -245,10 +246,10 @@ export default function DetoxWatersPage() {
                 <Badge className="bg-cyan-100 text-cyan-800">Hydrating</Badge>
               </div>
             </div>
-            
+
             <div className="flex items-center gap-4">
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 size="sm"
                 onClick={() => setShowUniversalSearch(true)}
               >
@@ -271,7 +272,7 @@ export default function DetoxWatersPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        
+
         {/* CROSS-HUB NAVIGATION */}
         <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 border-indigo-200">
           <CardContent className="p-4">
@@ -390,9 +391,9 @@ export default function DetoxWatersPage() {
                       className="pl-10 h-12 text-base"
                     />
                   </div>
-                  
+
                   <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
-                    <select 
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={selectedWaterType}
                       onChange={(e) => setSelectedWaterType(e.target.value)}
@@ -404,8 +405,8 @@ export default function DetoxWatersPage() {
                       <option value="Energizing">Energizing</option>
                       <option value="Calming">Calming</option>
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={selectedCategory}
                       onChange={(e) => setSelectedCategory(e.target.value)}
@@ -417,8 +418,8 @@ export default function DetoxWatersPage() {
                       <option value="Herbal">Herbal Infusions</option>
                       <option value="Tropical">Tropical Infusions</option>
                     </select>
-                    
-                    <select 
+
+                    <select
                       className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
                       value={sortBy}
                       onChange={(e) => setSortBy(e.target.value)}
@@ -467,14 +468,14 @@ export default function DetoxWatersPage() {
                           <Heart className={`h-4 w-4 ${isFavorite(water.id) ? 'fill-red-500 text-red-500' : ''}`} />
                         </Button>
                       </div>
-                      
+
                       <div className="flex items-center gap-2 mb-2">
                         <Badge className="bg-cyan-100 text-cyan-800">{water.waterType}</Badge>
                         <Badge variant="outline">{water.flavorProfile}</Badge>
                         {water.trending && <Badge className="bg-red-100 text-red-800">Trending</Badge>}
                       </div>
                     </CardHeader>
-                    
+
                     <CardContent>
                       <div className="grid grid-cols-3 gap-2 mb-4 text-center text-sm">
                         <div>
@@ -734,14 +735,14 @@ export default function DetoxWatersPage() {
                             View Recipe
                           </Button>
                         </div>
-                      
+
                   {canonicalSlug ? (
-                    <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                      <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                    <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                      <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                         Canonical Recipe
                       </Link>
                       <span>•</span>
-                      <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                      <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                         Remix
                       </Link>
                     </div>

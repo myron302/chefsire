@@ -1,1 +1,181 @@
-export { latteDrinks } from "../../../pages/drinks/caffeinated/lattes";
+export const latteDrinks = [
+  {
+    id: 'classic-latte',
+    name: 'Classic Latte',
+    description: 'Espresso with steamed milk',
+    ingredients: [
+      '2 shot espresso',
+      '1 cup steamed milk',
+      '1 tbsp sugar'
+    ],
+    benefits: ['Creamy', 'Caffeine boost', 'Comforting', 'Classic'],
+    nutrition: { calories: 120, protein: 8, carbs: 14, fiber: 0, sugar: 14, added_sugar: 12 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.8,
+    reviews: 2145,
+    drinkType: 'Classic',
+    caffeineLevel: 'Medium',
+    featured: true,
+    trending: true,
+    bestTime: 'Morning',
+    estimatedCost: 2.50
+  },
+  {
+    id: 'vanilla-latte',
+    name: 'Vanilla Latte',
+    description: 'Classic latte with vanilla sweetness',
+    ingredients: [
+      '2 shot espresso',
+      '1 cup steamed milk',
+      '2 tbsp vanilla syrup'
+    ],
+    benefits: ['Sweet flavor', 'Energy', 'Smooth', 'Popular'],
+    nutrition: { calories: 160, protein: 8, carbs: 24, fiber: 0, sugar: 22, added_sugar: 18 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.9,
+    reviews: 3210,
+    drinkType: 'Flavored',
+    caffeineLevel: 'Medium',
+    featured: true,
+    trending: true,
+    bestTime: 'Morning',
+    estimatedCost: 2.80
+  },
+  {
+    id: 'caramel-latte',
+    name: 'Caramel Latte',
+    description: 'Rich caramel latte perfection',
+    ingredients: [
+      '2 shot espresso',
+      '1 cup steamed milk',
+      '2 tbsp caramel syrup',
+      '1 tbsp caramel drizzle'
+    ],
+    benefits: ['Sweet indulgence', 'Energy', 'Dessert-like', 'Satisfying'],
+    nutrition: { calories: 200, protein: 8, carbs: 32, fiber: 0, sugar: 30, added_sugar: 26 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.8,
+    reviews: 2876,
+    drinkType: 'Flavored',
+    caffeineLevel: 'Medium',
+    featured: true,
+    trending: false,
+    bestTime: 'Afternoon',
+    estimatedCost: 3.00
+  },
+  {
+    id: 'hazelnut-latte',
+    name: 'Hazelnut Latte',
+    description: 'Nutty hazelnut latte',
+    ingredients: [
+      '2 shot espresso',
+      '1 cup steamed milk',
+      '2 tbsp hazelnut syrup'
+    ],
+    benefits: ['Nutty flavor', 'Creamy', 'Caffeine', 'Smooth'],
+    nutrition: { calories: 170, protein: 8, carbs: 26, fiber: 0, sugar: 24, added_sugar: 20 },
+    difficulty: 'Easy',
+    prepTime: 4,
+    rating: 4.7,
+    reviews: 1654,
+    drinkType: 'Flavored',
+    caffeineLevel: 'Medium',
+    featured: false,
+    trending: true,
+    bestTime: 'Morning',
+    estimatedCost: 2.90
+  },
+  {
+    id: 'mocha-latte',
+    name: 'Caffe Mocha',
+    description: 'Chocolate espresso latte blend',
+    ingredients: [
+      '2 shot espresso',
+      '1 cup steamed milk',
+      '2 tbsp chocolate syrup',
+      '1 tbsp cocoa powder'
+    ],
+    benefits: ['Chocolate fix', 'Energy', 'Indulgent', 'Rich'],
+    nutrition: { calories: 210, protein: 9, carbs: 32, fiber: 2, sugar: 28, added_sugar: 24 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.9,
+    reviews: 2543,
+    drinkType: 'Mocha',
+    caffeineLevel: 'Medium',
+    featured: false,
+    trending: true,
+    bestTime: 'Anytime',
+    estimatedCost: 3.20
+  },
+  {
+    id: 'cappuccino',
+    name: 'Cappuccino',
+    description: 'Equal parts espresso, steamed milk, foam',
+    ingredients: [
+      '2 shot espresso',
+      '⅓ cup steamed milk',
+      '⅓ cup milk foam'
+    ],
+    benefits: ['Frothy', 'Strong coffee', 'Classic', 'Light'],
+    nutrition: { calories: 80, protein: 5, carbs: 8, fiber: 0, sugar: 8, added_sugar: 0 },
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.7,
+    reviews: 1987,
+    drinkType: 'Classic',
+    caffeineLevel: 'Medium',
+    featured: false,
+    trending: false,
+    bestTime: 'Morning',
+    estimatedCost: 2.50
+  },
+  {
+    id: 'pumpkin-spice-latte',
+    name: 'Pumpkin Spice Latte',
+    description: 'Seasonal favorite with pumpkin and spices',
+    ingredients: [
+      '2 shot espresso',
+      '1 cup steamed milk',
+      '2 tbsp pumpkin syrup',
+      '¼ tsp pumpkin spice'
+    ],
+    benefits: ['Seasonal', 'Spiced flavor', 'Comforting', 'Fall favorite'],
+    nutrition: { calories: 190, protein: 8, carbs: 30, fiber: 0, sugar: 28, added_sugar: 24 },
+    difficulty: 'Easy',
+    prepTime: 5,
+    rating: 4.8,
+    reviews: 3456,
+    drinkType: 'Seasonal',
+    caffeineLevel: 'Medium',
+    featured: false,
+    trending: true,
+    bestTime: 'Afternoon',
+    estimatedCost: 3.50
+  },
+  {
+    id: 'flat-white',
+    name: 'Flat White',
+    description: 'Velvety microfoam latte',
+    ingredients: [
+      '2 shot ristretto',
+      '⅔ cup steamed milk',
+      'microfoam'
+    ],
+    benefits: ['Velvety', 'Strong coffee', 'Smooth', 'Australian classic'],
+    nutrition: { calories: 110, protein: 7, carbs: 10, fiber: 0, sugar: 10, added_sugar: 0 },
+    difficulty: 'Medium',
+    prepTime: 5,
+    rating: 4.8,
+    reviews: 1432,
+    drinkType: 'Classic',
+    caffeineLevel: 'Medium',
+    featured: false,
+    trending: false,
+    bestTime: 'Morning',
+    estimatedCost: 2.80
+  }
+];

@@ -17,6 +17,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { icedCoffeeDrinks } from '@/data/drinks/caffeinated/iced';
 
 // ---------- Helpers ----------
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
@@ -83,196 +84,6 @@ const parseIngredient = (ingredient: string): Measured => {
 };
 
 // Iced coffee drinks data
-export const icedCoffeeDrinks = [
-  {
-    id: 'classic-iced-coffee',
-    name: 'Classic Iced Coffee',
-    description: 'Simple and refreshing iced coffee perfection',
-    ingredients: [
-      '2 cup cold brew coffee',
-      '½ cup milk',
-      '2 tbsp simple syrup',
-      '2 cup ice'
-    ],
-    benefits: ['Caffeine boost', 'Refreshing', 'Simple prep', 'Customizable'],
-    nutrition: { calories: 80, protein: 2, carbs: 16, fiber: 0, sugar: 14, added_sugar: 14 },
-    difficulty: 'Easy',
-    prepTime: 2,
-    rating: 4.8,
-    reviews: 892,
-    drinkType: 'Classic Iced',
-    caffeineLevel: 'High',
-    featured: true,
-    trending: true,
-    bestTime: 'Anytime',
-    estimatedCost: 1.80
-  },
-  {
-    id: 'vanilla-iced-latte',
-    name: 'Vanilla Iced Latte',
-    description: 'Smooth espresso with vanilla and cold milk',
-    ingredients: [
-      '2 shot espresso',
-      '1 cup milk',
-      '2 tbsp vanilla syrup',
-      '1½ cup ice'
-    ],
-    benefits: ['Creamy', 'Sweet flavor', 'Caffeine kick', 'Coffeehouse classic'],
-    nutrition: { calories: 140, protein: 6, carbs: 22, fiber: 0, sugar: 20, added_sugar: 18 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 654,
-    drinkType: 'Iced Latte',
-    caffeineLevel: 'Medium',
-    featured: false,
-    trending: true,
-    bestTime: 'Morning',
-    estimatedCost: 2.40
-  },
-  {
-    id: 'caramel-iced-coffee',
-    name: 'Caramel Iced Coffee',
-    description: 'Rich caramel sweetness over cold coffee',
-    ingredients: [
-      '2 cup cold brew coffee',
-      '½ cup milk',
-      '3 tbsp caramel sauce',
-      '2 cup ice'
-    ],
-    benefits: ['Sweet indulgence', 'Energy boost', 'Dessert-like', 'Satisfying'],
-    nutrition: { calories: 180, protein: 3, carbs: 32, fiber: 0, sugar: 28, added_sugar: 26 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.9,
-    reviews: 1203,
-    drinkType: 'Flavored Iced',
-    caffeineLevel: 'High',
-    featured: true,
-    trending: false,
-    bestTime: 'Afternoon',
-    estimatedCost: 2.60
-  },
-  {
-    id: 'mocha-iced-coffee',
-    name: 'Mocha Iced Coffee',
-    description: 'Chocolate and coffee blend over ice',
-    ingredients: [
-      '2 shot espresso',
-      '1 cup milk',
-      '2 tbsp chocolate syrup',
-      '1 tbsp cocoa powder',
-      '1½ cup ice'
-    ],
-    benefits: ['Chocolate fix', 'Caffeine boost', 'Antioxidants', 'Mood lifting'],
-    nutrition: { calories: 160, protein: 7, carbs: 26, fiber: 2, sugar: 22, added_sugar: 18 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.6,
-    reviews: 487,
-    drinkType: 'Mocha',
-    caffeineLevel: 'Medium',
-    featured: false,
-    trending: false,
-    bestTime: 'Anytime',
-    estimatedCost: 2.80
-  },
-  {
-    id: 'coconut-iced-coffee',
-    name: 'Coconut Iced Coffee',
-    description: 'Tropical coconut meets bold coffee',
-    ingredients: [
-      '2 cup cold brew coffee',
-      '½ cup coconut milk',
-      '2 tbsp coconut syrup',
-      '2 cup ice'
-    ],
-    benefits: ['Tropical flavor', 'Dairy-free', 'Energy boost', 'Creamy texture'],
-    nutrition: { calories: 120, protein: 1, carbs: 18, fiber: 0, sugar: 16, added_sugar: 14 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.5,
-    reviews: 342,
-    drinkType: 'Flavored Iced',
-    caffeineLevel: 'High',
-    featured: false,
-    trending: true,
-    bestTime: 'Morning',
-    estimatedCost: 2.50
-  },
-  {
-    id: 'hazelnut-iced-latte',
-    name: 'Hazelnut Iced Latte',
-    description: 'Nutty hazelnut flavor in a smooth latte',
-    ingredients: [
-      '2 shot espresso',
-      '1 cup milk',
-      '2 tbsp hazelnut syrup',
-      '1½ cup ice'
-    ],
-    benefits: ['Nutty flavor', 'Creamy', 'Caffeine boost', 'Coffeehouse favorite'],
-    nutrition: { calories: 150, protein: 6, carbs: 24, fiber: 0, sugar: 22, added_sugar: 20 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.7,
-    reviews: 521,
-    drinkType: 'Iced Latte',
-    caffeineLevel: 'Medium',
-    featured: false,
-    trending: false,
-    bestTime: 'Morning',
-    estimatedCost: 2.70
-  },
-  {
-    id: 'salted-caramel-iced-coffee',
-    name: 'Salted Caramel Iced Coffee',
-    description: 'Sweet and salty caramel perfection',
-    ingredients: [
-      '2 cup cold brew coffee',
-      '½ cup milk',
-      '3 tbsp caramel sauce',
-      '¼ tsp sea salt',
-      '2 cup ice'
-    ],
-    benefits: ['Sweet & salty', 'Energy boost', 'Indulgent', 'Balanced flavor'],
-    nutrition: { calories: 190, protein: 3, carbs: 34, fiber: 0, sugar: 30, added_sugar: 28 },
-    difficulty: 'Easy',
-    prepTime: 3,
-    rating: 4.8,
-    reviews: 678,
-    drinkType: 'Flavored Iced',
-    caffeineLevel: 'High',
-    featured: true,
-    trending: true,
-    bestTime: 'Afternoon',
-    estimatedCost: 2.80
-  },
-  {
-    id: 'peppermint-mocha-iced',
-    name: 'Peppermint Mocha Iced',
-    description: 'Refreshing mint and chocolate coffee blend',
-    ingredients: [
-      '2 shot espresso',
-      '1 cup milk',
-      '2 tbsp chocolate syrup',
-      '1 tbsp peppermint syrup',
-      '1½ cup ice'
-    ],
-    benefits: ['Minty fresh', 'Chocolate blend', 'Refreshing', 'Seasonal favorite'],
-    nutrition: { calories: 170, protein: 7, carbs: 28, fiber: 1, sugar: 24, added_sugar: 22 },
-    difficulty: 'Easy',
-    prepTime: 4,
-    rating: 4.6,
-    reviews: 412,
-    drinkType: 'Mocha',
-    caffeineLevel: 'Medium',
-    featured: false,
-    trending: false,
-    bestTime: 'Afternoon',
-    estimatedCost: 3.00
-  }
-];
-
 const icedCoffeeTypes = [
   {
     id: 'classic-iced',
@@ -1041,12 +852,12 @@ export default function IcedCoffeePage() {
                     </Button>
 
                     {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
+                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
+                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
                           Canonical Recipe
                         </Link>
                         <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
+                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
                           Remix
                         </Link>
                       </div>
