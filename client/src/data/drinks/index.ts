@@ -40,6 +40,10 @@ import { greenSmoothies } from "./smoothies/green";
 import { proteinSmoothies } from "./smoothies/protein";
 import { tropicalSmoothies } from "./smoothies/tropical";
 import { workoutSmoothies } from "./smoothies/workout";
+import { energyBoosterDrinks } from "./workout-drinks/energy-boosters";
+import { hydrationDrinks } from "./workout-drinks/hydration";
+import { postWorkoutDrinks } from "./workout-drinks/post-workout";
+import { preWorkoutDrinks } from "./workout-drinks/pre-workout";
 import type { DrinkRecipe } from "./types";
 
 export type DrinkRouteRegistryEntry = {
@@ -81,6 +85,10 @@ export const drinkRouteRegistry: DrinkRouteRegistryEntry[] = [
   createDrinkRouteRegistryEntry({ route: "/drinks/smoothies/protein", title: "Protein Smoothies", recipes: proteinSmoothies, dataModulePath: "./smoothies/protein", dataExportName: "proteinSmoothies" }),
   createDrinkRouteRegistryEntry({ route: "/drinks/smoothies/tropical", title: "Tropical Smoothies", recipes: tropicalSmoothies, dataModulePath: "./smoothies/tropical", dataExportName: "tropicalSmoothies" }),
   createDrinkRouteRegistryEntry({ route: "/drinks/smoothies/workout", title: "Workout Smoothies", recipes: workoutSmoothies, dataModulePath: "./smoothies/workout", dataExportName: "workoutSmoothies" }),
+  createDrinkRouteRegistryEntry({ route: "/drinks/workout-drinks/pre-workout", title: "Pre-Workout Drinks", recipes: preWorkoutDrinks, dataModulePath: "./workout-drinks/pre-workout", dataExportName: "preWorkoutDrinks" }),
+  createDrinkRouteRegistryEntry({ route: "/drinks/workout-drinks/post-workout", title: "Post-Workout Drinks", recipes: postWorkoutDrinks, dataModulePath: "./workout-drinks/post-workout", dataExportName: "postWorkoutDrinks" }),
+  createDrinkRouteRegistryEntry({ route: "/drinks/workout-drinks/hydration", title: "Hydration Drinks", recipes: hydrationDrinks, dataModulePath: "./workout-drinks/hydration", dataExportName: "hydrationDrinks" }),
+  createDrinkRouteRegistryEntry({ route: "/drinks/workout-drinks/energy-boosters", title: "Energy Booster Drinks", recipes: energyBoosterDrinks, dataModulePath: "./workout-drinks/energy-boosters", dataExportName: "energyBoosterDrinks" }),
   createDrinkRouteRegistryEntry({ route: "/drinks/potent-potables/cocktails", title: "Classic Cocktails", recipes: classicCocktails, dataModulePath: "./potent-potables/cocktails", dataExportName: "classicCocktails" }),
   createDrinkRouteRegistryEntry({ route: "/drinks/potent-potables/cognac-brandy", title: "Cognac & Brandy", recipes: cognacCocktails, dataModulePath: "./potent-potables/cognac-brandy", dataExportName: "cognacCocktails" }),
   createDrinkRouteRegistryEntry({ route: "/drinks/potent-potables/daiquiri", title: "Daiquiri", recipes: daiquiris, dataModulePath: "./potent-potables/daiquiri", dataExportName: "daiquiris" }),

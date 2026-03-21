@@ -5,7 +5,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 export interface DrinkItem {
   id: string;
   name: string;
-  category: 'smoothies' | 'protein-shakes' | 'detoxes' | 'potent-potables';
+  category: 'smoothies' | 'protein-shakes' | 'detoxes' | 'potent-potables' | 'workout-drinks';
   description?: string;
   image?: string;
   ingredients?: string[];

@@ -9,7 +9,7 @@ import {
   Sparkles, Clock, Users, Trophy, Heart, Star, Calendar, 
   CheckCircle, Target, Flame, Droplets, Leaf, Apple,
   Timer, Award, TrendingUp, ChefHat, Zap, Gift, Plus,
-  Coffee, GlassWater, FlaskConical, Beaker, ArrowRight,
+  Coffee, GlassWater, FlaskConical, Beaker, ArrowRight, Dumbbell,
   PlayCircle, BookOpen, Share2, Eye, ThumbsUp, MessageCircle,
   X
 } from 'lucide-react';
@@ -49,6 +49,21 @@ const drinkCategories = [
     recipeCount: 523,
     features: ['Fitness Integration', 'Timing Optimization', 'Macro Tracking'],
     trending: false,
+    image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=300&h=200&fit=crop'
+  },
+  {
+    id: 'workout-drinks',
+    name: 'Workout Drinks',
+    description: 'Pre-workout fuel, post-workout recovery, hydration, and adaptogens',
+    icon: Dumbbell,
+    color: 'from-orange-500 to-red-500',
+    textColor: 'text-orange-600',
+    bgColor: 'bg-orange-50',
+    borderColor: 'border-orange-200',
+    route: '/drinks/workout-drinks',
+    recipeCount: 24,
+    features: ['Pre & Post Workout', 'Electrolytes', 'Adaptogens'],
+    trending: true,
     image: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=300&h=200&fit=crop'
   },
   {
