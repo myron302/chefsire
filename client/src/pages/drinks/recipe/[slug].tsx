@@ -136,6 +136,9 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   }, [canonicalRecipe, slug]);
 
   const trackedDrinkSlug = canonicalRecipe?.slug ?? userRecipe?.slug ?? "";
+  const displayName = canonicalRecipe?.name ?? userRecipe?.name ?? "Drink Recipe";
+  const sourceRoute = canonicalRecipe?.sourceRoute ?? `/drinks/${userRecipe?.category ?? "smoothies"}`;
+  const sourceTitle = canonicalRecipe?.sourceTitle ?? "Community Recipes";
 
   useEffect(() => {
     if (!trackedDrinkSlug) return;
@@ -222,10 +225,6 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   if (!canonicalRecipe && !userRecipe) {
     return <div className="container mx-auto px-4 py-10 max-w-3xl text-muted-foreground">Loading recipe...</div>;
   }
-
-  const displayName = canonicalRecipe?.name ?? userRecipe?.name ?? "Drink Recipe";
-  const sourceRoute = canonicalRecipe?.sourceRoute ?? `/drinks/${userRecipe?.category ?? "smoothies"}`;
-  const sourceTitle = canonicalRecipe?.sourceTitle ?? "Community Recipes";
 
   const recipe = canonicalRecipe?.recipe;
   const imageUrl = (typeof recipe?.image === "string" ? recipe.image : typeof recipe?.imageUrl === "string" ? recipe.imageUrl : "") || userRecipe?.image || "";
