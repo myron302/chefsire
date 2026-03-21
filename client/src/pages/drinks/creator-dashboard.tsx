@@ -17,6 +17,7 @@ import CreatorBundlesSection from "@/components/drinks/CreatorBundlesSection";
 import CampaignsDashboardSection from "@/components/drinks/CampaignsDashboardSection";
 import CampaignRetrospectivesSection from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignRecommendationsSection from "@/components/drinks/CampaignRecommendationsSection";
+import CampaignLifecycleSuggestionsSection from "@/components/drinks/CampaignLifecycleSuggestionsSection";
 import CampaignWeeklyDigestSection from "@/components/drinks/CampaignWeeklyDigestSection";
 import CampaignHealthSection from "@/components/drinks/CampaignHealthSection";
 import CampaignRecoveryPlansSection from "@/components/drinks/CampaignRecoveryPlansSection";
@@ -2346,6 +2347,7 @@ export default function CreatorDashboardPage() {
       <CampaignWeeklyDigestSection />
       <CampaignHealthSection />
       <CampaignRecoveryPlansSection />
+      <CampaignLifecycleSuggestionsSection />
       <CampaignRecommendationsSection />
 
       <CampaignAnalyticsSection />

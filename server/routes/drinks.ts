@@ -4127,6 +4127,55 @@ type CreatorCampaignRecommendation = {
   supportingSignals: string[];
 };
 
+type CreatorCampaignLifecycleAction =
+  | "keep_running"
+  | "add_phase_two_drop"
+  | "shift_to_membership"
+  | "launch_promo_push"
+  | "archive_campaign"
+  | "clone_for_next_season"
+  | "refresh_cta"
+  | "convert_to_template"
+  | "close_with_recap";
+
+type CreatorCampaignLifecyclePhase =
+  | "warming_up"
+  | "momentum"
+  | "conversion_push"
+  | "member_arc"
+  | "wrap_up"
+  | "archived"
+  | "evergreen_candidate";
+
+type CreatorCampaignLifecycleConfidence = "high" | "medium" | "low";
+
+type CreatorCampaignLifecycleSuggestion = {
+  campaignId: string;
+  campaignName: string;
+  campaignSlug: string;
+  campaignRoute: string;
+  currentState: CreatorCampaignState;
+  inferredPhase: CreatorCampaignLifecyclePhase;
+  suggestedLifecycleAction: CreatorCampaignLifecycleAction;
+  title: string;
+  message: string;
+  rationale: string;
+  confidence: CreatorCampaignLifecycleConfidence;
+  supportingSignals: string[];
+  suggestedRoute: string | null;
+};
+
+type CreatorCampaignLifecycleSummary = {
+  totalCampaigns: number;
+  activeCampaigns: number;
+  archivedCampaigns: number;
+  keepRunningCount: number;
+  phaseShiftCount: number;
+  archiveCount: number;
+  cloneOrTemplateCount: number;
+  membershipArcCount: number;
+};
+
 type CreatorCampaignHealthState = "thriving" | "healthy" | "watch" | "at_risk" | "completed";
 
 type CreatorCampaignHealthMomentum = "surging" | "up" | "flat" | "down" | "quiet";
@@ -6404,6 +6453,299 @@ export async function loadCreatorCampaignRecommendations(creatorUserId: string) 
       "Purchase and membership recommendations stay approximate wherever the underlying campaign analytics are approximate.",
     ],
     generatedAt: new Date().toISOString(),
+  };
+}
+
+function campaignLifecycleConfidenceLabel(score: number): CreatorCampaignLifecycleConfidence {
+  if (score >= 80) return "high";
+  if (score >= 55) return "medium";
+  return "low";
+}
+
+function campaignLifecyclePhaseLabel(input: {
+  state: CreatorCampaignState;
+  action: CreatorCampaignLifecycleAction;
+}) {
+  if (input.state === "past" && (input.action === "clone_for_next_season" || input.action === "convert_to_template")) {
+    return "evergreen_candidate" satisfies CreatorCampaignLifecyclePhase;
+  }
+  if (input.state === "past") return "archived" satisfies CreatorCampaignLifecyclePhase;
+  if (input.action === "shift_to_membership") return "member_arc" satisfies CreatorCampaignLifecyclePhase;
+  if (input.action === "launch_promo_push" || input.action === "refresh_cta") return "conversion_push" satisfies CreatorCampaignLifecyclePhase;
+  if (input.action === "archive_campaign" || input.action === "close_with_recap") return "wrap_up" satisfies CreatorCampaignLifecyclePhase;
+  if (input.state === "upcoming") return "warming_up" satisfies CreatorCampaignLifecyclePhase;
+  return "momentum" satisfies CreatorCampaignLifecyclePhase;
+}
+
+export async function loadCreatorCampaignLifecycleSuggestions(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [campaigns, health, benchmarks, retrospectives, templateRows] = await Promise.all([
+    db
+      .select()
+      .from(creatorCampaigns)
+      .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorCampaigns.updatedAt))
+      .limit(120),
+    loadCreatorCampaignHealth(creatorUserId),
+    loadCreatorCampaignBenchmarks(creatorUserId),
+    loadCreatorCampaignRetrospectives(creatorUserId),
+    db
+      .select({
+        sourceCampaignId: creatorCampaignTemplates.sourceCampaignId,
+      })
+      .from(creatorCampaignTemplates)
+      .where(eq(creatorCampaignTemplates.creatorUserId, creatorUserId)),
+  ]);
+
+  if (campaigns.length === 0 || health.items.length === 0) {
+    return {
+      summary: {
+        totalCampaigns: 0,
+        activeCampaigns: 0,
+        archivedCampaigns: 0,
+        keepRunningCount: 0,
+        phaseShiftCount: 0,
+        archiveCount: 0,
+        cloneOrTemplateCount: 0,
+        membershipArcCount: 0,
+      } satisfies CreatorCampaignLifecycleSummary,
+      items: [] as CreatorCampaignLifecycleSuggestion[],
+      attributionNotes: [
+        "Lifecycle suggestions are a lightweight phase-change layer built from campaign state, momentum, conversions, goals, milestones, and archive signals already tracked in the drinks dashboard.",
+        "This layer stays distinct from health, recommendations, recovery, and retrospectives: it only suggests what phase or lifecycle move appears most appropriate next.",
+        "Suggestions are rules-based and directional rather than predictive certainty.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const healthByCampaignId = new Map(health.items.map((item) => [item.campaignId, item]));
+  const benchmarkByCampaignId = new Map(benchmarks.items.map((item) => [item.campaignId, item]));
+  const retrospectiveByCampaignId = new Map(retrospectives.items.map((item) => [item.campaignId, item]));
+  const templateSourceIds = new Set(
+    templateRows
+      .map((row) => row.sourceCampaignId)
+      .filter((value): value is string => Boolean(value)),
+  );
+  const now = new Date();
+
+  const items: CreatorCampaignLifecycleSuggestion[] = [];
+
+  for (const campaign of campaigns) {
+    const healthItem = healthByCampaignId.get(campaign.id);
+    if (!healthItem) continue;
+
+    const benchmark = benchmarkByCampaignId.get(campaign.id) ?? null;
+    const retrospective = retrospectiveByCampaignId.get(campaign.id) ?? null;
+    const currentState = getCreatorCampaignState(campaign, now);
+    const route = `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`;
+    const daysSinceActivity = activityAgeInDays(
+      healthItem.recentActivityAt ? new Date(healthItem.recentActivityAt) : null,
+      now,
+    );
+    const approximateConversions = (benchmark?.purchasesFromLinkedCollections ?? 0) + (benchmark?.membershipsFromCampaign ?? 0);
+    const recentEngagement = healthItem.recentFollowers + healthItem.recentRsvps + healthItem.recentClicks;
+    const strongMomentum = ["surging", "up"].includes(healthItem.followerMomentum)
+      || ["surging", "up"].includes(healthItem.rsvpMomentum)
+      || ["surging", "up"].includes(healthItem.clickMomentum);
+    const weakConversion = healthItem.recentClicks >= 8 && healthItem.recentPurchases + healthItem.recentMemberships === 0;
+    const memberHeavy = (benchmark?.membershipsFromCampaign ?? 0) >= Math.max(2, benchmark?.purchasesFromLinkedCollections ?? 0)
+      || campaign.visibility === "members"
+      || healthItem.recentMemberships >= Math.max(1, healthItem.recentPurchases);
+    const archiveReady = currentState === "active"
+      && (healthItem.healthState === "watch" || healthItem.healthState === "at_risk")
+      && daysSinceActivity >= 14
+      && (healthItem.completedGoalCount > 0 || healthItem.milestoneCount > 0 || recentEngagement <= 2);
+    const strongArchivedCampaign = currentState === "past" && (
+      benchmark?.reusableTemplateCandidate
+      || retrospective?.reuseCandidate
+      || approximateConversions >= 3
+      || healthItem.completedGoalCount >= 2
+      || healthItem.milestoneCount >= 3
+      || (benchmark?.engagementScore ?? 0) >= 120
+    );
+    const needsRecap = currentState === "past" && !retrospective && healthItem.linkedPostsCount === 0;
+    const needsDropExtension = currentState !== "past"
+      && strongMomentum
+      && healthItem.linkedDropsCount <= 1
+      && (healthItem.recentRsvps >= 4 || (benchmark?.totalDropRsvps ?? 0) >= 10);
+    const needsCtaRefresh = currentState !== "past"
+      && healthItem.recentViews >= 10
+      && healthItem.recentClicks <= Math.max(1, Math.floor(healthItem.recentViews * 0.12))
+      && healthItem.recentPurchases + healthItem.recentMemberships <= 1;
+
+    let suggestedLifecycleAction: CreatorCampaignLifecycleAction;
+    let title: string;
+    let message: string;
+    let rationale: string;
+    let supportingSignals: string[];
+    let suggestedRoute: string | null;
+    let confidenceScore = 50;
+
+    if (currentState === "past" && strongArchivedCampaign && !templateSourceIds.has(campaign.id)) {
+      suggestedLifecycleAction = "convert_to_template";
+      title = "This archived campaign looks reusable as a template";
+      message = "The campaign already proved out a repeatable arc, so saving it as a reusable template is likely more valuable than leaving it as a one-off.";
+      rationale = "Archived performance, milestones, and completed goals suggest the arc can be reused without building a heavier automation system.";
+      supportingSignals = [
+        `${approximateConversions} approx. conversions`,
+        `${healthItem.completedGoalCount} completed goals`,
+        `${healthItem.milestoneCount} achieved milestones`,
+      ];
+      suggestedRoute = `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`;
+      confidenceScore = 87;
+    } else if (currentState === "past" && strongArchivedCampaign) {
+      suggestedLifecycleAction = "clone_for_next_season";
+      title = "This archived campaign is a good candidate to relaunch";
+      message = "The campaign finished with enough traction to justify a fresh seasonal run instead of starting from zero.";
+      rationale = "Strong archived engagement or conversion signals make cloning the simplest next lifecycle move.";
+      supportingSignals = [
+        `${benchmark?.engagementScore ?? healthItem.healthScore} engagement score`,
+        `${approximateConversions} approx. conversions`,
+        templateSourceIds.has(campaign.id) ? "Template already exists" : "Archive has reusable signal",
+      ];
+      suggestedRoute = "/drinks/creator-dashboard#campaigns";
+      confidenceScore = templateSourceIds.has(campaign.id) ? 84 : 72;
+    } else if (needsRecap) {
+      suggestedLifecycleAction = "close_with_recap";
+      title = "Close this campaign with a quick recap";
+      message = "The campaign appears mostly finished, but it still lacks a lightweight wrap-up for followers or members.";
+      rationale = "A short recap closes the loop without turning the campaign into another long-running system.";
+      supportingSignals = [
+        `${healthItem.linkedPostsCount} linked recap-style posts`,
+        `${healthItem.milestoneCount} achieved milestones`,
+        `${Math.round(daysSinceActivity)} days since activity`,
+      ];
+      suggestedRoute = route;
+      confidenceScore = 70;
+    } else if (archiveReady) {
+      suggestedLifecycleAction = "archive_campaign";
+      title = "This campaign likely belongs in archive mode";
+      message = "Recent activity has slowed enough that the campaign reads more like a finished arc than something that still needs weekly pushes.";
+      rationale = "When momentum cools after meaningful progress, archiving cleanly keeps the dashboard focused and makes room for the next launch.";
+      supportingSignals = [
+        `${Math.round(daysSinceActivity)} days since activity`,
+        `${healthItem.healthState.replaceAll("_", " ")} health state`,
+        `${healthItem.completedGoalCount} completed goals`,
+      ];
+      suggestedRoute = route;
+      confidenceScore = 78;
+    } else if (memberHeavy && currentState !== "past") {
+      suggestedLifecycleAction = "shift_to_membership";
+      title = "This campaign is reading more like an ongoing member arc";
+      message = "The strongest conversion signal here is membership-style behavior, so the next phase should probably lean into member value instead of another one-off push.";
+      rationale = "Membership-heavy campaigns work better as ongoing access/content arcs than single launch spikes.";
+      supportingSignals = [
+        `${benchmark?.membershipsFromCampaign ?? 0} approx. memberships`,
+        `${benchmark?.purchasesFromLinkedCollections ?? 0} approx. purchases`,
+        `Visibility: ${campaign.visibility}`,
+      ];
+      suggestedRoute = "/drinks/creator-dashboard#membership";
+      confidenceScore = campaign.visibility === "members" ? 88 : 76;
+    } else if (weakConversion && healthItem.linkedPromosCount === 0) {
+      suggestedLifecycleAction = "launch_promo_push";
+      title = "Interest is there, but conversion may need a promo push";
+      message = "People are clicking into this campaign, yet the linked conversion proxies are still light. A simple promo run could help close the gap.";
+      rationale = "This is a lifecycle nudge toward a conversion phase, not a rescue plan or a broad recommendation set.";
+      supportingSignals = [
+        `${healthItem.recentClicks} recent clicks`,
+        `${healthItem.recentPurchases + healthItem.recentMemberships} recent conversions`,
+        `${healthItem.linkedPromosCount} linked promos`,
+      ];
+      suggestedRoute = "/drinks/creator-dashboard#promotions";
+      confidenceScore = 74;
+    } else if (needsCtaRefresh) {
+      suggestedLifecycleAction = "refresh_cta";
+      title = "The campaign likely needs a fresh CTA before a bigger push";
+      message = "View activity is outpacing click-through, which suggests the campaign frame is visible but not compelling enough yet.";
+      rationale = "Refreshing the CTA is a lighter phase shift than launching a promo or building a new campaign.";
+      supportingSignals = [
+        `${healthItem.recentViews} recent views`,
+        `${healthItem.recentClicks} recent clicks`,
+        `${healthItem.clickMomentum} click momentum`,
+      ];
+      suggestedRoute = route;
+      confidenceScore = 68;
+    } else if (needsDropExtension) {
+      suggestedLifecycleAction = "add_phase_two_drop";
+      title = "This campaign has room for a second-phase drop";
+      message = "Momentum is healthy, and the campaign looks strong enough to support another drop or launch beat instead of tapering off now.";
+      rationale = "Adding a phase-two drop extends an already-working arc without overcomplicating the platform.";
+      supportingSignals = [
+        `${healthItem.linkedDropsCount} linked drops`,
+        `${healthItem.recentRsvps} recent RSVPs`,
+        `${healthItem.followerMomentum} follower momentum`,
+      ];
+      suggestedRoute = "/drinks/creator-dashboard#drops";
+      confidenceScore = 82;
+    } else {
+      suggestedLifecycleAction = "keep_running";
+      title = "Keep pushing this campaign for now";
+      message = "The campaign still has enough live momentum that the simplest next step is to keep running the current arc rather than forcing a phase change.";
+      rationale = "Lifecycle suggestions stay intentionally conservative when the existing campaign state still looks viable.";
+      supportingSignals = [
+        `${healthItem.healthState.replaceAll("_", " ")} health`,
+        `${recentEngagement} recent engagement actions`,
+        `${benchmark?.engagementScore ?? healthItem.healthScore} engagement score`,
+      ];
+      suggestedRoute = route;
+      confidenceScore = currentState === "active" && strongMomentum ? 77 : 58;
+    }
+
+    items.push({
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      campaignSlug: campaign.slug,
+      campaignRoute: route,
+      currentState,
+      inferredPhase: campaignLifecyclePhaseLabel({ state: currentState, action: suggestedLifecycleAction }),
+      suggestedLifecycleAction,
+      title,
+      message,
+      rationale,
+      confidence: campaignLifecycleConfidenceLabel(confidenceScore),
+      supportingSignals,
+      suggestedRoute,
+    });
+  }
+
+  const sorted = items.sort((a, b) => {
+    const order: CreatorCampaignLifecycleAction[] = [
+      "shift_to_membership",
+      "add_phase_two_drop",
+      "launch_promo_push",
+      "refresh_cta",
+      "archive_campaign",
+      "close_with_recap",
+      "clone_for_next_season",
+      "convert_to_template",
+      "keep_running",
+    ];
+    const confidenceWeight = (value: CreatorCampaignLifecycleConfidence) => value === "high" ? 3 : value === "medium" ? 2 : 1;
+    return order.indexOf(a.suggestedLifecycleAction) - order.indexOf(b.suggestedLifecycleAction)
+      || confidenceWeight(b.confidence) - confidenceWeight(a.confidence)
+      || a.campaignName.localeCompare(b.campaignName);
+  });
+
+  return {
+    summary: {
+      totalCampaigns: sorted.length,
+      activeCampaigns: sorted.filter((item) => item.currentState === "active").length,
+      archivedCampaigns: sorted.filter((item) => item.currentState === "past").length,
+      keepRunningCount: sorted.filter((item) => item.suggestedLifecycleAction === "keep_running").length,
+      phaseShiftCount: sorted.filter((item) => ["add_phase_two_drop", "launch_promo_push", "refresh_cta", "close_with_recap"].includes(item.suggestedLifecycleAction)).length,
+      archiveCount: sorted.filter((item) => item.suggestedLifecycleAction === "archive_campaign").length,
+      cloneOrTemplateCount: sorted.filter((item) => ["clone_for_next_season", "convert_to_template"].includes(item.suggestedLifecycleAction)).length,
+      membershipArcCount: sorted.filter((item) => item.suggestedLifecycleAction === "shift_to_membership").length,
+    } satisfies CreatorCampaignLifecycleSummary,
+    items: sorted,
+    attributionNotes: [
+      "Lifecycle suggestions are a phase-change layer, not a giant automation engine: they only suggest when to keep pushing, shift the arc, archive, clone, template, or wrap up.",
+      "Health still answers how the campaign is doing now. Recommendations still surface general next-step ideas. Recovery plans still handle slipping campaigns. Retrospectives still summarize completed campaigns.",
+      "Signals stay grounded in existing campaign state, follows, drop views / clicks / RSVPs, approximate purchases, approximate memberships, goals, milestones, and archived benchmark outcomes.",
+    ],
+    generatedAt: health.generatedAt,
   };
 }
 
@@ -14621,7 +14963,11 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
     const ownerHealthCollection = viewerId && viewerId === campaign.creatorUserId
       ? await loadCreatorCampaignHealth(campaign.creatorUserId)
       : null;
+    const ownerLifecycleCollection = viewerId && viewerId === campaign.creatorUserId
+      ? await loadCreatorCampaignLifecycleSuggestions(campaign.creatorUserId)
+      : null;
     const ownerHealth = ownerHealthCollection?.items.find((item) => item.campaignId === campaign.id) ?? null;
+    const ownerLifecycleSuggestion = ownerLifecycleCollection?.items.find((item) => item.campaignId === campaign.id) ?? null;
     const ownerAnalytics = viewerId && viewerId === campaign.creatorUserId
       ? campaignSnapshot
       : null;
@@ -14643,6 +14989,7 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
       ownerAnalytics,
       ownerRetrospective,
       ownerHealth,
+      ownerLifecycleSuggestion,
       ownerRecoveryPlan,
     });
   } catch (error) {
@@ -18711,6 +19058,28 @@ r.get("/creator-dashboard/campaign-recommendations", requireAuth, async (req, re
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-recommendations", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign recommendations"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-lifecycle-suggestions", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const lifecycle = await loadCreatorCampaignLifecycleSuggestions(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: lifecycle.summary,
+      items: lifecycle.items,
+      attributionNotes: lifecycle.attributionNotes,
+      generatedAt: lifecycle.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-lifecycle-suggestions", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign lifecycle suggestions"));
   }
 });
 
