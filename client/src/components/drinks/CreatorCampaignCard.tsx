@@ -30,6 +30,8 @@ export type CreatorCampaignItem = {
     unlockPublicAt: string | null;
     rolloutNotes: string | null;
     isRolloutActive: boolean;
+    isRolloutPaused: boolean;
+    pausedAt: string | null;
     state:
       | "scheduled_for_members"
       | "scheduled_for_followers"

@@ -1398,6 +1398,8 @@ export const creatorCampaigns = pgTable(
     unlockPublicAt: timestamp("unlock_public_at"),
     rolloutNotes: text("rollout_notes"),
     isRolloutActive: boolean("is_rollout_active").default(false).notNull(),
+    isRolloutPaused: boolean("is_rollout_paused").default(false).notNull(),
+    rolloutPausedAt: timestamp("rollout_paused_at"),
     isPinned: boolean("is_pinned").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
