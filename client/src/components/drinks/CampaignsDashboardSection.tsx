@@ -4,6 +4,7 @@ import { Link } from "wouter";
 
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
 import CampaignPinButton from "@/components/drinks/CampaignPinButton";
+import CampaignUnlockControls from "@/components/drinks/CampaignUnlockControls";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -136,6 +137,8 @@ type CampaignRolloutResponse = {
     unlockPublicAt: string | null;
     rolloutNotes: string | null;
     isRolloutActive: boolean;
+    isRolloutPaused: boolean;
+    pausedAt: string | null;
   };
   derivedState: {
     rolloutMode: CampaignRolloutMode;
@@ -148,6 +151,8 @@ type CampaignRolloutResponse = {
     unlockPublicAt: string | null;
     rolloutNotes: string | null;
     isRolloutActive: boolean;
+    isRolloutPaused: boolean;
+    pausedAt: string | null;
     state: CampaignRolloutState;
     timeline: Array<{
       audience: CampaignRolloutAudience;
@@ -806,6 +811,7 @@ function CampaignRolloutManager({
               <div className="rounded-md border p-3">
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Current audience</p>
                 <p className="mt-1 text-sm font-medium">{rolloutAudienceLabel(rolloutQuery.data.derivedState.currentAudience)}</p>
+                {rolloutQuery.data.derivedState.isRolloutPaused ? <p className="mt-1 text-xs text-amber-700">Paused since {new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(rolloutQuery.data.derivedState.pausedAt ?? ""))}</p> : null}
               </div>
               <div className="rounded-md border p-3">
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Suggested mode</p>
@@ -911,6 +917,22 @@ function CampaignRolloutManager({
                 Next unlock: {rolloutQuery.data.derivedState.nextAudience ? `${rolloutAudienceLabel(rolloutQuery.data.derivedState.nextAudience)}${rolloutQuery.data.derivedState.nextUnlockAt ? ` at ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(rolloutQuery.data.derivedState.nextUnlockAt))}` : ""}` : "none scheduled"}.
               </p>
             </div>
+
+            <CampaignUnlockControls
+              campaignId={campaign.id}
+              rollout={rolloutQuery.data.derivedState}
+              onSuccess={(nextMessage) => {
+                setMessage(nextMessage);
+                setError("");
+              }}
+              onError={(nextError) => {
+                setError(nextError);
+                if (nextError) setMessage("");
+              }}
+              refreshKeys={[
+                ["/api/drinks/campaigns/creator", campaign.creatorUserId],
+              ]}
+            />
 
             <div className="flex flex-wrap gap-2">
               <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>

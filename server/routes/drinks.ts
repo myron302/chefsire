@@ -132,6 +132,7 @@ type CreatorCampaignRolloutState =
   | "live_for_public"
   | "fully_open"
   | "completed";
+type CreatorCampaignUnlockControlAction = "delay" | "release_now" | "pause" | "resume";
 type CreatorCampaignGoalType = "followers" | "rsvps" | "clicks" | "purchases" | "membership_conversions" | "linked_drop_views";
 type CreatorCampaignVariantEventType = "view_variant" | "click_variant_cta" | "follow_after_variant" | "rsvp_after_variant";
 type CreatorCampaignSpotlightEventType = "view_pinned_campaign" | "click_pinned_campaign";
@@ -812,6 +813,10 @@ const updateCreatorCampaignRolloutBodySchema = creatorCampaignRolloutBodyBaseSch
       message: "Provide at least one rollout field to update.",
     });
   }
+});
+
+const creatorCampaignUnlockDelayBodySchema = z.object({
+  hours: z.union([z.literal(24), z.literal(48)]),
 });
 
 const creatorCampaignBodyBaseObjectSchema = z.object({
@@ -2220,6 +2225,8 @@ async function ensureDrinkCollectionsSchema() {
         unlock_public_at timestamp,
         rollout_notes text,
         is_rollout_active boolean NOT NULL DEFAULT false,
+        is_rollout_paused boolean NOT NULL DEFAULT false,
+        rollout_paused_at timestamp,
         is_pinned boolean NOT NULL DEFAULT false,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
@@ -2536,6 +2543,8 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS unlock_public_at timestamp;`);
     await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS rollout_notes text;`);
     await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS is_rollout_active boolean NOT NULL DEFAULT false;`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS is_rollout_paused boolean NOT NULL DEFAULT false;`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS rollout_paused_at timestamp;`);
     await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS is_pinned boolean NOT NULL DEFAULT false;`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_campaigns_single_pinned_idx ON creator_campaigns(creator_user_id) WHERE is_pinned = true;`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_idx ON creator_campaign_templates(creator_user_id);`);
@@ -2939,7 +2948,7 @@ function canViewerSeeCreatorRoadmapItem(input: {
 }
 
 function canViewerSeeCreatorCampaign(input: {
-  campaign: Pick<CreatorCampaignRecord, "creatorUserId" | "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive">;
+  campaign: Pick<CreatorCampaignRecord, "creatorUserId" | "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive" | "isRolloutPaused" | "rolloutPausedAt">;
   viewerId?: string | null;
   followedCreatorIds?: Set<string>;
   memberCreatorIds?: Set<string>;
@@ -3024,7 +3033,7 @@ function audienceUnlockStatePrefix(isScheduled: boolean, audience: CreatorCampai
 }
 
 function deriveCreatorCampaignRollout(
-  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive">,
+  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive" | "isRolloutPaused" | "rolloutPausedAt">,
   now = new Date(),
 ) {
   const campaignState = getCreatorCampaignState(campaign, now);
@@ -3042,6 +3051,9 @@ function deriveCreatorCampaignRollout(
   const followerUnlockAt = campaign.unlockFollowersAt ?? null;
   const publicUnlockAt = campaign.unlockPublicAt ?? null;
   const rolloutActive = Boolean(campaign.isRolloutActive);
+  const isRolloutPaused = Boolean(campaign.isRolloutPaused);
+  const pausedAt = campaign.rolloutPausedAt ?? null;
+  const progressionNow = isRolloutPaused && pausedAt ? pausedAt : now;
 
   const stageTimeline = [{ audience: initialAudience, unlockAt: startsAt }];
   if (rolloutActive && rolloutAudienceOrder(initialAudience) < rolloutAudienceOrder("followers") && visibility !== "members" && followerUnlockAt) {
@@ -3076,7 +3088,7 @@ function deriveCreatorCampaignRollout(
       const entry = effectiveTimeline[index];
       if (!entry) continue;
       const unlockAt = entry.unlockAt;
-      if (unlockAt && unlockAt > now) {
+      if (unlockAt && unlockAt > progressionNow) {
         currentAudience = effectiveTimeline[Math.max(0, index - 1)]?.audience ?? entry.audience;
         nextUnlockAt = unlockAt;
         nextAudience = entry.audience;
@@ -3090,7 +3102,7 @@ function deriveCreatorCampaignRollout(
     currentAudience = finalAudience;
   }
 
-  const isScheduled = Boolean(startsAt && startsAt > now);
+  const isScheduled = Boolean(startsAt && startsAt > progressionNow);
   const reachedFinalAudience = currentAudience === finalAudience;
   const state: CreatorCampaignRolloutState = campaignState === "past"
     ? "completed"
@@ -3111,6 +3123,8 @@ function deriveCreatorCampaignRollout(
     unlockPublicAt: publicUnlockAt ? publicUnlockAt.toISOString() : null,
     rolloutNotes: campaign.rolloutNotes?.trim() ? campaign.rolloutNotes.trim() : null,
     isRolloutActive: rolloutActive,
+    isRolloutPaused,
+    pausedAt: pausedAt ? pausedAt.toISOString() : null,
     state,
     timeline: effectiveTimeline.map((entry) => ({
       audience: entry.audience,
@@ -3155,7 +3169,7 @@ function buildCampaignRolloutSuggestion(input: {
 }
 
 function normalizeCampaignRolloutUpdate(input: {
-  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive">;
+  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive" | "isRolloutPaused" | "rolloutPausedAt">;
   payload: Partial<{
     rolloutMode: CreatorCampaignRolloutMode;
     startsWithAudience: CreatorCampaignRolloutAudience | null;
@@ -3182,6 +3196,8 @@ function normalizeCampaignRolloutUpdate(input: {
       ? toNullableDate(input.payload.unlockPublicAt)
       : input.campaign.unlockPublicAt;
 
+  const isRolloutActive = input.payload.isRolloutActive ?? input.campaign.isRolloutActive;
+
   return {
     rolloutMode,
     startsWithAudience,
@@ -3190,7 +3206,121 @@ function normalizeCampaignRolloutUpdate(input: {
     rolloutNotes: input.payload.rolloutNotes !== undefined
       ? (input.payload.rolloutNotes?.trim() ? input.payload.rolloutNotes.trim() : null)
       : (input.campaign.rolloutNotes?.trim() ? input.campaign.rolloutNotes.trim() : null),
-    isRolloutActive: input.payload.isRolloutActive ?? input.campaign.isRolloutActive,
+    isRolloutActive,
+    isRolloutPaused: isRolloutActive ? input.campaign.isRolloutPaused : false,
+    rolloutPausedAt: isRolloutActive ? (input.campaign.rolloutPausedAt ?? null) : null,
+  };
+}
+
+function getNextRolloutUnlockField(
+  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive" | "isRolloutPaused" | "rolloutPausedAt">,
+  now = new Date(),
+) {
+  const rollout = deriveCreatorCampaignRollout(campaign, now);
+  if (!rollout.isRolloutActive || !rollout.nextAudience) {
+    return { rollout, field: null as const };
+  }
+  if (rollout.nextAudience === "followers") {
+    return { rollout, field: "unlockFollowersAt" as const };
+  }
+  if (rollout.nextAudience === "public") {
+    return { rollout, field: "unlockPublicAt" as const };
+  }
+  return { rollout, field: null as const };
+}
+
+function assertCampaignSupportsUnlockControls(
+  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive" | "isRolloutPaused" | "rolloutPausedAt">,
+  action: CreatorCampaignUnlockControlAction,
+  now = new Date(),
+) {
+  const { rollout, field } = getNextRolloutUnlockField(campaign, now);
+  if (!rollout.isRolloutActive) {
+    throw new Error("Unlock controls only apply to campaigns using rollout sequencing.");
+  }
+  if (action === "pause" || action === "resume") {
+    return { rollout, field };
+  }
+  if (!field || !rollout.nextAudience) {
+    throw new Error("No follower/public unlock is available for control right now.");
+  }
+  return { rollout, field };
+}
+
+function shiftCampaignUnlocksForResume(
+  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive" | "isRolloutPaused" | "rolloutPausedAt">,
+  resumedAt: Date,
+) {
+  if (!campaign.isRolloutPaused || !campaign.rolloutPausedAt) {
+    return {
+      unlockFollowersAt: campaign.unlockFollowersAt ?? null,
+      unlockPublicAt: campaign.unlockPublicAt ?? null,
+    };
+  }
+
+  const pausedAt = campaign.rolloutPausedAt;
+  const pauseDurationMs = Math.max(0, resumedAt.getTime() - pausedAt.getTime());
+  if (!pauseDurationMs) {
+    return {
+      unlockFollowersAt: campaign.unlockFollowersAt ?? null,
+      unlockPublicAt: campaign.unlockPublicAt ?? null,
+    };
+  }
+
+  const { rollout, field } = getNextRolloutUnlockField(campaign, pausedAt);
+  if (!rollout.nextAudience || !field) {
+    return {
+      unlockFollowersAt: campaign.unlockFollowersAt ?? null,
+      unlockPublicAt: campaign.unlockPublicAt ?? null,
+    };
+  }
+
+  const shiftedFollowersAt = campaign.unlockFollowersAt
+    ? new Date(campaign.unlockFollowersAt.getTime() + (field === "unlockFollowersAt" ? pauseDurationMs : 0))
+    : null;
+  const shiftedPublicAt = campaign.unlockPublicAt
+    ? new Date(campaign.unlockPublicAt.getTime() + pauseDurationMs)
+    : null;
+
+  return {
+    unlockFollowersAt: shiftedFollowersAt,
+    unlockPublicAt: shiftedPublicAt,
+  };
+}
+
+function formatCampaignRolloutResponse(
+  campaign: Pick<CreatorCampaignRecord, "id" | "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive" | "isRolloutPaused" | "rolloutPausedAt">,
+  audienceFitItem?: {
+    bestAudienceFit: CreatorCampaignRolloutAudience | null;
+    bestAudienceFitConfidence: CreatorCampaignAudienceFitConfidence;
+    bestAudienceFitReason: string | null;
+  } | null,
+) {
+  const rollout = deriveCreatorCampaignRollout(campaign);
+  return {
+    ok: true,
+    campaignId: campaign.id,
+    rollout: {
+      rolloutMode: rollout.rolloutMode,
+      startsWithAudience: rollout.startsWithAudience,
+      unlockFollowersAt: rollout.unlockFollowersAt,
+      unlockPublicAt: rollout.unlockPublicAt,
+      rolloutNotes: rollout.rolloutNotes,
+      isRolloutActive: rollout.isRolloutActive,
+      isRolloutPaused: rollout.isRolloutPaused,
+      pausedAt: rollout.pausedAt,
+    },
+    derivedState: rollout,
+    audienceFitSuggestion: buildCampaignRolloutSuggestion({
+      campaign,
+      audienceFit: audienceFitItem
+        ? {
+          bestAudienceFit: audienceFitItem.bestAudienceFit,
+          bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
+          bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
+        }
+        : null,
+    }),
   };
 }
 
@@ -6153,7 +6283,7 @@ function emptyCreatorCampaignRolloutStageAnalytics(
 }
 
 function getCampaignRolloutStageAt(
-  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive">,
+  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive" | "isRolloutPaused" | "rolloutPausedAt">,
   occurredAt: Date,
 ) {
   const rollout = deriveCreatorCampaignRollout(campaign, occurredAt);
@@ -11337,7 +11467,7 @@ export async function loadCreatorCampaignUnlockReadinessAlerts(creatorUserId: st
 }
 
 async function loadCampaignAlertRecipientIds(
-  campaign: Pick<CreatorCampaignRecord, "id" | "creatorUserId" | "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive">,
+  campaign: Pick<CreatorCampaignRecord, "id" | "creatorUserId" | "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive" | "isRolloutPaused" | "rolloutPausedAt">,
   contentVisibility: "public" | "followers" | "members",
 ) {
   if (!db) return [];
@@ -18374,31 +18504,16 @@ r.get("/campaigns/:id/rollout", requireAuth, async (req, res) => {
     const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
     const audienceFit = await loadCreatorCampaignAudienceFit(req.user!.id);
     const audienceFitItem = audienceFit.items.find((item) => item.campaignId === campaign.id) ?? null;
-    const rollout = deriveCreatorCampaignRollout(campaign);
-
-    return res.json({
-      ok: true,
-      campaignId: campaign.id,
-      rollout: {
-        rolloutMode: rollout.rolloutMode,
-        startsWithAudience: rollout.startsWithAudience,
-        unlockFollowersAt: rollout.unlockFollowersAt,
-        unlockPublicAt: rollout.unlockPublicAt,
-        rolloutNotes: rollout.rolloutNotes,
-        isRolloutActive: rollout.isRolloutActive,
-      },
-      derivedState: rollout,
-      audienceFitSuggestion: buildCampaignRolloutSuggestion({
-        campaign,
-        audienceFit: audienceFitItem
-          ? {
-            bestAudienceFit: audienceFitItem.bestAudienceFit as CreatorCampaignRolloutAudience | null,
-            bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
-            bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
-          }
-          : null,
-      }),
-    });
+    return res.json(formatCampaignRolloutResponse(
+      campaign,
+      audienceFitItem
+        ? {
+          bestAudienceFit: audienceFitItem.bestAudienceFit as CreatorCampaignRolloutAudience | null,
+          bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
+          bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
+        }
+        : null,
+    ));
   } catch (error) {
     const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
     const message = logCollectionRouteError("/campaigns/:id/rollout", req, error);
@@ -18438,6 +18553,8 @@ r.post("/campaigns/:id/rollout", requireAuth, async (req, res) => {
         unlockPublicAt: normalized.unlockPublicAt,
         rolloutNotes: normalized.rolloutNotes,
         isRolloutActive: normalized.isRolloutActive,
+        isRolloutPaused: normalized.isRolloutPaused,
+        rolloutPausedAt: normalized.rolloutPausedAt,
         updatedAt: new Date(),
       })
       .where(eq(creatorCampaigns.id, campaign.id))
@@ -18450,31 +18567,16 @@ r.post("/campaigns/:id/rollout", requireAuth, async (req, res) => {
 
     const audienceFit = await loadCreatorCampaignAudienceFit(req.user!.id);
     const audienceFitItem = audienceFit.items.find((item) => item.campaignId === updated.id) ?? null;
-    const rollout = deriveCreatorCampaignRollout(updated);
-
-    return res.status(201).json({
-      ok: true,
-      campaignId: updated.id,
-      rollout: {
-        rolloutMode: rollout.rolloutMode,
-        startsWithAudience: rollout.startsWithAudience,
-        unlockFollowersAt: rollout.unlockFollowersAt,
-        unlockPublicAt: rollout.unlockPublicAt,
-        rolloutNotes: rollout.rolloutNotes,
-        isRolloutActive: rollout.isRolloutActive,
-      },
-      derivedState: rollout,
-      audienceFitSuggestion: buildCampaignRolloutSuggestion({
-        campaign: updated,
-        audienceFit: audienceFitItem
-          ? {
-            bestAudienceFit: audienceFitItem.bestAudienceFit as CreatorCampaignRolloutAudience | null,
-            bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
-            bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
-          }
-          : null,
-      }),
-    });
+    return res.status(201).json(formatCampaignRolloutResponse(
+      updated,
+      audienceFitItem
+        ? {
+          bestAudienceFit: audienceFitItem.bestAudienceFit as CreatorCampaignRolloutAudience | null,
+          bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
+          bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
+        }
+        : null,
+    ));
   } catch (error) {
     const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
     const message = logCollectionRouteError("/campaigns/:id/rollout", req, error);
@@ -18514,6 +18616,8 @@ r.patch("/campaigns/:id/rollout", requireAuth, async (req, res) => {
         unlockPublicAt: normalized.unlockPublicAt,
         rolloutNotes: normalized.rolloutNotes,
         isRolloutActive: normalized.isRolloutActive,
+        isRolloutPaused: normalized.isRolloutPaused,
+        rolloutPausedAt: normalized.rolloutPausedAt,
         updatedAt: new Date(),
       })
       .where(eq(creatorCampaigns.id, campaign.id))
@@ -18526,35 +18630,239 @@ r.patch("/campaigns/:id/rollout", requireAuth, async (req, res) => {
 
     const audienceFit = await loadCreatorCampaignAudienceFit(req.user!.id);
     const audienceFitItem = audienceFit.items.find((item) => item.campaignId === updated.id) ?? null;
-    const rollout = deriveCreatorCampaignRollout(updated);
-
-    return res.json({
-      ok: true,
-      campaignId: updated.id,
-      rollout: {
-        rolloutMode: rollout.rolloutMode,
-        startsWithAudience: rollout.startsWithAudience,
-        unlockFollowersAt: rollout.unlockFollowersAt,
-        unlockPublicAt: rollout.unlockPublicAt,
-        rolloutNotes: rollout.rolloutNotes,
-        isRolloutActive: rollout.isRolloutActive,
-      },
-      derivedState: rollout,
-      audienceFitSuggestion: buildCampaignRolloutSuggestion({
-        campaign: updated,
-        audienceFit: audienceFitItem
-          ? {
-            bestAudienceFit: audienceFitItem.bestAudienceFit as CreatorCampaignRolloutAudience | null,
-            bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
-            bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
-          }
-          : null,
-      }),
-    });
+    return res.json(formatCampaignRolloutResponse(
+      updated,
+      audienceFitItem
+        ? {
+          bestAudienceFit: audienceFitItem.bestAudienceFit as CreatorCampaignRolloutAudience | null,
+          bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
+          bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
+        }
+        : null,
+    ));
   } catch (error) {
     const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
     const message = logCollectionRouteError("/campaigns/:id/rollout", req, error);
     return res.status(status).json(collectionServerError(message, "Failed to update campaign rollout"));
+  }
+});
+
+r.post("/campaigns/:id/unlock-controls/delay", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const parsed = creatorCampaignUnlockDelayBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid delay payload." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    if (campaign.isRolloutPaused) {
+      return res.status(409).json({ ok: false, error: "Resume this rollout before delaying the next unlock." });
+    }
+
+    const now = new Date();
+    const { rollout, field } = assertCampaignSupportsUnlockControls(campaign, "delay", now);
+    if (!field || !rollout.nextAudience) {
+      return res.status(409).json({ ok: false, error: "No follower/public unlock is available for delay right now." });
+    }
+
+    const baseUnlockAt = rollout.nextUnlockAt ? new Date(rollout.nextUnlockAt) : now;
+    const nextUnlockAt = new Date(Math.max(baseUnlockAt.getTime(), now.getTime()) + parsed.data.hours * 60 * 60 * 1000);
+
+    const updatedRows = await db
+      .update(creatorCampaigns)
+      .set({
+        [field]: nextUnlockAt,
+        updatedAt: now,
+      })
+      .where(eq(creatorCampaigns.id, campaign.id))
+      .returning();
+
+    const updated = updatedRows[0];
+    if (!updated) {
+      return res.status(500).json({ ok: false, error: "Failed to delay unlock." });
+    }
+
+    return res.json({
+      ...formatCampaignRolloutResponse(updated),
+      action: "delay" as const,
+      delayedAudience: rollout.nextAudience,
+      delayedByHours: parsed.data.hours,
+    });
+  } catch (error) {
+    const status = error instanceof Error && /Campaign not found/.test(error.message)
+      ? 404
+      : error instanceof Error && /Unlock controls|No follower\/public unlock/.test(error.message)
+        ? 409
+        : 500;
+    const message = logCollectionRouteError("/campaigns/:id/unlock-controls/delay", req, error);
+    return res.status(status).json(collectionServerError(message, "Failed to delay campaign unlock"));
+  }
+});
+
+r.post("/campaigns/:id/unlock-controls/release-now", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    if (campaign.isRolloutPaused) {
+      return res.status(409).json({ ok: false, error: "Resume this rollout before releasing the next unlock." });
+    }
+
+    const now = new Date();
+    const { rollout, field } = assertCampaignSupportsUnlockControls(campaign, "release_now", now);
+    if (!field || !rollout.nextAudience) {
+      return res.status(409).json({ ok: false, error: "No eligible follower/public unlock can be released right now." });
+    }
+
+    const updatedRows = await db
+      .update(creatorCampaigns)
+      .set({
+        [field]: now,
+        updatedAt: now,
+      })
+      .where(eq(creatorCampaigns.id, campaign.id))
+      .returning();
+
+    const updated = updatedRows[0];
+    if (!updated) {
+      return res.status(500).json({ ok: false, error: "Failed to release unlock now." });
+    }
+
+    return res.json({
+      ...formatCampaignRolloutResponse(updated),
+      action: "release_now" as const,
+      releasedAudience: rollout.nextAudience,
+    });
+  } catch (error) {
+    const status = error instanceof Error && /Campaign not found/.test(error.message)
+      ? 404
+      : error instanceof Error && /Unlock controls|No follower\/public unlock/.test(error.message)
+        ? 409
+        : 500;
+    const message = logCollectionRouteError("/campaigns/:id/unlock-controls/release-now", req, error);
+    return res.status(status).json(collectionServerError(message, "Failed to release campaign unlock now"));
+  }
+});
+
+r.post("/campaigns/:id/unlock-controls/pause", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const { rollout } = assertCampaignSupportsUnlockControls(campaign, "pause");
+    if (campaign.isRolloutPaused) {
+      return res.status(409).json({ ok: false, error: "This rollout is already paused." });
+    }
+    if (!rollout.nextAudience) {
+      return res.status(409).json({ ok: false, error: "This rollout has no upcoming unlock left to pause." });
+    }
+
+    const now = new Date();
+    const updatedRows = await db
+      .update(creatorCampaigns)
+      .set({
+        isRolloutPaused: true,
+        rolloutPausedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(creatorCampaigns.id, campaign.id))
+      .returning();
+
+    const updated = updatedRows[0];
+    if (!updated) {
+      return res.status(500).json({ ok: false, error: "Failed to pause rollout." });
+    }
+
+    return res.json({
+      ...formatCampaignRolloutResponse(updated),
+      action: "pause" as const,
+    });
+  } catch (error) {
+    const status = error instanceof Error && /Campaign not found/.test(error.message)
+      ? 404
+      : error instanceof Error && /Unlock controls/.test(error.message)
+        ? 409
+        : 500;
+    const message = logCollectionRouteError("/campaigns/:id/unlock-controls/pause", req, error);
+    return res.status(status).json(collectionServerError(message, "Failed to pause campaign rollout"));
+  }
+});
+
+r.post("/campaigns/:id/unlock-controls/resume", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    assertCampaignSupportsUnlockControls(campaign, "resume");
+    if (!campaign.isRolloutPaused || !campaign.rolloutPausedAt) {
+      return res.status(409).json({ ok: false, error: "This rollout is not paused." });
+    }
+
+    const now = new Date();
+    const shiftedUnlocks = shiftCampaignUnlocksForResume(campaign, now);
+    const updatedRows = await db
+      .update(creatorCampaigns)
+      .set({
+        unlockFollowersAt: shiftedUnlocks.unlockFollowersAt,
+        unlockPublicAt: shiftedUnlocks.unlockPublicAt,
+        isRolloutPaused: false,
+        rolloutPausedAt: null,
+        updatedAt: now,
+      })
+      .where(eq(creatorCampaigns.id, campaign.id))
+      .returning();
+
+    const updated = updatedRows[0];
+    if (!updated) {
+      return res.status(500).json({ ok: false, error: "Failed to resume rollout." });
+    }
+
+    return res.json({
+      ...formatCampaignRolloutResponse(updated),
+      action: "resume" as const,
+    });
+  } catch (error) {
+    const status = error instanceof Error && /Campaign not found/.test(error.message)
+      ? 404
+      : error instanceof Error && /Unlock controls/.test(error.message)
+        ? 409
+        : 500;
+    const message = logCollectionRouteError("/campaigns/:id/unlock-controls/resume", req, error);
+    return res.status(status).json(collectionServerError(message, "Failed to resume campaign rollout"));
   }
 });
 

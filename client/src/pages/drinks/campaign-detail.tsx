@@ -7,6 +7,7 @@ import CampaignActionCenterSection from "@/components/drinks/CampaignActionCente
 import CampaignLaunchReadinessSection from "@/components/drinks/CampaignLaunchReadinessSection";
 import CampaignUnlockReadinessAlertsSection from "@/components/drinks/CampaignUnlockReadinessAlertsSection";
 import CampaignPinButton from "@/components/drinks/CampaignPinButton";
+import CampaignUnlockControls from "@/components/drinks/CampaignUnlockControls";
 import { CampaignLifecycleSuggestionPanel, type CampaignLifecycleSuggestion } from "@/components/drinks/CampaignLifecycleSuggestionsSection";
 import { CampaignWrapUpPanel, type CampaignRetrospectiveItem } from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignFollowButton from "@/components/drinks/CampaignFollowButton";
@@ -452,6 +453,8 @@ export default function DrinkCampaignDetailPage() {
   const slug = matched ? String(params?.slug ?? "") : "";
   const [pinMessage, setPinMessage] = React.useState("");
   const [pinError, setPinError] = React.useState("");
+  const [unlockMessage, setUnlockMessage] = React.useState("");
+  const [unlockError, setUnlockError] = React.useState("");
 
   const query = useQuery<CampaignDetailResponse>({
     queryKey: ["/api/drinks/campaigns", slug, user?.id ?? "guest"],
@@ -756,6 +759,7 @@ export default function DrinkCampaignDetailPage() {
                   <Badge variant="outline">{rolloutStateLabel(query.data.ownerRollout.state)}</Badge>
                   <Badge variant="outline">Current: {rolloutAudienceLabel(query.data.ownerRollout.currentAudience)}</Badge>
                   <Badge variant="outline">Final: {rolloutAudienceLabel(query.data.ownerRollout.finalAudience)}</Badge>
+                  {query.data.ownerRollout.isRolloutPaused ? <Badge variant="secondary">Paused</Badge> : null}
                 </div>
 
                 <div className="grid gap-3 md:grid-cols-3">
@@ -770,6 +774,9 @@ export default function DrinkCampaignDetailPage() {
                         ? `${rolloutAudienceLabel(query.data.ownerRollout.nextAudience)}${query.data.ownerRollout.nextUnlockAt ? ` · ${formatHealthDateTime(query.data.ownerRollout.nextUnlockAt)}` : ""}`
                         : "No later unlock scheduled"}
                     </p>
+                    {query.data.ownerRollout.isRolloutPaused ? (
+                      <p className="mt-2 text-xs text-amber-700">Paused at {formatHealthDateTime(query.data.ownerRollout.pausedAt)}.</p>
+                    ) : null}
                   </div>
                   <div className="rounded-md border p-3 text-sm">
                     <p className="font-medium">Audience-fit hint</p>
@@ -836,6 +843,26 @@ export default function DrinkCampaignDetailPage() {
                     ))}
                   </div>
                 </div>
+
+                <CampaignUnlockControls
+                  campaignId={query.data.campaign.id}
+                  rollout={query.data.ownerRollout}
+                  compact
+                  refreshKeys={[
+                    ["/api/drinks/campaigns", slug, user?.id ?? "guest"],
+                  ]}
+                  onSuccess={(message) => {
+                    setUnlockMessage(message);
+                    setUnlockError("");
+                  }}
+                  onError={(message) => {
+                    setUnlockError(message);
+                    if (message) setUnlockMessage("");
+                  }}
+                />
+
+                {unlockMessage ? <p className="text-sm text-emerald-600">{unlockMessage}</p> : null}
+                {unlockError ? <p className="text-sm text-destructive">{unlockError}</p> : null}
 
                 {query.data.ownerRollout.rolloutNotes ? (
                   <div className="rounded-md bg-muted/30 p-3 text-sm">
