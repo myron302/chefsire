@@ -133,6 +133,46 @@ type CampaignRecoveryPlan = {
   }>;
 };
 
+type CampaignRolloutAnalyticsItem = {
+  campaignId: string;
+  slug: string;
+  name: string;
+  route: string;
+  visibility: "public" | "followers" | "members";
+  state: "upcoming" | "active" | "past";
+  hasRolloutConfig: boolean;
+  hasSequencedRollout: boolean;
+  rolloutMode: "public_first" | "followers_first" | "members_first" | "staged";
+  currentRolloutState: "scheduled_for_members" | "scheduled_for_followers" | "scheduled_for_public" | "live_for_members" | "live_for_followers" | "live_for_public" | "fully_open" | "completed";
+  startsWithAudience: "public" | "followers" | "members";
+  unlockFollowersAt: string | null;
+  unlockPublicAt: string | null;
+  currentAudience: "public" | "followers" | "members";
+  nextAudience: "public" | "followers" | "members" | null;
+  membersStageViews: number;
+  followersStageViews: number;
+  publicStageViews: number;
+  membersStageClicks: number;
+  followersStageClicks: number;
+  publicStageClicks: number;
+  membersStageRsvps: number;
+  followersStageRsvps: number;
+  publicStageRsvps: number;
+  followersUnlockedAt: string | null;
+  publicUnlockedAt: string | null;
+  approximatePurchasesAfterFollowerUnlock: number | null;
+  approximatePurchasesAfterPublicUnlock: number | null;
+  approximateMembershipsAfterMemberFirstRollout: number | null;
+  stagePerformance: Array<{
+    audience: "public" | "followers" | "members";
+    label: string;
+    views: number;
+    clicks: number;
+    rsvps: number;
+  }>;
+  insights: string[];
+};
+
 interface CampaignDetailResponse {
   ok: boolean;
   campaign: CreatorCampaignItem;
@@ -153,6 +193,7 @@ interface CampaignDetailResponse {
   };
   ownerAnalytics?: CampaignOwnerAnalytics | null;
   ownerRollout?: CreatorCampaignItem["rollout"] | null;
+  ownerRolloutAnalytics?: CampaignRolloutAnalyticsItem | null;
   ownerRolloutSuggestion?: {
     suggestedMode: "public_first" | "followers_first" | "members_first" | "staged";
     reason: string | null;
@@ -631,6 +672,61 @@ export default function DrinkCampaignDetailPage() {
                     <p className="mt-1 text-muted-foreground whitespace-pre-wrap">{query.data.ownerRollout.rolloutNotes}</p>
                   </div>
                 ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {query.data.ownerRolloutAnalytics ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Owner-only rollout performance</CardTitle>
+                <CardDescription>
+                  Private timing-based read on how this campaign performed as access widened. Stage metrics are tied to rollout unlock boundaries, not perfect causal attribution.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary">{rolloutModeLabel(query.data.ownerRolloutAnalytics.rolloutMode)}</Badge>
+                  <Badge variant="outline">{rolloutStateLabel(query.data.ownerRolloutAnalytics.currentRolloutState)}</Badge>
+                  <Badge variant="outline">Current: {rolloutAudienceLabel(query.data.ownerRolloutAnalytics.currentAudience)}</Badge>
+                  {query.data.ownerRolloutAnalytics.nextAudience ? <Badge variant="outline">Next: {rolloutAudienceLabel(query.data.ownerRolloutAnalytics.nextAudience)}</Badge> : null}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  {query.data.ownerRolloutAnalytics.stagePerformance.map((stage) => (
+                    <div key={stage.audience} className="rounded-md border p-3 text-sm">
+                      <p className="font-medium">{stage.label}</p>
+                      <div className="mt-2 space-y-1 text-muted-foreground">
+                        <p>{stage.views} views</p>
+                        <p>{stage.clicks} clicks</p>
+                        <p>{stage.rsvps} RSVPs</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,1.2fr),minmax(0,1fr)]">
+                  <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">Transition insights</p>
+                    {query.data.ownerRolloutAnalytics.insights.length ? (
+                      <ul className="mt-2 list-disc space-y-1 pl-5">
+                        {query.data.ownerRolloutAnalytics.insights.map((insight) => <li key={insight}>{insight}</li>)}
+                      </ul>
+                    ) : (
+                      <p className="mt-2">Not enough stage-specific signal yet to compare this rollout honestly.</p>
+                    )}
+                  </div>
+                  <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    <p className="font-medium text-foreground">Approximate timing signals</p>
+                    <div className="mt-2 space-y-1">
+                      <p>Follower unlock reached: {query.data.ownerRolloutAnalytics.followersUnlockedAt ? formatHealthDateTime(query.data.ownerRolloutAnalytics.followersUnlockedAt) : "Not yet"}</p>
+                      <p>Public unlock reached: {query.data.ownerRolloutAnalytics.publicUnlockedAt ? formatHealthDateTime(query.data.ownerRolloutAnalytics.publicUnlockedAt) : "Not yet"}</p>
+                      <p>Purchases after follower unlock: {query.data.ownerRolloutAnalytics.approximatePurchasesAfterFollowerUnlock ?? "—"}</p>
+                      <p>Purchases after public unlock: {query.data.ownerRolloutAnalytics.approximatePurchasesAfterPublicUnlock ?? "—"}</p>
+                      <p>Memberships after member-first rollout: {query.data.ownerRolloutAnalytics.approximateMembershipsAfterMemberFirstRollout ?? "—"}</p>
+                    </div>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           ) : null}
