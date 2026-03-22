@@ -207,6 +207,27 @@ interface CampaignDetailResponse {
     confidence: "high" | "medium" | "low" | "none";
     rationaleChips: string[];
   } | null;
+  ownerTimingAdvice?: {
+    campaignId: string;
+    campaignName: string;
+    route: string;
+    currentRolloutMode: "public_first" | "followers_first" | "members_first" | "staged";
+    suggestedStartTiming: string;
+    suggestedFollowerUnlockDelay: number | null;
+    suggestedPublicUnlockDelay: number | null;
+    timingRecommendationType: "start_earlier" | "start_later" | "shorten_member_window" | "extend_member_window" | "shorten_follower_window" | "extend_follower_window" | "accelerate_public_unlock" | "delay_public_unlock" | "use_short_burst_launch" | "use_longer_staged_rollout" | "keep_current_timing";
+    title: string;
+    message: string;
+    rationale: string;
+    confidence: "high" | "medium" | "low" | "none";
+    rationaleChips: string[];
+    strongestStage: "public" | "followers" | "members" | null;
+    currentFollowerUnlockDelay: number | null;
+    currentPublicUnlockDelay: number | null;
+    totalTimingSignal: number;
+    approximatePurchaseSignal: number;
+    approximateMembershipSignal: number;
+  } | null;
   ownerRolloutSuggestion?: {
     suggestedMode: "public_first" | "followers_first" | "members_first" | "staged";
     reason: string | null;
@@ -374,6 +395,41 @@ function rolloutAdviceTypeLabel(value: NonNullable<CampaignDetailResponse["owner
     default:
       return "Use staged rollout next time";
   }
+}
+
+function timingAdviceTypeLabel(value: NonNullable<CampaignDetailResponse["ownerTimingAdvice"]>["timingRecommendationType"]) {
+  switch (value) {
+    case "start_earlier":
+      return "Start earlier";
+    case "start_later":
+      return "Start later";
+    case "shorten_member_window":
+      return "Shorten member window";
+    case "extend_member_window":
+      return "Extend member window";
+    case "shorten_follower_window":
+      return "Shorten follower window";
+    case "extend_follower_window":
+      return "Extend follower window";
+    case "accelerate_public_unlock":
+      return "Accelerate public unlock";
+    case "delay_public_unlock":
+      return "Delay public unlock";
+    case "use_short_burst_launch":
+      return "Use short burst launch";
+    case "use_longer_staged_rollout":
+      return "Use longer staged rollout";
+    case "keep_current_timing":
+    default:
+      return "Keep current timing";
+  }
+}
+
+function formatTimingDelay(value: number | null, fallback: string) {
+  if (value === null) return fallback;
+  if (value <= 0) return "same day";
+  if (value === 1) return "1 day";
+  return `${value} days`;
 }
 
 function campaignGoalLabel(goal: CampaignGoalItem) {
@@ -708,6 +764,29 @@ export default function DrinkCampaignDetailPage() {
                       <Badge variant="secondary">Now: {rolloutModeLabel(query.data.ownerRolloutAdvice.currentRolloutMode)}</Badge>
                       <Badge variant="secondary">Next: {rolloutModeLabel(query.data.ownerRolloutAdvice.recommendedNextRolloutMode)}</Badge>
                       {query.data.ownerRolloutAdvice.rationaleChips.map((chip) => (
+                        <Badge key={chip} variant="outline">{chip}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                {query.data.ownerTimingAdvice ? (
+                  <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-foreground">Owner-only timing hint</p>
+                      <Badge variant="outline">{timingAdviceTypeLabel(query.data.ownerTimingAdvice.timingRecommendationType)}</Badge>
+                      <Badge variant="secondary">{query.data.ownerTimingAdvice.confidence} confidence</Badge>
+                    </div>
+                    <p className="mt-2 font-medium text-foreground">{query.data.ownerTimingAdvice.title}</p>
+                    <p className="mt-1">{query.data.ownerTimingAdvice.message}</p>
+                    <p className="mt-2">{query.data.ownerTimingAdvice.suggestedStartTiming}</p>
+                    <p className="mt-2 text-xs">{query.data.ownerTimingAdvice.rationale}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge variant="secondary">Follower unlock next: {formatTimingDelay(query.data.ownerTimingAdvice.suggestedFollowerUnlockDelay, "not used")}</Badge>
+                      <Badge variant="secondary">Public unlock next: {formatTimingDelay(query.data.ownerTimingAdvice.suggestedPublicUnlockDelay, "same day")}</Badge>
+                      <Badge variant="outline">Current follower: {formatTimingDelay(query.data.ownerTimingAdvice.currentFollowerUnlockDelay, "not used")}</Badge>
+                      <Badge variant="outline">Current public: {formatTimingDelay(query.data.ownerTimingAdvice.currentPublicUnlockDelay, "same day")}</Badge>
+                      {query.data.ownerTimingAdvice.rationaleChips.map((chip) => (
                         <Badge key={chip} variant="outline">{chip}</Badge>
                       ))}
                     </div>

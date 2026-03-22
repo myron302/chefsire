@@ -5988,6 +5988,60 @@ type CreatorCampaignRolloutAdvisorSummary = {
   stagedRecommendations: number;
 };
 
+
+type CreatorCampaignTimingAdvisorRecommendationType =
+  | "start_earlier"
+  | "start_later"
+  | "shorten_member_window"
+  | "extend_member_window"
+  | "shorten_follower_window"
+  | "extend_follower_window"
+  | "accelerate_public_unlock"
+  | "delay_public_unlock"
+  | "use_short_burst_launch"
+  | "use_longer_staged_rollout"
+  | "keep_current_timing";
+
+type CreatorCampaignTimingAdvisorItem = {
+  campaignId: string;
+  campaignName: string;
+  route: string;
+  currentRolloutMode: CreatorCampaignRolloutMode;
+  suggestedStartTiming: string;
+  suggestedFollowerUnlockDelay: number | null;
+  suggestedPublicUnlockDelay: number | null;
+  timingRecommendationType: CreatorCampaignTimingAdvisorRecommendationType;
+  title: string;
+  message: string;
+  rationale: string;
+  confidence: CreatorCampaignAudienceFitConfidence;
+  rationaleChips: string[];
+  strongestStage: CreatorCampaignRolloutAudience | null;
+  currentFollowerUnlockDelay: number | null;
+  currentPublicUnlockDelay: number | null;
+  totalTimingSignal: number;
+  approximatePurchaseSignal: number;
+  approximateMembershipSignal: number;
+};
+
+type CreatorCampaignTimingAdvisorInsight = {
+  key: string;
+  title: string;
+  message: string;
+  confidence: CreatorCampaignAudienceFitConfidence;
+  evidence: string[];
+};
+
+type CreatorCampaignTimingAdvisorSummary = {
+  totalCampaigns: number;
+  campaignsWithRecommendations: number;
+  shorterWindowRecommendations: number;
+  longerWindowRecommendations: number;
+  earlierPublicUnlockRecommendations: number;
+  shortBurstRecommendations: number;
+  keepCurrentTimingCount: number;
+};
+
 function campaignRolloutStageLabel(audience: CreatorCampaignRolloutAudience) {
   switch (audience) {
     case "members":
@@ -6691,6 +6745,504 @@ async function loadCreatorCampaignRolloutAdvisor(creatorUserId: string) {
       "Recommendations stay grounded in this creator's own campaigns only. They do not claim a platform-wide truth or hidden AI certainty.",
       "Rollout mode, rollout analytics, audience fit, campaign lifecycle, and campaign health stay separate on purpose: this layer only suggests which sequence may fit the next launch.",
       "Purchase and membership evidence stays approximate anywhere the underlying campaign analytics are approximate.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function timingAdvisorConfidence(totalSignal: number, evidenceCount: number) {
+  if (totalSignal >= 40 && evidenceCount >= 2) return "high" satisfies CreatorCampaignAudienceFitConfidence;
+  if (totalSignal >= 16) return "medium" satisfies CreatorCampaignAudienceFitConfidence;
+  if (totalSignal > 0) return "low" satisfies CreatorCampaignAudienceFitConfidence;
+  return "none" satisfies CreatorCampaignAudienceFitConfidence;
+}
+
+function differenceInTimingDays(from: Date | null | undefined, to: Date | null | undefined) {
+  if (!from || !to) return null;
+  return Math.max(0, Math.round((to.getTime() - from.getTime()) / (24 * 60 * 60 * 1000)));
+}
+
+function formatTimingDelay(value: number | null, fallback: string) {
+  if (value === null) return fallback;
+  if (value <= 0) return "same day";
+  if (value === 1) return "1 day after launch";
+  return `${value} days after launch`;
+}
+
+function addDays(value: Date, days: number) {
+  return new Date(value.getTime() + days * 24 * 60 * 60 * 1000);
+}
+
+type CampaignTimingSignal = {
+  createdAt: Date;
+  weight: number;
+};
+
+function countTimingSignalInRange(rows: CampaignTimingSignal[], startsAt: Date, endsAt: Date) {
+  return rows.reduce((sum, row) => (
+    row.createdAt >= startsAt && row.createdAt < endsAt
+      ? sum + row.weight
+      : sum
+  ), 0);
+}
+
+function formatTimingRecommendationTypeLabel(value: CreatorCampaignTimingAdvisorRecommendationType) {
+  switch (value) {
+    case "start_earlier":
+      return "Start earlier";
+    case "start_later":
+      return "Start later";
+    case "shorten_member_window":
+      return "Shorten member window";
+    case "extend_member_window":
+      return "Extend member window";
+    case "shorten_follower_window":
+      return "Shorten follower window";
+    case "extend_follower_window":
+      return "Extend follower window";
+    case "accelerate_public_unlock":
+      return "Accelerate public unlock";
+    case "delay_public_unlock":
+      return "Delay public unlock";
+    case "use_short_burst_launch":
+      return "Use short burst launch";
+    case "use_longer_staged_rollout":
+      return "Use longer staged rollout";
+    case "keep_current_timing":
+    default:
+      return "Keep current timing";
+  }
+}
+
+async function loadCreatorCampaignTimingAdvisor(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [
+    campaigns,
+    rolloutAnalytics,
+    weeklyDigest,
+    retrospectives,
+    benchmarks,
+    health,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(creatorCampaigns)
+      .where(campaignId
+        ? and(eq(creatorCampaigns.creatorUserId, creatorUserId), eq(creatorCampaigns.id, campaignId))
+        : eq(creatorCampaigns.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorCampaigns.updatedAt))
+      .limit(campaignId ? 1 : 120),
+    loadCreatorCampaignRolloutAnalytics(creatorUserId, campaignId ?? null),
+    loadCreatorCampaignWeeklyDigest(creatorUserId),
+    loadCreatorCampaignRetrospectives(creatorUserId),
+    loadCreatorCampaignBenchmarks(creatorUserId),
+    loadCreatorCampaignHealth(creatorUserId),
+  ]);
+
+  if (!campaigns.length) {
+    return {
+      summary: {
+        totalCampaigns: 0,
+        campaignsWithRecommendations: 0,
+        shorterWindowRecommendations: 0,
+        longerWindowRecommendations: 0,
+        earlierPublicUnlockRecommendations: 0,
+        shortBurstRecommendations: 0,
+        keepCurrentTimingCount: 0,
+      } satisfies CreatorCampaignTimingAdvisorSummary,
+      creatorInsights: [] as CreatorCampaignTimingAdvisorInsight[],
+      items: [] as CreatorCampaignTimingAdvisorItem[],
+      attributionNotes: [
+        "Timing advisor is creator-private, lightweight, and rules-based. It only reads signals that already exist in rollout analytics, weekly digest, retrospectives, benchmarks, health, follows, RSVPs, views, clicks, and approximate conversion proxies.",
+        "No creator campaigns exist yet, so there is no launch timing history to summarize honestly.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  const linkMap = await loadCreatorCampaignLinksByCampaignIds(campaignIds);
+  const dropIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "drop")
+      .map((link) => link.targetId)),
+  )];
+  const collectionIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId)),
+  )];
+
+  const [campaignFollowRows, surfaceEventRows, dropEventRows, rsvpRows, purchaseRows] = await Promise.all([
+    db.select({
+      campaignId: creatorCampaignFollows.campaignId,
+      createdAt: creatorCampaignFollows.createdAt,
+    }).from(creatorCampaignFollows).where(inArray(creatorCampaignFollows.campaignId, campaignIds)).orderBy(asc(creatorCampaignFollows.createdAt)),
+    db.select({
+      campaignId: creatorCampaignSurfaceEvents.campaignId,
+      eventType: creatorCampaignSurfaceEvents.eventType,
+      createdAt: creatorCampaignSurfaceEvents.createdAt,
+    }).from(creatorCampaignSurfaceEvents).where(inArray(creatorCampaignSurfaceEvents.campaignId, campaignIds)).orderBy(asc(creatorCampaignSurfaceEvents.createdAt)),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropEvents.dropId,
+          eventType: creatorDropEvents.eventType,
+          createdAt: creatorDropEvents.createdAt,
+        }).from(creatorDropEvents).where(inArray(creatorDropEvents.dropId, dropIds)).orderBy(asc(creatorDropEvents.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; eventType: CreatorDropEventType; createdAt: Date }>),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropRsvps.dropId,
+          createdAt: creatorDropRsvps.createdAt,
+        }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).orderBy(asc(creatorDropRsvps.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; createdAt: Date }>),
+    collectionIds.length
+      ? db.select({
+          collectionId: drinkCollectionPurchases.collectionId,
+          createdAt: drinkCollectionPurchases.createdAt,
+          status: drinkCollectionPurchases.status,
+        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds)).orderBy(asc(drinkCollectionPurchases.createdAt))
+      : Promise.resolve([] as Array<{ collectionId: string; createdAt: Date; status: string }>),
+  ]);
+
+  const campaignIdsByDropId = new Map<string, string[]>();
+  const campaignIdsByCollectionId = new Map<string, string[]>();
+  for (const campaign of campaigns) {
+    for (const link of linkMap.get(campaign.id) ?? []) {
+      if (link.targetType === "drop") {
+        const current = campaignIdsByDropId.get(link.targetId) ?? [];
+        current.push(campaign.id);
+        campaignIdsByDropId.set(link.targetId, current);
+      }
+      if (link.targetType === "collection") {
+        const current = campaignIdsByCollectionId.get(link.targetId) ?? [];
+        current.push(campaign.id);
+        campaignIdsByCollectionId.set(link.targetId, current);
+      }
+    }
+  }
+
+  const signalsByCampaignId = new Map<string, CampaignTimingSignal[]>();
+  const pushSignal = (campaignIdValue: string, signal: CampaignTimingSignal) => {
+    const current = signalsByCampaignId.get(campaignIdValue) ?? [];
+    current.push(signal);
+    if (!signalsByCampaignId.has(campaignIdValue)) signalsByCampaignId.set(campaignIdValue, current);
+  };
+
+  for (const row of campaignFollowRows) {
+    pushSignal(row.campaignId, { createdAt: row.createdAt, weight: 4 });
+  }
+  for (const row of surfaceEventRows) {
+    if (row.eventType === "view_campaign") pushSignal(row.campaignId, { createdAt: row.createdAt, weight: 1 });
+    if (row.eventType === "click_campaign") pushSignal(row.campaignId, { createdAt: row.createdAt, weight: 3 });
+  }
+  for (const row of dropEventRows) {
+    for (const campaignIdValue of campaignIdsByDropId.get(row.dropId) ?? []) {
+      if (row.eventType === "view_drop") pushSignal(campaignIdValue, { createdAt: row.createdAt, weight: 1 });
+      if (row.eventType === "click_drop_target") pushSignal(campaignIdValue, { createdAt: row.createdAt, weight: 3 });
+    }
+  }
+  for (const row of rsvpRows) {
+    for (const campaignIdValue of campaignIdsByDropId.get(row.dropId) ?? []) {
+      pushSignal(campaignIdValue, { createdAt: row.createdAt, weight: 4 });
+    }
+  }
+  for (const row of purchaseRows) {
+    if (row.status !== "completed") continue;
+    for (const campaignIdValue of campaignIdsByCollectionId.get(row.collectionId) ?? []) {
+      pushSignal(campaignIdValue, { createdAt: row.createdAt, weight: 5 });
+    }
+  }
+
+  const rolloutByCampaignId = new Map(rolloutAnalytics.items.map((item) => [item.campaignId, item]));
+  const digestByCampaignId = new Map(weeklyDigest.items.map((item) => [item.campaignId, item]));
+  const retrospectiveByCampaignId = new Map(retrospectives.items.map((item) => [item.campaignId, item]));
+  const benchmarkByCampaignId = new Map(benchmarks.items.map((item) => [item.campaignId, item]));
+  const healthByCampaignId = new Map(health.items.map((item) => [item.campaignId, item]));
+
+  const items = campaigns.map((campaign) => {
+    const route = `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`;
+    const rolloutItem = rolloutByCampaignId.get(campaign.id) ?? null;
+    const digestItem = digestByCampaignId.get(campaign.id) ?? null;
+    const retrospective = retrospectiveByCampaignId.get(campaign.id) ?? null;
+    const benchmark = benchmarkByCampaignId.get(campaign.id) ?? null;
+    const healthItem = healthByCampaignId.get(campaign.id) ?? null;
+    const launchAt = campaign.startsAt ?? campaign.createdAt;
+    const campaignEndAt = campaign.endsAt ?? new Date();
+    const followerUnlockDelay = differenceInTimingDays(launchAt, campaign.unlockFollowersAt);
+    const publicUnlockDelay = differenceInTimingDays(launchAt, campaign.unlockPublicAt);
+    const signals = (signalsByCampaignId.get(campaign.id) ?? []).filter((signal) => isDateWithinCampaignAnalyticsWindow(signal.createdAt, campaign));
+    const totalTimingSignal = signals.reduce((sum, signal) => sum + signal.weight, 0);
+    const first48hSignal = countTimingSignalInRange(signals, launchAt, addDays(launchAt, 2));
+    const first7dSignal = countTimingSignalInRange(signals, launchAt, addDays(launchAt, 7));
+    const after7dSignal = countTimingSignalInRange(signals, addDays(launchAt, 7), addDays(campaignEndAt, 1));
+    const followerPhaseStart = campaign.unlockFollowersAt;
+    const followerPhaseEnd = campaign.unlockPublicAt ?? campaignEndAt;
+    const publicPhaseStart = campaign.unlockPublicAt ?? (campaign.rolloutMode === "public_first" ? launchAt : null);
+    const memberPhaseEnd = campaign.unlockFollowersAt ?? campaign.unlockPublicAt ?? campaignEndAt;
+    const memberEarlySignal = rolloutItem?.startsWithAudience === "members"
+      ? countTimingSignalInRange(signals, launchAt, addDays(launchAt, 2))
+      : 0;
+    const memberTotalSignal = rolloutItem?.startsWithAudience === "members"
+      ? countTimingSignalInRange(signals, launchAt, addDays(memberPhaseEnd, 1))
+      : 0;
+    const followerEarlySignal = followerPhaseStart
+      ? countTimingSignalInRange(signals, followerPhaseStart, addDays(followerPhaseStart, 2))
+      : 0;
+    const followerLateSignal = followerPhaseStart
+      ? countTimingSignalInRange(signals, addDays(followerPhaseStart, 2), addDays(followerPhaseEnd, 1))
+      : 0;
+    const publicEarlySignal = publicPhaseStart
+      ? countTimingSignalInRange(signals, publicPhaseStart, addDays(publicPhaseStart, 2))
+      : 0;
+    const publicLateSignal = publicPhaseStart
+      ? countTimingSignalInRange(signals, addDays(publicPhaseStart, 2), addDays(campaignEndAt, 1))
+      : 0;
+
+    const stageMap = new Map((rolloutItem?.stagePerformance ?? []).map((stage) => [stage.audience, stage]));
+    const membersStage = stageMap.get("members") ?? emptyCreatorCampaignRolloutStageAnalytics("members");
+    const followersStage = stageMap.get("followers") ?? emptyCreatorCampaignRolloutStageAnalytics("followers");
+    const publicStage = stageMap.get("public") ?? emptyCreatorCampaignRolloutStageAnalytics("public");
+    const membersWeighted = rolloutStageWeightedEngagement(membersStage);
+    const followersWeighted = rolloutStageWeightedEngagement(followersStage);
+    const publicWeighted = rolloutStageWeightedEngagement(publicStage);
+    const strongestStage = [
+      { audience: "members" as const, weighted: membersWeighted },
+      { audience: "followers" as const, weighted: followersWeighted },
+      { audience: "public" as const, weighted: publicWeighted },
+    ].sort((a, b) => b.weighted - a.weighted)[0];
+    const approxPurchaseSignal = (rolloutItem?.approximatePurchasesAfterPublicUnlock ?? 0) + (rolloutItem?.approximatePurchasesAfterFollowerUnlock ?? 0);
+    const approxMembershipSignal = rolloutItem?.approximateMembershipsAfterMemberFirstRollout ?? benchmark?.membershipsFromCampaign ?? 0;
+    const hasMemberWindow = rolloutItem?.startsWithAudience === "members" && memberPhaseEnd > launchAt;
+    const followerWindowUseful = followersWeighted >= Math.max(6, Math.round(publicWeighted * 0.8));
+    const followerWindowWeak = followersStage.views >= 3 && followersWeighted <= Math.max(2, Math.round(publicWeighted * 0.4));
+    const publicEarlyBurst = publicEarlySignal >= Math.max(8, publicLateSignal * 1.25);
+    const launchFrontLoaded = totalTimingSignal > 0 && first7dSignal >= Math.max(8, Math.round(totalTimingSignal * 0.7));
+    const laterLift = after7dSignal >= Math.max(8, first7dSignal * 0.45);
+    const multiStageSignal = [membersWeighted, followersWeighted, publicWeighted].filter((value) => value >= Math.max(4, Math.round(totalTimingSignal * 0.18))).length >= 2;
+    const recommendationSignals: string[] = [];
+
+    let timingRecommendationType: CreatorCampaignTimingAdvisorRecommendationType = "keep_current_timing";
+    let title = "Keep the current launch timing";
+    let message = "Your current timing still reads as a reasonable lightweight default for the next pass.";
+    let suggestedFollowerUnlockDelay = followerUnlockDelay;
+    let suggestedPublicUnlockDelay = publicUnlockDelay;
+    let suggestedStartTiming = launchFrontLoaded
+      ? "Start the visible push 1–2 days before the main drop, then move quickly through the unlocks."
+      : "Start the campaign 3–5 days before the main drop so the early stages have time to collect signal.";
+
+    if (hasMemberWindow && memberTotalSignal >= Math.max(publicEarlySignal + publicLateSignal, followersWeighted) * 1.15 && (approxMembershipSignal > 0 || membersStage.clicks + membersStage.rsvps > 0) && (followerUnlockDelay ?? 0) <= 2) {
+      timingRecommendationType = "extend_member_window";
+      suggestedFollowerUnlockDelay = Math.max(2, (followerUnlockDelay ?? 0) + 1);
+      suggestedPublicUnlockDelay = Math.max(suggestedFollowerUnlockDelay ?? 0, (publicUnlockDelay ?? suggestedFollowerUnlockDelay ?? 0) + 1);
+      suggestedStartTiming = "Start 4–6 days before the main drop so members get a real head start before wider access.";
+      title = "Give the member window more room";
+      message = "Member-stage response is doing enough work that the next launch should keep members exclusive a little longer before follower or public unlocks.";
+      recommendationSignals.push(`Member-stage weighted signal ${membersWeighted} beat follower/public timing signal.`);
+      if (approxMembershipSignal > 0) recommendationSignals.push(`${approxMembershipSignal} approximate membership conversions appeared during the member-first window.`);
+    } else if (hasMemberWindow && memberTotalSignal > 0 && memberEarlySignal >= Math.max(6, Math.round(memberTotalSignal * 0.75)) && (followerUnlockDelay ?? 0) >= 3) {
+      timingRecommendationType = "shorten_member_window";
+      suggestedFollowerUnlockDelay = Math.max(1, (followerUnlockDelay ?? 0) - 1);
+      suggestedPublicUnlockDelay = publicUnlockDelay !== null ? Math.max(suggestedFollowerUnlockDelay ?? 1, publicUnlockDelay - 1) : null;
+      suggestedStartTiming = "Start 2–4 days before the main drop and let followers in sooner once the first member burst lands.";
+      title = "Shorten the member-only hold";
+      message = "Most of the member-stage lift happened quickly, so a shorter member window should preserve exclusivity without stalling the rest of the launch.";
+      recommendationSignals.push(`About ${roundPercent((memberEarlySignal / Math.max(1, memberTotalSignal)) * 100)}% of member-stage timing signal landed in the first 48 hours.`);
+    } else if (followerPhaseStart && followerWindowWeak && (publicUnlockDelay ?? 0) - (followerUnlockDelay ?? 0) >= 3) {
+      timingRecommendationType = "shorten_follower_window";
+      suggestedPublicUnlockDelay = Math.max((followerUnlockDelay ?? 0) + 1, (publicUnlockDelay ?? 0) - 1);
+      suggestedStartTiming = "Start 2–3 days before the main drop and keep follower access brief before public unlock.";
+      title = "Shorten the follower window";
+      message = "Follower-stage reach did not create much extra lift on its own, so the next launch should move from followers to public faster.";
+      recommendationSignals.push(`Follower-stage weighted signal ${followersWeighted} stayed soft versus public-stage ${publicWeighted}.`);
+    } else if (followerPhaseStart && followerWindowUseful && followerLateSignal >= Math.max(6, followerEarlySignal * 1.1) && (publicUnlockDelay ?? 0) - (followerUnlockDelay ?? 0) <= 2) {
+      timingRecommendationType = "extend_follower_window";
+      suggestedPublicUnlockDelay = Math.max((publicUnlockDelay ?? 0) + 1, (followerUnlockDelay ?? 0) + 2);
+      suggestedStartTiming = "Start 4–5 days before the main drop so follower access has time to compound before public unlock.";
+      title = "Let the follower stage breathe a bit longer";
+      message = "Follower activity kept building instead of peaking immediately, so the next launch should not rush into public access.";
+      recommendationSignals.push(`Follower-stage timing signal kept growing after the first 48 hours (${followerLateSignal} late vs ${followerEarlySignal} early).`);
+    } else if (campaign.unlockPublicAt && publicEarlyBurst && (publicUnlockDelay ?? 0) >= 3 && publicWeighted >= Math.max(membersWeighted, followersWeighted)) {
+      timingRecommendationType = "accelerate_public_unlock";
+      suggestedPublicUnlockDelay = Math.max(1, (publicUnlockDelay ?? 0) - 1);
+      suggestedStartTiming = "Start 2–4 days before the main drop and move public unlock up once the early private stages have tested the message.";
+      title = "Open public access sooner";
+      message = "Public response appears to arrive fast once the campaign opens up, so the next launch should not wait as long before the public unlock.";
+      recommendationSignals.push(`Public-stage timing signal hit quickly (${publicEarlySignal} in the first 48 hours after public unlock).`);
+      if ((rolloutItem?.approximatePurchasesAfterPublicUnlock ?? 0) > 0) recommendationSignals.push(`${rolloutItem?.approximatePurchasesAfterPublicUnlock ?? 0} approximate purchases appeared after public unlock.`);
+    } else if (campaign.unlockPublicAt && hasMemberWindow && memberTotalSignal >= Math.max(publicWeighted, followersWeighted) * 1.15 && approxMembershipSignal > 0 && (publicUnlockDelay ?? 0) <= 4) {
+      timingRecommendationType = "delay_public_unlock";
+      suggestedPublicUnlockDelay = Math.max((publicUnlockDelay ?? 0) + 1, (suggestedFollowerUnlockDelay ?? 0) + 1);
+      suggestedStartTiming = "Start 4–6 days before the main drop so member/follower momentum has time to mature before the public phase.";
+      title = "Delay the public unlock slightly";
+      message = "This campaign looks strongest before it opens fully, so the next version should hold public access a bit longer to preserve the early-stage conversion window.";
+      recommendationSignals.push(`Member-stage weighted signal ${membersWeighted} is currently stronger than public-stage ${publicWeighted}.`);
+      recommendationSignals.push(`${approxMembershipSignal} approximate membership signal suggests the private window is doing useful work.`);
+    } else if (launchFrontLoaded && !multiStageSignal && publicWeighted >= Math.max(membersWeighted, followersWeighted) && (benchmark?.campaignDurationDays ?? 0) >= 8) {
+      timingRecommendationType = "use_short_burst_launch";
+      suggestedFollowerUnlockDelay = followerUnlockDelay !== null ? Math.min(followerUnlockDelay, 1) : null;
+      suggestedPublicUnlockDelay = publicUnlockDelay !== null ? Math.min(publicUnlockDelay, 2) : 1;
+      suggestedStartTiming = "Start 1–2 days before the main drop and compress the whole launch into a short burst.";
+      title = "Use a shorter burst launch next time";
+      message = "Most of this campaign's signal landed early, so a compact launch window should fit better than a long staged arc.";
+      recommendationSignals.push(`${roundPercent((first7dSignal / Math.max(1, totalTimingSignal)) * 100)}% of weighted timing signal landed in the first week.`);
+      recommendationSignals.push(`The campaign still ran about ${benchmark?.campaignDurationDays ?? 0} days.`);
+    } else if (multiStageSignal && laterLift && (benchmark?.campaignDurationDays ?? 0) <= 7) {
+      timingRecommendationType = "use_longer_staged_rollout";
+      suggestedFollowerUnlockDelay = followerUnlockDelay ?? 2;
+      suggestedPublicUnlockDelay = publicUnlockDelay ?? 4;
+      suggestedStartTiming = "Start 5–7 days before the main drop so each stage has enough room to produce signal.";
+      title = "Give the rollout a little more runway";
+      message = "Multiple stages are adding real lift here, so the next campaign should use a slightly longer staged window instead of collapsing everything together.";
+      recommendationSignals.push(`Later timing signal stayed meaningful after day 7 (${after7dSignal}).`);
+      recommendationSignals.push(`At least two rollout stages contributed meaningful engagement.`);
+    } else if (after7dSignal >= Math.max(8, first48hSignal * 1.25) && (benchmark?.campaignDurationDays ?? 0) >= 7) {
+      timingRecommendationType = "start_earlier";
+      suggestedStartTiming = "Begin the campaign warm-up 5–7 days before the main drop so the audience has more time to build before the peak moment.";
+      title = "Start warming this campaign up earlier";
+      message = "This launch found more traction after the first burst, which suggests the next version should start its visible arc sooner rather than relying on a same-day spike.";
+      recommendationSignals.push(`Post-launch signal after day 7 (${after7dSignal}) beat the first-48-hour burst (${first48hSignal}).`);
+      if (digestItem) recommendationSignals.push(`${digestItem.newFollowersThisWeek} new follows and ${digestItem.newRsvpsThisWeek} new RSVPs landed in the latest digest window.`);
+    } else if (launchFrontLoaded && (benchmark?.campaignDurationDays ?? 0) >= 10) {
+      timingRecommendationType = "start_later";
+      suggestedStartTiming = "Start closer to the main drop — about 1–3 days ahead — because this audience responds quickly once the campaign is visible.";
+      title = "Start closer to the main launch moment";
+      message = "This campaign did not need a long ramp: the strongest response arrived early, so the next version can wait longer before opening the arc.";
+      recommendationSignals.push(`The first week carried most of the timing signal (${first7dSignal} of ${totalTimingSignal}).`);
+    }
+
+    const confidence = timingAdvisorConfidence(totalTimingSignal, recommendationSignals.length);
+    const rationaleParts = [
+      recommendationSignals[0] ?? null,
+      digestItem ? `Weekly digest most recently showed ${digestItem.newFollowersThisWeek} follows, ${digestItem.newRsvpsThisWeek} RSVPs, ${digestItem.dropViewsThisWeek} linked drop views, and ${digestItem.dropClicksThisWeek} linked drop clicks.` : null,
+      retrospective?.lessons[0]?.message ?? null,
+      healthItem?.primaryStrength ? `Health strength: ${healthItem.primaryStrength}` : null,
+      healthItem?.primaryConcern && timingRecommendationType !== "keep_current_timing" ? `Health concern: ${healthItem.primaryConcern}` : null,
+      benchmark?.benchmarkLabels[0] ? `Benchmark context: ${benchmark.benchmarkLabels[0]}.` : null,
+      approxPurchaseSignal > 0 ? `${approxPurchaseSignal} approximate purchase signal${approxPurchaseSignal === 1 ? "" : "s"} factored in where launch timing overlaps linked collection purchases.` : null,
+      approxMembershipSignal > 0 ? `${approxMembershipSignal} approximate membership signal${approxMembershipSignal === 1 ? "" : "s"} factored in where member-first timing overlaps campaign conversion windows.` : null,
+    ].filter((value): value is string => Boolean(value));
+
+    const rationaleChips = [
+      strongestStage?.weighted ? `Strongest stage: ${campaignRolloutStageLabel(strongestStage.audience)}` : null,
+      followerUnlockDelay !== null ? `Follower unlock now: ${formatTimingDelay(followerUnlockDelay, "not used")}` : null,
+      publicUnlockDelay !== null ? `Public unlock now: ${formatTimingDelay(publicUnlockDelay, "same day")}` : null,
+      suggestedFollowerUnlockDelay !== null ? `Follower next: ${formatTimingDelay(suggestedFollowerUnlockDelay, "not used")}` : null,
+      suggestedPublicUnlockDelay !== null ? `Public next: ${formatTimingDelay(suggestedPublicUnlockDelay, "same day")}` : null,
+      healthItem?.healthState ? `Health: ${healthItem.healthState.replaceAll("_", " ")}` : null,
+      benchmark?.benchmarkLabels[0] ?? null,
+      digestItem?.wasActiveThisWeek ? "Active in weekly digest" : null,
+      retrospective?.reuseCandidate ? "Retrospective says reusable" : null,
+    ].filter((value): value is string => Boolean(value)).slice(0, 6);
+
+    return {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      route,
+      currentRolloutMode: (campaign.rolloutMode as CreatorCampaignRolloutMode) ?? "public_first",
+      suggestedStartTiming,
+      suggestedFollowerUnlockDelay,
+      suggestedPublicUnlockDelay,
+      timingRecommendationType,
+      title,
+      message,
+      rationale: rationaleParts.join(" "),
+      confidence,
+      rationaleChips,
+      strongestStage: strongestStage?.weighted ? strongestStage.audience : null,
+      currentFollowerUnlockDelay: followerUnlockDelay,
+      currentPublicUnlockDelay: publicUnlockDelay,
+      totalTimingSignal,
+      approximatePurchaseSignal: approxPurchaseSignal,
+      approximateMembershipSignal: approxMembershipSignal,
+    } satisfies CreatorCampaignTimingAdvisorItem;
+  }).sort((a, b) => {
+    const confidenceRank = (value: CreatorCampaignAudienceFitConfidence) => value === "high" ? 3 : value === "medium" ? 2 : value === "low" ? 1 : 0;
+    return confidenceRank(b.confidence) - confidenceRank(a.confidence)
+      || b.totalTimingSignal - a.totalTimingSignal
+      || a.campaignName.localeCompare(b.campaignName);
+  });
+
+  const creatorInsights: CreatorCampaignTimingAdvisorInsight[] = [];
+  const topItems = [...items].sort((a, b) => b.totalTimingSignal - a.totalTimingSignal).slice(0, Math.min(3, items.length));
+  const shortBurstItems = items.filter((item) => ["use_short_burst_launch", "start_later", "accelerate_public_unlock", "shorten_follower_window", "shorten_member_window"].includes(item.timingRecommendationType));
+  const longerWindowItems = items.filter((item) => ["use_longer_staged_rollout", "extend_member_window", "extend_follower_window", "delay_public_unlock", "start_earlier"].includes(item.timingRecommendationType));
+  const memberWindowItems = items.filter((item) => ["extend_member_window", "delay_public_unlock"].includes(item.timingRecommendationType));
+  const publicUnlockItems = items.filter((item) => item.suggestedPublicUnlockDelay !== null);
+  const earlyPublicItems = items.filter((item) => ["accelerate_public_unlock", "use_short_burst_launch", "shorten_follower_window"].includes(item.timingRecommendationType));
+
+  if (memberWindowItems.length) {
+    creatorInsights.push({
+      key: "member_window_strength",
+      title: "Your member-led launches usually deserve a little protected time",
+      message: `Across ${pluralizeRolloutCampaign(memberWindowItems.length)}, the strongest early signal showed up before the public phase, which points toward holding the private window a bit longer when member intent is real.`,
+      confidence: memberWindowItems.length >= 2 ? "medium" : memberWindowItems[0]?.confidence ?? "low",
+      evidence: memberWindowItems.slice(0, 3).map((item) => `${item.campaignName}: ${formatTimingRecommendationTypeLabel(item.timingRecommendationType)}.`),
+    });
+  }
+
+  if (publicUnlockItems.length) {
+    const delayValues = publicUnlockItems.map((item) => item.suggestedPublicUnlockDelay).filter((value): value is number => value !== null).sort((a, b) => a - b);
+    const medianDelay = delayValues.length ? delayValues[Math.floor(delayValues.length / 2)] : null;
+    if (medianDelay !== null) {
+      creatorInsights.push({
+        key: "public_unlock_window",
+        title: "Public unlock usually matters within a tight window for you",
+        message: `In your own campaign history, the next best public unlock usually lands around ${formatTimingDelay(medianDelay, "same day")}, rather than staying open-ended for a long time.`,
+        confidence: delayValues.length >= 3 ? "medium" : "low",
+        evidence: publicUnlockItems.slice(0, 3).map((item) => `${item.campaignName}: suggested public unlock ${formatTimingDelay(item.suggestedPublicUnlockDelay, "same day")}.`),
+      });
+    }
+  }
+
+  if (shortBurstItems.length > longerWindowItems.length && topItems.length) {
+    creatorInsights.push({
+      key: "short_burst_bias",
+      title: "Short-burst launches look stronger than long arcs in your public-reach campaigns",
+      message: `Your strongest timing examples lean toward compact launches that unlock quickly once interest appears, instead of stretching the arc longer than the response curve needs.`,
+      confidence: shortBurstItems.length >= 2 ? "medium" : topItems[0]?.confidence ?? "low",
+      evidence: topItems.map((item) => `${item.campaignName}: ${formatTimingRecommendationTypeLabel(item.timingRecommendationType)}.`),
+    });
+  } else if (longerWindowItems.length && longerWindowItems.length >= shortBurstItems.length) {
+    creatorInsights.push({
+      key: "longer_stage_bias",
+      title: "Your stronger campaigns often need a little timing runway",
+      message: `Several of your launches keep adding lift after the first burst, which suggests a short member/follower runway is often better than collapsing every stage into one day.`,
+      confidence: longerWindowItems.length >= 2 ? "medium" : longerWindowItems[0]?.confidence ?? "low",
+      evidence: longerWindowItems.slice(0, 3).map((item) => `${item.campaignName}: ${formatTimingRecommendationTypeLabel(item.timingRecommendationType)}.`),
+    });
+  }
+
+  if (earlyPublicItems.length >= 2) {
+    creatorInsights.push({
+      key: "follower_window_softness",
+      title: "Follower-stage timing can be too long for some of your broad-reach campaigns",
+      message: `When follower-stage reach is mostly a bridge to public traffic, your data usually points toward widening access sooner instead of sitting in the middle stage too long.`,
+      confidence: earlyPublicItems.length >= 3 ? "medium" : "low",
+      evidence: earlyPublicItems.slice(0, 3).map((item) => `${item.campaignName}: ${item.rationaleChips.find((chip) => chip.startsWith("Public next")) ?? formatTimingRecommendationTypeLabel(item.timingRecommendationType)}.`),
+    });
+  }
+
+  const summary = {
+    totalCampaigns: items.length,
+    campaignsWithRecommendations: items.length,
+    shorterWindowRecommendations: items.filter((item) => ["shorten_member_window", "shorten_follower_window", "accelerate_public_unlock"].includes(item.timingRecommendationType)).length,
+    longerWindowRecommendations: items.filter((item) => ["extend_member_window", "extend_follower_window", "delay_public_unlock", "use_longer_staged_rollout", "start_earlier"].includes(item.timingRecommendationType)).length,
+    earlierPublicUnlockRecommendations: items.filter((item) => ["accelerate_public_unlock", "shorten_follower_window", "use_short_burst_launch"].includes(item.timingRecommendationType)).length,
+    shortBurstRecommendations: items.filter((item) => ["use_short_burst_launch", "start_later"].includes(item.timingRecommendationType)).length,
+    keepCurrentTimingCount: items.filter((item) => item.timingRecommendationType === "keep_current_timing").length,
+  } satisfies CreatorCampaignTimingAdvisorSummary;
+
+  return {
+    summary,
+    creatorInsights: creatorInsights.slice(0, 4),
+    items,
+    attributionNotes: [
+      "Timing advisor stays separate from rollout mode and rollout advisor on purpose: rollout mode answers who unlocks first, while timing advisor answers how long each window should stay open next time.",
+      "Recommendations are rules-based and grounded in this creator's own launch timing, follow, RSVP, view, click, benchmark, weekly digest, retrospective, health, and approximate conversion signals only.",
+      "No new tracking system is introduced here; it re-reads timestamps and summaries the drinks platform already stores.",
+      "Purchases and memberships remain clearly labeled approximations anywhere the underlying campaign analytics are already approximate.",
     ],
     generatedAt: new Date().toISOString(),
   };
@@ -18046,6 +18598,10 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
       ? await loadCreatorCampaignRolloutAdvisor(campaign.creatorUserId)
       : null;
     const ownerRolloutAdvice = ownerRolloutAdvisorCollection?.items.find((item) => item.campaignId === campaign.id) ?? null;
+    const ownerTimingAdvisorCollection = viewerId && viewerId === campaign.creatorUserId
+      ? await loadCreatorCampaignTimingAdvisor(campaign.creatorUserId, campaign.id)
+      : null;
+    const ownerTimingAdvice = ownerTimingAdvisorCollection?.items[0] ?? null;
     const ownerAudienceFitCollection = viewerId && viewerId === campaign.creatorUserId
       ? await loadCreatorCampaignAudienceFit(campaign.creatorUserId)
       : null;
@@ -18069,6 +18625,7 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
       ownerRollout,
       ownerRolloutAnalytics,
       ownerRolloutAdvice,
+      ownerTimingAdvice,
       ownerRolloutSuggestion: viewerId && viewerId === campaign.creatorUserId
         ? buildCampaignRolloutSuggestion({
           campaign,
@@ -22734,6 +23291,43 @@ r.get("/creator-dashboard/campaign-rollout-advisor", requireAuth, async (req, re
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-rollout-advisor", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign rollout advisor"));
+  }
+});
+
+
+r.get("/creator-dashboard/campaign-timing-advisor", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId.trim() : "";
+    if (campaignId) {
+      const ownedCampaign = await db
+        .select({ id: creatorCampaigns.id })
+        .from(creatorCampaigns)
+        .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, req.user!.id)))
+        .limit(1);
+      if (!ownedCampaign[0]) {
+        return res.status(404).json({ ok: false, error: "Campaign not found." });
+      }
+    }
+
+    const advisor = await loadCreatorCampaignTimingAdvisor(req.user!.id, campaignId || null);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      campaignId: campaignId || null,
+      summary: advisor.summary,
+      creatorInsights: advisor.creatorInsights,
+      items: advisor.items,
+      attributionNotes: advisor.attributionNotes,
+      generatedAt: advisor.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-timing-advisor", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign timing advisor"));
   }
 });
 
