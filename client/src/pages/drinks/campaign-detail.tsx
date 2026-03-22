@@ -10,6 +10,7 @@ import CampaignUnlockReadinessAlertsSection from "@/components/drinks/CampaignUn
 import CampaignPinButton from "@/components/drinks/CampaignPinButton";
 import CampaignStageRecapsSection from "@/components/drinks/CampaignStageRecapsSection";
 import CampaignUnlockControls from "@/components/drinks/CampaignUnlockControls";
+import CampaignFixExperimentsSection from "@/components/drinks/CampaignFixExperimentsSection";
 import { CampaignLifecycleSuggestionPanel, type CampaignLifecycleSuggestion } from "@/components/drinks/CampaignLifecycleSuggestionsSection";
 import { CampaignWrapUpPanel, type CampaignRetrospectiveItem } from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignFollowButton from "@/components/drinks/CampaignFollowButton";
@@ -626,6 +627,15 @@ export default function DrinkCampaignDetailPage() {
               limit={1}
               title="Owner-only upcoming unlock alert"
               description="Private, time-sensitive unlock warnings for this campaign only. This stays separate from overall launch readiness and rollout/timing advice."
+            />
+          ) : null}
+
+          {user?.id && user.id === query.data.campaign.creatorUserId ? (
+            <CampaignFixExperimentsSection
+              campaignId={query.data.campaign.id}
+              compact
+              title="Owner-only fix experiments"
+              description="Private experiments for corrective actions on this campaign. Bottlenecks still show where leakage is happening; these cards only track which fix you tried and whether the next before/after window moved."
             />
           ) : null}
 
