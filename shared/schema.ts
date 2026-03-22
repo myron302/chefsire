@@ -1392,6 +1392,7 @@ export const creatorCampaigns = pgTable(
     startsAt: timestamp("starts_at"),
     endsAt: timestamp("ends_at"),
     isActive: boolean("is_active").default(true).notNull(),
+    isPinned: boolean("is_pinned").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -1402,6 +1403,7 @@ export const creatorCampaigns = pgTable(
     visibilityIdx: index("creator_campaigns_visibility_idx").on(table.visibility),
     activeIdx: index("creator_campaigns_active_idx").on(table.isActive, table.startsAt, table.endsAt),
     creatorUpdatedIdx: index("creator_campaigns_creator_updated_at_idx").on(table.creatorUserId, table.updatedAt),
+    creatorPinnedIdx: uniqueIndex("creator_campaigns_single_pinned_idx").on(table.creatorUserId).where(sql`${table.isPinned} = true`),
   })
 );
 

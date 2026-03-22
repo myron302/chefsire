@@ -4,6 +4,7 @@ import { Link, useRoute } from "wouter";
 
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
 import CampaignActionCenterSection from "@/components/drinks/CampaignActionCenterSection";
+import CampaignPinButton from "@/components/drinks/CampaignPinButton";
 import { CampaignLifecycleSuggestionPanel, type CampaignLifecycleSuggestion } from "@/components/drinks/CampaignLifecycleSuggestionsSection";
 import { CampaignWrapUpPanel, type CampaignRetrospectiveItem } from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignFollowButton from "@/components/drinks/CampaignFollowButton";
@@ -259,6 +260,8 @@ export default function DrinkCampaignDetailPage() {
   const [matched, params] = useRoute<{ slug: string }>("/drinks/campaigns/:slug");
   const { user } = useUser();
   const slug = matched ? String(params?.slug ?? "") : "";
+  const [pinMessage, setPinMessage] = React.useState("");
+  const [pinError, setPinError] = React.useState("");
 
   const query = useQuery<CampaignDetailResponse>({
     queryKey: ["/api/drinks/campaigns", slug, user?.id ?? "guest"],
@@ -340,13 +343,27 @@ export default function DrinkCampaignDetailPage() {
           <CreatorCampaignCard
             campaign={query.data.campaign}
             actions={(
-              <CampaignFollowButton
-                campaignId={campaign?.id}
-                creatorUserId={campaign?.creatorUserId}
-                variant={campaign?.isFollowing ? "outline" : "default"}
-              />
+              <>
+                <CampaignFollowButton
+                  campaignId={campaign?.id}
+                  creatorUserId={campaign?.creatorUserId}
+                  variant={campaign?.isFollowing ? "outline" : "default"}
+                />
+                {user?.id && user.id === query.data.campaign.creatorUserId ? (
+                  <CampaignPinButton
+                    campaignId={query.data.campaign.id}
+                    isPinned={query.data.campaign.isPinned}
+                    variant={query.data.campaign.isPinned ? "secondary" : "outline"}
+                    onSuccess={(message) => { setPinMessage(message); setPinError(""); }}
+                    onError={(message) => { setPinError(message); setPinMessage(""); }}
+                  />
+                ) : null}
+              </>
             )}
           />
+
+          {pinMessage ? <p className="text-sm text-emerald-600">{pinMessage}</p> : null}
+          {pinError ? <p className="text-sm text-destructive">{pinError}</p> : null}
 
           {user?.id && user.id === query.data.campaign.creatorUserId ? (
             <CampaignActionCenterSection

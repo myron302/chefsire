@@ -2125,6 +2125,7 @@ async function ensureDrinkCollectionsSchema() {
         starts_at timestamp,
         ends_at timestamp,
         is_active boolean NOT NULL DEFAULT true,
+        is_pinned boolean NOT NULL DEFAULT false,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       );
@@ -2408,6 +2409,8 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_visibility_idx ON creator_campaigns(visibility);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_active_idx ON creator_campaigns(is_active, starts_at, ends_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_creator_updated_at_idx ON creator_campaigns(creator_user_id, updated_at);`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS is_pinned boolean NOT NULL DEFAULT false;`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_campaigns_single_pinned_idx ON creator_campaigns(creator_user_id) WHERE is_pinned = true;`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_idx ON creator_campaign_templates(creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_source_idx ON creator_campaign_templates(source_campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_updated_at_idx ON creator_campaign_templates(creator_user_id, updated_at);`);
@@ -2851,6 +2854,7 @@ function serializeCreatorCampaign(
     startsAt: campaign.startsAt ? campaign.startsAt.toISOString() : null,
     endsAt: campaign.endsAt ? campaign.endsAt.toISOString() : null,
     isActive: Boolean(campaign.isActive),
+    isPinned: Boolean(campaign.isPinned),
     state: getCreatorCampaignState(campaign),
     route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
     followerCount: Number(options.followerCount ?? 0),
@@ -2884,6 +2888,53 @@ function serializeCreatorCampaign(
       }
       : null,
   };
+}
+
+async function loadPinnedCampaignForCreator(creatorUserId: string) {
+  if (!db || !creatorUserId) return null;
+
+  const rows = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(and(eq(creatorCampaigns.creatorUserId, creatorUserId), eq(creatorCampaigns.isPinned, true)))
+    .limit(1);
+
+  return rows[0] ?? null;
+}
+
+async function setPinnedCampaignForCreator(creatorUserId: string, campaignId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(creatorCampaigns)
+      .set({ isPinned: false, updatedAt: new Date() })
+      .where(and(eq(creatorCampaigns.creatorUserId, creatorUserId), eq(creatorCampaigns.isPinned, true)));
+
+    await tx
+      .update(creatorCampaigns)
+      .set({ isPinned: true, updatedAt: new Date() })
+      .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, creatorUserId)));
+  });
+
+  return loadCampaignForOwnerOrThrow(campaignId, creatorUserId);
+}
+
+async function clearPinnedCampaignForCreator(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const conditions = [eq(creatorCampaigns.creatorUserId, creatorUserId), eq(creatorCampaigns.isPinned, true)];
+  if (campaignId) {
+    conditions.push(eq(creatorCampaigns.id, campaignId));
+  }
+
+  const rows = await db
+    .update(creatorCampaigns)
+    .set({ isPinned: false, updatedAt: new Date() })
+    .where(and(...conditions))
+    .returning();
+
+  return rows[0] ?? null;
 }
 
 async function loadCreatorCampaignLinksByCampaignIds(campaignIds: string[]) {
@@ -14313,10 +14364,21 @@ r.get("/campaigns/creator/:userId", optionalAuth, async (req, res) => {
     }));
     const maps = await loadCreatorCampaignSummaryMaps(visibleCampaigns);
 
+    const pinnedCampaign = visibleCampaigns.find((campaign) => campaign.isPinned) ?? null;
+
     return res.json({
       ok: true,
       creatorUserId,
       count: visibleCampaigns.length,
+      pinnedCampaign: pinnedCampaign
+        ? serializeCreatorCampaign(pinnedCampaign, {
+          viewerId,
+          creator: maps.creatorMap.get(creatorUserId) ?? null,
+          counts: maps.countsMap.get(pinnedCampaign.id),
+          followerCount: maps.followerCountMap.get(pinnedCampaign.id) ?? 0,
+          isFollowing: followedCampaignIds.has(pinnedCampaign.id),
+        })
+        : null,
       items: visibleCampaigns.map((campaign) => serializeCreatorCampaign(campaign, {
         viewerId,
         creator: maps.creatorMap.get(campaign.creatorUserId) ?? null,
@@ -14328,6 +14390,127 @@ r.get("/campaigns/creator/:userId", optionalAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/campaigns/creator/:userId", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load creator campaigns"));
+  }
+});
+
+r.get("/campaigns/featured", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [campaigns, followedCreatorIds, memberCreatorIds, followedCampaignIds] = await Promise.all([
+      db.select().from(creatorCampaigns).where(eq(creatorCampaigns.isPinned, true)).orderBy(desc(creatorCampaigns.updatedAt)).limit(18),
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+      loadFollowedCampaignIdsForUser(viewerId),
+    ]);
+
+    const visibleCampaigns = campaigns.filter((campaign) => canViewerSeeCreatorCampaign({
+      campaign,
+      viewerId,
+      followedCreatorIds,
+      memberCreatorIds,
+    }));
+    const maps = await loadCreatorCampaignSummaryMaps(visibleCampaigns);
+
+    return res.json({
+      ok: true,
+      count: visibleCampaigns.length,
+      items: visibleCampaigns.map((campaign) => serializeCreatorCampaign(campaign, {
+        viewerId,
+        creator: maps.creatorMap.get(campaign.creatorUserId) ?? null,
+        counts: maps.countsMap.get(campaign.id),
+        followerCount: maps.followerCountMap.get(campaign.id) ?? 0,
+        isFollowing: followedCampaignIds.has(campaign.id),
+      })),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/featured", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load featured campaigns"));
+  }
+});
+
+r.get("/creator-dashboard/pinned-campaign", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaign = await loadPinnedCampaignForCreator(req.user!.id);
+    if (!campaign) {
+      return res.json({ ok: true, campaign: null });
+    }
+
+    const detail = await loadCreatorCampaignDetail(campaign, req.user!.id);
+    return res.json({ ok: true, campaign: detail.campaign });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/pinned-campaign", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load pinned campaign"));
+  }
+});
+
+r.post("/campaigns/:id/pin", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const campaign = await setPinnedCampaignForCreator(req.user!.id, campaignId);
+    const detail = await loadCreatorCampaignDetail(campaign, req.user!.id);
+
+    return res.json({
+      ok: true,
+      replaced: true,
+      campaign: detail.campaign,
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Unknown error";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/pin", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to pin campaign"));
+  }
+});
+
+r.post("/campaigns/:id/unpin", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const campaign = await clearPinnedCampaignForCreator(req.user!.id, campaignId);
+    if (!campaign) {
+      return res.json({ ok: true, campaign: null, wasPinned: false });
+    }
+
+    const detail = await loadCreatorCampaignDetail(campaign, req.user!.id);
+    return res.json({ ok: true, campaign: detail.campaign, wasPinned: true });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Unknown error";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/unpin", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to unpin campaign"));
   }
 });
 

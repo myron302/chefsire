@@ -189,6 +189,7 @@ interface CreatorCampaignsResponse {
   ok: boolean;
   creatorUserId: string;
   count: number;
+  pinnedCampaign: CreatorCampaignItem | null;
   items: CreatorCampaignItem[];
 }
 
@@ -457,6 +458,10 @@ export default function PublicDrinkCreatorPage() {
   const upcomingCreatorDrops = creatorDrops.filter((drop) => drop.status === "upcoming");
   const archivedCreatorDrops = creatorDrops.filter((drop) => drop.status === "archived");
   const creatorCampaigns = creatorCampaignsQuery.data?.items ?? [];
+  const pinnedCampaign = creatorCampaignsQuery.data?.pinnedCampaign ?? creatorCampaigns.find((campaign) => campaign.isPinned) ?? null;
+  const otherCreatorCampaigns = pinnedCampaign
+    ? creatorCampaigns.filter((campaign) => campaign.id !== pinnedCampaign.id)
+    : creatorCampaigns;
   const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
   const collaborationHighlightsCount = [
     ...creatorCollections.filter((collection) => Boolean(collection.acceptedCollaboration)),
@@ -654,6 +659,50 @@ export default function PublicDrinkCreatorPage() {
         </Card>
       ) : null}
 
+      {pinnedCampaign ? (
+        <Card className="border-primary/30 bg-gradient-to-r from-white via-blue-50/60 to-white">
+          <CardHeader>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <CardTitle>Creator spotlight</CardTitle>
+                <CardDescription>
+                  The creator pinned this campaign as the best current place to start their drinks story. Access rules still apply, so this only appears when you are allowed to see it.
+                </CardDescription>
+              </div>
+              <Badge variant="secondary">Pinned campaign</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <h3 className="text-2xl font-semibold">{pinnedCampaign.name}</h3>
+              {pinnedCampaign.description ? <p className="max-w-3xl text-sm text-muted-foreground">{pinnedCampaign.description}</p> : null}
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">{pinnedCampaign.audienceLabel}</Badge>
+                <Badge variant="outline">{pinnedCampaign.counts.total} linked item{pinnedCampaign.counts.total === 1 ? "" : "s"}</Badge>
+                <Badge variant="outline">{pinnedCampaign.followerCount} following</Badge>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href={pinnedCampaign.route}>
+                <Button>Explore campaign</Button>
+              </Link>
+              {user?.id && user.id !== data.userId ? (
+                <CreatorFollowButton creatorId={data.userId} showNudge />
+              ) : null}
+              {membershipPlan?.isActive && !membershipActive && pinnedCampaign.visibility === "members" ? (
+                <Button
+                  variant="outline"
+                  onClick={() => { setMembershipError(""); setMembershipMessage(""); joinMembershipMutation.mutate(); }}
+                  disabled={joinMembershipMutation.isPending}
+                >
+                  {joinMembershipMutation.isPending ? "Opening Square…" : "Join to unlock"}
+                </Button>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      ) : null}
+
       <section id="creator-campaigns" className="space-y-4">
         <div className="flex items-baseline justify-between gap-2">
           <h2 className="text-xl font-semibold">Campaigns / Seasons</h2>
@@ -685,8 +734,16 @@ export default function PublicDrinkCreatorPage() {
           </Card>
         ) : null}
 
+        {!creatorCampaignsQuery.isLoading && !creatorCampaignsQuery.isError && creatorCampaigns.length > 0 && otherCreatorCampaigns.length === 0 ? (
+          <Card>
+            <CardContent className="p-4 text-sm text-muted-foreground">
+              No additional visible campaigns right now beyond the creator&apos;s pinned spotlight.
+            </CardContent>
+          </Card>
+        ) : null}
+
         <div className="space-y-3">
-          {creatorCampaigns.map((campaign) => (
+          {otherCreatorCampaigns.map((campaign) => (
             <CreatorCampaignCard key={campaign.id} campaign={campaign} showCreator={false} />
           ))}
         </div>
