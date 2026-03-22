@@ -116,6 +116,8 @@ type CreatorRoadmapItemType = "collection" | "promo" | "challenge" | "member_dro
 type CreatorRoadmapVisibility = "public" | "followers" | "members";
 type CreatorRoadmapStatus = "upcoming" | "live" | "archived";
 type CreatorCampaignVisibility = "public" | "followers" | "members";
+type CreatorCampaignAudienceSegment = CreatorCampaignVisibility;
+type CreatorCampaignAudienceFitConfidence = "high" | "medium" | "low" | "none";
 type CreatorCampaignTargetType = "collection" | "drop" | "promo" | "challenge" | "post" | "roadmap";
 type CreatorCampaignCtaTargetType = "follow" | "rsvp" | "collection" | "membership" | "drop" | "challenge";
 type CreatorCampaignState = "upcoming" | "active" | "past";
@@ -4075,6 +4077,63 @@ type CreatorCampaignAnalyticsSummary = {
   totalCampaignMembershipConversions: number;
 };
 
+type CreatorCampaignAudienceFitSegmentSummary = {
+  audience: CreatorCampaignAudienceSegment;
+  campaignFollows: number;
+  dropRsvps: number;
+  dropViews: number;
+  dropClicks: number;
+  purchases: number;
+  memberships: number;
+  weightedScore: number;
+  weightedScoreNote: string;
+};
+
+type CreatorCampaignAudienceFitItem = {
+  campaignId: string;
+  slug: string;
+  name: string;
+  route: string;
+  visibility: CreatorCampaignVisibility;
+  state: CreatorCampaignState;
+  bestAudienceFit: CreatorCampaignAudienceSegment | null;
+  bestAudienceFitConfidence: CreatorCampaignAudienceFitConfidence;
+  bestAudienceFitReason: string | null;
+  audienceSegments: CreatorCampaignAudienceFitSegmentSummary[];
+  topSignals: string[];
+  notes: string[];
+};
+
+type CreatorCampaignAudienceFitSummary = {
+  totalCampaigns: number;
+  activeCampaigns: number;
+  publicBestFitCount: number;
+  followerBestFitCount: number;
+  memberBestFitCount: number;
+  noClearFitCount: number;
+  bestPublicCampaign: {
+    campaignId: string;
+    name: string;
+    slug: string;
+    route: string;
+    weightedScore: number;
+  } | null;
+  bestFollowerCampaign: {
+    campaignId: string;
+    name: string;
+    slug: string;
+    route: string;
+    weightedScore: number;
+  } | null;
+  bestMemberCampaign: {
+    campaignId: string;
+    name: string;
+    slug: string;
+    route: string;
+    weightedScore: number;
+  } | null;
+};
+
 type CreatorCampaignBenchmarkSummaryItem = {
   campaignId: string;
   name: string;
@@ -5081,6 +5140,437 @@ function getCreatorCampaignAnalyticsWindow(campaign: Pick<CreatorCampaignRecord,
 function isDateWithinCampaignAnalyticsWindow(value: Date, campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "createdAt">) {
   const window = getCreatorCampaignAnalyticsWindow(campaign);
   return value >= window.startsAt && value <= window.endsAt;
+}
+
+async function loadCreatorFollowerRelationshipRows(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+  return db
+    .select({
+      userId: follows.followerId,
+      createdAt: follows.createdAt,
+    })
+    .from(follows)
+    .where(eq(follows.followingId, creatorUserId))
+    .orderBy(asc(follows.createdAt));
+}
+
+function groupCreatedAtRowsByUserId<T extends { userId: string | null | undefined; createdAt: Date }>(rows: T[]) {
+  const grouped = new Map<string, Date[]>();
+  for (const row of rows) {
+    const userId = typeof row.userId === "string" ? row.userId.trim() : "";
+    if (!userId) continue;
+    const current = grouped.get(userId) ?? [];
+    current.push(row.createdAt);
+    grouped.set(userId, current);
+  }
+  for (const dates of grouped.values()) {
+    dates.sort((a, b) => a.getTime() - b.getTime());
+  }
+  return grouped;
+}
+
+function groupMembershipRowsByUserId(rows: CreatorMembershipRecord[]) {
+  const grouped = new Map<string, CreatorMembershipRecord[]>();
+  for (const row of rows) {
+    const userId = typeof row.userId === "string" ? row.userId.trim() : "";
+    if (!userId) continue;
+    const current = grouped.get(userId) ?? [];
+    current.push(row);
+    grouped.set(userId, current);
+  }
+  for (const memberships of grouped.values()) {
+    memberships.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+  return grouped;
+}
+
+function classifyCreatorAudienceSegmentAt(input: {
+  userId: string | null | undefined;
+  occurredAt: Date;
+  creatorFollowMap: Map<string, Date[]>;
+  creatorMembershipMap: Map<string, CreatorMembershipRecord[]>;
+}): CreatorCampaignAudienceSegment {
+  const userId = typeof input.userId === "string" ? input.userId.trim() : "";
+  if (!userId) return "public";
+
+  const memberships = input.creatorMembershipMap.get(userId) ?? [];
+  if (memberships.some((membership) => membership.createdAt <= input.occurredAt && isCreatorMembershipActiveRecord(membership, input.occurredAt))) {
+    return "members";
+  }
+
+  const followDates = input.creatorFollowMap.get(userId) ?? [];
+  if (followDates.some((createdAt) => createdAt <= input.occurredAt)) {
+    return "followers";
+  }
+
+  return "public";
+}
+
+function classifyMembershipConversionAudienceSegment(input: {
+  userId: string | null | undefined;
+  occurredAt: Date;
+  creatorFollowMap: Map<string, Date[]>;
+}): CreatorCampaignAudienceSegment {
+  const userId = typeof input.userId === "string" ? input.userId.trim() : "";
+  if (!userId) return "public";
+  const followDates = input.creatorFollowMap.get(userId) ?? [];
+  return followDates.some((createdAt) => createdAt < input.occurredAt) ? "followers" : "public";
+}
+
+function createEmptyAudienceFitSegment(audience: CreatorCampaignAudienceSegment): CreatorCampaignAudienceFitSegmentSummary {
+  return {
+    audience,
+    campaignFollows: 0,
+    dropRsvps: 0,
+    dropViews: 0,
+    dropClicks: 0,
+    purchases: 0,
+    memberships: 0,
+    weightedScore: 0,
+    weightedScoreNote: "Weighted score favors explicit follow, RSVP, click, purchase, and membership signals over passive views.",
+  };
+}
+
+function finalizeAudienceFitSegment(segment: CreatorCampaignAudienceFitSegmentSummary) {
+  segment.weightedScore = Math.round(
+    segment.campaignFollows * 4
+    + segment.dropRsvps * 3
+    + segment.dropClicks * 3
+    + segment.purchases * 5
+    + segment.memberships * 6
+    + segment.dropViews * 0.25
+  );
+  return segment;
+}
+
+function formatAudienceSegmentLabel(audience: CreatorCampaignAudienceSegment) {
+  switch (audience) {
+    case "followers":
+      return "follower audience";
+    case "members":
+      return "member audience";
+    case "public":
+    default:
+      return "public audience";
+  }
+}
+
+function buildAudienceFitReason(input: {
+  bestSegment: CreatorCampaignAudienceFitSegmentSummary;
+  nextSegment: CreatorCampaignAudienceFitSegmentSummary | null;
+}): { confidence: CreatorCampaignAudienceFitConfidence; reason: string | null } {
+  if (input.bestSegment.weightedScore <= 0) {
+    return {
+      confidence: "none",
+      reason: "No segment has enough current signal yet — this reads as too early to call honestly.",
+    };
+  }
+
+  const margin = input.nextSegment ? input.bestSegment.weightedScore - input.nextSegment.weightedScore : input.bestSegment.weightedScore;
+  const confidence: CreatorCampaignAudienceFitConfidence = margin >= 12
+    ? "high"
+    : margin >= 5
+      ? "medium"
+      : "low";
+
+  const strongestSignals = [
+    input.bestSegment.memberships > 0 ? `${input.bestSegment.memberships} memberships` : null,
+    input.bestSegment.purchases > 0 ? `${input.bestSegment.purchases} purchases` : null,
+    input.bestSegment.dropClicks > 0 ? `${input.bestSegment.dropClicks} clicks` : null,
+    input.bestSegment.dropRsvps > 0 ? `${input.bestSegment.dropRsvps} RSVPs` : null,
+    input.bestSegment.campaignFollows > 0 ? `${input.bestSegment.campaignFollows} campaign follows` : null,
+    input.bestSegment.dropViews > 0 ? `${input.bestSegment.dropViews} views` : null,
+  ].filter((value): value is string => Boolean(value)).slice(0, 2);
+
+  const leadText = input.nextSegment && input.nextSegment.weightedScore > 0
+    ? ` It is ahead of ${formatAudienceSegmentLabel(input.nextSegment.audience)} signals by ${margin} score points.`
+    : "";
+
+  return {
+    confidence,
+    reason: `${formatAudienceSegmentLabel(input.bestSegment.audience).replace(/^./, (value) => value.toUpperCase())} is leading right now from ${strongestSignals.join(" + ") || "the strongest available engagement mix"}.${leadText}`,
+  };
+}
+
+async function loadCreatorCampaignAudienceFit(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [campaigns, performance, creatorFollowRows, creatorMembershipRows] = await Promise.all([
+    db
+      .select()
+      .from(creatorCampaigns)
+      .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorCampaigns.updatedAt))
+      .limit(120),
+    loadCreatorCampaignPerformanceSnapshots(creatorUserId),
+    loadCreatorFollowerRelationshipRows(creatorUserId),
+    db
+      .select()
+      .from(creatorMemberships)
+      .where(eq(creatorMemberships.creatorUserId, creatorUserId))
+      .orderBy(asc(creatorMemberships.createdAt)),
+  ]);
+
+  if (!campaigns.length) {
+    return {
+      summary: {
+        totalCampaigns: 0,
+        activeCampaigns: 0,
+        publicBestFitCount: 0,
+        followerBestFitCount: 0,
+        memberBestFitCount: 0,
+        noClearFitCount: 0,
+        bestPublicCampaign: null,
+        bestFollowerCampaign: null,
+        bestMemberCampaign: null,
+      } satisfies CreatorCampaignAudienceFitSummary,
+      items: [] as CreatorCampaignAudienceFitItem[],
+      attributionNotes: [
+        "Audience fit uses only the platform-native audiences you already have: public, followers, and members.",
+        "No campaigns exist yet for this creator, so there is no audience fit signal to summarize.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  const linkMap = await loadCreatorCampaignLinksByCampaignIds(campaignIds);
+  const creatorFollowMap = groupCreatedAtRowsByUserId(creatorFollowRows);
+  const creatorMembershipMap = groupMembershipRowsByUserId(creatorMembershipRows);
+  const performanceByCampaignId = new Map(performance.items.map((item) => [item.campaignId, item]));
+
+  const campaignFollowRows = await db
+    .select({
+      campaignId: creatorCampaignFollows.campaignId,
+      userId: creatorCampaignFollows.userId,
+      createdAt: creatorCampaignFollows.createdAt,
+    })
+    .from(creatorCampaignFollows)
+    .where(inArray(creatorCampaignFollows.campaignId, campaignIds))
+    .orderBy(asc(creatorCampaignFollows.createdAt));
+
+  const dropIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "drop")
+      .map((link) => link.targetId)),
+  )];
+  const collectionIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId)),
+  )];
+
+  const [dropRsvpRows, dropEventRows, purchaseRows] = await Promise.all([
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropRsvps.dropId,
+          userId: creatorDropRsvps.userId,
+          createdAt: creatorDropRsvps.createdAt,
+        }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).orderBy(asc(creatorDropRsvps.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; userId: string; createdAt: Date }>),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropEvents.dropId,
+          eventType: creatorDropEvents.eventType,
+          userId: creatorDropEvents.userId,
+          createdAt: creatorDropEvents.createdAt,
+        }).from(creatorDropEvents).where(inArray(creatorDropEvents.dropId, dropIds)).orderBy(asc(creatorDropEvents.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; eventType: CreatorDropEventType; userId: string | null; createdAt: Date }>),
+    collectionIds.length
+      ? db.select({
+          collectionId: drinkCollectionPurchases.collectionId,
+          userId: drinkCollectionPurchases.userId,
+          createdAt: drinkCollectionPurchases.createdAt,
+          status: drinkCollectionPurchases.status,
+        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds)).orderBy(asc(drinkCollectionPurchases.createdAt))
+      : Promise.resolve([] as Array<{ collectionId: string; userId: string; createdAt: Date; status: string }>),
+  ]);
+
+  const campaignIdsByDropId = new Map<string, string[]>();
+  const campaignIdsByCollectionId = new Map<string, string[]>();
+  for (const campaign of campaigns) {
+    const links = linkMap.get(campaign.id) ?? [];
+    for (const link of links) {
+      if (link.targetType === "drop") {
+        const current = campaignIdsByDropId.get(link.targetId) ?? [];
+        current.push(campaign.id);
+        campaignIdsByDropId.set(link.targetId, current);
+      }
+      if (link.targetType === "collection") {
+        const current = campaignIdsByCollectionId.get(link.targetId) ?? [];
+        current.push(campaign.id);
+        campaignIdsByCollectionId.set(link.targetId, current);
+      }
+    }
+  }
+
+  const segmentMaps = new Map<string, Map<CreatorCampaignAudienceSegment, CreatorCampaignAudienceFitSegmentSummary>>();
+  const ensureSegment = (campaignId: string, audience: CreatorCampaignAudienceSegment) => {
+    const existing = segmentMaps.get(campaignId) ?? new Map<CreatorCampaignAudienceSegment, CreatorCampaignAudienceFitSegmentSummary>();
+    if (!segmentMaps.has(campaignId)) segmentMaps.set(campaignId, existing);
+    const segment = existing.get(audience) ?? createEmptyAudienceFitSegment(audience);
+    if (!existing.has(audience)) existing.set(audience, segment);
+    return segment;
+  };
+
+  for (const campaign of campaigns) {
+    ensureSegment(campaign.id, "public");
+    ensureSegment(campaign.id, "followers");
+    ensureSegment(campaign.id, "members");
+  }
+
+  for (const row of campaignFollowRows) {
+    const audience = classifyCreatorAudienceSegmentAt({
+      userId: row.userId,
+      occurredAt: row.createdAt,
+      creatorFollowMap,
+      creatorMembershipMap,
+    });
+    ensureSegment(row.campaignId, audience).campaignFollows += 1;
+  }
+
+  for (const row of dropRsvpRows) {
+    const campaignIdsForDrop = campaignIdsByDropId.get(row.dropId) ?? [];
+    if (!campaignIdsForDrop.length) continue;
+    const audience = classifyCreatorAudienceSegmentAt({
+      userId: row.userId,
+      occurredAt: row.createdAt,
+      creatorFollowMap,
+      creatorMembershipMap,
+    });
+    for (const campaignId of campaignIdsForDrop) {
+      ensureSegment(campaignId, audience).dropRsvps += 1;
+    }
+  }
+
+  for (const row of dropEventRows) {
+    const campaignIdsForDrop = campaignIdsByDropId.get(row.dropId) ?? [];
+    if (!campaignIdsForDrop.length) continue;
+    const audience = classifyCreatorAudienceSegmentAt({
+      userId: row.userId,
+      occurredAt: row.createdAt,
+      creatorFollowMap,
+      creatorMembershipMap,
+    });
+    for (const campaignId of campaignIdsForDrop) {
+      const segment = ensureSegment(campaignId, audience);
+      if (row.eventType === "view_drop") segment.dropViews += 1;
+      if (row.eventType === "click_drop_target") segment.dropClicks += 1;
+    }
+  }
+
+  for (const row of purchaseRows) {
+    if (row.status !== "completed") continue;
+    const campaignIdsForCollection = campaignIdsByCollectionId.get(row.collectionId) ?? [];
+    if (!campaignIdsForCollection.length) continue;
+    const audience = classifyCreatorAudienceSegmentAt({
+      userId: row.userId,
+      occurredAt: row.createdAt,
+      creatorFollowMap,
+      creatorMembershipMap,
+    });
+    for (const campaignId of campaignIdsForCollection) {
+      const campaign = campaigns.find((entry) => entry.id === campaignId);
+      if (!campaign || !isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)) continue;
+      ensureSegment(campaignId, audience).purchases += 1;
+    }
+  }
+
+  for (const membership of creatorMembershipRows) {
+    const audience = classifyMembershipConversionAudienceSegment({
+      userId: membership.userId,
+      occurredAt: membership.createdAt,
+      creatorFollowMap,
+    });
+    for (const campaign of campaigns) {
+      if (!isDateWithinCampaignAnalyticsWindow(membership.createdAt, campaign)) continue;
+      const analytics = performanceByCampaignId.get(campaign.id);
+      if (!analytics?.membershipsFromCampaignNote) continue;
+      ensureSegment(campaign.id, audience).memberships += 1;
+    }
+  }
+
+  const items = campaigns.map((campaign) => {
+    const route = `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`;
+    const segments = ["public", "followers", "members"].map((audience) => finalizeAudienceFitSegment({ ...ensureSegment(campaign.id, audience as CreatorCampaignAudienceSegment) }));
+    const sorted = [...segments].sort((a, b) => b.weightedScore - a.weightedScore || b.memberships - a.memberships || b.purchases - a.purchases || b.dropClicks - a.dropClicks || b.dropRsvps - a.dropRsvps);
+    const bestSegment = sorted[0] ?? null;
+    const nextSegment = sorted[1] ?? null;
+    const { confidence, reason } = bestSegment
+      ? buildAudienceFitReason({ bestSegment, nextSegment })
+      : { confidence: "none" as CreatorCampaignAudienceFitConfidence, reason: null };
+    const bestAudienceFit = bestSegment && bestSegment.weightedScore > 0 ? bestSegment.audience : null;
+    const analytics = performanceByCampaignId.get(campaign.id);
+    const topSignals = [
+      bestSegment && bestSegment.campaignFollows > 0 ? `${bestSegment.campaignFollows} follows from ${formatAudienceSegmentLabel(bestSegment.audience)}` : null,
+      bestSegment && bestSegment.dropRsvps > 0 ? `${bestSegment.dropRsvps} RSVPs from ${formatAudienceSegmentLabel(bestSegment.audience)}` : null,
+      bestSegment && bestSegment.dropClicks > 0 ? `${bestSegment.dropClicks} clicks from ${formatAudienceSegmentLabel(bestSegment.audience)}` : null,
+      bestSegment && bestSegment.purchases > 0 ? `${bestSegment.purchases} purchases from ${formatAudienceSegmentLabel(bestSegment.audience)}` : null,
+      bestSegment && bestSegment.memberships > 0 ? `${bestSegment.memberships} memberships started by ${formatAudienceSegmentLabel(bestSegment.audience === "public" ? "public" : bestSegment.audience)}` : null,
+    ].filter((value): value is string => Boolean(value)).slice(0, 3);
+
+    return {
+      campaignId: campaign.id,
+      slug: campaign.slug,
+      name: campaign.name,
+      route,
+      visibility: campaign.visibility as CreatorCampaignVisibility,
+      state: getCreatorCampaignState(campaign),
+      bestAudienceFit,
+      bestAudienceFitConfidence: confidence,
+      bestAudienceFitReason: reason,
+      audienceSegments: segments,
+      topSignals,
+      notes: [
+        "Audience segments are only public, followers, and members — no hidden micro-segments or exported ad audiences are used here.",
+        "Anonymous drop traffic is counted as public because the platform cannot tie it to a follow or membership relationship.",
+        "Follower and member labels use the creator relationship visible in product data at the time of the event when ChefSire can infer it.",
+        analytics?.purchasesFromLinkedCollectionsNote ?? null,
+        analytics?.membershipsFromCampaignNote ? "Membership starts are still approximate conversion proxies and are bucketed by pre-membership relationship when possible." : null,
+      ].filter((value): value is string => Boolean(value)),
+    } satisfies CreatorCampaignAudienceFitItem;
+  }).sort((a, b) => {
+    const scoreA = a.audienceSegments.find((segment) => segment.audience === a.bestAudienceFit)?.weightedScore ?? 0;
+    const scoreB = b.audienceSegments.find((segment) => segment.audience === b.bestAudienceFit)?.weightedScore ?? 0;
+    return scoreB - scoreA || a.name.localeCompare(b.name);
+  });
+
+  const bestBySegment = (audience: CreatorCampaignAudienceSegment) => {
+    const best = items
+      .map((item) => ({ item, segment: item.audienceSegments.find((entry) => entry.audience === audience) ?? null }))
+      .filter((entry): entry is { item: CreatorCampaignAudienceFitItem; segment: CreatorCampaignAudienceFitSegmentSummary } => Boolean(entry.segment && entry.segment.weightedScore > 0))
+      .sort((a, b) => b.segment.weightedScore - a.segment.weightedScore || a.item.name.localeCompare(b.item.name))[0];
+    return best ? {
+      campaignId: best.item.campaignId,
+      name: best.item.name,
+      slug: best.item.slug,
+      route: best.item.route,
+      weightedScore: best.segment.weightedScore,
+    } : null;
+  };
+
+  return {
+    summary: {
+      totalCampaigns: items.length,
+      activeCampaigns: items.filter((item) => item.state === "active").length,
+      publicBestFitCount: items.filter((item) => item.bestAudienceFit === "public").length,
+      followerBestFitCount: items.filter((item) => item.bestAudienceFit === "followers").length,
+      memberBestFitCount: items.filter((item) => item.bestAudienceFit === "members").length,
+      noClearFitCount: items.filter((item) => !item.bestAudienceFit).length,
+      bestPublicCampaign: bestBySegment("public"),
+      bestFollowerCampaign: bestBySegment("followers"),
+      bestMemberCampaign: bestBySegment("members"),
+    } satisfies CreatorCampaignAudienceFitSummary,
+    items,
+    attributionNotes: [
+      "Audience fit stays inside existing drinks-platform audiences only: public, followers, and members.",
+      "Segments are mutually exclusive inside this summary: member overrides follower, follower overrides public, and anonymous traffic rolls into public.",
+      "Follower and member buckets use relationship timing when the platform can infer it from creator follows or membership records, but they are still lightweight creator insights rather than a full attribution warehouse.",
+      "Purchases and memberships remain approximate anywhere the underlying campaign analytics are already approximate.",
+      "Best audience fit is a weighted comparison signal to help creators learn which audience is responding most, not a delivery guarantee or targeting engine.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 async function loadCreatorCampaignAnalytics(creatorUserId: string) {
@@ -20886,6 +21376,28 @@ r.get("/creator-dashboard/campaign-benchmarks", requireAuth, async (req, res) =>
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-benchmarks", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign benchmarks"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-audience-fit", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const audienceFit = await loadCreatorCampaignAudienceFit(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: audienceFit.summary,
+      items: audienceFit.items,
+      attributionNotes: audienceFit.attributionNotes,
+      generatedAt: audienceFit.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-audience-fit", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign audience fit"));
   }
 });
 
