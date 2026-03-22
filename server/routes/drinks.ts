@@ -25941,6 +25941,52 @@ type CreatorCampaignExperimentSuggestion = {
   source: "bottleneck" | "timing_advisor";
 };
 
+type CreatorCampaignExperimentLibraryExample = {
+  campaignId: string;
+  campaignName: string;
+  campaignRoute: string;
+  experimentId: string;
+  experimentLabel: string;
+  outcomeSummary: string;
+};
+
+type CreatorCampaignExperimentLibrarySummaryItem = {
+  experimentType: CreatorCampaignExperimentType;
+  label: string;
+  runsCount: number;
+  readableRunsCount: number;
+  improvedCount: number;
+  flatCount: number;
+  declinedCount: number;
+  insufficientDataCount: number;
+  averageViewLift: number | null;
+  averageClickLift: number | null;
+  averageFollowLift: number | null;
+  averageRsvpLift: number | null;
+  averageApproxPurchaseLift: number | null;
+  averageApproxMembershipLift: number | null;
+  bestCampaignExample: CreatorCampaignExperimentLibraryExample | null;
+  reuseSuggestion: string | null;
+  confidenceNote: string;
+};
+
+type CreatorCampaignExperimentFixPattern = {
+  key: string;
+  title: string;
+  summary: string;
+  reuseSuggestion: string;
+  supportingExperimentTypes: CreatorCampaignExperimentType[];
+  supportCount: number;
+  confidence: "low" | "medium" | "high";
+  confidenceNote: string;
+  exampleCampaign: CreatorCampaignExperimentLibraryExample | null;
+};
+
+type CreatorCampaignExperimentLibraryRun = {
+  campaign: Pick<CreatorCampaignRecord, "id" | "name" | "slug" | "visibility" | "rolloutMode">;
+  experiment: SerializedCreatorCampaignExperiment;
+};
+
 type CreatorCampaignExperimentSignalRows = {
   campaign: CreatorCampaignRecord;
   followRows: Array<{ createdAt: Date }>;
@@ -26113,6 +26159,114 @@ function serializeCreatorCampaignExperiment(
       afterWindowHoursObserved,
     },
   };
+}
+
+function calculateCreatorCampaignExperimentLift(before: number, after: number) {
+  if (!Number.isFinite(before) || !Number.isFinite(after) || before <= 0) return null;
+  return Math.round((((after - before) / before) * 100) * 10) / 10;
+}
+
+function averageCreatorCampaignExperimentLift(values: Array<number | null | undefined>) {
+  const filtered = values.filter((value): value is number => Number.isFinite(value ?? NaN));
+  if (!filtered.length) return null;
+  return Math.round((filtered.reduce((sum, value) => sum + value, 0) / filtered.length) * 10) / 10;
+}
+
+function medianCreatorCampaignExperimentMetric(values: number[]) {
+  const sorted = values.filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (!sorted.length) return null;
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle] ?? null;
+  return ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
+}
+
+function creatorCampaignExperimentOutcomeScoreDelta(outcome: SerializedCreatorCampaignExperiment["outcome"]) {
+  return (
+    (outcome.afterViews - outcome.beforeViews) * 0.1
+    + (outcome.afterClicks - outcome.beforeClicks) * 2
+    + (outcome.afterFollows - outcome.beforeFollows) * 1.5
+    + (outcome.afterRsvps - outcome.beforeRsvps) * 2.5
+    + (outcome.afterApproxPurchases - outcome.beforeApproxPurchases) * 5
+    + (outcome.afterApproxMemberships - outcome.beforeApproxMemberships) * 5.5
+  );
+}
+
+function isReadableCreatorCampaignExperimentOutcome(outcome: SerializedCreatorCampaignExperiment["outcome"]) {
+  return outcome.outcomeDirection !== "insufficient_data";
+}
+
+function toCreatorCampaignExperimentLibraryExample(run: CreatorCampaignExperimentLibraryRun): CreatorCampaignExperimentLibraryExample {
+  return {
+    campaignId: run.campaign.id,
+    campaignName: run.campaign.name,
+    campaignRoute: `/drinks/campaigns/${encodeURIComponent(run.campaign.slug)}`,
+    experimentId: run.experiment.id,
+    experimentLabel: run.experiment.label ?? creatorCampaignExperimentTypeLabel(run.experiment.experimentType),
+    outcomeSummary: run.experiment.outcome.outcomeSummary,
+  };
+}
+
+function buildCreatorCampaignExperimentReuseSuggestion(
+  experimentType: CreatorCampaignExperimentType,
+  summary: {
+    averageClickLift: number | null;
+    averageRsvpLift: number | null;
+    averageApproxPurchaseLift: number | null;
+    averageApproxMembershipLift: number | null;
+    improvedCount: number;
+    declinedCount: number;
+  },
+) {
+  if (summary.improvedCount <= summary.declinedCount) {
+    return "Reuse carefully — your own experiment history here looks mixed so far.";
+  }
+
+  switch (experimentType) {
+    case "strengthen_cta":
+      return summary.averageClickLift !== null && summary.averageClickLift > 0
+        ? "Reuse when campaigns are earning views but the view-to-click handoff is soft."
+        : "Reuse when CTA clarity feels like the weakest handoff.";
+    case "push_rsvp":
+      return summary.averageRsvpLift !== null && summary.averageRsvpLift > 0
+        ? "Reuse when launch interest is visible and you want more viewers to commit to RSVP."
+        : "Reuse when follows are present but RSVP intent still needs a push.";
+    case "launch_promo":
+      return summary.averageApproxPurchaseLift !== null && summary.averageApproxPurchaseLift > 0
+        ? "Reuse when campaigns attract clicks but still need a stronger buying nudge."
+        : "Reuse when conversion intent feels weaker than click interest.";
+    case "promote_membership":
+    case "add_member_only_collection":
+      return summary.averageApproxMembershipLift !== null && summary.averageApproxMembershipLift > 0
+        ? "Reuse when the campaign already leans member-first and you want to strengthen the membership ask."
+        : "Reuse when member value is central to the campaign story.";
+    case "spotlight_campaign":
+      return "Reuse when a campaign needs more top-of-funnel attention without rebuilding the core offer.";
+    default:
+      return "Consider reusing this pattern when the same weak stage shows up again.";
+  }
+}
+
+function buildCreatorCampaignExperimentSummaryConfidenceNote(input: {
+  runsCount: number;
+  readableRunsCount: number;
+  insufficientDataCount: number;
+}) {
+  if (input.readableRunsCount >= 4) {
+    return `Directional read from ${input.readableRunsCount} readable run${input.readableRunsCount === 1 ? "" : "s"} across your own campaign history.`;
+  }
+  if (input.readableRunsCount >= 2) {
+    return `Early directional read from ${input.readableRunsCount} readable runs; treat this as a lightweight reuse signal, not proof.`;
+  }
+  if (input.runsCount > 0 && input.insufficientDataCount >= input.runsCount) {
+    return "Most runs are still too early or too light on signal to call confidently.";
+  }
+  return "Very light history so far — useful for memory, but not strong enough for a firm rule.";
+}
+
+function creatorCampaignExperimentPatternConfidence(supportCount: number) {
+  if (supportCount >= 4) return "high" as const;
+  if (supportCount >= 2) return "medium" as const;
+  return "low" as const;
 }
 
 async function loadCreatorCampaignExperimentSignalRows(
@@ -26318,6 +26472,329 @@ async function loadCreatorCampaignExperimentsCollection(creatorUserId: string, c
   };
 }
 
+function buildCreatorCampaignExperimentLibrarySummary(
+  experimentType: CreatorCampaignExperimentType,
+  runs: CreatorCampaignExperimentLibraryRun[],
+): CreatorCampaignExperimentLibrarySummaryItem {
+  const readableRuns = runs.filter((run) => isReadableCreatorCampaignExperimentOutcome(run.experiment.outcome));
+  const improvedRuns = readableRuns.filter((run) => run.experiment.outcome.outcomeDirection === "improved");
+  const declinedRuns = readableRuns.filter((run) => run.experiment.outcome.outcomeDirection === "declined");
+  const flatRuns = readableRuns.filter((run) => run.experiment.outcome.outcomeDirection === "flat");
+  const bestRun = [...runs]
+    .sort((left, right) => creatorCampaignExperimentOutcomeScoreDelta(right.experiment.outcome) - creatorCampaignExperimentOutcomeScoreDelta(left.experiment.outcome))[0] ?? null;
+
+  const averageViewLift = averageCreatorCampaignExperimentLift(readableRuns.map((run) => calculateCreatorCampaignExperimentLift(run.experiment.outcome.beforeViews, run.experiment.outcome.afterViews)));
+  const averageClickLift = averageCreatorCampaignExperimentLift(readableRuns.map((run) => calculateCreatorCampaignExperimentLift(run.experiment.outcome.beforeClicks, run.experiment.outcome.afterClicks)));
+  const averageFollowLift = averageCreatorCampaignExperimentLift(readableRuns.map((run) => calculateCreatorCampaignExperimentLift(run.experiment.outcome.beforeFollows, run.experiment.outcome.afterFollows)));
+  const averageRsvpLift = averageCreatorCampaignExperimentLift(readableRuns.map((run) => calculateCreatorCampaignExperimentLift(run.experiment.outcome.beforeRsvps, run.experiment.outcome.afterRsvps)));
+  const averageApproxPurchaseLift = averageCreatorCampaignExperimentLift(readableRuns.map((run) => calculateCreatorCampaignExperimentLift(run.experiment.outcome.beforeApproxPurchases, run.experiment.outcome.afterApproxPurchases)));
+  const averageApproxMembershipLift = averageCreatorCampaignExperimentLift(readableRuns.map((run) => calculateCreatorCampaignExperimentLift(run.experiment.outcome.beforeApproxMemberships, run.experiment.outcome.afterApproxMemberships)));
+
+  const improvedCount = improvedRuns.length;
+  const declinedCount = declinedRuns.length;
+  const flatCount = flatRuns.length;
+  const insufficientDataCount = runs.length - readableRuns.length;
+
+  return {
+    experimentType,
+    label: creatorCampaignExperimentTypeLabel(experimentType),
+    runsCount: runs.length,
+    readableRunsCount: readableRuns.length,
+    improvedCount,
+    flatCount,
+    declinedCount,
+    insufficientDataCount,
+    averageViewLift,
+    averageClickLift,
+    averageFollowLift,
+    averageRsvpLift,
+    averageApproxPurchaseLift,
+    averageApproxMembershipLift,
+    bestCampaignExample: bestRun ? toCreatorCampaignExperimentLibraryExample(bestRun) : null,
+    reuseSuggestion: buildCreatorCampaignExperimentReuseSuggestion(experimentType, {
+      averageClickLift,
+      averageRsvpLift,
+      averageApproxPurchaseLift,
+      averageApproxMembershipLift,
+      improvedCount,
+      declinedCount,
+    }),
+    confidenceNote: buildCreatorCampaignExperimentSummaryConfidenceNote({
+      runsCount: runs.length,
+      readableRunsCount: readableRuns.length,
+      insufficientDataCount,
+    }),
+  };
+}
+
+function buildCreatorCampaignExperimentFixPatterns(
+  runs: CreatorCampaignExperimentLibraryRun[],
+  summaries: CreatorCampaignExperimentLibrarySummaryItem[],
+) {
+  const patterns: CreatorCampaignExperimentFixPattern[] = [];
+  const summaryByType = new Map(summaries.map((summary) => [summary.experimentType, summary]));
+  const readableRuns = runs.filter((run) => isReadableCreatorCampaignExperimentOutcome(run.experiment.outcome));
+  const readableViewMedian = medianCreatorCampaignExperimentMetric(readableRuns.map((run) => run.experiment.outcome.beforeViews));
+  const readableClickMedian = medianCreatorCampaignExperimentMetric(readableRuns.map((run) => run.experiment.outcome.beforeClicks));
+
+  const addPattern = (pattern: CreatorCampaignExperimentFixPattern | null) => {
+    if (!pattern) return;
+    patterns.push(pattern);
+  };
+
+  const ctaSummary = summaryByType.get("strengthen_cta");
+  if (
+    ctaSummary
+    && ctaSummary.readableRunsCount >= 2
+    && (ctaSummary.averageClickLift ?? 0) > 0
+    && ctaSummary.improvedCount >= ctaSummary.declinedCount
+  ) {
+    addPattern({
+      key: "cta_clickthrough",
+      title: "CTA strengthening has been one of your better clickthrough fixes",
+      summary: `In your own experiment history, strengthen CTA runs average ${ctaSummary.averageClickLift?.toFixed(1) ?? "0.0"}% click lift across ${ctaSummary.readableRunsCount} readable run${ctaSummary.readableRunsCount === 1 ? "" : "s"}.`,
+      reuseSuggestion: "Reuse when views are arriving but the click handoff is still soft.",
+      supportingExperimentTypes: ["strengthen_cta"],
+      supportCount: ctaSummary.readableRunsCount,
+      confidence: creatorCampaignExperimentPatternConfidence(ctaSummary.readableRunsCount),
+      confidenceNote: `${ctaSummary.confidenceNote} Directional only — other campaign changes may have contributed.`,
+      exampleCampaign: ctaSummary.bestCampaignExample,
+    });
+  }
+
+  const rsvpRuns = readableRuns.filter((run) => run.experiment.experimentType === "push_rsvp");
+  const rsvpHighViewRuns = readableViewMedian === null
+    ? []
+    : rsvpRuns.filter((run) => run.experiment.outcome.beforeViews >= readableViewMedian);
+  const improvedHighViewRsvpRuns = rsvpHighViewRuns.filter((run) => run.experiment.outcome.outcomeDirection === "improved");
+  if (
+    rsvpRuns.length >= 2
+    && rsvpHighViewRuns.length >= 1
+    && improvedHighViewRsvpRuns.length >= 1
+    && improvedHighViewRsvpRuns.length >= Math.max(1, Math.ceil(rsvpHighViewRuns.length / 2))
+  ) {
+    const example = [...improvedHighViewRsvpRuns]
+      .sort((left, right) => creatorCampaignExperimentOutcomeScoreDelta(right.experiment.outcome) - creatorCampaignExperimentOutcomeScoreDelta(left.experiment.outcome))[0] ?? null;
+    addPattern({
+      key: "rsvp_high_views",
+      title: "RSVP pushes have landed best once view volume already exists",
+      summary: `In your own history, RSVP experiments improved most often on campaigns that already had stronger view volume before the fix.`,
+      reuseSuggestion: "Reuse after a campaign is getting seen, but commitment still lags behind that interest.",
+      supportingExperimentTypes: ["push_rsvp"],
+      supportCount: rsvpHighViewRuns.length,
+      confidence: creatorCampaignExperimentPatternConfidence(rsvpHighViewRuns.length),
+      confidenceNote: "This compares your own push RSVP runs by lighter vs stronger pre-fix view volume and stays directional only.",
+      exampleCampaign: example ? toCreatorCampaignExperimentLibraryExample(example) : null,
+    });
+  }
+
+  const memberOfferRuns = readableRuns.filter((run) => run.experiment.experimentType === "promote_membership" || run.experiment.experimentType === "add_member_only_collection");
+  const memberFirstRuns = memberOfferRuns.filter((run) => run.campaign.rolloutMode === "members_first" || run.campaign.visibility === "members");
+  const publicFirstRuns = memberOfferRuns.filter((run) => run.campaign.rolloutMode === "public_first" || run.campaign.visibility === "public");
+  const memberFirstAvg = averageCreatorCampaignExperimentLift(memberFirstRuns.map((run) => calculateCreatorCampaignExperimentLift(
+    run.experiment.outcome.beforeApproxMemberships + run.experiment.outcome.beforeApproxPurchases,
+    run.experiment.outcome.afterApproxMemberships + run.experiment.outcome.afterApproxPurchases,
+  )));
+  const publicFirstAvg = averageCreatorCampaignExperimentLift(publicFirstRuns.map((run) => calculateCreatorCampaignExperimentLift(
+    run.experiment.outcome.beforeApproxMemberships + run.experiment.outcome.beforeApproxPurchases,
+    run.experiment.outcome.afterApproxMemberships + run.experiment.outcome.afterApproxPurchases,
+  )));
+  if (
+    memberFirstRuns.length >= 1
+    && publicFirstRuns.length >= 1
+    && (memberFirstAvg ?? -Infinity) > ((publicFirstAvg ?? 0) + 10)
+  ) {
+    const example = [...memberFirstRuns]
+      .sort((left, right) => creatorCampaignExperimentOutcomeScoreDelta(right.experiment.outcome) - creatorCampaignExperimentOutcomeScoreDelta(left.experiment.outcome))[0] ?? null;
+    addPattern({
+      key: "member_offer_member_first",
+      title: "Member-offer fixes have looked stronger on your member-first campaigns",
+      summary: `Across your own readable runs, membership-oriented fixes showed better directional conversion lift on member-first or members-only campaigns than on public-first ones.`,
+      reuseSuggestion: "Reuse when the campaign already leads with member access or member-only value.",
+      supportingExperimentTypes: ["promote_membership", "add_member_only_collection"],
+      supportCount: memberFirstRuns.length + publicFirstRuns.length,
+      confidence: creatorCampaignExperimentPatternConfidence(memberFirstRuns.length + publicFirstRuns.length),
+      confidenceNote: "This compares your own member-offer experiments by campaign orientation and keeps purchases/memberships clearly approximate.",
+      exampleCampaign: example ? toCreatorCampaignExperimentLibraryExample(example) : null,
+    });
+  }
+
+  const publicReachSpotlightRuns = readableRuns.filter((run) =>
+    run.experiment.experimentType === "spotlight_campaign"
+    && (run.campaign.visibility === "public" || run.campaign.rolloutMode === "public_first" || run.campaign.rolloutMode === "staged"),
+  );
+  const improvedPublicReachSpotlightRuns = publicReachSpotlightRuns.filter((run) => run.experiment.outcome.outcomeDirection === "improved");
+  if (
+    publicReachSpotlightRuns.length >= 1
+    && improvedPublicReachSpotlightRuns.length >= Math.max(1, Math.ceil(publicReachSpotlightRuns.length / 2))
+  ) {
+    const example = [...improvedPublicReachSpotlightRuns]
+      .sort((left, right) => creatorCampaignExperimentOutcomeScoreDelta(right.experiment.outcome) - creatorCampaignExperimentOutcomeScoreDelta(left.experiment.outcome))[0] ?? null;
+    addPattern({
+      key: "spotlight_public_reach",
+      title: "Spotlighting has helped your broader-reach campaigns most",
+      summary: "In your own history, spotlight experiments have read best on campaigns meant to reach public audiences instead of staying mostly gated.",
+      reuseSuggestion: "Reuse when a public-reach campaign needs more top-of-funnel attention.",
+      supportingExperimentTypes: ["spotlight_campaign"],
+      supportCount: publicReachSpotlightRuns.length,
+      confidence: creatorCampaignExperimentPatternConfidence(publicReachSpotlightRuns.length),
+      confidenceNote: "This pattern is based only on your own spotlight runs and uses directional before/after movement, not causal proof.",
+      exampleCampaign: example ? toCreatorCampaignExperimentLibraryExample(example) : null,
+    });
+  }
+
+  const promoRuns = readableRuns.filter((run) => run.experiment.experimentType === "launch_promo");
+  const promoClickHeavyWeakConversionRuns = readableClickMedian === null
+    ? []
+    : promoRuns.filter((run) => {
+      const beforeClicks = run.experiment.outcome.beforeClicks;
+      const beforeConversions = run.experiment.outcome.beforeApproxPurchases + run.experiment.outcome.beforeApproxMemberships;
+      return beforeClicks >= readableClickMedian && (beforeConversions === 0 || beforeConversions <= Math.max(1, Math.round(beforeClicks * 0.08)));
+    });
+  const improvedPromoRuns = promoClickHeavyWeakConversionRuns.filter((run) => run.experiment.outcome.outcomeDirection === "improved");
+  if (
+    promoClickHeavyWeakConversionRuns.length >= 1
+    && improvedPromoRuns.length >= Math.max(1, Math.ceil(promoClickHeavyWeakConversionRuns.length / 2))
+  ) {
+    const example = [...improvedPromoRuns]
+      .sort((left, right) => creatorCampaignExperimentOutcomeScoreDelta(right.experiment.outcome) - creatorCampaignExperimentOutcomeScoreDelta(left.experiment.outcome))[0] ?? null;
+    addPattern({
+      key: "promo_click_heavy",
+      title: "Promo pushes have looked best when clicks were already there but conversion lagged",
+      summary: "In your own history, promo experiments have helped most on campaigns that were attracting clicks but not yet converting into approximate purchases or memberships.",
+      reuseSuggestion: "Reuse when click interest is healthy but buyer or member intent is still weak.",
+      supportingExperimentTypes: ["launch_promo"],
+      supportCount: promoClickHeavyWeakConversionRuns.length,
+      confidence: creatorCampaignExperimentPatternConfidence(promoClickHeavyWeakConversionRuns.length),
+      confidenceNote: "This pattern compares your own promo runs against pre-fix click and approximate conversion levels only.",
+      exampleCampaign: example ? toCreatorCampaignExperimentLibraryExample(example) : null,
+    });
+  }
+
+  return patterns
+    .sort((left, right) => right.supportCount - left.supportCount || left.title.localeCompare(right.title))
+    .slice(0, 5);
+}
+
+async function loadCreatorCampaignExperimentLibrary(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const campaigns = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+    .orderBy(desc(creatorCampaigns.updatedAt), desc(creatorCampaigns.createdAt));
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  if (!campaignIds.length) {
+    return {
+      summary: {
+        totalHistoricalExperiments: 0,
+        readableExperiments: 0,
+        improvedExperiments: 0,
+        declinedExperiments: 0,
+        trackedFixTypes: 0,
+      },
+      items: [] as CreatorCampaignExperimentLibrarySummaryItem[],
+      bestFixTypes: [] as CreatorCampaignExperimentLibrarySummaryItem[],
+      weakestFixTypes: [] as CreatorCampaignExperimentLibrarySummaryItem[],
+      fixPatterns: [] as CreatorCampaignExperimentFixPattern[],
+      attributionNotes: [
+        "Experiment library stays creator-private and only uses the experiment records plus the same before/after outcomes already available on each campaign.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const experimentRows = await db
+    .select()
+    .from(creatorCampaignExperiments)
+    .where(inArray(creatorCampaignExperiments.campaignId, campaignIds))
+    .orderBy(desc(creatorCampaignExperiments.updatedAt), desc(creatorCampaignExperiments.createdAt))
+    .limit(200);
+  const historicalExperiments = experimentRows.filter((experiment) => experiment.status !== "active");
+  const campaignById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
+  const campaignsWithHistory = [...new Set(historicalExperiments.map((experiment) => experiment.campaignId))]
+    .map((campaignId) => campaignById.get(campaignId))
+    .filter((campaign): campaign is CreatorCampaignRecord => Boolean(campaign));
+
+  const signalEntries = await Promise.all(campaignsWithHistory.map(async (campaign) => ([
+    campaign.id,
+    await loadCreatorCampaignExperimentSignalRows(creatorUserId, campaign),
+  ] as const)));
+  const signalsByCampaignId = new Map(signalEntries);
+
+  const runs: CreatorCampaignExperimentLibraryRun[] = historicalExperiments.flatMap((experiment) => {
+    const campaign = campaignById.get(experiment.campaignId);
+    const signals = signalsByCampaignId.get(experiment.campaignId);
+    if (!campaign || !signals) return [];
+    return [{
+      campaign: {
+        id: campaign.id,
+        name: campaign.name,
+        slug: campaign.slug,
+        visibility: campaign.visibility as CreatorCampaignVisibility,
+        rolloutMode: (campaign.rolloutMode as CreatorCampaignRolloutMode | null) ?? "public_first",
+      },
+      experiment: serializeCreatorCampaignExperiment(experiment, signals),
+    }];
+  });
+
+  const runsByExperimentType = new Map<CreatorCampaignExperimentType, CreatorCampaignExperimentLibraryRun[]>();
+  for (const run of runs) {
+    const list = runsByExperimentType.get(run.experiment.experimentType) ?? [];
+    list.push(run);
+    runsByExperimentType.set(run.experiment.experimentType, list);
+  }
+
+  const items = [...runsByExperimentType.entries()]
+    .map(([experimentType, experimentRuns]) => buildCreatorCampaignExperimentLibrarySummary(experimentType, experimentRuns))
+    .sort((left, right) => {
+      const leftScore = (left.improvedCount * 2) - (left.declinedCount * 2) - left.flatCount;
+      const rightScore = (right.improvedCount * 2) - (right.declinedCount * 2) - right.flatCount;
+      return rightScore - leftScore || right.readableRunsCount - left.readableRunsCount || left.label.localeCompare(right.label);
+    });
+
+  const scoredItems = items.map((item) => ({
+    item,
+    score: (item.improvedCount * 2) - (item.declinedCount * 2) - item.flatCount,
+  }));
+
+  const bestFixTypes = [...scoredItems]
+    .filter(({ item }) => item.readableRunsCount > 0)
+    .sort((left, right) => right.score - left.score || right.item.readableRunsCount - left.item.readableRunsCount || left.item.label.localeCompare(right.item.label))
+    .map(({ item }) => item)
+    .slice(0, 3);
+
+  const weakestFixTypes = [...scoredItems]
+    .filter(({ item }) => item.readableRunsCount > 0)
+    .sort((left, right) => left.score - right.score || right.item.declinedCount - left.item.declinedCount || left.item.label.localeCompare(right.item.label))
+    .map(({ item }) => item)
+    .slice(0, 3);
+
+  const readableRuns = runs.filter((run) => isReadableCreatorCampaignExperimentOutcome(run.experiment.outcome));
+
+  return {
+    summary: {
+      totalHistoricalExperiments: runs.length,
+      readableExperiments: readableRuns.length,
+      improvedExperiments: readableRuns.filter((run) => run.experiment.outcome.outcomeDirection === "improved").length,
+      declinedExperiments: readableRuns.filter((run) => run.experiment.outcome.outcomeDirection === "declined").length,
+      trackedFixTypes: items.length,
+    },
+    items,
+    bestFixTypes,
+    weakestFixTypes,
+    fixPatterns: buildCreatorCampaignExperimentFixPatterns(runs, items),
+    attributionNotes: uniqueStringList([
+      `This library aggregates completed or canceled experiment runs across your own campaigns and reuses the same ${CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS}-hour directional before/after comparisons already shown on each experiment.`,
+      "Bottlenecks still describe where campaigns leak. Experiments still describe the fixes you tried. The experiment library only rolls those experiment outcomes up across campaigns to show what has tended to move for you.",
+      "Approximate purchase and membership lifts stay approximate here too — they only reuse existing linked-collection purchase signals and creator membership starts where those campaign links make sense.",
+      "Nothing here claims platform-wide truth or strict causality; it is just a memory layer over your own experiment history.",
+    ], 6),
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 const campaignActionStateUpdateSchema = z.object({
   campaignId: z.string().trim().min(1).optional(),
 });
@@ -26421,6 +26898,31 @@ r.get("/creator-dashboard/campaign-funnel-bottlenecks", requireAuth, async (req,
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-funnel-bottlenecks", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign funnel bottlenecks"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-experiment-library", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const library = await loadCreatorCampaignExperimentLibrary(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: library.summary,
+      items: library.items,
+      bestFixTypes: library.bestFixTypes,
+      weakestFixTypes: library.weakestFixTypes,
+      fixPatterns: library.fixPatterns,
+      attributionNotes: library.attributionNotes,
+      generatedAt: library.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-experiment-library", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign experiment library"));
   }
 });
 
