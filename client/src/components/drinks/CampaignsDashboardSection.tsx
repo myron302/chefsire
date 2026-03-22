@@ -746,6 +746,8 @@ function CampaignRolloutManager({
   const refresh = React.useCallback(async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns/rollout", campaign?.id ?? ""] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns/rollout-timeline", campaign?.id ?? ""] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-rollout-timeline"] }),
       onChanged(),
     ]);
   }, [campaign?.id, onChanged, queryClient]);

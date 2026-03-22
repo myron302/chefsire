@@ -5,6 +5,7 @@ import { Link, useRoute } from "wouter";
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
 import CampaignActionCenterSection from "@/components/drinks/CampaignActionCenterSection";
 import CampaignLaunchReadinessSection from "@/components/drinks/CampaignLaunchReadinessSection";
+import CampaignRolloutTimelineSection from "@/components/drinks/CampaignRolloutTimelineSection";
 import CampaignUnlockReadinessAlertsSection from "@/components/drinks/CampaignUnlockReadinessAlertsSection";
 import CampaignPinButton from "@/components/drinks/CampaignPinButton";
 import CampaignUnlockControls from "@/components/drinks/CampaignUnlockControls";
@@ -863,6 +864,14 @@ export default function DrinkCampaignDetailPage() {
 
                 {unlockMessage ? <p className="text-sm text-emerald-600">{unlockMessage}</p> : null}
                 {unlockError ? <p className="text-sm text-destructive">{unlockError}</p> : null}
+
+                <CampaignRolloutTimelineSection
+                  campaignId={query.data.campaign.id}
+                  compact
+                  limit={10}
+                  title="Owner-only rollout history"
+                  description="Private timeline of rollout config changes, unlock controls, derived stage transitions, readiness warnings, and major linked drop go-live moments."
+                />
 
                 {query.data.ownerRollout.rolloutNotes ? (
                   <div className="rounded-md bg-muted/30 p-3 text-sm">
