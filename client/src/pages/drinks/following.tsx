@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
+import { buildCampaignRouteWithSurface, trackCampaignSurfaceEvent, trackCampaignSurfaceViewOnce } from "@/lib/drinks/campaignSurfaceAttribution";
 
 interface FollowingFeedItem {
   id: string;
@@ -135,6 +136,17 @@ export default function FollowingDrinksFeedPage() {
   const followedCampaigns = followedCampaignsQuery.data?.items ?? [];
   const safeItems = Array.isArray(items) ? items : [];
 
+  React.useEffect(() => {
+    for (const item of followedCampaigns.slice(0, 2)) {
+      trackCampaignSurfaceViewOnce({
+        campaignId: item.campaign.id,
+        surface: "following_feed",
+        referrerRoute: "/drinks/following",
+        scope: "following-feed",
+      });
+    }
+  }, [followedCampaigns]);
+
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-following-feed">
       <div className="space-y-2">
@@ -166,7 +178,18 @@ export default function FollowingDrinksFeedPage() {
             {followedCampaigns.slice(0, 2).map((item) => (
               <Card key={item.campaign.id}>
                 <CardContent className="space-y-4 p-4">
-                  <CreatorCampaignCard campaign={item.campaign} />
+                  <CreatorCampaignCard
+                    campaign={item.campaign}
+                    openHref={buildCampaignRouteWithSurface(item.campaign.route, "following_feed")}
+                    onOpenCampaign={() => {
+                      void trackCampaignSurfaceEvent({
+                        campaignId: item.campaign.id,
+                        eventType: "click_campaign",
+                        surface: "following_feed",
+                        referrerRoute: "/drinks/following",
+                      });
+                    }}
+                  />
                   {item.recentUpdates.length > 0 ? (
                     <div className="grid gap-2 md:grid-cols-3">
                       {item.recentUpdates.slice(0, 3).map((update) => (

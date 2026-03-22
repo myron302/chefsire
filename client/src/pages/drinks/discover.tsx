@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import BecauseOfYourActivity from "@/components/drinks/BecauseOfYourActivity";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
+import { buildCampaignRouteWithSurface, trackCampaignSurfaceEvent, trackCampaignSurfaceViewOnce } from "@/lib/drinks/campaignSurfaceAttribution";
 import { trackPinnedCampaignSpotlightEvent, trackPinnedCampaignSpotlightViewOnce } from "@/lib/drinks/pinnedCampaignSpotlight";
 
 type DiscoverLink = {
@@ -160,6 +161,12 @@ export default function DrinksDiscoverPage() {
         surface: "discover_pinned_campaigns",
         referrerRoute: "/drinks/discover",
       });
+      trackCampaignSurfaceViewOnce({
+        campaignId: campaign.id,
+        surface: "discover_pinned_campaigns",
+        referrerRoute: "/drinks/discover",
+        scope: "discover-pinned",
+      });
     }
   }, [featuredCampaignsQuery.data?.items]);
 
@@ -209,10 +216,17 @@ export default function DrinksDiscoverPage() {
               <CreatorCampaignCard
                 key={campaign.id}
                 campaign={campaign}
+                openHref={buildCampaignRouteWithSurface(campaign.route, "discover_pinned_campaigns")}
                 onOpenCampaign={() => {
                   void trackPinnedCampaignSpotlightEvent({
                     campaignId: campaign.id,
                     eventType: "click_pinned_campaign",
+                    surface: "discover_pinned_campaigns",
+                    referrerRoute: "/drinks/discover",
+                  });
+                  void trackCampaignSurfaceEvent({
+                    campaignId: campaign.id,
+                    eventType: "click_campaign",
                     surface: "discover_pinned_campaigns",
                     referrerRoute: "/drinks/discover",
                   });

@@ -8,6 +8,7 @@ import { useUser } from "@/contexts/UserContext";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { buildCampaignRouteWithSurface, trackCampaignSurfaceEvent, trackCampaignSurfaceViewOnce } from "@/lib/drinks/campaignSurfaceAttribution";
 
 type DrinkAlertType =
   | "drink_collection_wishlist_promo"
@@ -160,6 +161,19 @@ export default function DrinksNotificationsPage() {
 
   const alerts = query.data?.alerts ?? [];
 
+  React.useEffect(() => {
+    for (const alert of alerts) {
+      const campaignId = typeof alert.metadata?.campaignId === "string" ? alert.metadata.campaignId : null;
+      if (!campaignId || alert.type !== "drink_campaign_followed_update") continue;
+      trackCampaignSurfaceViewOnce({
+        campaignId,
+        surface: "alerts",
+        referrerRoute: "/drinks/notifications",
+        scope: `alert:${alert.id}`,
+      });
+    }
+  }, [alerts]);
+
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8" data-testid="drinks-alerts-page">
       <DrinksPlatformNav current="notifications" />
@@ -246,6 +260,10 @@ export default function DrinksNotificationsPage() {
           {alerts.map((alert) => {
             const meta = typeMeta(alert.type);
             const Icon = meta.icon;
+            const campaignId = typeof alert.metadata?.campaignId === "string" ? alert.metadata.campaignId : null;
+            const alertHref = campaignId && alert.linkUrl?.startsWith("/drinks/campaigns/")
+              ? buildCampaignRouteWithSurface(alert.linkUrl, "alerts")
+              : alert.linkUrl;
             return (
               <Card key={alert.id} className={alert.isRead ? "border-border" : "border-blue-200 shadow-sm"}>
                 <CardHeader className="space-y-3 pb-3">
@@ -273,11 +291,19 @@ export default function DrinksNotificationsPage() {
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {alert.linkUrl ? (
-                      <Link href={alert.linkUrl}>
+                      <Link href={alertHref ?? alert.linkUrl}>
                         <Button
                           size="sm"
                           variant={alert.isRead ? "outline" : "default"}
                           onClick={() => {
+                            if (campaignId && alert.type === "drink_campaign_followed_update") {
+                              void trackCampaignSurfaceEvent({
+                                campaignId,
+                                eventType: "click_campaign",
+                                surface: "alerts",
+                                referrerRoute: "/drinks/notifications",
+                              });
+                            }
                             if (!alert.isRead) {
                               markReadMutation.mutate(alert.id);
                             }

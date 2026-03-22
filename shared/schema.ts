@@ -1595,6 +1595,28 @@ export const creatorCampaignSpotlightEvents = pgTable(
   })
 );
 
+export const creatorCampaignSurfaceEvents = pgTable(
+  "creator_campaign_surface_events",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    campaignId: varchar("campaign_id").references(() => creatorCampaigns.id, { onDelete: "cascade" }).notNull(),
+    eventType: text("event_type").notNull(),
+    surface: text("surface").notNull(),
+    userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+    sessionKey: varchar("session_key", { length: 160 }),
+    metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    campaignIdx: index("creator_campaign_surface_events_campaign_idx").on(table.campaignId),
+    eventTypeIdx: index("creator_campaign_surface_events_event_type_idx").on(table.eventType),
+    surfaceIdx: index("creator_campaign_surface_events_surface_idx").on(table.surface),
+    campaignSurfaceEventCreatedIdx: index("creator_campaign_surface_events_campaign_surface_event_created_at_idx").on(table.campaignId, table.surface, table.eventType, table.createdAt),
+    userIdx: index("creator_campaign_surface_events_user_idx").on(table.userId),
+    sessionIdx: index("creator_campaign_surface_events_session_idx").on(table.sessionKey),
+  })
+);
+
 export const creatorDropEvents = pgTable(
   "creator_drop_events",
   {
@@ -2458,6 +2480,11 @@ export const insertCreatorCampaignSpotlightEventSchema = createInsertSchema(crea
   createdAt: true,
 });
 
+export const insertCreatorCampaignSurfaceEventSchema = createInsertSchema(creatorCampaignSurfaceEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCreatorDropEventSchema = createInsertSchema(creatorDropEvents).omit({
   id: true,
   createdAt: true,
@@ -2694,6 +2721,8 @@ export type CreatorCampaignVariantEvent = typeof creatorCampaignVariantEvents.$i
 export type InsertCreatorCampaignVariantEvent = z.infer<typeof insertCreatorCampaignVariantEventSchema>;
 export type CreatorCampaignSpotlightEvent = typeof creatorCampaignSpotlightEvents.$inferSelect;
 export type InsertCreatorCampaignSpotlightEvent = z.infer<typeof insertCreatorCampaignSpotlightEventSchema>;
+export type CreatorCampaignSurfaceEvent = typeof creatorCampaignSurfaceEvents.$inferSelect;
+export type InsertCreatorCampaignSurfaceEvent = z.infer<typeof insertCreatorCampaignSurfaceEventSchema>;
 export type CreatorDropEvent = typeof creatorDropEvents.$inferSelect;
 export type InsertCreatorDropEvent = z.infer<typeof insertCreatorDropEventSchema>;
 export type CreatorCollaboration = typeof creatorCollaborations.$inferSelect;

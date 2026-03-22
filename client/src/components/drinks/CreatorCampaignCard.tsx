@@ -79,11 +79,13 @@ export default function CreatorCampaignCard({
   actions,
   showCreator = true,
   onOpenCampaign,
+  openHref,
 }: {
   campaign: CreatorCampaignItem;
   actions?: React.ReactNode;
   showCreator?: boolean;
   onOpenCampaign?: (() => void) | null;
+  openHref?: string | null;
 }) {
   return (
     <Card>
@@ -121,7 +123,7 @@ export default function CreatorCampaignCard({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Link href={campaign.route}><Button size="sm" variant={campaign.state === "active" ? "default" : "outline"} onClick={onOpenCampaign ?? undefined}>Open campaign</Button></Link>
+            <Link href={openHref ?? campaign.route}><Button size="sm" variant={campaign.state === "active" ? "default" : "outline"} onClick={onOpenCampaign ?? undefined}>Open campaign</Button></Link>
             {actions}
           </div>
         </div>
