@@ -21,6 +21,7 @@ import {
   creatorCampaignRolloutTimelineEvents,
   creatorCampaignGoals,
   creatorCampaignActionStates,
+  creatorCampaignExperiments,
   creatorCampaignCtaVariants,
   creatorCampaignVariantEvents,
   creatorCampaignSpotlightEvents,
@@ -64,6 +65,7 @@ import {
   insertCreatorCampaignFollowSchema,
   insertCreatorCampaignGoalSchema,
   insertCreatorCampaignActionStateSchema,
+  insertCreatorCampaignExperimentSchema,
   insertCreatorCampaignCtaVariantSchema,
   insertCreatorCampaignVariantEventSchema,
   insertCreatorCampaignSpotlightEventSchema,
@@ -151,6 +153,19 @@ type CreatorCampaignRolloutTimelineEventType =
   | "important_drop_went_live";
 type CreatorCampaignGoalType = "followers" | "rsvps" | "clicks" | "purchases" | "membership_conversions" | "linked_drop_views";
 type CreatorCampaignVariantEventType = "view_variant" | "click_variant_cta" | "follow_after_variant" | "rsvp_after_variant";
+type CreatorCampaignExperimentType =
+  | "strengthen_cta"
+  | "launch_promo"
+  | "add_drop"
+  | "publish_update"
+  | "push_rsvp"
+  | "promote_membership"
+  | "add_member_only_collection"
+  | "shorten_unlock_delay"
+  | "accelerate_public_unlock"
+  | "spotlight_campaign";
+type CreatorCampaignExperimentStatus = "active" | "completed" | "canceled";
+type CreatorCampaignExperimentOutcomeDirection = "improved" | "flat" | "declined" | "insufficient_data";
 type CreatorCampaignSpotlightEventType = "view_pinned_campaign" | "click_pinned_campaign";
 type CreatorCampaignSpotlightSurface = "creator_public_page" | "discover_pinned_campaigns";
 type CreatorCampaignSurfaceEventType = "view_campaign" | "click_campaign" | "follow_after_campaign_surface" | "rsvp_after_campaign_surface";
@@ -234,6 +249,7 @@ type CreatorCampaignLinkRecord = typeof creatorCampaignLinks.$inferSelect;
 type CreatorCampaignFollowRecord = typeof creatorCampaignFollows.$inferSelect;
 type CreatorCampaignRolloutTimelineEventRecord = typeof creatorCampaignRolloutTimelineEvents.$inferSelect;
 type CreatorCampaignGoalRecord = typeof creatorCampaignGoals.$inferSelect;
+type CreatorCampaignExperimentRecord = typeof creatorCampaignExperiments.$inferSelect;
 type CreatorCampaignCtaVariantRecord = typeof creatorCampaignCtaVariants.$inferSelect;
 type CreatorCampaignVariantEventRecord = typeof creatorCampaignVariantEvents.$inferSelect;
 type CreatorCampaignSpotlightEventRecord = typeof creatorCampaignSpotlightEvents.$inferSelect;
@@ -246,6 +262,7 @@ type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "members
 type DrinkCollectionAccessType = "public" | "premium_purchase" | "membership_only";
 
 const CREATOR_DROP_ARCHIVE_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+const CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS = 72;
 const CREATOR_CAMPAIGN_SURFACE_VALUES = [
   "creator_public_page",
   "discover_pinned_campaigns",
@@ -882,6 +899,56 @@ const updateCreatorCampaignBodySchema = creatorCampaignBodyBaseObjectSchema.part
       code: z.ZodIssueCode.custom,
       message: "Provide at least one campaign field to update.",
     });
+  }
+});
+
+const creatorCampaignExperimentTypeSchema = z.enum([
+  "strengthen_cta",
+  "launch_promo",
+  "add_drop",
+  "publish_update",
+  "push_rsvp",
+  "promote_membership",
+  "add_member_only_collection",
+  "shorten_unlock_delay",
+  "accelerate_public_unlock",
+  "spotlight_campaign",
+]);
+
+const creatorCampaignExperimentStatusSchema = z.enum(["active", "completed", "canceled"]);
+
+const createCreatorCampaignExperimentBodySchema = z.object({
+  experimentType: creatorCampaignExperimentTypeSchema,
+  label: z.string().trim().max(160).optional().nullable(),
+  hypothesis: z.string().trim().max(1000).optional().nullable(),
+  startedAt: z.string().datetime().optional().nullable(),
+});
+
+const updateCreatorCampaignExperimentBodySchema = z.object({
+  experimentType: creatorCampaignExperimentTypeSchema.optional(),
+  label: z.string().trim().max(160).optional().nullable(),
+  hypothesis: z.string().trim().max(1000).optional().nullable(),
+  startedAt: z.string().datetime().optional().nullable(),
+  endedAt: z.string().datetime().optional().nullable(),
+  status: creatorCampaignExperimentStatusSchema.optional(),
+}).superRefine((value, ctx) => {
+  if (!Object.values(value).some((field) => field !== undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Provide at least one experiment field to update.",
+    });
+  }
+
+  if (value.startedAt && value.endedAt) {
+    const startedAt = new Date(value.startedAt);
+    const endedAt = new Date(value.endedAt);
+    if (Number.isNaN(startedAt.getTime()) || Number.isNaN(endedAt.getTime()) || endedAt < startedAt) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["endedAt"],
+        message: "Experiment end time must be after the start time.",
+      });
+    }
   }
 });
 
@@ -20251,6 +20318,260 @@ r.post("/campaigns/:id/unlock-controls/resume", requireAuth, async (req, res) =>
   }
 });
 
+r.get("/campaigns/:id/experiments", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await requireOwnedCreatorCampaign(campaignId, req.user!.id);
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const collection = await loadCreatorCampaignExperimentsCollection(req.user!.id, campaign);
+    return res.json({
+      ok: true,
+      campaignId: campaign.id,
+      items: collection.items,
+      suggestedExperimentTypes: collection.suggestedExperimentTypes,
+      attributionNotes: collection.attributionNotes,
+      generatedAt: collection.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/experiments", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign experiments"));
+  }
+});
+
+r.post("/campaigns/:id/experiments", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await requireOwnedCreatorCampaign(campaignId, req.user!.id);
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const parsed = createCreatorCampaignExperimentBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid experiment payload." });
+    }
+
+    const payload = parsed.data;
+    const startedAt = payload.startedAt ? new Date(payload.startedAt) : new Date();
+    const insertedRows = await db.insert(creatorCampaignExperiments).values(insertCreatorCampaignExperimentSchema.parse({
+      campaignId: campaign.id,
+      experimentType: payload.experimentType,
+      label: payload.label?.trim() ? payload.label.trim() : null,
+      hypothesis: payload.hypothesis?.trim() ? payload.hypothesis.trim() : null,
+      startedAt,
+      endedAt: null,
+      status: "active",
+    })).returning();
+
+    const inserted = insertedRows[0];
+    if (!inserted) {
+      return res.status(500).json({ ok: false, error: "Failed to create experiment." });
+    }
+
+    const item = await loadSerializedCreatorCampaignExperimentById(req.user!.id, campaign, inserted.id);
+    return res.status(201).json({
+      ok: true,
+      campaignId: campaign.id,
+      item,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/experiments", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create campaign experiment"));
+  }
+});
+
+r.patch("/campaigns/:id/experiments/:experimentId", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    const experimentId = String(req.params.experimentId ?? "").trim();
+    if (!campaignId || !experimentId) {
+      return res.status(400).json({ ok: false, error: "Campaign id and experiment id are required." });
+    }
+
+    const campaign = await requireOwnedCreatorCampaign(campaignId, req.user!.id);
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const existingRows = await db.select().from(creatorCampaignExperiments)
+      .where(and(eq(creatorCampaignExperiments.id, experimentId), eq(creatorCampaignExperiments.campaignId, campaign.id)))
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ ok: false, error: "Experiment not found." });
+    }
+
+    const parsed = updateCreatorCampaignExperimentBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid experiment payload." });
+    }
+
+    const payload = parsed.data;
+    const nextStartedAt = payload.startedAt === undefined
+      ? existing.startedAt
+      : payload.startedAt
+        ? new Date(payload.startedAt)
+        : null;
+    const nextEndedAt = payload.endedAt === undefined
+      ? existing.endedAt
+      : payload.endedAt
+        ? new Date(payload.endedAt)
+        : null;
+    if (nextStartedAt && nextEndedAt && nextEndedAt < nextStartedAt) {
+      return res.status(400).json({ ok: false, error: "Experiment end time must be after the start time." });
+    }
+
+    const nextStatus = payload.status ?? existing.status;
+    const updatedRows = await db.update(creatorCampaignExperiments)
+      .set({
+        experimentType: payload.experimentType ?? existing.experimentType,
+        label: payload.label === undefined ? existing.label : (payload.label?.trim() ? payload.label.trim() : null),
+        hypothesis: payload.hypothesis === undefined ? existing.hypothesis : (payload.hypothesis?.trim() ? payload.hypothesis.trim() : null),
+        startedAt: nextStartedAt,
+        endedAt: nextEndedAt,
+        status: nextStatus,
+        updatedAt: new Date(),
+      })
+      .where(eq(creatorCampaignExperiments.id, existing.id))
+      .returning();
+
+    const updated = updatedRows[0];
+    if (!updated) {
+      return res.status(500).json({ ok: false, error: "Failed to update experiment." });
+    }
+
+    const item = await loadSerializedCreatorCampaignExperimentById(req.user!.id, campaign, updated.id);
+    return res.json({ ok: true, campaignId: campaign.id, item });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/experiments/:experimentId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update campaign experiment"));
+  }
+});
+
+r.post("/campaigns/:id/experiments/:experimentId/complete", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    const experimentId = String(req.params.experimentId ?? "").trim();
+    if (!campaignId || !experimentId) {
+      return res.status(400).json({ ok: false, error: "Campaign id and experiment id are required." });
+    }
+
+    const campaign = await requireOwnedCreatorCampaign(campaignId, req.user!.id);
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const existingRows = await db.select().from(creatorCampaignExperiments)
+      .where(and(eq(creatorCampaignExperiments.id, experimentId), eq(creatorCampaignExperiments.campaignId, campaign.id)))
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ ok: false, error: "Experiment not found." });
+    }
+
+    const now = new Date();
+    const updatedRows = await db.update(creatorCampaignExperiments)
+      .set({
+        status: "completed",
+        startedAt: existing.startedAt ?? existing.createdAt,
+        endedAt: existing.endedAt ?? now,
+        updatedAt: now,
+      })
+      .where(eq(creatorCampaignExperiments.id, existing.id))
+      .returning();
+    const updated = updatedRows[0];
+    if (!updated) {
+      return res.status(500).json({ ok: false, error: "Failed to complete experiment." });
+    }
+
+    const item = await loadSerializedCreatorCampaignExperimentById(req.user!.id, campaign, updated.id);
+    return res.json({ ok: true, campaignId: campaign.id, item });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/experiments/:experimentId/complete", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to complete campaign experiment"));
+  }
+});
+
+r.post("/campaigns/:id/experiments/:experimentId/cancel", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    const experimentId = String(req.params.experimentId ?? "").trim();
+    if (!campaignId || !experimentId) {
+      return res.status(400).json({ ok: false, error: "Campaign id and experiment id are required." });
+    }
+
+    const campaign = await requireOwnedCreatorCampaign(campaignId, req.user!.id);
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const existingRows = await db.select().from(creatorCampaignExperiments)
+      .where(and(eq(creatorCampaignExperiments.id, experimentId), eq(creatorCampaignExperiments.campaignId, campaign.id)))
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ ok: false, error: "Experiment not found." });
+    }
+
+    const now = new Date();
+    const updatedRows = await db.update(creatorCampaignExperiments)
+      .set({
+        status: "canceled",
+        startedAt: existing.startedAt ?? existing.createdAt,
+        endedAt: existing.endedAt ?? now,
+        updatedAt: now,
+      })
+      .where(eq(creatorCampaignExperiments.id, existing.id))
+      .returning();
+    const updated = updatedRows[0];
+    if (!updated) {
+      return res.status(500).json({ ok: false, error: "Failed to cancel experiment." });
+    }
+
+    const item = await loadSerializedCreatorCampaignExperimentById(req.user!.id, campaign, updated.id);
+    return res.json({ ok: true, campaignId: campaign.id, item });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/experiments/:experimentId/cancel", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to cancel campaign experiment"));
+  }
+});
+
 r.get("/campaigns/following", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -25577,6 +25898,425 @@ const campaignActionSnoozeSchema = z.object({
   durationDays: z.coerce.number().int().min(1).max(30).optional(),
   snoozedUntil: z.string().datetime().optional(),
 });
+
+type CreatorCampaignExperimentOutcome = {
+  comparisonWindowHours: number;
+  beforeViews: number;
+  afterViews: number;
+  beforeClicks: number;
+  afterClicks: number;
+  beforeFollows: number;
+  afterFollows: number;
+  beforeRsvps: number;
+  afterRsvps: number;
+  beforeApproxPurchases: number;
+  afterApproxPurchases: number;
+  beforeApproxMemberships: number;
+  afterApproxMemberships: number;
+  outcomeDirection: CreatorCampaignExperimentOutcomeDirection;
+  outcomeSummary: string;
+  confidenceNote: string;
+  afterWindowComplete: boolean;
+  afterWindowHoursObserved: number;
+};
+
+type SerializedCreatorCampaignExperiment = {
+  id: string;
+  campaignId: string;
+  experimentType: CreatorCampaignExperimentType;
+  label: string | null;
+  hypothesis: string | null;
+  startedAt: string | null;
+  endedAt: string | null;
+  status: CreatorCampaignExperimentStatus;
+  createdAt: string;
+  updatedAt: string;
+  outcome: CreatorCampaignExperimentOutcome;
+};
+
+type CreatorCampaignExperimentSuggestion = {
+  experimentType: CreatorCampaignExperimentType;
+  label: string;
+  reason: string;
+  source: "bottleneck" | "timing_advisor";
+};
+
+type CreatorCampaignExperimentSignalRows = {
+  campaign: CreatorCampaignRecord;
+  followRows: Array<{ createdAt: Date }>;
+  viewRows: Array<{ createdAt: Date }>;
+  clickRows: Array<{ createdAt: Date }>;
+  rsvpRows: Array<{ createdAt: Date }>;
+  purchaseRows: Array<{ createdAt: Date }>;
+  membershipRows: Array<{ createdAt: Date }>;
+  membershipNote: string | null;
+  purchaseNote: string | null;
+};
+
+function creatorCampaignExperimentTypeLabel(value: CreatorCampaignExperimentType) {
+  switch (value) {
+    case "strengthen_cta":
+      return "Strengthen CTA";
+    case "launch_promo":
+      return "Launch promo";
+    case "add_drop":
+      return "Add drop";
+    case "publish_update":
+      return "Publish update";
+    case "push_rsvp":
+      return "Push RSVP";
+    case "promote_membership":
+      return "Promote membership";
+    case "add_member_only_collection":
+      return "Add member-only collection";
+    case "shorten_unlock_delay":
+      return "Shorten unlock delay";
+    case "accelerate_public_unlock":
+      return "Accelerate public unlock";
+    case "spotlight_campaign":
+      return "Spotlight campaign";
+    default:
+      return "Campaign fix";
+  }
+}
+
+function countRowsInsideWindow(rows: Array<{ createdAt: Date }>, startMs: number, endMs: number) {
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) return 0;
+  return rows.reduce((sum, row) => {
+    const createdAt = row.createdAt.getTime();
+    return createdAt >= startMs && createdAt < endMs ? sum + 1 : sum;
+  }, 0);
+}
+
+function serializeCreatorCampaignExperiment(
+  experiment: CreatorCampaignExperimentRecord,
+  signals: CreatorCampaignExperimentSignalRows,
+  now = new Date(),
+): SerializedCreatorCampaignExperiment {
+  const startedAt = experiment.startedAt ?? experiment.createdAt;
+  const anchorMs = startedAt.getTime();
+  const windowMs = CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS * 60 * 60 * 1000;
+  const beforeStartMs = anchorMs - windowMs;
+  const beforeEndMs = anchorMs;
+  const afterTargetEndMs = anchorMs + windowMs;
+  const naturalAfterEndMs = Math.min(
+    experiment.endedAt?.getTime() ?? now.getTime(),
+    afterTargetEndMs,
+  );
+  const afterEndMs = Math.max(anchorMs, naturalAfterEndMs);
+  const afterWindowHoursObserved = Math.max(0, Math.round(((afterEndMs - anchorMs) / (60 * 60 * 1000)) * 10) / 10);
+  const afterWindowComplete = afterEndMs >= afterTargetEndMs || Boolean(experiment.endedAt && experiment.endedAt.getTime() >= afterTargetEndMs);
+
+  const beforeViews = countRowsInsideWindow(signals.viewRows, beforeStartMs, beforeEndMs);
+  const afterViews = countRowsInsideWindow(signals.viewRows, anchorMs, afterEndMs);
+  const beforeClicks = countRowsInsideWindow(signals.clickRows, beforeStartMs, beforeEndMs);
+  const afterClicks = countRowsInsideWindow(signals.clickRows, anchorMs, afterEndMs);
+  const beforeFollows = countRowsInsideWindow(signals.followRows, beforeStartMs, beforeEndMs);
+  const afterFollows = countRowsInsideWindow(signals.followRows, anchorMs, afterEndMs);
+  const beforeRsvps = countRowsInsideWindow(signals.rsvpRows, beforeStartMs, beforeEndMs);
+  const afterRsvps = countRowsInsideWindow(signals.rsvpRows, anchorMs, afterEndMs);
+  const beforeApproxPurchases = countRowsInsideWindow(signals.purchaseRows, beforeStartMs, beforeEndMs);
+  const afterApproxPurchases = countRowsInsideWindow(signals.purchaseRows, anchorMs, afterEndMs);
+  const beforeApproxMemberships = countRowsInsideWindow(signals.membershipRows, beforeStartMs, beforeEndMs);
+  const afterApproxMemberships = countRowsInsideWindow(signals.membershipRows, anchorMs, afterEndMs);
+
+  const beforeScore = (
+    beforeViews * 0.1
+    + beforeClicks * 2
+    + beforeFollows * 1.5
+    + beforeRsvps * 2.5
+    + beforeApproxPurchases * 5
+    + beforeApproxMemberships * 5.5
+  );
+  const afterScore = (
+    afterViews * 0.1
+    + afterClicks * 2
+    + afterFollows * 1.5
+    + afterRsvps * 2.5
+    + afterApproxPurchases * 5
+    + afterApproxMemberships * 5.5
+  );
+  const meaningfulDelta = Math.max(2.5, beforeScore * 0.15);
+  const totalSignal = beforeClicks + afterClicks + beforeFollows + afterFollows + beforeRsvps + afterRsvps + beforeApproxPurchases + afterApproxPurchases + beforeApproxMemberships + afterApproxMemberships;
+
+  let outcomeDirection: CreatorCampaignExperimentOutcomeDirection = "flat";
+  if (afterWindowHoursObserved < 24 || totalSignal < 3) {
+    outcomeDirection = "insufficient_data";
+  } else if ((afterScore - beforeScore) >= meaningfulDelta) {
+    outcomeDirection = "improved";
+  } else if ((beforeScore - afterScore) >= meaningfulDelta) {
+    outcomeDirection = "declined";
+  }
+
+  const metricComparisons = [
+    { label: "views", before: beforeViews, after: afterViews },
+    { label: "clicks", before: beforeClicks, after: afterClicks },
+    { label: "follows", before: beforeFollows, after: afterFollows },
+    { label: "RSVPs", before: beforeRsvps, after: afterRsvps },
+    { label: "approx. purchases", before: beforeApproxPurchases, after: afterApproxPurchases },
+    { label: "approx. memberships", before: beforeApproxMemberships, after: afterApproxMemberships },
+  ];
+  const strongestLift = [...metricComparisons]
+    .map((item) => ({ ...item, delta: item.after - item.before }))
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0] ?? null;
+
+  let outcomeSummary = `Directional read across the ${CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS}-hour before/after window for ${creatorCampaignExperimentTypeLabel(experiment.experimentType as CreatorCampaignExperimentType).toLowerCase()}.`;
+  if (outcomeDirection === "improved" && strongestLift) {
+    outcomeSummary = `Signals improved in the ${CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS}-hour after window, led by ${strongestLift.label} moving ${strongestLift.before} → ${strongestLift.after}.`;
+  } else if (outcomeDirection === "declined" && strongestLift) {
+    outcomeSummary = `Signals softened after this fix, with ${strongestLift.label} moving ${strongestLift.before} → ${strongestLift.after} in the compared ${CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS}-hour windows.`;
+  } else if (outcomeDirection === "flat") {
+    outcomeSummary = `The before/after windows look broadly flat so far; no strong movement stands out across the current platform-native signals.`;
+  } else if (afterWindowHoursObserved < 24) {
+    outcomeSummary = `The after window only covers ${afterWindowHoursObserved} hour${afterWindowHoursObserved === 1 ? "" : "s"} so far, so this is too early to read confidently.`;
+  } else {
+    outcomeSummary = `There is not enough meaningful signal yet to call this experiment up, flat, or down.`;
+  }
+
+  const noteParts = [
+    `Directional only — compares the ${CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS} hours before start against up to the first ${CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS} hours after start using existing campaign follow, linked drop, purchase, and membership signals.`,
+    signals.purchaseNote,
+    signals.membershipNote,
+    afterWindowComplete ? null : `The after window is still in progress (${afterWindowHoursObserved}/${CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS} hours observed).`,
+    "This does not claim causal proof; other campaign changes may also contribute.",
+  ];
+
+  return {
+    id: experiment.id,
+    campaignId: experiment.campaignId,
+    experimentType: experiment.experimentType as CreatorCampaignExperimentType,
+    label: experiment.label ?? null,
+    hypothesis: experiment.hypothesis ?? null,
+    startedAt: experiment.startedAt ? experiment.startedAt.toISOString() : null,
+    endedAt: experiment.endedAt ? experiment.endedAt.toISOString() : null,
+    status: experiment.status as CreatorCampaignExperimentStatus,
+    createdAt: experiment.createdAt.toISOString(),
+    updatedAt: experiment.updatedAt.toISOString(),
+    outcome: {
+      comparisonWindowHours: CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS,
+      beforeViews,
+      afterViews,
+      beforeClicks,
+      afterClicks,
+      beforeFollows,
+      afterFollows,
+      beforeRsvps,
+      afterRsvps,
+      beforeApproxPurchases,
+      afterApproxPurchases,
+      beforeApproxMemberships,
+      afterApproxMemberships,
+      outcomeDirection,
+      outcomeSummary,
+      confidenceNote: noteParts.filter(Boolean).join(" "),
+      afterWindowComplete,
+      afterWindowHoursObserved,
+    },
+  };
+}
+
+async function loadCreatorCampaignExperimentSignalRows(
+  creatorUserId: string,
+  campaign: CreatorCampaignRecord,
+): Promise<CreatorCampaignExperimentSignalRows> {
+  if (!db) throw new Error("Database unavailable");
+
+  const linkMap = await loadCreatorCampaignLinksByCampaignIds([campaign.id]);
+  const links = linkMap.get(campaign.id) ?? [];
+  const dropIds = links.filter((link) => link.targetType === "drop").map((link) => link.targetId);
+  const collectionIds = links.filter((link) => link.targetType === "collection").map((link) => link.targetId);
+
+  const [followRows, dropRows, collectionRows, viewRows, clickRows, rsvpRows, purchaseRows, membershipRows] = await Promise.all([
+    db.select({ createdAt: creatorCampaignFollows.createdAt })
+      .from(creatorCampaignFollows)
+      .where(eq(creatorCampaignFollows.campaignId, campaign.id))
+      .orderBy(asc(creatorCampaignFollows.createdAt)),
+    dropIds.length
+      ? db.select({ id: creatorDrops.id, dropType: creatorDrops.dropType })
+        .from(creatorDrops)
+        .where(inArray(creatorDrops.id, dropIds))
+      : Promise.resolve([] as Array<{ id: string; dropType: string | null }>),
+    collectionIds.length
+      ? db.select({ id: drinkCollections.id, accessType: drinkCollections.accessType })
+        .from(drinkCollections)
+        .where(inArray(drinkCollections.id, collectionIds))
+      : Promise.resolve([] as Array<{ id: string; accessType: string | null }>),
+    dropIds.length
+      ? db.select({ createdAt: creatorDropEvents.createdAt })
+        .from(creatorDropEvents)
+        .where(and(inArray(creatorDropEvents.dropId, dropIds), eq(creatorDropEvents.eventType, "view_drop")))
+        .orderBy(asc(creatorDropEvents.createdAt))
+      : Promise.resolve([] as Array<{ createdAt: Date }>),
+    dropIds.length
+      ? db.select({ createdAt: creatorDropEvents.createdAt })
+        .from(creatorDropEvents)
+        .where(and(inArray(creatorDropEvents.dropId, dropIds), eq(creatorDropEvents.eventType, "click_drop_target")))
+        .orderBy(asc(creatorDropEvents.createdAt))
+      : Promise.resolve([] as Array<{ createdAt: Date }>),
+    dropIds.length
+      ? db.select({ createdAt: creatorDropRsvps.createdAt })
+        .from(creatorDropRsvps)
+        .where(inArray(creatorDropRsvps.dropId, dropIds))
+        .orderBy(asc(creatorDropRsvps.createdAt))
+      : Promise.resolve([] as Array<{ createdAt: Date }>),
+    collectionIds.length
+      ? db.select({ createdAt: drinkCollectionPurchases.createdAt })
+        .from(drinkCollectionPurchases)
+        .where(and(
+          inArray(drinkCollectionPurchases.collectionId, collectionIds),
+          eq(drinkCollectionPurchases.status, "completed"),
+        ))
+        .orderBy(asc(drinkCollectionPurchases.createdAt))
+      : Promise.resolve([] as Array<{ createdAt: Date }>),
+    db.select({ createdAt: creatorMemberships.createdAt })
+      .from(creatorMemberships)
+      .where(eq(creatorMemberships.creatorUserId, creatorUserId))
+      .orderBy(asc(creatorMemberships.createdAt)),
+  ]);
+
+  const isMemberFocusedCampaign = campaign.visibility === "members"
+    || dropRows.some((drop) => (drop.dropType ?? "") === "member_drop")
+    || collectionRows.some((collection) => (collection.accessType ?? "") === "membership_only");
+
+  return {
+    campaign,
+    followRows,
+    viewRows,
+    clickRows,
+    rsvpRows,
+    purchaseRows,
+    membershipRows: isMemberFocusedCampaign ? membershipRows : [],
+    purchaseNote: collectionIds.length
+      ? "Approximate purchases count completed linked-collection purchases only."
+      : null,
+    membershipNote: isMemberFocusedCampaign
+      ? "Approximate memberships count creator membership starts during the compared windows for member-focused campaigns."
+      : null,
+  };
+}
+
+function buildCreatorCampaignExperimentSuggestions(input: {
+  bottleneckItem: Awaited<ReturnType<typeof loadCreatorCampaignFunnelBottlenecks>>["items"][number] | null;
+  timingAdvice: Awaited<ReturnType<typeof loadCreatorCampaignTimingAdvisor>>["items"][number] | null;
+}) {
+  const suggestions = new Map<CreatorCampaignExperimentType, CreatorCampaignExperimentSuggestion>();
+  const addSuggestion = (suggestion: CreatorCampaignExperimentSuggestion) => {
+    if (!suggestions.has(suggestion.experimentType)) suggestions.set(suggestion.experimentType, suggestion);
+  };
+
+  for (const bottleneck of input.bottleneckItem?.topBottlenecks ?? []) {
+    if (bottleneck.fromStep === "views" && bottleneck.toStep === "clicks") {
+      addSuggestion({
+        experimentType: "strengthen_cta",
+        label: creatorCampaignExperimentTypeLabel("strengthen_cta"),
+        reason: `Mapped from the weak ${bottleneck.fromLabel.toLowerCase()} → ${bottleneck.toLabel.toLowerCase()} handoff.`,
+        source: "bottleneck",
+      });
+    } else if (bottleneck.fromStep === "follows" && bottleneck.toStep === "rsvps") {
+      addSuggestion({
+        experimentType: "push_rsvp",
+        label: creatorCampaignExperimentTypeLabel("push_rsvp"),
+        reason: `Mapped from the weak ${bottleneck.fromLabel.toLowerCase()} → ${bottleneck.toLabel.toLowerCase()} handoff.`,
+        source: "bottleneck",
+      });
+    } else if (bottleneck.toStep === "memberships") {
+      addSuggestion({
+        experimentType: "promote_membership",
+        label: creatorCampaignExperimentTypeLabel("promote_membership"),
+        reason: `Mapped from the weak ${bottleneck.fromLabel.toLowerCase()} → ${bottleneck.toLabel.toLowerCase()} handoff.`,
+        source: "bottleneck",
+      });
+    } else if ((bottleneck.fromStep === "rsvps" && bottleneck.toStep === "purchases") || (bottleneck.fromStep === "clicks" && bottleneck.toStep === "follows")) {
+      addSuggestion({
+        experimentType: "publish_update",
+        label: creatorCampaignExperimentTypeLabel("publish_update"),
+        reason: `Suggested from current funnel leakage around ${bottleneck.toLabel.toLowerCase()}.`,
+        source: "bottleneck",
+      });
+    }
+  }
+
+  switch (input.timingAdvice?.timingRecommendationType) {
+    case "accelerate_public_unlock":
+      addSuggestion({
+        experimentType: "accelerate_public_unlock",
+        label: creatorCampaignExperimentTypeLabel("accelerate_public_unlock"),
+        reason: "Aligned with the timing advisor’s earlier public unlock recommendation.",
+        source: "timing_advisor",
+      });
+      break;
+    case "shorten_follower_window":
+    case "shorten_member_window":
+    case "use_short_burst_launch":
+      addSuggestion({
+        experimentType: "shorten_unlock_delay",
+        label: creatorCampaignExperimentTypeLabel("shorten_unlock_delay"),
+        reason: "Aligned with the timing advisor’s recommendation to shorten the current staged rollout window.",
+        source: "timing_advisor",
+      });
+      break;
+    default:
+      break;
+  }
+
+  return [...suggestions.values()];
+}
+
+async function requireOwnedCreatorCampaign(campaignId: string, userId: string) {
+  if (!db) throw new Error("Database unavailable");
+  const rows = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, userId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+async function loadSerializedCreatorCampaignExperimentById(
+  creatorUserId: string,
+  campaign: CreatorCampaignRecord,
+  experimentId: string,
+) {
+  if (!db) throw new Error("Database unavailable");
+  const rows = await db
+    .select()
+    .from(creatorCampaignExperiments)
+    .where(and(eq(creatorCampaignExperiments.id, experimentId), eq(creatorCampaignExperiments.campaignId, campaign.id)))
+    .limit(1);
+  const experiment = rows[0];
+  if (!experiment) return null;
+  const signals = await loadCreatorCampaignExperimentSignalRows(creatorUserId, campaign);
+  return serializeCreatorCampaignExperiment(experiment, signals);
+}
+
+async function loadCreatorCampaignExperimentsCollection(creatorUserId: string, campaign: CreatorCampaignRecord) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [experimentRows, signals, bottleneckCollection, timingAdviceCollection] = await Promise.all([
+    db.select().from(creatorCampaignExperiments)
+      .where(eq(creatorCampaignExperiments.campaignId, campaign.id))
+      .orderBy(desc(creatorCampaignExperiments.updatedAt), desc(creatorCampaignExperiments.createdAt))
+      .limit(40),
+    loadCreatorCampaignExperimentSignalRows(creatorUserId, campaign),
+    loadCreatorCampaignFunnelBottlenecks(creatorUserId, campaign.id),
+    loadCreatorCampaignTimingAdvisor(creatorUserId, campaign.id),
+  ]);
+
+  const items = experimentRows.map((experiment) => serializeCreatorCampaignExperiment(experiment, signals));
+  const bottleneckItem = bottleneckCollection.items[0] ?? null;
+  const timingAdvice = timingAdviceCollection.items[0] ?? null;
+
+  return {
+    items,
+    suggestedExperimentTypes: buildCreatorCampaignExperimentSuggestions({ bottleneckItem, timingAdvice }),
+    attributionNotes: uniqueStringList([
+      `Before/after outcomes compare the ${CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS} hours before an experiment starts against up to the first ${CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS} hours after it starts.`,
+      "Outcomes only use signals the drinks platform already tracks for campaigns: follows plus linked drop views, clicks, RSVPs, and approximate purchases/memberships.",
+      "Bottlenecks still describe where leakage appears. Experiments describe the fix you tried. Before/after outcomes only describe whether those native signals moved afterward.",
+    ], 4),
+    generatedAt: new Date().toISOString(),
+  };
+}
 
 const campaignActionStateUpdateSchema = z.object({
   campaignId: z.string().trim().min(1).optional(),

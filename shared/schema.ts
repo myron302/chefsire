@@ -1561,6 +1561,28 @@ export const creatorCampaignActionStates = pgTable(
   })
 );
 
+export const creatorCampaignExperiments = pgTable(
+  "creator_campaign_experiments",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    campaignId: varchar("campaign_id").references(() => creatorCampaigns.id, { onDelete: "cascade" }).notNull(),
+    experimentType: text("experiment_type").notNull(),
+    label: varchar("label", { length: 160 }),
+    hypothesis: text("hypothesis"),
+    startedAt: timestamp("started_at"),
+    endedAt: timestamp("ended_at"),
+    status: text("status").default("active").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    campaignIdx: index("creator_campaign_experiments_campaign_idx").on(table.campaignId),
+    statusIdx: index("creator_campaign_experiments_status_idx").on(table.status),
+    campaignStatusIdx: index("creator_campaign_experiments_campaign_status_updated_at_idx").on(table.campaignId, table.status, table.updatedAt),
+    campaignStartedIdx: index("creator_campaign_experiments_campaign_started_at_idx").on(table.campaignId, table.startedAt),
+  })
+);
+
 export const creatorCampaignCtaVariants = pgTable(
   "creator_campaign_cta_variants",
   {
@@ -2499,6 +2521,12 @@ export const insertCreatorCampaignActionStateSchema = createInsertSchema(creator
   updatedAt: true,
 });
 
+export const insertCreatorCampaignExperimentSchema = createInsertSchema(creatorCampaignExperiments).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertCreatorCampaignCtaVariantSchema = createInsertSchema(creatorCampaignCtaVariants).omit({
   id: true,
   createdAt: true,
@@ -2752,6 +2780,8 @@ export type CreatorCampaignFollow = typeof creatorCampaignFollows.$inferSelect;
 export type InsertCreatorCampaignFollow = z.infer<typeof insertCreatorCampaignFollowSchema>;
 export type CreatorCampaignActionState = typeof creatorCampaignActionStates.$inferSelect;
 export type InsertCreatorCampaignActionState = z.infer<typeof insertCreatorCampaignActionStateSchema>;
+export type CreatorCampaignExperiment = typeof creatorCampaignExperiments.$inferSelect;
+export type InsertCreatorCampaignExperiment = z.infer<typeof insertCreatorCampaignExperimentSchema>;
 export type CreatorCampaignCtaVariant = typeof creatorCampaignCtaVariants.$inferSelect;
 export type InsertCreatorCampaignCtaVariant = z.infer<typeof insertCreatorCampaignCtaVariantSchema>;
 export type CreatorCampaignVariantEvent = typeof creatorCampaignVariantEvents.$inferSelect;
