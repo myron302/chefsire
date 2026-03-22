@@ -61,7 +61,9 @@ export default function CampaignUnlockControls({
     onSuccess: async (message) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns/rollout", campaignId] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns/rollout-timeline", campaignId] }),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-launch-readiness"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-rollout-timeline"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-unlock-alerts"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-action-center"] }),
         ...refreshKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey })),

@@ -18,6 +18,7 @@ import {
   creatorCampaignTemplates,
   creatorCampaignLinks,
   creatorCampaignFollows,
+  creatorCampaignRolloutTimelineEvents,
   creatorCampaignGoals,
   creatorCampaignActionStates,
   creatorCampaignCtaVariants,
@@ -133,6 +134,21 @@ type CreatorCampaignRolloutState =
   | "fully_open"
   | "completed";
 type CreatorCampaignUnlockControlAction = "delay" | "release_now" | "pause" | "resume";
+type CreatorCampaignRolloutTimelineEventType =
+  | "rollout_created"
+  | "rollout_updated"
+  | "rollout_paused"
+  | "rollout_resumed"
+  | "follower_unlock_delayed"
+  | "public_unlock_delayed"
+  | "follower_unlock_released_now"
+  | "public_unlock_released_now"
+  | "follower_stage_unlocked"
+  | "public_stage_unlocked"
+  | "rollout_completed"
+  | "readiness_warning"
+  | "readiness_blocked"
+  | "important_drop_went_live";
 type CreatorCampaignGoalType = "followers" | "rsvps" | "clicks" | "purchases" | "membership_conversions" | "linked_drop_views";
 type CreatorCampaignVariantEventType = "view_variant" | "click_variant_cta" | "follow_after_variant" | "rsvp_after_variant";
 type CreatorCampaignSpotlightEventType = "view_pinned_campaign" | "click_pinned_campaign";
@@ -216,6 +232,7 @@ type CreatorCampaignRecord = typeof creatorCampaigns.$inferSelect;
 type CreatorCampaignTemplateRecord = typeof creatorCampaignTemplates.$inferSelect;
 type CreatorCampaignLinkRecord = typeof creatorCampaignLinks.$inferSelect;
 type CreatorCampaignFollowRecord = typeof creatorCampaignFollows.$inferSelect;
+type CreatorCampaignRolloutTimelineEventRecord = typeof creatorCampaignRolloutTimelineEvents.$inferSelect;
 type CreatorCampaignGoalRecord = typeof creatorCampaignGoals.$inferSelect;
 type CreatorCampaignCtaVariantRecord = typeof creatorCampaignCtaVariants.$inferSelect;
 type CreatorCampaignVariantEventRecord = typeof creatorCampaignVariantEvents.$inferSelect;
@@ -2282,6 +2299,21 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_rollout_timeline_events (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
+        actor_user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+        event_type text NOT NULL,
+        title varchar(160) NOT NULL,
+        message text NOT NULL,
+        audience_stage text,
+        metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+        occurred_at timestamp NOT NULL DEFAULT now(),
+        created_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_campaign_action_states (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -2556,6 +2588,10 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_user_idx ON creator_campaign_follows(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_campaign_idx ON creator_campaign_follows(campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_follows_campaign_created_at_idx ON creator_campaign_follows(campaign_id, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_rollout_timeline_events_campaign_idx ON creator_campaign_rollout_timeline_events(campaign_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_rollout_timeline_events_event_type_idx ON creator_campaign_rollout_timeline_events(event_type);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_rollout_timeline_events_campaign_occurred_at_idx ON creator_campaign_rollout_timeline_events(campaign_id, occurred_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_rollout_timeline_events_actor_idx ON creator_campaign_rollout_timeline_events(actor_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_goals_campaign_idx ON creator_campaign_goals(campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_goals_campaign_type_idx ON creator_campaign_goals(campaign_id, goal_type);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_goals_campaign_updated_at_idx ON creator_campaign_goals(campaign_id, updated_at);`);
@@ -3805,6 +3841,309 @@ async function loadCampaignForOwnerOrThrow(campaignId: string, creatorUserId: st
     throw new Error("Campaign not found.");
   }
   return campaign;
+}
+
+function formatRolloutTimelineAudience(audience: CreatorCampaignRolloutAudience | null | undefined) {
+  if (audience === "members") return "members";
+  if (audience === "followers") return "followers";
+  if (audience === "public") return "public";
+  return "campaign";
+}
+
+function formatRolloutTimelineDate(value: Date | string | null | undefined) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  }).format(date);
+}
+
+function buildCampaignRolloutTimelineMetadata(previous: CreatorCampaignRecord, next: CreatorCampaignRecord) {
+  const metadata: Record<string, unknown> = {};
+
+  if (previous.rolloutMode !== next.rolloutMode) {
+    metadata.rolloutMode = {
+      from: previous.rolloutMode,
+      to: next.rolloutMode,
+    };
+  }
+  if ((previous.startsWithAudience ?? null) !== (next.startsWithAudience ?? null)) {
+    metadata.startsWithAudience = {
+      from: previous.startsWithAudience ?? null,
+      to: next.startsWithAudience ?? null,
+    };
+  }
+  if ((previous.unlockFollowersAt?.toISOString() ?? null) !== (next.unlockFollowersAt?.toISOString() ?? null)) {
+    metadata.unlockFollowersAt = {
+      from: previous.unlockFollowersAt?.toISOString() ?? null,
+      to: next.unlockFollowersAt?.toISOString() ?? null,
+    };
+  }
+  if ((previous.unlockPublicAt?.toISOString() ?? null) !== (next.unlockPublicAt?.toISOString() ?? null)) {
+    metadata.unlockPublicAt = {
+      from: previous.unlockPublicAt?.toISOString() ?? null,
+      to: next.unlockPublicAt?.toISOString() ?? null,
+    };
+  }
+  if ((previous.rolloutNotes?.trim() ?? null) !== (next.rolloutNotes?.trim() ?? null)) {
+    metadata.rolloutNotesChanged = true;
+  }
+  if (previous.isRolloutActive !== next.isRolloutActive) {
+    metadata.isRolloutActive = {
+      from: previous.isRolloutActive,
+      to: next.isRolloutActive,
+    };
+  }
+
+  return metadata;
+}
+
+async function createCampaignRolloutTimelineEvent(input: {
+  campaignId: string;
+  actorUserId?: string | null;
+  eventType: CreatorCampaignRolloutTimelineEventType;
+  title: string;
+  message: string;
+  audienceStage?: CreatorCampaignRolloutAudience | null;
+  metadata?: Record<string, unknown> | null;
+  occurredAt?: Date;
+}) {
+  if (!db) throw new Error("Database unavailable");
+  await db.insert(creatorCampaignRolloutTimelineEvents).values({
+    campaignId: input.campaignId,
+    actorUserId: input.actorUserId ?? null,
+    eventType: input.eventType,
+    title: input.title,
+    message: input.message,
+    audienceStage: input.audienceStage ?? null,
+    metadata: input.metadata ?? {},
+    occurredAt: input.occurredAt ?? new Date(),
+  });
+}
+
+async function maybeCreateCampaignRolloutConfiguredEvent(input: {
+  previous: CreatorCampaignRecord;
+  next: CreatorCampaignRecord;
+  actorUserId: string;
+  occurredAt?: Date;
+  isCreate?: boolean;
+}) {
+  const metadata = buildCampaignRolloutTimelineMetadata(input.previous, input.next);
+  const hasChanges = Object.keys(metadata).length > 0;
+  if (!hasChanges && !input.isCreate) {
+    return;
+  }
+
+  const eventType: CreatorCampaignRolloutTimelineEventType = input.isCreate ? "rollout_created" : "rollout_updated";
+  const title = input.isCreate ? "Rollout configured" : "Rollout updated";
+  const pieces = [
+    `Sequence set to ${(input.next.rolloutMode ?? "public_first").replaceAll("_", " ")}.`,
+    `Starts with ${formatRolloutTimelineAudience((input.next.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null)}.`,
+  ];
+  const followerUnlockLabel = formatRolloutTimelineDate(input.next.unlockFollowersAt);
+  const publicUnlockLabel = formatRolloutTimelineDate(input.next.unlockPublicAt);
+  if (followerUnlockLabel) pieces.push(`Followers unlock at ${followerUnlockLabel}.`);
+  if (publicUnlockLabel) pieces.push(`Public unlock at ${publicUnlockLabel}.`);
+  if (input.previous.isRolloutActive !== input.next.isRolloutActive) {
+    pieces.push(input.next.isRolloutActive ? "Sequenced rollout is active." : "Sequenced rollout was turned off.");
+  }
+
+  await createCampaignRolloutTimelineEvent({
+    campaignId: input.next.id,
+    actorUserId: input.actorUserId,
+    eventType,
+    title,
+    message: pieces.join(" "),
+    audienceStage: (input.next.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null,
+    metadata,
+    occurredAt: input.occurredAt,
+  });
+}
+
+async function loadCampaignRolloutTimelineEntriesForCampaign(campaign: CreatorCampaignRecord) {
+  if (!db) throw new Error("Database unavailable");
+
+  const persistedRows = await db
+    .select()
+    .from(creatorCampaignRolloutTimelineEvents)
+    .where(eq(creatorCampaignRolloutTimelineEvents.campaignId, campaign.id))
+    .orderBy(desc(creatorCampaignRolloutTimelineEvents.occurredAt), desc(creatorCampaignRolloutTimelineEvents.createdAt))
+    .limit(80);
+
+  const readiness = await loadCreatorCampaignLaunchReadiness(campaign.creatorUserId, campaign.id);
+  const readinessItems = readiness.items.filter((item) => item.campaignId === campaign.id);
+
+  const dropLinkRows = await db
+    .select({
+      id: creatorDrops.id,
+      title: creatorDrops.title,
+      dropType: creatorDrops.dropType,
+      scheduledFor: creatorDrops.scheduledFor,
+      isPublished: creatorDrops.isPublished,
+    })
+    .from(creatorCampaignLinks)
+    .innerJoin(creatorDrops, eq(creatorDrops.id, creatorCampaignLinks.targetId))
+    .where(and(eq(creatorCampaignLinks.campaignId, campaign.id), eq(creatorCampaignLinks.targetType, "drop")))
+    .orderBy(desc(creatorDrops.scheduledFor))
+    .limit(12);
+
+  const now = new Date();
+  const rollout = deriveCreatorCampaignRollout(campaign, now);
+  const derivedEntries: Array<{
+    id: string;
+    campaignId: string;
+    eventType: CreatorCampaignRolloutTimelineEventType;
+    occurredAt: string;
+    title: string;
+    message: string;
+    audienceStage: CreatorCampaignRolloutAudience | null;
+    metadata: Record<string, unknown>;
+    isDerived: boolean;
+  }> = [];
+
+  const persistedEventTypes = new Set(persistedRows.map((row) => row.eventType));
+  if (!persistedEventTypes.has("rollout_created") && (campaign.isRolloutActive || campaign.unlockFollowersAt || campaign.unlockPublicAt || campaign.rolloutMode !== "public_first")) {
+    derivedEntries.push({
+      id: `derived:${campaign.id}:rollout_created:${campaign.createdAt.toISOString()}`,
+      campaignId: campaign.id,
+      eventType: "rollout_created",
+      occurredAt: campaign.createdAt.toISOString(),
+      title: "Rollout configured",
+      message: `Campaign rollout sequencing was configured to start with ${formatRolloutTimelineAudience((campaign.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? rollout.startsWithAudience)}.`,
+      audienceStage: (campaign.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? rollout.startsWithAudience,
+      metadata: {
+        rolloutMode: campaign.rolloutMode,
+        isRolloutActive: campaign.isRolloutActive,
+      },
+      isDerived: true,
+    });
+  }
+
+  if (campaign.unlockFollowersAt && campaign.unlockFollowersAt <= now) {
+    derivedEntries.push({
+      id: `derived:${campaign.id}:follower_stage_unlocked:${campaign.unlockFollowersAt.toISOString()}`,
+      campaignId: campaign.id,
+      eventType: "follower_stage_unlocked",
+      occurredAt: campaign.unlockFollowersAt.toISOString(),
+      title: "Follower stage unlocked",
+      message: `Campaign access widened to followers at ${formatRolloutTimelineDate(campaign.unlockFollowersAt)}.`,
+      audienceStage: "followers",
+      metadata: {},
+      isDerived: true,
+    });
+  }
+
+  if (campaign.unlockPublicAt && campaign.unlockPublicAt <= now) {
+    derivedEntries.push({
+      id: `derived:${campaign.id}:public_stage_unlocked:${campaign.unlockPublicAt.toISOString()}`,
+      campaignId: campaign.id,
+      eventType: "public_stage_unlocked",
+      occurredAt: campaign.unlockPublicAt.toISOString(),
+      title: "Public stage unlocked",
+      message: `Campaign access widened to public at ${formatRolloutTimelineDate(campaign.unlockPublicAt)}.`,
+      audienceStage: "public",
+      metadata: {},
+      isDerived: true,
+    });
+  }
+
+  if (
+    rollout.isRolloutActive
+    && !rollout.nextAudience
+    && (campaign.unlockPublicAt || campaign.unlockFollowersAt || getCreatorCampaignState(campaign) === "past")
+  ) {
+    const completedAt = campaign.unlockPublicAt ?? campaign.unlockFollowersAt ?? campaign.endsAt ?? campaign.updatedAt;
+    if (completedAt) {
+      derivedEntries.push({
+        id: `derived:${campaign.id}:rollout_completed:${completedAt.toISOString()}`,
+        campaignId: campaign.id,
+        eventType: "rollout_completed",
+        occurredAt: completedAt.toISOString(),
+        title: "Rollout completed",
+        message: `This rollout has finished widening access and is now fully open to ${formatRolloutTimelineAudience(rollout.finalAudience)}.`,
+        audienceStage: rollout.finalAudience,
+        metadata: {
+          currentAudience: rollout.currentAudience,
+          finalAudience: rollout.finalAudience,
+        },
+        isDerived: true,
+      });
+    }
+  }
+
+  for (const item of readinessItems) {
+    if (item.readinessState !== "blocked" && item.readinessState !== "almost_ready" && item.readinessState !== "missing_key_items") {
+      continue;
+    }
+    const eventType: CreatorCampaignRolloutTimelineEventType = item.readinessState === "blocked" ? "readiness_blocked" : "readiness_warning";
+    const notes = item.readinessState === "blocked"
+      ? item.blockers
+      : item.warnings.length > 0
+        ? item.warnings
+        : item.recommendedFixes;
+    derivedEntries.push({
+      id: `derived:${campaign.id}:${eventType}:${item.preflightKind}:${readiness.generatedAt}`,
+      campaignId: campaign.id,
+      eventType,
+      occurredAt: readiness.generatedAt,
+      title: item.readinessState === "blocked" ? "Readiness blocked" : "Readiness warning",
+      message: notes[0] ?? item.preflightLabel,
+      audienceStage: item.nextAudience ?? null,
+      metadata: {
+        readinessState: item.readinessState,
+        preflightKind: item.preflightKind,
+        targetAt: item.targetAt,
+      },
+      isDerived: true,
+    });
+  }
+
+  for (const drop of dropLinkRows.filter((row) => row.isPublished && row.scheduledFor <= now).slice(0, 3)) {
+    derivedEntries.push({
+      id: `derived:${campaign.id}:important_drop_went_live:${drop.id}:${drop.scheduledFor.toISOString()}`,
+      campaignId: campaign.id,
+      eventType: "important_drop_went_live",
+      occurredAt: drop.scheduledFor.toISOString(),
+      title: "Linked drop went live",
+      message: `${drop.title} went live and started contributing to this campaign's release story.`,
+      audienceStage: null,
+      metadata: {
+        dropId: drop.id,
+        dropType: drop.dropType,
+        route: `/drinks/drops/${encodeURIComponent(drop.id)}`,
+      },
+      isDerived: true,
+    });
+  }
+
+  const persistedEntries = persistedRows.map((row) => ({
+    id: row.id,
+    campaignId: row.campaignId,
+    eventType: row.eventType as CreatorCampaignRolloutTimelineEventType,
+    occurredAt: row.occurredAt.toISOString(),
+    title: row.title,
+    message: row.message,
+    audienceStage: (row.audienceStage as CreatorCampaignRolloutAudience | null) ?? null,
+    metadata: (row.metadata as Record<string, unknown> | null) ?? {},
+    isDerived: false,
+  }));
+
+  const seen = new Set<string>();
+  return [...persistedEntries, ...derivedEntries]
+    .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+    .filter((entry) => {
+      const key = `${entry.eventType}:${entry.occurredAt}:${entry.title}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 60);
 }
 
 async function loadCreatorCampaignGoalsByCampaignId(campaignId: string) {
@@ -18565,6 +18904,14 @@ r.post("/campaigns/:id/rollout", requireAuth, async (req, res) => {
       return res.status(500).json({ ok: false, error: "Failed to save campaign rollout." });
     }
 
+    await maybeCreateCampaignRolloutConfiguredEvent({
+      previous: campaign,
+      next: updated,
+      actorUserId: req.user!.id,
+      occurredAt: new Date(),
+      isCreate: true,
+    });
+
     const audienceFit = await loadCreatorCampaignAudienceFit(req.user!.id);
     const audienceFitItem = audienceFit.items.find((item) => item.campaignId === updated.id) ?? null;
     return res.status(201).json(formatCampaignRolloutResponse(
@@ -18628,6 +18975,13 @@ r.patch("/campaigns/:id/rollout", requireAuth, async (req, res) => {
       return res.status(500).json({ ok: false, error: "Failed to update campaign rollout." });
     }
 
+    await maybeCreateCampaignRolloutConfiguredEvent({
+      previous: campaign,
+      next: updated,
+      actorUserId: req.user!.id,
+      occurredAt: new Date(),
+    });
+
     const audienceFit = await loadCreatorCampaignAudienceFit(req.user!.id);
     const audienceFitItem = audienceFit.items.find((item) => item.campaignId === updated.id) ?? null;
     return res.json(formatCampaignRolloutResponse(
@@ -18644,6 +18998,99 @@ r.patch("/campaigns/:id/rollout", requireAuth, async (req, res) => {
     const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
     const message = logCollectionRouteError("/campaigns/:id/rollout", req, error);
     return res.status(status).json(collectionServerError(message, "Failed to update campaign rollout"));
+  }
+});
+
+r.get("/campaigns/:id/rollout-timeline", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const items = await loadCampaignRolloutTimelineEntriesForCampaign(campaign);
+
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      campaignId: campaign.id,
+      campaign: {
+        id: campaign.id,
+        slug: campaign.slug,
+        name: campaign.name,
+        route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      },
+      count: items.length,
+      items,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
+    const message = logCollectionRouteError("/campaigns/:id/rollout-timeline", req, error);
+    return res.status(status).json(collectionServerError(message, "Failed to load campaign rollout timeline"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-rollout-timeline", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId.trim() : "";
+    const campaigns = campaignId
+      ? [await loadCampaignForOwnerOrThrow(campaignId, req.user!.id)]
+      : await db
+        .select()
+        .from(creatorCampaigns)
+        .where(eq(creatorCampaigns.creatorUserId, req.user!.id))
+        .orderBy(desc(creatorCampaigns.updatedAt))
+        .limit(8);
+
+    const timelineGroups = await Promise.all(campaigns.map(async (campaign) => ({
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      campaignSlug: campaign.slug,
+      campaignRoute: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      items: await loadCampaignRolloutTimelineEntriesForCampaign(campaign),
+    })));
+
+    const items = timelineGroups
+      .flatMap((group) => group.items.map((item) => ({
+        ...item,
+        campaignName: group.campaignName,
+        campaignSlug: group.campaignSlug,
+        campaignRoute: group.campaignRoute,
+      })))
+      .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+      .slice(0, campaignId ? 60 : 120);
+
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      campaignId: campaignId || null,
+      campaigns: timelineGroups.map((group) => ({
+        campaignId: group.campaignId,
+        campaignName: group.campaignName,
+        campaignSlug: group.campaignSlug,
+        campaignRoute: group.campaignRoute,
+        count: group.items.length,
+      })),
+      count: items.length,
+      items,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
+    const message = logCollectionRouteError("/creator-dashboard/campaign-rollout-timeline", req, error);
+    return res.status(status).json(collectionServerError(message, "Failed to load campaign rollout timeline"));
   }
 });
 
@@ -18691,6 +19138,21 @@ r.post("/campaigns/:id/unlock-controls/delay", requireAuth, async (req, res) => 
     if (!updated) {
       return res.status(500).json({ ok: false, error: "Failed to delay unlock." });
     }
+
+    await createCampaignRolloutTimelineEvent({
+      campaignId: campaign.id,
+      actorUserId: req.user!.id,
+      eventType: rollout.nextAudience === "followers" ? "follower_unlock_delayed" : "public_unlock_delayed",
+      title: `${rollout.nextAudience === "followers" ? "Follower" : "Public"} unlock delayed`,
+      message: `${rollout.nextAudience === "followers" ? "Follower" : "Public"} unlock moved by ${parsed.data.hours} hours to ${formatRolloutTimelineDate(nextUnlockAt)}.`,
+      audienceStage: rollout.nextAudience,
+      metadata: {
+        delayedByHours: parsed.data.hours,
+        nextUnlockAt: nextUnlockAt.toISOString(),
+        field,
+      },
+      occurredAt: now,
+    });
 
     return res.json({
       ...formatCampaignRolloutResponse(updated),
@@ -18746,6 +19208,20 @@ r.post("/campaigns/:id/unlock-controls/release-now", requireAuth, async (req, re
       return res.status(500).json({ ok: false, error: "Failed to release unlock now." });
     }
 
+    await createCampaignRolloutTimelineEvent({
+      campaignId: campaign.id,
+      actorUserId: req.user!.id,
+      eventType: rollout.nextAudience === "followers" ? "follower_unlock_released_now" : "public_unlock_released_now",
+      title: `${rollout.nextAudience === "followers" ? "Follower" : "Public"} unlock released now`,
+      message: `${rollout.nextAudience === "followers" ? "Follower" : "Public"} access was released immediately instead of waiting for the scheduled unlock.`,
+      audienceStage: rollout.nextAudience,
+      metadata: {
+        releasedAt: now.toISOString(),
+        field,
+      },
+      occurredAt: now,
+    });
+
     return res.json({
       ...formatCampaignRolloutResponse(updated),
       action: "release_now" as const,
@@ -18799,6 +19275,22 @@ r.post("/campaigns/:id/unlock-controls/pause", requireAuth, async (req, res) => 
       return res.status(500).json({ ok: false, error: "Failed to pause rollout." });
     }
 
+    await createCampaignRolloutTimelineEvent({
+      campaignId: campaign.id,
+      actorUserId: req.user!.id,
+      eventType: "rollout_paused",
+      title: "Rollout paused",
+      message: rollout.nextAudience
+        ? `Rollout paused before the next ${formatRolloutTimelineAudience(rollout.nextAudience)} unlock.`
+        : "Rollout paused.",
+      audienceStage: rollout.nextAudience,
+      metadata: {
+        nextAudience: rollout.nextAudience,
+        nextUnlockAt: rollout.nextUnlockAt,
+      },
+      occurredAt: now,
+    });
+
     return res.json({
       ...formatCampaignRolloutResponse(updated),
       action: "pause" as const,
@@ -18850,6 +19342,21 @@ r.post("/campaigns/:id/unlock-controls/resume", requireAuth, async (req, res) =>
     if (!updated) {
       return res.status(500).json({ ok: false, error: "Failed to resume rollout." });
     }
+
+    await createCampaignRolloutTimelineEvent({
+      campaignId: campaign.id,
+      actorUserId: req.user!.id,
+      eventType: "rollout_resumed",
+      title: "Rollout resumed",
+      message: `Rollout resumed after pause. Future unlocks were shifted to preserve the staged sequence safely.`,
+      audienceStage: deriveCreatorCampaignRollout(updated).nextAudience,
+      metadata: {
+        previousPausedAt: campaign.rolloutPausedAt?.toISOString() ?? null,
+        unlockFollowersAt: updated.unlockFollowersAt?.toISOString() ?? null,
+        unlockPublicAt: updated.unlockPublicAt?.toISOString() ?? null,
+      },
+      occurredAt: now,
+    });
 
     return res.json({
       ...formatCampaignRolloutResponse(updated),

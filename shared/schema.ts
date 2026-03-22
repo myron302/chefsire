@@ -1415,6 +1415,28 @@ export const creatorCampaigns = pgTable(
   })
 );
 
+export const creatorCampaignRolloutTimelineEvents = pgTable(
+  "creator_campaign_rollout_timeline_events",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    campaignId: varchar("campaign_id").references(() => creatorCampaigns.id, { onDelete: "cascade" }).notNull(),
+    actorUserId: varchar("actor_user_id").references(() => users.id, { onDelete: "set null" }),
+    eventType: text("event_type").notNull(),
+    title: varchar("title", { length: 160 }).notNull(),
+    message: text("message").notNull(),
+    audienceStage: text("audience_stage"),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    campaignIdx: index("creator_campaign_rollout_timeline_events_campaign_idx").on(table.campaignId),
+    eventTypeIdx: index("creator_campaign_rollout_timeline_events_event_type_idx").on(table.eventType),
+    campaignOccurredIdx: index("creator_campaign_rollout_timeline_events_campaign_occurred_at_idx").on(table.campaignId, table.occurredAt),
+    actorIdx: index("creator_campaign_rollout_timeline_events_actor_idx").on(table.actorUserId),
+  })
+);
+
 export const creatorCampaignTemplates = pgTable(
   "creator_campaign_templates",
   {
@@ -2444,6 +2466,11 @@ export const insertCreatorCampaignSchema = createInsertSchema(creatorCampaigns).
   updatedAt: true,
 });
 
+export const insertCreatorCampaignRolloutTimelineEventSchema = createInsertSchema(creatorCampaignRolloutTimelineEvents).omit({
+  id: true,
+  createdAt: true,
+});
+
 export const insertCreatorCampaignTemplateSchema = createInsertSchema(creatorCampaignTemplates).omit({
   id: true,
   createdAt: true,
@@ -2715,6 +2742,8 @@ export type CreatorRoadmapItem = typeof creatorRoadmapItems.$inferSelect;
 export type InsertCreatorRoadmapItem = z.infer<typeof insertCreatorRoadmapItemSchema>;
 export type CreatorCampaign = typeof creatorCampaigns.$inferSelect;
 export type InsertCreatorCampaign = z.infer<typeof insertCreatorCampaignSchema>;
+export type CreatorCampaignRolloutTimelineEvent = typeof creatorCampaignRolloutTimelineEvents.$inferSelect;
+export type InsertCreatorCampaignRolloutTimelineEvent = z.infer<typeof insertCreatorCampaignRolloutTimelineEventSchema>;
 export type CreatorCampaignTemplate = typeof creatorCampaignTemplates.$inferSelect;
 export type InsertCreatorCampaignTemplate = z.infer<typeof insertCreatorCampaignTemplateSchema>;
 export type CreatorCampaignLink = typeof creatorCampaignLinks.$inferSelect;
