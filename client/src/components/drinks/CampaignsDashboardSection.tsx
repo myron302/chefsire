@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
+import CampaignPinButton from "@/components/drinks/CampaignPinButton";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ type CampaignsResponse = {
   ok: boolean;
   creatorUserId: string;
   count: number;
+  pinnedCampaign: CreatorCampaignItem | null;
   items: CreatorCampaignItem[];
 };
 
@@ -627,6 +629,17 @@ export default function CampaignsDashboardSection() {
     enabled: Boolean(user?.id),
   });
 
+  const pinnedCampaignQuery = useQuery<{ ok: boolean; campaign: CreatorCampaignItem | null }>({
+    queryKey: ["/api/drinks/creator-dashboard/pinned-campaign", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/creator-dashboard/pinned-campaign", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load pinned campaign (${response.status})`);
+      return payload as { ok: boolean; campaign: CreatorCampaignItem | null };
+    },
+    enabled: Boolean(user?.id),
+  });
+
   const templatesQuery = useQuery<CampaignTemplatesResponse>({
     queryKey: ["/api/drinks/campaign-templates", user?.id ?? ""],
     queryFn: async () => {
@@ -926,6 +939,7 @@ export default function CampaignsDashboardSection() {
   const campaigns = campaignsQuery.data?.items ?? [];
   const templates = templatesQuery.data?.items ?? [];
   const selectedCampaign = campaigns.find((campaign) => campaign.id === selectedCampaignId) ?? campaigns[0] ?? null;
+  const pinnedCampaign = pinnedCampaignQuery.data?.campaign ?? campaignsQuery.data?.pinnedCampaign ?? campaigns.find((campaign) => campaign.isPinned) ?? null;
 
   React.useEffect(() => {
     if (!campaigns.length) {
@@ -958,6 +972,23 @@ export default function CampaignsDashboardSection() {
           <div className="rounded-md border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Active</p><p className="text-xl font-semibold">{campaigns.filter((item) => item.state === "active").length}</p></div>
           <div className="rounded-md border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Upcoming</p><p className="text-xl font-semibold">{campaigns.filter((item) => item.state === "upcoming").length}</p></div>
           <div className="rounded-md border p-3"><p className="text-xs uppercase tracking-wide text-muted-foreground">Interest</p><p className="text-xl font-semibold">{campaigns.reduce((sum, item) => sum + item.followerCount, 0)}</p></div>
+        </div>
+
+        <div className="rounded-lg border bg-muted/20 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="space-y-1">
+              <h3 className="font-semibold">Pinned creator spotlight</h3>
+              <p className="text-sm text-muted-foreground">
+                Keep one campaign pinned at a time so your creator page and lightweight discovery surfaces show the arc you most want visitors to land on right now.
+              </p>
+            </div>
+            {pinnedCampaign ? <Link href={pinnedCampaign.route}><Button size="sm" variant="outline">Preview pinned campaign</Button></Link> : null}
+          </div>
+          <div className="mt-3 text-sm text-muted-foreground">
+            {pinnedCampaign
+              ? <>Currently pinned: <span className="font-medium text-foreground">{pinnedCampaign.name}</span>. Pinning another campaign replaces this one automatically.</>
+              : "No pinned campaign yet. Pick one active or upcoming arc when you want a clear creator spotlight."}
+          </div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr),minmax(0,1.2fr)]">
@@ -1111,6 +1142,12 @@ export default function CampaignsDashboardSection() {
                     <div className="flex items-center rounded-md border px-3 text-xs text-muted-foreground">
                       {campaign.followerCount} following
                     </div>
+                    <CampaignPinButton
+                      campaignId={campaign.id}
+                      isPinned={campaign.isPinned}
+                      onSuccess={(nextMessage) => { setMessage(nextMessage); setError(""); }}
+                      onError={(nextError) => { setError(nextError); setMessage(""); }}
+                    />
                     <Button size="sm" variant={selectedCampaignId === campaign.id ? "default" : "outline"} onClick={() => setSelectedCampaignId(campaign.id)}>Goals / CTA</Button>
                     <Button size="sm" variant="outline" onClick={() => { void loadCampaignIntoForm(campaign); }}>Edit</Button>
                     <Button size="sm" variant="outline" onClick={() => cloneMutation.mutate(campaign)} disabled={cloneMutation.isPending}>{cloneMutation.isPending ? "Cloning…" : "Clone Campaign"}</Button>

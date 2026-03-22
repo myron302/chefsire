@@ -1,8 +1,10 @@
 import type { ComponentType } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem, ShoppingBag, Newspaper, CalendarClock, Archive, CalendarRange } from "lucide-react";
 
 import { useUser } from "@/contexts/UserContext";
+import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +17,12 @@ type DiscoverLink = {
   href: string;
   icon: ComponentType<{ className?: string }>;
   activityHint: "Active now" | "Recently popular" | "New";
+};
+
+type FeaturedCampaignsResponse = {
+  ok: boolean;
+  count: number;
+  items: CreatorCampaignItem[];
 };
 
 const discoverLinks: DiscoverLink[] = [
@@ -134,6 +142,15 @@ const discoverLinks: DiscoverLink[] = [
 
 export default function DrinksDiscoverPage() {
   const { user } = useUser();
+  const featuredCampaignsQuery = useQuery<FeaturedCampaignsResponse>({
+    queryKey: ["/api/drinks/campaigns/featured", user?.id ?? "guest"],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/campaigns/featured", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load featured campaigns (${response.status})`);
+      return payload as FeaturedCampaignsResponse;
+    },
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-blue-50">
@@ -157,6 +174,31 @@ export default function DrinksDiscoverPage() {
             </Link>
           </div>
         </div>
+
+        <section className="mb-8 space-y-4">
+          <div className="flex items-baseline justify-between gap-3">
+            <div>
+              <h2 className="text-xl font-semibold">Pinned campaigns</h2>
+              <p className="text-sm text-muted-foreground">
+                Creator-chosen spotlights only. This is not a platform ranking layer, and visibility rules still decide what you can see.
+              </p>
+            </div>
+            <Link href="/drinks/campaigns">
+              <Button variant="outline">Browse all campaigns</Button>
+            </Link>
+          </div>
+
+          {featuredCampaignsQuery.isLoading ? <Card><CardContent className="p-4 text-sm text-muted-foreground">Loading pinned campaigns…</CardContent></Card> : null}
+          {featuredCampaignsQuery.isError ? <Card><CardContent className="p-4 text-sm text-destructive">{featuredCampaignsQuery.error instanceof Error ? featuredCampaignsQuery.error.message : "Unable to load pinned campaigns right now."}</CardContent></Card> : null}
+          {!featuredCampaignsQuery.isLoading && !featuredCampaignsQuery.isError && (featuredCampaignsQuery.data?.items.length ?? 0) === 0 ? (
+            <Card><CardContent className="p-4 text-sm text-muted-foreground">No pinned campaigns are visible to you right now.</CardContent></Card>
+          ) : null}
+          <div className="space-y-3">
+            {(featuredCampaignsQuery.data?.items ?? []).slice(0, 3).map((campaign) => (
+              <CreatorCampaignCard key={campaign.id} campaign={campaign} />
+            ))}
+          </div>
+        </section>
 
         {user && (
           <>

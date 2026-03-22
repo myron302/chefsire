@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CalendarRange, Flame, GlassWater, Heart, Lock, Users } from "lucide-react";
+import { CalendarRange, Flame, GlassWater, Heart, Lock, Pin, Users } from "lucide-react";
 import { Link } from "wouter";
 
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ export type CreatorCampaignItem = {
   startsAt: string | null;
   endsAt: string | null;
   isActive: boolean;
+  isPinned: boolean;
   state: "upcoming" | "active" | "past";
   route: string;
   followerCount: number;
@@ -88,6 +89,7 @@ export default function CreatorCampaignCard({ campaign, actions, showCreator = t
             ) : null}
             <div className="flex flex-wrap gap-2">
               <Badge variant={campaign.state === "active" ? "default" : "outline"}>{stateBadgeLabel(campaign.state)}</Badge>
+              {campaign.isPinned ? <Badge variant="secondary" className="gap-1"><Pin className="h-3.5 w-3.5" />Pinned spotlight</Badge> : null}
               <Badge variant={campaign.visibility === "public" ? "outline" : "secondary"} className="gap-1">{visibilityIcon(campaign.visibility)}{campaign.audienceLabel}</Badge>
               {!campaign.isActive ? <Badge variant="outline">Inactive</Badge> : null}
               <Badge variant="outline" className="gap-1"><CalendarRange className="h-3.5 w-3.5" />{formatDateRange(campaign.startsAt, campaign.endsAt)}</Badge>
