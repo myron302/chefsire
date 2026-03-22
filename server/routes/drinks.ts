@@ -4883,6 +4883,38 @@ type CreatorCampaignLaunchReadinessSummary = {
   dueSoonCount: number;
 };
 
+type CreatorCampaignUnlockReadinessAlertState = "ready" | "warning" | "blocked";
+type CreatorCampaignUnlockReadinessWindow = "overdue" | "within_24h" | "within_48h";
+
+type CreatorCampaignUnlockReadinessAlert = {
+  campaignId: string;
+  campaignName: string;
+  campaignSlug: string;
+  campaignRoute: string;
+  currentAudience: CreatorCampaignRolloutAudience | null;
+  upcomingAudience: CreatorCampaignRolloutAudience;
+  unlockAt: string | null;
+  alertState: CreatorCampaignUnlockReadinessAlertState;
+  title: string;
+  message: string;
+  blockers: string[];
+  warnings: string[];
+  recommendedFixes: string[];
+  hoursUntilUnlock: number | null;
+  timingWindow: CreatorCampaignUnlockReadinessWindow;
+  readinessState: CreatorCampaignLaunchReadinessState;
+};
+
+type CreatorCampaignUnlockReadinessSummary = {
+  totalAlerts: number;
+  readyCount: number;
+  warningCount: number;
+  blockedCount: number;
+  overdueCount: number;
+  within24HoursCount: number;
+  within48HoursCount: number;
+};
+
 type CreatorCampaignActionCenterSourceType =
   | "recommendation"
   | "recovery"
@@ -11127,6 +11159,178 @@ export async function loadCreatorCampaignLaunchReadiness(creatorUserId: string, 
       "Launch readiness is a lightweight checklist layer built from existing campaign records, rollout config, linked content, CTA variants, recent updates, and the existing health / recovery signals.",
       "It does not create a new workflow engine. Missing items are inferred from what the campaign already links or configures today.",
       "Timing advisor still covers when to launch or unlock. Rollout advisor still covers which audience sequence to use. Action center still prioritizes next moves. Recovery still handles rescue actions.",
+    ],
+    generatedAt: now.toISOString(),
+  };
+}
+
+function summarizeCampaignUnlockReadinessAlerts(items: CreatorCampaignUnlockReadinessAlert[]): CreatorCampaignUnlockReadinessSummary {
+  return {
+    totalAlerts: items.length,
+    readyCount: items.filter((item) => item.alertState === "ready").length,
+    warningCount: items.filter((item) => item.alertState === "warning").length,
+    blockedCount: items.filter((item) => item.alertState === "blocked").length,
+    overdueCount: items.filter((item) => item.timingWindow === "overdue").length,
+    within24HoursCount: items.filter((item) => item.timingWindow === "within_24h").length,
+    within48HoursCount: items.filter((item) => item.timingWindow === "within_48h").length,
+  };
+}
+
+function creatorCampaignUnlockTimeLabel(audience: CreatorCampaignRolloutAudience, hoursUntilUnlock: number | null, timingWindow: CreatorCampaignUnlockReadinessWindow) {
+  const audienceLabel = audience === "followers" ? "Follower unlock" : audience === "public" ? "Public unlock" : "Member unlock";
+  if (timingWindow === "overdue") return `${audienceLabel} overdue`;
+  if (hoursUntilUnlock !== null && hoursUntilUnlock <= 1) return `${audienceLabel} within 1 hour`;
+  if (hoursUntilUnlock !== null && hoursUntilUnlock < 24) return `${audienceLabel} in ${hoursUntilUnlock} hour${hoursUntilUnlock === 1 ? "" : "s"}`;
+  if (hoursUntilUnlock !== null && hoursUntilUnlock <= 36) return `${audienceLabel} tomorrow`;
+  if (hoursUntilUnlock !== null && hoursUntilUnlock <= 48) return `${audienceLabel} within 48 hours`;
+  return audienceLabel;
+}
+
+function creatorCampaignUnlockStateRank(value: CreatorCampaignUnlockReadinessAlertState) {
+  if (value === "blocked") return 0;
+  if (value === "warning") return 1;
+  return 2;
+}
+
+export async function loadCreatorCampaignUnlockReadinessAlerts(creatorUserId: string, campaignId?: string | null) {
+  const readinessCollection = await loadCreatorCampaignLaunchReadiness(creatorUserId, campaignId);
+  const now = new Date();
+  const fortyEightHoursMs = 48 * 60 * 60 * 1000;
+  const readinessCampaignIds = [...new Set(readinessCollection.items.map((item) => item.campaignId))];
+  const campaignRows = readinessCampaignIds.length
+    ? await db!
+      .select()
+      .from(creatorCampaigns)
+      .where(and(
+        eq(creatorCampaigns.creatorUserId, creatorUserId),
+        inArray(creatorCampaigns.id, readinessCampaignIds),
+      ))
+    : [];
+  const rolloutByCampaignId = new Map(campaignRows.map((campaign) => [campaign.id, deriveCreatorCampaignRollout(campaign, now)]));
+
+  const items = readinessCollection.items
+    .filter((item) => item.preflightKind === "unlock" && item.nextAudience)
+    .map((item) => {
+      const rollout = rolloutByCampaignId.get(item.campaignId);
+      const unlockAt = rollout?.nextAudience === item.nextAudience ? rollout.nextUnlockAt ?? null : null;
+      const targetTime = new Date(unlockAt ?? "").getTime();
+      if (!Number.isFinite(targetTime)) return null;
+
+      const deltaMs = targetTime - now.getTime();
+      if (deltaMs > fortyEightHoursMs) return null;
+
+      const timingWindow: CreatorCampaignUnlockReadinessWindow = deltaMs <= 0
+        ? "overdue"
+        : deltaMs <= (24 * 60 * 60 * 1000)
+          ? "within_24h"
+          : "within_48h";
+      const hoursUntilUnlock = deltaMs <= 0 ? 0 : Math.max(1, Math.ceil(deltaMs / (60 * 60 * 1000)));
+      const checkByKey = new Map(item.checks.map((check) => [check.key, check]));
+      const tailoredBlockers = [...item.blockers];
+      const tailoredWarnings = [...item.warnings];
+      const recommendedFixes = [...item.recommendedFixes];
+
+      const recentUpdateCheck = checkByKey.get("recent_update");
+      const ctaPathCheck = checkByKey.get("cta_path");
+      const linkedAssetCheck = checkByKey.get("linked_launch_asset");
+      const audienceUnlockCheck = checkByKey.get("audience_unlock_preflight");
+
+      if (item.nextAudience === "followers" && recentUpdateCheck?.status !== "pass") {
+        tailoredWarnings.unshift("Followers will unlock soon, but there is no fresh follower-facing campaign update linked yet.");
+        recommendedFixes.unshift("Add one short campaign update before follower unlock.");
+      }
+
+      if (item.nextAudience === "followers" && item.currentAudience === "members" && item.linkedSummary.drops === 0) {
+        tailoredWarnings.unshift("Member-first campaign is unlocking to followers soon, but no linked drop is ready yet.");
+        recommendedFixes.unshift("Link a drop before the follower unlock opens.");
+      }
+
+      if (item.nextAudience === "public" && ctaPathCheck?.status !== "pass") {
+        tailoredBlockers.unshift("Public unlock is approaching, but the campaign is still missing a CTA path.");
+        recommendedFixes.unshift("Add a CTA variant or link a public-facing destination before public unlock.");
+      }
+
+      if (item.nextAudience === "public" && audienceUnlockCheck?.status !== "pass") {
+        tailoredBlockers.unshift("Public unlock is approaching, but there is still no public-facing CTA or update for that wider audience.");
+        recommendedFixes.unshift("Add one public campaign update before the public unlock.");
+      }
+
+      if (linkedAssetCheck?.status === "fail" && item.nextAudience === "followers") {
+        tailoredBlockers.unshift("Follower unlock is close, but the campaign still does not point to a linked drop, collection, post, or roadmap item.");
+      }
+
+      if ((item.readinessState === "missing_key_items" || item.readinessState === "blocked") && item.nextAudience === "public") {
+        tailoredBlockers.unshift("Public unlock is approaching but the campaign still has blockers in launch readiness.");
+      }
+
+      const dedupedBlockers = uniqueStringList(tailoredBlockers, 6);
+      const dedupedWarnings = uniqueStringList(tailoredWarnings, 6);
+      const dedupedFixes = uniqueStringList(recommendedFixes.filter(Boolean), 6);
+      const alertState: CreatorCampaignUnlockReadinessAlertState = dedupedBlockers.length > 0
+        ? "blocked"
+        : dedupedWarnings.length > 0 || item.readinessState === "almost_ready"
+          ? "warning"
+          : "ready";
+      const unlockTimeLabel = creatorCampaignUnlockTimeLabel(item.nextAudience, hoursUntilUnlock, timingWindow);
+
+      let title = "Unlock is on track";
+      let message = `${unlockTimeLabel} — no action needed.`;
+
+      if (alertState === "blocked" && item.nextAudience === "public" && ctaPathCheck?.status !== "pass") {
+        title = `${unlockTimeLabel} — campaign is missing a CTA`;
+        message = "Wider access is almost here, but the campaign still needs a clear CTA or public destination before opening up.";
+      } else if (alertState === "blocked" && item.nextAudience === "public") {
+        title = "Public unlock is approaching but campaign still has blockers";
+        message = "The current rollout is about to widen to public access, but launch readiness still shows unresolved blockers.";
+      } else if (alertState === "warning" && item.nextAudience === "followers" && recentUpdateCheck?.status !== "pass") {
+        title = `${unlockTimeLabel} — add a campaign update`;
+        message = "Followers are next in the rollout, and a fresh update would make that unlock feel intentional instead of silent.";
+      } else if (alertState === "warning" && item.nextAudience === "followers" && item.currentAudience === "members" && item.linkedSummary.drops === 0) {
+        title = `${unlockTimeLabel} — no linked drop yet`;
+        message = "This member-first campaign is widening to followers soon, but there is still no linked drop for the broader audience to land on.";
+      } else if (alertState === "ready") {
+        title = "Unlock is on track";
+        message = `${unlockTimeLabel} — no action needed right now.`;
+      } else if (alertState === "warning") {
+        title = `${unlockTimeLabel} — double-check final details`;
+        message = "The unlock is close and mostly healthy, but there are still lightweight warnings worth cleaning up first.";
+      }
+
+      return {
+        campaignId: item.campaignId,
+        campaignName: item.campaignName,
+        campaignSlug: item.campaignSlug,
+        campaignRoute: item.campaignRoute,
+        currentAudience: item.currentAudience,
+        upcomingAudience: item.nextAudience,
+        unlockAt,
+        alertState,
+        title,
+        message,
+        blockers: dedupedBlockers,
+        warnings: dedupedWarnings,
+        recommendedFixes: dedupedFixes,
+        hoursUntilUnlock,
+        timingWindow,
+        readinessState: item.readinessState,
+      } satisfies CreatorCampaignUnlockReadinessAlert;
+    })
+    .filter((item): item is CreatorCampaignUnlockReadinessAlert => Boolean(item))
+    .sort((a, b) => {
+      const aTime = a.unlockAt ? new Date(a.unlockAt).getTime() : Number.POSITIVE_INFINITY;
+      const bTime = b.unlockAt ? new Date(b.unlockAt).getTime() : Number.POSITIVE_INFINITY;
+      return creatorCampaignUnlockStateRank(a.alertState) - creatorCampaignUnlockStateRank(b.alertState)
+        || aTime - bTime
+        || a.campaignName.localeCompare(b.campaignName);
+    });
+
+  return {
+    summary: summarizeCampaignUnlockReadinessAlerts(items),
+    items,
+    attributionNotes: [
+      "Unlock readiness alerts are a lightweight, creator-private warning layer built from existing rollout timing plus the current launch-readiness checks already available in the drinks platform.",
+      "This route does not schedule jobs or automate unlocks. It only derives upcoming follower/public warnings at read time within the next 48 hours, plus practical overdue unlocks.",
+      "Launch readiness, rollout advisor, and timing advisor stay separate on purpose: this layer only answers whether an imminent staged unlock looks ready enough to happen cleanly.",
     ],
     generatedAt: now.toISOString(),
   };
@@ -23866,6 +24070,41 @@ r.get("/creator-dashboard/campaign-launch-readiness", requireAuth, async (req, r
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-launch-readiness", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign launch readiness"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-unlock-alerts", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId.trim() : "";
+    if (campaignId) {
+      const ownedCampaign = await db
+        .select({ id: creatorCampaigns.id })
+        .from(creatorCampaigns)
+        .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, req.user!.id)))
+        .limit(1);
+      if (!ownedCampaign[0]) {
+        return res.status(404).json({ ok: false, error: "Campaign not found." });
+      }
+    }
+
+    const alerts = await loadCreatorCampaignUnlockReadinessAlerts(req.user!.id, campaignId || null);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      campaignId: campaignId || null,
+      summary: alerts.summary,
+      items: alerts.items,
+      attributionNotes: alerts.attributionNotes,
+      generatedAt: alerts.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-unlock-alerts", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign unlock alerts"));
   }
 });
 

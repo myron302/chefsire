@@ -5,6 +5,7 @@ import { Link, useRoute } from "wouter";
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
 import CampaignActionCenterSection from "@/components/drinks/CampaignActionCenterSection";
 import CampaignLaunchReadinessSection from "@/components/drinks/CampaignLaunchReadinessSection";
+import CampaignUnlockReadinessAlertsSection from "@/components/drinks/CampaignUnlockReadinessAlertsSection";
 import CampaignPinButton from "@/components/drinks/CampaignPinButton";
 import { CampaignLifecycleSuggestionPanel, type CampaignLifecycleSuggestion } from "@/components/drinks/CampaignLifecycleSuggestionsSection";
 import { CampaignWrapUpPanel, type CampaignRetrospectiveItem } from "@/components/drinks/CampaignRetrospectivesSection";
@@ -607,6 +608,19 @@ export default function DrinkCampaignDetailPage() {
               limit={1}
               title="Owner-only launch readiness / preflight"
               description="Private readiness checks for this campaign only. This stays separate from the timing advisor, rollout advisor, action center, and recovery layers."
+            />
+          ) : null}
+
+          {user?.id
+          && user.id === query.data.campaign.creatorUserId
+          && query.data.ownerRollout?.nextAudience
+          && query.data.ownerRollout?.nextUnlockAt ? (
+            <CampaignUnlockReadinessAlertsSection
+              campaignId={query.data.campaign.id}
+              compact
+              limit={1}
+              title="Owner-only upcoming unlock alert"
+              description="Private, time-sensitive unlock warnings for this campaign only. This stays separate from overall launch readiness and rollout/timing advice."
             />
           ) : null}
 
