@@ -6490,6 +6490,47 @@ type CreatorCampaignRolloutAnalyticsSummary = {
   totalStageRsvps: number;
 };
 
+type CreatorCampaignStageRecap = {
+  campaignId: string;
+  campaignName: string;
+  campaignSlug: string;
+  campaignRoute: string;
+  stageName: CreatorCampaignRolloutAudience;
+  stageLabel: string;
+  stageStartedAt: string | null;
+  stageEndedAt: string | null;
+  stageDurationHours: number | null;
+  views: number;
+  clicks: number;
+  rsvps: number;
+  approximatePurchases: number | null;
+  approximateMemberships: number | null;
+  primaryOutcome: string;
+  stageSummary: string;
+  stageScore: number | null;
+  nextStepHint: string | null;
+  isCurrentStage: boolean;
+  hasEnded: boolean;
+};
+
+type CreatorCampaignStageRecapCampaignItem = {
+  campaignId: string;
+  campaignName: string;
+  campaignSlug: string;
+  campaignRoute: string;
+  rolloutMode: CreatorCampaignRolloutMode;
+  currentRolloutState: CreatorCampaignRolloutState;
+  hasSequencedRollout: boolean;
+  recaps: CreatorCampaignStageRecap[];
+};
+
+type CreatorCampaignStageRecapSummary = {
+  totalCampaigns: number;
+  campaignsWithRecaps: number;
+  totalStageRecaps: number;
+  completedStageRecaps: number;
+};
+
 type CreatorCampaignRolloutAdvisorRecommendationType =
   | "keep_members_first"
   | "keep_followers_first"
@@ -6631,6 +6672,224 @@ function getCampaignRolloutStageAt(
 
 function rolloutStageWeightedEngagement(stage: CreatorCampaignRolloutStageAnalytics) {
   return stage.rsvps * 4 + stage.clicks * 3 + stage.views;
+}
+
+function stageRecapWeightedSignal(input: {
+  views: number;
+  clicks: number;
+  rsvps: number;
+  approximatePurchases: number | null;
+  approximateMemberships: number | null;
+}) {
+  return (
+    input.views
+    + (input.clicks * 3)
+    + (input.rsvps * 4)
+    + ((input.approximatePurchases ?? 0) * 6)
+    + ((input.approximateMemberships ?? 0) * 6)
+  );
+}
+
+function stageDurationHoursBetween(startAt: Date | null, endAt: Date | null) {
+  if (!startAt || !endAt) return null;
+  const milliseconds = endAt.getTime() - startAt.getTime();
+  if (milliseconds <= 0) return 0;
+  return Math.round((milliseconds / (1000 * 60 * 60)) * 10) / 10;
+}
+
+function isDateWithinStageWindow(value: Date, startAt: Date | null, endAt: Date | null) {
+  if (!startAt || value < startAt) return false;
+  if (endAt && value > endAt) return false;
+  return true;
+}
+
+function stageLabelForSummary(audience: CreatorCampaignRolloutAudience) {
+  if (audience === "members") return "Member stage";
+  if (audience === "followers") return "Follower stage";
+  return "Public stage";
+}
+
+function buildCampaignStageRecapPrimaryOutcome(input: {
+  stage: {
+    audience: CreatorCampaignRolloutAudience;
+    views: number;
+    clicks: number;
+    rsvps: number;
+    approximatePurchases: number | null;
+    approximateMemberships: number | null;
+  };
+  totals: {
+    views: number;
+    clicks: number;
+    rsvps: number;
+    approximatePurchases: number;
+    approximateMemberships: number;
+  };
+}) {
+  const { stage, totals } = input;
+  if ((stage.approximateMemberships ?? 0) > 0 && (stage.approximateMemberships ?? 0) >= Math.max(1, totals.approximateMemberships)) {
+    return "Approximate membership signal";
+  }
+  if ((stage.approximatePurchases ?? 0) > 0 && (stage.approximatePurchases ?? 0) >= Math.max(1, totals.approximatePurchases)) {
+    return "Approximate purchase signal";
+  }
+  if (stage.rsvps > 0 && stage.rsvps >= Math.max(1, totals.rsvps / 2)) {
+    return "RSVP lift";
+  }
+  if (stage.clicks > 0 && stage.clicks >= Math.max(1, totals.clicks / 2)) {
+    return "Click momentum";
+  }
+  if (stage.views > 0 && stage.views >= Math.max(1, totals.views / 2)) {
+    return "Reach expansion";
+  }
+  return "Light signal";
+}
+
+function buildCampaignStageRecapSummary(input: {
+  stage: {
+    audience: CreatorCampaignRolloutAudience;
+    views: number;
+    clicks: number;
+    rsvps: number;
+    approximatePurchases: number | null;
+    approximateMemberships: number | null;
+    stageDurationHours: number | null;
+    hasEnded: boolean;
+  };
+  previousStage?: {
+    views: number;
+    clicks: number;
+    rsvps: number;
+    approximatePurchases: number | null;
+    approximateMemberships: number | null;
+  } | null;
+  totals: {
+    views: number;
+    clicks: number;
+    rsvps: number;
+    approximatePurchases: number;
+    approximateMemberships: number;
+  };
+  strongestAudience: CreatorCampaignRolloutAudience | null;
+  averageSignalPerHour: number | null;
+}) {
+  const { stage, previousStage, totals, strongestAudience, averageSignalPerHour } = input;
+  const label = stageLabelForSummary(stage.audience);
+  const stageSignal = stageRecapWeightedSignal(stage);
+  const previousSignal = previousStage ? stageRecapWeightedSignal(previousStage) : 0;
+  const durationHours = Math.max(stage.stageDurationHours ?? 0, 1);
+  const signalPerHour = stageSignal / durationHours;
+
+  if (
+    stage.audience === "members"
+    && strongestAudience === "members"
+    && stage.clicks + stage.rsvps > 0
+    && stage.views > 0
+  ) {
+    return "Member stage drove the strongest early conversion.";
+  }
+
+  if (
+    stage.audience === "followers"
+    && previousStage
+    && stage.views > previousStage.views
+    && stage.rsvps <= previousStage.rsvps
+    && stage.hasEnded
+  ) {
+    return "Follower stage expanded reach but added limited RSVP lift.";
+  }
+
+  if (stage.audience === "public" && stage.clicks > 0 && stage.clicks >= Math.max(1, Math.ceil(totals.clicks * 0.5))) {
+    return "Public stage generated the majority of clicks.";
+  }
+
+  if (
+    stage.stageDurationHours !== null
+    && stage.stageDurationHours > 0
+    && stage.stageDurationHours <= 24
+    && stageSignal > 0
+    && averageSignalPerHour !== null
+    && signalPerHour >= averageSignalPerHour * 1.2
+  ) {
+    return "This stage was short but effective.";
+  }
+
+  if (
+    previousStage
+    && previousSignal > 0
+    && stageSignal <= previousSignal * 0.5
+    && stage.rsvps <= previousStage.rsvps
+    && stage.clicks <= previousStage.clicks
+  ) {
+    return "This stage added little incremental momentum.";
+  }
+
+  if ((stage.approximatePurchases ?? 0) > 0) {
+    return `${label} lined up the clearest approximate purchase signal.`;
+  }
+
+  if ((stage.approximateMemberships ?? 0) > 0) {
+    return `${label} aligned with the clearest approximate membership signal.`;
+  }
+
+  if (stage.rsvps > 0 && stage.rsvps >= Math.max(1, totals.rsvps / 2)) {
+    return `${label} created the strongest RSVP lift in this rollout.`;
+  }
+
+  if (stage.views > 0 && stage.views >= Math.max(1, totals.views / 2)) {
+    return `${label} delivered the broadest reach in this rollout.`;
+  }
+
+  return stageSignal > 0
+    ? `${label} added measurable momentum without dominating the full rollout.`
+    : `${label} unlocked, but signal stayed light.`;
+}
+
+function buildCampaignStageRecapNextStepHint(input: {
+  stage: {
+    audience: CreatorCampaignRolloutAudience;
+    views: number;
+    clicks: number;
+    rsvps: number;
+    approximatePurchases: number | null;
+    approximateMemberships: number | null;
+    hasEnded: boolean;
+    isCurrentStage: boolean;
+  };
+  nextStageAudience: CreatorCampaignRolloutAudience | null;
+  previousStage?: {
+    views: number;
+    clicks: number;
+    rsvps: number;
+  } | null;
+}) {
+  const { stage, nextStageAudience, previousStage } = input;
+
+  if (stage.isCurrentStage && !stage.hasEnded) {
+    return "Still live — this review will firm up once the next unlock happens or the campaign closes.";
+  }
+
+  if ((stage.approximatePurchases ?? 0) > 0 || (stage.approximateMemberships ?? 0) > 0) {
+    return nextStageAudience
+      ? `Carry this message into the ${stageLabelForSummary(nextStageAudience).toLowerCase()} while intent is still warm.`
+      : "Use this result as a recap benchmark before planning the next campaign.";
+  }
+
+  if (stage.views > Math.max(1, stage.clicks * 4) && stage.rsvps <= Math.max(1, Math.floor(stage.clicks / 3))) {
+    return nextStageAudience
+      ? `The next unlock should sharpen the RSVP ask, because this ${stageLabelForSummary(stage.audience).toLowerCase()} mostly expanded reach.`
+      : "Treat this as a reach-heavy recap and pair it with a stronger CTA next time.";
+  }
+
+  if (previousStage && stage.clicks + stage.rsvps < previousStage.clicks + previousStage.rsvps) {
+    return nextStageAudience
+      ? "Refresh the headline or linked drop before widening access again."
+      : "This stage cooled off versus the prior unlock, so note the creative drop-off in the recap.";
+  }
+
+  return nextStageAudience
+    ? `Keep the strongest creative elements moving into the ${stageLabelForSummary(nextStageAudience).toLowerCase()}.`
+    : "Archive this stage review as a timing-based lesson for the next rollout.";
 }
 
 function buildCreatorCampaignRolloutInsights(input: {
@@ -6927,6 +7186,211 @@ async function loadCreatorCampaignRolloutAnalytics(creatorUserId: string, campai
       "RSVPs reuse linked drop RSVP timing and are bucketed into the rollout stage that was live when the RSVP happened.",
       "Purchases and memberships remain clearly labeled approximations and should be read as timing-based rollout signals rather than exact causality.",
       "Rollout mode, rollout state, rollout analytics, audience fit, and surface attribution stay separate on purpose.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+async function loadCreatorCampaignStageRecaps(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const rolloutAnalytics = await loadCreatorCampaignRolloutAnalytics(creatorUserId, campaignId);
+  const rolloutItems = rolloutAnalytics.items.filter((item) => item.hasSequencedRollout);
+  if (!rolloutItems.length) {
+    return {
+      summary: {
+        totalCampaigns: campaignId ? 1 : rolloutAnalytics.items.length,
+        campaignsWithRecaps: 0,
+        totalStageRecaps: 0,
+        completedStageRecaps: 0,
+      } satisfies CreatorCampaignStageRecapSummary,
+      items: [] as CreatorCampaignStageRecapCampaignItem[],
+      attributionNotes: [
+        "Stage recaps stay lightweight: they reuse rollout timing, rollout analytics, linked purchase proxies, and membership proxies that already exist.",
+        "No sequenced rollout has unlocked enough stages yet to produce an honest stage recap here.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const campaignIds = rolloutItems.map((item) => item.campaignId);
+  const campaignRows = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(campaignId
+      ? and(eq(creatorCampaigns.creatorUserId, creatorUserId), eq(creatorCampaigns.id, campaignId))
+      : and(eq(creatorCampaigns.creatorUserId, creatorUserId), inArray(creatorCampaigns.id, campaignIds)))
+    .orderBy(desc(creatorCampaigns.updatedAt))
+    .limit(campaignId ? 1 : 120);
+
+  const campaignById = new Map(campaignRows.map((campaign) => [campaign.id, campaign]));
+  const linkMap = await loadCreatorCampaignLinksByCampaignIds(campaignIds);
+  const collectionIds = [...new Set(
+    campaignIds.flatMap((campaignIdValue) => (linkMap.get(campaignIdValue) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId)),
+  )];
+
+  const [purchaseRows, membershipRows] = await Promise.all([
+    collectionIds.length
+      ? db.select({
+          collectionId: drinkCollectionPurchases.collectionId,
+          createdAt: drinkCollectionPurchases.createdAt,
+          status: drinkCollectionPurchases.status,
+        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds)).orderBy(asc(drinkCollectionPurchases.createdAt))
+      : Promise.resolve([] as Array<{ collectionId: string; createdAt: Date; status: string }>),
+    db.select({
+      createdAt: creatorMemberships.createdAt,
+      status: creatorMemberships.status,
+    }).from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, creatorUserId)).orderBy(asc(creatorMemberships.createdAt)),
+  ]);
+
+  const items = rolloutItems.map((rolloutItem) => {
+    const campaign = campaignById.get(rolloutItem.campaignId);
+    if (!campaign) return null;
+
+    const rollout = deriveCreatorCampaignRollout(campaign);
+    const window = getCreatorCampaignAnalyticsWindow(campaign);
+    const timeline = rollout.timeline.map((step, index) => {
+      const stepStartAt = step.unlockAt ? new Date(step.unlockAt) : (index === 0 ? window.startsAt : null);
+      const nextStep = rollout.timeline[index + 1] ?? null;
+      const nextStepStartAt = nextStep?.unlockAt ? new Date(nextStep.unlockAt) : null;
+      const isCurrentStage = step.audience === rollout.currentAudience;
+      const stageEndedAt = nextStepStartAt
+        ?? (getCreatorCampaignState(campaign) === "past" ? window.endsAt : null);
+      return {
+        audience: step.audience,
+        stageStartedAt: stepStartAt,
+        stageEndedAt,
+        stageDurationHours: stageDurationHoursBetween(stepStartAt, stageEndedAt),
+        isCurrentStage,
+        hasEnded: Boolean(stageEndedAt && stageEndedAt.getTime() <= Date.now()),
+      };
+    });
+
+    const campaignCollectionIds = (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId);
+    const stageMetricsByAudience = new Map(rolloutItem.stagePerformance.map((stage) => [stage.audience, stage]));
+
+    const recapDrafts = timeline.map((stageWindow) => {
+      const stageMetrics = stageMetricsByAudience.get(stageWindow.audience) ?? emptyCreatorCampaignRolloutStageAnalytics(stageWindow.audience);
+      const approximatePurchases = purchaseRows.filter((row) => (
+        row.status === "completed"
+        && campaignCollectionIds.includes(row.collectionId)
+        && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)
+        && isDateWithinStageWindow(row.createdAt, stageWindow.stageStartedAt, stageWindow.stageEndedAt)
+      )).length;
+      const approximateMemberships = membershipRows.filter((row) => (
+        row.status === "active"
+        && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)
+        && isDateWithinStageWindow(row.createdAt, stageWindow.stageStartedAt, stageWindow.stageEndedAt)
+      )).length;
+
+      return {
+        audience: stageWindow.audience,
+        stageStartedAt: stageWindow.stageStartedAt,
+        stageEndedAt: stageWindow.stageEndedAt,
+        stageDurationHours: stageWindow.stageDurationHours,
+        isCurrentStage: stageWindow.isCurrentStage,
+        hasEnded: stageWindow.hasEnded,
+        views: stageMetrics.views,
+        clicks: stageMetrics.clicks,
+        rsvps: stageMetrics.rsvps,
+        approximatePurchases,
+        approximateMemberships: rollout.startsWithAudience === "members" || stageWindow.audience === "members"
+          ? approximateMemberships
+          : 0,
+      };
+    });
+
+    const totals = recapDrafts.reduce((accumulator, stage) => ({
+      views: accumulator.views + stage.views,
+      clicks: accumulator.clicks + stage.clicks,
+      rsvps: accumulator.rsvps + stage.rsvps,
+      approximatePurchases: accumulator.approximatePurchases + (stage.approximatePurchases ?? 0),
+      approximateMemberships: accumulator.approximateMemberships + (stage.approximateMemberships ?? 0),
+    }), {
+      views: 0,
+      clicks: 0,
+      rsvps: 0,
+      approximatePurchases: 0,
+      approximateMemberships: 0,
+    });
+
+    const strongestStage = [...recapDrafts]
+      .sort((a, b) => stageRecapWeightedSignal(b) - stageRecapWeightedSignal(a))
+      [0] ?? null;
+    const maxSignal = Math.max(...recapDrafts.map((stage) => stageRecapWeightedSignal(stage)), 0);
+    const averageSignalPerHour = recapDrafts.length
+      ? recapDrafts.reduce((sum, stage) => sum + (stageRecapWeightedSignal(stage) / Math.max(stage.stageDurationHours ?? 1, 1)), 0) / recapDrafts.length
+      : null;
+
+    const recaps = recapDrafts.map((stage, index) => {
+      const previousStage = recapDrafts[index - 1] ?? null;
+      const nextStage = recapDrafts[index + 1] ?? null;
+      const stageSignal = stageRecapWeightedSignal(stage);
+      return {
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+        stageName: stage.audience,
+        stageLabel: stageLabelForSummary(stage.audience),
+        stageStartedAt: stage.stageStartedAt ? stage.stageStartedAt.toISOString() : null,
+        stageEndedAt: stage.stageEndedAt ? stage.stageEndedAt.toISOString() : null,
+        stageDurationHours: stage.stageDurationHours,
+        views: stage.views,
+        clicks: stage.clicks,
+        rsvps: stage.rsvps,
+        approximatePurchases: stage.approximatePurchases,
+        approximateMemberships: stage.approximateMemberships,
+        primaryOutcome: buildCampaignStageRecapPrimaryOutcome({
+          stage,
+          totals,
+        }),
+        stageSummary: buildCampaignStageRecapSummary({
+          stage,
+          previousStage,
+          totals,
+          strongestAudience: strongestStage?.audience ?? null,
+          averageSignalPerHour,
+        }),
+        stageScore: maxSignal > 0 ? Math.round((stageSignal / maxSignal) * 100) : null,
+        nextStepHint: buildCampaignStageRecapNextStepHint({
+          stage,
+          nextStageAudience: nextStage?.audience ?? null,
+          previousStage,
+        }),
+        isCurrentStage: stage.isCurrentStage,
+        hasEnded: stage.hasEnded,
+      } satisfies CreatorCampaignStageRecap;
+    });
+
+    return {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      campaignSlug: campaign.slug,
+      campaignRoute: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      rolloutMode: rollout.rolloutMode,
+      currentRolloutState: rollout.state,
+      hasSequencedRollout: rolloutItem.hasSequencedRollout,
+      recaps,
+    } satisfies CreatorCampaignStageRecapCampaignItem;
+  }).filter(Boolean) as CreatorCampaignStageRecapCampaignItem[];
+
+  return {
+    summary: {
+      totalCampaigns: rolloutAnalytics.items.length,
+      campaignsWithRecaps: items.length,
+      totalStageRecaps: items.reduce((sum, item) => sum + item.recaps.length, 0),
+      completedStageRecaps: items.reduce((sum, item) => sum + item.recaps.filter((recap) => recap.hasEnded).length, 0),
+    } satisfies CreatorCampaignStageRecapSummary,
+    items,
+    attributionNotes: [
+      "Stage recaps reuse rollout timing, rollout analytics, timeline unlock boundaries, linked purchase proxies, and membership proxies that already exist.",
+      "Views, clicks, and RSVPs are assigned to stages by timestamp relative to unlock windows, then summarized into concise outcome reviews.",
+      "Approximate purchases and memberships are timing-based proxies within each stage window, not exact causal attribution.",
     ],
     generatedAt: new Date().toISOString(),
   };
@@ -19037,6 +19501,44 @@ r.get("/campaigns/:id/rollout-timeline", requireAuth, async (req, res) => {
   }
 });
 
+r.get("/campaigns/:id/stage-recaps", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const recaps = await loadCreatorCampaignStageRecaps(req.user!.id, campaign.id);
+    const item = recaps.items.find((entry) => entry.campaignId === campaign.id) ?? null;
+
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      campaignId: campaign.id,
+      campaign: {
+        id: campaign.id,
+        slug: campaign.slug,
+        name: campaign.name,
+        route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      },
+      summary: recaps.summary,
+      item,
+      attributionNotes: recaps.attributionNotes,
+      generatedAt: recaps.generatedAt,
+    });
+  } catch (error) {
+    const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
+    const message = logCollectionRouteError("/campaigns/:id/stage-recaps", req, error);
+    return res.status(status).json(collectionServerError(message, "Failed to load campaign stage recaps"));
+  }
+});
+
 r.get("/creator-dashboard/campaign-rollout-timeline", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -19091,6 +19593,28 @@ r.get("/creator-dashboard/campaign-rollout-timeline", requireAuth, async (req, r
     const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
     const message = logCollectionRouteError("/creator-dashboard/campaign-rollout-timeline", req, error);
     return res.status(status).json(collectionServerError(message, "Failed to load campaign rollout timeline"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-stage-recaps", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const recaps = await loadCreatorCampaignStageRecaps(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: recaps.summary,
+      items: recaps.items,
+      attributionNotes: recaps.attributionNotes,
+      generatedAt: recaps.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-stage-recaps", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign stage recaps"));
   }
 });
 

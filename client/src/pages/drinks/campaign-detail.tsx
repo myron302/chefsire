@@ -8,6 +8,7 @@ import CampaignLaunchReadinessSection from "@/components/drinks/CampaignLaunchRe
 import CampaignRolloutTimelineSection from "@/components/drinks/CampaignRolloutTimelineSection";
 import CampaignUnlockReadinessAlertsSection from "@/components/drinks/CampaignUnlockReadinessAlertsSection";
 import CampaignPinButton from "@/components/drinks/CampaignPinButton";
+import CampaignStageRecapsSection from "@/components/drinks/CampaignStageRecapsSection";
 import CampaignUnlockControls from "@/components/drinks/CampaignUnlockControls";
 import { CampaignLifecycleSuggestionPanel, type CampaignLifecycleSuggestion } from "@/components/drinks/CampaignLifecycleSuggestionsSection";
 import { CampaignWrapUpPanel, type CampaignRetrospectiveItem } from "@/components/drinks/CampaignRetrospectivesSection";
@@ -871,6 +872,13 @@ export default function DrinkCampaignDetailPage() {
                   limit={10}
                   title="Owner-only rollout history"
                   description="Private timeline of rollout config changes, unlock controls, derived stage transitions, readiness warnings, and major linked drop go-live moments."
+                />
+
+                <CampaignStageRecapsSection
+                  campaignId={query.data.campaign.id}
+                  compact
+                  title="Owner-only stage recaps + unlock outcomes"
+                  description="Private stage-by-stage reviews of what each unlock window actually accomplished, kept separate from the raw rollout analytics totals and the timeline log."
                 />
 
                 {query.data.ownerRollout.rolloutNotes ? (
