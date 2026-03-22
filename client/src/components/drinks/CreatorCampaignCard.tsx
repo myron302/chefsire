@@ -19,6 +19,32 @@ export type CreatorCampaignItem = {
   isActive: boolean;
   isPinned: boolean;
   state: "upcoming" | "active" | "past";
+  rollout?: {
+    rolloutMode: "public_first" | "followers_first" | "members_first" | "staged";
+    startsWithAudience: "public" | "followers" | "members";
+    finalAudience: "public" | "followers" | "members";
+    currentAudience: "public" | "followers" | "members";
+    nextAudience: "public" | "followers" | "members" | null;
+    nextUnlockAt: string | null;
+    unlockFollowersAt: string | null;
+    unlockPublicAt: string | null;
+    rolloutNotes: string | null;
+    isRolloutActive: boolean;
+    state:
+      | "scheduled_for_members"
+      | "scheduled_for_followers"
+      | "scheduled_for_public"
+      | "live_for_members"
+      | "live_for_followers"
+      | "live_for_public"
+      | "fully_open"
+      | "completed";
+    timeline: Array<{
+      audience: "public" | "followers" | "members";
+      unlockAt: string | null;
+      isCurrent: boolean;
+    }>;
+  };
   route: string;
   followerCount: number;
   isFollowing: boolean;
