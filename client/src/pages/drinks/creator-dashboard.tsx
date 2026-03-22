@@ -30,6 +30,7 @@ import CampaignAudienceFitSection from "@/components/drinks/CampaignAudienceFitS
 import CampaignRolloutAdvisorSection from "@/components/drinks/CampaignRolloutAdvisorSection";
 import CampaignTimingAdvisorSection from "@/components/drinks/CampaignTimingAdvisorSection";
 import CampaignLaunchReadinessSection from "@/components/drinks/CampaignLaunchReadinessSection";
+import CampaignUnlockReadinessAlertsSection from "@/components/drinks/CampaignUnlockReadinessAlertsSection";
 import DropLaunchAnalyticsSection from "@/components/drinks/DropLaunchAnalyticsSection";
 import PinnedCampaignSpotlightSection from "@/components/drinks/PinnedCampaignSpotlightSection";
 import { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
@@ -1521,6 +1522,7 @@ export default function CreatorDashboardPage() {
       <DrinksPlatformNav current="dashboard" />
 
       <CampaignActionCenterSection />
+      <CampaignUnlockReadinessAlertsSection limit={4} />
       <CampaignLaunchReadinessSection limit={4} />
 
       <CreatorBundlesSection />
