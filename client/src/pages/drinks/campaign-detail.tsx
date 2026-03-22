@@ -152,6 +152,12 @@ interface CampaignDetailResponse {
     owner: CampaignMilestone[];
   };
   ownerAnalytics?: CampaignOwnerAnalytics | null;
+  ownerRollout?: CreatorCampaignItem["rollout"] | null;
+  ownerRolloutSuggestion?: {
+    suggestedMode: "public_first" | "followers_first" | "members_first" | "staged";
+    reason: string | null;
+    confidence: "high" | "medium" | "low" | "none";
+  } | null;
   ownerRetrospective?: CampaignRetrospectiveItem | null;
   ownerHealth?: CampaignHealthItem | null;
   ownerLifecycleSuggestion?: CampaignLifecycleSuggestion | null;
@@ -217,6 +223,49 @@ function formatHealthDateTime(value: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "No recent activity";
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+function rolloutModeLabel(value: NonNullable<CreatorCampaignItem["rollout"]>["rolloutMode"]) {
+  switch (value) {
+    case "followers_first":
+      return "Followers first";
+    case "members_first":
+      return "Members first";
+    case "staged":
+      return "Staged rollout";
+    case "public_first":
+    default:
+      return "Public first";
+  }
+}
+
+function rolloutStateLabel(value: NonNullable<CreatorCampaignItem["rollout"]>["state"]) {
+  switch (value) {
+    case "scheduled_for_members":
+      return "Scheduled for members";
+    case "scheduled_for_followers":
+      return "Scheduled for followers";
+    case "scheduled_for_public":
+      return "Scheduled for public";
+    case "live_for_members":
+      return "Live for members";
+    case "live_for_followers":
+      return "Live for followers";
+    case "live_for_public":
+      return "Live for public";
+    case "fully_open":
+      return "Fully open";
+    case "completed":
+    default:
+      return "Completed";
+  }
+}
+
+function rolloutAudienceLabel(value: NonNullable<CreatorCampaignItem["rollout"]>["currentAudience"] | null) {
+  if (value === "members") return "Members";
+  if (value === "followers") return "Followers";
+  if (value === "public") return "Public";
+  return "—";
 }
 
 function buildVariantDestination(data: CampaignDetailResponse) {
@@ -523,6 +572,68 @@ export default function DrinkCampaignDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {query.data.ownerRollout ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Owner-only rollout strategy</CardTitle>
+                <CardDescription>
+                  Private rollout view for how this campaign is sequencing across members, followers, and public audiences.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary">{rolloutModeLabel(query.data.ownerRollout.rolloutMode)}</Badge>
+                  <Badge variant="outline">{rolloutStateLabel(query.data.ownerRollout.state)}</Badge>
+                  <Badge variant="outline">Current: {rolloutAudienceLabel(query.data.ownerRollout.currentAudience)}</Badge>
+                  <Badge variant="outline">Final: {rolloutAudienceLabel(query.data.ownerRollout.finalAudience)}</Badge>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-md border p-3 text-sm">
+                    <p className="font-medium">Starts with</p>
+                    <p className="text-muted-foreground">{rolloutAudienceLabel(query.data.ownerRollout.startsWithAudience)}</p>
+                  </div>
+                  <div className="rounded-md border p-3 text-sm">
+                    <p className="font-medium">Next unlock</p>
+                    <p className="text-muted-foreground">
+                      {query.data.ownerRollout.nextAudience
+                        ? `${rolloutAudienceLabel(query.data.ownerRollout.nextAudience)}${query.data.ownerRollout.nextUnlockAt ? ` · ${formatHealthDateTime(query.data.ownerRollout.nextUnlockAt)}` : ""}`
+                        : "No later unlock scheduled"}
+                    </p>
+                  </div>
+                  <div className="rounded-md border p-3 text-sm">
+                    <p className="font-medium">Audience-fit hint</p>
+                    <p className="text-muted-foreground">
+                      {query.data.ownerRolloutSuggestion
+                        ? `${rolloutModeLabel(query.data.ownerRolloutSuggestion.suggestedMode)} · ${query.data.ownerRolloutSuggestion.reason ?? "Rules-based suggestion."}`
+                        : "No extra suggestion yet."}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground">Audience sequence</p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {query.data.ownerRollout.timeline.map((step, index) => (
+                      <span key={`${step.audience}-${index}`} className="rounded-full border px-2 py-1">
+                        {rolloutAudienceLabel(step.audience)}
+                        {step.unlockAt ? ` · ${formatHealthDateTime(step.unlockAt)}` : ""}
+                        {step.isCurrent ? " · current" : ""}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {query.data.ownerRollout.rolloutNotes ? (
+                  <div className="rounded-md bg-muted/30 p-3 text-sm">
+                    <p className="font-medium text-foreground">Rollout notes</p>
+                    <p className="mt-1 text-muted-foreground whitespace-pre-wrap">{query.data.ownerRollout.rolloutNotes}</p>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
 
           {query.data.ownerHealth ? (
             <Card>
