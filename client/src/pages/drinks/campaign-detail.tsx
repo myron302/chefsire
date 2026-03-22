@@ -194,6 +194,19 @@ interface CampaignDetailResponse {
   ownerAnalytics?: CampaignOwnerAnalytics | null;
   ownerRollout?: CreatorCampaignItem["rollout"] | null;
   ownerRolloutAnalytics?: CampaignRolloutAnalyticsItem | null;
+  ownerRolloutAdvice?: {
+    campaignId: string;
+    campaignName: string;
+    route: string;
+    currentRolloutMode: "public_first" | "followers_first" | "members_first" | "staged";
+    recommendedNextRolloutMode: "public_first" | "followers_first" | "members_first" | "staged";
+    recommendationType: "keep_members_first" | "keep_followers_first" | "keep_public_first" | "shorten_staged_rollout" | "extend_member_window" | "extend_follower_window" | "go_public_earlier" | "add_member_phase" | "skip_member_phase" | "skip_follower_phase" | "use_staged_rollout_next_time";
+    title: string;
+    message: string;
+    rationale: string;
+    confidence: "high" | "medium" | "low" | "none";
+    rationaleChips: string[];
+  } | null;
   ownerRolloutSuggestion?: {
     suggestedMode: "public_first" | "followers_first" | "members_first" | "staged";
     reason: string | null;
@@ -332,6 +345,34 @@ function buildVariantDestination(data: CampaignDetailResponse) {
         : null;
     default:
       return null;
+  }
+}
+
+function rolloutAdviceTypeLabel(value: NonNullable<CampaignDetailResponse["ownerRolloutAdvice"]>["recommendationType"]) {
+  switch (value) {
+    case "keep_members_first":
+      return "Keep members first";
+    case "keep_followers_first":
+      return "Keep followers first";
+    case "keep_public_first":
+      return "Keep public first";
+    case "shorten_staged_rollout":
+      return "Shorten staged rollout";
+    case "extend_member_window":
+      return "Extend member window";
+    case "extend_follower_window":
+      return "Extend follower window";
+    case "go_public_earlier":
+      return "Go public earlier";
+    case "add_member_phase":
+      return "Add member phase";
+    case "skip_member_phase":
+      return "Skip member phase";
+    case "skip_follower_phase":
+      return "Skip follower phase";
+    case "use_staged_rollout_next_time":
+    default:
+      return "Use staged rollout next time";
   }
 }
 
@@ -652,6 +693,26 @@ export default function DrinkCampaignDetailPage() {
                     </p>
                   </div>
                 </div>
+
+                {query.data.ownerRolloutAdvice ? (
+                  <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-foreground">Private rollout advisor</p>
+                      <Badge variant="outline">{rolloutAdviceTypeLabel(query.data.ownerRolloutAdvice.recommendationType)}</Badge>
+                      <Badge variant="secondary">{query.data.ownerRolloutAdvice.confidence} confidence</Badge>
+                    </div>
+                    <p className="mt-2 font-medium text-foreground">{query.data.ownerRolloutAdvice.title}</p>
+                    <p className="mt-1">{query.data.ownerRolloutAdvice.message}</p>
+                    <p className="mt-2 text-xs">{query.data.ownerRolloutAdvice.rationale}</p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Badge variant="secondary">Now: {rolloutModeLabel(query.data.ownerRolloutAdvice.currentRolloutMode)}</Badge>
+                      <Badge variant="secondary">Next: {rolloutModeLabel(query.data.ownerRolloutAdvice.recommendedNextRolloutMode)}</Badge>
+                      {query.data.ownerRolloutAdvice.rationaleChips.map((chip) => (
+                        <Badge key={chip} variant="outline">{chip}</Badge>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="rounded-md border border-dashed p-3 text-sm text-muted-foreground">
                   <p className="font-medium text-foreground">Audience sequence</p>

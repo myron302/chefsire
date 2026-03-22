@@ -5935,6 +5935,59 @@ type CreatorCampaignRolloutAnalyticsSummary = {
   totalStageRsvps: number;
 };
 
+type CreatorCampaignRolloutAdvisorRecommendationType =
+  | "keep_members_first"
+  | "keep_followers_first"
+  | "keep_public_first"
+  | "shorten_staged_rollout"
+  | "extend_member_window"
+  | "extend_follower_window"
+  | "go_public_earlier"
+  | "add_member_phase"
+  | "skip_member_phase"
+  | "skip_follower_phase"
+  | "use_staged_rollout_next_time";
+
+type CreatorCampaignRolloutAdvisorItem = {
+  campaignId: string;
+  campaignName: string;
+  route: string;
+  currentRolloutMode: CreatorCampaignRolloutMode;
+  recommendedNextRolloutMode: CreatorCampaignRolloutMode;
+  recommendationType: CreatorCampaignRolloutAdvisorRecommendationType;
+  title: string;
+  message: string;
+  rationale: string;
+  confidence: CreatorCampaignAudienceFitConfidence;
+  rationaleChips: string[];
+  currentAudienceFit: CreatorCampaignRolloutAudience | null;
+  currentAudienceFitConfidence: CreatorCampaignAudienceFitConfidence;
+  healthState: CreatorCampaignHealthState | null;
+  benchmarkLabels: string[];
+  memberOnlyCollectionsCount: number;
+  goalsOnTrack: number;
+  goalsBehind: number;
+  strongestStage: CreatorCampaignRolloutAudience | null;
+  totalStageSignal: number;
+};
+
+type CreatorCampaignRolloutAdvisorInsight = {
+  key: string;
+  title: string;
+  message: string;
+  confidence: CreatorCampaignAudienceFitConfidence;
+  evidence: string[];
+};
+
+type CreatorCampaignRolloutAdvisorSummary = {
+  totalCampaigns: number;
+  campaignsWithRecommendations: number;
+  memberFirstRecommendations: number;
+  followerFirstRecommendations: number;
+  publicFirstRecommendations: number;
+  stagedRecommendations: number;
+};
+
 function campaignRolloutStageLabel(audience: CreatorCampaignRolloutAudience) {
   switch (audience) {
     case "members":
@@ -6265,6 +6318,379 @@ async function loadCreatorCampaignRolloutAnalytics(creatorUserId: string, campai
       "RSVPs reuse linked drop RSVP timing and are bucketed into the rollout stage that was live when the RSVP happened.",
       "Purchases and memberships remain clearly labeled approximations and should be read as timing-based rollout signals rather than exact causality.",
       "Rollout mode, rollout state, rollout analytics, audience fit, and surface attribution stay separate on purpose.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+function safeRolloutStageRate(stage: CreatorCampaignRolloutStageAnalytics) {
+  return (stage.clicks + stage.rsvps) / Math.max(1, stage.views);
+}
+
+function rolloutAdvisorConfidenceFromSignals(totalSignal: number, margin: number, audienceFitConfidence?: CreatorCampaignAudienceFitConfidence | null): CreatorCampaignAudienceFitConfidence {
+  if (totalSignal >= 45 && margin >= 10) return "high";
+  if (totalSignal >= 20 && margin >= 5) return "medium";
+  if (totalSignal > 0) return audienceFitConfidence === "high" ? "medium" : "low";
+  return audienceFitConfidence ?? "none";
+}
+
+function formatRolloutModeLabel(mode: CreatorCampaignRolloutMode) {
+  switch (mode) {
+    case "members_first":
+      return "members first";
+    case "followers_first":
+      return "followers first";
+    case "staged":
+      return "staged rollout";
+    case "public_first":
+    default:
+      return "public first";
+  }
+}
+
+function formatRolloutAudienceLabel(audience: CreatorCampaignRolloutAudience | null) {
+  switch (audience) {
+    case "members":
+      return "members";
+    case "followers":
+      return "followers";
+    case "public":
+      return "public";
+    default:
+      return "no single audience";
+  }
+}
+
+function pluralizeRolloutCampaign(count: number) {
+  return `${count} campaign${count === 1 ? "" : "s"}`;
+}
+
+async function loadCreatorCampaignRolloutAdvisor(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [
+    campaignRows,
+    analytics,
+    rolloutAnalytics,
+    audienceFit,
+    health,
+    benchmarks,
+  ] = await Promise.all([
+    db.select().from(creatorCampaigns).where(eq(creatorCampaigns.creatorUserId, creatorUserId)).orderBy(desc(creatorCampaigns.updatedAt)).limit(120),
+    loadCreatorCampaignAnalytics(creatorUserId),
+    loadCreatorCampaignRolloutAnalytics(creatorUserId),
+    loadCreatorCampaignAudienceFit(creatorUserId),
+    loadCreatorCampaignHealth(creatorUserId),
+    loadCreatorCampaignBenchmarks(creatorUserId),
+  ]);
+
+  if (!campaignRows.length) {
+    return {
+      summary: {
+        totalCampaigns: 0,
+        campaignsWithRecommendations: 0,
+        memberFirstRecommendations: 0,
+        followerFirstRecommendations: 0,
+        publicFirstRecommendations: 0,
+        stagedRecommendations: 0,
+      } satisfies CreatorCampaignRolloutAdvisorSummary,
+      creatorInsights: [] as CreatorCampaignRolloutAdvisorInsight[],
+      items: [] as CreatorCampaignRolloutAdvisorItem[],
+      attributionNotes: [
+        "Rollout advisor is rules-based and uses the rollout, audience-fit, benchmark, health, goal, purchase, and membership signals already tracked in the drinks platform.",
+        "No creator campaigns exist yet, so there is no rollout sequence history to summarize.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const campaignIds = campaignRows.map((campaign) => campaign.id);
+  const linkMap = await loadCreatorCampaignLinksByCampaignIds(campaignIds);
+  const collectionIds = [...new Set(
+    campaignRows.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId)),
+  )];
+  const collectionRows = collectionIds.length
+    ? await db.select({ id: drinkCollections.id, accessType: drinkCollections.accessType }).from(drinkCollections).where(inArray(drinkCollections.id, collectionIds))
+    : [];
+  const collectionAccessMap = new Map(collectionRows.map((row) => [row.id, row.accessType]));
+
+  const analyticsByCampaignId = new Map(analytics.items.map((item) => [item.campaignId, item]));
+  const rolloutByCampaignId = new Map(rolloutAnalytics.items.map((item) => [item.campaignId, item]));
+  const audienceFitByCampaignId = new Map(audienceFit.items.map((item) => [item.campaignId, item]));
+  const healthByCampaignId = new Map(health.items.map((item) => [item.campaignId, item]));
+  const benchmarkByCampaignId = new Map(benchmarks.items.map((item) => [item.campaignId, item]));
+
+  const items = campaignRows.map((campaign) => {
+    const analyticsItem = analyticsByCampaignId.get(campaign.id) ?? null;
+    const rolloutItem = rolloutByCampaignId.get(campaign.id) ?? null;
+    const audienceFitItem = audienceFitByCampaignId.get(campaign.id) ?? null;
+    const healthItem = healthByCampaignId.get(campaign.id) ?? null;
+    const benchmarkItem = benchmarkByCampaignId.get(campaign.id) ?? null;
+    const collectionLinks = (linkMap.get(campaign.id) ?? []).filter((link) => link.targetType === "collection");
+    const memberOnlyCollectionsCount = collectionLinks.filter((link) => collectionAccessMap.get(link.targetId) === "membership_only").length;
+
+    const stageMap = new Map((rolloutItem?.stagePerformance ?? []).map((stage) => [stage.audience, stage]));
+    const membersStage = stageMap.get("members") ?? emptyCreatorCampaignRolloutStageAnalytics("members");
+    const followersStage = stageMap.get("followers") ?? emptyCreatorCampaignRolloutStageAnalytics("followers");
+    const publicStage = stageMap.get("public") ?? emptyCreatorCampaignRolloutStageAnalytics("public");
+    const rankedStages = [membersStage, followersStage, publicStage]
+      .map((stage) => ({ ...stage, weighted: rolloutStageWeightedEngagement(stage), rate: safeRolloutStageRate(stage) }))
+      .sort((a, b) => b.weighted - a.weighted || b.rate - a.rate);
+    const strongestStage = rankedStages[0] ?? null;
+    const secondStage = rankedStages[1] ?? null;
+    const totalStageSignal = rankedStages.reduce((sum, stage) => sum + stage.weighted, 0);
+    const signalMargin = Math.max(0, (strongestStage?.weighted ?? 0) - (secondStage?.weighted ?? 0));
+    const audienceFitWinner = audienceFitItem?.bestAudienceFit ?? null;
+    const membersWeighted = rolloutStageWeightedEngagement(membersStage);
+    const followersWeighted = rolloutStageWeightedEngagement(followersStage);
+    const publicWeighted = rolloutStageWeightedEngagement(publicStage);
+    const memberSignalStrong = (
+      (membersWeighted >= Math.max(followersWeighted, publicWeighted) * 1.2 && membersWeighted >= 6)
+      || ((rolloutItem?.approximateMembershipsAfterMemberFirstRollout ?? 0) > 0 && membersStage.clicks + membersStage.rsvps > 0)
+      || (audienceFitWinner === "members" && audienceFitItem?.bestAudienceFitConfidence === "high")
+    );
+    const followerSignalStrong = (
+      audienceFitWinner === "followers"
+      && followersWeighted >= Math.max(membersWeighted, publicWeighted)
+      && followersWeighted >= 6
+    );
+    const publicSignalStrong = (
+      (publicWeighted >= Math.max(membersWeighted, followersWeighted) * 1.2 && publicWeighted >= 6)
+      || ((rolloutItem?.approximatePurchasesAfterPublicUnlock ?? 0) > (rolloutItem?.approximatePurchasesAfterFollowerUnlock ?? 0))
+      || (audienceFitWinner === "public" && audienceFitItem?.bestAudienceFitConfidence !== "none")
+    );
+    const weakFollowerStage = followersStage.views >= 3 && followersStage.clicks + followersStage.rsvps <= Math.max(1, Math.round((publicStage.clicks + publicStage.rsvps) * 0.35));
+    const weakMemberStage = membersStage.views >= 3 && membersStage.clicks + membersStage.rsvps <= Math.max(1, Math.round((publicStage.clicks + publicStage.rsvps) * 0.3));
+    const multipleMeaningfulStages = rankedStages.filter((stage) => stage.weighted >= Math.max(4, Math.round(totalStageSignal * 0.18))).length >= 2;
+    const rsvpHeavyCampaign = (analyticsItem?.totalDropRsvps ?? 0) >= Math.max(5, Math.round((analyticsItem?.followerCount ?? 0) * 0.2));
+    const confidence = rolloutAdvisorConfidenceFromSignals(totalStageSignal, signalMargin, audienceFitItem?.bestAudienceFitConfidence ?? null);
+
+    let recommendationType: CreatorCampaignRolloutAdvisorRecommendationType;
+    let recommendedNextRolloutMode: CreatorCampaignRolloutMode;
+    let title: string;
+    let message: string;
+    const rationaleParts: string[] = [];
+
+    if (memberSignalStrong && campaign.visibility !== "members" && memberOnlyCollectionsCount > 0 && campaign.rolloutMode !== "members_first" && campaign.rolloutMode !== "staged") {
+      recommendationType = "add_member_phase";
+      recommendedNextRolloutMode = "staged";
+      title = "Add a member phase before wider access";
+      message = "Your member signal is strong enough that a short member window should lead the next launch before followers or public unlocks.";
+      rationaleParts.push(`Member-stage engagement led this campaign with ${membersStage.views} views, ${membersStage.clicks} clicks, and ${membersStage.rsvps} RSVPs.`);
+    } else if (memberSignalStrong && campaign.rolloutMode === "members_first" && (weakFollowerStage || publicWeighted < membersWeighted * 0.65)) {
+      recommendationType = "extend_member_window";
+      recommendedNextRolloutMode = "members_first";
+      title = "Keep members-first and give the member window more room";
+      message = "Members are doing the heavy lifting early, so the next launch should keep the same sequence but avoid widening access too quickly.";
+      rationaleParts.push(`Member-stage conversion rate was ${roundPercent(safeRolloutStageRate(membersStage) * 100)}% versus ${roundPercent(safeRolloutStageRate(publicStage) * 100)}% in public.`);
+    } else if (memberSignalStrong && campaign.rolloutMode === "members_first") {
+      recommendationType = "keep_members_first";
+      recommendedNextRolloutMode = "members_first";
+      title = "Keep the members-first sequence";
+      message = "Your current member-first sequence already matches where this campaign is converting best.";
+      rationaleParts.push(`Member-stage weighted signal (${rolloutStageWeightedEngagement(membersStage)}) outperformed later stages.`);
+    } else if (followerSignalStrong && campaign.rolloutMode === "followers_first" && publicWeighted < followersWeighted * 0.7) {
+      recommendationType = "extend_follower_window";
+      recommendedNextRolloutMode = "followers_first";
+      title = "Keep followers-first and extend the follower window";
+      message = "Follower access appears to be the best middle ground for this campaign, so the next launch should stay follower-led a bit longer before widening.";
+      rationaleParts.push(`Follower-stage engagement score (${rolloutStageWeightedEngagement(followersStage)}) stayed ahead of public-stage signal.`);
+    } else if (followerSignalStrong && campaign.rolloutMode === "followers_first") {
+      recommendationType = "keep_followers_first";
+      recommendedNextRolloutMode = "followers_first";
+      title = "Keep the followers-first sequence";
+      message = "This campaign lands best with followers, so the current sequence looks like the right lightweight default.";
+      rationaleParts.push(audienceFitItem?.bestAudienceFitReason ?? "Follower-fit signals are leading inside your own campaign data.");
+    } else if (campaign.rolloutMode === "staged" && publicSignalStrong && (weakMemberStage || weakFollowerStage || healthItem?.goalsBehind)) {
+      recommendationType = "shorten_staged_rollout";
+      recommendedNextRolloutMode = "public_first";
+      title = "Shorten the staged rollout next time";
+      message = "This staged launch widened more slowly than the response curve needed, so the next campaign should reach public earlier.";
+      rationaleParts.push(`Public-stage weighted signal (${rolloutStageWeightedEngagement(publicStage)}) overtook earlier stages by ${signalMargin} points.`);
+    } else if (publicSignalStrong && campaign.rolloutMode === "staged") {
+      recommendationType = "go_public_earlier";
+      recommendedNextRolloutMode = "staged";
+      title = "Use the same staged structure, but go public earlier";
+      message = "Your public unlock is where this campaign accelerated, so keep the sequence lightweight and move the final unlock up next time.";
+      rationaleParts.push(`Approximate purchases after public unlock (${rolloutItem?.approximatePurchasesAfterPublicUnlock ?? 0}) beat the follower-stage proxy (${rolloutItem?.approximatePurchasesAfterFollowerUnlock ?? 0}).`);
+    } else if (publicSignalStrong && weakMemberStage && memberOnlyCollectionsCount === 0 && (analyticsItem?.membershipsFromCampaign ?? 0) === 0 && campaign.rolloutMode !== "public_first") {
+      recommendationType = "skip_member_phase";
+      recommendedNextRolloutMode = "public_first";
+      title = "Skip the member phase for the next launch";
+      message = "This campaign did not show enough member-only lift to justify holding it back before public access.";
+      rationaleParts.push(`Member-stage response stayed light while public reached ${publicStage.views} views and ${publicStage.clicks + publicStage.rsvps} higher-intent actions.`);
+    } else if (publicSignalStrong && weakFollowerStage && campaign.rolloutMode !== "public_first") {
+      recommendationType = "skip_follower_phase";
+      recommendedNextRolloutMode = "public_first";
+      title = "Skip the follower phase next time";
+      message = "Followers added reach, but not enough extra lift to justify a separate middle stage for this campaign.";
+      rationaleParts.push(`Follower-stage response stayed softer than public after unlock.`);
+    } else if (campaign.rolloutMode !== "staged" && multipleMeaningfulStages && rsvpHeavyCampaign && campaign.visibility === "public") {
+      recommendationType = "use_staged_rollout_next_time";
+      recommendedNextRolloutMode = "staged";
+      title = "Use a staged rollout next time";
+      message = "This campaign had enough step-by-step lift that a member/follower/public sequence should be worth testing on the next launch.";
+      rationaleParts.push(`At least ${rankedStages.filter((stage) => stage.weighted >= Math.max(4, Math.round(totalStageSignal * 0.18))).length} rollout stages produced meaningful engagement.`);
+    } else if (publicSignalStrong && campaign.rolloutMode === "public_first") {
+      recommendationType = "keep_public_first";
+      recommendedNextRolloutMode = "public_first";
+      title = "Keep the public-first launch";
+      message = "This campaign appears broad enough that leading with public access is still the most practical sequence.";
+      rationaleParts.push(audienceFitItem?.bestAudienceFitReason ?? "Public-stage response is the clearest winner in your own launch data.");
+    } else if (memberSignalStrong && campaign.rolloutMode !== "members_first") {
+      recommendationType = "add_member_phase";
+      recommendedNextRolloutMode = campaign.visibility === "public" ? "staged" : "members_first";
+      title = "Start narrower with members before the wider launch";
+      message = "This campaign is showing enough member intent that a member phase should be part of the next rollout.";
+      rationaleParts.push(`Approximate membership signal during the member window: ${rolloutItem?.approximateMembershipsAfterMemberFirstRollout ?? analyticsItem?.membershipsFromCampaign ?? 0}.`);
+    } else if (followerSignalStrong && campaign.rolloutMode !== "followers_first") {
+      recommendationType = "keep_followers_first";
+      recommendedNextRolloutMode = "followers_first";
+      title = "Lead with followers on the next launch";
+      message = "Follower response is the best current sequence signal for this campaign, so start there rather than going fully public immediately.";
+      rationaleParts.push(audienceFitItem?.bestAudienceFitReason ?? "Follower-stage signal currently leads your audience mix.");
+    } else {
+      const fallback = buildCampaignRolloutSuggestion({
+        campaign: { visibility: campaign.visibility },
+        audienceFit: audienceFitItem
+          ? {
+            bestAudienceFit: audienceFitItem.bestAudienceFit as CreatorCampaignRolloutAudience | null,
+            bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
+            bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
+          }
+          : null,
+      });
+      recommendedNextRolloutMode = fallback.suggestedMode;
+      recommendationType = fallback.suggestedMode === "members_first"
+        ? "keep_members_first"
+        : fallback.suggestedMode === "followers_first"
+          ? "keep_followers_first"
+          : "keep_public_first";
+      title = `Keep ${formatRolloutModeLabel(fallback.suggestedMode)}`;
+      message = "There is not enough rollout-stage history to recommend a more complex change yet, so this stays close to the audience fit signal already visible in your dashboard.";
+      rationaleParts.push(fallback.reason ?? "Audience-fit signal is the clearest honest read so far.");
+    }
+
+    if (healthItem?.goalsBehind) {
+      rationaleParts.push(`${healthItem.goalsBehind} goal${healthItem.goalsBehind === 1 ? " is" : "s are"} currently behind pace, so the next rollout should avoid unnecessary delay.`);
+    } else if (healthItem?.goalsOnTrack) {
+      rationaleParts.push(`${healthItem.goalsOnTrack} goal${healthItem.goalsOnTrack === 1 ? " is" : "s are"} already on track.`);
+    }
+
+    const rationaleChips = [
+      strongestStage?.weighted ? `Strongest stage: ${campaignRolloutStageLabel(strongestStage.audience)}` : null,
+      audienceFitWinner ? `${formatRolloutAudienceLabel(audienceFitWinner)} fit` : "No clear fit yet",
+      memberOnlyCollectionsCount > 0 ? `${memberOnlyCollectionsCount} member-only collection${memberOnlyCollectionsCount === 1 ? "" : "s"}` : null,
+      (analyticsItem?.membershipsFromCampaign ?? 0) > 0 ? `${analyticsItem?.membershipsFromCampaign ?? 0} approx. memberships` : null,
+      (analyticsItem?.purchasesFromLinkedCollections ?? 0) > 0 ? `${analyticsItem?.purchasesFromLinkedCollections ?? 0} approx. purchases` : null,
+      healthItem?.healthState ? `Health: ${healthItem.healthState.replace("_", " ")}` : null,
+      benchmarkItem?.benchmarkLabels[0] ?? null,
+    ].filter((value): value is string => Boolean(value)).slice(0, 5);
+
+    return {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      currentRolloutMode: (campaign.rolloutMode as CreatorCampaignRolloutMode) ?? "public_first",
+      recommendedNextRolloutMode,
+      recommendationType,
+      title,
+      message,
+      rationale: rationaleParts.join(" "),
+      confidence,
+      rationaleChips,
+      currentAudienceFit: audienceFitWinner as CreatorCampaignRolloutAudience | null,
+      currentAudienceFitConfidence: audienceFitItem?.bestAudienceFitConfidence ?? "none",
+      healthState: healthItem?.healthState ?? null,
+      benchmarkLabels: benchmarkItem?.benchmarkLabels ?? [],
+      memberOnlyCollectionsCount,
+      goalsOnTrack: healthItem?.goalsOnTrack ?? 0,
+      goalsBehind: healthItem?.goalsBehind ?? 0,
+      strongestStage: strongestStage?.audience ?? null,
+      totalStageSignal,
+    } satisfies CreatorCampaignRolloutAdvisorItem;
+  }).sort((a, b) => {
+    const stateRank = (campaignId: string) => {
+      const campaign = campaignRows.find((entry) => entry.id === campaignId);
+      return campaign ? (getCreatorCampaignState(campaign) === "active" ? 2 : getCreatorCampaignState(campaign) === "upcoming" ? 1 : 0) : 0;
+    };
+    const confidenceRank = (value: CreatorCampaignAudienceFitConfidence) => value === "high" ? 3 : value === "medium" ? 2 : value === "low" ? 1 : 0;
+    return stateRank(b.campaignId) - stateRank(a.campaignId)
+      || confidenceRank(b.confidence) - confidenceRank(a.confidence)
+      || b.totalStageSignal - a.totalStageSignal
+      || a.campaignName.localeCompare(b.campaignName);
+  });
+
+  const creatorInsights: CreatorCampaignRolloutAdvisorInsight[] = [];
+  const publicLed = items.filter((item) => ["keep_public_first", "go_public_earlier", "skip_member_phase", "skip_follower_phase", "shorten_staged_rollout"].includes(item.recommendationType));
+  const followerLed = items.filter((item) => ["keep_followers_first", "extend_follower_window"].includes(item.recommendationType));
+  const followerUnderperforming = items.filter((item) => item.recommendationType === "skip_follower_phase");
+  const memberOnlyWinners = items.filter((item) => item.memberOnlyCollectionsCount > 0 && ["keep_members_first", "extend_member_window", "add_member_phase"].includes(item.recommendationType));
+  const rsvpHeavyStaged = items.filter((item) => item.recommendationType === "use_staged_rollout_next_time" || item.recommendationType === "extend_member_window" || item.recommendationType === "extend_follower_window");
+
+  if (memberOnlyWinners.length) {
+    creatorInsights.push({
+      key: "member_only_strength",
+      title: "Member-first is strongest when your campaign links member-only access",
+      message: `Inside your own portfolio, ${pluralizeRolloutCampaign(memberOnlyWinners.length)} with member-only collection hooks leaned toward a member-led rollout recommendation rather than a fully public launch.`,
+      confidence: memberOnlyWinners.length >= 2 ? "high" : "medium",
+      evidence: memberOnlyWinners.slice(0, 3).map((item) => `${item.campaignName}: ${item.memberOnlyCollectionsCount} member-only collection link${item.memberOnlyCollectionsCount === 1 ? "" : "s"} and ${item.recommendationType.replaceAll("_", " ")}.`),
+    });
+  }
+
+  if (publicLed.length) {
+    const strongestPublic = [...publicLed].sort((a, b) => b.totalStageSignal - a.totalStageSignal)[0];
+    if (strongestPublic) {
+      creatorInsights.push({
+        key: "public_strength",
+        title: "Broad-reach launches are your clearest public-first fit",
+        message: `${strongestPublic.campaignName} is your strongest current public-leaning example, and similar campaigns are consistently pointing toward public-first or earlier public unlocks.`,
+        confidence: publicLed.length >= 2 ? "medium" : strongestPublic.confidence,
+        evidence: publicLed.slice(0, 3).map((item) => `${item.campaignName}: ${item.recommendationType.replaceAll("_", " ")} with ${Math.round(item.totalStageSignal)} total stage signal.`),
+      });
+    }
+  }
+
+  if (followerUnderperforming.length && followerLed.length <= followerUnderperforming.length) {
+    creatorInsights.push({
+      key: "follower_underperforming",
+      title: "Follower-only middle stages are often too soft for you",
+      message: `Follower-first or follower-middle sequencing appears weaker in ${pluralizeRolloutCampaign(followerUnderperforming.length)} of your campaigns, so it looks best reserved for launches that already show clear follower-fit.`,
+      confidence: followerUnderperforming.length >= 2 ? "medium" : "low",
+      evidence: followerUnderperforming.slice(0, 3).map((item) => `${item.campaignName}: ${item.rationaleChips.find((chip) => chip.includes("Strongest stage")) ?? "Follower stage stayed weaker than the winning stage."}`),
+    });
+  }
+
+  if (rsvpHeavyStaged.length) {
+    creatorInsights.push({
+      key: "staged_when_rsvp_heavy",
+      title: "Staged rollouts look best when launch intent is already building",
+      message: `Your own rollout history suggests staged sequencing is most useful on campaigns that already carry meaningful RSVP or early-intent signal, rather than on every launch by default.`,
+      confidence: rsvpHeavyStaged.length >= 2 ? "medium" : "low",
+      evidence: rsvpHeavyStaged.slice(0, 3).map((item) => `${item.campaignName}: ${item.recommendationType.replaceAll("_", " ")}.`),
+    });
+  }
+
+  const summary = {
+    totalCampaigns: items.length,
+    campaignsWithRecommendations: items.length,
+    memberFirstRecommendations: items.filter((item) => item.recommendedNextRolloutMode === "members_first").length,
+    followerFirstRecommendations: items.filter((item) => item.recommendedNextRolloutMode === "followers_first").length,
+    publicFirstRecommendations: items.filter((item) => item.recommendedNextRolloutMode === "public_first").length,
+    stagedRecommendations: items.filter((item) => item.recommendedNextRolloutMode === "staged").length,
+  } satisfies CreatorCampaignRolloutAdvisorSummary;
+
+  return {
+    summary,
+    creatorInsights: creatorInsights.slice(0, 4),
+    items,
+    attributionNotes: [
+      "Rollout advisor is creator-private, rules-based guidance built from existing rollout timing, audience fit, campaign performance, health/watchlist, benchmark, goal, purchase, and membership proxy signals.",
+      "Recommendations stay grounded in this creator's own campaigns only. They do not claim a platform-wide truth or hidden AI certainty.",
+      "Rollout mode, rollout analytics, audience fit, campaign lifecycle, and campaign health stay separate on purpose: this layer only suggests which sequence may fit the next launch.",
+      "Purchase and membership evidence stays approximate anywhere the underlying campaign analytics are approximate.",
     ],
     generatedAt: new Date().toISOString(),
   };
@@ -17616,6 +18042,10 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
       ? await loadCreatorCampaignRolloutAnalytics(campaign.creatorUserId, campaign.id)
       : null;
     const ownerRolloutAnalytics = ownerRolloutAnalyticsCollection?.items[0] ?? null;
+    const ownerRolloutAdvisorCollection = viewerId && viewerId === campaign.creatorUserId
+      ? await loadCreatorCampaignRolloutAdvisor(campaign.creatorUserId)
+      : null;
+    const ownerRolloutAdvice = ownerRolloutAdvisorCollection?.items.find((item) => item.campaignId === campaign.id) ?? null;
     const ownerAudienceFitCollection = viewerId && viewerId === campaign.creatorUserId
       ? await loadCreatorCampaignAudienceFit(campaign.creatorUserId)
       : null;
@@ -17638,6 +18068,7 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
       ownerAnalytics,
       ownerRollout,
       ownerRolloutAnalytics,
+      ownerRolloutAdvice,
       ownerRolloutSuggestion: viewerId && viewerId === campaign.creatorUserId
         ? buildCampaignRolloutSuggestion({
           campaign,
@@ -22280,6 +22711,29 @@ r.get("/creator-dashboard/campaign-rollout-analytics", requireAuth, async (req, 
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-rollout-analytics", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign rollout analytics"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-rollout-advisor", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const advisor = await loadCreatorCampaignRolloutAdvisor(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: advisor.summary,
+      creatorInsights: advisor.creatorInsights,
+      items: advisor.items,
+      attributionNotes: advisor.attributionNotes,
+      generatedAt: advisor.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-rollout-advisor", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign rollout advisor"));
   }
 });
 
