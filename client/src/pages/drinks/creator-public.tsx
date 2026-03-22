@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
+import { trackPinnedCampaignSpotlightEvent, trackPinnedCampaignSpotlightViewOnce } from "@/lib/drinks/pinnedCampaignSpotlight";
 
 interface PublicCreatorDrinkItem {
   id: string;
@@ -462,6 +463,15 @@ export default function PublicDrinkCreatorPage() {
   const otherCreatorCampaigns = pinnedCampaign
     ? creatorCampaigns.filter((campaign) => campaign.id !== pinnedCampaign.id)
     : creatorCampaigns;
+
+  React.useEffect(() => {
+    if (!pinnedCampaign) return;
+    trackPinnedCampaignSpotlightViewOnce({
+      campaignId: pinnedCampaign.id,
+      surface: "creator_public_page",
+      referrerRoute: typeof window !== "undefined" ? window.location.pathname : null,
+    });
+  }, [pinnedCampaign]);
   const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
   const collaborationHighlightsCount = [
     ...creatorCollections.filter((collection) => Boolean(collection.acceptedCollaboration)),
@@ -684,7 +694,18 @@ export default function PublicDrinkCreatorPage() {
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href={pinnedCampaign.route}>
-                <Button>Explore campaign</Button>
+                <Button
+                  onClick={() => {
+                    void trackPinnedCampaignSpotlightEvent({
+                      campaignId: pinnedCampaign.id,
+                      eventType: "click_pinned_campaign",
+                      surface: "creator_public_page",
+                      referrerRoute: typeof window !== "undefined" ? window.location.pathname : "/drinks/creator",
+                    });
+                  }}
+                >
+                  Explore campaign
+                </Button>
               </Link>
               {user?.id && user.id !== data.userId ? (
                 <CreatorFollowButton creatorId={data.userId} showNudge />

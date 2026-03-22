@@ -1,4 +1,4 @@
-import type { ComponentType } from "react";
+import { useEffect, type ComponentType } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Compass, Flame, GitBranch, Repeat2, TrendingUp, Sparkles, Trophy, Layers, Users, ArrowRight, LayoutDashboard, Search, Bell, Gem, ShoppingBag, Newspaper, CalendarClock, Archive, CalendarRange } from "lucide-react";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import BecauseOfYourActivity from "@/components/drinks/BecauseOfYourActivity";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
+import { trackPinnedCampaignSpotlightEvent, trackPinnedCampaignSpotlightViewOnce } from "@/lib/drinks/pinnedCampaignSpotlight";
 
 type DiscoverLink = {
   title: string;
@@ -152,6 +153,16 @@ export default function DrinksDiscoverPage() {
     },
   });
 
+  useEffect(() => {
+    for (const campaign of (featuredCampaignsQuery.data?.items ?? []).slice(0, 3)) {
+      trackPinnedCampaignSpotlightViewOnce({
+        campaignId: campaign.id,
+        surface: "discover_pinned_campaigns",
+        referrerRoute: "/drinks/discover",
+      });
+    }
+  }, [featuredCampaignsQuery.data?.items]);
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-blue-50">
       <div className="mx-auto max-w-6xl px-4 py-10">
@@ -195,7 +206,18 @@ export default function DrinksDiscoverPage() {
           ) : null}
           <div className="space-y-3">
             {(featuredCampaignsQuery.data?.items ?? []).slice(0, 3).map((campaign) => (
-              <CreatorCampaignCard key={campaign.id} campaign={campaign} />
+              <CreatorCampaignCard
+                key={campaign.id}
+                campaign={campaign}
+                onOpenCampaign={() => {
+                  void trackPinnedCampaignSpotlightEvent({
+                    campaignId: campaign.id,
+                    eventType: "click_pinned_campaign",
+                    surface: "discover_pinned_campaigns",
+                    referrerRoute: "/drinks/discover",
+                  });
+                }}
+              />
             ))}
           </div>
         </section>

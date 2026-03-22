@@ -22,6 +22,7 @@ import {
   creatorCampaignActionStates,
   creatorCampaignCtaVariants,
   creatorCampaignVariantEvents,
+  creatorCampaignSpotlightEvents,
   creatorDropEvents,
   creatorMembershipSalesLedger,
   creatorMemberships,
@@ -63,6 +64,7 @@ import {
   insertCreatorCampaignActionStateSchema,
   insertCreatorCampaignCtaVariantSchema,
   insertCreatorCampaignVariantEventSchema,
+  insertCreatorCampaignSpotlightEventSchema,
   insertCreatorDropEventSchema,
   insertDrinkCollectionSchema,
   insertDrinkChallengeSchema,
@@ -117,6 +119,8 @@ type CreatorCampaignCtaTargetType = "follow" | "rsvp" | "collection" | "membersh
 type CreatorCampaignState = "upcoming" | "active" | "past";
 type CreatorCampaignGoalType = "followers" | "rsvps" | "clicks" | "purchases" | "membership_conversions" | "linked_drop_views";
 type CreatorCampaignVariantEventType = "view_variant" | "click_variant_cta" | "follow_after_variant" | "rsvp_after_variant";
+type CreatorCampaignSpotlightEventType = "view_pinned_campaign" | "click_pinned_campaign";
+type CreatorCampaignSpotlightSurface = "creator_public_page" | "discover_pinned_campaigns";
 type CreatorCollaborationType = "collection" | "drop" | "post" | "roadmap";
 type CreatorCollaborationStatus = "pending" | "accepted" | "declined" | "revoked";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
@@ -197,6 +201,7 @@ type CreatorCampaignFollowRecord = typeof creatorCampaignFollows.$inferSelect;
 type CreatorCampaignGoalRecord = typeof creatorCampaignGoals.$inferSelect;
 type CreatorCampaignCtaVariantRecord = typeof creatorCampaignCtaVariants.$inferSelect;
 type CreatorCampaignVariantEventRecord = typeof creatorCampaignVariantEvents.$inferSelect;
+type CreatorCampaignSpotlightEventRecord = typeof creatorCampaignSpotlightEvents.$inferSelect;
 type CreatorDropEventRecord = typeof creatorDropEvents.$inferSelect;
 type CreatorCollaborationRecord = typeof creatorCollaborations.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
@@ -2230,6 +2235,19 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_spotlight_events (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
+        event_type text NOT NULL,
+        surface text NOT NULL,
+        user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+        session_key varchar(160),
+        metadata jsonb,
+        created_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_drop_events (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         drop_id varchar NOT NULL REFERENCES creator_drops(id) ON DELETE CASCADE,
@@ -2431,6 +2449,12 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_variant_events_variant_event_created_at_idx ON creator_campaign_variant_events(variant_id, event_type, created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_variant_events_user_idx ON creator_campaign_variant_events(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_variant_events_session_idx ON creator_campaign_variant_events(session_key);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_spotlight_events_campaign_idx ON creator_campaign_spotlight_events(campaign_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_spotlight_events_event_type_idx ON creator_campaign_spotlight_events(event_type);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_spotlight_events_surface_idx ON creator_campaign_spotlight_events(surface);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_spotlight_events_campaign_event_created_at_idx ON creator_campaign_spotlight_events(campaign_id, event_type, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_spotlight_events_user_idx ON creator_campaign_spotlight_events(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_spotlight_events_session_idx ON creator_campaign_spotlight_events(session_key);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_drop_idx ON creator_drop_events(drop_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_event_type_idx ON creator_drop_events(event_type);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_drop_event_created_at_idx ON creator_drop_events(drop_id, event_type, created_at);`);
@@ -2984,7 +3008,7 @@ function serializeCreatorCampaignVariant(variant: CreatorCampaignCtaVariantRecor
   };
 }
 
-function getCampaignVariantSessionKey(req: Request) {
+function getCampaignEngagementSessionKey(req: Request) {
   const sessionId = typeof (req as Request & { sessionID?: string }).sessionID === "string"
     ? (req as Request & { sessionID?: string }).sessionID
     : null;
@@ -3024,6 +3048,25 @@ async function trackCreatorCampaignVariantEvent(input: {
     campaignId: input.campaignId,
     variantId: input.variantId,
     eventType: input.eventType,
+    userId: input.userId ?? null,
+    sessionKey: input.sessionKey ?? null,
+    metadata: input.metadata ?? null,
+  }));
+}
+
+async function trackCreatorCampaignSpotlightEvent(input: {
+  campaignId: string;
+  eventType: CreatorCampaignSpotlightEventType;
+  surface: CreatorCampaignSpotlightSurface;
+  userId?: string | null;
+  sessionKey?: string | null;
+  metadata?: Record<string, unknown> | null;
+}) {
+  if (!db) return;
+  await db.insert(creatorCampaignSpotlightEvents).values(insertCreatorCampaignSpotlightEventSchema.parse({
+    campaignId: input.campaignId,
+    eventType: input.eventType,
+    surface: input.surface,
     userId: input.userId ?? null,
     sessionKey: input.sessionKey ?? null,
     metadata: input.metadata ?? null,
@@ -4983,6 +5026,476 @@ function isDateWithinCampaignAnalyticsWindow(value: Date, campaign: Pick<Creator
 
 async function loadCreatorCampaignAnalytics(creatorUserId: string) {
   return loadCreatorCampaignPerformanceSnapshots(creatorUserId);
+}
+
+function countRowsInRollingWindow(rows: Array<{ createdAt: Date }>, now: Date, days: number, campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "createdAt">) {
+  const lowerBound = new Date(now.getTime() - (days * 24 * 60 * 60 * 1000));
+  return rows.filter((row) => row.createdAt >= lowerBound && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length;
+}
+
+function roundPercent(value: number) {
+  return Math.round(value * 10) / 10;
+}
+
+function formatSpotlightPercent(value: number) {
+  return `${roundPercent(value)}%`;
+}
+
+function buildSpotlightProxyScore(input: {
+  recentFollowers: number;
+  recentRsvps: number;
+  recentClicks: number;
+  recentPurchases: number;
+  recentMemberships: number;
+  totalViews: number;
+  state: CreatorCampaignState;
+}) {
+  return Math.round(
+    input.recentFollowers * 5
+    + input.recentRsvps * 4
+    + input.recentClicks * 3
+    + input.recentPurchases * 5
+    + input.recentMemberships * 6
+    + input.totalViews * 0.15
+    + (input.state === "active" ? 12 : input.state === "upcoming" ? 6 : 0)
+  );
+}
+
+function buildSpotlightClickPotentialScore(input: {
+  recentClicks: number;
+  recentRsvps: number;
+  totalClicks: number;
+  totalViews: number;
+}) {
+  return Math.round(
+    input.recentClicks * 4
+    + input.recentRsvps * 3
+    + input.totalClicks * 1.5
+    + input.totalViews * 0.2
+  );
+}
+
+function buildSpotlightConversionPotentialScore(input: {
+  recentPurchases: number;
+  recentMemberships: number;
+  totalPurchases: number;
+  totalMemberships: number;
+}) {
+  return Math.round(
+    input.recentPurchases * 5
+    + input.recentMemberships * 6
+    + input.totalPurchases * 2
+    + input.totalMemberships * 3
+  );
+}
+
+async function loadPinnedCampaignSpotlightAnalytics(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [campaigns, performance] = await Promise.all([
+    db.select().from(creatorCampaigns).where(eq(creatorCampaigns.creatorUserId, creatorUserId)).orderBy(desc(creatorCampaigns.updatedAt)).limit(120),
+    loadCreatorCampaignPerformanceSnapshots(creatorUserId),
+  ]);
+
+  const performanceByCampaignId = new Map(performance.items.map((item) => [item.campaignId, item]));
+  const pinnedCampaign = campaigns.find((campaign) => campaign.isPinned) ?? null;
+  const now = new Date();
+  const recentWindowDays = 14;
+
+  if (campaigns.length === 0) {
+    return {
+      pinnedCampaign: null,
+      candidates: [],
+      rotationSuggestion: {
+        key: "no_campaigns",
+        headline: "No campaign spotlight yet",
+        summary: "Create a campaign first, then spotlight analytics can compare your pinned slot against other active story arcs.",
+        severity: "info",
+        signals: [] as string[],
+        suggestedCampaignId: null as string | null,
+      },
+      attributionNotes: [
+        "Spotlight analytics are creator-private and stay separate from broader campaign analytics.",
+        "No spotlight events or campaign candidates exist yet for this creator.",
+      ],
+      generatedAt: now.toISOString(),
+    };
+  }
+
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  const [linkMap, followRows, membershipRows, spotlightEventRows] = await Promise.all([
+    loadCreatorCampaignLinksByCampaignIds(campaignIds),
+    db.select({
+      campaignId: creatorCampaignFollows.campaignId,
+      userId: creatorCampaignFollows.userId,
+      createdAt: creatorCampaignFollows.createdAt,
+    }).from(creatorCampaignFollows).where(inArray(creatorCampaignFollows.campaignId, campaignIds)).orderBy(asc(creatorCampaignFollows.createdAt)),
+    db.select({
+      userId: creatorMemberships.userId,
+      createdAt: creatorMemberships.createdAt,
+      status: creatorMemberships.status,
+    }).from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, creatorUserId)).orderBy(asc(creatorMemberships.createdAt)),
+    db.select().from(creatorCampaignSpotlightEvents).where(inArray(creatorCampaignSpotlightEvents.campaignId, campaignIds)).orderBy(asc(creatorCampaignSpotlightEvents.createdAt)),
+  ]);
+
+  const dropIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "drop")
+      .map((link) => link.targetId)),
+  )];
+  const collectionIds = [...new Set(
+    campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId)),
+  )];
+
+  const [rsvpRows, purchaseRows] = await Promise.all([
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropRsvps.dropId,
+          userId: creatorDropRsvps.userId,
+          createdAt: creatorDropRsvps.createdAt,
+        }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).orderBy(asc(creatorDropRsvps.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; userId: string; createdAt: Date }>),
+    collectionIds.length
+      ? db.select({
+          collectionId: drinkCollectionPurchases.collectionId,
+          userId: drinkCollectionPurchases.userId,
+          createdAt: drinkCollectionPurchases.createdAt,
+          status: drinkCollectionPurchases.status,
+        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds)).orderBy(asc(drinkCollectionPurchases.createdAt))
+      : Promise.resolve([] as Array<{ collectionId: string; userId: string; createdAt: Date; status: string }>),
+  ]);
+
+  const followRowsByCampaignId = new Map<string, Array<{ userId: string; createdAt: Date }>>();
+  for (const row of followRows) {
+    const current = followRowsByCampaignId.get(row.campaignId) ?? [];
+    current.push({ userId: row.userId, createdAt: row.createdAt });
+    followRowsByCampaignId.set(row.campaignId, current);
+  }
+
+  const linkedDropIdsByCampaignId = new Map<string, string[]>();
+  const linkedCollectionIdsByCampaignId = new Map<string, string[]>();
+  for (const campaign of campaigns) {
+    const links = linkMap.get(campaign.id) ?? [];
+    linkedDropIdsByCampaignId.set(campaign.id, links.filter((link) => link.targetType === "drop").map((link) => link.targetId));
+    linkedCollectionIdsByCampaignId.set(campaign.id, links.filter((link) => link.targetType === "collection").map((link) => link.targetId));
+  }
+
+  const rsvpRowsByDropId = new Map<string, Array<{ userId: string; createdAt: Date }>>();
+  for (const row of rsvpRows) {
+    const current = rsvpRowsByDropId.get(row.dropId) ?? [];
+    current.push({ userId: row.userId, createdAt: row.createdAt });
+    rsvpRowsByDropId.set(row.dropId, current);
+  }
+
+  const purchaseRowsByCollectionId = new Map<string, Array<{ userId: string; createdAt: Date; status: string }>>();
+  for (const row of purchaseRows) {
+    const current = purchaseRowsByCollectionId.get(row.collectionId) ?? [];
+    current.push({ userId: row.userId, createdAt: row.createdAt, status: row.status });
+    purchaseRowsByCollectionId.set(row.collectionId, current);
+  }
+
+  const membershipRowsByUserId = new Map<string, Array<{ createdAt: Date; status: string }>>();
+  for (const row of membershipRows) {
+    const current = membershipRowsByUserId.get(row.userId) ?? [];
+    current.push({ createdAt: row.createdAt, status: row.status });
+    membershipRowsByUserId.set(row.userId, current);
+  }
+
+  const spotlightEventsByCampaignId = new Map<string, CreatorCampaignSpotlightEventRecord[]>();
+  for (const row of spotlightEventRows) {
+    const current = spotlightEventsByCampaignId.get(row.campaignId) ?? [];
+    current.push(row);
+    spotlightEventsByCampaignId.set(row.campaignId, current);
+  }
+
+  const comparisonItems = campaigns.map((campaign) => {
+    const analytics = performanceByCampaignId.get(campaign.id);
+    const state = getCreatorCampaignState(campaign, now);
+    const followRowsForCampaign = followRowsByCampaignId.get(campaign.id) ?? [];
+    const linkedDropIds = linkedDropIdsByCampaignId.get(campaign.id) ?? [];
+    const linkedCollectionIds = linkedCollectionIdsByCampaignId.get(campaign.id) ?? [];
+    const rsvpRowsForCampaign = linkedDropIds.flatMap((dropId) => rsvpRowsByDropId.get(dropId) ?? []);
+    const purchaseRowsForCampaign = linkedCollectionIds.flatMap((collectionId) => purchaseRowsByCollectionId.get(collectionId) ?? [])
+      .filter((row) => row.status === "completed");
+    const membershipRowsForCampaign = membershipRows.filter((row) => (
+      ["active", "canceled"].includes(row.status) && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)
+    ));
+    const recentFollowers = countRowsInRollingWindow(followRowsForCampaign, now, recentWindowDays, campaign);
+    const recentRsvps = countRowsInRollingWindow(rsvpRowsForCampaign, now, recentWindowDays, campaign);
+    const recentPurchases = countRowsInRollingWindow(purchaseRowsForCampaign, now, recentWindowDays, campaign);
+    const recentMemberships = countRowsInRollingWindow(membershipRowsForCampaign, now, recentWindowDays, campaign);
+    const totalViews = analytics?.totalDropViews ?? 0;
+    const totalClicks = analytics?.totalDropClicks ?? 0;
+    const recentClicks = state === "past"
+      ? 0
+      : Math.min(totalClicks, Math.round(totalClicks * 0.5 + recentRsvps * 0.5));
+    const memberFocused = campaign.visibility === "members" || (analytics?.membershipsFromCampaign ?? 0) > 0;
+    const rotationScore = buildSpotlightProxyScore({
+      recentFollowers,
+      recentRsvps,
+      recentClicks,
+      recentPurchases,
+      recentMemberships,
+      totalViews,
+      state,
+    });
+    const clickPotentialScore = buildSpotlightClickPotentialScore({
+      recentClicks,
+      recentRsvps,
+      totalClicks,
+      totalViews,
+    });
+    const conversionPotentialScore = buildSpotlightConversionPotentialScore({
+      recentPurchases,
+      recentMemberships,
+      totalPurchases: analytics?.purchasesFromLinkedCollections ?? 0,
+      totalMemberships: analytics?.membershipsFromCampaign ?? 0,
+    });
+
+    return {
+      campaignId: campaign.id,
+      name: campaign.name,
+      slug: campaign.slug,
+      route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      visibility: campaign.visibility as CreatorCampaignVisibility,
+      state,
+      isPinned: campaign.isPinned,
+      memberFocused,
+      followerMomentum: {
+        recentFollowers,
+        totalFollowers: analytics?.followerCount ?? 0,
+      },
+      clickPotential: {
+        score: clickPotentialScore,
+        recentClicks,
+        totalClicks,
+        totalViews,
+      },
+      conversionPotential: {
+        score: conversionPotentialScore,
+        recentPurchases,
+        recentMemberships,
+        totalPurchases: analytics?.purchasesFromLinkedCollections ?? 0,
+        totalMemberships: analytics?.membershipsFromCampaign ?? 0,
+      },
+      engagementScore: analytics?.campaignEngagementScore ?? 0,
+      rotationScore,
+    };
+  });
+
+  const bestAlternative = comparisonItems
+    .filter((item) => !item.isPinned && item.state !== "past")
+    .sort((a, b) => b.rotationScore - a.rotationScore || b.clickPotential.score - a.clickPotential.score)[0] ?? null;
+
+  const pinnedAnalytics = pinnedCampaign
+    ? (() => {
+        const analytics = performanceByCampaignId.get(pinnedCampaign.id);
+        const events = spotlightEventsByCampaignId.get(pinnedCampaign.id) ?? [];
+        const spotlightViews = events.filter((event) => event.eventType === "view_pinned_campaign").length;
+        const spotlightClicks = events.filter((event) => event.eventType === "click_pinned_campaign").length;
+        const spotlightCtr = spotlightViews > 0 ? roundPercent((spotlightClicks / spotlightViews) * 100) : 0;
+        const linkedDropIds = linkedDropIdsByCampaignId.get(pinnedCampaign.id) ?? [];
+        const clickEventsByUser = new Map<string, Date[]>();
+        for (const event of events) {
+          if (event.eventType !== "click_pinned_campaign" || !event.userId) continue;
+          const current = clickEventsByUser.get(event.userId) ?? [];
+          current.push(event.createdAt);
+          clickEventsByUser.set(event.userId, current);
+        }
+        const followConversions = (followRowsByCampaignId.get(pinnedCampaign.id) ?? []).filter((row) => {
+          const clicks = clickEventsByUser.get(row.userId) ?? [];
+          return clicks.some((clickedAt) => clickedAt <= row.createdAt && isDateWithinCampaignAnalyticsWindow(row.createdAt, pinnedCampaign));
+        }).length;
+        const rsvpConversions = linkedDropIds.flatMap((dropId) => rsvpRowsByDropId.get(dropId) ?? []).filter((row) => {
+          const clicks = clickEventsByUser.get(row.userId) ?? [];
+          return clicks.some((clickedAt) => clickedAt <= row.createdAt && isDateWithinCampaignAnalyticsWindow(row.createdAt, pinnedCampaign));
+        }).length;
+
+        return {
+          campaignId: pinnedCampaign.id,
+          name: pinnedCampaign.name,
+          slug: pinnedCampaign.slug,
+          route: `/drinks/campaigns/${encodeURIComponent(pinnedCampaign.slug)}`,
+          visibility: pinnedCampaign.visibility as CreatorCampaignVisibility,
+          state: getCreatorCampaignState(pinnedCampaign, now),
+          spotlightViews,
+          spotlightClicks,
+          spotlightClickThroughRate: spotlightCtr,
+          spotlightCtrLabel: formatSpotlightPercent(spotlightCtr),
+          followConversions,
+          rsvpConversions,
+          totalFollowers: analytics?.followerCount ?? 0,
+          totalDropClicks: analytics?.totalDropClicks ?? 0,
+          totalDropViews: analytics?.totalDropViews ?? 0,
+          totalDropRsvps: analytics?.totalDropRsvps ?? 0,
+          approximatePurchases: analytics?.purchasesFromLinkedCollections ?? 0,
+          approximateMemberships: analytics?.membershipsFromCampaign ?? 0,
+          spotlightSurfaces: Array.from(new Set(events.map((event) => event.surface))).sort(),
+        };
+      })()
+    : null;
+
+  const pinnedComparison = pinnedCampaign ? comparisonItems.find((item) => item.campaignId === pinnedCampaign.id) ?? null : null;
+  const membershipAlternative = comparisonItems
+    .filter((item) => !item.isPinned && item.state !== "past" && item.memberFocused)
+    .sort((a, b) => b.conversionPotential.score - a.conversionPotential.score || b.rotationScore - a.rotationScore)[0] ?? null;
+
+  const rotationSuggestion = (() => {
+    if (!pinnedCampaign) {
+      return {
+        key: "pin_a_campaign",
+        headline: bestAlternative ? "Pin a campaign to start measuring the spotlight slot" : "No active spotlight candidate yet",
+        summary: bestAlternative
+          ? `${bestAlternative.name} looks like the strongest first spotlight based on recent follows, clicks, and conversion proxies.`
+          : "You do not have an active or upcoming alternative campaign to spotlight right now.",
+        severity: "info" as const,
+        signals: bestAlternative
+          ? [
+              `${bestAlternative.followerMomentum.recentFollowers} recent follower${bestAlternative.followerMomentum.recentFollowers === 1 ? "" : "s"}`,
+              `${bestAlternative.clickPotential.totalClicks} linked click${bestAlternative.clickPotential.totalClicks === 1 ? "" : "s"}`,
+            ]
+          : [],
+        suggestedCampaignId: bestAlternative?.campaignId ?? null,
+      };
+    }
+
+    if (pinnedAnalytics && pinnedAnalytics.state === "past") {
+      return {
+        key: "rotate_after_campaign_end",
+        headline: "Rotate after campaign end/archive",
+        summary: bestAlternative
+          ? `${pinnedAnalytics.name} has already ended. Keep the slot moving by switching to ${bestAlternative.name} or another active campaign.`
+          : `${pinnedAnalytics.name} has already ended. Unpin it or replace it when your next campaign is ready.`,
+        severity: "warning" as const,
+        signals: [
+          "Current pinned campaign is no longer active.",
+          bestAlternative ? `${bestAlternative.name} is still ${bestAlternative.state}.` : "No alternative active campaign found yet.",
+        ],
+        suggestedCampaignId: bestAlternative?.campaignId ?? null,
+      };
+    }
+
+    if (
+      membershipAlternative
+      && pinnedComparison
+      && !pinnedComparison.memberFocused
+      && membershipAlternative.conversionPotential.score > Math.max(8, pinnedComparison.conversionPotential.score * 1.25)
+    ) {
+      return {
+        key: "rotate_to_membership_focused_campaign",
+        headline: "Consider rotating to a membership-focused campaign",
+        summary: `${membershipAlternative.name} is showing stronger membership or purchase momentum than the current spotlight.`,
+        severity: "info" as const,
+        signals: [
+          `${membershipAlternative.conversionPotential.totalMemberships} approx. membership conversion${membershipAlternative.conversionPotential.totalMemberships === 1 ? "" : "s"}`,
+          `${membershipAlternative.conversionPotential.totalPurchases} approx. linked purchase${membershipAlternative.conversionPotential.totalPurchases === 1 ? "" : "s"}`,
+        ],
+        suggestedCampaignId: membershipAlternative.campaignId,
+      };
+    }
+
+    if (
+      pinnedAnalytics
+      && bestAlternative
+      && pinnedComparison
+      && pinnedAnalytics.spotlightViews >= 20
+      && pinnedAnalytics.spotlightClickThroughRate <= 3
+      && bestAlternative.rotationScore > Math.max(12, pinnedComparison.rotationScore * 1.2)
+    ) {
+      return {
+        key: "pinned_campaign_underperforming",
+        headline: "Pinned campaign is underperforming",
+        summary: `${pinnedAnalytics.name} is getting seen, but it is not pulling enough spotlight clicks compared with ${bestAlternative.name}.`,
+        severity: "warning" as const,
+        signals: [
+          `${pinnedAnalytics.spotlightViews} spotlight views`,
+          `${pinnedAnalytics.spotlightCtrLabel} CTR`,
+          `${bestAlternative.followerMomentum.recentFollowers} recent followers on ${bestAlternative.name}`,
+        ],
+        suggestedCampaignId: bestAlternative.campaignId,
+      };
+    }
+
+    if (
+      bestAlternative
+      && pinnedComparison
+      && bestAlternative.rotationScore > Math.max(12, pinnedComparison.rotationScore * 1.25)
+    ) {
+      return {
+        key: "consider_rotating_to_active_campaign",
+        headline: "Consider rotating to another active campaign",
+        summary: `${bestAlternative.name} currently has stronger recent momentum than the pinned spotlight.`,
+        severity: "info" as const,
+        signals: [
+          `${bestAlternative.followerMomentum.recentFollowers} recent followers`,
+          `${bestAlternative.clickPotential.score} click-potential proxy score`,
+        ],
+        suggestedCampaignId: bestAlternative.campaignId,
+      };
+    }
+
+    return {
+      key: "keep_current_pinned_campaign",
+      headline: "Pinned campaign is still the strongest spotlight choice",
+      summary: pinnedAnalytics
+        ? `${pinnedAnalytics.name} still looks like the best current place to start your creator story.`
+        : "Your current spotlight is still the strongest option right now.",
+      severity: "success" as const,
+      signals: pinnedAnalytics
+        ? [
+            `${pinnedAnalytics.spotlightClicks} spotlight click${pinnedAnalytics.spotlightClicks === 1 ? "" : "s"}`,
+            `${pinnedAnalytics.followConversions} follow conversion${pinnedAnalytics.followConversions === 1 ? "" : "s"} after spotlight clicks`,
+          ]
+        : [],
+      suggestedCampaignId: null,
+    };
+  })();
+
+  const candidates = comparisonItems
+    .filter((item) => !item.isPinned)
+    .sort((a, b) => b.rotationScore - a.rotationScore || b.clickPotential.score - a.clickPotential.score)
+    .slice(0, 3)
+    .map((item) => ({
+      campaignId: item.campaignId,
+      name: item.name,
+      slug: item.slug,
+      route: item.route,
+      visibility: item.visibility,
+      state: item.state,
+      followerMomentum: item.followerMomentum,
+      relativeClickPotential: {
+        score: item.clickPotential.score,
+        note: "Proxy-based from linked drop clicks, RSVP interest, and views.",
+      },
+      relativeMembershipPurchasePotential: {
+        score: item.conversionPotential.score,
+        totalPurchases: item.conversionPotential.totalPurchases,
+        totalMemberships: item.conversionPotential.totalMemberships,
+        note: "Proxy-based from linked collection purchases and member campaign conversions.",
+      },
+      whyConsider: [
+        item.followerMomentum.recentFollowers > 0 ? `${item.followerMomentum.recentFollowers} recent followers` : null,
+        item.clickPotential.totalClicks > 0 ? `${item.clickPotential.totalClicks} linked clicks` : null,
+        item.conversionPotential.totalMemberships > 0 ? `${item.conversionPotential.totalMemberships} approx. memberships` : null,
+        item.conversionPotential.totalPurchases > 0 ? `${item.conversionPotential.totalPurchases} approx. purchases` : null,
+      ].filter((value): value is string => Boolean(value)),
+    }));
+
+  return {
+    pinnedCampaign: pinnedAnalytics,
+    candidates,
+    rotationSuggestion,
+    attributionNotes: [
+      "Spotlight analytics measure the pinned slot itself, not the campaign's broader performance layer.",
+      "Views and clicks are direct spotlight events from the public creator page spotlight and discover pinned-campaigns surface.",
+      "Follow and RSVP conversions are proxy-based when a signed-in user clicks a pinned campaign and then follows or RSVPs during the campaign window.",
+      "Candidate comparisons stay creator-private and use recent follower momentum plus proxy scores for click and membership/purchase potential.",
+      "Rotation suggestions are lightweight rules only. Nothing auto-rotates.",
+    ],
+    generatedAt: now.toISOString(),
+  };
 }
 
 function buildCampaignBenchmarkSummaryItem(
@@ -13750,7 +14263,7 @@ r.post("/drops/:id/rsvp", requireAuth, async (req, res) => {
         variantId,
         eventType: "rsvp_after_variant",
         userId: req.user!.id,
-        sessionKey: getCampaignVariantSessionKey(req),
+        sessionKey: getCampaignEngagementSessionKey(req),
         metadata: { dropId },
       });
     }
@@ -14433,6 +14946,58 @@ r.get("/campaigns/featured", optionalAuth, async (req, res) => {
   }
 });
 
+r.post("/campaigns/:id/spotlight-events", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    const parsed = z.object({
+      eventType: z.enum(["view_pinned_campaign", "click_pinned_campaign"]),
+      surface: z.enum(["creator_public_page", "discover_pinned_campaigns"]),
+      referrerRoute: z.string().trim().max(240).optional().nullable(),
+    }).safeParse(req.body ?? {});
+
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid spotlight event payload." });
+    }
+
+    const campaignRows = await db.select().from(creatorCampaigns).where(eq(creatorCampaigns.id, campaignId)).limit(1);
+    const campaign = campaignRows[0];
+    if (!campaign || !campaign.isPinned) {
+      return res.status(404).json({ ok: false, error: "Pinned campaign not found." });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [followedCreatorIds, memberCreatorIds] = await Promise.all([
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+    if (!canViewerSeeCreatorCampaign({ campaign, viewerId, followedCreatorIds, memberCreatorIds })) {
+      return res.status(404).json({ ok: false, error: "Pinned campaign not found." });
+    }
+
+    await trackCreatorCampaignSpotlightEvent({
+      campaignId,
+      eventType: parsed.data.eventType,
+      surface: parsed.data.surface,
+      userId: viewerId,
+      sessionKey: getCampaignEngagementSessionKey(req),
+      metadata: parsed.data.referrerRoute ? { referrerRoute: parsed.data.referrerRoute } : null,
+    });
+
+    return res.status(201).json({ ok: true });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/spotlight-events", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to track pinned campaign spotlight event"));
+  }
+});
+
 r.get("/creator-dashboard/pinned-campaign", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -14450,6 +15015,29 @@ r.get("/creator-dashboard/pinned-campaign", requireAuth, async (req, res) => {
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/pinned-campaign", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load pinned campaign"));
+  }
+});
+
+r.get("/creator-dashboard/pinned-campaign-analytics", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const analytics = await loadPinnedCampaignSpotlightAnalytics(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      pinnedCampaign: analytics.pinnedCampaign,
+      candidates: analytics.candidates,
+      rotationSuggestion: analytics.rotationSuggestion,
+      attributionNotes: analytics.attributionNotes,
+      generatedAt: analytics.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/pinned-campaign-analytics", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load pinned campaign spotlight analytics"));
   }
 });
 
@@ -14658,7 +15246,7 @@ r.post("/campaigns/:id/follow", requireAuth, async (req, res) => {
         variantId: variant.id,
         eventType: "follow_after_variant",
         userId: req.user!.id,
-        sessionKey: getCampaignVariantSessionKey(req),
+        sessionKey: getCampaignEngagementSessionKey(req),
       });
     }
 
@@ -15186,7 +15774,7 @@ r.post("/campaigns/:id/variants/:variantId/events", optionalAuth, async (req, re
       variantId,
       eventType: parsed.data.eventType,
       userId: viewerId,
-      sessionKey: getCampaignVariantSessionKey(req),
+      sessionKey: getCampaignEngagementSessionKey(req),
       metadata: parsed.data.metadata ?? null,
     });
 
