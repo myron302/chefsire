@@ -4853,6 +4853,89 @@ type CreatorCampaignAnalyticsSummary = {
   totalCampaignMembershipConversions: number;
 };
 
+type CreatorCampaignFunnelStepKey =
+  | "views"
+  | "clicks"
+  | "follows"
+  | "rsvps"
+  | "purchases"
+  | "memberships";
+
+type CreatorCampaignFunnelTransitionSeverity =
+  | "insufficient_signal"
+  | "healthy"
+  | "watch"
+  | "high"
+  | "critical"
+  | "alternate_path";
+
+type CreatorCampaignFunnelStep = {
+  key: CreatorCampaignFunnelStepKey;
+  label: string;
+  count: number;
+  description: string;
+  note: string | null;
+};
+
+type CreatorCampaignFunnelTransition = {
+  fromStep: CreatorCampaignFunnelStepKey;
+  toStep: CreatorCampaignFunnelStepKey;
+  fromLabel: string;
+  toLabel: string;
+  fromCount: number;
+  toCount: number;
+  retainedCount: number;
+  leakedCount: number;
+  expansionCount: number;
+  retentionRate: number | null;
+  leakageRate: number | null;
+  severity: CreatorCampaignFunnelTransitionSeverity;
+  headline: string;
+  reason: string;
+  suggestedFocus: string;
+};
+
+type CreatorCampaignFunnelBottleneckItem = {
+  campaignId: string;
+  slug: string;
+  name: string;
+  route: string;
+  visibility: CreatorCampaignVisibility;
+  state: CreatorCampaignState;
+  linkedDropsCount: number;
+  linkedCollectionsCount: number;
+  memberFocused: boolean;
+  steps: CreatorCampaignFunnelStep[];
+  transitions: CreatorCampaignFunnelTransition[];
+  topBottlenecks: CreatorCampaignFunnelTransition[];
+  strongestStep: CreatorCampaignFunnelStep | null;
+  deepestNonZeroStep: CreatorCampaignFunnelStepKey | null;
+  overallConversionRateFromViews: number | null;
+  overallLeakageFromViews: number | null;
+  notes: string[];
+};
+
+type CreatorCampaignFunnelBottleneckSummary = {
+  totalCampaigns: number;
+  activeCampaigns: number;
+  campaignsWithMeaningfulViewSignal: number;
+  campaignsWithBottlenecks: number;
+  criticalBottlenecks: number;
+  highBottlenecks: number;
+  watchBottlenecks: number;
+  averageViewToClickRate: number | null;
+  averageClickToFollowRate: number | null;
+  averageFollowToRsvpRate: number | null;
+  averageRsvpToPurchaseRate: number | null;
+  averagePurchaseToMembershipRate: number | null;
+  mostCommonWeakTransition: {
+    fromStep: CreatorCampaignFunnelStepKey;
+    toStep: CreatorCampaignFunnelStepKey;
+    label: string;
+    affectedCampaigns: number;
+  } | null;
+};
+
 type CreatorCampaignAudienceFitSegmentSummary = {
   audience: CreatorCampaignAudienceSegment;
   campaignFollows: number;
@@ -6436,6 +6519,277 @@ async function loadCreatorCampaignAudienceFit(creatorUserId: string) {
 
 async function loadCreatorCampaignAnalytics(creatorUserId: string) {
   return loadCreatorCampaignPerformanceSnapshots(creatorUserId);
+}
+
+function roundRate(value: number) {
+  return Math.round(value * 1000) / 10;
+}
+
+function campaignFunnelStepLabel(step: CreatorCampaignFunnelStepKey) {
+  switch (step) {
+    case "views":
+      return "Views";
+    case "clicks":
+      return "Clicks";
+    case "follows":
+      return "Follows";
+    case "rsvps":
+      return "RSVPs";
+    case "purchases":
+      return "Purchases";
+    case "memberships":
+      return "Memberships";
+    default:
+      return "Step";
+  }
+}
+
+function campaignFunnelStepDescription(step: CreatorCampaignFunnelStepKey) {
+  switch (step) {
+    case "views":
+      return "Linked drop views already tracked on the drinks platform.";
+    case "clicks":
+      return "Linked drop click-throughs.";
+    case "follows":
+      return "Explicit campaign follows.";
+    case "rsvps":
+      return "Linked drop RSVPs / Notify Me signups.";
+    case "purchases":
+      return "Approximate linked collection purchases inside the campaign window.";
+    case "memberships":
+      return "Approximate campaign-window membership starts for member-focused campaigns.";
+    default:
+      return "Campaign funnel signal.";
+  }
+}
+
+function buildCreatorCampaignFunnelStep(input: {
+  key: CreatorCampaignFunnelStepKey;
+  count: number;
+  note?: string | null;
+}) {
+  return {
+    key: input.key,
+    label: campaignFunnelStepLabel(input.key),
+    count: input.count,
+    description: campaignFunnelStepDescription(input.key),
+    note: input.note ?? null,
+  } satisfies CreatorCampaignFunnelStep;
+}
+
+function buildCreatorCampaignFunnelTransition(input: {
+  from: CreatorCampaignFunnelStep;
+  to: CreatorCampaignFunnelStep;
+}) {
+  const retainedCount = Math.min(input.from.count, input.to.count);
+  const leakedCount = Math.max(input.from.count - input.to.count, 0);
+  const expansionCount = Math.max(input.to.count - input.from.count, 0);
+  const retentionRate = input.from.count > 0 ? roundRate((retainedCount / input.from.count) * 100) : null;
+  const leakageRate = input.from.count > 0 ? roundRate((leakedCount / input.from.count) * 100) : null;
+
+  let severity: CreatorCampaignFunnelTransitionSeverity = "healthy";
+  let headline = `${input.from.label} are holding into ${input.to.label.toLowerCase()}.`;
+  let reason = `${retainedCount} of ${input.from.count} ${input.from.label.toLowerCase()} progressed to ${input.to.label.toLowerCase()}.`;
+  let suggestedFocus = `Keep the current ${input.from.label.toLowerCase()} → ${input.to.label.toLowerCase()} handoff.`;
+
+  if (input.from.count < 10) {
+    severity = "insufficient_signal";
+    headline = `Too little ${input.from.label.toLowerCase()} signal to judge ${input.to.label.toLowerCase()} leakage honestly yet.`;
+    reason = `Only ${input.from.count} ${input.from.label.toLowerCase()} are in this step, so ChefSire keeps this transition diagnostic light for now.`;
+    suggestedFocus = `Wait for more ${input.from.label.toLowerCase()} volume before treating this as a real bottleneck.`;
+  } else if (expansionCount > 0) {
+    severity = "alternate_path";
+    headline = `${input.to.label} are outpacing ${input.from.label.toLowerCase()} signal.`;
+    reason = `${input.to.count} ${input.to.label.toLowerCase()} exceed ${input.from.count} ${input.from.label.toLowerCase()}, which usually means people are entering later in the funnel through another native path.`;
+    suggestedFocus = `Treat ${input.to.label.toLowerCase()} as an alternate entry path instead of a leak from ${input.from.label.toLowerCase()}.`;
+  } else if ((retentionRate ?? 0) < 8 || retainedCount === 0) {
+    severity = "critical";
+    headline = `${input.from.label} are dropping hard before ${input.to.label.toLowerCase()}.`;
+    reason = `${leakedCount} of ${input.from.count} ${input.from.label.toLowerCase()} are not reaching ${input.to.label.toLowerCase()} (${leakageRate}% leakage).`;
+    suggestedFocus = `Tighten the ${input.from.label.toLowerCase()} → ${input.to.label.toLowerCase()} handoff next.`;
+  } else if ((retentionRate ?? 0) < 20) {
+    severity = "high";
+    headline = `${input.from.label} are leaking meaningfully before ${input.to.label.toLowerCase()}.`;
+    reason = `${leakedCount} of ${input.from.count} ${input.from.label.toLowerCase()} fall out before ${input.to.label.toLowerCase()} (${leakageRate}% leakage).`;
+    suggestedFocus = `This looks like the clearest place to improve momentum right now.`;
+  } else if ((retentionRate ?? 0) < 40) {
+    severity = "watch";
+    headline = `${input.from.label} are softening before ${input.to.label.toLowerCase()}.`;
+    reason = `${retainedCount} of ${input.from.count} ${input.from.label.toLowerCase()} are carrying forward (${retentionRate}% retention).`;
+    suggestedFocus = `Worth monitoring if this transition stays soft across more campaigns or more volume.`;
+  }
+
+  return {
+    fromStep: input.from.key,
+    toStep: input.to.key,
+    fromLabel: input.from.label,
+    toLabel: input.to.label,
+    fromCount: input.from.count,
+    toCount: input.to.count,
+    retainedCount,
+    leakedCount,
+    expansionCount,
+    retentionRate,
+    leakageRate,
+    severity,
+    headline,
+    reason,
+    suggestedFocus,
+  } satisfies CreatorCampaignFunnelTransition;
+}
+
+function averageFunnelTransitionRate(items: CreatorCampaignFunnelBottleneckItem[], fromStep: CreatorCampaignFunnelStepKey, toStep: CreatorCampaignFunnelStepKey) {
+  const rates = items
+    .flatMap((item) => item.transitions)
+    .filter((transition) => transition.fromStep === fromStep && transition.toStep === toStep && typeof transition.retentionRate === "number")
+    .map((transition) => transition.retentionRate as number);
+  if (!rates.length) return null;
+  return roundRate(rates.reduce((sum, value) => sum + value, 0) / rates.length);
+}
+
+async function loadCreatorCampaignFunnelBottlenecks(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [campaigns, performance] = await Promise.all([
+    db
+      .select()
+      .from(creatorCampaigns)
+      .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorCampaigns.updatedAt))
+      .limit(120),
+    loadCreatorCampaignPerformanceSnapshots(creatorUserId),
+  ]);
+
+  const filteredCampaigns = campaignId
+    ? campaigns.filter((campaign) => campaign.id === campaignId)
+    : campaigns;
+
+  const performanceByCampaignId = new Map(performance.items.map((item) => [item.campaignId, item]));
+
+  const items = filteredCampaigns.map((campaign) => {
+    const analytics = performanceByCampaignId.get(campaign.id);
+    if (!analytics) return null;
+
+    const memberFocused = Boolean(analytics.membershipsFromCampaignNote);
+    const steps = [
+      buildCreatorCampaignFunnelStep({ key: "views", count: analytics.totalDropViews, note: "Drop landing and campaign-linked view signal only — no external warehouse joins." }),
+      buildCreatorCampaignFunnelStep({ key: "clicks", count: analytics.totalDropClicks }),
+      buildCreatorCampaignFunnelStep({ key: "follows", count: analytics.followerCount, note: "Campaign follows can happen without a prior tracked click if people follow from a native campaign surface." }),
+      buildCreatorCampaignFunnelStep({ key: "rsvps", count: analytics.totalDropRsvps, note: analytics.linkedDropsCount > 0 ? null : "No linked drops yet, so RSVP signal may stay at zero until a drop exists." }),
+      buildCreatorCampaignFunnelStep({ key: "purchases", count: analytics.purchasesFromLinkedCollections, note: analytics.purchasesFromLinkedCollectionsNote }),
+      buildCreatorCampaignFunnelStep({ key: "memberships", count: analytics.membershipsFromCampaign, note: memberFocused ? analytics.membershipsFromCampaignNote : "This campaign is not currently member-focused, so memberships are expected to be light or zero." }),
+    ] satisfies CreatorCampaignFunnelStep[];
+
+    const transitions = steps.slice(0, -1).map((step, index) => buildCreatorCampaignFunnelTransition({
+      from: step,
+      to: steps[index + 1]!,
+    }));
+
+    const topBottlenecks = transitions
+      .filter((transition) => transition.severity === "critical" || transition.severity === "high" || transition.severity === "watch")
+      .sort((a, b) => {
+        const severityRank = (value: CreatorCampaignFunnelTransitionSeverity) => {
+          switch (value) {
+            case "critical":
+              return 4;
+            case "high":
+              return 3;
+            case "watch":
+              return 2;
+            case "healthy":
+              return 1;
+            default:
+              return 0;
+          }
+        };
+        return severityRank(b.severity) - severityRank(a.severity)
+          || (b.leakageRate ?? -1) - (a.leakageRate ?? -1)
+          || b.leakedCount - a.leakedCount;
+      })
+      .slice(0, 3);
+
+    const strongestStep = [...steps].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label))[0] ?? null;
+    const deepestNonZeroStep = [...steps].reverse().find((step) => step.count > 0)?.key ?? null;
+    const overallConversionRateFromViews = steps[0] && steps[0].count > 0
+      ? roundRate((Math.max(analytics.purchasesFromLinkedCollections, analytics.membershipsFromCampaign) / steps[0].count) * 100)
+      : null;
+    const overallLeakageFromViews = overallConversionRateFromViews === null ? null : roundRate(100 - overallConversionRateFromViews);
+
+    return {
+      campaignId: campaign.id,
+      slug: campaign.slug,
+      name: campaign.name,
+      route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      visibility: campaign.visibility as CreatorCampaignVisibility,
+      state: getCreatorCampaignState(campaign),
+      linkedDropsCount: analytics.linkedDropsCount,
+      linkedCollectionsCount: analytics.linkedCollectionsCount,
+      memberFocused,
+      steps,
+      transitions,
+      topBottlenecks,
+      strongestStep,
+      deepestNonZeroStep,
+      overallConversionRateFromViews,
+      overallLeakageFromViews,
+      notes: [
+        "This funnel is intentionally lightweight and uses only signals ChefSire already tracks for campaigns.",
+        "Views, clicks, and RSVPs come from linked drops; follows come from campaign follows; purchases and memberships stay approximate and creator-private.",
+        analytics.purchasesFromLinkedCollectionsNote,
+        memberFocused ? analytics.membershipsFromCampaignNote : "Memberships can outpace purchases for some member-first campaigns because they are a parallel native conversion path, not always a post-purchase step.",
+      ].filter((value): value is string => Boolean(value)),
+    } satisfies CreatorCampaignFunnelBottleneckItem;
+  }).filter((item): item is CreatorCampaignFunnelBottleneckItem => Boolean(item));
+
+  const weakTransitionCounts = new Map<string, { fromStep: CreatorCampaignFunnelStepKey; toStep: CreatorCampaignFunnelStepKey; label: string; affectedCampaigns: number }>();
+  for (const item of items) {
+    const uniqueWeak = new Set(
+      item.topBottlenecks
+        .filter((transition) => transition.severity === "critical" || transition.severity === "high" || transition.severity === "watch")
+        .map((transition) => `${transition.fromStep}:${transition.toStep}`),
+    );
+    for (const key of uniqueWeak) {
+      const [fromStep, toStep] = key.split(":") as [CreatorCampaignFunnelStepKey, CreatorCampaignFunnelStepKey];
+      const current = weakTransitionCounts.get(key) ?? {
+        fromStep,
+        toStep,
+        label: `${campaignFunnelStepLabel(fromStep)} → ${campaignFunnelStepLabel(toStep)}`,
+        affectedCampaigns: 0,
+      };
+      current.affectedCampaigns += 1;
+      weakTransitionCounts.set(key, current);
+    }
+  }
+
+  const mostCommonWeakTransition = [...weakTransitionCounts.values()]
+    .sort((a, b) => b.affectedCampaigns - a.affectedCampaigns || a.label.localeCompare(b.label))[0] ?? null;
+
+  return {
+    summary: {
+      totalCampaigns: items.length,
+      activeCampaigns: items.filter((item) => item.state === "active").length,
+      campaignsWithMeaningfulViewSignal: items.filter((item) => (item.steps.find((step) => step.key === "views")?.count ?? 0) >= 10).length,
+      campaignsWithBottlenecks: items.filter((item) => item.topBottlenecks.length > 0).length,
+      criticalBottlenecks: items.flatMap((item) => item.topBottlenecks).filter((transition) => transition.severity === "critical").length,
+      highBottlenecks: items.flatMap((item) => item.topBottlenecks).filter((transition) => transition.severity === "high").length,
+      watchBottlenecks: items.flatMap((item) => item.topBottlenecks).filter((transition) => transition.severity === "watch").length,
+      averageViewToClickRate: averageFunnelTransitionRate(items, "views", "clicks"),
+      averageClickToFollowRate: averageFunnelTransitionRate(items, "clicks", "follows"),
+      averageFollowToRsvpRate: averageFunnelTransitionRate(items, "follows", "rsvps"),
+      averageRsvpToPurchaseRate: averageFunnelTransitionRate(items, "rsvps", "purchases"),
+      averagePurchaseToMembershipRate: averageFunnelTransitionRate(items, "purchases", "memberships"),
+      mostCommonWeakTransition,
+    } satisfies CreatorCampaignFunnelBottleneckSummary,
+    items,
+    attributionNotes: [
+      "Campaign funnel bottlenecks stay drinks-platform-native and only connect signals already tracked in the creator dashboard.",
+      "This is a diagnostic layer, not a warehouse model: it compares step-to-step retention and leakage across views, clicks, follows, RSVPs, purchases, and memberships.",
+      "Follower, RSVP, click, purchase, and membership counts all remain creator-private on this route.",
+      "Purchases and memberships remain clearly labeled approximations anywhere the underlying campaign analytics are already approximate.",
+      "Some later steps can exceed earlier steps because campaigns can be entered from different native surfaces; those cases are labeled as alternate paths instead of leakage.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 type CreatorCampaignRolloutStageAnalytics = {
@@ -25292,6 +25646,41 @@ r.get("/creator-dashboard/campaign-analytics", requireAuth, async (req, res) => 
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-analytics", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign analytics"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-funnel-bottlenecks", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId.trim() : "";
+    if (campaignId) {
+      const ownedCampaign = await db
+        .select({ id: creatorCampaigns.id })
+        .from(creatorCampaigns)
+        .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, req.user!.id)))
+        .limit(1);
+      if (!ownedCampaign[0]) {
+        return res.status(404).json({ ok: false, error: "Campaign not found." });
+      }
+    }
+
+    const diagnostics = await loadCreatorCampaignFunnelBottlenecks(req.user!.id, campaignId || null);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      campaignId: campaignId || null,
+      summary: diagnostics.summary,
+      items: diagnostics.items,
+      attributionNotes: diagnostics.attributionNotes,
+      generatedAt: diagnostics.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-funnel-bottlenecks", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign funnel bottlenecks"));
   }
 });
 
