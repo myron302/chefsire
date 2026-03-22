@@ -73,6 +73,70 @@ type ExperimentSuggestion = {
   source: "bottleneck" | "timing_advisor";
 };
 
+type ExperimentLibrarySummaryItem = {
+  experimentType: ExperimentType;
+  label: string;
+  runsCount: number;
+  readableRunsCount: number;
+  improvedCount: number;
+  flatCount: number;
+  declinedCount: number;
+  insufficientDataCount: number;
+  averageViewLift: number | null;
+  averageClickLift: number | null;
+  averageFollowLift: number | null;
+  averageRsvpLift: number | null;
+  averageApproxPurchaseLift: number | null;
+  averageApproxMembershipLift: number | null;
+  bestCampaignExample: {
+    campaignId: string;
+    campaignName: string;
+    campaignRoute: string;
+    experimentId: string;
+    experimentLabel: string;
+    outcomeSummary: string;
+  } | null;
+  reuseSuggestion: string | null;
+  confidenceNote: string;
+};
+
+type ExperimentLibraryPattern = {
+  key: string;
+  title: string;
+  summary: string;
+  reuseSuggestion: string;
+  supportingExperimentTypes: ExperimentType[];
+  supportCount: number;
+  confidence: "low" | "medium" | "high";
+  confidenceNote: string;
+  exampleCampaign: {
+    campaignId: string;
+    campaignName: string;
+    campaignRoute: string;
+    experimentId: string;
+    experimentLabel: string;
+    outcomeSummary: string;
+  } | null;
+};
+
+type ExperimentLibraryResponse = {
+  ok: boolean;
+  userId: string;
+  summary: {
+    totalHistoricalExperiments: number;
+    readableExperiments: number;
+    improvedExperiments: number;
+    declinedExperiments: number;
+    trackedFixTypes: number;
+  };
+  items: ExperimentLibrarySummaryItem[];
+  bestFixTypes: ExperimentLibrarySummaryItem[];
+  weakestFixTypes: ExperimentLibrarySummaryItem[];
+  fixPatterns: ExperimentLibraryPattern[];
+  attributionNotes: string[];
+  generatedAt: string;
+};
+
 type ExperimentsResponse = {
   ok: boolean;
   campaignId: string;
@@ -156,6 +220,11 @@ function metricDelta(after: number, before: number) {
   return `${delta > 0 ? "+" : ""}${delta}`;
 }
 
+function formatLift(value: number | null | undefined) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return "—";
+  return `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+}
+
 export default function CampaignFixExperimentsSection({
   campaignId,
   compact = false,
@@ -223,11 +292,23 @@ export default function CampaignFixExperimentsSection({
     enabled: Boolean(user?.id) && Boolean(activeCampaignId),
   });
 
+  const libraryQuery = useQuery<ExperimentLibraryResponse>({
+    queryKey: ["/api/drinks/creator-dashboard/campaign-experiment-library", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/creator-dashboard/campaign-experiment-library", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load experiment library (${response.status})`);
+      return payload as ExperimentLibraryResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
   const invalidateExperiments = React.useCallback(async () => {
     if (!activeCampaignId) return;
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns/:id/experiments", activeCampaignId, user?.id ?? ""] }),
       queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-funnel-bottlenecks", user?.id ?? ""] }),
+      queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-experiment-library", user?.id ?? ""] }),
       queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns/creator", user?.id ?? ""] }),
     ]);
   }, [activeCampaignId, queryClient, user?.id]);
@@ -283,6 +364,8 @@ export default function CampaignFixExperimentsSection({
   });
 
   const experiments = experimentsQuery.data?.items ?? [];
+  const selectedLibrarySummary = libraryQuery.data?.items.find((item) => item.experimentType === form.experimentType) ?? null;
+  const selectedPattern = libraryQuery.data?.fixPatterns.find((item) => item.supportingExperimentTypes.includes(form.experimentType)) ?? null;
 
   return (
     <Card id={campaignId ? undefined : "campaign-fix-experiments"}>
@@ -325,6 +408,24 @@ export default function CampaignFixExperimentsSection({
               >
                 {EXPERIMENT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
+              {selectedLibrarySummary ? (
+                <div className="rounded-md border bg-muted/20 p-3 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">
+                    {selectedLibrarySummary.improvedCount > selectedLibrarySummary.declinedCount
+                      ? "This fix has worked well for you before."
+                      : selectedLibrarySummary.declinedCount > selectedLibrarySummary.improvedCount
+                        ? "This fix has been mixed in your history."
+                        : "You have light history with this fix."}
+                  </p>
+                  <p className="mt-1">
+                    Readable runs {selectedLibrarySummary.readableRunsCount} · Improved {selectedLibrarySummary.improvedCount} · Declined {selectedLibrarySummary.declinedCount}
+                    {selectedLibrarySummary.averageClickLift !== null ? ` · Avg click lift ${formatLift(selectedLibrarySummary.averageClickLift)}` : ""}
+                    {selectedLibrarySummary.averageRsvpLift !== null ? ` · Avg RSVP lift ${formatLift(selectedLibrarySummary.averageRsvpLift)}` : ""}
+                  </p>
+                  {selectedPattern ? <p className="mt-1">{selectedPattern.reuseSuggestion}</p> : null}
+                  {selectedLibrarySummary.reuseSuggestion ? <p className="mt-1">{selectedLibrarySummary.reuseSuggestion}</p> : null}
+                </div>
+              ) : null}
             </div>
             <div className="space-y-2">
               <Label htmlFor="experiment-label">Label / hypothesis</Label>
@@ -368,6 +469,7 @@ export default function CampaignFixExperimentsSection({
         {error ? <p className="text-sm text-destructive">{error}</p> : null}
         {campaignsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading campaigns…</p> : null}
         {campaignsQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(campaignsQuery.error, "Unable to load campaigns right now.")}</p> : null}
+        {libraryQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(libraryQuery.error, "Unable to load your experiment library guidance right now.")}</p> : null}
         {experimentsQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading experiment outcomes…</p> : null}
         {experimentsQuery.isError ? <p className="text-sm text-destructive">{readErrorMessage(experimentsQuery.error, "Unable to load experiment outcomes right now.")}</p> : null}
 
