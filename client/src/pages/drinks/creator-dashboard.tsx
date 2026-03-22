@@ -25,6 +25,7 @@ import CampaignRecoveryPlansSection from "@/components/drinks/CampaignRecoveryPl
 import CampaignAnalyticsSection from "@/components/drinks/CampaignAnalyticsSection";
 import CampaignBenchmarksSection from "@/components/drinks/CampaignBenchmarksSection";
 import DropLaunchAnalyticsSection from "@/components/drinks/DropLaunchAnalyticsSection";
+import PinnedCampaignSpotlightSection from "@/components/drinks/PinnedCampaignSpotlightSection";
 import { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
@@ -2352,6 +2353,8 @@ export default function CreatorDashboardPage() {
       <CampaignRecoveryPlansSection />
       <CampaignLifecycleSuggestionsSection />
       <CampaignRecommendationsSection />
+
+      <PinnedCampaignSpotlightSection />
 
       <CampaignAnalyticsSection />
 

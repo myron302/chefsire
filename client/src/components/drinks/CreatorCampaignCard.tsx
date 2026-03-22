@@ -74,7 +74,17 @@ function visibilityIcon(visibility: CreatorCampaignItem["visibility"]) {
   }
 }
 
-export default function CreatorCampaignCard({ campaign, actions, showCreator = true }: { campaign: CreatorCampaignItem; actions?: React.ReactNode; showCreator?: boolean }) {
+export default function CreatorCampaignCard({
+  campaign,
+  actions,
+  showCreator = true,
+  onOpenCampaign,
+}: {
+  campaign: CreatorCampaignItem;
+  actions?: React.ReactNode;
+  showCreator?: boolean;
+  onOpenCampaign?: (() => void) | null;
+}) {
   return (
     <Card>
       <CardContent className="space-y-4 p-4">
@@ -111,7 +121,7 @@ export default function CreatorCampaignCard({ campaign, actions, showCreator = t
           </div>
 
           <div className="flex flex-wrap gap-2">
-            <Link href={campaign.route}><Button size="sm" variant={campaign.state === "active" ? "default" : "outline"}>Open campaign</Button></Link>
+            <Link href={campaign.route}><Button size="sm" variant={campaign.state === "active" ? "default" : "outline"} onClick={onOpenCampaign ?? undefined}>Open campaign</Button></Link>
             {actions}
           </div>
         </div>
