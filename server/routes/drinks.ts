@@ -773,27 +773,22 @@ const creatorCampaignLinkBodySchema = z.object({
 const creatorCampaignRolloutModeSchema = z.enum(["public_first", "followers_first", "members_first", "staged"]);
 const creatorCampaignRolloutAudienceSchema = z.enum(["public", "followers", "members"]);
 
-const creatorCampaignRolloutBodySchema = z.object({
+const creatorCampaignRolloutBodyBaseSchema = z.object({
   rolloutMode: creatorCampaignRolloutModeSchema,
   startsWithAudience: creatorCampaignRolloutAudienceSchema.optional().nullable(),
   unlockFollowersAt: z.string().datetime().optional().nullable(),
   unlockPublicAt: z.string().datetime().optional().nullable(),
   rolloutNotes: z.string().trim().max(1000).optional().nullable(),
   isRolloutActive: z.boolean().optional().default(true),
-}).superRefine((value, ctx) => {
-  const followerUnlock = value.unlockFollowersAt ? new Date(value.unlockFollowersAt) : null;
-  const publicUnlock = value.unlockPublicAt ? new Date(value.unlockPublicAt) : null;
-
-  if (followerUnlock && publicUnlock && publicUnlock < followerUnlock) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["unlockPublicAt"],
-      message: "Public unlock must be after the follower unlock.",
-    });
-  }
 });
 
-const updateCreatorCampaignRolloutBodySchema = creatorCampaignRolloutBodySchema.partial().superRefine((value, ctx) => {
+const validateCreatorCampaignRolloutSchedule = (
+  value: {
+    unlockFollowersAt?: string | null;
+    unlockPublicAt?: string | null;
+  },
+  ctx: z.RefinementCtx,
+) => {
   const followerUnlock = value.unlockFollowersAt ? new Date(value.unlockFollowersAt) : null;
   const publicUnlock = value.unlockPublicAt ? new Date(value.unlockPublicAt) : null;
 
@@ -804,6 +799,12 @@ const updateCreatorCampaignRolloutBodySchema = creatorCampaignRolloutBodySchema.
       message: "Public unlock must be after the follower unlock.",
     });
   }
+};
+
+const creatorCampaignRolloutBodySchema = creatorCampaignRolloutBodyBaseSchema.superRefine(validateCreatorCampaignRolloutSchedule);
+
+const updateCreatorCampaignRolloutBodySchema = creatorCampaignRolloutBodyBaseSchema.partial().superRefine((value, ctx) => {
+  validateCreatorCampaignRolloutSchedule(value, ctx);
 
   if (!Object.values(value).some((field) => field !== undefined)) {
     ctx.addIssue({
