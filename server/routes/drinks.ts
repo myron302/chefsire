@@ -121,6 +121,17 @@ type CreatorCampaignAudienceFitConfidence = "high" | "medium" | "low" | "none";
 type CreatorCampaignTargetType = "collection" | "drop" | "promo" | "challenge" | "post" | "roadmap";
 type CreatorCampaignCtaTargetType = "follow" | "rsvp" | "collection" | "membership" | "drop" | "challenge";
 type CreatorCampaignState = "upcoming" | "active" | "past";
+type CreatorCampaignRolloutMode = "public_first" | "followers_first" | "members_first" | "staged";
+type CreatorCampaignRolloutAudience = "public" | "followers" | "members";
+type CreatorCampaignRolloutState =
+  | "scheduled_for_members"
+  | "scheduled_for_followers"
+  | "scheduled_for_public"
+  | "live_for_members"
+  | "live_for_followers"
+  | "live_for_public"
+  | "fully_open"
+  | "completed";
 type CreatorCampaignGoalType = "followers" | "rsvps" | "clicks" | "purchases" | "membership_conversions" | "linked_drop_views";
 type CreatorCampaignVariantEventType = "view_variant" | "click_variant_cta" | "follow_after_variant" | "rsvp_after_variant";
 type CreatorCampaignSpotlightEventType = "view_pinned_campaign" | "click_pinned_campaign";
@@ -759,6 +770,49 @@ const creatorCampaignLinkBodySchema = z.object({
   sortOrder: z.coerce.number().int().min(0).max(999).optional(),
 });
 
+const creatorCampaignRolloutModeSchema = z.enum(["public_first", "followers_first", "members_first", "staged"]);
+const creatorCampaignRolloutAudienceSchema = z.enum(["public", "followers", "members"]);
+
+const creatorCampaignRolloutBodySchema = z.object({
+  rolloutMode: creatorCampaignRolloutModeSchema,
+  startsWithAudience: creatorCampaignRolloutAudienceSchema.optional().nullable(),
+  unlockFollowersAt: z.string().datetime().optional().nullable(),
+  unlockPublicAt: z.string().datetime().optional().nullable(),
+  rolloutNotes: z.string().trim().max(1000).optional().nullable(),
+  isRolloutActive: z.boolean().optional().default(true),
+}).superRefine((value, ctx) => {
+  const followerUnlock = value.unlockFollowersAt ? new Date(value.unlockFollowersAt) : null;
+  const publicUnlock = value.unlockPublicAt ? new Date(value.unlockPublicAt) : null;
+
+  if (followerUnlock && publicUnlock && publicUnlock < followerUnlock) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["unlockPublicAt"],
+      message: "Public unlock must be after the follower unlock.",
+    });
+  }
+});
+
+const updateCreatorCampaignRolloutBodySchema = creatorCampaignRolloutBodySchema.partial().superRefine((value, ctx) => {
+  const followerUnlock = value.unlockFollowersAt ? new Date(value.unlockFollowersAt) : null;
+  const publicUnlock = value.unlockPublicAt ? new Date(value.unlockPublicAt) : null;
+
+  if (followerUnlock && publicUnlock && publicUnlock < followerUnlock) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["unlockPublicAt"],
+      message: "Public unlock must be after the follower unlock.",
+    });
+  }
+
+  if (!Object.values(value).some((field) => field !== undefined)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Provide at least one rollout field to update.",
+    });
+  }
+});
+
 const creatorCampaignBodyBaseObjectSchema = z.object({
   slug: z.string().trim().min(2, "Campaign slug is required.").max(160),
   name: z.string().trim().min(2, "Campaign name is required.").max(160),
@@ -767,11 +821,17 @@ const creatorCampaignBodyBaseObjectSchema = z.object({
   startsAt: z.string().datetime().optional().nullable(),
   endsAt: z.string().datetime().optional().nullable(),
   isActive: z.boolean().optional().default(true),
+  rolloutMode: creatorCampaignRolloutModeSchema.optional(),
+  startsWithAudience: creatorCampaignRolloutAudienceSchema.optional().nullable(),
+  unlockFollowersAt: z.string().datetime().optional().nullable(),
+  unlockPublicAt: z.string().datetime().optional().nullable(),
+  rolloutNotes: z.string().trim().max(1000).optional().nullable(),
+  isRolloutActive: z.boolean().optional(),
   links: z.array(creatorCampaignLinkBodySchema).max(48).optional().default([]),
 });
 
 const validateCreatorCampaignDateRange = (
-  value: { startsAt?: string | null; endsAt?: string | null },
+  value: { startsAt?: string | null; endsAt?: string | null; unlockFollowersAt?: string | null; unlockPublicAt?: string | null },
   ctx: z.RefinementCtx,
 ) => {
   if (value.startsAt && value.endsAt) {
@@ -779,6 +839,14 @@ const validateCreatorCampaignDateRange = (
     const endsAt = new Date(value.endsAt);
     if (Number.isNaN(startsAt.getTime()) || Number.isNaN(endsAt.getTime()) || endsAt < startsAt) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["endsAt"], message: "Campaign end date must be after the start date." });
+    }
+  }
+
+  if (value.unlockFollowersAt && value.unlockPublicAt) {
+    const unlockFollowersAt = new Date(value.unlockFollowersAt);
+    const unlockPublicAt = new Date(value.unlockPublicAt);
+    if (Number.isNaN(unlockFollowersAt.getTime()) || Number.isNaN(unlockPublicAt.getTime()) || unlockPublicAt < unlockFollowersAt) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["unlockPublicAt"], message: "Public unlock must be after the follower unlock." });
     }
   }
 };
@@ -2145,6 +2213,12 @@ async function ensureDrinkCollectionsSchema() {
         starts_at timestamp,
         ends_at timestamp,
         is_active boolean NOT NULL DEFAULT true,
+        rollout_mode text NOT NULL DEFAULT 'public_first',
+        starts_with_audience text,
+        unlock_followers_at timestamp,
+        unlock_public_at timestamp,
+        rollout_notes text,
+        is_rollout_active boolean NOT NULL DEFAULT false,
         is_pinned boolean NOT NULL DEFAULT false,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
@@ -2455,6 +2529,12 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_visibility_idx ON creator_campaigns(visibility);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_active_idx ON creator_campaigns(is_active, starts_at, ends_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_creator_updated_at_idx ON creator_campaigns(creator_user_id, updated_at);`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS rollout_mode text NOT NULL DEFAULT 'public_first';`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS starts_with_audience text;`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS unlock_followers_at timestamp;`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS unlock_public_at timestamp;`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS rollout_notes text;`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS is_rollout_active boolean NOT NULL DEFAULT false;`);
     await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS is_pinned boolean NOT NULL DEFAULT false;`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_campaigns_single_pinned_idx ON creator_campaigns(creator_user_id) WHERE is_pinned = true;`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_idx ON creator_campaign_templates(creator_user_id);`);
@@ -2858,17 +2938,20 @@ function canViewerSeeCreatorRoadmapItem(input: {
 }
 
 function canViewerSeeCreatorCampaign(input: {
-  campaign: Pick<CreatorCampaignRecord, "creatorUserId" | "visibility">;
+  campaign: Pick<CreatorCampaignRecord, "creatorUserId" | "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive">;
   viewerId?: string | null;
   followedCreatorIds?: Set<string>;
   memberCreatorIds?: Set<string>;
 }) {
   const { campaign, viewerId, followedCreatorIds = new Set<string>(), memberCreatorIds = new Set<string>() } = input;
   if (viewerId && campaign.creatorUserId === viewerId) return true;
-  if (campaign.visibility === "public") return true;
+  const rollout = deriveCreatorCampaignRollout(campaign);
+  if (rollout.currentAudience === "public") return true;
   if (!viewerId) return false;
-  if (campaign.visibility === "followers") return followedCreatorIds.has(campaign.creatorUserId);
-  if (campaign.visibility === "members") return memberCreatorIds.has(campaign.creatorUserId);
+  if (rollout.currentAudience === "followers") {
+    return followedCreatorIds.has(campaign.creatorUserId) || memberCreatorIds.has(campaign.creatorUserId);
+  }
+  if (rollout.currentAudience === "members") return memberCreatorIds.has(campaign.creatorUserId);
   return false;
 }
 
@@ -2889,6 +2972,227 @@ function getCreatorCampaignState(campaign: Pick<CreatorCampaignRecord, "startsAt
   return "active";
 }
 
+function rolloutAudienceOrder(audience: CreatorCampaignRolloutAudience) {
+  switch (audience) {
+    case "members":
+      return 0;
+    case "followers":
+      return 1;
+    case "public":
+    default:
+      return 2;
+  }
+}
+
+function clampRolloutAudienceToVisibility(
+  audience: CreatorCampaignRolloutAudience,
+  visibility: CreatorCampaignVisibility,
+): CreatorCampaignRolloutAudience {
+  if (visibility === "members") return "members";
+  if (visibility === "followers" && audience === "public") return "followers";
+  return audience;
+}
+
+function defaultStartsWithAudienceForRollout(
+  mode: CreatorCampaignRolloutMode,
+  visibility: CreatorCampaignVisibility,
+): CreatorCampaignRolloutAudience {
+  const requested = mode === "members_first"
+    ? "members"
+    : mode === "followers_first"
+      ? "followers"
+      : mode === "public_first"
+        ? "public"
+        : visibility === "members"
+          ? "members"
+          : visibility === "followers"
+            ? "followers"
+            : "members";
+  return clampRolloutAudienceToVisibility(requested, visibility);
+}
+
+function audienceUnlockStatePrefix(isScheduled: boolean, audience: CreatorCampaignRolloutAudience): CreatorCampaignRolloutState {
+  if (isScheduled) {
+    if (audience === "members") return "scheduled_for_members";
+    if (audience === "followers") return "scheduled_for_followers";
+    return "scheduled_for_public";
+  }
+  if (audience === "members") return "live_for_members";
+  if (audience === "followers") return "live_for_followers";
+  return "live_for_public";
+}
+
+function deriveCreatorCampaignRollout(
+  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive">,
+  now = new Date(),
+) {
+  const campaignState = getCreatorCampaignState(campaign, now);
+  const visibility = campaign.visibility as CreatorCampaignVisibility;
+  const rolloutMode = (campaign.rolloutMode as CreatorCampaignRolloutMode | null) ?? "public_first";
+  const initialAudience = clampRolloutAudienceToVisibility(
+    ((rolloutMode === "staged"
+      ? (campaign.startsWithAudience as CreatorCampaignRolloutAudience | null)
+      : defaultStartsWithAudienceForRollout(rolloutMode, visibility))
+      ?? defaultStartsWithAudienceForRollout(rolloutMode, visibility)),
+    visibility,
+  );
+  const finalAudience = clampRolloutAudienceToVisibility("public", visibility);
+  const startsAt = campaign.startsAt ?? campaign.createdAt ?? null;
+  const followerUnlockAt = campaign.unlockFollowersAt ?? null;
+  const publicUnlockAt = campaign.unlockPublicAt ?? null;
+  const rolloutActive = Boolean(campaign.isRolloutActive);
+
+  const stageTimeline = [{ audience: initialAudience, unlockAt: startsAt }];
+  if (rolloutActive && rolloutAudienceOrder(initialAudience) < rolloutAudienceOrder("followers") && visibility !== "members" && followerUnlockAt) {
+    stageTimeline.push({ audience: "followers" as const, unlockAt: followerUnlockAt });
+  }
+  if (rolloutActive && rolloutAudienceOrder(initialAudience) < rolloutAudienceOrder("public") && visibility === "public" && publicUnlockAt) {
+    stageTimeline.push({ audience: "public" as const, unlockAt: publicUnlockAt });
+  }
+
+  const normalizedTimeline = stageTimeline
+    .map((entry) => ({
+      audience: clampRolloutAudienceToVisibility(entry.audience, visibility),
+      unlockAt: entry.unlockAt,
+    }))
+    .sort((a, b) => {
+      const timeA = a.unlockAt?.getTime() ?? 0;
+      const timeB = b.unlockAt?.getTime() ?? 0;
+      return timeA - timeB || rolloutAudienceOrder(a.audience) - rolloutAudienceOrder(b.audience);
+    })
+    .filter((entry, index, array) => index === 0 || array[index - 1]?.audience !== entry.audience);
+
+  const effectiveTimeline = rolloutActive
+    ? normalizedTimeline
+    : [{ audience: finalAudience, unlockAt: startsAt }];
+
+  let currentAudience = rolloutActive ? initialAudience : finalAudience;
+  let nextUnlockAt: Date | null = null;
+  let nextAudience: CreatorCampaignRolloutAudience | null = null;
+
+  if (campaignState !== "past") {
+    for (let index = 0; index < effectiveTimeline.length; index += 1) {
+      const entry = effectiveTimeline[index];
+      if (!entry) continue;
+      const unlockAt = entry.unlockAt;
+      if (unlockAt && unlockAt > now) {
+        currentAudience = effectiveTimeline[Math.max(0, index - 1)]?.audience ?? entry.audience;
+        nextUnlockAt = unlockAt;
+        nextAudience = entry.audience;
+        break;
+      }
+      currentAudience = entry.audience;
+    }
+  }
+
+  if (campaignState === "past") {
+    currentAudience = finalAudience;
+  }
+
+  const isScheduled = Boolean(startsAt && startsAt > now);
+  const reachedFinalAudience = currentAudience === finalAudience;
+  const state: CreatorCampaignRolloutState = campaignState === "past"
+    ? "completed"
+    : reachedFinalAudience && rolloutActive && finalAudience === "public" && initialAudience !== "public"
+      ? "fully_open"
+      : reachedFinalAudience && rolloutActive && finalAudience !== "public" && initialAudience !== finalAudience
+        ? "fully_open"
+        : audienceUnlockStatePrefix(isScheduled, currentAudience);
+
+  return {
+    rolloutMode,
+    startsWithAudience: initialAudience,
+    finalAudience,
+    currentAudience,
+    nextAudience,
+    nextUnlockAt: nextUnlockAt ? nextUnlockAt.toISOString() : null,
+    unlockFollowersAt: followerUnlockAt ? followerUnlockAt.toISOString() : null,
+    unlockPublicAt: publicUnlockAt ? publicUnlockAt.toISOString() : null,
+    rolloutNotes: campaign.rolloutNotes?.trim() ? campaign.rolloutNotes.trim() : null,
+    isRolloutActive: rolloutActive,
+    state,
+    timeline: effectiveTimeline.map((entry) => ({
+      audience: entry.audience,
+      unlockAt: entry.unlockAt ? entry.unlockAt.toISOString() : null,
+      isCurrent: entry.audience === currentAudience,
+    })),
+  };
+}
+
+function buildCampaignRolloutSuggestion(input: {
+  campaign: Pick<CreatorCampaignRecord, "visibility">;
+  audienceFit?: {
+    bestAudienceFit: CreatorCampaignRolloutAudience | null;
+    bestAudienceFitConfidence: CreatorCampaignAudienceFitConfidence;
+    bestAudienceFitReason: string | null;
+  } | null;
+}) {
+  const visibility = input.campaign.visibility as CreatorCampaignVisibility;
+  const suggestedMode = visibility === "members"
+    ? "members_first"
+    : input.audienceFit?.bestAudienceFit === "members"
+      ? "members_first"
+      : input.audienceFit?.bestAudienceFit === "followers"
+        ? "followers_first"
+        : "public_first";
+
+  const note = visibility === "members"
+    ? "This campaign can only ever open to active members, so a member-first rollout is the clearest fit."
+    : visibility === "followers"
+      ? "Followers are the widest audience this campaign can ever reach, so keep rollout steps inside follower/member access."
+      : input.audienceFit?.bestAudienceFit === "members"
+        ? "Audience-fit signals lean member-driven, so starting with members should keep the launch focused."
+        : input.audienceFit?.bestAudienceFit === "followers"
+          ? "Audience-fit signals lean follower-heavy, so a follower-first rollout is a good lightweight default."
+          : "This campaign looks broad enough for public reach, so a public-first rollout is the simplest fit.";
+
+  return {
+    suggestedMode,
+    reason: input.audienceFit?.bestAudienceFitReason ?? note,
+    confidence: input.audienceFit?.bestAudienceFitConfidence ?? "none",
+  };
+}
+
+function normalizeCampaignRolloutUpdate(input: {
+  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive">;
+  payload: Partial<{
+    rolloutMode: CreatorCampaignRolloutMode;
+    startsWithAudience: CreatorCampaignRolloutAudience | null;
+    unlockFollowersAt: string | null;
+    unlockPublicAt: string | null;
+    rolloutNotes: string | null;
+    isRolloutActive: boolean;
+  }>;
+}) {
+  const visibility = input.campaign.visibility as CreatorCampaignVisibility;
+  const rolloutMode = input.payload.rolloutMode ?? (input.campaign.rolloutMode as CreatorCampaignRolloutMode | null) ?? "public_first";
+  const startsWithAudience = clampRolloutAudienceToVisibility(
+    (input.payload.startsWithAudience ?? (input.campaign.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? defaultStartsWithAudienceForRollout(rolloutMode, visibility)),
+    visibility,
+  );
+  const unlockFollowersAt = visibility === "members"
+    ? null
+    : input.payload.unlockFollowersAt !== undefined
+      ? toNullableDate(input.payload.unlockFollowersAt)
+      : input.campaign.unlockFollowersAt;
+  const unlockPublicAt = visibility !== "public"
+    ? null
+    : input.payload.unlockPublicAt !== undefined
+      ? toNullableDate(input.payload.unlockPublicAt)
+      : input.campaign.unlockPublicAt;
+
+  return {
+    rolloutMode,
+    startsWithAudience,
+    unlockFollowersAt,
+    unlockPublicAt,
+    rolloutNotes: input.payload.rolloutNotes !== undefined
+      ? (input.payload.rolloutNotes?.trim() ? input.payload.rolloutNotes.trim() : null)
+      : (input.campaign.rolloutNotes?.trim() ? input.campaign.rolloutNotes.trim() : null),
+    isRolloutActive: input.payload.isRolloutActive ?? input.campaign.isRolloutActive,
+  };
+}
+
 function serializeCreatorCampaign(
   campaign: CreatorCampaignRecord,
   options: {
@@ -2901,6 +3205,7 @@ function serializeCreatorCampaign(
 ) {
   const counts = options.counts ?? {};
   const isOwner = Boolean(options.viewerId && campaign.creatorUserId === options.viewerId);
+  const rollout = deriveCreatorCampaignRollout(campaign);
   return {
     id: campaign.id,
     creatorUserId: campaign.creatorUserId,
@@ -2914,6 +3219,7 @@ function serializeCreatorCampaign(
     isActive: Boolean(campaign.isActive),
     isPinned: Boolean(campaign.isPinned),
     state: getCreatorCampaignState(campaign),
+    rollout: rollout ?? undefined,
     route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
     followerCount: Number(options.followerCount ?? 0),
     isFollowing: Boolean(options.isFollowing),
@@ -8959,7 +9265,7 @@ function buildCreatorCampaignUpdateItems(detail: Awaited<ReturnType<typeof loadC
 }
 
 async function loadCampaignAlertRecipientIds(
-  campaign: Pick<CreatorCampaignRecord, "id" | "creatorUserId" | "visibility">,
+  campaign: Pick<CreatorCampaignRecord, "id" | "creatorUserId" | "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive">,
   contentVisibility: "public" | "followers" | "members",
 ) {
   if (!db) return [];
@@ -8977,9 +9283,10 @@ async function loadCampaignAlertRecipientIds(
 
   if (!recipientIds.length) return [];
 
-  const requiredAudience = campaign.visibility === "members" || contentVisibility === "members"
+  const rolloutAudience = deriveCreatorCampaignRollout(campaign).currentAudience;
+  const requiredAudience = rolloutAudience === "members" || campaign.visibility === "members" || contentVisibility === "members"
     ? "members"
-    : campaign.visibility === "followers" || contentVisibility === "followers"
+    : rolloutAudience === "followers" || campaign.visibility === "followers" || contentVisibility === "followers"
       ? "followers"
       : "public";
 
@@ -15980,6 +16287,205 @@ r.post("/campaigns/:id/unpin", requireAuth, async (req, res) => {
   }
 });
 
+r.get("/campaigns/:id/rollout", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const audienceFit = await loadCreatorCampaignAudienceFit(req.user!.id);
+    const audienceFitItem = audienceFit.items.find((item) => item.campaignId === campaign.id) ?? null;
+    const rollout = deriveCreatorCampaignRollout(campaign);
+
+    return res.json({
+      ok: true,
+      campaignId: campaign.id,
+      rollout: {
+        rolloutMode: rollout.rolloutMode,
+        startsWithAudience: rollout.startsWithAudience,
+        unlockFollowersAt: rollout.unlockFollowersAt,
+        unlockPublicAt: rollout.unlockPublicAt,
+        rolloutNotes: rollout.rolloutNotes,
+        isRolloutActive: rollout.isRolloutActive,
+      },
+      derivedState: rollout,
+      audienceFitSuggestion: buildCampaignRolloutSuggestion({
+        campaign,
+        audienceFit: audienceFitItem
+          ? {
+            bestAudienceFit: audienceFitItem.bestAudienceFit as CreatorCampaignRolloutAudience | null,
+            bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
+            bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
+          }
+          : null,
+      }),
+    });
+  } catch (error) {
+    const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
+    const message = logCollectionRouteError("/campaigns/:id/rollout", req, error);
+    return res.status(status).json(collectionServerError(message, "Failed to load campaign rollout"));
+  }
+});
+
+r.post("/campaigns/:id/rollout", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const parsed = creatorCampaignRolloutBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid campaign rollout payload." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const normalized = normalizeCampaignRolloutUpdate({
+      campaign,
+      payload: parsed.data,
+    });
+
+    const updatedRows = await db
+      .update(creatorCampaigns)
+      .set({
+        rolloutMode: normalized.rolloutMode,
+        startsWithAudience: normalized.startsWithAudience,
+        unlockFollowersAt: normalized.unlockFollowersAt,
+        unlockPublicAt: normalized.unlockPublicAt,
+        rolloutNotes: normalized.rolloutNotes,
+        isRolloutActive: normalized.isRolloutActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(creatorCampaigns.id, campaign.id))
+      .returning();
+
+    const updated = updatedRows[0];
+    if (!updated) {
+      return res.status(500).json({ ok: false, error: "Failed to save campaign rollout." });
+    }
+
+    const audienceFit = await loadCreatorCampaignAudienceFit(req.user!.id);
+    const audienceFitItem = audienceFit.items.find((item) => item.campaignId === updated.id) ?? null;
+    const rollout = deriveCreatorCampaignRollout(updated);
+
+    return res.status(201).json({
+      ok: true,
+      campaignId: updated.id,
+      rollout: {
+        rolloutMode: rollout.rolloutMode,
+        startsWithAudience: rollout.startsWithAudience,
+        unlockFollowersAt: rollout.unlockFollowersAt,
+        unlockPublicAt: rollout.unlockPublicAt,
+        rolloutNotes: rollout.rolloutNotes,
+        isRolloutActive: rollout.isRolloutActive,
+      },
+      derivedState: rollout,
+      audienceFitSuggestion: buildCampaignRolloutSuggestion({
+        campaign: updated,
+        audienceFit: audienceFitItem
+          ? {
+            bestAudienceFit: audienceFitItem.bestAudienceFit as CreatorCampaignRolloutAudience | null,
+            bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
+            bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
+          }
+          : null,
+      }),
+    });
+  } catch (error) {
+    const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
+    const message = logCollectionRouteError("/campaigns/:id/rollout", req, error);
+    return res.status(status).json(collectionServerError(message, "Failed to save campaign rollout"));
+  }
+});
+
+r.patch("/campaigns/:id/rollout", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const parsed = updateCreatorCampaignRolloutBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid campaign rollout payload." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const normalized = normalizeCampaignRolloutUpdate({
+      campaign,
+      payload: parsed.data,
+    });
+
+    const updatedRows = await db
+      .update(creatorCampaigns)
+      .set({
+        rolloutMode: normalized.rolloutMode,
+        startsWithAudience: normalized.startsWithAudience,
+        unlockFollowersAt: normalized.unlockFollowersAt,
+        unlockPublicAt: normalized.unlockPublicAt,
+        rolloutNotes: normalized.rolloutNotes,
+        isRolloutActive: normalized.isRolloutActive,
+        updatedAt: new Date(),
+      })
+      .where(eq(creatorCampaigns.id, campaign.id))
+      .returning();
+
+    const updated = updatedRows[0];
+    if (!updated) {
+      return res.status(500).json({ ok: false, error: "Failed to update campaign rollout." });
+    }
+
+    const audienceFit = await loadCreatorCampaignAudienceFit(req.user!.id);
+    const audienceFitItem = audienceFit.items.find((item) => item.campaignId === updated.id) ?? null;
+    const rollout = deriveCreatorCampaignRollout(updated);
+
+    return res.json({
+      ok: true,
+      campaignId: updated.id,
+      rollout: {
+        rolloutMode: rollout.rolloutMode,
+        startsWithAudience: rollout.startsWithAudience,
+        unlockFollowersAt: rollout.unlockFollowersAt,
+        unlockPublicAt: rollout.unlockPublicAt,
+        rolloutNotes: rollout.rolloutNotes,
+        isRolloutActive: rollout.isRolloutActive,
+      },
+      derivedState: rollout,
+      audienceFitSuggestion: buildCampaignRolloutSuggestion({
+        campaign: updated,
+        audienceFit: audienceFitItem
+          ? {
+            bestAudienceFit: audienceFitItem.bestAudienceFit as CreatorCampaignRolloutAudience | null,
+            bestAudienceFitConfidence: audienceFitItem.bestAudienceFitConfidence,
+            bestAudienceFitReason: audienceFitItem.bestAudienceFitReason,
+          }
+          : null,
+      }),
+    });
+  } catch (error) {
+    const status = error instanceof Error && error.message === "Campaign not found." ? 404 : 500;
+    const message = logCollectionRouteError("/campaigns/:id/rollout", req, error);
+    return res.status(status).json(collectionServerError(message, "Failed to update campaign rollout"));
+  }
+});
+
 r.get("/campaigns/following", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -16716,6 +17222,13 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
     const ownerAnalytics = viewerId && viewerId === campaign.creatorUserId
       ? campaignSnapshot
       : null;
+    const ownerRollout = viewerId && viewerId === campaign.creatorUserId
+      ? deriveCreatorCampaignRollout(campaign)
+      : null;
+    const ownerAudienceFitCollection = viewerId && viewerId === campaign.creatorUserId
+      ? await loadCreatorCampaignAudienceFit(campaign.creatorUserId)
+      : null;
+    const ownerAudienceFit = ownerAudienceFitCollection?.items.find((item) => item.campaignId === campaign.id) ?? null;
     const ownerRetrospective = viewerId && viewerId === campaign.creatorUserId && getCreatorCampaignState(campaign) === "past"
       ? (await loadCreatorCampaignRetrospectives(campaign.creatorUserId)).items.find((item) => item.campaignId === campaign.id) ?? null
       : null;
@@ -16732,6 +17245,19 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
         : [],
       recentUpdates: buildCreatorCampaignUpdateItems(detail),
       ownerAnalytics,
+      ownerRollout,
+      ownerRolloutSuggestion: viewerId && viewerId === campaign.creatorUserId
+        ? buildCampaignRolloutSuggestion({
+          campaign,
+          audienceFit: ownerAudienceFit
+            ? {
+              bestAudienceFit: ownerAudienceFit.bestAudienceFit as CreatorCampaignRolloutAudience | null,
+              bestAudienceFitConfidence: ownerAudienceFit.bestAudienceFitConfidence,
+              bestAudienceFitReason: ownerAudienceFit.bestAudienceFitReason,
+            }
+            : null,
+        })
+        : null,
       ownerRetrospective,
       ownerHealth,
       ownerLifecycleSuggestion,
@@ -16773,6 +17299,12 @@ r.post("/campaigns", requireAuth, async (req, res) => {
       startsAt: payload.startsAt ? new Date(payload.startsAt) : null,
       endsAt: payload.endsAt ? new Date(payload.endsAt) : null,
       isActive: payload.isActive ?? true,
+      rolloutMode: payload.rolloutMode ?? "public_first",
+      startsWithAudience: payload.startsWithAudience ?? null,
+      unlockFollowersAt: payload.unlockFollowersAt ? new Date(payload.unlockFollowersAt) : null,
+      unlockPublicAt: payload.unlockPublicAt ? new Date(payload.unlockPublicAt) : null,
+      rolloutNotes: payload.rolloutNotes?.trim() ? payload.rolloutNotes.trim() : null,
+      isRolloutActive: payload.isRolloutActive ?? false,
     });
 
     const inserted = await db.insert(creatorCampaigns).values({
@@ -16843,6 +17375,12 @@ r.patch("/campaigns/:id", requireAuth, async (req, res) => {
         startsAt: payload.startsAt !== undefined ? (payload.startsAt ? new Date(payload.startsAt) : null) : existing.startsAt,
         endsAt: payload.endsAt !== undefined ? (payload.endsAt ? new Date(payload.endsAt) : null) : existing.endsAt,
         isActive: payload.isActive ?? existing.isActive,
+        rolloutMode: payload.rolloutMode ?? (existing.rolloutMode as CreatorCampaignRolloutMode),
+        startsWithAudience: payload.startsWithAudience !== undefined ? payload.startsWithAudience : existing.startsWithAudience,
+        unlockFollowersAt: payload.unlockFollowersAt !== undefined ? (payload.unlockFollowersAt ? new Date(payload.unlockFollowersAt) : null) : existing.unlockFollowersAt,
+        unlockPublicAt: payload.unlockPublicAt !== undefined ? (payload.unlockPublicAt ? new Date(payload.unlockPublicAt) : null) : existing.unlockPublicAt,
+        rolloutNotes: payload.rolloutNotes !== undefined ? (payload.rolloutNotes?.trim() ? payload.rolloutNotes.trim() : null) : existing.rolloutNotes,
+        isRolloutActive: payload.isRolloutActive ?? existing.isRolloutActive,
         updatedAt: new Date(),
       })
       .where(eq(creatorCampaigns.id, campaignId))
