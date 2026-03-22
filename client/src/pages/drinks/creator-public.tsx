@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
+import { buildCampaignRouteWithSurface, trackCampaignSurfaceEvent, trackCampaignSurfaceViewOnce } from "@/lib/drinks/campaignSurfaceAttribution";
 import { trackPinnedCampaignSpotlightEvent, trackPinnedCampaignSpotlightViewOnce } from "@/lib/drinks/pinnedCampaignSpotlight";
 
 interface PublicCreatorDrinkItem {
@@ -471,7 +472,23 @@ export default function PublicDrinkCreatorPage() {
       surface: "creator_public_page",
       referrerRoute: typeof window !== "undefined" ? window.location.pathname : null,
     });
+    trackCampaignSurfaceViewOnce({
+      campaignId: pinnedCampaign.id,
+      surface: "creator_public_page",
+      referrerRoute: typeof window !== "undefined" ? window.location.pathname : null,
+      scope: "creator-pinned",
+    });
   }, [pinnedCampaign]);
+  React.useEffect(() => {
+    for (const campaign of creatorCampaigns) {
+      trackCampaignSurfaceViewOnce({
+        campaignId: campaign.id,
+        surface: "creator_public_page",
+        referrerRoute: typeof window !== "undefined" ? window.location.pathname : null,
+        scope: "creator-campaign-list",
+      });
+    }
+  }, [creatorCampaigns]);
   const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
   const collaborationHighlightsCount = [
     ...creatorCollections.filter((collection) => Boolean(collection.acceptedCollaboration)),
@@ -693,12 +710,18 @@ export default function PublicDrinkCreatorPage() {
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Link href={pinnedCampaign.route}>
+              <Link href={buildCampaignRouteWithSurface(pinnedCampaign.route, "creator_public_page")}>
                 <Button
                   onClick={() => {
                     void trackPinnedCampaignSpotlightEvent({
                       campaignId: pinnedCampaign.id,
                       eventType: "click_pinned_campaign",
+                      surface: "creator_public_page",
+                      referrerRoute: typeof window !== "undefined" ? window.location.pathname : "/drinks/creator",
+                    });
+                    void trackCampaignSurfaceEvent({
+                      campaignId: pinnedCampaign.id,
+                      eventType: "click_campaign",
                       surface: "creator_public_page",
                       referrerRoute: typeof window !== "undefined" ? window.location.pathname : "/drinks/creator",
                     });
@@ -765,7 +788,20 @@ export default function PublicDrinkCreatorPage() {
 
         <div className="space-y-3">
           {otherCreatorCampaigns.map((campaign) => (
-            <CreatorCampaignCard key={campaign.id} campaign={campaign} showCreator={false} />
+            <CreatorCampaignCard
+              key={campaign.id}
+              campaign={campaign}
+              showCreator={false}
+              openHref={buildCampaignRouteWithSurface(campaign.route, "creator_public_page")}
+              onOpenCampaign={() => {
+                void trackCampaignSurfaceEvent({
+                  campaignId: campaign.id,
+                  eventType: "click_campaign",
+                  surface: "creator_public_page",
+                  referrerRoute: typeof window !== "undefined" ? window.location.pathname : "/drinks/creator",
+                });
+              }}
+            />
           ))}
         </div>
       </section>

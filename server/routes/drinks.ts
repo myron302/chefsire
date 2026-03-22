@@ -23,6 +23,7 @@ import {
   creatorCampaignCtaVariants,
   creatorCampaignVariantEvents,
   creatorCampaignSpotlightEvents,
+  creatorCampaignSurfaceEvents,
   creatorDropEvents,
   creatorMembershipSalesLedger,
   creatorMemberships,
@@ -65,6 +66,7 @@ import {
   insertCreatorCampaignCtaVariantSchema,
   insertCreatorCampaignVariantEventSchema,
   insertCreatorCampaignSpotlightEventSchema,
+  insertCreatorCampaignSurfaceEventSchema,
   insertCreatorDropEventSchema,
   insertDrinkCollectionSchema,
   insertDrinkChallengeSchema,
@@ -121,6 +123,8 @@ type CreatorCampaignGoalType = "followers" | "rsvps" | "clicks" | "purchases" | 
 type CreatorCampaignVariantEventType = "view_variant" | "click_variant_cta" | "follow_after_variant" | "rsvp_after_variant";
 type CreatorCampaignSpotlightEventType = "view_pinned_campaign" | "click_pinned_campaign";
 type CreatorCampaignSpotlightSurface = "creator_public_page" | "discover_pinned_campaigns";
+type CreatorCampaignSurfaceEventType = "view_campaign" | "click_campaign" | "follow_after_campaign_surface" | "rsvp_after_campaign_surface";
+type CreatorCampaignSurface = "creator_public_page" | "discover_pinned_campaigns" | "following_feed" | "alerts" | "campaign_detail_page" | "direct_or_unknown";
 type CreatorCollaborationType = "collection" | "drop" | "post" | "roadmap";
 type CreatorCollaborationStatus = "pending" | "accepted" | "declined" | "revoked";
 type DrinkAlertType = typeof DRINK_ALERT_TYPES[keyof typeof DRINK_ALERT_TYPES];
@@ -202,6 +206,7 @@ type CreatorCampaignGoalRecord = typeof creatorCampaignGoals.$inferSelect;
 type CreatorCampaignCtaVariantRecord = typeof creatorCampaignCtaVariants.$inferSelect;
 type CreatorCampaignVariantEventRecord = typeof creatorCampaignVariantEvents.$inferSelect;
 type CreatorCampaignSpotlightEventRecord = typeof creatorCampaignSpotlightEvents.$inferSelect;
+type CreatorCampaignSurfaceEventRecord = typeof creatorCampaignSurfaceEvents.$inferSelect;
 type CreatorDropEventRecord = typeof creatorDropEvents.$inferSelect;
 type CreatorCollaborationRecord = typeof creatorCollaborations.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
@@ -210,6 +215,14 @@ type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "members
 type DrinkCollectionAccessType = "public" | "premium_purchase" | "membership_only";
 
 const CREATOR_DROP_ARCHIVE_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
+const CREATOR_CAMPAIGN_SURFACE_VALUES = [
+  "creator_public_page",
+  "discover_pinned_campaigns",
+  "following_feed",
+  "alerts",
+  "campaign_detail_page",
+  "direct_or_unknown",
+] as const satisfies readonly CreatorCampaignSurface[];
 
 type ResolvedCollectionPurchaseContext = {
   collection: typeof drinkCollections.$inferSelect;
@@ -2248,6 +2261,19 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_surface_events (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
+        event_type text NOT NULL,
+        surface text NOT NULL,
+        user_id varchar REFERENCES users(id) ON DELETE SET NULL,
+        session_key varchar(160),
+        metadata jsonb,
+        created_at timestamp NOT NULL DEFAULT now()
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_drop_events (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         drop_id varchar NOT NULL REFERENCES creator_drops(id) ON DELETE CASCADE,
@@ -2455,6 +2481,12 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_spotlight_events_campaign_event_created_at_idx ON creator_campaign_spotlight_events(campaign_id, event_type, created_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_spotlight_events_user_idx ON creator_campaign_spotlight_events(user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_spotlight_events_session_idx ON creator_campaign_spotlight_events(session_key);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_surface_events_campaign_idx ON creator_campaign_surface_events(campaign_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_surface_events_event_type_idx ON creator_campaign_surface_events(event_type);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_surface_events_surface_idx ON creator_campaign_surface_events(surface);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_surface_events_campaign_surface_event_created_at_idx ON creator_campaign_surface_events(campaign_id, surface, event_type, created_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_surface_events_user_idx ON creator_campaign_surface_events(user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_surface_events_session_idx ON creator_campaign_surface_events(session_key);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_drop_idx ON creator_drop_events(drop_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_event_type_idx ON creator_drop_events(event_type);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_drop_events_drop_event_created_at_idx ON creator_drop_events(drop_id, event_type, created_at);`);
@@ -3064,6 +3096,33 @@ async function trackCreatorCampaignSpotlightEvent(input: {
 }) {
   if (!db) return;
   await db.insert(creatorCampaignSpotlightEvents).values(insertCreatorCampaignSpotlightEventSchema.parse({
+    campaignId: input.campaignId,
+    eventType: input.eventType,
+    surface: input.surface,
+    userId: input.userId ?? null,
+    sessionKey: input.sessionKey ?? null,
+    metadata: input.metadata ?? null,
+  }));
+}
+
+function isCreatorCampaignSurface(value: string | null | undefined): value is CreatorCampaignSurface {
+  return Boolean(value && CREATOR_CAMPAIGN_SURFACE_VALUES.includes(value as CreatorCampaignSurface));
+}
+
+function resolveCreatorCampaignSurface(value: string | null | undefined): CreatorCampaignSurface {
+  return isCreatorCampaignSurface(value) ? value : "direct_or_unknown";
+}
+
+async function trackCreatorCampaignSurfaceEvent(input: {
+  campaignId: string;
+  eventType: CreatorCampaignSurfaceEventType;
+  surface: CreatorCampaignSurface;
+  userId?: string | null;
+  sessionKey?: string | null;
+  metadata?: Record<string, unknown> | null;
+}) {
+  if (!db) return;
+  await db.insert(creatorCampaignSurfaceEvents).values(insertCreatorCampaignSurfaceEventSchema.parse({
     campaignId: input.campaignId,
     eventType: input.eventType,
     surface: input.surface,
@@ -5495,6 +5554,268 @@ async function loadPinnedCampaignSpotlightAnalytics(creatorUserId: string) {
       "Rotation suggestions are lightweight rules only. Nothing auto-rotates.",
     ],
     generatedAt: now.toISOString(),
+  };
+}
+
+async function loadCreatorCampaignSurfaceAttribution(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const campaigns = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+    .orderBy(desc(creatorCampaigns.updatedAt))
+    .limit(120);
+
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  if (campaignIds.length === 0) {
+    return {
+      summary: {
+        totalCampaigns: 0,
+        trackedCampaigns: 0,
+        totalViews: 0,
+        totalClicks: 0,
+        totalDirectFollows: 0,
+        totalDirectRsvps: 0,
+      },
+      supportedSurfaces: CREATOR_CAMPAIGN_SURFACE_VALUES.map((surface) => ({
+        key: surface,
+        observationType: surface === "campaign_detail_page"
+          ? "direct campaign page landings + CTA actions when no upstream entry point is known"
+          : surface === "direct_or_unknown"
+            ? "fallback when no attributable entry point was captured"
+            : "directly observed entry-point impressions and opens",
+      })),
+      overallSurfaces: [] as Array<unknown>,
+      topSurfaceInsights: [] as Array<{
+        campaignId: string | null;
+        campaignName: string | null;
+        surface: CreatorCampaignSurface;
+        headline: string;
+        detail: string;
+        metric: "views" | "clicks" | "follows" | "rsvps";
+        value: number;
+      }>,
+      items: [] as Array<unknown>,
+      attributionNotes: [
+        "Surface attribution stays creator-private and only counts directly observed campaign surface events.",
+        "No campaign surface events have been captured for this creator yet.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const rows = await db
+    .select()
+    .from(creatorCampaignSurfaceEvents)
+    .where(inArray(creatorCampaignSurfaceEvents.campaignId, campaignIds))
+    .orderBy(asc(creatorCampaignSurfaceEvents.createdAt));
+
+  const campaignById = new Map(campaigns.map((campaign) => [campaign.id, campaign]));
+  const items = campaigns.map((campaign) => {
+    const route = `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`;
+    const surfaceMap = new Map<CreatorCampaignSurface, {
+      surface: CreatorCampaignSurface;
+      views: number;
+      clicks: number;
+      clickThroughRate: number | null;
+      clickThroughRateLabel: string;
+      directFollows: number;
+      directRsvps: number;
+      metricLabels: {
+        views: "direct";
+        clicks: "direct";
+        follows: "direct";
+        rsvps: "direct";
+      };
+    }>();
+
+    for (const surface of CREATOR_CAMPAIGN_SURFACE_VALUES) {
+      surfaceMap.set(surface, {
+        surface,
+        views: 0,
+        clicks: 0,
+        clickThroughRate: null,
+        clickThroughRateLabel: "—",
+        directFollows: 0,
+        directRsvps: 0,
+        metricLabels: { views: "direct", clicks: "direct", follows: "direct", rsvps: "direct" },
+      });
+    }
+
+    return {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      slug: campaign.slug,
+      route,
+      visibility: campaign.visibility as CreatorCampaignVisibility,
+      state: getCreatorCampaignState(campaign),
+      surfaces: surfaceMap,
+    };
+  });
+  const itemByCampaignId = new Map(items.map((item) => [item.campaignId, item]));
+
+  for (const row of rows) {
+    const item = itemByCampaignId.get(row.campaignId);
+    const campaign = campaignById.get(row.campaignId);
+    if (!item || !campaign) continue;
+    const surface = resolveCreatorCampaignSurface(row.surface);
+    const metrics = item.surfaces.get(surface);
+    if (!metrics) continue;
+    if (!isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)) continue;
+    if (row.eventType === "view_campaign") metrics.views += 1;
+    if (row.eventType === "click_campaign") metrics.clicks += 1;
+    if (row.eventType === "follow_after_campaign_surface") metrics.directFollows += 1;
+    if (row.eventType === "rsvp_after_campaign_surface") metrics.directRsvps += 1;
+  }
+
+  const serializedItems = items.map((item) => {
+    const surfaces = [...item.surfaces.values()]
+      .map((surface) => {
+        const clickThroughRate = surface.views > 0 ? roundPercent((surface.clicks / surface.views) * 100) : null;
+        return {
+          ...surface,
+          clickThroughRate,
+          clickThroughRateLabel: clickThroughRate === null ? "—" : formatSpotlightPercent(clickThroughRate),
+        };
+      })
+      .filter((surface) => surface.views > 0 || surface.clicks > 0 || surface.directFollows > 0 || surface.directRsvps > 0)
+      .sort((a, b) => (
+        (b.directFollows + b.directRsvps + b.clicks) - (a.directFollows + a.directRsvps + a.clicks)
+        || b.views - a.views
+        || a.surface.localeCompare(b.surface)
+      ));
+
+    const totals = surfaces.reduce((acc, surface) => {
+      acc.views += surface.views;
+      acc.clicks += surface.clicks;
+      acc.directFollows += surface.directFollows;
+      acc.directRsvps += surface.directRsvps;
+      return acc;
+    }, { views: 0, clicks: 0, directFollows: 0, directRsvps: 0 });
+
+    const topSurface = surfaces[0] ?? null;
+
+    return {
+      campaignId: item.campaignId,
+      campaignName: item.campaignName,
+      slug: item.slug,
+      route: item.route,
+      visibility: item.visibility,
+      state: item.state,
+      totals,
+      topSurface: topSurface
+        ? {
+          surface: topSurface.surface,
+          headline: topSurface.directFollows > 0
+            ? `${topSurface.surface.replaceAll("_", " ")} drives the most direct follows`
+            : topSurface.directRsvps > 0
+              ? `${topSurface.surface.replaceAll("_", " ")} is the strongest RSVP source`
+              : topSurface.clicks > 0
+                ? `${topSurface.surface.replaceAll("_", " ")} is currently the main click entry point`
+                : `${topSurface.surface.replaceAll("_", " ")} is currently the main observed surface`,
+        }
+        : null,
+      surfaces,
+    };
+  });
+
+  const totalsBySurface = new Map<CreatorCampaignSurface, {
+    surface: CreatorCampaignSurface;
+    views: number;
+    clicks: number;
+    directFollows: number;
+    directRsvps: number;
+  }>();
+  for (const surface of CREATOR_CAMPAIGN_SURFACE_VALUES) {
+    totalsBySurface.set(surface, { surface, views: 0, clicks: 0, directFollows: 0, directRsvps: 0 });
+  }
+  for (const item of serializedItems) {
+    for (const surface of item.surfaces) {
+      const current = totalsBySurface.get(surface.surface);
+      if (!current) continue;
+      current.views += surface.views;
+      current.clicks += surface.clicks;
+      current.directFollows += surface.directFollows;
+      current.directRsvps += surface.directRsvps;
+    }
+  }
+
+  const topSurfaceInsights = [
+    ...serializedItems.flatMap((item) => item.surfaces.map((surface) => ({ item, surface }))),
+  ]
+    .filter(({ surface }) => surface.views > 0 || surface.clicks > 0 || surface.directFollows > 0 || surface.directRsvps > 0)
+    .map(({ item, surface }) => {
+      const options = [
+        { metric: "follows" as const, value: surface.directFollows, detail: `${surface.surface.replaceAll("_", " ")} generated ${surface.directFollows} directly observed follow${surface.directFollows === 1 ? "" : "s"}.` },
+        { metric: "rsvps" as const, value: surface.directRsvps, detail: `${surface.surface.replaceAll("_", " ")} generated ${surface.directRsvps} directly observed RSVP${surface.directRsvps === 1 ? "" : "s"}.` },
+        { metric: "clicks" as const, value: surface.clicks, detail: `${surface.surface.replaceAll("_", " ")} produced ${surface.clicks} direct campaign click${surface.clicks === 1 ? "" : "s"}${surface.clickThroughRateLabel !== "—" ? ` (${surface.clickThroughRateLabel} CTR).` : "."}` },
+        { metric: "views" as const, value: surface.views, detail: `${surface.surface.replaceAll("_", " ")} produced ${surface.views} observed campaign view${surface.views === 1 ? "" : "s"}.` },
+      ].sort((a, b) => b.value - a.value)[0];
+
+      return {
+        campaignId: item.campaignId,
+        campaignName: item.campaignName,
+        surface: surface.surface,
+        headline: item.topSurface?.headline ?? `${surface.surface.replaceAll("_", " ")} is active`,
+        detail: options.detail,
+        metric: options.metric,
+        value: options.value,
+      };
+    })
+    .filter((item) => item.value > 0)
+    .sort((a, b) => b.value - a.value || (a.campaignName ?? "").localeCompare(b.campaignName ?? ""))
+    .slice(0, 6);
+
+  const overallSurfaces = [...totalsBySurface.values()]
+    .map((surface) => ({
+      ...surface,
+      clickThroughRate: surface.views > 0 ? roundPercent((surface.clicks / surface.views) * 100) : null,
+      clickThroughRateLabel: surface.views > 0 ? formatSpotlightPercent(roundPercent((surface.clicks / surface.views) * 100)) : "—",
+      followRateLabel: surface.clicks > 0 ? formatSpotlightPercent(roundPercent((surface.directFollows / surface.clicks) * 100)) : "—",
+      rsvpRateLabel: surface.clicks > 0 ? formatSpotlightPercent(roundPercent((surface.directRsvps / surface.clicks) * 100)) : "—",
+    }))
+    .filter((surface) => surface.views > 0 || surface.clicks > 0 || surface.directFollows > 0 || surface.directRsvps > 0)
+    .sort((a, b) => (
+      (b.directFollows + b.directRsvps + b.clicks) - (a.directFollows + a.directRsvps + a.clicks)
+      || b.views - a.views
+      || a.surface.localeCompare(b.surface)
+    ));
+
+  return {
+    summary: {
+      totalCampaigns: campaigns.length,
+      trackedCampaigns: serializedItems.filter((item) => item.surfaces.length > 0).length,
+      totalViews: overallSurfaces.reduce((sum, surface) => sum + surface.views, 0),
+      totalClicks: overallSurfaces.reduce((sum, surface) => sum + surface.clicks, 0),
+      totalDirectFollows: overallSurfaces.reduce((sum, surface) => sum + surface.directFollows, 0),
+      totalDirectRsvps: overallSurfaces.reduce((sum, surface) => sum + surface.directRsvps, 0),
+    },
+    supportedSurfaces: CREATOR_CAMPAIGN_SURFACE_VALUES.map((surface) => ({
+      key: surface,
+      observationType: surface === "creator_public_page"
+        ? "direct creator-page campaign impressions and opens"
+        : surface === "discover_pinned_campaigns"
+          ? "direct discover pinned-campaign impressions and opens"
+          : surface === "following_feed"
+            ? "direct following-feed campaign impressions and opens"
+            : surface === "alerts"
+              ? "direct campaign-update alert impressions and opens"
+              : surface === "campaign_detail_page"
+                ? "direct detail-page landings and on-page CTA actions when no upstream entry point is known"
+                : "fallback for unattributed actions or older traffic",
+    })),
+    topSurfaceInsights,
+    items: serializedItems,
+    overallSurfaces,
+    attributionNotes: [
+      "Views and clicks are direct, surface-specific events only where the drinks platform explicitly recorded a campaign impression or open.",
+      "Direct follows and RSVPs are only credited when the action request carried a known campaign surface; otherwise they fall into direct_or_unknown.",
+      "campaign_detail_page is reserved for direct landings or on-page activity without a clearer upstream surface. It is not a catch-all for every campaign visit.",
+      "This layer stays separate from campaign analytics totals, pinned spotlight analytics, and spotlight rotation suggestions.",
+      "No buyer identities, follower identities, or private member details are exposed here.",
+    ],
+    generatedAt: new Date().toISOString(),
   };
 }
 
@@ -14256,6 +14577,7 @@ r.post("/drops/:id/rsvp", requireAuth, async (req, res) => {
 
     const campaignId = typeof req.body?.campaignId === "string" ? req.body.campaignId.trim() : "";
     const variantId = typeof req.body?.variantId === "string" ? req.body.variantId.trim() : "";
+    const surface = resolveCreatorCampaignSurface(typeof req.body?.surface === "string" ? req.body.surface.trim() : null);
     const variant = campaignId && variantId ? await loadCampaignVariantForTracking(campaignId, variantId) : null;
     if (variant) {
       await trackCreatorCampaignVariantEvent({
@@ -14266,6 +14588,20 @@ r.post("/drops/:id/rsvp", requireAuth, async (req, res) => {
         sessionKey: getCampaignEngagementSessionKey(req),
         metadata: { dropId },
       });
+    }
+    if (campaignId) {
+      const campaignRows = await db.select().from(creatorCampaigns).where(eq(creatorCampaigns.id, campaignId)).limit(1);
+      const linkedCampaign = campaignRows[0];
+      if (linkedCampaign) {
+        await trackCreatorCampaignSurfaceEvent({
+          campaignId,
+          eventType: "rsvp_after_campaign_surface",
+          surface,
+          userId: req.user!.id,
+          sessionKey: getCampaignEngagementSessionKey(req),
+          metadata: { dropId, source: variant ? "campaign_variant" : "campaign_surface" },
+        });
+      }
     }
 
     const countRows = await db
@@ -14998,6 +15334,58 @@ r.post("/campaigns/:id/spotlight-events", optionalAuth, async (req, res) => {
   }
 });
 
+r.post("/campaigns/:id/surface-events", optionalAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    const parsed = z.object({
+      eventType: z.enum(["view_campaign", "click_campaign"]),
+      surface: z.enum(CREATOR_CAMPAIGN_SURFACE_VALUES),
+      referrerRoute: z.string().trim().max(240).optional().nullable(),
+    }).safeParse(req.body ?? {});
+
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid campaign surface event payload." });
+    }
+
+    const campaignRows = await db.select().from(creatorCampaigns).where(eq(creatorCampaigns.id, campaignId)).limit(1);
+    const campaign = campaignRows[0];
+    if (!campaign) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    const viewerId = req.user?.id ?? null;
+    const [followedCreatorIds, memberCreatorIds] = await Promise.all([
+      loadFollowedCreatorIdsForUser(viewerId),
+      loadActiveMembershipCreatorIdsForUser(viewerId),
+    ]);
+    if (!canViewerSeeCreatorCampaign({ campaign, viewerId, followedCreatorIds, memberCreatorIds })) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    await trackCreatorCampaignSurfaceEvent({
+      campaignId,
+      eventType: parsed.data.eventType,
+      surface: parsed.data.surface,
+      userId: viewerId,
+      sessionKey: getCampaignEngagementSessionKey(req),
+      metadata: parsed.data.referrerRoute ? { referrerRoute: parsed.data.referrerRoute } : null,
+    });
+
+    return res.status(201).json({ ok: true });
+  } catch (error) {
+    const message = logCollectionRouteError("/campaigns/:id/surface-events", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to track campaign surface event"));
+  }
+});
+
 r.get("/creator-dashboard/pinned-campaign", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -15233,6 +15621,7 @@ r.post("/campaigns/:id/follow", requireAuth, async (req, res) => {
     }
 
     const variantId = typeof req.body?.variantId === "string" ? req.body.variantId.trim() : "";
+    const surface = resolveCreatorCampaignSurface(typeof req.body?.surface === "string" ? req.body.surface.trim() : null);
     const variant = variantId ? await loadCampaignVariantForTracking(campaignId, variantId) : null;
 
     await db.insert(creatorCampaignFollows).values(insertCreatorCampaignFollowSchema.parse({
@@ -15249,6 +15638,14 @@ r.post("/campaigns/:id/follow", requireAuth, async (req, res) => {
         sessionKey: getCampaignEngagementSessionKey(req),
       });
     }
+    await trackCreatorCampaignSurfaceEvent({
+      campaignId,
+      eventType: "follow_after_campaign_surface",
+      surface,
+      userId: req.user!.id,
+      sessionKey: getCampaignEngagementSessionKey(req),
+      metadata: variant ? { source: "campaign_variant", variantId: variant.id } : { source: "campaign_surface" },
+    });
 
     const followerCountMap = await loadCampaignFollowerCountMap([campaignId]);
     return res.status(201).json({
@@ -20441,6 +20838,31 @@ r.get("/creator-dashboard/campaign-analytics", requireAuth, async (req, res) => 
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-analytics", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign analytics"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-surface-attribution", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const attribution = await loadCreatorCampaignSurfaceAttribution(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: attribution.summary,
+      supportedSurfaces: attribution.supportedSurfaces,
+      overallSurfaces: attribution.overallSurfaces,
+      topSurfaceInsights: attribution.topSurfaceInsights,
+      items: attribution.items,
+      attributionNotes: attribution.attributionNotes,
+      generatedAt: attribution.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-surface-attribution", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign surface attribution"));
   }
 });
 

@@ -13,6 +13,7 @@ import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/Creat
 import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
 import DropRsvpButton from "@/components/drinks/DropRsvpButton";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
+import { normalizeCampaignSurfaceAttributionSurface, readCampaignSurfaceTouch, setCampaignSurfaceTouch, trackCampaignDetailLandingOnce, trackCampaignSurfaceEvent } from "@/lib/drinks/campaignSurfaceAttribution";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -281,6 +282,13 @@ export default function DrinkCampaignDetailPage() {
   const campaign = query.data?.campaign ?? null;
   const activeVariant = query.data?.activeVariant ?? null;
   const variantDestination = query.data ? buildVariantDestination(query.data) : null;
+  const currentSurface = (() => {
+    if (typeof window === "undefined" || !query.data?.campaign.id) return "direct_or_unknown" as const;
+    const params = new URLSearchParams(window.location.search);
+    const fromQuery = normalizeCampaignSurfaceAttributionSurface(params.get("surface"));
+    if (fromQuery !== "direct_or_unknown") return fromQuery;
+    return readCampaignSurfaceTouch(query.data.campaign.id);
+  })();
 
   React.useEffect(() => {
     if (!query.data?.activeVariant) return;
@@ -296,8 +304,30 @@ export default function DrinkCampaignDetailPage() {
     );
   }, [query.data]);
 
+  React.useEffect(() => {
+    if (!query.data?.campaign.id || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const querySurface = normalizeCampaignSurfaceAttributionSurface(params.get("surface"));
+    if (querySurface !== "direct_or_unknown") {
+      setCampaignSurfaceTouch(query.data.campaign.id, querySurface);
+      return;
+    }
+    trackCampaignDetailLandingOnce({
+      campaignId: query.data.campaign.id,
+      surface: "campaign_detail_page",
+      referrerRoute: `${window.location.pathname}${window.location.search}`,
+    });
+    setCampaignSurfaceTouch(query.data.campaign.id, "campaign_detail_page");
+  }, [query.data?.campaign.id]);
+
   const trackVariantClick = React.useCallback(() => {
     if (!query.data?.activeVariant) return;
+    void trackCampaignSurfaceEvent({
+      campaignId: query.data.campaign.id,
+      eventType: "click_campaign",
+      surface: currentSurface === "direct_or_unknown" ? "campaign_detail_page" : currentSurface,
+      referrerRoute: typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : null,
+    });
     void fetch(
       `/api/drinks/campaigns/${encodeURIComponent(query.data.campaign.id)}/variants/${encodeURIComponent(query.data.activeVariant.id)}/events`,
       {
@@ -348,6 +378,7 @@ export default function DrinkCampaignDetailPage() {
                   campaignId={campaign?.id}
                   creatorUserId={campaign?.creatorUserId}
                   variant={campaign?.isFollowing ? "outline" : "default"}
+                  followRequestBody={{ surface: currentSurface === "direct_or_unknown" ? "campaign_detail_page" : currentSurface }}
                 />
                 {user?.id && user.id === query.data.campaign.creatorUserId ? (
                   <CampaignPinButton
@@ -400,7 +431,7 @@ export default function DrinkCampaignDetailPage() {
                       campaignId={campaign?.id}
                       creatorUserId={campaign?.creatorUserId}
                       size="default"
-                      followRequestBody={{ variantId: activeVariant.id }}
+                      followRequestBody={{ variantId: activeVariant.id, surface: currentSurface === "direct_or_unknown" ? "campaign_detail_page" : currentSurface }}
                       onBeforeToggle={trackVariantClick}
                       idleLabel={activeVariant.ctaText}
                       activeLabel="Following"
@@ -409,7 +440,7 @@ export default function DrinkCampaignDetailPage() {
                   {activeVariant.ctaTargetType === "rsvp" && query.data.linkedContent.drops[0] ? (
                     <DropRsvpButton
                       drop={query.data.linkedContent.drops[0]}
-                      requestBody={{ campaignId: query.data.campaign.id, variantId: activeVariant.id }}
+                      requestBody={{ campaignId: query.data.campaign.id, variantId: activeVariant.id, surface: currentSurface === "direct_or_unknown" ? "campaign_detail_page" : currentSurface }}
                       onBeforeToggle={trackVariantClick}
                       idleLabel={activeVariant.ctaText}
                       activeLabel="RSVP saved"
