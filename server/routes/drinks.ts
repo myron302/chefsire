@@ -4829,6 +4829,59 @@ type CreatorCampaignRecoveryPlan = {
   generatedFrom: string[];
 };
 
+type CreatorCampaignLaunchReadinessCheckStatus = "pass" | "warning" | "fail";
+type CreatorCampaignLaunchReadinessState = "ready" | "almost_ready" | "missing_key_items" | "blocked";
+type CreatorCampaignPreflightKind = "launch" | "unlock";
+
+type CreatorCampaignLaunchReadinessCheck = {
+  key: string;
+  label: string;
+  status: CreatorCampaignLaunchReadinessCheckStatus;
+  note: string;
+  suggestedFix?: string | null;
+};
+
+type CreatorCampaignLaunchReadinessItem = {
+  campaignId: string;
+  campaignName: string;
+  campaignSlug: string;
+  campaignRoute: string;
+  campaignState: CreatorCampaignState;
+  readinessState: CreatorCampaignLaunchReadinessState;
+  readinessScore: number;
+  preflightKind: CreatorCampaignPreflightKind;
+  preflightLabel: string;
+  targetAt: string | null;
+  currentAudience: CreatorCampaignRolloutAudience | null;
+  nextAudience: CreatorCampaignRolloutAudience | null;
+  checks: CreatorCampaignLaunchReadinessCheck[];
+  blockers: string[];
+  warnings: string[];
+  recommendedFixes: string[];
+  nextLaunchStep: string | null;
+  linkedSummary: {
+    drops: number;
+    collections: number;
+    promos: number;
+    posts: number;
+    roadmap: number;
+    memberOnlyCollections: number;
+    publicUpdates: number;
+    recentUpdates: number;
+  };
+};
+
+type CreatorCampaignLaunchReadinessSummary = {
+  totalCampaigns: number;
+  readyCount: number;
+  almostReadyCount: number;
+  missingKeyItemsCount: number;
+  blockedCount: number;
+  launchCount: number;
+  unlockCount: number;
+  dueSoonCount: number;
+};
+
 type CreatorCampaignActionCenterSourceType =
   | "recommendation"
   | "recovery"
@@ -10627,6 +10680,455 @@ function buildCreatorCampaignUpdateItems(detail: Awaited<ReturnType<typeof loadC
   return updates
     .sort((a, b) => new Date(b.timestamp ?? 0).getTime() - new Date(a.timestamp ?? 0).getTime())
     .slice(0, 8);
+}
+
+function formatCampaignPreflightAudience(audience: CreatorCampaignRolloutAudience | null | undefined) {
+  if (audience === "members") return "members";
+  if (audience === "followers") return "followers";
+  return "public";
+}
+
+function campaignReadinessWindowLabel(value: string | null, fallback: string) {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(date);
+}
+
+function buildCampaignLaunchReadinessState(checks: CreatorCampaignLaunchReadinessCheck[]): CreatorCampaignLaunchReadinessState {
+  const failCount = checks.filter((check) => check.status === "fail").length;
+  const warningCount = checks.filter((check) => check.status === "warning").length;
+  if (failCount >= 3) return "blocked";
+  if (failCount >= 1) return "missing_key_items";
+  if (warningCount >= 2) return "almost_ready";
+  return "ready";
+}
+
+function buildCampaignLaunchReadinessScore(checks: CreatorCampaignLaunchReadinessCheck[]) {
+  if (checks.length === 0) return 100;
+  const score = checks.reduce((total, check) => total + (check.status === "pass" ? 100 : check.status === "warning" ? 65 : 20), 0) / checks.length;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function summarizeCampaignReadiness(items: CreatorCampaignLaunchReadinessItem[]): CreatorCampaignLaunchReadinessSummary {
+  return {
+    totalCampaigns: items.length,
+    readyCount: items.filter((item) => item.readinessState === "ready").length,
+    almostReadyCount: items.filter((item) => item.readinessState === "almost_ready").length,
+    missingKeyItemsCount: items.filter((item) => item.readinessState === "missing_key_items").length,
+    blockedCount: items.filter((item) => item.readinessState === "blocked").length,
+    launchCount: items.filter((item) => item.preflightKind === "launch").length,
+    unlockCount: items.filter((item) => item.preflightKind === "unlock").length,
+    dueSoonCount: items.filter((item) => {
+      if (!item.targetAt) return false;
+      const targetTime = new Date(item.targetAt).getTime();
+      return Number.isFinite(targetTime) && targetTime <= Date.now() + (72 * 60 * 60 * 1000);
+    }).length,
+  };
+}
+
+function buildCampaignReadinessCandidateSortValue(input: {
+  campaign: CreatorCampaignRecord;
+  rollout: ReturnType<typeof deriveCreatorCampaignRollout>;
+  nextDropAt: string | null;
+  now: Date;
+}) {
+  const state = getCreatorCampaignState(input.campaign, input.now);
+  const rolloutMissingUnlock = state === "active"
+    && input.rollout.rolloutMode === "staged"
+    && input.rollout.isRolloutActive
+    && !input.rollout.nextUnlockAt;
+  if (rolloutMissingUnlock) return input.now.getTime() - 1;
+  const target = state === "upcoming"
+    ? input.campaign.startsAt?.getTime() ?? (input.nextDropAt ? new Date(input.nextDropAt).getTime() : Number.POSITIVE_INFINITY)
+    : input.rollout.nextUnlockAt
+      ? new Date(input.rollout.nextUnlockAt).getTime()
+      : input.nextDropAt
+        ? new Date(input.nextDropAt).getTime()
+        : Number.POSITIVE_INFINITY;
+  return Number.isFinite(target) ? target : Number.POSITIVE_INFINITY;
+}
+
+function buildCampaignPreflightKind(input: {
+  campaign: CreatorCampaignRecord;
+  rollout: ReturnType<typeof deriveCreatorCampaignRollout>;
+  nextDropAt: string | null;
+  now: Date;
+}) {
+  const state = getCreatorCampaignState(input.campaign, input.now);
+  if (state === "active" && (input.rollout.nextAudience || (input.rollout.rolloutMode === "staged" && input.rollout.isRolloutActive))) {
+    const audience = formatCampaignPreflightAudience(input.rollout.nextAudience);
+    return {
+      preflightKind: "unlock" as const,
+      preflightLabel: input.rollout.nextAudience
+        ? `Preflight for ${audience} unlock`
+        : "Preflight for next audience unlock",
+      targetAt: input.rollout.nextUnlockAt ?? input.nextDropAt ?? null,
+    };
+  }
+  const launchTarget = input.campaign.startsAt?.toISOString?.() ?? input.nextDropAt ?? null;
+  return {
+    preflightKind: "launch" as const,
+    preflightLabel: input.nextDropAt && state !== "past"
+      ? "Preflight for next scheduled launch beat"
+      : "Preflight before launch",
+    targetAt: launchTarget,
+  };
+}
+
+export async function loadCreatorCampaignLaunchReadiness(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const now = new Date();
+  const campaigns = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(and(
+      eq(creatorCampaigns.creatorUserId, creatorUserId),
+      campaignId ? eq(creatorCampaigns.id, campaignId) : sql`true`,
+    ))
+    .orderBy(desc(creatorCampaigns.updatedAt))
+    .limit(campaignId ? 1 : 120);
+
+  if (campaigns.length === 0) {
+    return {
+      summary: summarizeCampaignReadiness([]),
+      items: [] as CreatorCampaignLaunchReadinessItem[],
+      attributionNotes: [
+        "Launch readiness stays lightweight and rules-based. It only inspects campaign, rollout, linked content, CTA, update, and recovery signals the drinks platform already stores.",
+        "Timing advisor still answers when to launch. Rollout advisor still answers which sequence to use. Readiness only answers whether the current campaign is prepared enough to launch or unlock.",
+      ],
+      generatedAt: now.toISOString(),
+    };
+  }
+
+  const linkMap = await loadCreatorCampaignLinksByCampaignIds(campaigns.map((row) => row.id));
+  const allDropIds = [...new Set(campaigns.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+    .filter((link) => link.targetType === "drop")
+    .map((link) => link.targetId)))];
+  const dropRows = allDropIds.length
+    ? await db
+      .select({ id: creatorDrops.id, scheduledFor: creatorDrops.scheduledFor })
+      .from(creatorDrops)
+      .where(inArray(creatorDrops.id, allDropIds))
+    : [];
+  const dropMap = new Map(dropRows.map((row) => [row.id, row]));
+
+  const candidateCampaigns = campaignId
+    ? campaigns
+    : campaigns
+      .filter((campaign) => {
+        const rollout = deriveCreatorCampaignRollout(campaign, now);
+        const state = getCreatorCampaignState(campaign, now);
+        const nextDrop = (linkMap.get(campaign.id) ?? [])
+          .filter((link) => link.targetType === "drop")
+          .map((link) => dropMap.get(link.targetId))
+          .filter((drop): drop is { id: string; scheduledFor: Date } => Boolean(drop))
+          .filter((drop) => drop.scheduledFor > now)
+          .sort((a, b) => a.scheduledFor.getTime() - b.scheduledFor.getTime())[0] ?? null;
+        return state === "upcoming"
+          || Boolean(rollout.nextAudience)
+          || (state === "active" && rollout.rolloutMode === "staged" && rollout.isRolloutActive)
+          || Boolean(nextDrop);
+      })
+      .sort((a, b) => {
+        const rolloutA = deriveCreatorCampaignRollout(a, now);
+        const rolloutB = deriveCreatorCampaignRollout(b, now);
+        const nextDropA = (linkMap.get(a.id) ?? [])
+          .filter((link) => link.targetType === "drop")
+          .map((link) => dropMap.get(link.targetId))
+          .filter((drop): drop is { id: string; scheduledFor: Date } => Boolean(drop))
+          .filter((drop) => drop.scheduledFor > now)
+          .sort((x, y) => x.scheduledFor.getTime() - y.scheduledFor.getTime())[0];
+        const nextDropB = (linkMap.get(b.id) ?? [])
+          .filter((link) => link.targetType === "drop")
+          .map((link) => dropMap.get(link.targetId))
+          .filter((drop): drop is { id: string; scheduledFor: Date } => Boolean(drop))
+          .filter((drop) => drop.scheduledFor > now)
+          .sort((x, y) => x.scheduledFor.getTime() - y.scheduledFor.getTime())[0];
+        return buildCampaignReadinessCandidateSortValue({
+          campaign: a,
+          rollout: rolloutA,
+          nextDropAt: nextDropA?.scheduledFor.toISOString() ?? null,
+          now,
+        }) - buildCampaignReadinessCandidateSortValue({
+          campaign: b,
+          rollout: rolloutB,
+          nextDropAt: nextDropB?.scheduledFor.toISOString() ?? null,
+          now,
+        });
+      })
+      .slice(0, 8);
+
+  const [healthCollection, details] = await Promise.all([
+    loadCreatorCampaignHealth(creatorUserId),
+    Promise.all(candidateCampaigns.map((campaign) => loadCreatorCampaignDetail(campaign, creatorUserId))),
+  ]);
+  const healthByCampaignId = new Map(healthCollection.items.map((item) => [item.campaignId, item]));
+
+  const items: CreatorCampaignLaunchReadinessItem[] = details.map((detail, index) => {
+    const campaign = candidateCampaigns[index]!;
+    const rollout = detail.campaign.rollout ?? deriveCreatorCampaignRollout(campaign, now);
+    const linkedDrops = detail.linkedContent.drops;
+    const linkedCollections = detail.linkedContent.collections;
+    const linkedPosts = detail.linkedContent.posts;
+    const linkedPromos = detail.linkedContent.promos;
+    const linkedRoadmap = detail.linkedContent.roadmap;
+    const updates = buildCreatorCampaignUpdateItems(detail);
+    const health = healthByCampaignId.get(campaign.id) ?? null;
+    const recoveryPlan = health ? buildCampaignRecoveryPlan(health) : null;
+    const nextDrop = linkedDrops
+      .filter((drop) => new Date(drop.scheduledFor).getTime() > now.getTime())
+      .sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())[0] ?? null;
+    const { preflightKind, preflightLabel, targetAt } = buildCampaignPreflightKind({
+      campaign,
+      rollout,
+      nextDropAt: nextDrop?.scheduledFor ?? null,
+      now,
+    });
+    const targetAudience = preflightKind === "unlock" ? (rollout.nextAudience ?? rollout.currentAudience) : rollout.currentAudience;
+    const recentUpdateWindowMs = 14 * 24 * 60 * 60 * 1000;
+    const hasRecentUpdate = updates.some((update) => {
+      const time = update.timestamp ? new Date(update.timestamp).getTime() : Number.NaN;
+      return Number.isFinite(time) && (now.getTime() - time) <= recentUpdateWindowMs;
+    });
+    const publicFacingUpdateCount = linkedPosts.filter((post) => post.visibility === "public").length
+      + linkedRoadmap.filter((item) => item.visibility === "public").length
+      + linkedDrops.filter((drop) => drop.visibility === "public").length;
+    const memberOnlyCollectionCount = linkedCollections.filter((collection) => collection.accessType === "membership_only").length;
+    const hasMeaningfulLinkedContent = (linkedDrops.length + linkedCollections.length + linkedPosts.length + linkedPromos.length + linkedRoadmap.length) > 0;
+    const hasActionableDestination = linkedDrops.length > 0 || linkedCollections.length > 0 || linkedPromos.length > 0 || linkedPosts.length > 0 || linkedRoadmap.length > 0;
+    const hasCtaVariant = Boolean(detail.activeVariant) || detail.variants.length > 0;
+    const checks: CreatorCampaignLaunchReadinessCheck[] = [];
+    const pushCheck = (
+      key: string,
+      label: string,
+      status: CreatorCampaignLaunchReadinessCheckStatus,
+      note: string,
+      suggestedFix?: string | null,
+    ) => {
+      checks.push({ key, label, status, note, suggestedFix });
+    };
+
+    pushCheck(
+      "linked_launch_asset",
+      "Linked launch asset",
+      hasMeaningfulLinkedContent ? "pass" : "fail",
+      hasMeaningfulLinkedContent
+        ? `${linkedDrops.length} drops, ${linkedCollections.length} collections, ${linkedPosts.length} posts, and ${linkedRoadmap.length} roadmap notes are already linked.`
+        : "Add at least one linked drop, collection, post, or roadmap item so this campaign points somewhere real.",
+      hasMeaningfulLinkedContent ? null : "Link a drop or another campaign asset.",
+    );
+
+    pushCheck(
+      "cta_path",
+      "CTA path",
+      hasCtaVariant ? "pass" : hasActionableDestination ? "warning" : "fail",
+      hasCtaVariant
+        ? "A campaign CTA variant is already configured."
+        : hasActionableDestination
+          ? "No CTA variant yet, but the campaign still has a default linked destination path."
+          : "There is no CTA variant and no obvious linked destination path yet.",
+      hasCtaVariant || hasActionableDestination ? "Optional: add a CTA variant to sharpen the ask." : "Add a CTA variant or link a launch destination.",
+    );
+
+    const pinnedStatus: CreatorCampaignLaunchReadinessCheckStatus = detail.campaign.isPinned
+      ? "pass"
+      : preflightKind === "launch" && detail.campaign.visibility === "public"
+        ? "warning"
+        : "warning";
+    pushCheck(
+      "spotlight_plan",
+      "Pinned / spotlight plan",
+      pinnedStatus,
+      detail.campaign.isPinned
+        ? "This campaign is already pinned for creator-side spotlighting."
+        : preflightKind === "launch"
+          ? "Not pinned yet. That is okay, but a near-launch campaign is easier to find when it has a spotlight plan."
+          : "No pinned spotlight is set right now.",
+      detail.campaign.isPinned ? null : "Consider pinning this campaign or featuring it on the creator page.",
+    );
+
+    pushCheck(
+      "recent_update",
+      "Recent creator update",
+      hasRecentUpdate ? "pass" : updates.length > 0 ? "warning" : "warning",
+      hasRecentUpdate
+        ? "The campaign has a recent post, drop, roadmap note, or promo update."
+        : updates.length > 0
+          ? "The campaign has linked updates, but nothing fresh in roughly the last two weeks."
+          : "No linked campaign updates or posts yet.",
+      hasRecentUpdate ? null : "Publish one short campaign update before launch or unlock.",
+    );
+
+    const stagedNeedsFollowerUnlock = rollout.rolloutMode === "staged"
+      && rollout.isRolloutActive
+      && detail.campaign.visibility !== "members"
+      && rollout.startsWithAudience === "members"
+      && detail.campaign.visibility !== "members";
+    const stagedNeedsPublicUnlock = rollout.rolloutMode === "staged"
+      && rollout.isRolloutActive
+      && detail.campaign.visibility === "public";
+    const hasRequiredUnlockConfig = (!stagedNeedsFollowerUnlock || Boolean(rollout.unlockFollowersAt))
+      && (!stagedNeedsPublicUnlock || Boolean(rollout.unlockPublicAt));
+
+    pushCheck(
+      "rollout_timing",
+      "Rollout timing config",
+      rollout.rolloutMode !== "staged"
+        ? "pass"
+        : hasRequiredUnlockConfig && (rollout.nextAudience ? Boolean(rollout.nextUnlockAt) : true)
+          ? "pass"
+          : "fail",
+      rollout.rolloutMode !== "staged"
+        ? `This campaign uses ${rollout.rolloutMode.replaceAll("_", " ")} instead of a staged unlock.`
+        : hasRequiredUnlockConfig && (rollout.nextAudience ? Boolean(rollout.nextUnlockAt) : true)
+          ? "Follower/public unlock times are configured for the current staged rollout."
+          : "Staged rollout is enabled, but a required follower or public unlock time is still missing.",
+      rollout.rolloutMode !== "staged" ? null : "Add the missing staged unlock timing in campaign rollout settings.",
+    );
+
+    const memberFocused = detail.campaign.visibility === "members"
+      || rollout.startsWithAudience === "members"
+      || rollout.currentAudience === "members"
+      || rollout.nextAudience === "members";
+    pushCheck(
+      "member_destination",
+      "Member-only destination",
+      memberFocused
+        ? memberOnlyCollectionCount > 0 || linkedDrops.some((drop) => drop.visibility === "members")
+          ? "pass"
+          : "fail"
+        : "pass",
+      memberFocused
+        ? memberOnlyCollectionCount > 0 || linkedDrops.some((drop) => drop.visibility === "members")
+          ? "A member-only collection or members-only drop is linked."
+          : "This campaign is member-focused, but there is no linked member-only collection or members-only drop yet."
+        : "This campaign is not currently member-gated, so a member-only asset is optional.",
+      memberFocused && memberOnlyCollectionCount === 0 && !linkedDrops.some((drop) => drop.visibility === "members")
+        ? "Link a member-only collection or members-only drop."
+        : null,
+    );
+
+    const strategyImpliesRsvp = linkedDrops.length > 0 || linkedPromos.length > 0;
+    pushCheck(
+      "launch_support",
+      "Launch support (RSVP / promo)",
+      strategyImpliesRsvp
+        ? linkedDrops.length > 0 || linkedPromos.length > 0
+          ? "pass"
+          : "warning"
+        : "warning",
+      strategyImpliesRsvp
+        ? linkedDrops.length > 0
+          ? `${linkedDrops.length} linked drops give this campaign an RSVP / Notify Me path.`
+          : `${linkedPromos.length} linked promos are present, but there is no linked drop RSVP path yet.`
+        : "No drop or promo support is linked yet. That can be okay for a content-first arc, but launch campaigns usually benefit from one.",
+      linkedDrops.length > 0 ? null : "Link a scheduled drop or a lightweight promo support path.",
+    );
+
+    const nextAudienceNeedsPublicSignal = preflightKind === "unlock" && targetAudience === "public";
+    pushCheck(
+      "audience_unlock_preflight",
+      preflightKind === "unlock" ? "Next audience unlock readiness" : "Launch audience readiness",
+      nextAudienceNeedsPublicSignal
+        ? (hasCtaVariant || publicFacingUpdateCount > 0 ? "pass" : "fail")
+        : preflightKind === "unlock" && targetAudience === "followers"
+          ? rollout.nextUnlockAt ? "pass" : "fail"
+          : "pass",
+      nextAudienceNeedsPublicSignal
+        ? hasCtaVariant || publicFacingUpdateCount > 0
+          ? "Public unlock has a public-facing CTA or update path."
+          : "Public unlock is next, but there is no public-facing CTA variant or public update yet."
+        : preflightKind === "unlock" && targetAudience === "followers"
+          ? rollout.nextUnlockAt
+            ? `Follower unlock is scheduled for ${campaignReadinessWindowLabel(rollout.nextUnlockAt, "the configured follower window")}.`
+            : "Follower unlock is next, but the follower timing is missing."
+          : "No extra audience unlock requirement is blocking this phase.",
+      nextAudienceNeedsPublicSignal && !(hasCtaVariant || publicFacingUpdateCount > 0)
+        ? "Add a public-facing CTA or one public campaign update before the unlock."
+        : preflightKind === "unlock" && targetAudience === "followers" && !rollout.nextUnlockAt
+          ? "Set the follower unlock time."
+          : null,
+    );
+
+    const highPriorityRecoveryIssue = recoveryPlan?.actionState === "action_needed"
+      && (recoveryPlan.rescuePriority === "urgent" || recoveryPlan.rescuePriority === "high");
+    pushCheck(
+      "recovery_risk",
+      "High-priority recovery risk",
+      highPriorityRecoveryIssue ? "fail" : health?.healthState === "watch" ? "warning" : "pass",
+      highPriorityRecoveryIssue
+        ? recoveryPlan?.riskReason ?? "A high-priority recovery issue is still unresolved."
+        : health?.healthState === "watch"
+          ? health.primaryConcern ?? "Campaign is on watch, so double-check momentum before the next step."
+          : "No high-priority recovery blocker is currently unresolved.",
+      highPriorityRecoveryIssue
+        ? (recoveryPlan?.suggestedActions[0]?.label ? `${recoveryPlan.suggestedActions[0].label}.` : "Resolve the top recovery issue first.")
+        : null,
+    );
+
+    const readinessState = buildCampaignLaunchReadinessState(checks);
+    const readinessScore = buildCampaignLaunchReadinessScore(checks);
+    const blockers = checks.filter((check) => check.status === "fail").map((check) => check.note);
+    const warnings = checks.filter((check) => check.status === "warning").map((check) => check.note);
+    const recommendedFixes = uniqueStringList(checks
+      .map((check) => check.suggestedFix?.trim())
+      .filter((value): value is string => Boolean(value)), 6);
+    const nextLaunchStep = recommendedFixes[0]
+      ?? (readinessState === "ready"
+        ? preflightKind === "unlock" && rollout.nextAudience
+          ? `Ready for the ${formatCampaignPreflightAudience(rollout.nextAudience)} unlock.`
+          : "Ready to launch."
+        : null);
+
+    return {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      campaignSlug: campaign.slug,
+      campaignRoute: detail.campaign.route,
+      campaignState: detail.campaign.state,
+      readinessState,
+      readinessScore,
+      preflightKind,
+      preflightLabel,
+      targetAt,
+      currentAudience: rollout.currentAudience ?? null,
+      nextAudience: rollout.nextAudience ?? null,
+      checks,
+      blockers,
+      warnings,
+      recommendedFixes,
+      nextLaunchStep,
+      linkedSummary: {
+        drops: linkedDrops.length,
+        collections: linkedCollections.length,
+        promos: linkedPromos.length,
+        posts: linkedPosts.length,
+        roadmap: linkedRoadmap.length,
+        memberOnlyCollections: memberOnlyCollectionCount,
+        publicUpdates: publicFacingUpdateCount,
+        recentUpdates: updates.length,
+      },
+    };
+  }).sort((a, b) => {
+    const aBlocked = a.readinessState === "blocked" ? 0 : a.readinessState === "missing_key_items" ? 1 : a.readinessState === "almost_ready" ? 2 : 3;
+    const bBlocked = b.readinessState === "blocked" ? 0 : b.readinessState === "missing_key_items" ? 1 : b.readinessState === "almost_ready" ? 2 : 3;
+    const aTime = a.targetAt ? new Date(a.targetAt).getTime() : Number.POSITIVE_INFINITY;
+    const bTime = b.targetAt ? new Date(b.targetAt).getTime() : Number.POSITIVE_INFINITY;
+    return aTime - bTime || aBlocked - bBlocked || a.readinessScore - b.readinessScore || a.campaignName.localeCompare(b.campaignName);
+  });
+
+  return {
+    summary: summarizeCampaignReadiness(items),
+    items,
+    attributionNotes: [
+      "Launch readiness is a lightweight checklist layer built from existing campaign records, rollout config, linked content, CTA variants, recent updates, and the existing health / recovery signals.",
+      "It does not create a new workflow engine. Missing items are inferred from what the campaign already links or configures today.",
+      "Timing advisor still covers when to launch or unlock. Rollout advisor still covers which audience sequence to use. Action center still prioritizes next moves. Recovery still handles rescue actions.",
+    ],
+    generatedAt: now.toISOString(),
+  };
 }
 
 async function loadCampaignAlertRecipientIds(
@@ -23328,6 +23830,41 @@ r.get("/creator-dashboard/campaign-timing-advisor", requireAuth, async (req, res
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-timing-advisor", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign timing advisor"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-launch-readiness", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId.trim() : "";
+    if (campaignId) {
+      const ownedCampaign = await db
+        .select({ id: creatorCampaigns.id })
+        .from(creatorCampaigns)
+        .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, req.user!.id)))
+        .limit(1);
+      if (!ownedCampaign[0]) {
+        return res.status(404).json({ ok: false, error: "Campaign not found." });
+      }
+    }
+
+    const readiness = await loadCreatorCampaignLaunchReadiness(req.user!.id, campaignId || null);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      campaignId: campaignId || null,
+      summary: readiness.summary,
+      items: readiness.items,
+      attributionNotes: readiness.attributionNotes,
+      generatedAt: readiness.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-launch-readiness", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign launch readiness"));
   }
 });
 
