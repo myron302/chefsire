@@ -25982,6 +25982,33 @@ type CreatorCampaignExperimentFixPattern = {
   exampleCampaign: CreatorCampaignExperimentLibraryExample | null;
 };
 
+type CreatorCampaignFixMatchConfidence = "low" | "medium" | "high";
+
+type CreatorCampaignFixMatchAlternative = {
+  experimentType: CreatorCampaignExperimentType;
+  label: string;
+  reason: string;
+  confidence: CreatorCampaignFixMatchConfidence;
+};
+
+type CreatorCampaignFixMatchItem = {
+  campaignId: string;
+  campaignName: string;
+  campaignSlug: string;
+  campaignRoute: string;
+  campaignStatus: CreatorCampaignState;
+  healthState: CreatorCampaignHealthState;
+  primaryProblem: string;
+  recommendedExperimentType: CreatorCampaignExperimentType;
+  recommendationTitle: string;
+  recommendationMessage: string;
+  matchReason: string;
+  confidence: CreatorCampaignFixMatchConfidence;
+  basedOnHistory: string | null;
+  supportingSignals: string[];
+  alternativeFixes: CreatorCampaignFixMatchAlternative[];
+};
+
 type CreatorCampaignExperimentLibraryRun = {
   campaign: Pick<CreatorCampaignRecord, "id" | "name" | "slug" | "visibility" | "rolloutMode">;
   experiment: SerializedCreatorCampaignExperiment;
@@ -26795,6 +26822,465 @@ async function loadCreatorCampaignExperimentLibrary(creatorUserId: string) {
   };
 }
 
+function recoveryActionToExperimentType(actionType: CreatorCampaignRecoveryActionType): CreatorCampaignExperimentType | null {
+  switch (actionType) {
+    case "publish_update":
+      return "publish_update";
+    case "add_drop":
+      return "add_drop";
+    case "strengthen_cta":
+      return "strengthen_cta";
+    case "launch_promo":
+      return "launch_promo";
+    case "push_rsvp":
+      return "push_rsvp";
+    case "add_member_only_collection":
+      return "add_member_only_collection";
+    case "promote_membership":
+      return "promote_membership";
+    case "celebrate_milestone":
+      return "publish_update";
+    default:
+      return null;
+  }
+}
+
+function actionCenterActionToExperimentType(actionType: CreatorCampaignActionCenterActionType): CreatorCampaignExperimentType | null {
+  switch (actionType) {
+    case "publish_update":
+      return "publish_update";
+    case "add_drop":
+      return "add_drop";
+    case "strengthen_cta":
+      return "strengthen_cta";
+    case "launch_promo":
+      return "launch_promo";
+    case "push_rsvp":
+      return "push_rsvp";
+    case "add_member_only_collection":
+      return "add_member_only_collection";
+    case "promote_membership":
+      return "promote_membership";
+    case "celebrate_milestone":
+      return "publish_update";
+    default:
+      return null;
+  }
+}
+
+function creatorCampaignFixMatchConfidence(score: number, supportingReasonCount: number, hasHistory: boolean) {
+  if (score >= 12 || (score >= 10 && hasHistory) || (score >= 9 && supportingReasonCount >= 3)) {
+    return "high" as const;
+  }
+  if (score >= 6 || (score >= 5 && (hasHistory || supportingReasonCount >= 2))) {
+    return "medium" as const;
+  }
+  return "low" as const;
+}
+
+async function loadCreatorCampaignFixMatching(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [
+    health,
+    recoveryPlans,
+    actionCenter,
+    bottlenecks,
+    experimentLibrary,
+    campaigns,
+  ] = await Promise.all([
+    loadCreatorCampaignHealth(creatorUserId),
+    loadCreatorCampaignRecoveryPlans(creatorUserId),
+    loadCreatorCampaignActionCenter(creatorUserId, campaignId ?? null),
+    loadCreatorCampaignFunnelBottlenecks(creatorUserId, campaignId ?? null),
+    loadCreatorCampaignExperimentLibrary(creatorUserId),
+    db
+      .select()
+      .from(creatorCampaigns)
+      .where(campaignId
+        ? and(eq(creatorCampaigns.creatorUserId, creatorUserId), eq(creatorCampaigns.id, campaignId))
+        : eq(creatorCampaigns.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorCampaigns.updatedAt), desc(creatorCampaigns.createdAt))
+      .limit(campaignId ? 1 : 120),
+  ]);
+
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+  const [timingAdvisor, experimentRows] = campaignIds.length
+    ? await Promise.all([
+      loadCreatorCampaignTimingAdvisor(creatorUserId, campaignId ?? null),
+      db
+        .select({
+          campaignId: creatorCampaignExperiments.campaignId,
+          experimentType: creatorCampaignExperiments.experimentType,
+          status: creatorCampaignExperiments.status,
+        })
+        .from(creatorCampaignExperiments)
+        .where(inArray(creatorCampaignExperiments.campaignId, campaignIds))
+        .orderBy(desc(creatorCampaignExperiments.updatedAt), desc(creatorCampaignExperiments.createdAt))
+        .limit(400),
+    ])
+    : [
+      {
+        items: [] as Awaited<ReturnType<typeof loadCreatorCampaignTimingAdvisor>>["items"],
+        generatedAt: new Date().toISOString(),
+      },
+      [] as Array<{
+        campaignId: string;
+        experimentType: string;
+        status: string;
+      }>,
+    ];
+
+  const healthByCampaignId = new Map(health.items.map((item) => [item.campaignId, item]));
+  const recoveryByCampaignId = new Map(recoveryPlans.items.map((item) => [item.campaignId, item]));
+  const bottleneckByCampaignId = new Map(bottlenecks.items.map((item) => [item.campaignId, item]));
+  const timingByCampaignId = new Map(timingAdvisor.items.map((item) => [item.campaignId, item]));
+  const actionsByCampaignId = new Map<string, CreatorCampaignActionCenterItem[]>();
+  for (const item of actionCenter.items) {
+    const list = actionsByCampaignId.get(item.campaignId) ?? [];
+    list.push(item);
+    actionsByCampaignId.set(item.campaignId, list);
+  }
+  const activeExperimentsByCampaignId = new Map<string, Set<CreatorCampaignExperimentType>>();
+  for (const row of experimentRows) {
+    if (row.status !== "active") continue;
+    const list = activeExperimentsByCampaignId.get(row.campaignId) ?? new Set<CreatorCampaignExperimentType>();
+    list.add(row.experimentType as CreatorCampaignExperimentType);
+    activeExperimentsByCampaignId.set(row.campaignId, list);
+  }
+
+  const librarySummaryByType = new Map(experimentLibrary.items.map((item) => [item.experimentType, item]));
+  const libraryPatternsByType = new Map<CreatorCampaignExperimentType, CreatorCampaignExperimentFixPattern[]>();
+  for (const pattern of experimentLibrary.fixPatterns) {
+    for (const experimentType of pattern.supportingExperimentTypes) {
+      const list = libraryPatternsByType.get(experimentType) ?? [];
+      list.push(pattern);
+      libraryPatternsByType.set(experimentType, list);
+    }
+  }
+
+  const relevantCampaigns = campaigns.filter((campaign) => {
+    const healthItem = healthByCampaignId.get(campaign.id);
+    const recovery = recoveryByCampaignId.get(campaign.id);
+    const bottleneckItem = bottleneckByCampaignId.get(campaign.id);
+    const actions = actionsByCampaignId.get(campaign.id) ?? [];
+    if (campaignId && campaign.id === campaignId) return true;
+    if (!healthItem || healthItem.status === "past") return false;
+    return healthItem.isOnWatchlist
+      || healthItem.goalsBehind > 0
+      || (bottleneckItem?.topBottlenecks.length ?? 0) > 0
+      || recovery?.actionState === "action_needed"
+      || actions.length > 0;
+  });
+
+  const items: CreatorCampaignFixMatchItem[] = [];
+
+  for (const campaign of relevantCampaigns) {
+    const healthItem = healthByCampaignId.get(campaign.id);
+    if (!healthItem) continue;
+    const recovery = recoveryByCampaignId.get(campaign.id) ?? null;
+    const bottleneckItem = bottleneckByCampaignId.get(campaign.id) ?? null;
+    const timingAdvice = timingByCampaignId.get(campaign.id) ?? null;
+    const actionItems = actionsByCampaignId.get(campaign.id) ?? [];
+    const activeExperimentTypes = activeExperimentsByCampaignId.get(campaign.id) ?? new Set<CreatorCampaignExperimentType>();
+    const suggestedExperimentTypes = buildCreatorCampaignExperimentSuggestions({ bottleneckItem, timingAdvice });
+
+    const candidateMap = new Map<CreatorCampaignExperimentType, {
+      experimentType: CreatorCampaignExperimentType;
+      label: string;
+      score: number;
+      reasons: string[];
+      supportingSignals: string[];
+      sourceKinds: string[];
+      historySummary: string | null;
+      historyBoost: number;
+    }>();
+
+    const upsertCandidate = (
+      experimentType: CreatorCampaignExperimentType,
+      payload: {
+        score: number;
+        reason: string;
+        signals?: Array<string | null | undefined>;
+        sourceKind: string;
+      },
+    ) => {
+      if (activeExperimentTypes.has(experimentType)) return;
+      const existing = candidateMap.get(experimentType) ?? {
+        experimentType,
+        label: creatorCampaignExperimentTypeLabel(experimentType),
+        score: 0,
+        reasons: [],
+        supportingSignals: [],
+        sourceKinds: [],
+        historySummary: null,
+        historyBoost: 0,
+      };
+      existing.score += payload.score;
+      existing.reasons = uniqueStringList([...existing.reasons, payload.reason], 5);
+      existing.supportingSignals = uniqueStringList([...existing.supportingSignals, ...(payload.signals ?? [])], 8);
+      existing.sourceKinds = uniqueStringList([...existing.sourceKinds, payload.sourceKind], 6);
+      candidateMap.set(experimentType, existing);
+    };
+
+    for (const suggestion of suggestedExperimentTypes) {
+      upsertCandidate(suggestion.experimentType, {
+        score: suggestion.source === "bottleneck" ? 6 : 4,
+        reason: suggestion.reason,
+        signals: [
+          bottleneckItem?.topBottlenecks[0]
+            ? `Top bottleneck: ${bottleneckItem.topBottlenecks[0].fromLabel} → ${bottleneckItem.topBottlenecks[0].toLabel}`
+            : timingAdvice?.title,
+        ],
+        sourceKind: suggestion.source,
+      });
+    }
+
+    for (const action of recovery?.suggestedActions ?? []) {
+      const experimentType = recoveryActionToExperimentType(action.actionType);
+      if (!experimentType) continue;
+      upsertCandidate(experimentType, {
+        score: recovery?.rescuePriority === "urgent" ? 5 : recovery?.rescuePriority === "high" ? 4 : 3,
+        reason: action.description,
+        signals: [recovery?.riskReason, ...action.supportingSignals],
+        sourceKind: "recovery",
+      });
+    }
+
+    for (const action of actionItems) {
+      const experimentType = actionCenterActionToExperimentType(action.actionType);
+      if (!experimentType) continue;
+      upsertCandidate(experimentType, {
+        score: action.priority === "urgent" ? 5 : action.priority === "high" ? 4 : action.priority === "medium" ? 3 : 2,
+        reason: action.message,
+        signals: [action.title, ...action.supportingSignals],
+        sourceKind: "action_center",
+      });
+    }
+
+    if (healthItem.recentViews >= 20 && healthItem.recentClicks === 0) {
+      upsertCandidate("strengthen_cta", {
+        score: 4,
+        reason: "Views are landing but the campaign is not turning that attention into clicks yet.",
+        signals: [`${healthItem.recentViews} recent views`, `${healthItem.recentClicks} recent clicks`],
+        sourceKind: "health",
+      });
+    }
+
+    if (healthItem.recentClicks >= 8 && healthItem.recentPurchases === 0) {
+      upsertCandidate("launch_promo", {
+        score: 4,
+        reason: "Click interest exists, but conversion still looks soft enough to justify a lightweight promo test.",
+        signals: [`${healthItem.recentClicks} recent clicks`, `${healthItem.recentPurchases} recent purchases`],
+        sourceKind: "health",
+      });
+    }
+
+    if (healthItem.linkedDropsCount > 0 && healthItem.recentRsvps <= Math.max(1, Math.floor(healthItem.recentFollowers / 3))) {
+      upsertCandidate("push_rsvp", {
+        score: 3,
+        reason: "The campaign has a destination already, but RSVP intent still lags behind visible follower interest.",
+        signals: [`${healthItem.recentFollowers} recent followers`, `${healthItem.recentRsvps} recent RSVPs`],
+        sourceKind: "health",
+      });
+    }
+
+    if ((healthItem.status === "active" || healthItem.status === "upcoming") && healthItem.linkedDropsCount === 0 && healthItem.recentFollowers > 0) {
+      upsertCandidate("add_drop", {
+        score: 3,
+        reason: "The campaign is collecting attention without a concrete drop moment yet.",
+        signals: [`${healthItem.recentFollowers} recent followers`, `${healthItem.linkedDropsCount} linked drops`],
+        sourceKind: "health",
+      });
+    }
+
+    if (
+      healthItem.linkedPostsCount === 0
+      || healthItem.watchReasons.some((reason) => reason.includes("No recent drops or updates"))
+      || healthItem.watchReasons.some((reason) => reason.includes("gone quiet"))
+    ) {
+      upsertCandidate("publish_update", {
+        score: 3,
+        reason: "The campaign story looks quiet enough that a fresh update is the lightest next corrective test.",
+        signals: [
+          healthItem.recentActivityAt
+            ? `Last activity ${new Date(healthItem.recentActivityAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+            : "No recent activity",
+          `${healthItem.linkedPostsCount} linked updates`,
+        ],
+        sourceKind: "health",
+      });
+    }
+
+    if (healthItem.visibility === "members" && healthItem.linkedCollectionsCount === 0) {
+      upsertCandidate("add_member_only_collection", {
+        score: 4,
+        reason: "This is member-focused, but it still lacks a clear members-only destination to send people into.",
+        signals: [`Visibility: ${healthItem.visibility}`, `${healthItem.linkedCollectionsCount} linked collections`],
+        sourceKind: "health",
+      });
+    }
+
+    if (healthItem.visibility === "members" && healthItem.recentFollowers > 0 && healthItem.recentMemberships === 0) {
+      upsertCandidate("promote_membership", {
+        score: 3,
+        reason: "Member intent is not converting yet, so the membership value proposition likely needs a clearer test.",
+        signals: [`${healthItem.recentFollowers} recent followers`, `${healthItem.recentMemberships} recent memberships`],
+        sourceKind: "health",
+      });
+    }
+
+    if ((healthItem.healthState === "watch" || healthItem.healthState === "at_risk") && healthItem.recentViews <= 12) {
+      upsertCandidate("spotlight_campaign", {
+        score: 2,
+        reason: "Top-of-funnel attention is light enough that a spotlight test could help rebuild reach before harder asks.",
+        signals: [`${healthItem.recentViews} recent views`, healthItem.primaryConcern],
+        sourceKind: "health",
+      });
+    }
+
+    const recommendationExperimentType = healthItem.recommendation
+      ? recommendationToActionType(healthItem.recommendation.recommendationType)
+      : null;
+    const recommendationMappedExperiment = recommendationExperimentType
+      ? actionCenterActionToExperimentType(recommendationExperimentType)
+      : null;
+    if (recommendationMappedExperiment) {
+      upsertCandidate(recommendationMappedExperiment, {
+        score: 2,
+        reason: `Aligned with the existing recommendation layer: ${healthItem.recommendation?.title}.`,
+        signals: [healthItem.recommendation?.title],
+        sourceKind: "recommendation",
+      });
+    }
+
+    for (const candidate of candidateMap.values()) {
+      const history = librarySummaryByType.get(candidate.experimentType);
+      const patterns = libraryPatternsByType.get(candidate.experimentType) ?? [];
+      if (history?.readableRunsCount) {
+        const directionalWins = history.improvedCount - history.declinedCount;
+        const historyBoost = directionalWins > 0
+          ? Math.min(4, 1 + directionalWins)
+          : directionalWins < 0
+            ? Math.max(-3, directionalWins)
+            : 0;
+        candidate.score += historyBoost;
+        candidate.historyBoost += historyBoost;
+        candidate.historySummary = directionalWins > 0
+          ? `${history.label} improved ${history.improvedCount} of ${history.readableRunsCount} readable run${history.readableRunsCount === 1 ? "" : "s"} for this creator.`
+          : directionalWins < 0
+            ? `${history.label} has looked mixed to weak in this creator’s own history (${history.declinedCount} declined vs ${history.improvedCount} improved readable runs).`
+            : `${history.label} has looked mixed so far in this creator’s own history.`;
+      }
+
+      if (patterns.length) {
+        const strongestPattern = [...patterns]
+          .sort((left, right) => right.supportCount - left.supportCount || left.title.localeCompare(right.title))[0] ?? null;
+        if (strongestPattern) {
+          const patternBoost = strongestPattern.confidence === "high" ? 2 : strongestPattern.confidence === "medium" ? 1.5 : 1;
+          candidate.score += patternBoost;
+          candidate.historyBoost += patternBoost;
+          candidate.historySummary = candidate.historySummary
+            ? `${candidate.historySummary} ${strongestPattern.title}.`
+            : strongestPattern.summary;
+        }
+      }
+    }
+
+    const rankedCandidates = [...candidateMap.values()]
+      .sort((left, right) => right.score - left.score || right.historyBoost - left.historyBoost || left.label.localeCompare(right.label));
+    const bestCandidate = rankedCandidates[0];
+    if (!bestCandidate) continue;
+
+    const topBottleneck = bottleneckItem?.topBottlenecks[0] ?? null;
+    const topAction = actionItems[0] ?? null;
+    const primaryProblem = topBottleneck
+      ? `Weak ${topBottleneck.fromLabel.toLowerCase()} → ${topBottleneck.toLabel.toLowerCase()} handoff`
+      : recovery?.riskReason
+        ?? healthItem.primaryConcern
+        ?? (topAction ? topAction.title : "Campaign progress is stalled");
+
+    const hasHistory = Boolean(bestCandidate.historySummary && bestCandidate.historyBoost > 0);
+    const confidence = creatorCampaignFixMatchConfidence(bestCandidate.score, bestCandidate.reasons.length, hasHistory);
+    const supportingSignals = uniqueStringList([
+      topBottleneck
+        ? `${topBottleneck.fromLabel} → ${topBottleneck.toLabel} is currently ${topBottleneck.severity}`
+        : null,
+      healthItem.primaryConcern,
+      ...healthItem.watchReasons,
+      recovery?.riskReason,
+      ...(topAction?.supportingSignals ?? []),
+      ...bestCandidate.supportingSignals,
+      healthItem.goalsBehind > 0 ? `${healthItem.goalsBehind} goal${healthItem.goalsBehind === 1 ? "" : "s"} behind pace` : null,
+    ], 6);
+
+    const recommendationTitle = `${bestCandidate.label} next on ${campaign.name}`;
+    const recommendationMessage = hasHistory
+      ? `${primaryProblem}. ${bestCandidate.label} is the clearest lightweight next fix from the current campaign signals, and your own history suggests it has been one of your better recovery experiments here.`
+      : `${primaryProblem}. ${bestCandidate.label} is the clearest lightweight next fix from the current bottleneck, health, recovery, and action-center signals.`;
+
+    const alternativeFixes = rankedCandidates
+      .slice(1, 4)
+      .map((candidate) => ({
+        experimentType: candidate.experimentType,
+        label: candidate.label,
+        reason: candidate.reasons[0] ?? `Alternative derived from the current ${candidate.sourceKinds[0] ?? "campaign"} signals.`,
+        confidence: creatorCampaignFixMatchConfidence(candidate.score, candidate.reasons.length, Boolean(candidate.historySummary && candidate.historyBoost > 0)),
+      }));
+
+    items.push({
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      campaignSlug: campaign.slug,
+      campaignRoute: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      campaignStatus: healthItem.status,
+      healthState: healthItem.healthState,
+      primaryProblem,
+      recommendedExperimentType: bestCandidate.experimentType,
+      recommendationTitle,
+      recommendationMessage,
+      matchReason: uniqueStringList([
+        bestCandidate.reasons[0],
+        bestCandidate.sourceKinds.includes("bottleneck") ? "Current bottleneck mapping agrees with this fix." : null,
+        bestCandidate.sourceKinds.includes("recovery") ? "Recovery actions also point in the same direction." : null,
+        bestCandidate.sourceKinds.includes("action_center") ? "The action center is already prioritizing a similar move." : null,
+        hasHistory ? "Past creator-specific experiment outcomes also support reusing this fix." : null,
+      ], 4).join(" "),
+      confidence,
+      basedOnHistory: bestCandidate.historySummary,
+      supportingSignals,
+      alternativeFixes,
+    });
+  }
+
+  const sortedItems = items.sort((left, right) => {
+    const confidenceRank = (value: CreatorCampaignFixMatchConfidence) => value === "high" ? 3 : value === "medium" ? 2 : 1;
+    return confidenceRank(right.confidence) - confidenceRank(left.confidence)
+      || healthWatchWeight(right.healthState) - healthWatchWeight(left.healthState)
+      || left.campaignName.localeCompare(right.campaignName);
+  });
+
+  return {
+    summary: {
+      campaignsConsidered: campaigns.filter((campaign) => {
+        const healthItem = healthByCampaignId.get(campaign.id);
+        return healthItem && healthItem.status !== "past";
+      }).length,
+      matchedCampaigns: sortedItems.length,
+      highConfidenceCount: sortedItems.filter((item) => item.confidence === "high").length,
+      historyBackedCount: sortedItems.filter((item) => Boolean(item.basedOnHistory)).length,
+      watchOrAtRiskCount: sortedItems.filter((item) => item.healthState === "watch" || item.healthState === "at_risk").length,
+    },
+    items: sortedItems,
+    attributionNotes: uniqueStringList([
+      "Fix matching is creator-private and stays lightweight: it only derives a best next fix from the current bottlenecks, health/watchlist, recovery, action-center, timing, and experiment-library layers already in the drinks platform.",
+      "This is not a giant optimizer or workflow engine. It simply ranks the next corrective experiment type that best matches the campaign’s current state plus the creator’s own past experiment outcomes where those exist.",
+      "History-based nudges only use the creator’s existing experiment library and before/after outcome reads. No new tracking warehouse or AI decision model is introduced here.",
+    ], 5),
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 const campaignActionStateUpdateSchema = z.object({
   campaignId: z.string().trim().min(1).optional(),
 });
@@ -26923,6 +27409,41 @@ r.get("/creator-dashboard/campaign-experiment-library", requireAuth, async (req,
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-experiment-library", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign experiment library"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-fix-matching", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = typeof req.query.campaignId === "string" ? req.query.campaignId.trim() : "";
+    if (campaignId) {
+      const ownedCampaign = await db
+        .select({ id: creatorCampaigns.id })
+        .from(creatorCampaigns)
+        .where(and(eq(creatorCampaigns.id, campaignId), eq(creatorCampaigns.creatorUserId, req.user!.id)))
+        .limit(1);
+      if (!ownedCampaign[0]) {
+        return res.status(404).json({ ok: false, error: "Campaign not found." });
+      }
+    }
+
+    const matching = await loadCreatorCampaignFixMatching(req.user!.id, campaignId || null);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      campaignId: campaignId || null,
+      summary: matching.summary,
+      items: matching.items,
+      attributionNotes: matching.attributionNotes,
+      generatedAt: matching.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-fix-matching", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign fix matching"));
   }
 });
 
