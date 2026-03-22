@@ -5883,6 +5883,393 @@ async function loadCreatorCampaignAnalytics(creatorUserId: string) {
   return loadCreatorCampaignPerformanceSnapshots(creatorUserId);
 }
 
+type CreatorCampaignRolloutStageAnalytics = {
+  audience: CreatorCampaignRolloutAudience;
+  label: string;
+  views: number;
+  clicks: number;
+  rsvps: number;
+};
+
+type CreatorCampaignRolloutAnalyticsItem = {
+  campaignId: string;
+  slug: string;
+  name: string;
+  route: string;
+  visibility: CreatorCampaignVisibility;
+  state: CreatorCampaignState;
+  hasRolloutConfig: boolean;
+  hasSequencedRollout: boolean;
+  rolloutMode: CreatorCampaignRolloutMode;
+  currentRolloutState: CreatorCampaignRolloutState;
+  startsWithAudience: CreatorCampaignRolloutAudience;
+  unlockFollowersAt: string | null;
+  unlockPublicAt: string | null;
+  currentAudience: CreatorCampaignRolloutAudience;
+  nextAudience: CreatorCampaignRolloutAudience | null;
+  membersStageViews: number;
+  followersStageViews: number;
+  publicStageViews: number;
+  membersStageClicks: number;
+  followersStageClicks: number;
+  publicStageClicks: number;
+  membersStageRsvps: number;
+  followersStageRsvps: number;
+  publicStageRsvps: number;
+  followersUnlockedAt: string | null;
+  publicUnlockedAt: string | null;
+  approximatePurchasesAfterFollowerUnlock: number | null;
+  approximatePurchasesAfterPublicUnlock: number | null;
+  approximateMembershipsAfterMemberFirstRollout: number | null;
+  stagePerformance: CreatorCampaignRolloutStageAnalytics[];
+  insights: string[];
+};
+
+type CreatorCampaignRolloutAnalyticsSummary = {
+  totalCampaigns: number;
+  campaignsWithRolloutConfig: number;
+  campaignsWithSequencedRollout: number;
+  activeSequencedRollouts: number;
+  totalStageViews: number;
+  totalStageClicks: number;
+  totalStageRsvps: number;
+};
+
+function campaignRolloutStageLabel(audience: CreatorCampaignRolloutAudience) {
+  switch (audience) {
+    case "members":
+      return "Member stage";
+    case "followers":
+      return "Follower stage";
+    case "public":
+    default:
+      return "Public stage";
+  }
+}
+
+function emptyCreatorCampaignRolloutStageAnalytics(
+  audience: CreatorCampaignRolloutAudience,
+): CreatorCampaignRolloutStageAnalytics {
+  return {
+    audience,
+    label: campaignRolloutStageLabel(audience),
+    views: 0,
+    clicks: 0,
+    rsvps: 0,
+  };
+}
+
+function getCampaignRolloutStageAt(
+  campaign: Pick<CreatorCampaignRecord, "visibility" | "startsAt" | "endsAt" | "isActive" | "createdAt" | "rolloutMode" | "startsWithAudience" | "unlockFollowersAt" | "unlockPublicAt" | "rolloutNotes" | "isRolloutActive">,
+  occurredAt: Date,
+) {
+  const rollout = deriveCreatorCampaignRollout(campaign, occurredAt);
+  return rollout.currentAudience;
+}
+
+function rolloutStageWeightedEngagement(stage: CreatorCampaignRolloutStageAnalytics) {
+  return stage.rsvps * 4 + stage.clicks * 3 + stage.views;
+}
+
+function buildCreatorCampaignRolloutInsights(input: {
+  stages: CreatorCampaignRolloutStageAnalytics[];
+  visibility: CreatorCampaignVisibility;
+  approximatePurchasesAfterFollowerUnlock: number | null;
+  approximatePurchasesAfterPublicUnlock: number | null;
+  approximateMembershipsAfterMemberFirstRollout: number | null;
+}) {
+  const insights: string[] = [];
+  const stageByAudience = new Map(input.stages.map((stage) => [stage.audience, stage]));
+  const rankedStages = [...input.stages]
+    .sort((a, b) => rolloutStageWeightedEngagement(b) - rolloutStageWeightedEngagement(a) || b.clicks - a.clicks || b.views - a.views);
+  const strongestStage = rankedStages[0] ?? null;
+  const membersStage = stageByAudience.get("members") ?? emptyCreatorCampaignRolloutStageAnalytics("members");
+  const followersStage = stageByAudience.get("followers") ?? emptyCreatorCampaignRolloutStageAnalytics("followers");
+  const publicStage = stageByAudience.get("public") ?? emptyCreatorCampaignRolloutStageAnalytics("public");
+
+  if (strongestStage && rolloutStageWeightedEngagement(strongestStage) > 0) {
+    if (strongestStage.audience === "public") {
+      insights.push("Most engagement happened after public unlock.");
+    } else if (strongestStage.audience === "members") {
+      insights.push("Member-stage engagement outperformed follower/public stages.");
+    } else if (strongestStage.audience === "followers") {
+      insights.push("Follower-stage activity led the rollout before wider access opened.");
+    }
+  }
+
+  if (followersStage.views > membersStage.views && followersStage.clicks + followersStage.rsvps <= Math.max(1, membersStage.clicks + membersStage.rsvps)) {
+    insights.push("Follower unlock increased reach but not conversion.");
+  }
+
+  if (membersStage.clicks + membersStage.rsvps > 0 && publicStage.views > 0) {
+    const memberConversionRate = (membersStage.clicks + membersStage.rsvps) / Math.max(1, membersStage.views);
+    const publicConversionRate = (publicStage.clicks + publicStage.rsvps) / Math.max(1, publicStage.views);
+    if (memberConversionRate > publicConversionRate * 1.25) {
+      insights.push("Early member access generated stronger conversions.");
+    }
+  }
+
+  if (input.visibility === "public" && publicStage.clicks + publicStage.rsvps > (membersStage.clicks + membersStage.rsvps + followersStage.clicks + followersStage.rsvps)) {
+    insights.push("This campaign may not need a long staged rollout next time.");
+  }
+
+  if ((input.approximatePurchasesAfterPublicUnlock ?? 0) > (input.approximatePurchasesAfterFollowerUnlock ?? 0)) {
+    insights.push("Approximate purchase activity skewed later, after public unlock.");
+  }
+
+  if ((input.approximateMembershipsAfterMemberFirstRollout ?? 0) > 0 && membersStage.rsvps + membersStage.clicks > 0) {
+    insights.push("Member-first access coincided with approximate membership conversion signal.");
+  }
+
+  return insights.slice(0, 4);
+}
+
+async function loadCreatorCampaignRolloutAnalytics(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const campaignRows = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(campaignId
+      ? and(eq(creatorCampaigns.creatorUserId, creatorUserId), eq(creatorCampaigns.id, campaignId))
+      : eq(creatorCampaigns.creatorUserId, creatorUserId))
+    .orderBy(desc(creatorCampaigns.updatedAt))
+    .limit(campaignId ? 1 : 120);
+
+  if (!campaignRows.length) {
+    return {
+      summary: {
+        totalCampaigns: 0,
+        campaignsWithRolloutConfig: 0,
+        campaignsWithSequencedRollout: 0,
+        activeSequencedRollouts: 0,
+        totalStageViews: 0,
+        totalStageClicks: 0,
+        totalStageRsvps: 0,
+      } satisfies CreatorCampaignRolloutAnalyticsSummary,
+      items: [] as CreatorCampaignRolloutAnalyticsItem[],
+      attributionNotes: [
+        "Rollout analytics classify timing against rollout unlock boundaries, not perfect causal exposure.",
+        "No creator campaigns exist yet for this view, so there is no rollout stage activity to summarize.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const campaignsById = new Map(campaignRows.map((campaign) => [campaign.id, campaign]));
+  const campaignIds = campaignRows.map((campaign) => campaign.id);
+  const linkMap = await loadCreatorCampaignLinksByCampaignIds(campaignIds);
+
+  const dropIds = [...new Set(
+    campaignRows.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "drop")
+      .map((link) => link.targetId)),
+  )];
+  const collectionIds = [...new Set(
+    campaignRows.flatMap((campaign) => (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId)),
+  )];
+
+  const [surfaceEventRows, dropEventRows, rsvpRows, purchaseRows, membershipRows] = await Promise.all([
+    db.select({
+      campaignId: creatorCampaignSurfaceEvents.campaignId,
+      eventType: creatorCampaignSurfaceEvents.eventType,
+      createdAt: creatorCampaignSurfaceEvents.createdAt,
+    }).from(creatorCampaignSurfaceEvents).where(inArray(creatorCampaignSurfaceEvents.campaignId, campaignIds)).orderBy(asc(creatorCampaignSurfaceEvents.createdAt)),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropEvents.dropId,
+          eventType: creatorDropEvents.eventType,
+          createdAt: creatorDropEvents.createdAt,
+        }).from(creatorDropEvents).where(inArray(creatorDropEvents.dropId, dropIds)).orderBy(asc(creatorDropEvents.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; eventType: string; createdAt: Date }>),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropRsvps.dropId,
+          createdAt: creatorDropRsvps.createdAt,
+        }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).orderBy(asc(creatorDropRsvps.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; createdAt: Date }>),
+    collectionIds.length
+      ? db.select({
+          collectionId: drinkCollectionPurchases.collectionId,
+          createdAt: drinkCollectionPurchases.createdAt,
+          status: drinkCollectionPurchases.status,
+        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds)).orderBy(asc(drinkCollectionPurchases.createdAt))
+      : Promise.resolve([] as Array<{ collectionId: string; createdAt: Date; status: string }>),
+    db.select({
+      createdAt: creatorMemberships.createdAt,
+    }).from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, creatorUserId)).orderBy(asc(creatorMemberships.createdAt)),
+  ]);
+
+  const campaignIdsByDropId = new Map<string, string[]>();
+  const campaignIdsByCollectionId = new Map<string, string[]>();
+  for (const campaign of campaignRows) {
+    for (const link of linkMap.get(campaign.id) ?? []) {
+      if (link.targetType === "drop") {
+        const current = campaignIdsByDropId.get(link.targetId) ?? [];
+        current.push(campaign.id);
+        campaignIdsByDropId.set(link.targetId, current);
+      }
+      if (link.targetType === "collection") {
+        const current = campaignIdsByCollectionId.get(link.targetId) ?? [];
+        current.push(campaign.id);
+        campaignIdsByCollectionId.set(link.targetId, current);
+      }
+    }
+  }
+
+  const stageMapByCampaignId = new Map<string, Map<CreatorCampaignRolloutAudience, CreatorCampaignRolloutStageAnalytics>>();
+  const ensureStage = (campaignIdValue: string, audience: CreatorCampaignRolloutAudience) => {
+    const current = stageMapByCampaignId.get(campaignIdValue) ?? new Map<CreatorCampaignRolloutAudience, CreatorCampaignRolloutStageAnalytics>();
+    if (!stageMapByCampaignId.has(campaignIdValue)) stageMapByCampaignId.set(campaignIdValue, current);
+    const stage = current.get(audience) ?? emptyCreatorCampaignRolloutStageAnalytics(audience);
+    if (!current.has(audience)) current.set(audience, stage);
+    return stage;
+  };
+
+  for (const campaign of campaignRows) {
+    ensureStage(campaign.id, "members");
+    ensureStage(campaign.id, "followers");
+    ensureStage(campaign.id, "public");
+  }
+
+  for (const row of surfaceEventRows) {
+    const campaign = campaignsById.get(row.campaignId);
+    if (!campaign || !isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)) continue;
+    const stage = ensureStage(row.campaignId, getCampaignRolloutStageAt(campaign, row.createdAt));
+    if (row.eventType === "view_campaign") stage.views += 1;
+    if (row.eventType === "click_campaign") stage.clicks += 1;
+  }
+
+  for (const row of dropEventRows) {
+    const campaignIdsForDrop = campaignIdsByDropId.get(row.dropId) ?? [];
+    for (const campaignIdValue of campaignIdsForDrop) {
+      const campaign = campaignsById.get(campaignIdValue);
+      if (!campaign || !isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)) continue;
+      const stage = ensureStage(campaignIdValue, getCampaignRolloutStageAt(campaign, row.createdAt));
+      if (row.eventType === "view_drop") stage.views += 1;
+      if (row.eventType === "click_drop_target") stage.clicks += 1;
+    }
+  }
+
+  for (const row of rsvpRows) {
+    const campaignIdsForDrop = campaignIdsByDropId.get(row.dropId) ?? [];
+    for (const campaignIdValue of campaignIdsForDrop) {
+      const campaign = campaignsById.get(campaignIdValue);
+      if (!campaign || !isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)) continue;
+      ensureStage(campaignIdValue, getCampaignRolloutStageAt(campaign, row.createdAt)).rsvps += 1;
+    }
+  }
+
+  const items = campaignRows.map((campaign) => {
+    const rollout = deriveCreatorCampaignRollout(campaign);
+    const hasSequencedRollout = Boolean(campaign.isRolloutActive && rollout.timeline.length > 1);
+    const stages = ["members", "followers", "public"].map((audience) => ({
+      ...ensureStage(campaign.id, audience as CreatorCampaignRolloutAudience),
+    }));
+    const stageByAudience = new Map(stages.map((stage) => [stage.audience, stage]));
+    const followersUnlockAt = campaign.unlockFollowersAt && campaign.unlockFollowersAt <= new Date()
+      ? campaign.unlockFollowersAt.toISOString()
+      : null;
+    const publicUnlockAt = campaign.unlockPublicAt && campaign.unlockPublicAt <= new Date()
+      ? campaign.unlockPublicAt.toISOString()
+      : null;
+    const campaignCollectionIds = (linkMap.get(campaign.id) ?? [])
+      .filter((link) => link.targetType === "collection")
+      .map((link) => link.targetId);
+    const approximatePurchasesAfterFollowerUnlock = campaign.unlockFollowersAt
+      ? purchaseRows.filter((row) => (
+        row.status === "completed"
+        && campaignCollectionIds.includes(row.collectionId)
+        && row.createdAt >= campaign.unlockFollowersAt!
+        && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)
+      )).length
+      : null;
+    const approximatePurchasesAfterPublicUnlock = campaign.unlockPublicAt
+      ? purchaseRows.filter((row) => (
+        row.status === "completed"
+        && campaignCollectionIds.includes(row.collectionId)
+        && row.createdAt >= campaign.unlockPublicAt!
+        && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)
+      )).length
+      : null;
+    const memberFirstStageEndsAt = campaign.unlockFollowersAt
+      ?? campaign.unlockPublicAt
+      ?? campaign.endsAt
+      ?? new Date();
+    const approximateMembershipsAfterMemberFirstRollout = rollout.startsWithAudience === "members"
+      ? membershipRows.filter((row) => (
+        row.createdAt >= getCreatorCampaignAnalyticsWindow(campaign).startsAt
+        && row.createdAt <= memberFirstStageEndsAt
+        && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)
+      )).length
+      : null;
+    const insights = buildCreatorCampaignRolloutInsights({
+      stages,
+      visibility: campaign.visibility as CreatorCampaignVisibility,
+      approximatePurchasesAfterFollowerUnlock,
+      approximatePurchasesAfterPublicUnlock,
+      approximateMembershipsAfterMemberFirstRollout,
+    });
+
+    return {
+      campaignId: campaign.id,
+      slug: campaign.slug,
+      name: campaign.name,
+      route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      visibility: campaign.visibility as CreatorCampaignVisibility,
+      state: getCreatorCampaignState(campaign),
+      hasRolloutConfig: Boolean(campaign.isRolloutActive || campaign.rolloutMode !== "public_first" || campaign.unlockFollowersAt || campaign.unlockPublicAt || campaign.startsWithAudience),
+      hasSequencedRollout,
+      rolloutMode: rollout.rolloutMode,
+      currentRolloutState: rollout.state,
+      startsWithAudience: rollout.startsWithAudience,
+      unlockFollowersAt: rollout.unlockFollowersAt,
+      unlockPublicAt: rollout.unlockPublicAt,
+      currentAudience: rollout.currentAudience,
+      nextAudience: rollout.nextAudience,
+      membersStageViews: stageByAudience.get("members")?.views ?? 0,
+      followersStageViews: stageByAudience.get("followers")?.views ?? 0,
+      publicStageViews: stageByAudience.get("public")?.views ?? 0,
+      membersStageClicks: stageByAudience.get("members")?.clicks ?? 0,
+      followersStageClicks: stageByAudience.get("followers")?.clicks ?? 0,
+      publicStageClicks: stageByAudience.get("public")?.clicks ?? 0,
+      membersStageRsvps: stageByAudience.get("members")?.rsvps ?? 0,
+      followersStageRsvps: stageByAudience.get("followers")?.rsvps ?? 0,
+      publicStageRsvps: stageByAudience.get("public")?.rsvps ?? 0,
+      followersUnlockedAt,
+      publicUnlockedAt,
+      approximatePurchasesAfterFollowerUnlock,
+      approximatePurchasesAfterPublicUnlock,
+      approximateMembershipsAfterMemberFirstRollout,
+      stagePerformance: stages,
+      insights,
+    } satisfies CreatorCampaignRolloutAnalyticsItem;
+  });
+
+  return {
+    summary: {
+      totalCampaigns: items.length,
+      campaignsWithRolloutConfig: items.filter((item) => item.hasRolloutConfig).length,
+      campaignsWithSequencedRollout: items.filter((item) => item.hasSequencedRollout).length,
+      activeSequencedRollouts: items.filter((item) => item.hasSequencedRollout && item.currentRolloutState !== "completed" && item.state !== "past").length,
+      totalStageViews: items.reduce((sum, item) => sum + item.membersStageViews + item.followersStageViews + item.publicStageViews, 0),
+      totalStageClicks: items.reduce((sum, item) => sum + item.membersStageClicks + item.followersStageClicks + item.publicStageClicks, 0),
+      totalStageRsvps: items.reduce((sum, item) => sum + item.membersStageRsvps + item.followersStageRsvps + item.publicStageRsvps, 0),
+    } satisfies CreatorCampaignRolloutAnalyticsSummary,
+    items,
+    attributionNotes: [
+      "Rollout analytics classify campaign-stage activity by timestamp relative to configured rollout unlock boundaries.",
+      "Views and clicks reuse existing direct campaign surface events plus linked drop view/click events already tracked elsewhere in the drinks platform.",
+      "RSVPs reuse linked drop RSVP timing and are bucketed into the rollout stage that was live when the RSVP happened.",
+      "Purchases and memberships remain clearly labeled approximations and should be read as timing-based rollout signals rather than exact causality.",
+      "Rollout mode, rollout state, rollout analytics, audience fit, and surface attribution stay separate on purpose.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
 function countRowsInRollingWindow(rows: Array<{ createdAt: Date }>, now: Date, days: number, campaign: Pick<CreatorCampaignRecord, "startsAt" | "endsAt" | "createdAt">) {
   const lowerBound = new Date(now.getTime() - (days * 24 * 60 * 60 * 1000));
   return rows.filter((row) => row.createdAt >= lowerBound && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length;
@@ -17225,6 +17612,10 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
     const ownerRollout = viewerId && viewerId === campaign.creatorUserId
       ? deriveCreatorCampaignRollout(campaign)
       : null;
+    const ownerRolloutAnalyticsCollection = viewerId && viewerId === campaign.creatorUserId
+      ? await loadCreatorCampaignRolloutAnalytics(campaign.creatorUserId, campaign.id)
+      : null;
+    const ownerRolloutAnalytics = ownerRolloutAnalyticsCollection?.items[0] ?? null;
     const ownerAudienceFitCollection = viewerId && viewerId === campaign.creatorUserId
       ? await loadCreatorCampaignAudienceFit(campaign.creatorUserId)
       : null;
@@ -17246,6 +17637,7 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
       recentUpdates: buildCreatorCampaignUpdateItems(detail),
       ownerAnalytics,
       ownerRollout,
+      ownerRolloutAnalytics,
       ownerRolloutSuggestion: viewerId && viewerId === campaign.creatorUserId
         ? buildCampaignRolloutSuggestion({
           campaign,
@@ -21866,6 +22258,28 @@ r.get("/creator-dashboard/campaign-analytics", requireAuth, async (req, res) => 
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-analytics", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign analytics"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-rollout-analytics", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const analytics = await loadCreatorCampaignRolloutAnalytics(req.user!.id);
+    return res.json({
+      ok: true,
+      userId: req.user!.id,
+      summary: analytics.summary,
+      items: analytics.items,
+      attributionNotes: analytics.attributionNotes,
+      generatedAt: analytics.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-rollout-analytics", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign rollout analytics"));
   }
 });
 
