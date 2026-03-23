@@ -39,6 +39,7 @@ import CampaignFixExperimentsSection from "@/components/drinks/CampaignFixExperi
 import CampaignExperimentLibrarySection from "@/components/drinks/CampaignExperimentLibrarySection";
 import CampaignPlaybookFitSection from "@/components/drinks/CampaignPlaybookFitSection";
 import CampaignPlaybookOnboardingSection from "@/components/drinks/CampaignPlaybookOnboardingSection";
+import CampaignPlaybookDriftSection from "@/components/drinks/CampaignPlaybookDriftSection";
 import CampaignPlaybookOutcomesSection from "@/components/drinks/CampaignPlaybookOutcomesSection";
 import CampaignPlaybookProfilesSection from "@/components/drinks/CampaignPlaybookProfilesSection";
 import DropLaunchAnalyticsSection from "@/components/drinks/DropLaunchAnalyticsSection";
@@ -2387,6 +2388,7 @@ export default function CreatorDashboardPage() {
       <CampaignFixExperimentsSection />
       <CampaignExperimentLibrarySection />
       <CampaignPlaybookOnboardingSection />
+      <CampaignPlaybookDriftSection />
       <CampaignPlaybookFitSection />
       <CampaignPlaybookOutcomesSection />
       <CampaignPlaybookProfilesSection />

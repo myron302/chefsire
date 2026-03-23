@@ -1,6 +1,6 @@
 // server/routes/drinks.ts
 import { Router, type Request, type Response } from "express";
-import { and, asc, desc, eq, gt, ilike, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, ilike, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
 import { storage } from "../storage";
@@ -266,6 +266,8 @@ type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSe
 type CreatorCampaignPlaybookFitLabel = "strong_match" | "partial_match" | "weak_match";
 type CreatorCampaignPlaybookFitRecommendation = "apply_as_is" | "apply_with_adjustments" | "loose_inspiration";
 type CreatorCampaignPlaybookScorecardLabel = "strong" | "promising" | "mixed" | "weak";
+type CreatorCampaignPlaybookDriftSeverity = "aligned" | "watch" | "drifted" | "misaligned";
+type CreatorCampaignPlaybookRealignAction = "realign_campaign" | "update_playbook" | "keep_new_direction";
 type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
 type DrinkCollectionAccessType = "public" | "premium_purchase" | "membership_only";
 
@@ -4488,6 +4490,459 @@ function playbookOutcomeStrengthLabel(value: CreatorCampaignPlaybookScorecardLab
     default:
       return "Mixed historical results";
   }
+}
+
+
+function playbookDriftSeverityLabel(value: CreatorCampaignPlaybookDriftSeverity) {
+  switch (value) {
+    case "aligned":
+      return "Aligned";
+    case "watch":
+      return "Watch for drift";
+    case "drifted":
+      return "Drifted";
+    default:
+      return "Misaligned";
+  }
+}
+
+function playbookDriftSeverityVariant(value: CreatorCampaignPlaybookDriftSeverity): "default" | "secondary" | "outline" | "destructive" {
+  switch (value) {
+    case "aligned":
+      return "default";
+    case "watch":
+      return "secondary";
+    case "drifted":
+      return "outline";
+    default:
+      return "destructive";
+  }
+}
+
+function playbookRealignActionLabel(value: CreatorCampaignPlaybookRealignAction) {
+  switch (value) {
+    case "realign_campaign":
+      return "Realign campaign";
+    case "update_playbook":
+      return "Update playbook";
+    default:
+      return "Keep new direction";
+  }
+}
+
+function formatPlaybookDelayLabel(value: number | null | undefined, fallback: string) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  if (value <= 0) return "same day";
+  if (value < 24) return `${value}h`;
+  if (value % 24 === 0) {
+    const days = value / 24;
+    return days === 1 ? "1 day" : `${days} days`;
+  }
+  return `${value}h`;
+}
+
+function buildCreatorCampaignPlaybookDriftSummary(input: {
+  driftScore: number;
+  severity: CreatorCampaignPlaybookDriftSeverity;
+  mismatchCount: number;
+  recommendation: CreatorCampaignPlaybookRealignAction;
+}) {
+  if (input.severity === "aligned") {
+    return "Campaign and playbook are still directionally aligned. No major strategy realign is showing right now.";
+  }
+  if (input.recommendation === "realign_campaign") {
+    return input.driftScore >= 60
+      ? "Campaign has moved materially away from its applied playbook, so the next cleanest move is to realign the campaign before more signal drifts." 
+      : "Some strategic drift is showing, and the safest next step is to realign the campaign with the original playbook.";
+  }
+  if (input.recommendation === "update_playbook") {
+    return input.mismatchCount >= 3
+      ? "The campaign is repeatedly behaving differently from the saved playbook, but the current direction still looks viable enough to consider updating the playbook." 
+      : "The campaign is bending away from the saved playbook in a few places, and the new direction may be worth folding back into the playbook.";
+  }
+  return "The campaign has drifted from the applied playbook, but current signal suggests the newer direction is worth keeping for now.";
+}
+
+async function loadCreatorCampaignPlaybookDriftCollection(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const campaignFilters = [
+    eq(creatorCampaigns.creatorUserId, creatorUserId),
+    isNotNull(creatorCampaigns.appliedPlaybookProfileId),
+  ];
+  if (campaignId) {
+    campaignFilters.push(eq(creatorCampaigns.id, campaignId));
+  }
+
+  const campaigns = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(and(...campaignFilters))
+    .orderBy(desc(creatorCampaigns.updatedAt), desc(creatorCampaigns.createdAt));
+
+  if (!campaigns.length) {
+    return {
+      items: [] as Array<Record<string, unknown>>,
+      summary: {
+        appliedCampaignCount: 0,
+        driftedCount: 0,
+        misalignedCount: 0,
+        recommendedRealignCount: 0,
+      },
+      attributionNotes: [
+        "Playbook drift stays creator-private and only evaluates campaigns where a saved playbook is still explicitly applied.",
+        campaignId
+          ? "This campaign does not have an applied playbook right now, so there is no drift layer to compare."
+          : "No creator-owned campaigns with an applied playbook were found, so there is nothing to compare yet.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const profileIds = [...new Set(campaigns.map((campaign) => campaign.appliedPlaybookProfileId).filter((value): value is string => Boolean(value)))];
+  const campaignIds = campaigns.map((campaign) => campaign.id);
+
+  const [profiles, audienceFit, health, readiness, outcomes, variantsMap, experimentRows] = await Promise.all([
+    db
+      .select()
+      .from(creatorCampaignPlaybookProfiles)
+      .where(and(
+        eq(creatorCampaignPlaybookProfiles.creatorUserId, creatorUserId),
+        inArray(creatorCampaignPlaybookProfiles.id, profileIds),
+      )),
+    loadCreatorCampaignAudienceFit(creatorUserId),
+    loadCreatorCampaignHealth(creatorUserId),
+    loadCreatorCampaignLaunchReadiness(creatorUserId),
+    loadCreatorCampaignPlaybookOutcomeCollection(creatorUserId),
+    loadCreatorCampaignVariantsByCampaignIds(campaignIds),
+    db
+      .select()
+      .from(creatorCampaignExperiments)
+      .where(inArray(creatorCampaignExperiments.campaignId, campaignIds))
+      .orderBy(desc(creatorCampaignExperiments.updatedAt), desc(creatorCampaignExperiments.createdAt)),
+  ]);
+
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  const audienceFitByCampaignId = new Map(audienceFit.items.map((item) => [item.campaignId, item]));
+  const healthByCampaignId = new Map(health.items.map((item) => [item.campaignId, item]));
+  const readinessByCampaignId = new Map<string, Array<typeof readiness.items[number]>>();
+  for (const item of readiness.items) {
+    const current = readinessByCampaignId.get(item.campaignId) ?? [];
+    current.push(item);
+    readinessByCampaignId.set(item.campaignId, current);
+  }
+  const outcomeByPlaybookId = new Map(outcomes.items.map((item) => [String((item as { playbookId: string }).playbookId), item]));
+  const experimentsByCampaignId = new Map<string, CreatorCampaignExperimentRecord[]>();
+  for (const row of experimentRows) {
+    const current = experimentsByCampaignId.get(row.campaignId) ?? [];
+    current.push(row);
+    experimentsByCampaignId.set(row.campaignId, current);
+  }
+
+  const items = campaigns.flatMap((campaign) => {
+    const profileId = campaign.appliedPlaybookProfileId;
+    if (!profileId) return [];
+    const profile = profileById.get(profileId);
+    if (!profile) return [];
+
+    const serializedProfile = serializeCreatorCampaignPlaybookProfile(profile);
+    const startAnchor = campaign.startsAt ?? campaign.createdAt ?? null;
+    const actualFollowerDelay = diffHoursBetween(startAnchor, campaign.unlockFollowersAt);
+    const actualPublicDelay = diffHoursBetween(startAnchor, campaign.unlockPublicAt);
+    const variants = variantsMap.get(campaign.id) ?? [];
+    const inferredCtaDirection = inferPreferredCtaDirectionFromVariants(variants);
+    const audienceFitItem = audienceFitByCampaignId.get(campaign.id) ?? null;
+    const healthItem = healthByCampaignId.get(campaign.id) ?? null;
+    const readinessItems = readinessByCampaignId.get(campaign.id) ?? [];
+    const readinessAverage = readinessItems.length
+      ? roundPlaybookMetric(readinessItems.reduce((sum, item) => sum + item.readinessScore, 0) / readinessItems.length)
+      : null;
+    const experiments = experimentsByCampaignId.get(campaign.id) ?? [];
+    const recentExperimentTypes = uniqueStringList(experiments.map((item) => item.experimentType), 5)
+      .filter((value): value is CreatorCampaignExperimentType => creatorCampaignExperimentTypeSchema.safeParse(value).success);
+    const experimentOverlap = serializedProfile.preferredExperimentTypes.filter((value) => recentExperimentTypes.includes(value));
+    const profileOutcome = outcomeByPlaybookId.get(profile.id) as ({
+      scorecardLabel?: CreatorCampaignPlaybookScorecardLabel;
+      strongestUseCase?: string | null;
+      confidenceNote?: string | null;
+      appliedCount?: number;
+    } & Record<string, unknown>) | undefined;
+
+    const mismatches: Array<{ key: string; label: string; detail: string; weight: number }> = [];
+    const alignedSignals: string[] = [];
+
+    if (serializedProfile.visibilityStrategy && campaign.visibility !== serializedProfile.visibilityStrategy) {
+      mismatches.push({
+        key: "visibility_strategy",
+        label: "Visibility strategy moved",
+        detail: `Campaign is ${formatPlaybookAudienceLabel(campaign.visibility)} while the playbook expects ${formatPlaybookAudienceLabel(serializedProfile.visibilityStrategy)} visibility.`,
+        weight: 18,
+      });
+    } else if (serializedProfile.visibilityStrategy) {
+      alignedSignals.push(`Visibility still matches the playbook's ${formatPlaybookAudienceLabel(serializedProfile.visibilityStrategy)} emphasis.`);
+    }
+
+    if (campaign.rolloutMode !== serializedProfile.rolloutMode) {
+      mismatches.push({
+        key: "rollout_mode",
+        label: "Rollout mode changed",
+        detail: `Campaign is using ${campaign.rolloutMode.replaceAll("_", " ")} while the playbook expects ${serializedProfile.rolloutMode.replaceAll("_", " ")}.`,
+        weight: 18,
+      });
+    } else {
+      alignedSignals.push(`Rollout mode is still ${serializedProfile.rolloutMode.replaceAll("_", " ")} as saved in the playbook.`);
+    }
+
+    if (serializedProfile.startsWithAudience && (campaign.startsWithAudience ?? null) !== serializedProfile.startsWithAudience) {
+      mismatches.push({
+        key: "starts_with_audience",
+        label: "Starting audience changed",
+        detail: `Campaign starts with ${formatPlaybookAudienceLabel(campaign.startsWithAudience ?? campaign.visibility)} while the playbook starts with ${formatPlaybookAudienceLabel(serializedProfile.startsWithAudience)}.`,
+        weight: 12,
+      });
+    } else if (serializedProfile.startsWithAudience) {
+      alignedSignals.push(`Starting audience still lines up with ${formatPlaybookAudienceLabel(serializedProfile.startsWithAudience)}.`);
+    }
+
+    if (serializedProfile.recommendedFollowerUnlockDelayHours !== null) {
+      if (actualFollowerDelay === null) {
+        mismatches.push({
+          key: "follower_unlock_delay",
+          label: "Follower unlock timing missing",
+          detail: `The playbook expects a follower unlock after ${formatPlaybookDelayLabel(serializedProfile.recommendedFollowerUnlockDelayHours, "not used")}, but this campaign has no follower unlock timing set.`,
+          weight: 10,
+        });
+      } else if (Math.abs(actualFollowerDelay - serializedProfile.recommendedFollowerUnlockDelayHours) >= 24) {
+        mismatches.push({
+          key: "follower_unlock_delay",
+          label: "Follower timing drifted",
+          detail: `Follower unlock now runs at ${formatPlaybookDelayLabel(actualFollowerDelay, "not used")} vs ${formatPlaybookDelayLabel(serializedProfile.recommendedFollowerUnlockDelayHours, "not used")} in the playbook.`,
+          weight: Math.abs(actualFollowerDelay - serializedProfile.recommendedFollowerUnlockDelayHours) >= 72 ? 12 : 8,
+        });
+      } else {
+        alignedSignals.push(`Follower timing is still close to the playbook's ${formatPlaybookDelayLabel(serializedProfile.recommendedFollowerUnlockDelayHours, "not used")} pattern.`);
+      }
+    }
+
+    if (serializedProfile.recommendedPublicUnlockDelayHours !== null) {
+      if (actualPublicDelay === null) {
+        mismatches.push({
+          key: "public_unlock_delay",
+          label: "Public unlock timing missing",
+          detail: `The playbook expects public unlock after ${formatPlaybookDelayLabel(serializedProfile.recommendedPublicUnlockDelayHours, "same day")}, but this campaign has no public unlock timing set.`,
+          weight: 10,
+        });
+      } else if (Math.abs(actualPublicDelay - serializedProfile.recommendedPublicUnlockDelayHours) >= 24) {
+        mismatches.push({
+          key: "public_unlock_delay",
+          label: "Public timing drifted",
+          detail: `Public unlock now runs at ${formatPlaybookDelayLabel(actualPublicDelay, "same day")} vs ${formatPlaybookDelayLabel(serializedProfile.recommendedPublicUnlockDelayHours, "same day")} in the playbook.`,
+          weight: Math.abs(actualPublicDelay - serializedProfile.recommendedPublicUnlockDelayHours) >= 72 ? 12 : 8,
+        });
+      } else {
+        alignedSignals.push(`Public timing still roughly matches the playbook's ${formatPlaybookDelayLabel(serializedProfile.recommendedPublicUnlockDelayHours, "same day")}.`);
+      }
+    }
+
+    if (serializedProfile.preferredCtaDirection && serializedProfile.preferredCtaDirection !== "mixed") {
+      if (!inferredCtaDirection) {
+        mismatches.push({
+          key: "cta_direction",
+          label: "CTA direction is thin",
+          detail: `The playbook leans ${formatPlaybookCtaDirectionLabel(serializedProfile.preferredCtaDirection)}, but this campaign does not yet show a clear CTA direction.`,
+          weight: 6,
+        });
+      } else if (inferredCtaDirection !== serializedProfile.preferredCtaDirection && inferredCtaDirection !== "mixed") {
+        mismatches.push({
+          key: "cta_direction",
+          label: "CTA focus changed",
+          detail: `CTA focus now leans ${formatPlaybookCtaDirectionLabel(inferredCtaDirection)} instead of ${formatPlaybookCtaDirectionLabel(serializedProfile.preferredCtaDirection)}.`,
+          weight: 12,
+        });
+      } else {
+        alignedSignals.push(`CTA direction still points toward ${formatPlaybookCtaDirectionLabel(serializedProfile.preferredCtaDirection)}.`);
+      }
+    }
+
+    if (serializedProfile.preferredAudienceFit && audienceFitItem?.bestAudienceFit && audienceFitItem.bestAudienceFitConfidence !== "none") {
+      if (audienceFitItem.bestAudienceFit !== serializedProfile.preferredAudienceFit) {
+        mismatches.push({
+          key: "audience_fit",
+          label: "Audience fit shifted",
+          detail: `Current audience signal looks ${formatPlaybookAudienceLabel(audienceFitItem.bestAudienceFit)}-leaning, not ${formatPlaybookAudienceLabel(serializedProfile.preferredAudienceFit)} like the playbook.`,
+          weight: audienceFitItem.bestAudienceFitConfidence === "high" ? 12 : 8,
+        });
+      } else {
+        alignedSignals.push(`Audience fit still looks strongest with ${formatPlaybookAudienceLabel(serializedProfile.preferredAudienceFit)} viewers.`);
+      }
+    }
+
+    if (serializedProfile.preferredExperimentTypes.length > 0) {
+      if (recentExperimentTypes.length > 0 && experimentOverlap.length === 0) {
+        mismatches.push({
+          key: "experiment_mix",
+          label: "Fix pattern changed",
+          detail: `Recent experiments are not overlapping with this playbook's preferred fix patterns yet.`,
+          weight: 8,
+        });
+      } else if (experimentOverlap.length > 0) {
+        alignedSignals.push(`Recent experiments still overlap with the playbook (${experimentOverlap.slice(0, 2).map((value) => value.replaceAll("_", " ")).join(", ")}).`);
+      }
+    }
+
+    const driftScore = Math.max(0, Math.min(100, mismatches.reduce((sum, item) => sum + item.weight, 0)));
+    const severity: CreatorCampaignPlaybookDriftSeverity = driftScore >= 60
+      ? "misaligned"
+      : driftScore >= 35
+        ? "drifted"
+        : driftScore >= 15
+          ? "watch"
+          : "aligned";
+
+    const isHealthy = healthItem?.healthState === "thriving" || healthItem?.healthState === "healthy";
+    const isAtRisk = healthItem?.healthState === "at_risk" || healthItem?.healthState === "watch";
+    const strongPlaybookHistory = profileOutcome?.scorecardLabel === "strong" || profileOutcome?.scorecardLabel === "promising";
+
+    const recommendedAction: CreatorCampaignPlaybookRealignAction = severity === "aligned"
+      ? "keep_new_direction"
+      : ((severity === "misaligned" || (severity === "drifted" && isAtRisk)) && strongPlaybookHistory)
+        ? "realign_campaign"
+        : (isHealthy && severity !== "aligned" && (profileOutcome?.appliedCount ?? 0) >= 1)
+          ? "update_playbook"
+          : (isHealthy && severity !== "aligned")
+            ? "keep_new_direction"
+            : strongPlaybookHistory
+              ? "realign_campaign"
+              : "keep_new_direction";
+
+    const decisions = [
+      {
+        action: "realign_campaign" as CreatorCampaignPlaybookRealignAction,
+        recommended: recommendedAction === "realign_campaign",
+        title: recommendedAction === "realign_campaign" ? "Realign the campaign to the saved playbook" : "Realign if you still trust the saved strategy",
+        note: strongPlaybookHistory
+          ? `This playbook already has ${playbookOutcomeStrengthLabel(profileOutcome?.scorecardLabel as CreatorCampaignPlaybookScorecardLabel ?? "mixed").toLowerCase()} for this creator, so reverting the drift may be the lower-risk move.`
+          : "Use this when the drift feels accidental and you want the campaign to return to the saved rollout, audience, CTA, or timing pattern.",
+        targetRoute: "/drinks/creator-dashboard#campaigns",
+      },
+      {
+        action: "update_playbook" as CreatorCampaignPlaybookRealignAction,
+        recommended: recommendedAction === "update_playbook",
+        title: "Update the playbook from what is actually working",
+        note: isHealthy
+          ? "Health and current signal suggest the newer operating pattern may be reusable enough to save back into the playbook."
+          : "Choose this only if the drift is intentional and repeated enough that the saved playbook is now behind the current strategy.",
+        targetRoute: "/drinks/creator-dashboard#campaign-playbook-profiles",
+      },
+      {
+        action: "keep_new_direction" as CreatorCampaignPlaybookRealignAction,
+        recommended: recommendedAction === "keep_new_direction",
+        title: severity === "aligned" ? "Keep the current campaign direction" : "Keep the newer direction for now",
+        note: severity === "aligned"
+          ? "No meaningful drift is showing, so there is no need to force a playbook correction right now."
+          : isHealthy
+            ? "The campaign is showing enough healthy signal that you may want to let the new direction run before rewriting strategy."
+            : "If the shift was intentional, keep it lightweight and watch the next readiness, health, and conversion signals before changing the playbook.",
+        targetRoute: campaign.slug ? `/drinks/campaigns/${encodeURIComponent(campaign.slug)}` : "/drinks/creator-dashboard#campaigns",
+      },
+    ];
+
+    const summary = buildCreatorCampaignPlaybookDriftSummary({
+      driftScore,
+      severity,
+      mismatchCount: mismatches.length,
+      recommendation: recommendedAction,
+    });
+
+    return [{
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      campaignSlug: campaign.slug,
+      campaignRoute: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      state: getCreatorCampaignState(campaign),
+      playbookId: profile.id,
+      playbookName: profile.name,
+      playbookDescription: profile.description ?? null,
+      playbookAppliedAt: campaign.playbookAppliedAt?.toISOString() ?? null,
+      isPlaybookApplied: true,
+      severity,
+      severityLabel: playbookDriftSeverityLabel(severity),
+      severityVariant: playbookDriftSeverityVariant(severity),
+      driftScore,
+      mismatchCount: mismatches.length,
+      alignmentCount: alignedSignals.length,
+      summary,
+      mismatches: mismatches.map((item) => ({
+        key: item.key,
+        label: item.label,
+        detail: item.detail,
+        weight: item.weight,
+      })),
+      alignedSignals,
+      currentDirection: {
+        visibility: campaign.visibility as CreatorCampaignVisibility,
+        rolloutMode: (campaign.rolloutMode as CreatorCampaignRolloutMode | null) ?? "public_first",
+        startsWithAudience: (campaign.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null,
+        inferredCtaDirection,
+        followerUnlockDelayHours: actualFollowerDelay,
+        publicUnlockDelayHours: actualPublicDelay,
+        recentExperimentTypes,
+        bestAudienceFit: audienceFitItem?.bestAudienceFit ?? null,
+        bestAudienceFitConfidence: audienceFitItem?.bestAudienceFitConfidence ?? "none",
+      },
+      savedPlaybookDirection: {
+        visibilityStrategy: serializedProfile.visibilityStrategy,
+        rolloutMode: serializedProfile.rolloutMode,
+        startsWithAudience: serializedProfile.startsWithAudience,
+        preferredCtaDirection: serializedProfile.preferredCtaDirection,
+        recommendedFollowerUnlockDelayHours: serializedProfile.recommendedFollowerUnlockDelayHours,
+        recommendedPublicUnlockDelayHours: serializedProfile.recommendedPublicUnlockDelayHours,
+        preferredAudienceFit: serializedProfile.preferredAudienceFit,
+        preferredExperimentTypes: serializedProfile.preferredExperimentTypes,
+      },
+      realignRecommendation: {
+        action: recommendedAction,
+        actionLabel: playbookRealignActionLabel(recommendedAction),
+        confidence: severity === "misaligned" || (severity === "drifted" && (isHealthy || isAtRisk)) ? "high" : severity === "watch" ? "medium" : "low",
+        reason: decisions.find((item) => item.recommended)?.note ?? null,
+      },
+      suggestedDecisions: decisions,
+      outcomeContext: {
+        playbookScorecardLabel: profileOutcome?.scorecardLabel ?? null,
+        playbookOutcomeLabel: profileOutcome?.scorecardLabel ? playbookOutcomeStrengthLabel(profileOutcome.scorecardLabel as CreatorCampaignPlaybookScorecardLabel) : null,
+        strongestUseCase: typeof profileOutcome?.strongestUseCase === "string" ? profileOutcome.strongestUseCase : null,
+        confidenceNote: typeof profileOutcome?.confidenceNote === "string" ? profileOutcome.confidenceNote : null,
+        appliedCount: typeof profileOutcome?.appliedCount === "number" ? profileOutcome.appliedCount : 0,
+        healthState: healthItem?.healthState ?? null,
+        healthScore: healthItem?.healthScore ?? null,
+        readinessScore: readinessAverage,
+      },
+    }];
+  });
+
+  const summary = {
+    appliedCampaignCount: items.length,
+    driftedCount: items.filter((item) => ["drifted", "misaligned"].includes(String((item as { severity: string }).severity))).length,
+    misalignedCount: items.filter((item) => String((item as { severity: string }).severity) === "misaligned").length,
+    recommendedRealignCount: items.filter((item) => String((item as { realignRecommendation: { action: string } }).realignRecommendation.action) === "realign_campaign").length,
+  };
+
+  return {
+    items: [...items].sort((a, b) => {
+      const rank = (value: CreatorCampaignPlaybookDriftSeverity) => value === "misaligned" ? 4 : value === "drifted" ? 3 : value === "watch" ? 2 : 1;
+      return rank((b as { severity: CreatorCampaignPlaybookDriftSeverity }).severity) - rank((a as { severity: CreatorCampaignPlaybookDriftSeverity }).severity)
+        || ((b as { driftScore: number }).driftScore - (a as { driftScore: number }).driftScore)
+        || String((a as { campaignName: string }).campaignName).localeCompare(String((b as { campaignName: string }).campaignName));
+    }),
+    summary,
+    attributionNotes: [
+      "Playbook drift stays creator-private and only evaluates campaigns where a saved playbook is still explicitly applied.",
+      "This route stays intentionally lightweight: it compares current campaign strategy fields plus existing audience-fit, CTA, experiment, readiness, health, and playbook outcome layers already in ChefSire.",
+      "Drift is directional, not a giant config diff. ChefSire is only checking the strategy surfaces that meaningfully change a campaign's playbook posture.",
+      "Realign suggestions do not auto-change campaigns or playbooks. They are lightweight guidance on whether to realign the campaign, update the playbook, or keep the newer direction.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 function healthStateRank(state: CreatorCampaignHealthState | null | undefined) {
@@ -23331,6 +23786,30 @@ async function handleCreatorCampaignPlaybookOutcomesRoute(req: Request, res: Res
 r.get("/creator-dashboard/campaign-playbook-outcomes", requireAuth, handleCreatorCampaignPlaybookOutcomesRoute);
 r.get("/creator-dashboard/campaign-playbook-effectiveness", requireAuth, handleCreatorCampaignPlaybookOutcomesRoute);
 
+async function handleCreatorCampaignPlaybookDriftRoute(req: Request, res: Response) {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const drift = await loadCreatorCampaignPlaybookDriftCollection(req.user!.id);
+    return res.json({
+      ok: true,
+      count: drift.items.length,
+      items: drift.items,
+      summary: drift.summary,
+      attributionNotes: drift.attributionNotes,
+      generatedAt: drift.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-drift", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign playbook drift"));
+  }
+}
+
+r.get("/creator-dashboard/campaign-playbook-drift", requireAuth, handleCreatorCampaignPlaybookDriftRoute);
+
 r.get("/campaigns/:id/playbook-fit", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -23393,6 +23872,42 @@ r.get("/campaigns/:id/playbook-onboarding", requireAuth, async (req, res) => {
     }
     const message = logCollectionRouteError("/campaigns/:id/playbook-onboarding", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to load campaign playbook onboarding"));
+  }
+});
+
+r.get("/campaigns/:id/playbook-drift", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const drift = await loadCreatorCampaignPlaybookDriftCollection(req.user!.id, campaignId);
+    const item = drift.items[0] ?? null;
+    if (!item) {
+      return res.status(404).json({ ok: false, error: "Campaign does not have an applied playbook." });
+    }
+
+    return res.json({
+      ok: true,
+      campaignId,
+      item,
+      attributionNotes: drift.attributionNotes,
+      generatedAt: drift.generatedAt,
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Failed to load playbook drift";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/playbook-drift", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign playbook drift"));
   }
 });
 
