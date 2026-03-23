@@ -679,12 +679,47 @@ export default function DrinkCampaignDetailPage() {
           ) : null}
 
           {isOwner ? (
-            <CampaignFixExperimentsSection
-              campaignId={query.data.campaign.id}
-              compact
-              title="Owner-only fix experiments"
-              description="Private experiments for corrective actions on this campaign. Bottlenecks still show where leakage is happening; these cards only track which fix you tried and whether the next before/after window moved."
-            />
+            <div id="owner-experiments-workspace">
+              <CampaignFixExperimentsSection
+                campaignId={query.data.campaign.id}
+                compact
+                title="Owner-only fix experiments"
+                description="Private experiments for corrective actions on this campaign. Bottlenecks still show where leakage is happening; these cards only track which fix you tried and whether the next before/after window moved."
+              />
+            </div>
+          ) : null}
+
+          {isOwner ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Owner strategy map</CardTitle>
+                <CardDescription>
+                  Related owner-only surfaces are grouped into a few practical lanes so you can jump to rollout, playbooks, diagnostics, or experiments without scanning the whole page.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-md border p-3 text-sm">
+                  <p className="font-medium text-foreground">Rollout + unlock + timing</p>
+                  <p className="mt-2 text-muted-foreground">Readiness, rollout strategy, timing advice, unlock history, and stage recaps stay together.</p>
+                  <div className="mt-3"><a href="#owner-rollout-workspace" className="text-xs underline underline-offset-2">Jump to rollout workspace</a></div>
+                </div>
+                <div className="rounded-md border p-3 text-sm">
+                  <p className="font-medium text-foreground">Playbook + fit + drift</p>
+                  <p className="mt-2 text-muted-foreground">Onboarding, fit, drift, and lifecycle strategy now read as one playbook lane.</p>
+                  <div className="mt-3"><a href="#owner-playbook-workspace" className="text-xs underline underline-offset-2">Jump to playbook workspace</a></div>
+                </div>
+                <div className="rounded-md border p-3 text-sm">
+                  <p className="font-medium text-foreground">Analytics + watchlist</p>
+                  <p className="mt-2 text-muted-foreground">Health, recovery, goals, and owner analytics stay in one diagnostics lane.</p>
+                  <div className="mt-3"><a href="#owner-diagnostics-workspace" className="text-xs underline underline-offset-2">Jump to diagnostics</a></div>
+                </div>
+                <div className="rounded-md border p-3 text-sm">
+                  <p className="font-medium text-foreground">Experiments + fixes</p>
+                  <p className="mt-2 text-muted-foreground">Corrective experiments remain private and easy to revisit from the top of the page.</p>
+                  <div className="mt-3"><a href="#owner-experiments-workspace" className="text-xs underline underline-offset-2">Jump to experiments</a></div>
+                </div>
+              </CardContent>
+            </Card>
           ) : null}
 
           {activeVariant ? (
@@ -805,6 +840,7 @@ export default function DrinkCampaignDetailPage() {
             </CardContent>
           </Card>
 
+          <div id="owner-rollout-workspace" className="space-y-6">
           {query.data.ownerRollout ? (
             <Card>
               <CardHeader>
@@ -1004,6 +1040,9 @@ export default function DrinkCampaignDetailPage() {
             </Card>
           ) : null}
 
+          </div>
+
+          <div id="owner-diagnostics-workspace" className="space-y-6">
           {query.data.ownerHealth ? (
             <Card>
               <CardHeader>
@@ -1059,6 +1098,7 @@ export default function DrinkCampaignDetailPage() {
             </Card>
           ) : null}
 
+          <div id="owner-playbook-workspace" className="space-y-6">
           {isOwner && (onboardingQuery.isLoading || onboardingQuery.isError || onboardingQuery.data?.item?.isPlaybookApplied) ? (
             <Card>
               <CardHeader>
@@ -1111,6 +1151,8 @@ export default function DrinkCampaignDetailPage() {
               </CardContent>
             </Card>
           ) : null}
+
+          </div>
 
           {query.data.ownerRecoveryPlan && (query.data.ownerRecoveryPlan.healthState === "watch" || query.data.ownerRecoveryPlan.healthState === "at_risk") ? (
             <Card>
@@ -1355,6 +1397,7 @@ export default function DrinkCampaignDetailPage() {
                 {query.data.linkedContent.roadmap.map((item) => <CreatorRoadmapCard key={item.id} item={item} />)}
               </CardContent>
             </Card>
+          </div>
           </div>
         </>
       ) : null}

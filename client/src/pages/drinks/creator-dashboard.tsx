@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
@@ -1495,6 +1496,45 @@ export default function CreatorDashboardPage() {
   const editingDrop = creatorDrops.find((drop) => drop.id === dropForm.id) ?? null;
   const isEditingNonUpcomingDrop = Boolean(editingDrop && editingDrop.status !== "upcoming");
   const availableDropPromotions = creatorPromotions.filter((promotion) => !selectedDropCollectionId || promotion.collectionId === selectedDropCollectionId);
+  const activePromotionCount = creatorPromotions.filter((promotion) => promotion.isActive).length;
+  const pendingCollaborationCount = collaborationPendingIncoming.length + collaborationOutgoing.filter((item) => item.status === "pending").length;
+  const topStrategySummary = safeSummary.topPerformingDrink
+    ? `${safeSummary.topPerformingDrink.name} is your current leader.`
+    : "No campaign leader yet — use recommendations and playbooks to shape the next push.";
+  const strategyHubHighlights = [
+    {
+      title: "Needs attention now",
+      summary: "Action Center + launch watch",
+      detail: `${metricNumber(creatorDropsUpcomingCount)} upcoming drops, ${metricNumber(roadmapUpcoming.length)} roadmap beats, and unlock/readiness checks are surfaced first.`,
+      tab: "overview",
+      href: "/drinks/creator-dashboard#drops",
+      cta: "Open launch queue",
+    },
+    {
+      title: "What is working",
+      summary: safeSummary.topPerformingDrink ? `Top drink: ${safeSummary.topPerformingDrink.name}` : "Creator momentum summary",
+      detail: `${metricNumber(safeSummary.totalViews7d)} views in the last 7 days and ${metricNumber(safeSummary.totalRemixesReceived)} remixes received across your drinks.`,
+      tab: "overview",
+      href: safeSummary.topPerformingDrink ? `/drinks/recipe/${encodeURIComponent(safeSummary.topPerformingDrink.slug)}` : "/drinks/submit",
+      cta: safeSummary.topPerformingDrink ? "View top drink" : "Submit a drink",
+    },
+    {
+      title: "What to improve next",
+      summary: "Diagnostics + experiments",
+      detail: "Benchmarks, health, bottlenecks, fix matching, and active experiments are grouped into focused tabs instead of a long analytics stack.",
+      tab: "performance",
+      href: "/drinks/creator-dashboard#campaigns",
+      cta: "Review campaign diagnostics",
+    },
+    {
+      title: "Reusable strategy to apply",
+      summary: "Playbooks + rollout advice",
+      detail: `${topStrategySummary} Saved playbooks, onboarding, drift, and rollout guidance now live together for reuse.`,
+      tab: "playbooks",
+      href: "/drinks/creator-dashboard#campaign-playbook-profiles",
+      cta: "Open playbooks",
+    },
+  ];
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
@@ -1532,12 +1572,93 @@ export default function CreatorDashboardPage() {
 
       <DrinksPlatformNav current="dashboard" />
 
-      <CampaignActionCenterSection />
-      <CampaignRolloutTimelineSection limit={8} />
-      <CampaignUnlockReadinessAlertsSection limit={4} />
-      <CampaignLaunchReadinessSection limit={4} />
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="secondary">Strategy Hub</Badge>
+                <Badge variant="outline">Creator-only workspace</Badge>
+              </div>
+              <CardTitle>Creator Strategy Hub</CardTitle>
+              <CardDescription>
+                Urgent moves, launch risk, high-value campaign strategy, diagnostics, and reusable playbooks are now grouped into a smaller set of focused workspaces.
+              </CardDescription>
+            </div>
+            <div className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+              <div className="rounded-md border px-3 py-2">
+                <p className="font-medium text-foreground">{metricNumber(creatorDropsUpcomingCount)} launches approaching</p>
+                <p>Readiness, unlocks, and rollout history stay at the top of Overview.</p>
+              </div>
+              <div className="rounded-md border px-3 py-2">
+                <p className="font-medium text-foreground">{metricNumber(activePromotionCount)} promos live</p>
+                <p>Membership, promos, orders, and finance stay together in Operations.</p>
+              </div>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-4">
+            {strategyHubHighlights.map((item) => (
+              <div key={item.title} className="rounded-xl border bg-muted/20 p-4">
+                <p className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">{item.title}</p>
+                <p className="mt-2 text-base font-semibold text-foreground">{item.summary}</p>
+                <p className="mt-2 text-sm text-muted-foreground">{item.detail}</p>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Badge variant="outline">{item.tab.replaceAll("-", " ")}</Badge>
+                  <Link href={item.href}><Button size="sm" variant="ghost" className="h-auto px-0">{item.cta}</Button></Link>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
-      <CreatorBundlesSection />
+      <Tabs defaultValue="overview" className="space-y-6">
+        <TabsList className="h-auto flex-wrap justify-start gap-2 bg-transparent p-0">
+          <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="campaign-strategy">Campaign Strategy</TabsTrigger>
+          <TabsTrigger value="rollout-launch">Rollout &amp; Launch</TabsTrigger>
+          <TabsTrigger value="performance">Performance &amp; Diagnostics</TabsTrigger>
+          <TabsTrigger value="experiments">Experiments &amp; Fixes</TabsTrigger>
+          <TabsTrigger value="playbooks">Playbooks &amp; Reuse</TabsTrigger>
+          <TabsTrigger value="operations">Operations</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="overview" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Overview at a glance</CardTitle>
+              <CardDescription>
+                Start here for urgent next moves, readiness risk, your current strongest signal, and the strategy surfaces worth opening next.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Urgent next moves</p>
+                <p className="mt-2 text-muted-foreground">Action Center stays first so campaign tasks are not buried under long analytics sections.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">{metricNumber(creatorDropsUpcomingCount)} launch beats in motion</p>
+                <p className="mt-2 text-muted-foreground">Drop timing, unlock alerts, rollout history, and launch readiness stay grouped together.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">{safeSummary.topPerformingDrink ? `${safeSummary.topPerformingDrink.name} leads this week` : "No strongest drink yet"}</p>
+                <p className="mt-2 text-muted-foreground">Use momentum, top-performer, and recent activity cards below to understand what is working now.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">{metricNumber(pendingCollaborationCount)} collaboration items pending</p>
+                <p className="mt-2 text-muted-foreground">Publishing, drops, memberships, and storefront operations remain fully accessible in Operations.</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <CampaignActionCenterSection />
+          <CampaignRolloutTimelineSection limit={8} />
+          <CampaignUnlockReadinessAlertsSection limit={4} />
+          <CampaignLaunchReadinessSection limit={4} />
+          <PinnedCampaignSpotlightSection />
+          <CreatorBundlesSection />
 
       <Card>
         <CardHeader>
@@ -1633,6 +1754,36 @@ export default function CreatorDashboardPage() {
           </div>
         </CardContent>
       </Card>
+
+        </TabsContent>
+
+        <TabsContent value="operations" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Creator operations</CardTitle>
+              <CardDescription>
+                Collaboration, publishing, launches, memberships, commerce, and reporting stay available here without competing with urgent strategy signals.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">{metricNumber(collaborationAccepted.length)} active collaborations</p>
+                <p className="mt-2 text-muted-foreground">Incoming and outgoing invites stay consolidated with supported collection, post, drop, and roadmap targets.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">{metricNumber(creatorPosts.length)} creator posts published</p>
+                <p className="mt-2 text-muted-foreground">Update posts, promo notes, and member messages remain intact and reachable.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">{metricNumber(membershipDashboard.stats.activeMembers)} active members</p>
+                <p className="mt-2 text-muted-foreground">Membership, promos, conversions, orders, and finance live in one commerce-focused workspace.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">{metricNumber(salesTotals.purchases)} premium purchases</p>
+                <p className="mt-2 text-muted-foreground">Revenue reporting stays unchanged and continues to reflect actual paid amounts.</p>
+              </div>
+            </CardContent>
+          </Card>
 
       <Card id="collaborations">
         <CardHeader>
@@ -2366,36 +2517,113 @@ export default function CreatorDashboardPage() {
         </CardContent>
       </Card>
 
-      <CampaignsDashboardSection />
-      <CampaignRetrospectivesSection />
-      <CampaignBenchmarksSection />
-      <CampaignAudienceFitSection />
-      <CampaignRolloutAdvisorSection />
-      <CampaignTimingAdvisorSection />
-      <CampaignWeeklyDigestSection />
-      <CampaignHealthSection />
-      <CampaignRecoveryPlansSection />
-      <CampaignLifecycleSuggestionsSection />
-      <CampaignRecommendationsSection />
+        </TabsContent>
 
-      <PinnedCampaignSpotlightSection />
+        <TabsContent value="campaign-strategy" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Campaign Strategy</CardTitle>
+              <CardDescription>
+                Manage arcs, review retrospectives and digest snapshots, and queue the next strategic move without mixing it with rollout mechanics or diagnostics.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Campaign workspace</p>
+                <p className="mt-2 text-muted-foreground">Core campaign management, pinning, cloning, goals, and rollout config stay intact.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Weekly framing</p>
+                <p className="mt-2 text-muted-foreground">Weekly digest, lifecycle suggestions, and recommendations now sit together for faster triage.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Retrospectives stay available</p>
+                <p className="mt-2 text-muted-foreground">Completed and archived campaign learning is still one click away for reuse.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">{safeSummary.topPerformingDrink ? `Use ${safeSummary.topPerformingDrink.name} as a signal` : "Await stronger signal"}</p>
+                <p className="mt-2 text-muted-foreground">Pinned campaign analytics remains visible in Overview while deeper planning lives here.</p>
+              </div>
+            </CardContent>
+          </Card>
 
-      <CampaignSurfaceAttributionSection />
+          <CampaignsDashboardSection />
+          <CampaignRetrospectivesSection />
+          <CampaignWeeklyDigestSection />
+          <CampaignLifecycleSuggestionsSection />
+          <CampaignRecommendationsSection />
+        </TabsContent>
 
-      <CampaignAnalyticsSection />
-      <CampaignFunnelBottlenecksSection />
-      <CampaignFixMatchingSection />
-      <CampaignFixExperimentsSection />
-      <CampaignExperimentLibrarySection />
-      <CampaignPlaybookOnboardingSection />
-      <CampaignPlaybookDriftSection />
-      <CampaignPlaybookFitSection />
-      <CampaignPlaybookOutcomesSection />
-      <CampaignPlaybookProfilesSection />
-      <CampaignRolloutAnalyticsSection />
-      <CampaignStageRecapsSection />
+        <TabsContent value="performance" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Performance &amp; Diagnostics</CardTitle>
+              <CardDescription>
+                Benchmark the campaign, inspect attribution and funnel leakage, and see health + recovery context in one diagnostic workspace.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Benchmarks + fit</p>
+                <p className="mt-2 text-muted-foreground">Compare campaign performance against your own history and audience-fit hints.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Health watchlist</p>
+                <p className="mt-2 text-muted-foreground">Health state, recovery plans, and bottlenecks now feel like one diagnostic pass instead of isolated modules.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Attribution stays reachable</p>
+                <p className="mt-2 text-muted-foreground">Surface attribution, analytics, and stage recaps remain available without dominating the top of the dashboard.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Recovery remains safe</p>
+                <p className="mt-2 text-muted-foreground">No campaign health, recovery, or analytics APIs were removed — only regrouped.</p>
+              </div>
+            </CardContent>
+          </Card>
 
-      <DropLaunchAnalyticsSection />
+          <CampaignBenchmarksSection />
+          <CampaignAudienceFitSection />
+          <CampaignHealthSection />
+          <CampaignRecoveryPlansSection />
+          <CampaignSurfaceAttributionSection />
+          <CampaignAnalyticsSection />
+          <CampaignFunnelBottlenecksSection />
+        </TabsContent>
+
+        <TabsContent value="rollout-launch" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Rollout &amp; Launch</CardTitle>
+              <CardDescription>
+                Keep rollout advice, timing guidance, unlock context, drop analytics, and roadmap sequencing in one launch-oriented workspace.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">{metricNumber(creatorDropsUpcomingCount)} drops queued</p>
+                <p className="mt-2 text-muted-foreground">Launch timing and rollout decisions now sit next to the roadmap and drop analytics they influence.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">{metricNumber(roadmapUpcoming.length)} upcoming roadmap notes</p>
+                <p className="mt-2 text-muted-foreground">What is launching next and what already shipped stays easier to scan.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Unlock + timing guidance</p>
+                <p className="mt-2 text-muted-foreground">Rollout advisor, timing advisor, and rollout analytics now live together instead of being scattered.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Stage recaps preserved</p>
+                <p className="mt-2 text-muted-foreground">Stage recaps and launch analytics remain fully accessible for post-launch review.</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <CampaignRolloutAdvisorSection />
+          <CampaignTimingAdvisorSection />
+          <CampaignRolloutAnalyticsSection />
+          <CampaignStageRecapsSection />
+          <DropLaunchAnalyticsSection />
 
       <Card id="roadmap">
         <CardHeader>
@@ -2680,6 +2908,77 @@ export default function CreatorDashboardPage() {
         </CardContent>
       </Card>
 
+        </TabsContent>
+
+        <TabsContent value="experiments" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Experiments &amp; Fixes</CardTitle>
+              <CardDescription>
+                Fix matching, active experiments, and reusable experiment ideas are grouped here so remediation stays actionable.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Correct what is stuck</p>
+                <p className="mt-2 text-muted-foreground">Use matching guidance to find the next repair move for risky or bottlenecked campaigns.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Active experiments stay visible</p>
+                <p className="mt-2 text-muted-foreground">Campaign-scoped experiments and before/after notes remain untouched.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Library preserved</p>
+                <p className="mt-2 text-muted-foreground">Experiment-library guidance stays available for quick reuse.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">No hidden removals</p>
+                <p className="mt-2 text-muted-foreground">All fix matching and experiment routes still resolve exactly as before.</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <CampaignFixMatchingSection />
+          <CampaignFixExperimentsSection />
+          <CampaignExperimentLibrarySection />
+        </TabsContent>
+
+        <TabsContent value="playbooks" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Playbooks &amp; Reuse</CardTitle>
+              <CardDescription>
+                Reusable profiles, fit suggestions, onboarding, drift, and outcomes are now one workspace for strategy reuse.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Reusable profiles</p>
+                <p className="mt-2 text-muted-foreground">Playbook profiles and lineage stay editable and applicable across campaigns.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Onboarding + fit</p>
+                <p className="mt-2 text-muted-foreground">Setup checklists and playbook fit are grouped so recommendation and execution stay together.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Drift + outcomes</p>
+                <p className="mt-2 text-muted-foreground">See where campaigns are drifting and which reusable patterns are producing results.</p>
+              </div>
+              <div className="rounded-xl border p-4 text-sm">
+                <p className="font-medium text-foreground">Best reusable next step</p>
+                <p className="mt-2 text-muted-foreground">Use this tab when you want to apply what already worked instead of starting from scratch.</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <CampaignPlaybookOnboardingSection />
+          <CampaignPlaybookDriftSection />
+          <CampaignPlaybookFitSection />
+          <CampaignPlaybookOutcomesSection />
+          <CampaignPlaybookProfilesSection />
+        </TabsContent>
+
+        <TabsContent value="operations" className="space-y-6">
       <Card id="membership">
         <CardHeader>
           <CardTitle>Creator Membership</CardTitle>
@@ -3465,6 +3764,9 @@ export default function CreatorDashboardPage() {
         </CardContent>
       </Card>
 
+        </TabsContent>
+
+        <TabsContent value="overview" className="space-y-6">
       <Card>
         <CardHeader>
           <CardTitle>Creator Momentum</CardTitle>
@@ -3694,6 +3996,8 @@ export default function CreatorDashboardPage() {
           ) : null}
         </CardContent>
       </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
