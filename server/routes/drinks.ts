@@ -16,6 +16,7 @@ import {
   creatorRoadmapItems,
   creatorCampaigns,
   creatorCampaignTemplates,
+  creatorCampaignPlaybookProfiles,
   creatorCampaignLinks,
   creatorCampaignFollows,
   creatorCampaignRolloutTimelineEvents,
@@ -61,6 +62,7 @@ import {
   insertCreatorRoadmapItemSchema,
   insertCreatorCampaignSchema,
   insertCreatorCampaignTemplateSchema,
+  insertCreatorCampaignPlaybookProfileSchema,
   insertCreatorCampaignLinkSchema,
   insertCreatorCampaignFollowSchema,
   insertCreatorCampaignGoalSchema,
@@ -126,6 +128,7 @@ type CreatorCampaignCtaTargetType = "follow" | "rsvp" | "collection" | "membersh
 type CreatorCampaignState = "upcoming" | "active" | "past";
 type CreatorCampaignRolloutMode = "public_first" | "followers_first" | "members_first" | "staged";
 type CreatorCampaignRolloutAudience = "public" | "followers" | "members";
+type CreatorCampaignPlaybookCtaDirection = "follow" | "rsvp" | "membership" | "purchase" | "drop" | "mixed";
 type CreatorCampaignRolloutState =
   | "scheduled_for_members"
   | "scheduled_for_followers"
@@ -245,6 +248,7 @@ type CreatorPostRecord = typeof creatorPosts.$inferSelect;
 type CreatorRoadmapRecord = typeof creatorRoadmapItems.$inferSelect;
 type CreatorCampaignRecord = typeof creatorCampaigns.$inferSelect;
 type CreatorCampaignTemplateRecord = typeof creatorCampaignTemplates.$inferSelect;
+type CreatorCampaignPlaybookProfileRecord = typeof creatorCampaignPlaybookProfiles.$inferSelect;
 type CreatorCampaignLinkRecord = typeof creatorCampaignLinks.$inferSelect;
 type CreatorCampaignFollowRecord = typeof creatorCampaignFollows.$inferSelect;
 type CreatorCampaignRolloutTimelineEventRecord = typeof creatorCampaignRolloutTimelineEvents.$inferSelect;
@@ -1024,6 +1028,35 @@ const campaignTemplateActionBodySchema = z.object({
   resetDates: z.boolean().optional(),
   copyLinkedDrafts: z.boolean().optional(),
   copyCtaVariants: z.boolean().optional(),
+});
+
+const creatorCampaignPlaybookCtaDirectionSchema = z.enum(["follow", "rsvp", "membership", "purchase", "drop", "mixed"]);
+
+const creatorCampaignPlaybookProfileBodyBaseSchema = z.object({
+  name: z.string().trim().min(2).max(160),
+  description: z.string().trim().max(1000).nullable().optional(),
+  visibilityStrategy: creatorCampaignVisibilitySchema.nullable().optional(),
+  rolloutMode: creatorCampaignRolloutModeSchema,
+  startsWithAudience: creatorCampaignRolloutAudienceSchema.nullable().optional(),
+  recommendedFollowerUnlockDelayHours: z.coerce.number().int().min(1).max(24 * 21).nullable().optional(),
+  recommendedPublicUnlockDelayHours: z.coerce.number().int().min(1).max(24 * 30).nullable().optional(),
+  preferredCtaDirection: creatorCampaignPlaybookCtaDirectionSchema.nullable().optional(),
+  preferredExperimentTypes: z.array(creatorCampaignExperimentTypeSchema).max(5).optional().default([]),
+  preferredAudienceFit: creatorCampaignRolloutAudienceSchema.nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+const createCreatorCampaignPlaybookProfileBodySchema = creatorCampaignPlaybookProfileBodyBaseSchema;
+
+const updateCreatorCampaignPlaybookProfileBodySchema = creatorCampaignPlaybookProfileBodyBaseSchema.partial().refine(
+  (value) => Object.values(value).some((field) => field !== undefined),
+  { message: "Provide at least one playbook field to update." },
+);
+
+const saveCampaignPlaybookProfileBodySchema = z.object({
+  name: z.string().trim().min(2).max(160).optional(),
+  description: z.string().trim().max(1000).nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
 });
 
 const creatorCampaignVariantBodySchema = z.object({
@@ -2332,6 +2365,27 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS creator_campaign_playbook_profiles (
+        id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+        creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name varchar(160) NOT NULL,
+        description text,
+        visibility_strategy text,
+        rollout_mode text NOT NULL DEFAULT 'public_first',
+        starts_with_audience text,
+        recommended_follower_unlock_delay_hours integer,
+        recommended_public_unlock_delay_hours integer,
+        preferred_cta_direction text,
+        preferred_experiment_types jsonb NOT NULL DEFAULT '[]'::jsonb,
+        preferred_audience_fit text,
+        notes text,
+        created_at timestamp NOT NULL DEFAULT now(),
+        updated_at timestamp NOT NULL DEFAULT now(),
+        CONSTRAINT creator_campaign_playbook_profiles_creator_name_idx UNIQUE (creator_user_id, name)
+      );
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_campaign_links (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         campaign_id varchar NOT NULL REFERENCES creator_campaigns(id) ON DELETE CASCADE,
@@ -2649,6 +2703,21 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_idx ON creator_campaign_templates(creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_source_idx ON creator_campaign_templates(source_campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_updated_at_idx ON creator_campaign_templates(creator_user_id, updated_at);`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS description text;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS visibility_strategy text;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS rollout_mode text NOT NULL DEFAULT 'public_first';`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS starts_with_audience text;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS recommended_follower_unlock_delay_hours integer;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS recommended_public_unlock_delay_hours integer;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS preferred_cta_direction text;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS preferred_experiment_types jsonb NOT NULL DEFAULT '[]'::jsonb;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS preferred_audience_fit text;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS notes text;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS created_at timestamp NOT NULL DEFAULT now();`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_playbook_profiles_creator_idx ON creator_campaign_playbook_profiles(creator_user_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_playbook_profiles_creator_updated_at_idx ON creator_campaign_playbook_profiles(creator_user_id, updated_at);`);
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_campaign_playbook_profiles_creator_name_idx ON creator_campaign_playbook_profiles(creator_user_id, name);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_campaign_idx ON creator_campaign_links(campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_target_idx ON creator_campaign_links(target_type, target_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_campaign_sort_idx ON creator_campaign_links(campaign_id, sort_order, created_at);`);
@@ -4352,6 +4421,176 @@ function serializeCreatorCampaignTemplate(template: CreatorCampaignTemplateRecor
     createdAt: template.createdAt.toISOString(),
     updatedAt: template.updatedAt.toISOString(),
   };
+}
+
+function serializeCreatorCampaignPlaybookProfile(profile: CreatorCampaignPlaybookProfileRecord) {
+  const preferredExperimentTypes = Array.isArray(profile.preferredExperimentTypes)
+    ? profile.preferredExperimentTypes
+        .map((value) => String(value))
+        .filter((value): value is CreatorCampaignExperimentType => creatorCampaignExperimentTypeSchema.safeParse(value).success)
+    : [];
+
+  return {
+    id: profile.id,
+    creatorUserId: profile.creatorUserId,
+    name: profile.name,
+    description: profile.description ?? null,
+    visibilityStrategy: (profile.visibilityStrategy as CreatorCampaignVisibility | null) ?? null,
+    rolloutMode: (profile.rolloutMode as CreatorCampaignRolloutMode) ?? "public_first",
+    startsWithAudience: (profile.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null,
+    recommendedFollowerUnlockDelayHours: profile.recommendedFollowerUnlockDelayHours ?? null,
+    recommendedPublicUnlockDelayHours: profile.recommendedPublicUnlockDelayHours ?? null,
+    preferredCtaDirection: (profile.preferredCtaDirection as CreatorCampaignPlaybookCtaDirection | null) ?? null,
+    preferredExperimentTypes,
+    preferredAudienceFit: (profile.preferredAudienceFit as CreatorCampaignRolloutAudience | null) ?? null,
+    notes: profile.notes ?? null,
+    createdAt: profile.createdAt.toISOString(),
+    updatedAt: profile.updatedAt.toISOString(),
+  };
+}
+
+function diffHoursBetween(start: Date | null | undefined, end: Date | null | undefined) {
+  if (!start || !end) return null;
+  const diffMs = end.getTime() - start.getTime();
+  if (!Number.isFinite(diffMs) || diffMs <= 0) return null;
+  return Math.max(1, Math.round(diffMs / (60 * 60 * 1000)));
+}
+
+function inferPreferredCtaDirectionFromVariants(
+  variants: CreatorCampaignCtaVariantRecord[],
+): CreatorCampaignPlaybookCtaDirection | null {
+  if (!variants.length) return null;
+  const counts = new Map<CreatorCampaignPlaybookCtaDirection, number>();
+  for (const variant of variants) {
+    const mapped: CreatorCampaignPlaybookCtaDirection =
+      variant.ctaTargetType === "membership"
+        ? "membership"
+        : variant.ctaTargetType === "rsvp"
+          ? "rsvp"
+          : variant.ctaTargetType === "drop"
+            ? "drop"
+            : variant.ctaTargetType === "collection"
+              ? "purchase"
+              : "follow";
+    counts.set(mapped, (counts.get(mapped) ?? 0) + (variant.isActive ? 2 : 1));
+  }
+  const ranked = [...counts.entries()].sort((left, right) => right[1] - left[1]);
+  if (!ranked[0]) return null;
+  if (ranked.length > 1 && ranked[0][1] === ranked[1][1]) return "mixed";
+  return ranked[0][0];
+}
+
+async function buildCreatorCampaignPlaybookProfileFromCampaign(input: {
+  creatorUserId: string;
+  campaign: CreatorCampaignRecord;
+  name?: string | null;
+  description?: string | null;
+  notes?: string | null;
+}) {
+  if (!db) throw new Error("Database unavailable");
+
+  const { creatorUserId, campaign } = input;
+  const [audienceFit, timingAdvisor, fixMatching, benchmarks, retrospectives, variants, experiments] = await Promise.all([
+    loadCreatorCampaignAudienceFit(creatorUserId),
+    loadCreatorCampaignTimingAdvisor(creatorUserId, campaign.id),
+    loadCreatorCampaignFixMatching(creatorUserId, campaign.id),
+    loadCreatorCampaignBenchmarks(creatorUserId),
+    loadCreatorCampaignRetrospectives(creatorUserId),
+    loadCreatorCampaignVariantsByCampaignIds([campaign.id]).then((map) => map.get(campaign.id) ?? []),
+    db
+      .select()
+      .from(creatorCampaignExperiments)
+      .where(eq(creatorCampaignExperiments.campaignId, campaign.id))
+      .orderBy(desc(creatorCampaignExperiments.updatedAt), desc(creatorCampaignExperiments.createdAt))
+      .limit(6),
+  ]);
+
+  const audienceFitItem = audienceFit.items.find((item) => item.campaignId === campaign.id) ?? null;
+  const timingItem = timingAdvisor.items.find((item) => item.campaignId === campaign.id) ?? null;
+  const fixItem = fixMatching.items.find((item) => item.campaignId === campaign.id) ?? null;
+  const benchmarkItem = benchmarks.items.find((item) => item.campaignId === campaign.id) ?? null;
+  const retrospectiveItem = retrospectives.items.find((item) => item.campaignId === campaign.id) ?? null;
+
+  const startsAt = campaign.startsAt ?? campaign.createdAt ?? null;
+  const preferredExperimentTypes = uniqueStringList([
+    ...experiments.map((item) => item.experimentType),
+    fixItem?.recommendedExperimentType ?? null,
+    ...(fixItem?.alternativeFixes.map((item) => item.experimentType) ?? []),
+  ], 5).filter((value): value is CreatorCampaignExperimentType => creatorCampaignExperimentTypeSchema.safeParse(value).success);
+
+  const generatedNotes = uniqueStringList([
+    input.notes?.trim() || null,
+    campaign.rolloutNotes?.trim() || null,
+    timingItem?.recommendationSummary ?? null,
+    audienceFitItem?.bestAudienceFitReason ?? null,
+    fixItem?.matchReason ?? null,
+    retrospectiveItem?.summary ?? null,
+    retrospectiveItem?.lessons?.[0]?.message ?? null,
+    benchmarkItem?.benchmarkLabels?.[0] ? `Benchmark context: ${benchmarkItem.benchmarkLabels[0]}.` : null,
+  ], 6).join(" ");
+
+  return insertCreatorCampaignPlaybookProfileSchema.parse({
+    creatorUserId,
+    name: input.name?.trim() || `${campaign.name} Strategy`,
+    description: input.description?.trim() || campaign.description || `Reusable strategy preset based on ${campaign.name}.`,
+    visibilityStrategy: campaign.visibility,
+    rolloutMode: (campaign.rolloutMode as CreatorCampaignRolloutMode | null) ?? "public_first",
+    startsWithAudience: (campaign.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null,
+    recommendedFollowerUnlockDelayHours: diffHoursBetween(startsAt, campaign.unlockFollowersAt),
+    recommendedPublicUnlockDelayHours: diffHoursBetween(startsAt, campaign.unlockPublicAt),
+    preferredCtaDirection: inferPreferredCtaDirectionFromVariants(variants) ?? null,
+    preferredExperimentTypes,
+    preferredAudienceFit: audienceFitItem?.bestAudienceFit ?? null,
+    notes: generatedNotes || null,
+  });
+}
+
+async function applyCreatorCampaignPlaybookProfileToCampaign(input: {
+  profile: CreatorCampaignPlaybookProfileRecord;
+  campaign: CreatorCampaignRecord;
+  actorUserId: string;
+}) {
+  if (!db) throw new Error("Database unavailable");
+
+  const profile = input.profile;
+  const campaign = input.campaign;
+  const anchor = campaign.startsAt ?? campaign.createdAt ?? new Date();
+  const nextFollowerUnlock = profile.recommendedFollowerUnlockDelayHours
+    ? new Date(anchor.getTime() + profile.recommendedFollowerUnlockDelayHours * 60 * 60 * 1000)
+    : null;
+  const nextPublicUnlock = profile.recommendedPublicUnlockDelayHours
+    ? new Date(anchor.getTime() + profile.recommendedPublicUnlockDelayHours * 60 * 60 * 1000)
+    : null;
+  const mergedNotes = uniqueStringList([
+    campaign.rolloutNotes?.trim() || null,
+    profile.notes?.trim() || null,
+    profile.preferredCtaDirection ? `Suggested CTA direction: ${profile.preferredCtaDirection.replaceAll("_", " ")}.` : null,
+  ], 4).join(" ");
+
+  const updatedRows = await db
+    .update(creatorCampaigns)
+    .set({
+      visibility: (profile.visibilityStrategy as CreatorCampaignVisibility | null) ?? campaign.visibility,
+      rolloutMode: (profile.rolloutMode as CreatorCampaignRolloutMode | null) ?? campaign.rolloutMode,
+      startsWithAudience: (profile.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? campaign.startsWithAudience,
+      unlockFollowersAt: nextFollowerUnlock,
+      unlockPublicAt: nextPublicUnlock,
+      rolloutNotes: mergedNotes || null,
+      updatedAt: new Date(),
+    })
+    .where(eq(creatorCampaigns.id, campaign.id))
+    .returning();
+
+  const nextCampaign = updatedRows[0];
+  if (!nextCampaign) throw new Error("Failed to apply playbook profile.");
+
+  await maybeCreateCampaignRolloutConfiguredEvent({
+    previous: campaign,
+    next: nextCampaign,
+    actorUserId: input.actorUserId,
+  });
+
+  return nextCampaign;
 }
 
 async function instantiateCampaignFromTemplate(input: {
@@ -21726,6 +21965,289 @@ r.post("/campaign-templates/:id/create-campaign", requireAuth, async (req, res) 
   } catch (error) {
     const message = logCollectionRouteError("/campaign-templates/:id/create-campaign", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to create campaign from template"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-playbook-profiles", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const [profiles, campaigns] = await Promise.all([
+      db
+        .select()
+        .from(creatorCampaignPlaybookProfiles)
+        .where(eq(creatorCampaignPlaybookProfiles.creatorUserId, req.user!.id))
+        .orderBy(desc(creatorCampaignPlaybookProfiles.updatedAt), desc(creatorCampaignPlaybookProfiles.createdAt)),
+      db
+        .select()
+        .from(creatorCampaigns)
+        .where(eq(creatorCampaigns.creatorUserId, req.user!.id))
+        .orderBy(desc(creatorCampaigns.updatedAt))
+        .limit(24),
+    ]);
+
+    return res.json({
+      ok: true,
+      count: profiles.length,
+      items: profiles.map(serializeCreatorCampaignPlaybookProfile),
+      availableCampaigns: campaigns.map((campaign) => ({
+        id: campaign.id,
+        name: campaign.name,
+        slug: campaign.slug,
+        route: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      })),
+      attributionNotes: [
+        "Playbook profiles stay lightweight on purpose: they save reusable strategy settings, not analytics history, linked drafts, or a full campaign clone.",
+        "This layer stays distinct from templates, rollout/timing advisors, and the experiment library. It simply stores the creator's own reusable strategic defaults.",
+      ],
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-profiles", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign playbook profiles"));
+  }
+});
+
+r.post("/creator-dashboard/campaign-playbook-profiles", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const parsed = createCreatorCampaignPlaybookProfileBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid playbook profile payload." });
+    }
+
+    const payload = parsed.data;
+    const inserted = await db
+      .insert(creatorCampaignPlaybookProfiles)
+      .values(insertCreatorCampaignPlaybookProfileSchema.parse({
+        creatorUserId: req.user!.id,
+        name: payload.name.trim(),
+        description: payload.description?.trim() || null,
+        visibilityStrategy: payload.visibilityStrategy ?? null,
+        rolloutMode: payload.rolloutMode,
+        startsWithAudience: payload.startsWithAudience ?? null,
+        recommendedFollowerUnlockDelayHours: payload.recommendedFollowerUnlockDelayHours ?? null,
+        recommendedPublicUnlockDelayHours: payload.recommendedPublicUnlockDelayHours ?? null,
+        preferredCtaDirection: payload.preferredCtaDirection ?? null,
+        preferredExperimentTypes: payload.preferredExperimentTypes ?? [],
+        preferredAudienceFit: payload.preferredAudienceFit ?? null,
+        notes: payload.notes?.trim() || null,
+      }))
+      .returning();
+
+    return res.status(201).json({
+      ok: true,
+      item: serializeCreatorCampaignPlaybookProfile(inserted[0]!),
+      message: "Campaign playbook profile saved.",
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-profiles", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create campaign playbook profile"));
+  }
+});
+
+r.patch("/creator-dashboard/campaign-playbook-profiles/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const profileId = String(req.params.id ?? "").trim();
+    if (!profileId) {
+      return res.status(400).json({ ok: false, error: "Playbook profile id is required." });
+    }
+
+    const parsed = updateCreatorCampaignPlaybookProfileBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid playbook profile payload." });
+    }
+
+    const existingRows = await db
+      .select()
+      .from(creatorCampaignPlaybookProfiles)
+      .where(and(eq(creatorCampaignPlaybookProfiles.id, profileId), eq(creatorCampaignPlaybookProfiles.creatorUserId, req.user!.id)))
+      .limit(1);
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ ok: false, error: "Campaign playbook profile not found." });
+    }
+
+    const payload = parsed.data;
+    const updated = await db
+      .update(creatorCampaignPlaybookProfiles)
+      .set({
+        name: payload.name !== undefined ? payload.name.trim() : existing.name,
+        description: payload.description !== undefined ? (payload.description?.trim() || null) : existing.description,
+        visibilityStrategy: payload.visibilityStrategy !== undefined ? payload.visibilityStrategy : existing.visibilityStrategy,
+        rolloutMode: payload.rolloutMode ?? (existing.rolloutMode as CreatorCampaignRolloutMode),
+        startsWithAudience: payload.startsWithAudience !== undefined ? payload.startsWithAudience : existing.startsWithAudience,
+        recommendedFollowerUnlockDelayHours: payload.recommendedFollowerUnlockDelayHours !== undefined ? payload.recommendedFollowerUnlockDelayHours : existing.recommendedFollowerUnlockDelayHours,
+        recommendedPublicUnlockDelayHours: payload.recommendedPublicUnlockDelayHours !== undefined ? payload.recommendedPublicUnlockDelayHours : existing.recommendedPublicUnlockDelayHours,
+        preferredCtaDirection: payload.preferredCtaDirection !== undefined ? payload.preferredCtaDirection : existing.preferredCtaDirection,
+        preferredExperimentTypes: payload.preferredExperimentTypes !== undefined ? payload.preferredExperimentTypes : existing.preferredExperimentTypes,
+        preferredAudienceFit: payload.preferredAudienceFit !== undefined ? payload.preferredAudienceFit : existing.preferredAudienceFit,
+        notes: payload.notes !== undefined ? (payload.notes?.trim() || null) : existing.notes,
+        updatedAt: new Date(),
+      })
+      .where(eq(creatorCampaignPlaybookProfiles.id, profileId))
+      .returning();
+
+    return res.json({
+      ok: true,
+      item: serializeCreatorCampaignPlaybookProfile(updated[0]!),
+      message: "Campaign playbook profile updated.",
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-profiles/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update campaign playbook profile"));
+  }
+});
+
+r.delete("/creator-dashboard/campaign-playbook-profiles/:id", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const profileId = String(req.params.id ?? "").trim();
+    if (!profileId) {
+      return res.status(400).json({ ok: false, error: "Playbook profile id is required." });
+    }
+
+    const deleted = await db
+      .delete(creatorCampaignPlaybookProfiles)
+      .where(and(eq(creatorCampaignPlaybookProfiles.id, profileId), eq(creatorCampaignPlaybookProfiles.creatorUserId, req.user!.id)))
+      .returning({ id: creatorCampaignPlaybookProfiles.id });
+
+    if (!deleted[0]) {
+      return res.status(404).json({ ok: false, error: "Campaign playbook profile not found." });
+    }
+
+    return res.json({ ok: true, deletedId: deleted[0].id });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-profiles/:id", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to delete campaign playbook profile"));
+  }
+});
+
+r.post("/campaigns/:id/save-playbook-profile", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const parsed = saveCampaignPlaybookProfileBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid playbook save payload." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const values = await buildCreatorCampaignPlaybookProfileFromCampaign({
+      creatorUserId: req.user!.id,
+      campaign,
+      name: parsed.data.name ?? undefined,
+      description: parsed.data.description ?? undefined,
+      notes: parsed.data.notes ?? undefined,
+    });
+
+    const inserted = await db
+      .insert(creatorCampaignPlaybookProfiles)
+      .values(values)
+      .onConflictDoUpdate({
+        target: [creatorCampaignPlaybookProfiles.creatorUserId, creatorCampaignPlaybookProfiles.name],
+        set: {
+          description: values.description,
+          visibilityStrategy: values.visibilityStrategy,
+          rolloutMode: values.rolloutMode,
+          startsWithAudience: values.startsWithAudience,
+          recommendedFollowerUnlockDelayHours: values.recommendedFollowerUnlockDelayHours,
+          recommendedPublicUnlockDelayHours: values.recommendedPublicUnlockDelayHours,
+          preferredCtaDirection: values.preferredCtaDirection,
+          preferredExperimentTypes: values.preferredExperimentTypes,
+          preferredAudienceFit: values.preferredAudienceFit,
+          notes: values.notes,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    return res.status(201).json({
+      ok: true,
+      sourceCampaignId: campaign.id,
+      item: serializeCreatorCampaignPlaybookProfile(inserted[0]!),
+      message: "Campaign playbook profile saved from campaign strategy.",
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Failed to save campaign playbook profile";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/save-playbook-profile", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to save campaign playbook profile"));
+  }
+});
+
+r.post("/creator-dashboard/campaign-playbook-profiles/:id/apply-to-campaign/:campaignId", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const profileId = String(req.params.id ?? "").trim();
+    const campaignId = String(req.params.campaignId ?? "").trim();
+    if (!profileId || !campaignId) {
+      return res.status(400).json({ ok: false, error: "Playbook profile id and campaign id are required." });
+    }
+
+    const [profileRows, campaign] = await Promise.all([
+      db
+        .select()
+        .from(creatorCampaignPlaybookProfiles)
+        .where(and(eq(creatorCampaignPlaybookProfiles.id, profileId), eq(creatorCampaignPlaybookProfiles.creatorUserId, req.user!.id)))
+        .limit(1),
+      loadCampaignForOwnerOrThrow(campaignId, req.user!.id),
+    ]);
+    const profile = profileRows[0];
+    if (!profile) {
+      return res.status(404).json({ ok: false, error: "Campaign playbook profile not found." });
+    }
+
+    const updatedCampaign = await applyCreatorCampaignPlaybookProfileToCampaign({
+      profile,
+      campaign,
+      actorUserId: req.user!.id,
+    });
+    const detail = await loadCreatorCampaignDetail(updatedCampaign, req.user!.id);
+
+    return res.json({
+      ok: true,
+      profile: serializeCreatorCampaignPlaybookProfile(profile),
+      appliedToCampaignId: updatedCampaign.id,
+      message: "Campaign playbook profile applied.",
+      ...detail,
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Failed to apply campaign playbook profile";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-profiles/:id/apply-to-campaign/:campaignId", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to apply campaign playbook profile"));
   }
 });
 

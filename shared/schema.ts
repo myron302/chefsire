@@ -1485,6 +1485,32 @@ export const creatorCampaignTemplates = pgTable(
   })
 );
 
+export const creatorCampaignPlaybookProfiles = pgTable(
+  "creator_campaign_playbook_profiles",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    creatorUserId: varchar("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    name: varchar("name", { length: 160 }).notNull(),
+    description: text("description"),
+    visibilityStrategy: text("visibility_strategy"),
+    rolloutMode: text("rollout_mode").default("public_first").notNull(),
+    startsWithAudience: text("starts_with_audience"),
+    recommendedFollowerUnlockDelayHours: integer("recommended_follower_unlock_delay_hours"),
+    recommendedPublicUnlockDelayHours: integer("recommended_public_unlock_delay_hours"),
+    preferredCtaDirection: text("preferred_cta_direction"),
+    preferredExperimentTypes: jsonb("preferred_experiment_types").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    preferredAudienceFit: text("preferred_audience_fit"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    creatorIdx: index("creator_campaign_playbook_profiles_creator_idx").on(table.creatorUserId),
+    creatorUpdatedIdx: index("creator_campaign_playbook_profiles_creator_updated_at_idx").on(table.creatorUserId, table.updatedAt),
+    creatorNameIdx: uniqueIndex("creator_campaign_playbook_profiles_creator_name_idx").on(table.creatorUserId, table.name),
+  })
+);
+
 export const creatorCampaignLinks = pgTable(
   "creator_campaign_links",
   {
@@ -2499,6 +2525,12 @@ export const insertCreatorCampaignTemplateSchema = createInsertSchema(creatorCam
   updatedAt: true,
 });
 
+export const insertCreatorCampaignPlaybookProfileSchema = createInsertSchema(creatorCampaignPlaybookProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 export const insertCreatorCampaignLinkSchema = createInsertSchema(creatorCampaignLinks).omit({
   id: true,
   createdAt: true,
@@ -2774,6 +2806,8 @@ export type CreatorCampaignRolloutTimelineEvent = typeof creatorCampaignRolloutT
 export type InsertCreatorCampaignRolloutTimelineEvent = z.infer<typeof insertCreatorCampaignRolloutTimelineEventSchema>;
 export type CreatorCampaignTemplate = typeof creatorCampaignTemplates.$inferSelect;
 export type InsertCreatorCampaignTemplate = z.infer<typeof insertCreatorCampaignTemplateSchema>;
+export type CreatorCampaignPlaybookProfile = typeof creatorCampaignPlaybookProfiles.$inferSelect;
+export type InsertCreatorCampaignPlaybookProfile = z.infer<typeof insertCreatorCampaignPlaybookProfileSchema>;
 export type CreatorCampaignLink = typeof creatorCampaignLinks.$inferSelect;
 export type InsertCreatorCampaignLink = z.infer<typeof insertCreatorCampaignLinkSchema>;
 export type CreatorCampaignFollow = typeof creatorCampaignFollows.$inferSelect;
