@@ -37,6 +37,7 @@ import CampaignFunnelBottlenecksSection from "@/components/drinks/CampaignFunnel
 import CampaignFixMatchingSection from "@/components/drinks/CampaignFixMatchingSection";
 import CampaignFixExperimentsSection from "@/components/drinks/CampaignFixExperimentsSection";
 import CampaignExperimentLibrarySection from "@/components/drinks/CampaignExperimentLibrarySection";
+import CampaignPlaybookProfilesSection from "@/components/drinks/CampaignPlaybookProfilesSection";
 import DropLaunchAnalyticsSection from "@/components/drinks/DropLaunchAnalyticsSection";
 import PinnedCampaignSpotlightSection from "@/components/drinks/PinnedCampaignSpotlightSection";
 import { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
@@ -2382,6 +2383,7 @@ export default function CreatorDashboardPage() {
       <CampaignFixMatchingSection />
       <CampaignFixExperimentsSection />
       <CampaignExperimentLibrarySection />
+      <CampaignPlaybookProfilesSection />
       <CampaignRolloutAnalyticsSection />
       <CampaignStageRecapsSection />
 
