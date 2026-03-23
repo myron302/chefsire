@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
@@ -30,15 +30,14 @@ import {
   type CampaignRolloutMode,
   type CampaignRolloutResponse,
   type CampaignRolloutState,
-  type CampaignsResponse,
   type CampaignTargetType,
   type CampaignTemplateItem,
-  type CampaignTemplatesResponse,
   type CampaignVariantItem,
   type CampaignVariantTargetType,
   type CampaignVariantsResponse,
 } from "@/components/drinks/campaigns-dashboard/types";
 
+import { useCampaignsDashboardData } from "@/components/drinks/campaigns-dashboard/hooks/useCampaignsDashboardData";
 import CampaignGoalsManager from "@/components/drinks/campaigns-dashboard/CampaignGoalsManager";
 import CampaignRolloutManager from "@/components/drinks/campaigns-dashboard/CampaignRolloutManager";
 import CampaignVariantManager from "@/components/drinks/campaigns-dashboard/CampaignVariantManager";
@@ -60,128 +59,12 @@ export default function CampaignsDashboardSection() {
   });
   const [selectedCampaignId, setSelectedCampaignId] = React.useState("");
 
-  const campaignsQuery = useQuery<CampaignsResponse>({
-    queryKey: ["/api/drinks/campaigns/creator", user?.id ?? ""],
-    queryFn: async () => {
-      const response = await fetch(`/api/drinks/campaigns/creator/${encodeURIComponent(user?.id ?? "")}`, { credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load campaigns (${response.status})`);
-      return payload as CampaignsResponse;
-    },
-    enabled: Boolean(user?.id),
-  });
-
-  const pinnedCampaignQuery = useQuery<{ ok: boolean; campaign: CreatorCampaignItem | null }>({
-    queryKey: ["/api/drinks/creator-dashboard/pinned-campaign", user?.id ?? ""],
-    queryFn: async () => {
-      const response = await fetch("/api/drinks/creator-dashboard/pinned-campaign", { credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load pinned campaign (${response.status})`);
-      return payload as { ok: boolean; campaign: CreatorCampaignItem | null };
-    },
-    enabled: Boolean(user?.id),
-  });
-
-  const templatesQuery = useQuery<CampaignTemplatesResponse>({
-    queryKey: ["/api/drinks/campaign-templates", user?.id ?? ""],
-    queryFn: async () => {
-      const response = await fetch("/api/drinks/campaign-templates", { credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load campaign templates (${response.status})`);
-      return payload as CampaignTemplatesResponse;
-    },
-    enabled: Boolean(user?.id),
-  });
-
-  const collectionsQuery = useQuery<{ items: Array<{ id: string; label: string }> }>({
-    queryKey: ["/api/drinks/collections/mine", user?.id ?? ""],
-    queryFn: async () => {
-      const response = await fetch("/api/drinks/collections/mine", { credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load collections (${response.status})`);
-      return {
-        items: Array.isArray(payload?.collections)
-          ? payload.collections.map((item: any) => ({ id: String(item.id), label: String(item.name ?? "Collection") }))
-          : [],
-      };
-    },
-    enabled: Boolean(user?.id),
-  });
-
-  const dropsQuery = useQuery<{ items: Array<{ id: string; label: string }> }>({
-    queryKey: ["/api/drinks/drops/creator", user?.id ?? ""],
-    queryFn: async () => {
-      const response = await fetch(`/api/drinks/drops/creator/${encodeURIComponent(user?.id ?? "")}`, { credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load drops (${response.status})`);
-      return {
-        items: Array.isArray(payload?.items)
-          ? payload.items.map((item: any) => ({ id: String(item.id), label: String(item.title ?? "Drop") }))
-          : [],
-      };
-    },
-    enabled: Boolean(user?.id),
-  });
-
-  const postsQuery = useQuery<{ items: Array<{ id: string; label: string }> }>({
-    queryKey: ["/api/drinks/creator-posts/creator", user?.id ?? ""],
-    queryFn: async () => {
-      const response = await fetch(`/api/drinks/creator-posts/creator/${encodeURIComponent(user?.id ?? "")}`, { credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load posts (${response.status})`);
-      return {
-        items: Array.isArray(payload?.items)
-          ? payload.items.map((item: any) => ({ id: String(item.id), label: String(item.title ?? "Post") }))
-          : [],
-      };
-    },
-    enabled: Boolean(user?.id),
-  });
-
-  const roadmapQuery = useQuery<{ items: Array<{ id: string; label: string }> }>({
-    queryKey: ["/api/drinks/roadmap/creator", user?.id ?? ""],
-    queryFn: async () => {
-      const response = await fetch(`/api/drinks/roadmap/creator/${encodeURIComponent(user?.id ?? "")}`, { credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load roadmap (${response.status})`);
-      return {
-        items: Array.isArray(payload?.items)
-          ? payload.items.map((item: any) => ({ id: String(item.id), label: String(item.title ?? "Roadmap note") }))
-          : [],
-      };
-    },
-    enabled: Boolean(user?.id),
-  });
-
-  const promotionsQuery = useQuery<{ items: Array<{ id: string; label: string }> }>({
-    queryKey: ["/api/drinks/creator-dashboard/promotions", user?.id ?? ""],
-    queryFn: async () => {
-      const response = await fetch("/api/drinks/creator-dashboard/promotions", { credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load promotions (${response.status})`);
-      return {
-        items: Array.isArray(payload?.promotions)
-          ? payload.promotions.map((item: any) => ({ id: String(item.id), label: `${String(item.code ?? "PROMO")} · ${String(item.collectionName ?? "Collection")}` }))
-          : [],
-      };
-    },
-    enabled: Boolean(user?.id),
-  });
-
-  const challengesQuery = useQuery<{ items: Array<{ id: string; label: string }> }>({
-    queryKey: ["/api/drinks/challenges"],
-    queryFn: async () => {
-      const response = await fetch("/api/drinks/challenges", { credentials: "include" });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load challenges (${response.status})`);
-      const sourceItems = Array.isArray(payload?.items) ? payload.items : payload?.challenges;
-      return {
-        items: Array.isArray(sourceItems)
-          ? sourceItems.map((item: any) => ({ id: String(item.id), label: String(item.title ?? item.slug ?? "Challenge") }))
-          : [],
-      };
-    },
-  });
+  const {
+    campaignsQuery,
+    pinnedCampaignQuery,
+    templatesQuery,
+    contentOptions,
+  } = useCampaignsDashboardData(user?.id);
 
   const saveMutation = useMutation({
     mutationFn: async () => {
@@ -368,15 +251,6 @@ export default function CampaignsDashboardSection() {
       setError(readErrorMessage(loadError, "Unable to load campaign details right now."));
     }
   }, []);
-
-  const contentOptions: Record<CampaignTargetType, Array<{ id: string; label: string }>> = {
-    collection: collectionsQuery.data?.items ?? [],
-    drop: dropsQuery.data?.items ?? [],
-    promo: promotionsQuery.data?.items ?? [],
-    challenge: challengesQuery.data?.items ?? [],
-    post: postsQuery.data?.items ?? [],
-    roadmap: roadmapQuery.data?.items ?? [],
-  };
 
   const campaigns = campaignsQuery.data?.items ?? [];
   const templates = templatesQuery.data?.items ?? [];
