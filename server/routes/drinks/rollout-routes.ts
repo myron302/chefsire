@@ -1,4 +1,6 @@
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { type Router } from "express";
+import { z } from "zod";
 
 export function registerRolloutRoutes(r: Router, ctx: any) {
   const {
@@ -58,14 +60,14 @@ export function registerRolloutRoutes(r: Router, ctx: any) {
     createCreatorCampaignExperimentBodySchema,
     updateCreatorCampaignExperimentBodySchema,
     insertCreatorCampaignExperimentSchema,
-    createCreatorCampaignVariantBodySchema,
+    creatorCampaignVariantBodySchema,
     updateCreatorCampaignVariantBodySchema,
     insertCreatorCampaignCtaVariantSchema,
     serializeCreatorCampaignVariant,
     loadCreatorCampaignVariantMetrics,
     trackCreatorCampaignVariantEvent,
     loadCampaignVariantForTracking,
-    createCreatorCampaignGoalBodySchema,
+    creatorCampaignGoalBodySchema,
     updateCreatorCampaignGoalBodySchema,
     insertCreatorCampaignGoalSchema,
     serializeCreatorCampaignGoal,
