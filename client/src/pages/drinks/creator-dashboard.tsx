@@ -542,9 +542,35 @@ function collaborationStatusLabel(status: CreatorCollaborationItem["status"]) {
   }
 }
 
+const DASHBOARD_TAB_SECTION_MAP = {
+  overview: ["campaign-action-center", "campaign-rollout-timeline", "campaign-unlock-readiness-alerts", "campaign-launch-readiness", "campaign-spotlight-performance", "bundles"],
+  "campaign-strategy": ["campaigns", "campaign-retrospectives", "campaign-weekly-digest", "campaign-lifecycle-suggestions", "campaign-recommendations"],
+  "rollout-launch": ["campaign-rollout-advisor", "campaign-timing-advisor", "campaign-rollout-analytics", "campaign-stage-recaps", "launch-analytics", "roadmap"],
+  performance: ["campaign-benchmarks", "campaign-audience-fit", "campaign-health", "campaign-recovery-plans", "campaign-surface-attribution", "campaign-analytics", "campaign-funnel-bottlenecks"],
+  experiments: ["campaign-fix-matching", "campaign-fix-experiments", "campaign-experiment-library"],
+  playbooks: ["campaign-playbook-profiles", "campaign-playbook-fit", "campaign-playbook-onboarding", "campaign-playbook-drift", "campaign-playbook-outcomes"],
+  operations: ["collaborations", "posts", "drops", "membership", "promotions", "conversions", "sales", "orders"],
+} as const;
+
+type DashboardTabValue = keyof typeof DASHBOARD_TAB_SECTION_MAP;
+
+function tabForHash(hash: string | null | undefined): DashboardTabValue {
+  const normalized = hash?.replace(/^#/, "");
+  if (!normalized) return "overview";
+
+  for (const [tab, ids] of Object.entries(DASHBOARD_TAB_SECTION_MAP) as Array<[DashboardTabValue, readonly string[]]>) {
+    if (ids.includes(normalized)) return tab;
+  }
+
+  return "overview";
+}
+
 export default function CreatorDashboardPage() {
   const { user, loading: userLoading } = useUser();
   const queryClient = useQueryClient();
+  const [activeTab, setActiveTab] = React.useState<DashboardTabValue>(() => (
+    typeof window === "undefined" ? "overview" : tabForHash(window.location.hash)
+  ));
   const [promotionForm, setPromotionForm] = React.useState({
     collectionId: "",
     code: "",
@@ -1536,6 +1562,41 @@ export default function CreatorDashboardPage() {
     },
   ];
 
+  React.useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const syncTabFromHash = () => {
+      setActiveTab(tabForHash(window.location.hash));
+    };
+
+    syncTabFromHash();
+    window.addEventListener("hashchange", syncTabFromHash);
+    return () => window.removeEventListener("hashchange", syncTabFromHash);
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const hash = window.location.hash.replace(/^#/, "");
+    if (!hash) return;
+
+    window.requestAnimationFrame(() => {
+      const target = document.getElementById(hash);
+      if (target) {
+        target.scrollIntoView({ block: "start", behavior: "smooth" });
+      }
+    });
+  }, [activeTab]);
+
+  const handleTabChange = React.useCallback((value: string) => {
+    const nextTab = value as DashboardTabValue;
+    setActiveTab(nextTab);
+
+    if (typeof window === "undefined") return;
+    const firstSectionId = DASHBOARD_TAB_SECTION_MAP[nextTab][0];
+    if (!firstSectionId) return;
+    window.history.replaceState(null, "", `#${firstSectionId}`);
+  }, []);
+
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
       <div className="flex flex-col gap-2">
@@ -1614,7 +1675,7 @@ export default function CreatorDashboardPage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="overview" className="space-y-6">
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
         <TabsList className="h-auto flex-wrap justify-start gap-2 bg-transparent p-0">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="campaign-strategy">Campaign Strategy</TabsTrigger>

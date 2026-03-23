@@ -11,6 +11,7 @@ import CampaignPinButton from "@/components/drinks/CampaignPinButton";
 import CampaignStageRecapsSection from "@/components/drinks/CampaignStageRecapsSection";
 import CampaignUnlockControls from "@/components/drinks/CampaignUnlockControls";
 import CampaignFixExperimentsSection from "@/components/drinks/CampaignFixExperimentsSection";
+import CampaignFixMatchingSection from "@/components/drinks/CampaignFixMatchingSection";
 import CampaignPlaybookFitSection from "@/components/drinks/CampaignPlaybookFitSection";
 import CampaignPlaybookDriftSection from "@/components/drinks/CampaignPlaybookDriftSection";
 import CampaignPlaybookOnboardingChecklist, {
@@ -596,9 +597,9 @@ export default function DrinkCampaignDetailPage() {
       <section className="space-y-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold">Campaign / season</h1>
+            <h1 className="text-3xl font-bold">Campaign</h1>
             <p className="max-w-3xl text-sm text-muted-foreground">
-              Lightweight themed arcs for creator launches: a release wave, promo run, member month, or seasonal cocktail series without turning the drinks platform into a giant CMS.
+              Lightweight launch arcs for creator releases: a release wave, promo run, member month, or seasonal series without turning the drinks platform into a giant CMS.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -680,6 +681,12 @@ export default function DrinkCampaignDetailPage() {
 
           {isOwner ? (
             <div id="owner-experiments-workspace">
+              <CampaignFixMatchingSection
+                campaignId={query.data.campaign.id}
+                compact
+                title="Owner-only best next fix"
+                description="Private fix matching for this campaign only. Use it to turn a bottleneck or watch-state signal into the next experiment without leaving the owner workspace."
+              />
               <CampaignFixExperimentsSection
                 campaignId={query.data.campaign.id}
                 compact

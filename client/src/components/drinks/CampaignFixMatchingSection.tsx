@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowRight, Lightbulb, Sparkles, Target } from "lucide-react";
 import { Link } from "wouter";
@@ -87,13 +88,24 @@ function healthBadgeVariant(value: FixMatchingItem["healthState"]): "default" | 
   }
 }
 
-export default function CampaignFixMatchingSection() {
+export default function CampaignFixMatchingSection({
+  campaignId,
+  compact = false,
+  title = "Campaign Fix Matching / Best Next Fix",
+  description = "Personalized, creator-private fix matching for campaigns that look stuck, risky, or bottlenecked. This stays rules-based and only reuses the drinks platform signals you already track.",
+}: {
+  campaignId?: string | null;
+  compact?: boolean;
+  title?: string;
+  description?: string;
+}) {
   const { user } = useUser();
 
   const query = useQuery<FixMatchingResponse>({
-    queryKey: ["/api/drinks/creator-dashboard/campaign-fix-matching", user?.id ?? ""],
+    queryKey: ["/api/drinks/creator-dashboard/campaign-fix-matching", campaignId ?? "all", user?.id ?? ""],
     queryFn: async () => {
-      const response = await fetch("/api/drinks/creator-dashboard/campaign-fix-matching", { credentials: "include" });
+      const search = campaignId ? `?campaignId=${encodeURIComponent(campaignId)}` : "";
+      const response = await fetch(`/api/drinks/creator-dashboard/campaign-fix-matching${search}`, { credentials: "include" });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load campaign fix matching (${response.status})`);
       return payload as FixMatchingResponse;
@@ -101,24 +113,30 @@ export default function CampaignFixMatchingSection() {
     enabled: Boolean(user?.id),
   });
 
+  const items = React.useMemo(() => {
+    const source = query.data?.items ?? [];
+    if (campaignId) return source.slice(0, 1);
+    return compact ? source.slice(0, 3) : source;
+  }, [campaignId, compact, query.data?.items]);
+
   return (
-    <Card id="campaign-fix-matching">
+    <Card id={campaignId ? undefined : "campaign-fix-matching"}>
       <CardHeader>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="space-y-1">
-            <CardTitle>Campaign Fix Matching / Best Next Fix</CardTitle>
-            <CardDescription>
-              Personalized, creator-private fix matching for campaigns that look stuck, risky, or bottlenecked. This stays rules-based and only reuses the drinks platform signals you already track.
-            </CardDescription>
+            <CardTitle>{title}</CardTitle>
+            <CardDescription>{description}</CardDescription>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Link href="/drinks/creator-dashboard#campaign-fix-experiments">
-              <Button variant="outline" size="sm">Run a fix</Button>
-            </Link>
-            <Link href="/drinks/creator-dashboard#campaign-experiment-library">
-              <Button variant="ghost" size="sm">Review history</Button>
-            </Link>
-          </div>
+          {!compact ? (
+            <div className="flex flex-wrap gap-2">
+              <Link href={campaignId ? "#owner-experiments-workspace" : "/drinks/creator-dashboard#campaign-fix-experiments"}>
+                <Button variant="outline" size="sm">{campaignId ? "Open campaign fixes" : "Run a fix"}</Button>
+              </Link>
+              <Link href="/drinks/creator-dashboard#campaign-experiment-library">
+                <Button variant="ghost" size="sm">Review history</Button>
+              </Link>
+            </div>
+          ) : null}
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -146,13 +164,13 @@ export default function CampaignFixMatchingSection() {
               </div>
             </div>
 
-            {query.data.items.length === 0 ? (
+            {items.length === 0 ? (
               <div className="rounded-lg border border-dashed p-5 text-sm text-muted-foreground">
                 No current campaigns need a fix match right now. Once a campaign starts slipping, showing bottlenecks, or falling behind on goals, this section will surface the lightest next experiment to try.
               </div>
             ) : (
               <div className="space-y-4">
-                {query.data.items.map((item) => (
+                {items.map((item) => (
                   <div key={item.campaignId} className="rounded-xl border p-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="space-y-2">
@@ -203,6 +221,21 @@ export default function CampaignFixMatchingSection() {
                               </li>
                             ))}
                           </ul>
+                        </div>
+
+                        <div className="rounded-lg border border-dashed p-4">
+                          <p className="text-sm font-medium">Next step</p>
+                          <p className="mt-2 text-sm text-muted-foreground">
+                            Open the experiment workspace and start with <span className="font-medium text-foreground">{item.recommendationTitle}</span> so the fix stays tied to this campaign instead of living as a note only.
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Link href={campaignId ? "#owner-experiments-workspace" : "/drinks/creator-dashboard#campaign-fix-experiments"}>
+                              <Button size="sm">Open fix experiments</Button>
+                            </Link>
+                            <Link href={item.campaignRoute}>
+                              <Button size="sm" variant="outline">Open campaign</Button>
+                            </Link>
+                          </div>
                         </div>
 
                         {item.alternativeFixes.length ? (
