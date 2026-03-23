@@ -328,7 +328,7 @@ export default function CampaignPlaybookDriftSection(props: {
                       {!compact ? (
                         <Link href={item.campaignRoute} className="font-semibold underline underline-offset-2">{item.campaignName}</Link>
                       ) : (
-                        <p className="font-semibold">{item.playbookName}</p>
+                        <p className="font-semibold">{item.campaignName}</p>
                       )}
                       <Badge variant={item.severityVariant}>{item.severityLabel}</Badge>
                       <Badge variant="outline">Drift score {item.driftScore}</Badge>
