@@ -262,6 +262,8 @@ type CreatorDropEventRecord = typeof creatorDropEvents.$inferSelect;
 type CreatorCollaborationRecord = typeof creatorCollaborations.$inferSelect;
 type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
 type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
+type CreatorCampaignPlaybookFitLabel = "strong_match" | "partial_match" | "weak_match";
+type CreatorCampaignPlaybookFitRecommendation = "apply_as_is" | "apply_with_adjustments" | "loose_inspiration";
 type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
 type DrinkCollectionAccessType = "public" | "premium_purchase" | "membership_only";
 
@@ -4591,6 +4593,321 @@ async function applyCreatorCampaignPlaybookProfileToCampaign(input: {
   });
 
   return nextCampaign;
+}
+
+function formatPlaybookAudienceLabel(value: CreatorCampaignRolloutAudience | CreatorCampaignVisibility | null | undefined) {
+  if (value === "members") return "members";
+  if (value === "followers") return "followers";
+  return "public";
+}
+
+function formatPlaybookCtaDirectionLabel(value: CreatorCampaignPlaybookCtaDirection | null | undefined) {
+  if (!value) return "mixed";
+  return value.replaceAll("_", " ");
+}
+
+function fitScoreLabel(score: number): CreatorCampaignPlaybookFitLabel {
+  if (score >= 75) return "strong_match";
+  if (score >= 45) return "partial_match";
+  return "weak_match";
+}
+
+function fitScoreRecommendation(input: {
+  fitScore: number;
+  mismatchesCount: number;
+}): CreatorCampaignPlaybookFitRecommendation {
+  if (input.fitScore >= 82 && input.mismatchesCount <= 1) return "apply_as_is";
+  if (input.fitScore >= 55) return "apply_with_adjustments";
+  return "loose_inspiration";
+}
+
+function normalizePlaybookDelayFit(actualHours: number | null, recommendedHours: number | null, toleranceHours: number) {
+  if (actualHours === null || recommendedHours === null) return null;
+  const diff = Math.abs(actualHours - recommendedHours);
+  if (diff <= toleranceHours) return "strong";
+  if (diff <= toleranceHours * 2) return "partial";
+  return "weak";
+}
+
+function countMatchingExperimentTypes(
+  profile: CreatorCampaignPlaybookProfileRecord,
+  experiments: CreatorCampaignExperimentRecord[],
+) {
+  const preferred = Array.isArray(profile.preferredExperimentTypes)
+    ? profile.preferredExperimentTypes
+        .map((value) => String(value))
+        .filter((value): value is CreatorCampaignExperimentType => creatorCampaignExperimentTypeSchema.safeParse(value).success)
+    : [];
+  if (!preferred.length) return { preferred, overlap: [] as CreatorCampaignExperimentType[] };
+  const current = new Set(experiments.map((item) => item.experimentType));
+  return {
+    preferred,
+    overlap: preferred.filter((value) => current.has(value)),
+  };
+}
+
+async function loadCreatorCampaignPlaybookFitCollection(creatorUserId: string, campaignId?: string | null) {
+  if (!db) throw new Error("Database unavailable");
+
+  const campaigns = await db
+    .select()
+    .from(creatorCampaigns)
+    .where(and(
+      eq(creatorCampaigns.creatorUserId, creatorUserId),
+      campaignId ? eq(creatorCampaigns.id, campaignId) : sql`true`,
+    ))
+    .orderBy(desc(creatorCampaigns.updatedAt), desc(creatorCampaigns.createdAt))
+    .limit(campaignId ? 1 : 40);
+
+  if (!campaigns.length) {
+    return {
+      items: [] as Array<Record<string, unknown>>,
+      profiles: [] as ReturnType<typeof serializeCreatorCampaignPlaybookProfile>[],
+      attributionNotes: [
+        "Playbook fit only compares this creator's own saved playbook profiles against this creator's own campaigns.",
+        "No playbook fit is available yet because there are no creator-owned campaigns to compare.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const [profiles, audienceFit, variantsByCampaignId, experimentRows] = await Promise.all([
+    db
+      .select()
+      .from(creatorCampaignPlaybookProfiles)
+      .where(eq(creatorCampaignPlaybookProfiles.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorCampaignPlaybookProfiles.updatedAt), desc(creatorCampaignPlaybookProfiles.createdAt)),
+    loadCreatorCampaignAudienceFit(creatorUserId),
+    loadCreatorCampaignVariantsByCampaignIds(campaigns.map((entry: CreatorCampaignRecord) => entry.id)),
+    db
+      .select()
+      .from(creatorCampaignExperiments)
+      .where(inArray(creatorCampaignExperiments.campaignId, campaigns.map((entry: CreatorCampaignRecord) => entry.id)))
+      .orderBy(desc(creatorCampaignExperiments.updatedAt), desc(creatorCampaignExperiments.createdAt)),
+  ]);
+
+  const audienceFitByCampaignId = new Map<string, Awaited<ReturnType<typeof loadCreatorCampaignAudienceFit>>["items"][number]>(
+    audienceFit.items.map((item: Awaited<ReturnType<typeof loadCreatorCampaignAudienceFit>>["items"][number]) => [item.campaignId, item] as const),
+  );
+  const experimentsByCampaignId = new Map<string, CreatorCampaignExperimentRecord[]>();
+  for (const row of experimentRows) {
+    const current = experimentsByCampaignId.get(row.campaignId) ?? [];
+    current.push(row);
+    experimentsByCampaignId.set(row.campaignId, current);
+  }
+
+  const items = campaigns.map((campaign: CreatorCampaignRecord) => {
+    const campaignAudienceFit = audienceFitByCampaignId.get(campaign.id) ?? null;
+    const campaignVariants = variantsByCampaignId.get(campaign.id) ?? [];
+    const campaignExperiments = experimentsByCampaignId.get(campaign.id) ?? [];
+    const inferredCtaDirection = inferPreferredCtaDirectionFromVariants(campaignVariants);
+    const campaignVisibility = (campaign.visibility as CreatorCampaignVisibility | null) ?? "public";
+    const campaignStartsWithAudience = (campaign.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null;
+    const campaignRolloutMode = (campaign.rolloutMode as CreatorCampaignRolloutMode | null) ?? "public_first";
+    const startsAt = campaign.startsAt ?? campaign.createdAt ?? null;
+    const actualFollowerDelay = diffHoursBetween(startsAt, campaign.unlockFollowersAt);
+    const actualPublicDelay = diffHoursBetween(startsAt, campaign.unlockPublicAt);
+
+    const matches = profiles.map((profile: CreatorCampaignPlaybookProfileRecord) => {
+      const profileVisibility = (profile.visibilityStrategy as CreatorCampaignVisibility | null) ?? null;
+      const profileStartsWithAudience = (profile.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null;
+      const profilePreferredAudienceFit = (profile.preferredAudienceFit as CreatorCampaignRolloutAudience | null) ?? null;
+      const profilePreferredCtaDirection = (profile.preferredCtaDirection as CreatorCampaignPlaybookCtaDirection | null) ?? null;
+      let earned = 0;
+      let possible = 0;
+      const whyItFits: string[] = [];
+      const mismatches: string[] = [];
+      const suggestedAdjustments: string[] = [];
+
+      if (profileVisibility) {
+        possible += 18;
+        if (profileVisibility === campaignVisibility) {
+          earned += 18;
+          whyItFits.push(`Visibility matches the playbook's ${formatPlaybookAudienceLabel(profileVisibility)} emphasis.`);
+        } else {
+          mismatches.push(`Saved visibility expects ${formatPlaybookAudienceLabel(profileVisibility)}, but this campaign is ${formatPlaybookAudienceLabel(campaignVisibility)}.`);
+          suggestedAdjustments.push(`If you apply this playbook, review campaign visibility before publishing changes.`);
+        }
+      }
+
+      possible += 18;
+      if (profile.rolloutMode === campaignRolloutMode) {
+        earned += 18;
+        whyItFits.push(`Rollout mode aligns on ${profile.rolloutMode.replaceAll("_", " ")}.`);
+      } else {
+        mismatches.push(`Rollout mode differs: playbook is ${profile.rolloutMode.replaceAll("_", " ")}, campaign is ${campaignRolloutMode.replaceAll("_", " ")}.`);
+        suggestedAdjustments.push(`Adjust rollout mode if you want this strategy to shape unlock sequencing too.`);
+      }
+
+      if (profileStartsWithAudience) {
+        possible += 10;
+        if (campaignStartsWithAudience === profileStartsWithAudience) {
+          earned += 10;
+          whyItFits.push(`Starting audience matches at ${formatPlaybookAudienceLabel(profileStartsWithAudience)}.`);
+        } else if (!campaignStartsWithAudience && campaignVisibility === profileStartsWithAudience) {
+          earned += 5;
+          whyItFits.push(`Campaign visibility already leans toward the playbook's ${formatPlaybookAudienceLabel(profileStartsWithAudience)} starting audience.`);
+        } else {
+          mismatches.push(`Playbook starts with ${formatPlaybookAudienceLabel(profileStartsWithAudience)}, but this campaign starts with ${formatPlaybookAudienceLabel(campaignStartsWithAudience ?? campaignVisibility)}.`);
+          suggestedAdjustments.push(`Review which audience should unlock first before applying this playbook literally.`);
+        }
+      }
+
+      if (profilePreferredAudienceFit) {
+        possible += 16;
+        if (campaignAudienceFit?.bestAudienceFit === profilePreferredAudienceFit) {
+          earned += 16;
+          whyItFits.push(`Audience-fit signal points to ${formatPlaybookAudienceLabel(profilePreferredAudienceFit)} for this campaign too.`);
+        } else if (!campaignAudienceFit?.bestAudienceFit && campaignVisibility === profilePreferredAudienceFit) {
+          earned += 8;
+          whyItFits.push(`There is no strong audience-fit history yet, but campaign visibility already leans ${formatPlaybookAudienceLabel(profilePreferredAudienceFit)}.`);
+        } else {
+          mismatches.push(
+            campaignAudienceFit?.bestAudienceFit
+              ? `Campaign audience-fit signal leans ${formatPlaybookAudienceLabel(campaignAudienceFit.bestAudienceFit as CreatorCampaignRolloutAudience)}, not ${formatPlaybookAudienceLabel(profilePreferredAudienceFit)}.`
+              : `Audience-fit signal is still thin, so the playbook's ${formatPlaybookAudienceLabel(profilePreferredAudienceFit)} preference is not strongly confirmed yet.`,
+          );
+          suggestedAdjustments.push(`Use this playbook as guidance for tone or rollout, but double-check audience emphasis first.`);
+        }
+      }
+
+      if (profile.recommendedFollowerUnlockDelayHours !== null) {
+        possible += 7;
+        const fit = normalizePlaybookDelayFit(actualFollowerDelay, profile.recommendedFollowerUnlockDelayHours, 12);
+        if (fit === "strong") {
+          earned += 7;
+          whyItFits.push(`Follower unlock timing is close to the playbook's ${profile.recommendedFollowerUnlockDelayHours}h pattern.`);
+        } else if (fit === "partial") {
+          earned += 4;
+          whyItFits.push(`Follower unlock timing is in the same general range as the playbook.`);
+        } else {
+          mismatches.push(
+            actualFollowerDelay === null
+              ? `Playbook expects a follower unlock window, but this campaign does not have one yet.`
+              : `Follower unlock timing is ${actualFollowerDelay}h here vs ${profile.recommendedFollowerUnlockDelayHours}h in the playbook.`,
+          );
+          suggestedAdjustments.push(`Tighten follower unlock timing if you want a closer match.`);
+        }
+      }
+
+      if (profile.recommendedPublicUnlockDelayHours !== null) {
+        possible += 7;
+        const fit = normalizePlaybookDelayFit(actualPublicDelay, profile.recommendedPublicUnlockDelayHours, 18);
+        if (fit === "strong") {
+          earned += 7;
+          whyItFits.push(`Public unlock timing lines up with the playbook's ${profile.recommendedPublicUnlockDelayHours}h pattern.`);
+        } else if (fit === "partial") {
+          earned += 4;
+          whyItFits.push(`Public unlock timing is directionally similar to the playbook.`);
+        } else {
+          mismatches.push(
+            actualPublicDelay === null
+              ? `Playbook expects a public unlock delay, but this campaign does not have one yet.`
+              : `Public unlock timing is ${actualPublicDelay}h here vs ${profile.recommendedPublicUnlockDelayHours}h in the playbook.`,
+          );
+          suggestedAdjustments.push(`Adjust public unlock timing if you want to apply this playbook more literally.`);
+        }
+      }
+
+      if (profilePreferredCtaDirection) {
+        possible += 14;
+        if (inferredCtaDirection === profilePreferredCtaDirection) {
+          earned += 14;
+          whyItFits.push(`CTA direction matches on ${formatPlaybookCtaDirectionLabel(profilePreferredCtaDirection)}.`);
+        } else if (profilePreferredCtaDirection === "mixed" && inferredCtaDirection) {
+          earned += 8;
+          whyItFits.push(`This campaign already mixes CTA styles, which fits a more flexible playbook.`);
+        } else if (inferredCtaDirection === "mixed" && profilePreferredCtaDirection !== null) {
+          earned += 6;
+          whyItFits.push(`The campaign uses mixed CTA paths, so the playbook's ${formatPlaybookCtaDirectionLabel(profilePreferredCtaDirection)} direction can still guide the primary ask.`);
+        } else {
+          mismatches.push(
+            inferredCtaDirection
+              ? `CTA focus leans ${formatPlaybookCtaDirectionLabel(inferredCtaDirection)}, not ${formatPlaybookCtaDirectionLabel(profilePreferredCtaDirection)}.`
+              : `No clear CTA direction is configured yet to confirm the playbook's ${formatPlaybookCtaDirectionLabel(profilePreferredCtaDirection)} preference.`,
+          );
+          suggestedAdjustments.push(`Review the active CTA before applying this playbook as-is.`);
+        }
+      }
+
+      const experimentOverlap = countMatchingExperimentTypes(profile, campaignExperiments);
+      if (experimentOverlap.preferred.length > 0) {
+        possible += 10;
+        if (experimentOverlap.overlap.length > 0) {
+          const earnedExperimentScore = Math.min(10, Math.max(4, Math.round((experimentOverlap.overlap.length / experimentOverlap.preferred.length) * 10)));
+          earned += earnedExperimentScore;
+          whyItFits.push(`Experiment preference overlap: ${experimentOverlap.overlap.slice(0, 2).map((value) => value.replaceAll("_", " ")).join(", ")}.`);
+        } else {
+          mismatches.push(`Current experiment mix does not overlap with this playbook's preferred fix patterns yet.`);
+          suggestedAdjustments.push(`Treat the playbook as a strategic nudge unless you also want to adopt its experiment pattern.`);
+        }
+      }
+
+      const fitScore = possible > 0 ? Math.round((earned / possible) * 100) : 0;
+      const fitLabel = fitScoreLabel(fitScore);
+      const recommendation = fitScoreRecommendation({
+        fitScore,
+        mismatchesCount: mismatches.length,
+      });
+
+      return {
+        playbookId: profile.id,
+        playbookName: profile.name,
+        playbookDescription: profile.description ?? null,
+        fitScore,
+        fitLabel,
+        recommendation,
+        whyItFits: whyItFits.slice(0, 4),
+        mismatches: mismatches.slice(0, 4),
+        suggestedAdjustments: suggestedAdjustments.slice(0, 4),
+        comparedSignals: {
+          visibilityStrategy: profile.visibilityStrategy ?? null,
+          rolloutMode: profile.rolloutMode,
+          startsWithAudience: profile.startsWithAudience ?? null,
+          preferredAudienceFit: profile.preferredAudienceFit ?? null,
+          preferredCtaDirection: profile.preferredCtaDirection ?? null,
+          preferredExperimentTypes: experimentOverlap.preferred,
+        },
+      };
+    }).sort((a: { fitScore: number; playbookName: string }, b: { fitScore: number; playbookName: string }) => b.fitScore - a.fitScore || a.playbookName.localeCompare(b.playbookName));
+
+    const bestMatch = matches[0] ?? null;
+    const runnerUp = matches[1] ?? null;
+
+    return {
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      campaignSlug: campaign.slug,
+      campaignRoute: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+      visibility: campaignVisibility,
+      state: getCreatorCampaignState(campaign),
+      bestMatch,
+      runnerUp,
+      matches,
+      audienceFit: campaignAudienceFit
+        ? {
+          bestAudienceFit: campaignAudienceFit.bestAudienceFit,
+          bestAudienceFitConfidence: campaignAudienceFit.bestAudienceFitConfidence,
+          bestAudienceFitReason: campaignAudienceFit.bestAudienceFitReason,
+        }
+        : null,
+      inferredCtaDirection,
+      actualFollowerUnlockDelayHours: actualFollowerDelay,
+      actualPublicUnlockDelayHours: actualPublicDelay,
+    };
+  });
+
+  return {
+    items,
+    profiles: profiles.map(serializeCreatorCampaignPlaybookProfile),
+    attributionNotes: [
+      "Playbook fit is intentionally rules-based and lightweight. It compares only campaign fields and saved playbook profile fields already stored in ChefSire.",
+      "This is not a recommendation engine and it does not use hidden ML scoring, external creator clusters, or cross-creator strategy borrowing.",
+      "Templates and clone/reuse stay separate: playbook fit only answers which saved strategy preset looks closest to this campaign right now.",
+      "Rollout advisor and timing advisor stay separate too: playbook fit checks alignment with a saved preset, rather than generating a new advisor thesis from scratch.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 async function instantiateCampaignFromTemplate(input: {
@@ -21566,6 +21883,9 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
       ? await loadCreatorCampaignAudienceFit(campaign.creatorUserId)
       : null;
     const ownerAudienceFit = ownerAudienceFitCollection?.items.find((item) => item.campaignId === campaign.id) ?? null;
+    const ownerPlaybookFit = viewerId && viewerId === campaign.creatorUserId
+      ? (await loadCreatorCampaignPlaybookFitCollection(campaign.creatorUserId, campaign.id)).items[0] ?? null
+      : null;
     const ownerRetrospective = viewerId && viewerId === campaign.creatorUserId && getCreatorCampaignState(campaign) === "past"
       ? (await loadCreatorCampaignRetrospectives(campaign.creatorUserId)).items.find((item) => item.campaignId === campaign.id) ?? null
       : null;
@@ -21598,6 +21918,7 @@ r.get("/campaigns/:slug", optionalAuth, async (req, res) => {
             : null,
         })
         : null,
+      ownerPlaybookFit,
       ownerRetrospective,
       ownerHealth,
       ownerLifecycleSuggestion,
@@ -22135,6 +22456,66 @@ r.delete("/creator-dashboard/campaign-playbook-profiles/:id", requireAuth, async
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-profiles/:id", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to delete campaign playbook profile"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-playbook-fit", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const fit = await loadCreatorCampaignPlaybookFitCollection(req.user!.id);
+    return res.json({
+      ok: true,
+      count: fit.items.length,
+      profilesCount: fit.profiles.length,
+      items: fit.items.map((item) => ({
+        ...item,
+        hasSuggestedPlaybook: Boolean((item as { bestMatch?: unknown }).bestMatch),
+      })),
+      attributionNotes: fit.attributionNotes,
+      generatedAt: fit.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-fit", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign playbook fit"));
+  }
+});
+
+r.get("/campaigns/:id/playbook-fit", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const fit = await loadCreatorCampaignPlaybookFitCollection(req.user!.id, campaignId);
+    const item = fit.items[0] ?? null;
+    if (!item) {
+      return res.status(404).json({ ok: false, error: "Campaign not found." });
+    }
+
+    return res.json({
+      ok: true,
+      ...item,
+      attributionNotes: fit.attributionNotes,
+      generatedAt: fit.generatedAt,
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Failed to load campaign playbook fit";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/playbook-fit", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign playbook fit"));
   }
 });
 

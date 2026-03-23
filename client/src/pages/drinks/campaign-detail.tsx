@@ -11,6 +11,7 @@ import CampaignPinButton from "@/components/drinks/CampaignPinButton";
 import CampaignStageRecapsSection from "@/components/drinks/CampaignStageRecapsSection";
 import CampaignUnlockControls from "@/components/drinks/CampaignUnlockControls";
 import CampaignFixExperimentsSection from "@/components/drinks/CampaignFixExperimentsSection";
+import CampaignPlaybookFitSection from "@/components/drinks/CampaignPlaybookFitSection";
 import { CampaignLifecycleSuggestionPanel, type CampaignLifecycleSuggestion } from "@/components/drinks/CampaignLifecycleSuggestionsSection";
 import { CampaignWrapUpPanel, type CampaignRetrospectiveItem } from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignFollowButton from "@/components/drinks/CampaignFollowButton";
@@ -238,6 +239,31 @@ interface CampaignDetailResponse {
     suggestedMode: "public_first" | "followers_first" | "members_first" | "staged";
     reason: string | null;
     confidence: "high" | "medium" | "low" | "none";
+  } | null;
+  ownerPlaybookFit?: {
+    campaignId: string;
+    campaignName: string;
+    campaignSlug: string;
+    campaignRoute: string;
+    visibility: "public" | "followers" | "members";
+    state: "upcoming" | "active" | "past";
+    bestMatch: {
+      playbookId: string;
+      playbookName: string;
+      playbookDescription: string | null;
+      fitScore: number;
+      fitLabel: "strong_match" | "partial_match" | "weak_match";
+      recommendation: "apply_as_is" | "apply_with_adjustments" | "loose_inspiration";
+      whyItFits: string[];
+      mismatches: string[];
+      suggestedAdjustments: string[];
+    } | null;
+    runnerUp: {
+      playbookId: string;
+      playbookName: string;
+      fitScore: number;
+      fitLabel: "strong_match" | "partial_match" | "weak_match";
+    } | null;
   } | null;
   ownerRetrospective?: CampaignRetrospectiveItem | null;
   ownerHealth?: CampaignHealthItem | null;
@@ -1009,6 +1035,15 @@ export default function DrinkCampaignDetailPage() {
                 ) : null}
               </CardContent>
             </Card>
+          ) : null}
+
+          {query.data.ownerPlaybookFit ? (
+            <CampaignPlaybookFitSection
+              campaignId={query.data.campaign.id}
+              compact
+              title="Owner-only suggested playbook"
+              description="Private playbook-match hint for this campaign only. This stays distinct from saved playbook profiles, templates, rollout advice, and timing advice."
+            />
           ) : null}
 
           {query.data.ownerLifecycleSuggestion ? (
