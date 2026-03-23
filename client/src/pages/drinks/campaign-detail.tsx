@@ -26,13 +26,13 @@ import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/Creat
 import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
 import DropRsvpButton from "@/components/drinks/DropRsvpButton";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
-import { normalizeCampaignSurfaceAttributionSurface, readCampaignSurfaceTouch, setCampaignSurfaceTouch, trackCampaignDetailLandingOnce, trackCampaignSurfaceEvent } from "@/lib/drinks/campaignSurfaceAttribution";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { useUser } from "@/contexts/UserContext";
 
+import { useCampaignDetailSurfaceTracking } from "@/pages/drinks/campaign-detail/hooks/useCampaignDetailSurfaceTracking";
 import {
   buildVariantDestination,
   campaignGoalLabel,
@@ -94,67 +94,7 @@ export default function DrinkCampaignDetailPage() {
 
   if (!matched) return null;
   const variantDestination = query.data ? buildVariantDestination(query.data) : null;
-  const currentSurface = (() => {
-    if (typeof window === "undefined" || !query.data?.campaign.id) return "direct_or_unknown" as const;
-    const params = new URLSearchParams(window.location.search);
-    const fromQuery = normalizeCampaignSurfaceAttributionSurface(params.get("surface"));
-    if (fromQuery !== "direct_or_unknown") return fromQuery;
-    return readCampaignSurfaceTouch(query.data.campaign.id);
-  })();
-
-  React.useEffect(() => {
-    if (!query.data?.activeVariant) return;
-
-    void fetch(
-      `/api/drinks/campaigns/${encodeURIComponent(query.data.campaign.id)}/variants/${encodeURIComponent(query.data.activeVariant.id)}/events`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ eventType: "view_variant" }),
-      },
-    );
-  }, [query.data]);
-
-  React.useEffect(() => {
-    if (!query.data?.campaign.id || typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const querySurface = normalizeCampaignSurfaceAttributionSurface(params.get("surface"));
-    if (querySurface !== "direct_or_unknown") {
-      setCampaignSurfaceTouch(query.data.campaign.id, querySurface);
-      return;
-    }
-    trackCampaignDetailLandingOnce({
-      campaignId: query.data.campaign.id,
-      surface: "campaign_detail_page",
-      referrerRoute: `${window.location.pathname}${window.location.search}`,
-    });
-    setCampaignSurfaceTouch(query.data.campaign.id, "campaign_detail_page");
-  }, [query.data?.campaign.id]);
-
-  const trackVariantClick = React.useCallback(() => {
-    if (!query.data?.activeVariant) return;
-    void trackCampaignSurfaceEvent({
-      campaignId: query.data.campaign.id,
-      eventType: "click_campaign",
-      surface: currentSurface === "direct_or_unknown" ? "campaign_detail_page" : currentSurface,
-      referrerRoute: typeof window !== "undefined" ? `${window.location.pathname}${window.location.search}` : null,
-    });
-    void fetch(
-      `/api/drinks/campaigns/${encodeURIComponent(query.data.campaign.id)}/variants/${encodeURIComponent(query.data.activeVariant.id)}/events`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          eventType: "click_variant_cta",
-          metadata: {
-            ctaTargetType: query.data.activeVariant.ctaTargetType,
-          },
-        }),
-      },
-    );
-  }, [query.data]);
+  const { currentSurface, trackVariantClick } = useCampaignDetailSurfaceTracking(query.data);
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8">

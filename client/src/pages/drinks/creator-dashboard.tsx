@@ -14,7 +14,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
-import CreatorBundlesSection from "@/components/drinks/CreatorBundlesSection";
 import CampaignActionCenterSection from "@/components/drinks/CampaignActionCenterSection";
 import CampaignsDashboardSection from "@/components/drinks/CampaignsDashboardSection";
 import CampaignRetrospectivesSection from "@/components/drinks/CampaignRetrospectivesSection";
@@ -44,17 +43,17 @@ import CampaignPlaybookDriftSection from "@/components/drinks/CampaignPlaybookDr
 import CampaignPlaybookOutcomesSection from "@/components/drinks/CampaignPlaybookOutcomesSection";
 import CampaignPlaybookProfilesSection from "@/components/drinks/CampaignPlaybookProfilesSection";
 import DropLaunchAnalyticsSection from "@/components/drinks/DropLaunchAnalyticsSection";
-import PinnedCampaignSpotlightSection from "@/components/drinks/PinnedCampaignSpotlightSection";
 import { type AcceptedCreatorCollaboration } from "@/components/drinks/CreatorCollaborationAttribution";
 import CreatorDropCard, { type CreatorDropItem } from "@/components/drinks/CreatorDropCard";
 import CreatorPostCard, { type CreatorPostItem } from "@/components/drinks/CreatorPostCard";
 import CreatorRoadmapCard, { type CreatorRoadmapItem } from "@/components/drinks/CreatorRoadmapCard";
 
+import { useDashboardHashSync } from "@/pages/drinks/creator-dashboard/hooks/useDashboardHashSync";
+import CreatorDashboardOverviewHubSection from "@/pages/drinks/creator-dashboard/sections/CreatorDashboardOverviewHubSection";
+import CreatorDashboardOverviewPerformanceSection from "@/pages/drinks/creator-dashboard/sections/CreatorDashboardOverviewPerformanceSection";
 import {
-  activityBadgeLabel,
   collaborationStatusLabel,
   collaborationTypeLabel,
-  DASHBOARD_TAB_SECTION_MAP,
   formatCurrency,
   formatDate,
   formatDateTime,
@@ -1090,40 +1089,7 @@ export default function CreatorDashboardPage() {
     },
   ];
 
-  React.useEffect(() => {
-    if (typeof window === "undefined") return undefined;
-
-    const syncTabFromHash = () => {
-      setActiveTab(tabForHash(window.location.hash));
-    };
-
-    syncTabFromHash();
-    window.addEventListener("hashchange", syncTabFromHash);
-    return () => window.removeEventListener("hashchange", syncTabFromHash);
-  }, []);
-
-  React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    const hash = window.location.hash.replace(/^#/, "");
-    if (!hash) return;
-
-    window.requestAnimationFrame(() => {
-      const target = document.getElementById(hash);
-      if (target) {
-        target.scrollIntoView({ block: "start", behavior: "smooth" });
-      }
-    });
-  }, [activeTab]);
-
-  const handleTabChange = React.useCallback((value: string) => {
-    const nextTab = value as DashboardTabValue;
-    setActiveTab(nextTab);
-
-    if (typeof window === "undefined") return;
-    const firstSectionId = DASHBOARD_TAB_SECTION_MAP[nextTab][0];
-    if (!firstSectionId) return;
-    window.history.replaceState(null, "", `#${firstSectionId}`);
-  }, []);
+  const handleTabChange = useDashboardHashSync(activeTab, setActiveTab);
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
@@ -1215,135 +1181,18 @@ export default function CreatorDashboardPage() {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Overview at a glance</CardTitle>
-              <CardDescription>
-                Start here for urgent next moves, readiness risk, your current strongest signal, and the strategy surfaces worth opening next.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-xl border p-4 text-sm">
-                <p className="font-medium text-foreground">Urgent next moves</p>
-                <p className="mt-2 text-muted-foreground">Action Center stays first so campaign tasks are not buried under long analytics sections.</p>
-              </div>
-              <div className="rounded-xl border p-4 text-sm">
-                <p className="font-medium text-foreground">{metricNumber(creatorDropsUpcomingCount)} launch beats in motion</p>
-                <p className="mt-2 text-muted-foreground">Drop timing, unlock alerts, rollout history, and launch readiness stay grouped together.</p>
-              </div>
-              <div className="rounded-xl border p-4 text-sm">
-                <p className="font-medium text-foreground">{safeSummary.topPerformingDrink ? `${safeSummary.topPerformingDrink.name} leads this week` : "No strongest drink yet"}</p>
-                <p className="mt-2 text-muted-foreground">Use momentum, top-performer, and recent activity cards below to understand what is working now.</p>
-              </div>
-              <div className="rounded-xl border p-4 text-sm">
-                <p className="font-medium text-foreground">{metricNumber(pendingCollaborationCount)} collaboration items pending</p>
-                <p className="mt-2 text-muted-foreground">Publishing, drops, memberships, and storefront operations remain fully accessible in Operations.</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <CampaignActionCenterSection />
-          <CampaignRolloutTimelineSection limit={8} />
-          <CampaignUnlockReadinessAlertsSection limit={4} />
-          <CampaignLaunchReadinessSection limit={4} />
-          <PinnedCampaignSpotlightSection />
-          <CreatorBundlesSection />
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Creator Milestones & Badges</CardTitle>
-          <CardDescription>
-            {badgesQuery.data
-              ? `${metricNumber(badgesQuery.data.earnedCount)} earned badges`
-              : "Progress markers for your creator journey."}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {badgesQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading badges…</p> : null}
-          {badgesQuery.isError ? <p className="text-sm text-destructive">Unable to load badges right now.</p> : null}
-          {badgesQuery.data ? (
-            <>
-              {badgesQuery.data.badges.filter((badge) => badge.isEarned).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No badges earned yet. Publish and remix drinks to unlock your first milestone.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {badgesQuery.data.badges.filter((badge) => badge.isEarned).map((badge) => (
-                    <Badge key={badge.id} variant="secondary" className="py-1">
-                      <span className="mr-1" aria-hidden>{badge.icon}</span>{badge.title}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-
-              {badgesQuery.data.nextMilestones.length > 0 ? (
-                <div className="space-y-2">
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Next milestones</p>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {badgesQuery.data.nextMilestones.map((badge) => (
-                      <div key={badge.id} className="rounded-md border p-2 text-sm">
-                        <div className="font-medium"><span className="mr-1">{badge.icon}</span>{badge.title}</div>
-                        {badge.progress ? <div className="text-xs text-muted-foreground mt-1">{metricNumber(badge.progress.current)} / {metricNumber(badge.progress.target)} {badge.progress.label.toLowerCase()}</div> : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-            </>
-          ) : null}
-        </CardContent>
-      </Card>
-
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Creator Storefront Summary</CardTitle>
-          <CardDescription>Your collections storefront and lightweight monetization setup.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-6">
-            <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Public collections</p>
-              <p className="text-xl font-semibold">{metricNumber(publicCollectionsCount)}</p>
-            </div>
-            <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Premium purchase</p>
-              <p className="text-xl font-semibold">{metricNumber(premiumPurchaseCollections.length)}</p>
-            </div>
-            <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Members only</p>
-              <p className="text-xl font-semibold">{metricNumber(memberOnlyCollections.length)}</p>
-            </div>
-            <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Free collections</p>
-              <p className="text-xl font-semibold">{metricNumber(freeCollectionsCount)}</p>
-            </div>
-            <div className="rounded-md border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted-foreground">Wishlist interest</p>
-              <p className="text-xl font-semibold">{metricNumber(salesTotals.totalWishlistInterest)}</p>
-            </div>
-          </div>
-          {premiumPurchaseCollections.length > 0 || memberOnlyCollections.length > 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {metricNumber(premiumPurchaseCollections.length)} premium purchase collections and {metricNumber(memberOnlyCollections.length)} members-only collections live.
-              Your public creator page now highlights one-off purchase value separately from membership perks.
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">No monetized collections yet. Mark a collection as Premium Purchase or Members Only to add a support path without blocking browsing.</p>
-          )}
-          <div className="flex flex-wrap gap-2">
-            <Link href="/drinks/collections">
-              <Button variant="outline" size="sm">Manage collections</Button>
-            </Link>
-            <Link href={`/drinks/creator/${encodeURIComponent(user?.id ?? "")}`}>
-              <Button variant="outline" size="sm">View creator storefront</Button>
-            </Link>
-            <Link href="/drinks/collections/explore">
-              <Button size="sm">Browse premium collections</Button>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
-
+          <CreatorDashboardOverviewHubSection
+            creatorDropsUpcomingCount={creatorDropsUpcomingCount}
+            safeSummary={safeSummary}
+            pendingCollaborationCount={pendingCollaborationCount}
+            badgesQuery={badgesQuery}
+            publicCollectionsCount={publicCollectionsCount}
+            premiumPurchaseCollectionsLength={premiumPurchaseCollections.length}
+            memberOnlyCollectionsLength={memberOnlyCollections.length}
+            freeCollectionsCount={freeCollectionsCount}
+            totalWishlistInterest={salesTotals.totalWishlistInterest}
+            userId={user?.id ?? ""}
+          />
         </TabsContent>
 
         <TabsContent value="operations" className="space-y-6">
@@ -3356,235 +3205,11 @@ export default function CreatorDashboardPage() {
         </TabsContent>
 
         <TabsContent value="overview" className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Creator Momentum</CardTitle>
-          <CardDescription>Lightweight reward signals based on views and remixes.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {(safeSummary.totalRemixesReceived > 0 || safeSummary.totalViews7d >= 100) ? (
-            <>
-              <p className="text-sm font-medium">🔥 Your drink is gaining traction</p>
-              {safeSummary.totalRemixesReceived > 0 ? (
-                <p className="text-sm text-muted-foreground">🎉 {metricNumber(safeSummary.totalRemixesReceived)} people remixed your drink</p>
-              ) : null}
-              {safeSummary.totalViews7d >= 100 ? (
-                <p className="text-sm text-muted-foreground">{metricNumber(safeSummary.totalViews7d)} views in the last 7 days</p>
-              ) : null}
-            </>
-          ) : (
-            <p className="text-sm text-muted-foreground">Publish and share your drinks to unlock traction signals.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Creator Rank</CardDescription>
-            <CardTitle>{safeSummary.creatorRank ? `#${metricNumber(safeSummary.creatorRank)}` : "—"}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Total Created</CardDescription>
-            <CardTitle>{metricNumber(safeSummary.totalCreated)}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Remixes Created</CardDescription>
-            <CardTitle>{metricNumber(safeSummary.totalRemixesCreated)}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Views (7d)</CardDescription>
-            <CardTitle>{metricNumber(safeSummary.totalViews7d)}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Remixes Received</CardDescription>
-            <CardTitle>{metricNumber(safeSummary.totalRemixesReceived)}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardDescription>Grocery Adds</CardDescription>
-            <CardTitle>{metricNumber(safeSummary.totalGroceryAdds)}</CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Top Performing Drink</CardTitle>
-          <CardDescription>
-            {safeSummary.topPerformingDrink
-              ? `${safeSummary.topPerformingDrink.name} • Score ${metricNumber(safeSummary.topPerformingDrink.score)} • Creator Score ${metricNumber(Math.round(safeSummary.creatorScore))}`
-              : "No drinks with performance data yet."}
-          </CardDescription>
-        </CardHeader>
-        {safeSummary.topPerformingDrink ? (
-          <CardContent>
-            <Link href={`/drinks/recipe/${encodeURIComponent(safeSummary.topPerformingDrink.slug)}`} className="underline underline-offset-2 text-sm">
-              View {safeSummary.topPerformingDrink.name}
-            </Link>
-          </CardContent>
-        ) : null}
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Most Remixed Drink</CardTitle>
-          <CardDescription>
-            {safeSummary.mostRemixedDrink
-              ? `${safeSummary.mostRemixedDrink.name} • ${metricNumber(safeSummary.mostRemixedDrink.remixesCount)} remixes received`
-              : "No remixes received yet."}
-          </CardDescription>
-        </CardHeader>
-        {safeSummary.mostRemixedDrink ? (
-          <CardContent>
-            <Link href={`/drinks/recipe/${encodeURIComponent(safeSummary.mostRemixedDrink.slug)}`} className="underline underline-offset-2 text-sm">
-              Open remix leader
-            </Link>
-          </CardContent>
-        ) : null}
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Your Drinks</CardTitle>
-          <CardDescription>
-            Each row shows performance over the last 7 days, plus remix lineage.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {safeItems.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              You have not submitted any drinks yet. <Link href="/drinks/submit" className="underline">Submit your first drink</Link>.
-            </div>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Drink</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Views 24h</TableHead>
-                  <TableHead className="text-right">Views 7d</TableHead>
-                  <TableHead className="text-right">Remixes</TableHead>
-                  <TableHead className="text-right">Grocery Adds</TableHead>
-                  <TableHead className="text-right">Score</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {safeItems.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      <div className="space-y-1">
-                        <Link href={`/drinks/recipe/${encodeURIComponent(item.slug)}`} className="font-medium underline underline-offset-2">
-                          {item.name}
-                        </Link>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                          <Badge variant="secondary">{item.slug}</Badge>
-                          {item.remixedFromSlug ? (
-                            <Badge variant="outline">
-                              Remix of {" "}
-                              <Link
-                                href={`/drinks/recipe/${encodeURIComponent(item.remixedFromSlug)}`}
-                                className="underline underline-offset-2"
-                              >
-                                {item.remixedFromSlug}
-                              </Link>
-                            </Badge>
-                          ) : null}
-                          {item.remixesCount > 0 ? (
-                            <Badge variant="outline">{metricNumber(item.remixesCount)} remixes received</Badge>
-                          ) : null}
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{formatDate(item.createdAt)}</TableCell>
-                    <TableCell className="text-right">{metricNumber(item.views24h)}</TableCell>
-                    <TableCell className="text-right">{metricNumber(item.views7d)}</TableCell>
-                    <TableCell className="text-right">{metricNumber(item.remixesCount)}</TableCell>
-                    <TableCell className="text-right">{metricNumber(item.groceryAdds)}</TableCell>
-                    <TableCell className="text-right font-medium">{metricNumber(item.score)}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
-          <CardDescription>
-            Notifications from the last {metricNumber(activityQuery.data?.summary.windowDays ?? 30)} days across views, remixes, grocery adds, and follows.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {activityQuery.isLoading ? (
-            <p className="text-sm text-muted-foreground">Loading activity…</p>
-          ) : null}
-
-          {activityQuery.isError ? (
-            <div className="space-y-1">
-              <p className="text-sm text-destructive">Unable to load activity right now.</p>
-              {import.meta.env.DEV ? (
-                <p className="text-xs text-muted-foreground break-all">{readErrorMessage(activityQuery.error, "Unknown activity error")}</p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {activityQuery.data ? (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant="outline">Remixes {metricNumber(activityQuery.data.summary.typeCounts.remix ?? 0)}</Badge>
-                <Badge variant="outline">Follows {metricNumber(activityQuery.data.summary.typeCounts.follow ?? 0)}</Badge>
-                <Badge variant="outline">Views {metricNumber(activityQuery.data.summary.typeCounts.view ?? 0)}</Badge>
-                <Badge variant="outline">Grocery Adds {metricNumber(activityQuery.data.summary.typeCounts.grocery_add ?? 0)}</Badge>
-              </div>
-
-              {activityQuery.data.items.length === 0 ? (
-                <div className="text-sm text-muted-foreground">
-                  No activity yet. Share your drink pages and publish remixes to start receiving notifications.
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {activityQuery.data.items.map((item, index) => (
-                    <div
-                      key={`${item.type}-${item.createdAt}-${index}`}
-                      className="rounded-lg border p-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between"
-                    >
-                      <div className="space-y-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge variant={item.type === "remix" || item.type === "follow" ? "default" : "secondary"}>
-                            {activityBadgeLabel(item.type)}
-                          </Badge>
-                          {item.count && item.count > 1 ? (
-                            <span className="text-xs text-muted-foreground">{metricNumber(item.count)} events</span>
-                          ) : null}
-                        </div>
-                        <p className="text-sm">{item.message}</p>
-                        {item.route ? (
-                          <Link href={item.route} className="text-xs underline underline-offset-2 text-muted-foreground hover:text-foreground">
-                            Open related page
-                          </Link>
-                        ) : null}
-                      </div>
-                      <div className="text-xs text-muted-foreground">{formatDateTime(item.createdAt)}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
+          <CreatorDashboardOverviewPerformanceSection
+            safeSummary={safeSummary}
+            safeItems={safeItems}
+            activityQuery={activityQuery}
+          />
         </TabsContent>
       </Tabs>
     </div>
