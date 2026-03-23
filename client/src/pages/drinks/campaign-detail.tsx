@@ -12,6 +12,7 @@ import CampaignStageRecapsSection from "@/components/drinks/CampaignStageRecapsS
 import CampaignUnlockControls from "@/components/drinks/CampaignUnlockControls";
 import CampaignFixExperimentsSection from "@/components/drinks/CampaignFixExperimentsSection";
 import CampaignPlaybookFitSection from "@/components/drinks/CampaignPlaybookFitSection";
+import CampaignPlaybookDriftSection from "@/components/drinks/CampaignPlaybookDriftSection";
 import CampaignPlaybookOnboardingChecklist, {
   CampaignPlaybookOnboardingSummaryChips,
   type CampaignPlaybookOnboardingItem,
@@ -290,6 +291,7 @@ type CampaignPlaybookOnboardingResponse = {
   campaignId: string;
   item: CampaignPlaybookOnboardingItem;
 };
+
 
 function describeState(campaign: CreatorCampaignItem) {
   if (campaign.state === "upcoming") return "This story arc is queued up and will become more relevant as the linked drops and notes roll in.";
@@ -1076,6 +1078,15 @@ export default function DrinkCampaignDetailPage() {
                 ) : null}
               </CardContent>
             </Card>
+          ) : null}
+
+          {isOwner && query.data.campaign.appliedPlaybookProfileId ? (
+            <CampaignPlaybookDriftSection
+              campaignId={query.data.campaign.id}
+              compact
+              title="Owner-only playbook drift + realign suggestions"
+              description="Private strategy-alignment check for this campaign only. This stays distinct from playbook fit, onboarding, and the broader action center."
+            />
           ) : null}
 
           {query.data.ownerPlaybookFit ? (

@@ -259,7 +259,9 @@ export default function CampaignPlaybookProfilesSection() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-profiles"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-onboarding"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-drift"] }),
         variables.campaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${variables.campaignId}/playbook-onboarding`] }) : Promise.resolve(),
+        variables.campaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${variables.campaignId}/playbook-drift`] }) : Promise.resolve(),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns/creator"] }),
       ]);
     },

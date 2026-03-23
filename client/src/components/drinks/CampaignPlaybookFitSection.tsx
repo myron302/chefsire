@@ -148,7 +148,9 @@ export default function CampaignPlaybookFitSection(props: {
         campaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${campaignId}/playbook-fit`] }) : Promise.resolve(),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-profiles"] }),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-onboarding"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-drift"] }),
         appliedCampaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${appliedCampaignId}/playbook-onboarding`] }) : Promise.resolve(),
+        appliedCampaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${appliedCampaignId}/playbook-drift`] }) : Promise.resolve(),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns"] }),
       ]);
     },
