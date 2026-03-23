@@ -14,15 +14,34 @@ import { parseContentSourceFilter } from "@shared/content-source";
 const router = Router();
 
 type DrinkIndexEntry = { name: string; route: string };
+type DrinkRouteIndexEntry = { route: string; title: string };
+type DrinkRouteSearchEntry = {
+  id: string;
+  name: string;
+  route: string;
+  category?: string;
+  isHub: boolean;
+  keywords: string[];
+};
 type DrinkIndexFile = {
   recipes?: Record<string, DrinkIndexEntry>;
-  routes?: Array<{ route: string; title: string }>;
+  routes?: DrinkRouteIndexEntry[];
   duplicates?: Array<{ key: string; name: string; keptRoute: string; duplicateRoute: string }>;
   generatedAt?: string;
 };
 
+const DRINK_CATEGORY_HUBS: DrinkRouteSearchEntry[] = [
+  { id: 'caffeinated', name: 'Caffeinated Drinks', route: '/drinks/caffeinated', category: 'caffeinated', isHub: true, keywords: ['coffee', 'tea', 'energy', 'caffeine'] },
+  { id: 'smoothies', name: 'Smoothies', route: '/drinks/smoothies', category: 'smoothies', isHub: true, keywords: ['blends', 'fruit', 'veggie'] },
+  { id: 'protein-shakes', name: 'Protein Shakes', route: '/drinks/protein-shakes', category: 'protein-shakes', isHub: true, keywords: ['whey', 'casein', 'plant based', 'collagen'] },
+  { id: 'detoxes', name: 'Detoxes & Cleanses', route: '/drinks/detoxes', category: 'detoxes', isHub: true, keywords: ['juice', 'tea', 'water', 'cleanse'] },
+  { id: 'workout-drinks', name: 'Workout Drinks', route: '/drinks/workout-drinks', category: 'workout-drinks', isHub: true, keywords: ['pre workout', 'post workout', 'hydration', 'energy boosters'] },
+  { id: 'potent-potables', name: 'Potent Potables', route: '/drinks/potent-potables', category: 'potent-potables', isHub: true, keywords: ['cocktails', 'mocktails', 'spirits', 'zero proof'] },
+];
+
 let drinkIndexCache: DrinkIndexFile | null | undefined;
 let drinkIndexLooseCache: Record<string, DrinkIndexEntry> | null | undefined;
+let drinkRouteSearchCache: DrinkRouteSearchEntry[] | null | undefined;
 
 function normalizeDrinkQuery(value: string): string {
   return value
@@ -61,6 +80,86 @@ function lookupDrinkRecipeByQuery(index: DrinkIndexFile | null, query: string): 
   return drinkIndexLooseCache[looseKey] || null;
 }
 
+function slugSegmentToTitle(segment: string): string {
+  return segment
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function categoryNameFromSegment(segment: string): string {
+  switch (segment) {
+    case "caffeinated":
+      return "Caffeinated Drinks";
+    case "protein-shakes":
+      return "Protein Shakes";
+    case "detoxes":
+      return "Detoxes & Cleanses";
+    case "workout-drinks":
+      return "Workout Drinks";
+    case "potent-potables":
+      return "Potent Potables";
+    default:
+      return slugSegmentToTitle(segment);
+  }
+}
+
+function buildDrinkRouteSearchEntries(index: DrinkIndexFile | null): DrinkRouteSearchEntry[] {
+  const routeMap = new Map<string, DrinkRouteSearchEntry>();
+
+  for (const hub of DRINK_CATEGORY_HUBS) {
+    routeMap.set(hub.route, hub);
+  }
+
+  for (const routeEntry of index?.routes ?? []) {
+    const route = String(routeEntry.route ?? "").trim();
+    if (!route.startsWith("/drinks/")) continue;
+
+    const segments = route.replace(/^\/drinks\//, "").split("/").filter(Boolean);
+    if (segments.length < 2) continue;
+
+    const category = segments[0];
+    const leaf = segments[segments.length - 1];
+    const title = String(routeEntry.title ?? "").trim() || slugSegmentToTitle(leaf);
+    const categoryName = categoryNameFromSegment(category);
+    const entry: DrinkRouteSearchEntry = {
+      id: `${category}-${leaf}`,
+      name: title,
+      route,
+      category,
+      isHub: false,
+      keywords: [leaf, category, categoryName, route.replace(/^\/drinks\//, '').replace(/\//g, ' '), `${categoryName} ${title}`],
+    };
+
+    routeMap.set(route, entry);
+  }
+
+  return [...routeMap.values()];
+}
+
+function scoreDrinkRouteMatch(entry: DrinkRouteSearchEntry, query: string): number {
+  const normalizedQuery = normalizeDrinkQuery(query);
+  if (!normalizedQuery) return Number.POSITIVE_INFINITY;
+
+  const normalizedName = normalizeDrinkQuery(entry.name);
+  const normalizedId = normalizeDrinkQuery(entry.id.replace(/-/g, ' '));
+  const normalizedRoute = normalizeDrinkQuery(entry.route.replace(/^\/drinks\//, '').replace(/\//g, ' '));
+  const normalizedKeywords = entry.keywords.map((keyword) => normalizeDrinkQuery(keyword));
+
+  if (normalizedName == normalizedQuery) return entry.isHub ? 0 : 1;
+  if (normalizedId == normalizedQuery) return entry.isHub ? 2 : 3;
+  if (normalizedRoute == normalizedQuery) return entry.isHub ? 4 : 5;
+  if (normalizedKeywords.includes(normalizedQuery)) return entry.isHub ? 6 : 7;
+  if (normalizedName.startsWith(normalizedQuery)) return entry.isHub ? 8 : 9;
+  if (normalizedId.startsWith(normalizedQuery)) return entry.isHub ? 10 : 11;
+  if (normalizedRoute.startsWith(normalizedQuery)) return entry.isHub ? 12 : 13;
+  if (normalizedName.includes(normalizedQuery)) return entry.isHub ? 14 : 15;
+  if (normalizedKeywords.some((keyword) => keyword.includes(normalizedQuery))) return entry.isHub ? 16 : 17;
+  if (normalizedRoute.includes(normalizedQuery)) return entry.isHub ? 18 : 19;
+  return Number.POSITIVE_INFINITY;
+}
+
 function loadDrinkIndex(): DrinkIndexFile | null {
   if (drinkIndexCache !== undefined) {
     return drinkIndexCache;
@@ -72,12 +171,23 @@ function loadDrinkIndex(): DrinkIndexFile | null {
     const json = fs.readFileSync(filePath, "utf8");
     drinkIndexCache = JSON.parse(json) as DrinkIndexFile;
     drinkIndexLooseCache = null;
+    drinkRouteSearchCache = null;
   } catch {
     drinkIndexCache = null;
     drinkIndexLooseCache = null;
+    drinkRouteSearchCache = null;
   }
 
   return drinkIndexCache;
+}
+
+function loadDrinkRouteSearchEntries(index: DrinkIndexFile | null): DrinkRouteSearchEntry[] {
+  if (drinkRouteSearchCache !== undefined && drinkRouteSearchCache !== null) {
+    return drinkRouteSearchCache;
+  }
+
+  drinkRouteSearchCache = buildDrinkRouteSearchEntries(index);
+  return drinkRouteSearchCache;
 }
 
 /**
@@ -103,66 +213,7 @@ router.get("/autocomplete", async (req, res) => {
     const qLower = trimmedQuery.toLowerCase();
     const source = parseContentSourceFilter(req.query.source);
     const drinkIndex = loadDrinkIndex();
-
-    // --- Static site categories (drinks + pet food) ---
-    const DRINK_ROUTES: Array<{ id: string; name: string; route: string; category?: string }> = [
-      // Category hubs
-      { id: "caffeinated", name: "Caffeinated Drinks", route: "/drinks/caffeinated", category: "caffeinated" },
-      { id: "smoothies", name: "Smoothies", route: "/drinks/smoothies", category: "smoothies" },
-      { id: "protein-shakes", name: "Protein Shakes", route: "/drinks/protein-shakes", category: "protein-shakes" },
-      { id: "detoxes", name: "Detoxes & Cleanses", route: "/drinks/detoxes", category: "detoxes" },
-      { id: "potent-potables", name: "Potent Potables", route: "/drinks/potent-potables", category: "potent-potables" },
-
-      // Caffeinated
-      { id: "espresso", name: "Espresso Drinks", route: "/drinks/caffeinated/espresso", category: "caffeinated" },
-      { id: "cold-brew", name: "Cold Brew", route: "/drinks/caffeinated/cold-brew", category: "caffeinated" },
-      { id: "tea", name: "Tea", route: "/drinks/caffeinated/tea", category: "caffeinated" },
-      { id: "matcha", name: "Matcha", route: "/drinks/caffeinated/matcha", category: "caffeinated" },
-      { id: "energy", name: "Energy Drinks", route: "/drinks/caffeinated/energy", category: "caffeinated" },
-      { id: "specialty", name: "Specialty Coffee", route: "/drinks/caffeinated/specialty", category: "caffeinated" },
-      { id: "lattes", name: "Lattes", route: "/drinks/caffeinated/lattes", category: "caffeinated" },
-      { id: "iced", name: "Iced Coffee", route: "/drinks/caffeinated/iced", category: "caffeinated" },
-
-      // Smoothies
-      { id: "breakfast", name: "Breakfast Smoothies", route: "/drinks/smoothies/breakfast", category: "smoothies" },
-      { id: "dessert", name: "Dessert Smoothies", route: "/drinks/smoothies/dessert", category: "smoothies" },
-      { id: "green", name: "Green Smoothies", route: "/drinks/smoothies/green", category: "smoothies" },
-      { id: "protein", name: "Protein Smoothies", route: "/drinks/smoothies/protein", category: "smoothies" },
-      { id: "workout", name: "Workout Smoothies", route: "/drinks/smoothies/workout", category: "smoothies" },
-      { id: "tropical", name: "Tropical Smoothies", route: "/drinks/smoothies/tropical", category: "smoothies" },
-      { id: "berry", name: "Berry Smoothies", route: "/drinks/smoothies/berry", category: "smoothies" },
-      { id: "detox-smoothies", name: "Detox Smoothies", route: "/drinks/smoothies/detox", category: "smoothies" },
-
-      // Protein shakes
-      { id: "whey", name: "Whey Protein", route: "/drinks/protein-shakes/whey", category: "protein-shakes" },
-      { id: "casein", name: "Casein Protein", route: "/drinks/protein-shakes/casein", category: "protein-shakes" },
-      { id: "collagen", name: "Collagen Protein", route: "/drinks/protein-shakes/collagen", category: "protein-shakes" },
-      { id: "plant-based", name: "Plant-Based Protein", route: "/drinks/protein-shakes/plant-based", category: "protein-shakes" },
-      { id: "egg", name: "Egg Protein", route: "/drinks/protein-shakes/egg", category: "protein-shakes" },
-      { id: "beef", name: "Beef Protein", route: "/drinks/protein-shakes/beef", category: "protein-shakes" },
-
-      // Detoxes
-      { id: "juice", name: "Detox Juices", route: "/drinks/detoxes/juice", category: "detoxes" },
-      { id: "detox-tea", name: "Detox Teas", route: "/drinks/detoxes/tea", category: "detoxes" },
-      { id: "water", name: "Detox Waters", route: "/drinks/detoxes/water", category: "detoxes" },
-
-      // Potent potables
-      { id: "cocktails", name: "Cocktails", route: "/drinks/potent-potables/cocktails", category: "potent-potables" },
-      { id: "mocktails", name: "Mocktails", route: "/drinks/potent-potables/mocktails", category: "potent-potables" },
-      { id: "rum", name: "Rum", route: "/drinks/potent-potables/rum", category: "potent-potables" },
-      { id: "vodka", name: "Vodka", route: "/drinks/potent-potables/vodka", category: "potent-potables" },
-      { id: "whiskey-bourbon", name: "Whiskey & Bourbon", route: "/drinks/potent-potables/whiskey-bourbon", category: "potent-potables" },
-      { id: "scotch-irish-whiskey", name: "Scotch & Irish Whiskey", route: "/drinks/potent-potables/scotch-irish-whiskey", category: "potent-potables" },
-      { id: "gin", name: "Gin", route: "/drinks/potent-potables/gin", category: "potent-potables" },
-      { id: "tequila-mezcal", name: "Tequila & Mezcal", route: "/drinks/potent-potables/tequila-mezcal", category: "potent-potables" },
-      { id: "martinis", name: "Martinis", route: "/drinks/potent-potables/martinis", category: "potent-potables" },
-      { id: "spritz", name: "Spritz", route: "/drinks/potent-potables/spritz", category: "potent-potables" },
-      { id: "liqueurs", name: "Liqueurs", route: "/drinks/potent-potables/liqueurs", category: "potent-potables" },
-      { id: "cognac-brandy", name: "Cognac & Brandy", route: "/drinks/potent-potables/cognac-brandy", category: "potent-potables" },
-      { id: "daiquiri", name: "Daiquiri", route: "/drinks/potent-potables/daiquiri", category: "potent-potables" },
-      { id: "hot-drinks", name: "Hot Drinks", route: "/drinks/potent-potables/hot-drinks", category: "potent-potables" },
-      { id: "seasonal", name: "Seasonal", route: "/drinks/potent-potables/seasonal", category: "potent-potables" }
-    ];
+    const drinkRoutes = loadDrinkRouteSearchEntries(drinkIndex);
 
     const PET_FOOD_ROUTES: Array<{ id: string; name: string; route: string }> = [
       { id: "pet-food", name: "Pet Food", route: "/pet-food" },
@@ -172,37 +223,24 @@ router.get("/autocomplete", async (req, res) => {
       { id: "small-pets", name: "Small Pets", route: "/pet-food/small-pets" }
     ];
 
-    const drinkCategoryMatches = DRINK_ROUTES
-      .filter(
-        (x) =>
-          x.name.toLowerCase().includes(qLower) ||
-          x.id.toLowerCase().includes(qLower) ||
-          x.route.toLowerCase().includes(qLower)
-      )
+    const rankedDrinkRoutes = drinkRoutes
+      .map((entry) => ({ entry, score: scoreDrinkRouteMatch(entry, trimmedQuery) }))
+      .filter((entry) => Number.isFinite(entry.score))
+      .sort((a, b) => a.score - b.score || a.entry.route.length - b.entry.route.length || a.entry.name.localeCompare(b.entry.name));
+
+    const drinkCategoryMatches = rankedDrinkRoutes
       .slice(0, 5)
-      .map((x) => ({
-        id: x.id,
-        name: x.name,
-        category: x.category,
-        route: x.route,
+      .map(({ entry }) => ({
+        id: entry.id,
+        name: entry.name,
+        category: entry.category,
+        route: entry.route,
         type: "drink" as const,
         matchKind: "category" as const
       }));
 
-    const bestDrinkRoute = (() => {
-      const exact = DRINK_ROUTES.find((x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower);
-      if (exact) return exact.route;
-
-      const containsId = DRINK_ROUTES.find((x) => x.id.toLowerCase().includes(qLower));
-      if (containsId) return containsId.route;
-
-      const containsName = DRINK_ROUTES.find((x) => x.name.toLowerCase().includes(qLower));
-      if (containsName) return containsName.route;
-
-      return null;
-    })();
-
-    const exactDrinkRouteMatch = DRINK_ROUTES.find((x) => x.id.toLowerCase() === qLower || x.name.toLowerCase() === qLower);
+    const bestDrinkRoute = rankedDrinkRoutes[0]?.entry.route ?? null;
+    const exactDrinkRouteMatch = rankedDrinkRoutes.find(({ score }) => score <= 7)?.entry ?? null;
 
     const exactDrinkRecipe = exactDrinkRouteMatch ? null : lookupDrinkRecipeByQuery(drinkIndex, trimmedQuery);
 

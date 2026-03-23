@@ -8851,42 +8851,44 @@
     {
       "slug": "berry-green-fusion",
       "name": "Berry Green Fusion",
-      "sourceRoute": "/drinks/smoothies/berry",
-      "sourceTitle": "Berry Smoothies",
+      "sourceRoute": "/drinks/smoothies/green",
+      "sourceTitle": "Green Smoothies",
       "recipe": {
-        "id": "berry-7",
+        "id": "green-5",
         "name": "Berry Green Fusion",
-        "description": "Berries meet green nutrition",
+        "description": "Antioxidant berries meet nutrient greens",
         "ingredients": [
+          "2 cups mixed greens",
           "1 cup mixed berries",
-          "1 cup spinach",
-          "1/2 avocado",
-          "1 cup coconut water",
-          "1 cup ice"
+          "1/2 banana",
+          "1 cup coconut milk",
+          "1 tbsp flax seeds",
+          "1 tsp maca powder"
         ],
         "benefits": [
-          "Hidden greens",
-          "Complete nutrition",
-          "Healthy fats",
-          "Detoxifying"
+          "Antioxidants",
+          "Energy",
+          "Hormone Balance",
+          "Omega-3"
         ],
         "nutrition": {
           "calories": 240,
           "protein": 5,
-          "carbs": 38,
-          "fiber": 11,
+          "carbs": 35,
+          "fiber": 10,
           "sugar": 20,
           "added_sugar": 0
         },
         "difficulty": "Easy",
         "prepTime": 4,
         "rating": 4.5,
-        "reviews": 234,
-        "berryType": "Mixed Berries",
-        "bestTime": "Morning",
-        "estimatedCost": 3.8,
+        "reviews": 312,
+        "greenType": "Berry Greens",
+        "trending": true,
+        "bestTime": "Any Time",
+        "estimatedCost": 3.6,
         "instructions": [
-          "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
+          "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
       }
     },
@@ -13383,389 +13385,422 @@
     {
       "slug": "old-fashioned",
       "name": "Old Fashioned",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "recipe": {
-        "id": "classic-1",
+        "id": "whiskey-1",
         "name": "Old Fashioned",
-        "description": "The grandfather of all cocktails, simple and timeless",
-        "image": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop",
+        "description": "The grandfather of cocktails - bourbon, sugar, bitters",
+        "spiritType": "Bourbon",
+        "origin": "Louisville, Kentucky",
+        "glassware": "Old Fashioned Glass",
+        "servingSize": "4 oz",
+        "nutrition": {
+          "calories": 155,
+          "carbs": 4,
+          "sugar": 3,
+          "alcohol": 14
+        },
         "ingredients": [
-          "2 oz Bourbon or Rye whiskey",
-          "1 sugar cube",
-          "2-3 dashes Angostura bitters",
-          "Orange peel",
-          "Ice"
+          "2 oz Bourbon",
+          "1 Sugar Cube",
+          "2 dashes Angostura Bitters",
+          "Orange Peel",
+          "Maraschino Cherry",
+          "1 Large Ice Cube"
         ],
-        "glassware": "Rocks glass",
-        "method": "Muddle",
-        "difficulty": "Medium",
-        "prepTime": 5,
-        "rating": 4.8,
-        "reviews": 2341,
-        "trending": true,
-        "featured": true,
-        "tags": [
-          "Whiskey",
-          "Classic",
-          "Strong",
-          "Stirred"
-        ],
-        "instructions": [
-          "Muddle sugar cube with bitters and a splash of water in rocks glass",
-          "Add whiskey and large ice cube",
-          "Stir until chilled",
-          "Express orange peel oils over drink, then garnish"
-        ],
-        "history": "Dating back to the 1880s, considered the original cocktail.",
-        "abv": "35%",
-        "era": "1880s",
-        "origin": "United States",
-        "category": "Spirit-forward",
-        "garnish": "Orange peel",
         "profile": [
           "Strong",
-          "Bitter-sweet",
+          "Bitter-Sweet",
           "Aromatic",
           "Classic"
+        ],
+        "difficulty": "Easy",
+        "prepTime": 5,
+        "rating": 4.9,
+        "reviews": 5234,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 4.5,
+        "category": "Bourbon Classics",
+        "garnish": "Orange peel, cherry",
+        "method": "Build & Muddle",
+        "abv": "30-35%",
+        "iba_official": true,
+        "instructions": [
+          "Muddle sugar cube with bitters in glass",
+          "Add bourbon and large ice cube",
+          "Stir gently",
+          "Express orange peel over drink and garnish with cherry"
         ]
       }
     },
     {
       "slug": "martini",
       "name": "Martini",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "sourceTitle": "Gin",
       "recipe": {
-        "id": "classic-2",
+        "id": "martini",
         "name": "Martini",
-        "description": "The king of cocktails, gin and vermouth in perfect harmony",
+        "description": "Clean and spirit-forward gin cocktail",
+        "spiritType": "London Dry Gin",
+        "origin": "United States",
+        "glassware": "Martini Glass",
+        "servingSize": "3 oz",
+        "nutrition": {
+          "calories": 180,
+          "carbs": 1,
+          "sugar": 1,
+          "alcohol": 20
+        },
         "ingredients": [
           "2.5 oz Gin",
-          "0.5 oz Dry vermouth",
-          "Lemon twist or olive",
+          "0.5 oz Dry Vermouth",
+          "Lemon Twist or Olive",
           "Ice"
         ],
-        "glassware": "Martini glass",
-        "method": "Stir",
-        "difficulty": "Medium",
-        "prepTime": 3,
-        "rating": 4.7,
-        "reviews": 1876,
-        "trending": false,
-        "featured": true,
-        "tags": [
-          "Gin",
-          "Dry",
-          "Elegant",
-          "Stirred"
-        ],
-        "instructions": [
-          "Stir gin and vermouth with ice until very cold",
-          "Strain into chilled martini glass",
-          "Garnish with lemon twist or olive"
-        ],
-        "history": "Evolved from the Martinez in the 1880s, perfected in the early 1900s.",
-        "abv": "28%",
-        "era": "1880s",
-        "origin": "United States",
-        "category": "Spirit-forward",
-        "garnish": "Lemon twist or olive",
         "profile": [
           "Dry",
-          "Botanical",
-          "Strong",
-          "Elegant"
+          "Crisp",
+          "Elegant",
+          "Spirit-Forward"
+        ],
+        "difficulty": "Easy",
+        "prepTime": 3,
+        "rating": 4.8,
+        "reviews": 5201,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 5.5,
+        "category": "Classic Gin",
+        "garnish": "Lemon twist or olive",
+        "method": "Stir",
+        "abv": "30-34%",
+        "iba_official": true,
+        "instructions": [
+          "Stir gin and dry vermouth with ice until chilled",
+          "Strain into a chilled martini glass",
+          "Garnish with a lemon twist or olive"
         ]
       }
     },
     {
       "slug": "manhattan",
       "name": "Manhattan",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "recipe": {
-        "id": "classic-3",
+        "id": "whiskey-3",
         "name": "Manhattan",
-        "description": "Sophisticated whiskey cocktail with sweet vermouth and bitters",
+        "description": "Sophisticated blend of whiskey and vermouth",
+        "spiritType": "Rye Whiskey",
+        "origin": "New York City, USA",
+        "glassware": "Coupe Glass",
+        "servingSize": "4 oz",
+        "nutrition": {
+          "calories": 185,
+          "carbs": 6,
+          "sugar": 4,
+          "alcohol": 16
+        },
         "ingredients": [
-          "2 oz Rye whiskey",
-          "1 oz Sweet vermouth",
-          "2 dashes Angostura bitters",
-          "Maraschino cherry"
+          "2 oz Rye Whiskey",
+          "1 oz Sweet Vermouth",
+          "2 dashes Angostura Bitters",
+          "Maraschino Cherry",
+          "Ice"
         ],
-        "glassware": "Coupe or Martini glass",
-        "method": "Stir",
-        "difficulty": "Easy",
-        "prepTime": 4,
-        "rating": 4.6,
-        "reviews": 1432,
-        "trending": false,
-        "featured": true,
-        "tags": [
-          "Whiskey",
-          "Sweet",
-          "Elegant",
-          "Stirred"
-        ],
-        "instructions": [
-          "Stir all ingredients with ice",
-          "Strain into chilled glass",
-          "Garnish with cherry"
-        ],
-        "history": "Created in 1870s at the Manhattan Club in New York City.",
-        "abv": "30%",
-        "era": "1870s",
-        "origin": "New York, USA",
-        "category": "Spirit-forward",
-        "garnish": "Maraschino cherry",
         "profile": [
-          "Sweet",
           "Rich",
           "Complex",
-          "Smooth"
+          "Herbal",
+          "Sophisticated"
+        ],
+        "difficulty": "Easy",
+        "prepTime": 3,
+        "rating": 4.8,
+        "reviews": 4567,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 5,
+        "category": "Whiskey Classics",
+        "garnish": "Maraschino cherry",
+        "method": "Stir",
+        "abv": "28-32%",
+        "iba_official": true,
+        "instructions": [
+          "Add rye, vermouth, and bitters to mixing glass with ice",
+          "Stir for 30 seconds until very cold",
+          "Strain into chilled coupe",
+          "Garnish with cherry"
         ]
       }
     },
     {
       "slug": "negroni",
       "name": "Negroni",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "sourceTitle": "Gin",
       "recipe": {
-        "id": "classic-4",
+        "id": "negroni",
         "name": "Negroni",
-        "description": "Italian aperitif with gin, Campari, and sweet vermouth",
+        "description": "Equal parts gin, Campari, and sweet vermouth",
+        "spiritType": "Gin",
+        "origin": "Florence, Italy",
+        "glassware": "Old Fashioned Glass",
+        "servingSize": "3 oz",
+        "nutrition": {
+          "calories": 195,
+          "carbs": 8,
+          "sugar": 6,
+          "alcohol": 17
+        },
         "ingredients": [
           "1 oz Gin",
           "1 oz Campari",
-          "1 oz Sweet vermouth",
-          "Orange peel"
+          "1 oz Sweet Vermouth",
+          "Orange Peel",
+          "Ice"
         ],
-        "glassware": "Rocks glass",
-        "method": "Stir",
-        "difficulty": "Easy",
-        "prepTime": 3,
-        "rating": 4.5,
-        "reviews": 1198,
-        "trending": true,
-        "featured": false,
-        "tags": [
-          "Gin",
-          "Bitter",
-          "Aperitif",
-          "Italian"
-        ],
-        "instructions": [
-          "Stir all ingredients with ice in rocks glass",
-          "Garnish with orange peel"
-        ],
-        "history": "Invented in 1919 by Count Camillo Negroni in Florence, Italy.",
-        "abv": "24%",
-        "era": "1919",
-        "origin": "Florence, Italy",
-        "category": "Aperitif",
-        "garnish": "Orange peel",
         "profile": [
           "Bitter",
-          "Herbal",
+          "Complex",
           "Bold",
-          "Aperitif"
+          "Sophisticated"
+        ],
+        "difficulty": "Easy",
+        "prepTime": 3,
+        "rating": 4.8,
+        "reviews": 5892,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 5,
+        "category": "Classic Gin",
+        "garnish": "Orange peel",
+        "method": "Stir",
+        "abv": "28-32%",
+        "iba_official": true,
+        "instructions": [
+          "Add gin, Campari, and vermouth to mixing glass with ice",
+          "Stir for 30 seconds",
+          "Strain into old fashioned glass with large ice cube",
+          "Express orange peel and garnish"
         ]
       }
     },
     {
       "slug": "whiskey-sour",
       "name": "Whiskey Sour",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "recipe": {
-        "id": "classic-5",
+        "id": "whiskey-4",
         "name": "Whiskey Sour",
-        "description": "Perfect balance of whiskey, lemon, and sugar",
-        "ingredients": [
-          "2 oz Bourbon whiskey",
-          "0.75 oz Fresh lemon juice",
-          "0.75 oz Simple syrup",
-          "Egg white (optional)",
-          "Cherry and orange"
-        ],
-        "glassware": "Rocks glass",
-        "method": "Shake",
-        "difficulty": "Easy",
-        "prepTime": 4,
-        "rating": 4.4,
-        "reviews": 987,
-        "trending": false,
-        "featured": false,
-        "tags": [
-          "Whiskey",
-          "Sour",
-          "Refreshing",
-          "Shaken"
-        ],
-        "instructions": [
-          "Shake all ingredients with ice",
-          "Strain over fresh ice",
-          "Garnish with cherry and orange"
-        ],
-        "history": "First published in 1862 bartender manual by Jerry Thomas.",
-        "abv": "20%",
-        "era": "1862",
+        "description": "Classic sour with whiskey, lemon, and egg white",
+        "spiritType": "Bourbon",
         "origin": "United States",
-        "category": "Sour",
-        "garnish": "Cherry and orange slice",
+        "glassware": "Coupe Glass",
+        "servingSize": "5 oz",
+        "nutrition": {
+          "calories": 195,
+          "carbs": 12,
+          "sugar": 10,
+          "alcohol": 13
+        },
+        "ingredients": [
+          "2 oz Bourbon",
+          "0.75 oz Fresh Lemon Juice",
+          "0.5 oz Simple Syrup",
+          "1 Egg White",
+          "Angostura Bitters",
+          "Ice"
+        ],
         "profile": [
-          "Sour",
-          "Sweet",
+          "Tart",
+          "Frothy",
           "Balanced",
-          "Refreshing"
+          "Classic"
+        ],
+        "difficulty": "Medium",
+        "prepTime": 5,
+        "rating": 4.7,
+        "reviews": 4123,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 4,
+        "category": "Bourbon Classics",
+        "garnish": "Lemon wheel, bitters design",
+        "method": "Shake",
+        "abv": "22-26%",
+        "iba_official": true,
+        "instructions": [
+          "Dry shake bourbon, lemon juice, syrup, and egg white (no ice)",
+          "Add ice and shake hard for 15 seconds",
+          "Strain into coupe",
+          "Add bitters design on foam"
         ]
       }
     },
     {
       "slug": "daiquiri",
       "name": "Daiquiri",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "sourceTitle": "Rum",
       "recipe": {
-        "id": "classic-6",
+        "id": "rum-2",
         "name": "Daiquiri",
-        "description": "Cuban classic with rum, lime, and sugar",
+        "description": "Perfect balance of rum, lime, and sugar",
+        "spiritType": "White Rum",
+        "origin": "Santiago de Cuba",
+        "glassware": "Coupe Glass",
+        "servingSize": "4 oz",
+        "nutrition": {
+          "calories": 186,
+          "carbs": 9,
+          "sugar": 7,
+          "alcohol": 15
+        },
         "ingredients": [
-          "2 oz White rum",
-          "1 oz Fresh lime juice",
-          "0.75 oz Simple syrup"
+          "2 oz White Rum",
+          "1 oz Fresh Lime Juice",
+          "0.75 oz Simple Syrup",
+          "Ice"
         ],
-        "glassware": "Coupe glass",
-        "method": "Shake",
+        "profile": [
+          "Clean",
+          "Citrus",
+          "Balanced",
+          "Classic"
+        ],
         "difficulty": "Easy",
         "prepTime": 3,
-        "rating": 4.3,
-        "reviews": 756,
-        "trending": false,
-        "featured": false,
-        "tags": [
-          "Rum",
-          "Citrus",
-          "Cuban",
-          "Shaken"
-        ],
-        "instructions": [
-          "Shake all ingredients with ice",
-          "Double strain into chilled coupe glass"
-        ],
-        "history": "Created in Cuba around 1900, popularized by Hemingway.",
-        "abv": "18%",
-        "era": "1900",
-        "origin": "Cuba",
-        "category": "Sour",
+        "rating": 4.7,
+        "reviews": 4328,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 3.5,
+        "bestTime": "Evening",
+        "occasion": "Sophisticated",
+        "allergens": [],
+        "category": "Classic Rum",
         "garnish": "Lime wheel",
-        "profile": [
-          "Tart",
-          "Sweet",
-          "Refreshing",
-          "Clean"
+        "method": "Shake",
+        "abv": "20-24%",
+        "iba_official": true,
+        "instructions": [
+          "Shake all ingredients vigorously with ice",
+          "Double strain into chilled coupe glass",
+          "Garnish with lime wheel"
         ]
       }
     },
     {
       "slug": "sazerac",
       "name": "Sazerac",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "recipe": {
-        "id": "classic-7",
+        "id": "whiskey-6",
         "name": "Sazerac",
-        "description": "New Orleans classic with rye whiskey and absinthe rinse",
+        "description": "New Orleans classic with rye and absinthe rinse",
+        "spiritType": "Rye Whiskey",
+        "origin": "New Orleans, Louisiana",
+        "glassware": "Old Fashioned Glass",
+        "servingSize": "3 oz",
+        "nutrition": {
+          "calories": 180,
+          "carbs": 4,
+          "sugar": 3,
+          "alcohol": 19
+        },
         "ingredients": [
-          "2 oz Rye whiskey",
-          "0.25 oz Simple syrup",
-          "2 dashes Peychauds bitters",
+          "2 oz Rye Whiskey",
+          "1 Sugar Cube",
+          "3 dashes Peychauds Bitters",
           "Absinthe rinse",
-          "Lemon peel"
+          "Lemon Peel",
+          "Ice"
         ],
-        "glassware": "Rocks glass",
-        "method": "Stir",
-        "difficulty": "Hard",
+        "profile": [
+          "Anise",
+          "Bold",
+          "Aromatic",
+          "Historic"
+        ],
+        "difficulty": "Medium",
         "prepTime": 6,
-        "rating": 4.6,
-        "reviews": 445,
+        "rating": 4.7,
+        "reviews": 2345,
         "trending": false,
         "featured": true,
-        "tags": [
-          "Whiskey",
-          "New Orleans",
-          "Absinthe",
-          "Complex"
-        ],
-        "instructions": [
-          "Rinse glass with absinthe",
-          "Stir whiskey, syrup, and bitters with ice",
-          "Strain into glass",
-          "Express lemon peel"
-        ],
-        "history": "Official cocktail of New Orleans, dating to 1850s.",
-        "abv": "32%",
-        "era": "1850s",
-        "origin": "New Orleans, USA",
-        "category": "Spirit-forward",
+        "estimatedCost": 6,
+        "category": "Whiskey Classics",
         "garnish": "Lemon peel",
-        "profile": [
-          "Complex",
-          "Herbal",
-          "Anise",
-          "Bold"
+        "method": "Stir",
+        "abv": "35-40%",
+        "iba_official": true,
+        "instructions": [
+          "Rinse chilled glass with absinthe, discard excess",
+          "Muddle sugar cube with bitters",
+          "Add rye and ice, stir",
+          "Strain into prepared glass",
+          "Express lemon peel and discard"
         ]
       }
     },
     {
       "slug": "mint-julep",
       "name": "Mint Julep",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "recipe": {
-        "id": "classic-8",
+        "id": "whiskey-2",
         "name": "Mint Julep",
-        "description": "Kentucky Derby tradition with bourbon and fresh mint",
+        "description": "Kentucky Derby classic with bourbon and fresh mint",
+        "spiritType": "Bourbon",
+        "origin": "Southern United States",
+        "glassware": "Julep Cup",
+        "servingSize": "8 oz",
+        "nutrition": {
+          "calories": 168,
+          "carbs": 12,
+          "sugar": 10,
+          "alcohol": 12
+        },
         "ingredients": [
-          "2.5 oz Bourbon whiskey",
-          "0.5 oz Simple syrup",
-          "8-10 Fresh mint leaves",
-          "Crushed ice",
-          "Mint sprig"
+          "2.5 oz Bourbon",
+          "10 Fresh Mint Leaves",
+          "0.5 oz Simple Syrup",
+          "Crushed Ice",
+          "Mint Sprig",
+          "Powdered Sugar"
         ],
-        "glassware": "Julep cup or rocks glass",
-        "method": "Muddle",
-        "difficulty": "Medium",
-        "prepTime": 5,
-        "rating": 4.2,
-        "reviews": 623,
-        "trending": false,
-        "featured": false,
-        "tags": [
-          "Bourbon",
-          "Mint",
-          "Southern",
-          "Derby"
-        ],
-        "instructions": [
-          "Gently muddle mint with syrup",
-          "Add bourbon and crushed ice",
-          "Stir until frosted",
-          "Garnish with mint sprig"
-        ],
-        "history": "Southern American classic, official drink of Kentucky Derby since 1938.",
-        "abv": "25%",
-        "era": "1800s",
-        "origin": "Southern USA",
-        "category": "Refreshing",
-        "garnish": "Mint sprig",
         "profile": [
           "Minty",
-          "Sweet",
           "Refreshing",
-          "Southern"
+          "Southern",
+          "Classic"
+        ],
+        "difficulty": "Easy",
+        "prepTime": 4,
+        "rating": 4.7,
+        "reviews": 3892,
+        "trending": false,
+        "featured": true,
+        "estimatedCost": 4,
+        "category": "Bourbon Classics",
+        "garnish": "Mint sprig, powdered sugar",
+        "method": "Muddle & Build",
+        "abv": "20-24%",
+        "iba_official": true,
+        "instructions": [
+          "Muddle mint leaves with simple syrup in julep cup",
+          "Fill with crushed ice",
+          "Add bourbon",
+          "Stir until cup is frosted",
+          "Top with more crushed ice",
+          "Garnish with mint sprig and powdered sugar"
         ]
       }
     },
@@ -16778,13 +16813,13 @@
     {
       "slug": "limoncello-spritz",
       "name": "Limoncello Spritz",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "sourceTitle": "Spritz & Mimosas",
       "recipe": {
-        "id": "liqueur-7",
+        "id": "spritz-9",
         "name": "Limoncello Spritz",
-        "description": "Italian lemon liqueur with prosecco",
-        "liqueurType": "Limoncello",
+        "description": "Lemon liqueur spritz",
+        "drinkType": "Spritz",
         "origin": "Italy",
         "glassware": "Wine Glass",
         "servingSize": "8 oz",
@@ -16795,8 +16830,8 @@
           "alcohol": 11
         },
         "ingredients": [
-          "2 oz Limoncello",
           "3 oz Prosecco",
+          "2 oz Limoncello",
           "2 oz Soda Water",
           "Lemon Slice",
           "Fresh Mint",
@@ -16804,27 +16839,27 @@
         ],
         "profile": [
           "Lemon",
-          "Bubbly",
+          "Sweet",
           "Refreshing",
           "Italian"
         ],
         "difficulty": "Very Easy",
         "prepTime": 2,
-        "rating": 4.8,
-        "reviews": 5234,
+        "rating": 4.7,
+        "reviews": 4567,
         "trending": true,
         "featured": true,
         "estimatedCost": 5,
-        "category": "Fruit Liqueurs",
+        "category": "Spritzes",
         "garnish": "Lemon slice, mint",
         "method": "Build",
         "abv": "10-12%",
         "iba_official": false,
         "instructions": [
           "Fill wine glass with ice",
-          "Add limoncello, prosecco, and soda water",
+          "Add prosecco, limoncello, and soda",
           "Stir gently",
-          "Garnish with lemon slice and mint"
+          "Garnish with lemon and mint"
         ]
       }
     },
@@ -16884,49 +16919,53 @@
     {
       "slug": "godfather",
       "name": "Godfather",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "sourceTitle": "Scotch & Irish Whiskey",
       "recipe": {
-        "id": "liqueur-9",
+        "id": "scotch-5",
         "name": "Godfather",
-        "description": "Simple scotch and amaretto",
-        "liqueurType": "Amaretto",
+        "description": "Scotch and amaretto over ice",
+        "spiritType": "Blended Scotch",
         "origin": "United States",
         "glassware": "Old Fashioned Glass",
         "servingSize": "3 oz",
         "nutrition": {
           "calories": 195,
-          "carbs": 10,
-          "sugar": 9,
-          "alcohol": 17
+          "carbs": 9,
+          "sugar": 8,
+          "alcohol": 18
         },
         "ingredients": [
           "1.5 oz Scotch Whisky",
-          "1.5 oz Amaretto",
+          "0.75 oz Amaretto",
           "Ice"
         ],
         "profile": [
-          "Almond",
-          "Smoky",
-          "Strong",
+          "Nutty",
+          "Sweet",
+          "Smooth",
           "Simple"
         ],
         "difficulty": "Very Easy",
         "prepTime": 2,
-        "rating": 4.4,
-        "reviews": 2345,
+        "rating": 4.3,
+        "reviews": 1432,
         "trending": false,
         "featured": false,
-        "estimatedCost": 5,
-        "category": "Nut Liqueurs",
+        "estimatedCost": 4.5,
+        "bestTime": "After Dinner",
+        "occasion": "Casual",
+        "allergens": [
+          "Almonds"
+        ],
+        "category": "Classic Scotch",
         "garnish": "None",
         "method": "Build",
-        "abv": "28-32%",
-        "iba_official": false,
+        "abv": "34-38%",
+        "iba_official": true,
         "instructions": [
-          "Fill old fashioned glass with ice",
-          "Add scotch and amaretto",
-          "Stir gently"
+          "Pour scotch and amaretto over ice in rocks glass",
+          "Stir briefly and serve"
         ]
       }
     },
@@ -17037,13 +17076,13 @@
     {
       "slug": "aperol-spritz",
       "name": "Aperol Spritz",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "sourceTitle": "Spritz & Mimosas",
       "recipe": {
-        "id": "liqueur-12",
+        "id": "spritz-2",
         "name": "Aperol Spritz",
-        "description": "Bittersweet Italian aperitif with prosecco",
-        "liqueurType": "Aperol",
+        "description": "Italian classic with Aperol, prosecco, and soda",
+        "drinkType": "Spritz",
         "origin": "Venice, Italy",
         "glassware": "Wine Glass",
         "servingSize": "8 oz",
@@ -17069,18 +17108,18 @@
         "difficulty": "Very Easy",
         "prepTime": 2,
         "rating": 4.8,
-        "reviews": 7892,
+        "reviews": 9876,
         "trending": true,
         "featured": true,
         "estimatedCost": 5,
-        "category": "Aperitif Liqueurs",
+        "category": "Spritzes",
         "garnish": "Orange slice",
         "method": "Build",
         "abv": "10-12%",
         "iba_official": true,
         "instructions": [
           "Fill wine glass with ice",
-          "Add prosecco, Aperol, and soda water in order",
+          "Add prosecco, Aperol, and soda water",
           "Stir gently",
           "Garnish with orange slice"
         ]
@@ -17676,105 +17715,106 @@
     {
       "slug": "virgin-mojito",
       "name": "Virgin Mojito",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "recipe": {
-        "id": "mocktail-1",
+        "id": "virgin-1",
         "name": "Virgin Mojito",
-        "description": "Classic Cuban refreshment with mint and lime",
-        "drinkStyle": "Refreshing",
-        "glassware": "Highball",
-        "servingSize": "12 oz",
+        "description": "Refreshing mint and lime without the rum",
+        "baseIngredient": "Mint & Lime",
+        "origin": "Cuba",
+        "glassware": "Highball Glass",
+        "servingSize": "10 oz",
         "nutrition": {
           "calories": 95,
           "carbs": 24,
-          "sugar": 22,
-          "sodium": 5
+          "sugar": 20,
+          "protein": 0
         },
         "ingredients": [
-          "10-12 Fresh Mint Leaves",
-          "1 whole Lime cut in wedges",
-          "2 tsp White Sugar",
-          "8 oz Club Soda",
-          "Crushed Ice",
-          "Lime Wheel garnish"
+          "Fresh Mint Leaves (10-12)",
+          "Fresh Lime Juice (1 oz)",
+          "Simple Syrup (0.75 oz)",
+          "Soda Water (top)",
+          "Lime Wedges",
+          "Ice"
         ],
-        "benefits": [
+        "profile": [
           "Refreshing",
-          "Digestive Aid",
-          "Cooling",
-          "Low Calorie"
+          "Minty",
+          "Citrus",
+          "Light"
         ],
-        "difficulty": "Easy",
-        "prepTime": 5,
-        "rating": 4.8,
-        "reviews": 2345,
+        "difficulty": "Very Easy",
+        "prepTime": 4,
+        "rating": 4.7,
+        "reviews": 4521,
         "trending": true,
         "featured": true,
         "estimatedCost": 2.5,
-        "bestTime": "Evening",
+        "bestTime": "Afternoon",
         "occasion": "Casual",
         "allergens": [],
-        "category": "Classic Mocktails",
-        "garnish": "Lime wheel, mint sprig",
-        "method": "Muddle",
+        "category": "Classic Virgin",
+        "garnish": "Mint sprig, lime wheel",
+        "method": "Muddle & Build",
+        "vegan": true,
+        "glutenFree": true,
         "instructions": [
-          "Muddle mint leaves with lime wedges and sugar in glass",
-          "Add crushed ice and top with club soda",
-          "Stir gently and garnish with lime wheel and mint sprig"
+          "Muddle & Build"
         ]
       }
     },
     {
       "slug": "shirley-temple",
       "name": "Shirley Temple",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "recipe": {
-        "id": "mocktail-2",
+        "id": "virgin-3",
         "name": "Shirley Temple",
-        "description": "Sweet and bubbly with grenadine and cherry",
-        "drinkStyle": "Sweet",
-        "glassware": "Collins",
-        "servingSize": "10 oz",
+        "description": "Sweet ginger ale with grenadine",
+        "baseIngredient": "Ginger Ale",
+        "origin": "United States",
+        "glassware": "Highball Glass",
+        "servingSize": "8 oz",
         "nutrition": {
-          "calories": 120,
-          "carbs": 30,
-          "sugar": 28,
-          "sodium": 8
+          "calories": 125,
+          "carbs": 32,
+          "sugar": 30,
+          "protein": 0
         },
         "ingredients": [
-          "8 oz Ginger Ale",
-          "1 oz Grenadine",
-          "0.5 oz Fresh Lime Juice",
-          "Ice Cubes",
-          "2 Maraschino Cherries",
-          "Orange Slice garnish"
+          "Ginger Ale (6 oz)",
+          "Grenadine (0.5 oz)",
+          "Fresh Lime Juice (0.25 oz)",
+          "Maraschino Cherry",
+          "Orange Slice",
+          "Ice"
         ],
-        "benefits": [
-          "Fun & Festive",
-          "Kid-Friendly",
-          "Party Classic",
-          "Bubbly"
+        "profile": [
+          "Sweet",
+          "Fizzy",
+          "Fruity",
+          "Kid-Friendly"
         ],
-        "difficulty": "Easy",
-        "prepTime": 3,
+        "difficulty": "Very Easy",
+        "prepTime": 2,
         "rating": 4.6,
-        "reviews": 1876,
+        "reviews": 3421,
         "trending": false,
-        "featured": true,
+        "featured": false,
         "estimatedCost": 2,
         "bestTime": "Anytime",
-        "occasion": "Party",
+        "occasion": "Family",
         "allergens": [],
-        "category": "Classic Mocktails",
+        "category": "Classic Virgin",
         "garnish": "Cherry, orange slice",
         "method": "Build",
+        "vegan": true,
+        "glutenFree": true,
         "instructions": [
-          "Fill glass with ice",
-          "Add ginger ale, grenadine, and lime juice",
-          "Stir gently",
-          "Garnish with cherries and orange slice"
+          "Build"
         ]
       }
     },
@@ -17836,53 +17876,53 @@
     {
       "slug": "tropical-sunrise",
       "name": "Tropical Sunrise",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "recipe": {
-        "id": "mocktail-4",
+        "id": "virgin-9",
         "name": "Tropical Sunrise",
-        "description": "Pineapple and orange with grenadine gradient",
-        "drinkStyle": "Fruity",
-        "glassware": "Hurricane",
-        "servingSize": "12 oz",
+        "description": "Layered orange and pineapple with grenadine",
+        "baseIngredient": "Orange Juice",
+        "origin": "Modern",
+        "glassware": "Hurricane Glass",
+        "servingSize": "10 oz",
         "nutrition": {
-          "calories": 140,
-          "carbs": 35,
-          "sugar": 32,
-          "vitamin_c": 80
+          "calories": 165,
+          "carbs": 40,
+          "sugar": 36,
+          "protein": 2
         },
         "ingredients": [
-          "4 oz Pineapple Juice",
-          "4 oz Orange Juice",
-          "1 oz Grenadine",
-          "2 chunks Fresh Pineapple",
-          "Ice",
-          "Cherry garnish"
+          "Orange Juice (4 oz)",
+          "Pineapple Juice (3 oz)",
+          "Grenadine (0.5 oz)",
+          "Fresh Lime Juice (0.25 oz)",
+          "Orange Slice",
+          "Ice"
         ],
-        "benefits": [
-          "Vitamin C",
-          "Energizing",
+        "profile": [
           "Tropical",
-          "Party Favorite"
+          "Sweet",
+          "Fruity",
+          "Vibrant"
         ],
-        "difficulty": "Easy",
-        "prepTime": 4,
-        "rating": 4.8,
-        "reviews": 2156,
-        "trending": true,
+        "difficulty": "Very Easy",
+        "prepTime": 3,
+        "rating": 4.5,
+        "reviews": 2876,
+        "trending": false,
         "featured": false,
-        "estimatedCost": 2.75,
-        "bestTime": "Brunch",
-        "occasion": "Party",
+        "estimatedCost": 2.5,
+        "bestTime": "Morning",
+        "occasion": "Brunch",
         "allergens": [],
-        "category": "Tropical Mocktails",
-        "garnish": "Pineapple wedge, cherry",
-        "method": "Layer",
+        "category": "Fruit Blends",
+        "garnish": "Orange slice, cherry",
+        "method": "Build & Layer",
+        "vegan": true,
+        "glutenFree": true,
         "instructions": [
-          "Fill glass with ice",
-          "Add pineapple and orange juice, stir",
-          "Slowly pour grenadine down the side to create sunrise effect",
-          "Garnish with pineapple wedge and cherry"
+          "Build & Layer"
         ]
       }
     },
@@ -31250,42 +31290,44 @@
     "berry-green-fusion": {
       "slug": "berry-green-fusion",
       "name": "Berry Green Fusion",
-      "sourceRoute": "/drinks/smoothies/berry",
-      "sourceTitle": "Berry Smoothies",
+      "sourceRoute": "/drinks/smoothies/green",
+      "sourceTitle": "Green Smoothies",
       "recipe": {
-        "id": "berry-7",
+        "id": "green-5",
         "name": "Berry Green Fusion",
-        "description": "Berries meet green nutrition",
+        "description": "Antioxidant berries meet nutrient greens",
         "ingredients": [
+          "2 cups mixed greens",
           "1 cup mixed berries",
-          "1 cup spinach",
-          "1/2 avocado",
-          "1 cup coconut water",
-          "1 cup ice"
+          "1/2 banana",
+          "1 cup coconut milk",
+          "1 tbsp flax seeds",
+          "1 tsp maca powder"
         ],
         "benefits": [
-          "Hidden greens",
-          "Complete nutrition",
-          "Healthy fats",
-          "Detoxifying"
+          "Antioxidants",
+          "Energy",
+          "Hormone Balance",
+          "Omega-3"
         ],
         "nutrition": {
           "calories": 240,
           "protein": 5,
-          "carbs": 38,
-          "fiber": 11,
+          "carbs": 35,
+          "fiber": 10,
           "sugar": 20,
           "added_sugar": 0
         },
         "difficulty": "Easy",
         "prepTime": 4,
         "rating": 4.5,
-        "reviews": 234,
-        "berryType": "Mixed Berries",
-        "bestTime": "Morning",
-        "estimatedCost": 3.8,
+        "reviews": 312,
+        "greenType": "Berry Greens",
+        "trending": true,
+        "bestTime": "Any Time",
+        "estimatedCost": 3.6,
         "instructions": [
-          "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
+          "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
       }
     },
@@ -35782,389 +35824,422 @@
     "old-fashioned": {
       "slug": "old-fashioned",
       "name": "Old Fashioned",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "recipe": {
-        "id": "classic-1",
+        "id": "whiskey-1",
         "name": "Old Fashioned",
-        "description": "The grandfather of all cocktails, simple and timeless",
-        "image": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop",
+        "description": "The grandfather of cocktails - bourbon, sugar, bitters",
+        "spiritType": "Bourbon",
+        "origin": "Louisville, Kentucky",
+        "glassware": "Old Fashioned Glass",
+        "servingSize": "4 oz",
+        "nutrition": {
+          "calories": 155,
+          "carbs": 4,
+          "sugar": 3,
+          "alcohol": 14
+        },
         "ingredients": [
-          "2 oz Bourbon or Rye whiskey",
-          "1 sugar cube",
-          "2-3 dashes Angostura bitters",
-          "Orange peel",
-          "Ice"
+          "2 oz Bourbon",
+          "1 Sugar Cube",
+          "2 dashes Angostura Bitters",
+          "Orange Peel",
+          "Maraschino Cherry",
+          "1 Large Ice Cube"
         ],
-        "glassware": "Rocks glass",
-        "method": "Muddle",
-        "difficulty": "Medium",
-        "prepTime": 5,
-        "rating": 4.8,
-        "reviews": 2341,
-        "trending": true,
-        "featured": true,
-        "tags": [
-          "Whiskey",
-          "Classic",
-          "Strong",
-          "Stirred"
-        ],
-        "instructions": [
-          "Muddle sugar cube with bitters and a splash of water in rocks glass",
-          "Add whiskey and large ice cube",
-          "Stir until chilled",
-          "Express orange peel oils over drink, then garnish"
-        ],
-        "history": "Dating back to the 1880s, considered the original cocktail.",
-        "abv": "35%",
-        "era": "1880s",
-        "origin": "United States",
-        "category": "Spirit-forward",
-        "garnish": "Orange peel",
         "profile": [
           "Strong",
-          "Bitter-sweet",
+          "Bitter-Sweet",
           "Aromatic",
           "Classic"
+        ],
+        "difficulty": "Easy",
+        "prepTime": 5,
+        "rating": 4.9,
+        "reviews": 5234,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 4.5,
+        "category": "Bourbon Classics",
+        "garnish": "Orange peel, cherry",
+        "method": "Build & Muddle",
+        "abv": "30-35%",
+        "iba_official": true,
+        "instructions": [
+          "Muddle sugar cube with bitters in glass",
+          "Add bourbon and large ice cube",
+          "Stir gently",
+          "Express orange peel over drink and garnish with cherry"
         ]
       }
     },
     "martini": {
       "slug": "martini",
       "name": "Martini",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "sourceTitle": "Gin",
       "recipe": {
-        "id": "classic-2",
+        "id": "martini",
         "name": "Martini",
-        "description": "The king of cocktails, gin and vermouth in perfect harmony",
+        "description": "Clean and spirit-forward gin cocktail",
+        "spiritType": "London Dry Gin",
+        "origin": "United States",
+        "glassware": "Martini Glass",
+        "servingSize": "3 oz",
+        "nutrition": {
+          "calories": 180,
+          "carbs": 1,
+          "sugar": 1,
+          "alcohol": 20
+        },
         "ingredients": [
           "2.5 oz Gin",
-          "0.5 oz Dry vermouth",
-          "Lemon twist or olive",
+          "0.5 oz Dry Vermouth",
+          "Lemon Twist or Olive",
           "Ice"
         ],
-        "glassware": "Martini glass",
-        "method": "Stir",
-        "difficulty": "Medium",
-        "prepTime": 3,
-        "rating": 4.7,
-        "reviews": 1876,
-        "trending": false,
-        "featured": true,
-        "tags": [
-          "Gin",
-          "Dry",
-          "Elegant",
-          "Stirred"
-        ],
-        "instructions": [
-          "Stir gin and vermouth with ice until very cold",
-          "Strain into chilled martini glass",
-          "Garnish with lemon twist or olive"
-        ],
-        "history": "Evolved from the Martinez in the 1880s, perfected in the early 1900s.",
-        "abv": "28%",
-        "era": "1880s",
-        "origin": "United States",
-        "category": "Spirit-forward",
-        "garnish": "Lemon twist or olive",
         "profile": [
           "Dry",
-          "Botanical",
-          "Strong",
-          "Elegant"
+          "Crisp",
+          "Elegant",
+          "Spirit-Forward"
+        ],
+        "difficulty": "Easy",
+        "prepTime": 3,
+        "rating": 4.8,
+        "reviews": 5201,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 5.5,
+        "category": "Classic Gin",
+        "garnish": "Lemon twist or olive",
+        "method": "Stir",
+        "abv": "30-34%",
+        "iba_official": true,
+        "instructions": [
+          "Stir gin and dry vermouth with ice until chilled",
+          "Strain into a chilled martini glass",
+          "Garnish with a lemon twist or olive"
         ]
       }
     },
     "manhattan": {
       "slug": "manhattan",
       "name": "Manhattan",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "recipe": {
-        "id": "classic-3",
+        "id": "whiskey-3",
         "name": "Manhattan",
-        "description": "Sophisticated whiskey cocktail with sweet vermouth and bitters",
+        "description": "Sophisticated blend of whiskey and vermouth",
+        "spiritType": "Rye Whiskey",
+        "origin": "New York City, USA",
+        "glassware": "Coupe Glass",
+        "servingSize": "4 oz",
+        "nutrition": {
+          "calories": 185,
+          "carbs": 6,
+          "sugar": 4,
+          "alcohol": 16
+        },
         "ingredients": [
-          "2 oz Rye whiskey",
-          "1 oz Sweet vermouth",
-          "2 dashes Angostura bitters",
-          "Maraschino cherry"
+          "2 oz Rye Whiskey",
+          "1 oz Sweet Vermouth",
+          "2 dashes Angostura Bitters",
+          "Maraschino Cherry",
+          "Ice"
         ],
-        "glassware": "Coupe or Martini glass",
-        "method": "Stir",
-        "difficulty": "Easy",
-        "prepTime": 4,
-        "rating": 4.6,
-        "reviews": 1432,
-        "trending": false,
-        "featured": true,
-        "tags": [
-          "Whiskey",
-          "Sweet",
-          "Elegant",
-          "Stirred"
-        ],
-        "instructions": [
-          "Stir all ingredients with ice",
-          "Strain into chilled glass",
-          "Garnish with cherry"
-        ],
-        "history": "Created in 1870s at the Manhattan Club in New York City.",
-        "abv": "30%",
-        "era": "1870s",
-        "origin": "New York, USA",
-        "category": "Spirit-forward",
-        "garnish": "Maraschino cherry",
         "profile": [
-          "Sweet",
           "Rich",
           "Complex",
-          "Smooth"
+          "Herbal",
+          "Sophisticated"
+        ],
+        "difficulty": "Easy",
+        "prepTime": 3,
+        "rating": 4.8,
+        "reviews": 4567,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 5,
+        "category": "Whiskey Classics",
+        "garnish": "Maraschino cherry",
+        "method": "Stir",
+        "abv": "28-32%",
+        "iba_official": true,
+        "instructions": [
+          "Add rye, vermouth, and bitters to mixing glass with ice",
+          "Stir for 30 seconds until very cold",
+          "Strain into chilled coupe",
+          "Garnish with cherry"
         ]
       }
     },
     "negroni": {
       "slug": "negroni",
       "name": "Negroni",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "sourceTitle": "Gin",
       "recipe": {
-        "id": "classic-4",
+        "id": "negroni",
         "name": "Negroni",
-        "description": "Italian aperitif with gin, Campari, and sweet vermouth",
+        "description": "Equal parts gin, Campari, and sweet vermouth",
+        "spiritType": "Gin",
+        "origin": "Florence, Italy",
+        "glassware": "Old Fashioned Glass",
+        "servingSize": "3 oz",
+        "nutrition": {
+          "calories": 195,
+          "carbs": 8,
+          "sugar": 6,
+          "alcohol": 17
+        },
         "ingredients": [
           "1 oz Gin",
           "1 oz Campari",
-          "1 oz Sweet vermouth",
-          "Orange peel"
+          "1 oz Sweet Vermouth",
+          "Orange Peel",
+          "Ice"
         ],
-        "glassware": "Rocks glass",
-        "method": "Stir",
-        "difficulty": "Easy",
-        "prepTime": 3,
-        "rating": 4.5,
-        "reviews": 1198,
-        "trending": true,
-        "featured": false,
-        "tags": [
-          "Gin",
-          "Bitter",
-          "Aperitif",
-          "Italian"
-        ],
-        "instructions": [
-          "Stir all ingredients with ice in rocks glass",
-          "Garnish with orange peel"
-        ],
-        "history": "Invented in 1919 by Count Camillo Negroni in Florence, Italy.",
-        "abv": "24%",
-        "era": "1919",
-        "origin": "Florence, Italy",
-        "category": "Aperitif",
-        "garnish": "Orange peel",
         "profile": [
           "Bitter",
-          "Herbal",
+          "Complex",
           "Bold",
-          "Aperitif"
+          "Sophisticated"
+        ],
+        "difficulty": "Easy",
+        "prepTime": 3,
+        "rating": 4.8,
+        "reviews": 5892,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 5,
+        "category": "Classic Gin",
+        "garnish": "Orange peel",
+        "method": "Stir",
+        "abv": "28-32%",
+        "iba_official": true,
+        "instructions": [
+          "Add gin, Campari, and vermouth to mixing glass with ice",
+          "Stir for 30 seconds",
+          "Strain into old fashioned glass with large ice cube",
+          "Express orange peel and garnish"
         ]
       }
     },
     "whiskey-sour": {
       "slug": "whiskey-sour",
       "name": "Whiskey Sour",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "recipe": {
-        "id": "classic-5",
+        "id": "whiskey-4",
         "name": "Whiskey Sour",
-        "description": "Perfect balance of whiskey, lemon, and sugar",
-        "ingredients": [
-          "2 oz Bourbon whiskey",
-          "0.75 oz Fresh lemon juice",
-          "0.75 oz Simple syrup",
-          "Egg white (optional)",
-          "Cherry and orange"
-        ],
-        "glassware": "Rocks glass",
-        "method": "Shake",
-        "difficulty": "Easy",
-        "prepTime": 4,
-        "rating": 4.4,
-        "reviews": 987,
-        "trending": false,
-        "featured": false,
-        "tags": [
-          "Whiskey",
-          "Sour",
-          "Refreshing",
-          "Shaken"
-        ],
-        "instructions": [
-          "Shake all ingredients with ice",
-          "Strain over fresh ice",
-          "Garnish with cherry and orange"
-        ],
-        "history": "First published in 1862 bartender manual by Jerry Thomas.",
-        "abv": "20%",
-        "era": "1862",
+        "description": "Classic sour with whiskey, lemon, and egg white",
+        "spiritType": "Bourbon",
         "origin": "United States",
-        "category": "Sour",
-        "garnish": "Cherry and orange slice",
+        "glassware": "Coupe Glass",
+        "servingSize": "5 oz",
+        "nutrition": {
+          "calories": 195,
+          "carbs": 12,
+          "sugar": 10,
+          "alcohol": 13
+        },
+        "ingredients": [
+          "2 oz Bourbon",
+          "0.75 oz Fresh Lemon Juice",
+          "0.5 oz Simple Syrup",
+          "1 Egg White",
+          "Angostura Bitters",
+          "Ice"
+        ],
         "profile": [
-          "Sour",
-          "Sweet",
+          "Tart",
+          "Frothy",
           "Balanced",
-          "Refreshing"
+          "Classic"
+        ],
+        "difficulty": "Medium",
+        "prepTime": 5,
+        "rating": 4.7,
+        "reviews": 4123,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 4,
+        "category": "Bourbon Classics",
+        "garnish": "Lemon wheel, bitters design",
+        "method": "Shake",
+        "abv": "22-26%",
+        "iba_official": true,
+        "instructions": [
+          "Dry shake bourbon, lemon juice, syrup, and egg white (no ice)",
+          "Add ice and shake hard for 15 seconds",
+          "Strain into coupe",
+          "Add bitters design on foam"
         ]
       }
     },
     "daiquiri": {
       "slug": "daiquiri",
       "name": "Daiquiri",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "sourceTitle": "Rum",
       "recipe": {
-        "id": "classic-6",
+        "id": "rum-2",
         "name": "Daiquiri",
-        "description": "Cuban classic with rum, lime, and sugar",
+        "description": "Perfect balance of rum, lime, and sugar",
+        "spiritType": "White Rum",
+        "origin": "Santiago de Cuba",
+        "glassware": "Coupe Glass",
+        "servingSize": "4 oz",
+        "nutrition": {
+          "calories": 186,
+          "carbs": 9,
+          "sugar": 7,
+          "alcohol": 15
+        },
         "ingredients": [
-          "2 oz White rum",
-          "1 oz Fresh lime juice",
-          "0.75 oz Simple syrup"
+          "2 oz White Rum",
+          "1 oz Fresh Lime Juice",
+          "0.75 oz Simple Syrup",
+          "Ice"
         ],
-        "glassware": "Coupe glass",
-        "method": "Shake",
+        "profile": [
+          "Clean",
+          "Citrus",
+          "Balanced",
+          "Classic"
+        ],
         "difficulty": "Easy",
         "prepTime": 3,
-        "rating": 4.3,
-        "reviews": 756,
-        "trending": false,
-        "featured": false,
-        "tags": [
-          "Rum",
-          "Citrus",
-          "Cuban",
-          "Shaken"
-        ],
-        "instructions": [
-          "Shake all ingredients with ice",
-          "Double strain into chilled coupe glass"
-        ],
-        "history": "Created in Cuba around 1900, popularized by Hemingway.",
-        "abv": "18%",
-        "era": "1900",
-        "origin": "Cuba",
-        "category": "Sour",
+        "rating": 4.7,
+        "reviews": 4328,
+        "trending": true,
+        "featured": true,
+        "estimatedCost": 3.5,
+        "bestTime": "Evening",
+        "occasion": "Sophisticated",
+        "allergens": [],
+        "category": "Classic Rum",
         "garnish": "Lime wheel",
-        "profile": [
-          "Tart",
-          "Sweet",
-          "Refreshing",
-          "Clean"
+        "method": "Shake",
+        "abv": "20-24%",
+        "iba_official": true,
+        "instructions": [
+          "Shake all ingredients vigorously with ice",
+          "Double strain into chilled coupe glass",
+          "Garnish with lime wheel"
         ]
       }
     },
     "sazerac": {
       "slug": "sazerac",
       "name": "Sazerac",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "recipe": {
-        "id": "classic-7",
+        "id": "whiskey-6",
         "name": "Sazerac",
-        "description": "New Orleans classic with rye whiskey and absinthe rinse",
+        "description": "New Orleans classic with rye and absinthe rinse",
+        "spiritType": "Rye Whiskey",
+        "origin": "New Orleans, Louisiana",
+        "glassware": "Old Fashioned Glass",
+        "servingSize": "3 oz",
+        "nutrition": {
+          "calories": 180,
+          "carbs": 4,
+          "sugar": 3,
+          "alcohol": 19
+        },
         "ingredients": [
-          "2 oz Rye whiskey",
-          "0.25 oz Simple syrup",
-          "2 dashes Peychauds bitters",
+          "2 oz Rye Whiskey",
+          "1 Sugar Cube",
+          "3 dashes Peychauds Bitters",
           "Absinthe rinse",
-          "Lemon peel"
+          "Lemon Peel",
+          "Ice"
         ],
-        "glassware": "Rocks glass",
-        "method": "Stir",
-        "difficulty": "Hard",
+        "profile": [
+          "Anise",
+          "Bold",
+          "Aromatic",
+          "Historic"
+        ],
+        "difficulty": "Medium",
         "prepTime": 6,
-        "rating": 4.6,
-        "reviews": 445,
+        "rating": 4.7,
+        "reviews": 2345,
         "trending": false,
         "featured": true,
-        "tags": [
-          "Whiskey",
-          "New Orleans",
-          "Absinthe",
-          "Complex"
-        ],
-        "instructions": [
-          "Rinse glass with absinthe",
-          "Stir whiskey, syrup, and bitters with ice",
-          "Strain into glass",
-          "Express lemon peel"
-        ],
-        "history": "Official cocktail of New Orleans, dating to 1850s.",
-        "abv": "32%",
-        "era": "1850s",
-        "origin": "New Orleans, USA",
-        "category": "Spirit-forward",
+        "estimatedCost": 6,
+        "category": "Whiskey Classics",
         "garnish": "Lemon peel",
-        "profile": [
-          "Complex",
-          "Herbal",
-          "Anise",
-          "Bold"
+        "method": "Stir",
+        "abv": "35-40%",
+        "iba_official": true,
+        "instructions": [
+          "Rinse chilled glass with absinthe, discard excess",
+          "Muddle sugar cube with bitters",
+          "Add rye and ice, stir",
+          "Strain into prepared glass",
+          "Express lemon peel and discard"
         ]
       }
     },
     "mint-julep": {
       "slug": "mint-julep",
       "name": "Mint Julep",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "recipe": {
-        "id": "classic-8",
+        "id": "whiskey-2",
         "name": "Mint Julep",
-        "description": "Kentucky Derby tradition with bourbon and fresh mint",
+        "description": "Kentucky Derby classic with bourbon and fresh mint",
+        "spiritType": "Bourbon",
+        "origin": "Southern United States",
+        "glassware": "Julep Cup",
+        "servingSize": "8 oz",
+        "nutrition": {
+          "calories": 168,
+          "carbs": 12,
+          "sugar": 10,
+          "alcohol": 12
+        },
         "ingredients": [
-          "2.5 oz Bourbon whiskey",
-          "0.5 oz Simple syrup",
-          "8-10 Fresh mint leaves",
-          "Crushed ice",
-          "Mint sprig"
+          "2.5 oz Bourbon",
+          "10 Fresh Mint Leaves",
+          "0.5 oz Simple Syrup",
+          "Crushed Ice",
+          "Mint Sprig",
+          "Powdered Sugar"
         ],
-        "glassware": "Julep cup or rocks glass",
-        "method": "Muddle",
-        "difficulty": "Medium",
-        "prepTime": 5,
-        "rating": 4.2,
-        "reviews": 623,
-        "trending": false,
-        "featured": false,
-        "tags": [
-          "Bourbon",
-          "Mint",
-          "Southern",
-          "Derby"
-        ],
-        "instructions": [
-          "Gently muddle mint with syrup",
-          "Add bourbon and crushed ice",
-          "Stir until frosted",
-          "Garnish with mint sprig"
-        ],
-        "history": "Southern American classic, official drink of Kentucky Derby since 1938.",
-        "abv": "25%",
-        "era": "1800s",
-        "origin": "Southern USA",
-        "category": "Refreshing",
-        "garnish": "Mint sprig",
         "profile": [
           "Minty",
-          "Sweet",
           "Refreshing",
-          "Southern"
+          "Southern",
+          "Classic"
+        ],
+        "difficulty": "Easy",
+        "prepTime": 4,
+        "rating": 4.7,
+        "reviews": 3892,
+        "trending": false,
+        "featured": true,
+        "estimatedCost": 4,
+        "category": "Bourbon Classics",
+        "garnish": "Mint sprig, powdered sugar",
+        "method": "Muddle & Build",
+        "abv": "20-24%",
+        "iba_official": true,
+        "instructions": [
+          "Muddle mint leaves with simple syrup in julep cup",
+          "Fill with crushed ice",
+          "Add bourbon",
+          "Stir until cup is frosted",
+          "Top with more crushed ice",
+          "Garnish with mint sprig and powdered sugar"
         ]
       }
     },
@@ -39177,13 +39252,13 @@
     "limoncello-spritz": {
       "slug": "limoncello-spritz",
       "name": "Limoncello Spritz",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "sourceTitle": "Spritz & Mimosas",
       "recipe": {
-        "id": "liqueur-7",
+        "id": "spritz-9",
         "name": "Limoncello Spritz",
-        "description": "Italian lemon liqueur with prosecco",
-        "liqueurType": "Limoncello",
+        "description": "Lemon liqueur spritz",
+        "drinkType": "Spritz",
         "origin": "Italy",
         "glassware": "Wine Glass",
         "servingSize": "8 oz",
@@ -39194,8 +39269,8 @@
           "alcohol": 11
         },
         "ingredients": [
-          "2 oz Limoncello",
           "3 oz Prosecco",
+          "2 oz Limoncello",
           "2 oz Soda Water",
           "Lemon Slice",
           "Fresh Mint",
@@ -39203,27 +39278,27 @@
         ],
         "profile": [
           "Lemon",
-          "Bubbly",
+          "Sweet",
           "Refreshing",
           "Italian"
         ],
         "difficulty": "Very Easy",
         "prepTime": 2,
-        "rating": 4.8,
-        "reviews": 5234,
+        "rating": 4.7,
+        "reviews": 4567,
         "trending": true,
         "featured": true,
         "estimatedCost": 5,
-        "category": "Fruit Liqueurs",
+        "category": "Spritzes",
         "garnish": "Lemon slice, mint",
         "method": "Build",
         "abv": "10-12%",
         "iba_official": false,
         "instructions": [
           "Fill wine glass with ice",
-          "Add limoncello, prosecco, and soda water",
+          "Add prosecco, limoncello, and soda",
           "Stir gently",
-          "Garnish with lemon slice and mint"
+          "Garnish with lemon and mint"
         ]
       }
     },
@@ -39283,49 +39358,53 @@
     "godfather": {
       "slug": "godfather",
       "name": "Godfather",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "sourceTitle": "Scotch & Irish Whiskey",
       "recipe": {
-        "id": "liqueur-9",
+        "id": "scotch-5",
         "name": "Godfather",
-        "description": "Simple scotch and amaretto",
-        "liqueurType": "Amaretto",
+        "description": "Scotch and amaretto over ice",
+        "spiritType": "Blended Scotch",
         "origin": "United States",
         "glassware": "Old Fashioned Glass",
         "servingSize": "3 oz",
         "nutrition": {
           "calories": 195,
-          "carbs": 10,
-          "sugar": 9,
-          "alcohol": 17
+          "carbs": 9,
+          "sugar": 8,
+          "alcohol": 18
         },
         "ingredients": [
           "1.5 oz Scotch Whisky",
-          "1.5 oz Amaretto",
+          "0.75 oz Amaretto",
           "Ice"
         ],
         "profile": [
-          "Almond",
-          "Smoky",
-          "Strong",
+          "Nutty",
+          "Sweet",
+          "Smooth",
           "Simple"
         ],
         "difficulty": "Very Easy",
         "prepTime": 2,
-        "rating": 4.4,
-        "reviews": 2345,
+        "rating": 4.3,
+        "reviews": 1432,
         "trending": false,
         "featured": false,
-        "estimatedCost": 5,
-        "category": "Nut Liqueurs",
+        "estimatedCost": 4.5,
+        "bestTime": "After Dinner",
+        "occasion": "Casual",
+        "allergens": [
+          "Almonds"
+        ],
+        "category": "Classic Scotch",
         "garnish": "None",
         "method": "Build",
-        "abv": "28-32%",
-        "iba_official": false,
+        "abv": "34-38%",
+        "iba_official": true,
         "instructions": [
-          "Fill old fashioned glass with ice",
-          "Add scotch and amaretto",
-          "Stir gently"
+          "Pour scotch and amaretto over ice in rocks glass",
+          "Stir briefly and serve"
         ]
       }
     },
@@ -39436,13 +39515,13 @@
     "aperol-spritz": {
       "slug": "aperol-spritz",
       "name": "Aperol Spritz",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "sourceTitle": "Spritz & Mimosas",
       "recipe": {
-        "id": "liqueur-12",
+        "id": "spritz-2",
         "name": "Aperol Spritz",
-        "description": "Bittersweet Italian aperitif with prosecco",
-        "liqueurType": "Aperol",
+        "description": "Italian classic with Aperol, prosecco, and soda",
+        "drinkType": "Spritz",
         "origin": "Venice, Italy",
         "glassware": "Wine Glass",
         "servingSize": "8 oz",
@@ -39468,18 +39547,18 @@
         "difficulty": "Very Easy",
         "prepTime": 2,
         "rating": 4.8,
-        "reviews": 7892,
+        "reviews": 9876,
         "trending": true,
         "featured": true,
         "estimatedCost": 5,
-        "category": "Aperitif Liqueurs",
+        "category": "Spritzes",
         "garnish": "Orange slice",
         "method": "Build",
         "abv": "10-12%",
         "iba_official": true,
         "instructions": [
           "Fill wine glass with ice",
-          "Add prosecco, Aperol, and soda water in order",
+          "Add prosecco, Aperol, and soda water",
           "Stir gently",
           "Garnish with orange slice"
         ]
@@ -40075,105 +40154,106 @@
     "virgin-mojito": {
       "slug": "virgin-mojito",
       "name": "Virgin Mojito",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "recipe": {
-        "id": "mocktail-1",
+        "id": "virgin-1",
         "name": "Virgin Mojito",
-        "description": "Classic Cuban refreshment with mint and lime",
-        "drinkStyle": "Refreshing",
-        "glassware": "Highball",
-        "servingSize": "12 oz",
+        "description": "Refreshing mint and lime without the rum",
+        "baseIngredient": "Mint & Lime",
+        "origin": "Cuba",
+        "glassware": "Highball Glass",
+        "servingSize": "10 oz",
         "nutrition": {
           "calories": 95,
           "carbs": 24,
-          "sugar": 22,
-          "sodium": 5
+          "sugar": 20,
+          "protein": 0
         },
         "ingredients": [
-          "10-12 Fresh Mint Leaves",
-          "1 whole Lime cut in wedges",
-          "2 tsp White Sugar",
-          "8 oz Club Soda",
-          "Crushed Ice",
-          "Lime Wheel garnish"
+          "Fresh Mint Leaves (10-12)",
+          "Fresh Lime Juice (1 oz)",
+          "Simple Syrup (0.75 oz)",
+          "Soda Water (top)",
+          "Lime Wedges",
+          "Ice"
         ],
-        "benefits": [
+        "profile": [
           "Refreshing",
-          "Digestive Aid",
-          "Cooling",
-          "Low Calorie"
+          "Minty",
+          "Citrus",
+          "Light"
         ],
-        "difficulty": "Easy",
-        "prepTime": 5,
-        "rating": 4.8,
-        "reviews": 2345,
+        "difficulty": "Very Easy",
+        "prepTime": 4,
+        "rating": 4.7,
+        "reviews": 4521,
         "trending": true,
         "featured": true,
         "estimatedCost": 2.5,
-        "bestTime": "Evening",
+        "bestTime": "Afternoon",
         "occasion": "Casual",
         "allergens": [],
-        "category": "Classic Mocktails",
-        "garnish": "Lime wheel, mint sprig",
-        "method": "Muddle",
+        "category": "Classic Virgin",
+        "garnish": "Mint sprig, lime wheel",
+        "method": "Muddle & Build",
+        "vegan": true,
+        "glutenFree": true,
         "instructions": [
-          "Muddle mint leaves with lime wedges and sugar in glass",
-          "Add crushed ice and top with club soda",
-          "Stir gently and garnish with lime wheel and mint sprig"
+          "Muddle & Build"
         ]
       }
     },
     "shirley-temple": {
       "slug": "shirley-temple",
       "name": "Shirley Temple",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "recipe": {
-        "id": "mocktail-2",
+        "id": "virgin-3",
         "name": "Shirley Temple",
-        "description": "Sweet and bubbly with grenadine and cherry",
-        "drinkStyle": "Sweet",
-        "glassware": "Collins",
-        "servingSize": "10 oz",
+        "description": "Sweet ginger ale with grenadine",
+        "baseIngredient": "Ginger Ale",
+        "origin": "United States",
+        "glassware": "Highball Glass",
+        "servingSize": "8 oz",
         "nutrition": {
-          "calories": 120,
-          "carbs": 30,
-          "sugar": 28,
-          "sodium": 8
+          "calories": 125,
+          "carbs": 32,
+          "sugar": 30,
+          "protein": 0
         },
         "ingredients": [
-          "8 oz Ginger Ale",
-          "1 oz Grenadine",
-          "0.5 oz Fresh Lime Juice",
-          "Ice Cubes",
-          "2 Maraschino Cherries",
-          "Orange Slice garnish"
+          "Ginger Ale (6 oz)",
+          "Grenadine (0.5 oz)",
+          "Fresh Lime Juice (0.25 oz)",
+          "Maraschino Cherry",
+          "Orange Slice",
+          "Ice"
         ],
-        "benefits": [
-          "Fun & Festive",
-          "Kid-Friendly",
-          "Party Classic",
-          "Bubbly"
+        "profile": [
+          "Sweet",
+          "Fizzy",
+          "Fruity",
+          "Kid-Friendly"
         ],
-        "difficulty": "Easy",
-        "prepTime": 3,
+        "difficulty": "Very Easy",
+        "prepTime": 2,
         "rating": 4.6,
-        "reviews": 1876,
+        "reviews": 3421,
         "trending": false,
-        "featured": true,
+        "featured": false,
         "estimatedCost": 2,
         "bestTime": "Anytime",
-        "occasion": "Party",
+        "occasion": "Family",
         "allergens": [],
-        "category": "Classic Mocktails",
+        "category": "Classic Virgin",
         "garnish": "Cherry, orange slice",
         "method": "Build",
+        "vegan": true,
+        "glutenFree": true,
         "instructions": [
-          "Fill glass with ice",
-          "Add ginger ale, grenadine, and lime juice",
-          "Stir gently",
-          "Garnish with cherries and orange slice"
+          "Build"
         ]
       }
     },
@@ -40235,53 +40315,53 @@
     "tropical-sunrise": {
       "slug": "tropical-sunrise",
       "name": "Tropical Sunrise",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "recipe": {
-        "id": "mocktail-4",
+        "id": "virgin-9",
         "name": "Tropical Sunrise",
-        "description": "Pineapple and orange with grenadine gradient",
-        "drinkStyle": "Fruity",
-        "glassware": "Hurricane",
-        "servingSize": "12 oz",
+        "description": "Layered orange and pineapple with grenadine",
+        "baseIngredient": "Orange Juice",
+        "origin": "Modern",
+        "glassware": "Hurricane Glass",
+        "servingSize": "10 oz",
         "nutrition": {
-          "calories": 140,
-          "carbs": 35,
-          "sugar": 32,
-          "vitamin_c": 80
+          "calories": 165,
+          "carbs": 40,
+          "sugar": 36,
+          "protein": 2
         },
         "ingredients": [
-          "4 oz Pineapple Juice",
-          "4 oz Orange Juice",
-          "1 oz Grenadine",
-          "2 chunks Fresh Pineapple",
-          "Ice",
-          "Cherry garnish"
+          "Orange Juice (4 oz)",
+          "Pineapple Juice (3 oz)",
+          "Grenadine (0.5 oz)",
+          "Fresh Lime Juice (0.25 oz)",
+          "Orange Slice",
+          "Ice"
         ],
-        "benefits": [
-          "Vitamin C",
-          "Energizing",
+        "profile": [
           "Tropical",
-          "Party Favorite"
+          "Sweet",
+          "Fruity",
+          "Vibrant"
         ],
-        "difficulty": "Easy",
-        "prepTime": 4,
-        "rating": 4.8,
-        "reviews": 2156,
-        "trending": true,
+        "difficulty": "Very Easy",
+        "prepTime": 3,
+        "rating": 4.5,
+        "reviews": 2876,
+        "trending": false,
         "featured": false,
-        "estimatedCost": 2.75,
-        "bestTime": "Brunch",
-        "occasion": "Party",
+        "estimatedCost": 2.5,
+        "bestTime": "Morning",
+        "occasion": "Brunch",
         "allergens": [],
-        "category": "Tropical Mocktails",
-        "garnish": "Pineapple wedge, cherry",
-        "method": "Layer",
+        "category": "Fruit Blends",
+        "garnish": "Orange slice, cherry",
+        "method": "Build & Layer",
+        "vegan": true,
+        "glutenFree": true,
         "instructions": [
-          "Fill glass with ice",
-          "Add pineapple and orange juice, stir",
-          "Slowly pour grenadine down the side to create sunrise effect",
-          "Garnish with pineapple wedge and cherry"
+          "Build & Layer"
         ]
       }
     },
@@ -44797,5 +44877,5 @@
       }
     }
   },
-  "generatedAt": "2026-03-23T14:28:57.304Z"
+  "generatedAt": "2026-03-23T17:45:48.044Z"
 }

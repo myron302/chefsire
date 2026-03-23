@@ -60,6 +60,30 @@ function writeAtomically(filePath: string, contents: string) {
   fs.renameSync(tempPath, filePath);
 }
 
+const DRINK_ROUTE_PRIORITY: Record<string, number> = {
+  "/drinks/caffeinated/cold-brew": 50,
+  "/drinks/caffeinated/espresso": 45,
+  "/drinks/caffeinated/specialty": 20,
+  "/drinks/smoothies/green": 40,
+  "/drinks/smoothies/berry": 30,
+  "/drinks/potent-potables/cocktails": 10,
+  "/drinks/potent-potables/liqueurs": 20,
+  "/drinks/potent-potables/mocktails": 20,
+  "/drinks/potent-potables/seasonal": 15,
+  "/drinks/potent-potables/gin": 50,
+  "/drinks/potent-potables/rum": 50,
+  "/drinks/potent-potables/whiskey-bourbon": 50,
+  "/drinks/potent-potables/scotch-irish-whiskey": 45,
+  "/drinks/potent-potables/hot-drinks": 60,
+  "/drinks/potent-potables/spritz": 55,
+  "/drinks/potent-potables/virgin-cocktails": 55,
+  "/drinks/potent-potables/martinis": 60,
+};
+
+function getDrinkRoutePriority(route: string): number {
+  return DRINK_ROUTE_PRIORITY[route] ?? 30;
+}
+
 function buildCanonicalSlug(name: string, sourceRoute: string, usedSlugs: Set<string>): string {
   const baseSlug = slugifyDrinkName(name);
   if (!baseSlug) {
@@ -167,6 +191,7 @@ async function main() {
   const canonicalBySlug: Record<string, CanonicalDrinkRecipeEntry> = {};
   const duplicates: DuplicateEntry[] = [];
   const usedCanonicalSlugs = new Set<string>();
+  const canonicalEntryByKey: Record<string, CanonicalDrinkRecipeEntry> = {};
 
   for (const routeEntry of drinkRouteRegistry) {
     const routeRecipes = await loadRouteRecipes(routeEntry);
@@ -204,13 +229,43 @@ async function main() {
         };
         canonicalEntries.push(canonicalEntry);
         canonicalBySlug[slug] = canonicalEntry;
+        canonicalEntryByKey[key] = canonicalEntry;
       } else if (recipes[key].sourceRoute !== routeEntry.route) {
-        duplicates.push({
-          key,
-          name,
-          keptRoute: recipes[key].sourceRoute,
-          duplicateRoute: routeEntry.route
-        });
+        const existing = recipes[key];
+        const existingPriority = getDrinkRoutePriority(existing.sourceRoute);
+        const nextPriority = getDrinkRoutePriority(routeEntry.route);
+
+        if (nextPriority > existingPriority) {
+          duplicates.push({
+            key,
+            name,
+            keptRoute: routeEntry.route,
+            duplicateRoute: existing.sourceRoute,
+          });
+
+          existing.sourceRoute = routeEntry.route;
+          existing.sourceTitle = routeEntry.title;
+          existing.image =
+            typeof recipe.image === "string"
+              ? recipe.image
+              : typeof recipe.imageUrl === "string"
+                ? recipe.imageUrl
+                : existing.image;
+
+          const canonicalEntry = canonicalEntryByKey[key];
+          if (canonicalEntry) {
+            canonicalEntry.sourceRoute = routeEntry.route;
+            canonicalEntry.sourceTitle = routeEntry.title;
+            canonicalEntry.recipe = normalizeRecipe(recipe as Record<string, unknown>, routeEntry.title);
+          }
+        } else {
+          duplicates.push({
+            key,
+            name,
+            keptRoute: existing.sourceRoute,
+            duplicateRoute: routeEntry.route
+          });
+        }
       }
     }
   }

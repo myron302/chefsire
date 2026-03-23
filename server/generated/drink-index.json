@@ -1115,8 +1115,8 @@
     "berry green fusion": {
       "name": "Berry Green Fusion",
       "slug": "berry-green-fusion",
-      "sourceRoute": "/drinks/smoothies/berry",
-      "sourceTitle": "Berry Smoothies",
+      "sourceRoute": "/drinks/smoothies/green",
+      "sourceTitle": "Green Smoothies",
       "image": null,
       "route": "/drinks/recipe/berry-green-fusion"
     },
@@ -1803,64 +1803,64 @@
     "old fashioned": {
       "name": "Old Fashioned",
       "slug": "old-fashioned",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "image": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop",
       "route": "/drinks/recipe/old-fashioned"
     },
     "martini": {
       "name": "Martini",
       "slug": "martini",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "sourceTitle": "Gin",
       "image": null,
       "route": "/drinks/recipe/martini"
     },
     "manhattan": {
       "name": "Manhattan",
       "slug": "manhattan",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "image": null,
       "route": "/drinks/recipe/manhattan"
     },
     "negroni": {
       "name": "Negroni",
       "slug": "negroni",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "sourceTitle": "Gin",
       "image": null,
       "route": "/drinks/recipe/negroni"
     },
     "whiskey sour": {
       "name": "Whiskey Sour",
       "slug": "whiskey-sour",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "image": null,
       "route": "/drinks/recipe/whiskey-sour"
     },
     "daiquiri": {
       "name": "Daiquiri",
       "slug": "daiquiri",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "sourceTitle": "Rum",
       "image": null,
       "route": "/drinks/recipe/daiquiri"
     },
     "sazerac": {
       "name": "Sazerac",
       "slug": "sazerac",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "image": null,
       "route": "/drinks/recipe/sazerac"
     },
     "mint julep": {
       "name": "Mint Julep",
       "slug": "mint-julep",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "image": null,
       "route": "/drinks/recipe/mint-julep"
     },
@@ -2371,8 +2371,8 @@
     "limoncello spritz": {
       "name": "Limoncello Spritz",
       "slug": "limoncello-spritz",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "sourceTitle": "Spritz & Mimosas",
       "image": null,
       "route": "/drinks/recipe/limoncello-spritz"
     },
@@ -2387,8 +2387,8 @@
     "godfather": {
       "name": "Godfather",
       "slug": "godfather",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "sourceTitle": "Scotch & Irish Whiskey",
       "image": null,
       "route": "/drinks/recipe/godfather"
     },
@@ -2411,8 +2411,8 @@
     "aperol spritz": {
       "name": "Aperol Spritz",
       "slug": "aperol-spritz",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "sourceTitle": "Spritz & Mimosas",
       "image": null,
       "route": "/drinks/recipe/aperol-spritz"
     },
@@ -2507,16 +2507,16 @@
     "virgin mojito": {
       "name": "Virgin Mojito",
       "slug": "virgin-mojito",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "image": null,
       "route": "/drinks/recipe/virgin-mojito"
     },
     "shirley temple": {
       "name": "Shirley Temple",
       "slug": "shirley-temple",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "image": null,
       "route": "/drinks/recipe/shirley-temple"
     },
@@ -2531,8 +2531,8 @@
     "tropical sunrise": {
       "name": "Tropical Sunrise",
       "slug": "tropical-sunrise",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "image": null,
       "route": "/drinks/recipe/tropical-sunrise"
     },
@@ -4309,8 +4309,8 @@
     "berry-green-fusion": {
       "name": "Berry Green Fusion",
       "slug": "berry-green-fusion",
-      "sourceRoute": "/drinks/smoothies/berry",
-      "sourceTitle": "Berry Smoothies",
+      "sourceRoute": "/drinks/smoothies/green",
+      "sourceTitle": "Green Smoothies",
       "image": null,
       "route": "/drinks/recipe/berry-green-fusion"
     },
@@ -4997,64 +4997,64 @@
     "old-fashioned": {
       "name": "Old Fashioned",
       "slug": "old-fashioned",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "image": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop",
       "route": "/drinks/recipe/old-fashioned"
     },
     "martini": {
       "name": "Martini",
       "slug": "martini",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "sourceTitle": "Gin",
       "image": null,
       "route": "/drinks/recipe/martini"
     },
     "manhattan": {
       "name": "Manhattan",
       "slug": "manhattan",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "image": null,
       "route": "/drinks/recipe/manhattan"
     },
     "negroni": {
       "name": "Negroni",
       "slug": "negroni",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/gin",
+      "sourceTitle": "Gin",
       "image": null,
       "route": "/drinks/recipe/negroni"
     },
     "whiskey-sour": {
       "name": "Whiskey Sour",
       "slug": "whiskey-sour",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "image": null,
       "route": "/drinks/recipe/whiskey-sour"
     },
     "daiquiri": {
       "name": "Daiquiri",
       "slug": "daiquiri",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/rum",
+      "sourceTitle": "Rum",
       "image": null,
       "route": "/drinks/recipe/daiquiri"
     },
     "sazerac": {
       "name": "Sazerac",
       "slug": "sazerac",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "image": null,
       "route": "/drinks/recipe/sazerac"
     },
     "mint-julep": {
       "name": "Mint Julep",
       "slug": "mint-julep",
-      "sourceRoute": "/drinks/potent-potables/cocktails",
-      "sourceTitle": "Classic Cocktails",
+      "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "sourceTitle": "Whiskey & Bourbon",
       "image": null,
       "route": "/drinks/recipe/mint-julep"
     },
@@ -5565,8 +5565,8 @@
     "limoncello-spritz": {
       "name": "Limoncello Spritz",
       "slug": "limoncello-spritz",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "sourceTitle": "Spritz & Mimosas",
       "image": null,
       "route": "/drinks/recipe/limoncello-spritz"
     },
@@ -5581,8 +5581,8 @@
     "godfather": {
       "name": "Godfather",
       "slug": "godfather",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "sourceTitle": "Scotch & Irish Whiskey",
       "image": null,
       "route": "/drinks/recipe/godfather"
     },
@@ -5605,8 +5605,8 @@
     "aperol-spritz": {
       "name": "Aperol Spritz",
       "slug": "aperol-spritz",
-      "sourceRoute": "/drinks/potent-potables/liqueurs",
-      "sourceTitle": "Liqueurs",
+      "sourceRoute": "/drinks/potent-potables/spritz",
+      "sourceTitle": "Spritz & Mimosas",
       "image": null,
       "route": "/drinks/recipe/aperol-spritz"
     },
@@ -5701,16 +5701,16 @@
     "virgin-mojito": {
       "name": "Virgin Mojito",
       "slug": "virgin-mojito",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "image": null,
       "route": "/drinks/recipe/virgin-mojito"
     },
     "shirley-temple": {
       "name": "Shirley Temple",
       "slug": "shirley-temple",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "image": null,
       "route": "/drinks/recipe/shirley-temple"
     },
@@ -5725,8 +5725,8 @@
     "tropical-sunrise": {
       "name": "Tropical Sunrise",
       "slug": "tropical-sunrise",
-      "sourceRoute": "/drinks/potent-potables/mocktails",
-      "sourceTitle": "Mocktails",
+      "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
+      "sourceTitle": "Virgin Cocktails",
       "image": null,
       "route": "/drinks/recipe/tropical-sunrise"
     },
@@ -6591,32 +6591,32 @@
     {
       "key": "berry green fusion",
       "name": "Berry Green Fusion",
-      "keptRoute": "/drinks/smoothies/berry",
-      "duplicateRoute": "/drinks/smoothies/green"
+      "keptRoute": "/drinks/smoothies/green",
+      "duplicateRoute": "/drinks/smoothies/berry"
     },
     {
       "key": "negroni",
       "name": "Negroni",
-      "keptRoute": "/drinks/potent-potables/cocktails",
-      "duplicateRoute": "/drinks/potent-potables/gin"
+      "keptRoute": "/drinks/potent-potables/gin",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
     },
     {
       "key": "martini",
       "name": "Martini",
-      "keptRoute": "/drinks/potent-potables/cocktails",
-      "duplicateRoute": "/drinks/potent-potables/gin"
+      "keptRoute": "/drinks/potent-potables/gin",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
     },
     {
       "key": "daiquiri",
       "name": "Daiquiri",
-      "keptRoute": "/drinks/potent-potables/cocktails",
-      "duplicateRoute": "/drinks/potent-potables/rum"
+      "keptRoute": "/drinks/potent-potables/rum",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
     },
     {
       "key": "godfather",
       "name": "Godfather",
-      "keptRoute": "/drinks/potent-potables/liqueurs",
-      "duplicateRoute": "/drinks/potent-potables/scotch-irish-whiskey"
+      "keptRoute": "/drinks/potent-potables/scotch-irish-whiskey",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
     },
     {
       "key": "irish coffee",
@@ -6639,32 +6639,32 @@
     {
       "key": "aperol spritz",
       "name": "Aperol Spritz",
-      "keptRoute": "/drinks/potent-potables/liqueurs",
-      "duplicateRoute": "/drinks/potent-potables/spritz"
+      "keptRoute": "/drinks/potent-potables/spritz",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
     },
     {
       "key": "limoncello spritz",
       "name": "Limoncello Spritz",
-      "keptRoute": "/drinks/potent-potables/liqueurs",
-      "duplicateRoute": "/drinks/potent-potables/spritz"
+      "keptRoute": "/drinks/potent-potables/spritz",
+      "duplicateRoute": "/drinks/potent-potables/liqueurs"
     },
     {
       "key": "virgin mojito",
       "name": "Virgin Mojito",
-      "keptRoute": "/drinks/potent-potables/mocktails",
-      "duplicateRoute": "/drinks/potent-potables/virgin-cocktails"
+      "keptRoute": "/drinks/potent-potables/virgin-cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
     },
     {
       "key": "shirley temple",
       "name": "Shirley Temple",
-      "keptRoute": "/drinks/potent-potables/mocktails",
-      "duplicateRoute": "/drinks/potent-potables/virgin-cocktails"
+      "keptRoute": "/drinks/potent-potables/virgin-cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
     },
     {
       "key": "tropical sunrise",
       "name": "Tropical Sunrise",
-      "keptRoute": "/drinks/potent-potables/mocktails",
-      "duplicateRoute": "/drinks/potent-potables/virgin-cocktails"
+      "keptRoute": "/drinks/potent-potables/virgin-cocktails",
+      "duplicateRoute": "/drinks/potent-potables/mocktails"
     },
     {
       "key": "vodka martini",
@@ -6687,32 +6687,32 @@
     {
       "key": "old fashioned",
       "name": "Old Fashioned",
-      "keptRoute": "/drinks/potent-potables/cocktails",
-      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+      "keptRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
     },
     {
       "key": "mint julep",
       "name": "Mint Julep",
-      "keptRoute": "/drinks/potent-potables/cocktails",
-      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+      "keptRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
     },
     {
       "key": "manhattan",
       "name": "Manhattan",
-      "keptRoute": "/drinks/potent-potables/cocktails",
-      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+      "keptRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
     },
     {
       "key": "whiskey sour",
       "name": "Whiskey Sour",
-      "keptRoute": "/drinks/potent-potables/cocktails",
-      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+      "keptRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
     },
     {
       "key": "sazerac",
       "name": "Sazerac",
-      "keptRoute": "/drinks/potent-potables/cocktails",
-      "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
+      "keptRoute": "/drinks/potent-potables/whiskey-bourbon",
+      "duplicateRoute": "/drinks/potent-potables/cocktails"
     },
     {
       "key": "hot toddy",
@@ -6721,5 +6721,5 @@
       "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
     }
   ],
-  "generatedAt": "2026-03-23T14:28:57.304Z"
+  "generatedAt": "2026-03-23T17:45:48.044Z"
 }
