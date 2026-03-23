@@ -26,6 +26,7 @@ export function registerCampaignRoutes(r: Router, ctx: any) {
     trackCreatorCampaignSpotlightEvent,
     trackCreatorCampaignSurfaceEvent,
     getCampaignEngagementSessionKey,
+    CREATOR_CAMPAIGN_SURFACE_VALUES,
   } = ctx as any;
 
 r.get("/campaigns", optionalAuth, async (req, res) => {
