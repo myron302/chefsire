@@ -432,6 +432,46 @@ export default function PublicDrinkCreatorPage() {
     }
   }, [membershipStatusQuery.data]);
 
+  const creatorCollections = publicCollectionsQuery.data?.collections ?? [];
+  const creatorBundles = publicBundlesQuery.data?.bundles ?? [];
+  const creatorPosts = creatorPostsQuery.data?.items ?? [];
+  const creatorDrops = creatorDropsQuery.data?.items ?? [];
+  const liveCreatorDrops = creatorDrops.filter((drop) => drop.status === "live");
+  const upcomingCreatorDrops = creatorDrops.filter((drop) => drop.status === "upcoming");
+  const archivedCreatorDrops = creatorDrops.filter((drop) => drop.status === "archived");
+  const creatorCampaigns = creatorCampaignsQuery.data?.items ?? [];
+  const pinnedCampaign = creatorCampaignsQuery.data?.pinnedCampaign ?? creatorCampaigns.find((campaign) => campaign.isPinned) ?? null;
+  const otherCreatorCampaigns = pinnedCampaign
+    ? creatorCampaigns.filter((campaign) => campaign.id !== pinnedCampaign.id)
+    : creatorCampaigns;
+  const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
+
+  React.useEffect(() => {
+    if (!pinnedCampaign) return;
+    trackPinnedCampaignSpotlightViewOnce({
+      campaignId: pinnedCampaign.id,
+      surface: "creator_public_page",
+      referrerRoute: typeof window !== "undefined" ? window.location.pathname : null,
+    });
+    trackCampaignSurfaceViewOnce({
+      campaignId: pinnedCampaign.id,
+      surface: "creator_public_page",
+      referrerRoute: typeof window !== "undefined" ? window.location.pathname : null,
+      scope: "creator-pinned",
+    });
+  }, [pinnedCampaign]);
+
+  React.useEffect(() => {
+    for (const campaign of creatorCampaigns) {
+      trackCampaignSurfaceViewOnce({
+        campaignId: campaign.id,
+        surface: "creator_public_page",
+        referrerRoute: typeof window !== "undefined" ? window.location.pathname : null,
+        scope: "creator-campaign-list",
+      });
+    }
+  }, [creatorCampaigns]);
+
   if (!matched) return null;
 
   if (query.isLoading) {
@@ -452,44 +492,6 @@ export default function PublicDrinkCreatorPage() {
   }
 
   const data = query.data;
-  const creatorCollections = publicCollectionsQuery.data?.collections ?? [];
-  const creatorBundles = publicBundlesQuery.data?.bundles ?? [];
-  const creatorPosts = creatorPostsQuery.data?.items ?? [];
-  const creatorDrops = creatorDropsQuery.data?.items ?? [];
-  const liveCreatorDrops = creatorDrops.filter((drop) => drop.status === "live");
-  const upcomingCreatorDrops = creatorDrops.filter((drop) => drop.status === "upcoming");
-  const archivedCreatorDrops = creatorDrops.filter((drop) => drop.status === "archived");
-  const creatorCampaigns = creatorCampaignsQuery.data?.items ?? [];
-  const pinnedCampaign = creatorCampaignsQuery.data?.pinnedCampaign ?? creatorCampaigns.find((campaign) => campaign.isPinned) ?? null;
-  const otherCreatorCampaigns = pinnedCampaign
-    ? creatorCampaigns.filter((campaign) => campaign.id !== pinnedCampaign.id)
-    : creatorCampaigns;
-
-  React.useEffect(() => {
-    if (!pinnedCampaign) return;
-    trackPinnedCampaignSpotlightViewOnce({
-      campaignId: pinnedCampaign.id,
-      surface: "creator_public_page",
-      referrerRoute: typeof window !== "undefined" ? window.location.pathname : null,
-    });
-    trackCampaignSurfaceViewOnce({
-      campaignId: pinnedCampaign.id,
-      surface: "creator_public_page",
-      referrerRoute: typeof window !== "undefined" ? window.location.pathname : null,
-      scope: "creator-pinned",
-    });
-  }, [pinnedCampaign]);
-  React.useEffect(() => {
-    for (const campaign of creatorCampaigns) {
-      trackCampaignSurfaceViewOnce({
-        campaignId: campaign.id,
-        surface: "creator_public_page",
-        referrerRoute: typeof window !== "undefined" ? window.location.pathname : null,
-        scope: "creator-campaign-list",
-      });
-    }
-  }, [creatorCampaigns]);
-  const creatorRoadmap = creatorRoadmapQuery.data?.items ?? [];
   const collaborationHighlightsCount = [
     ...creatorCollections.filter((collection) => Boolean(collection.acceptedCollaboration)),
     ...creatorPosts.filter((post) => Boolean(post.acceptedCollaboration)),
