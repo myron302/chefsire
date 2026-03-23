@@ -19,6 +19,7 @@ const CAMPAIGN_QUERY_KEYS = [
   "/api/drinks/campaigns/featured",
   "/api/drinks/campaigns/creator",
   "/api/drinks/creator-dashboard/pinned-campaign",
+  "/api/drinks/creator-dashboard/pinned-campaign-analytics",
 ] as const;
 
 export default function CampaignPinButton({
