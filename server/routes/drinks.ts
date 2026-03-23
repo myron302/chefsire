@@ -129,6 +129,7 @@ type CreatorCampaignState = "upcoming" | "active" | "past";
 type CreatorCampaignRolloutMode = "public_first" | "followers_first" | "members_first" | "staged";
 type CreatorCampaignRolloutAudience = "public" | "followers" | "members";
 type CreatorCampaignPlaybookCtaDirection = "follow" | "rsvp" | "membership" | "purchase" | "drop" | "mixed";
+type CreatorCampaignPlaybookOnboardingItemStatus = "todo" | "ready" | "complete" | "warning";
 type CreatorCampaignRolloutState =
   | "scheduled_for_members"
   | "scheduled_for_followers"
@@ -4662,6 +4663,311 @@ function formatPlaybookAudienceLabel(value: CreatorCampaignRolloutAudience | Cre
 function formatPlaybookCtaDirectionLabel(value: CreatorCampaignPlaybookCtaDirection | null | undefined) {
   if (!value) return "mixed";
   return value.replaceAll("_", " ");
+}
+
+function buildCreatorCampaignPlaybookOnboardingSummary(items: Array<{ key: string; status: CreatorCampaignPlaybookOnboardingItemStatus }>) {
+  const warningCount = items.filter((item) => item.status === "warning").length;
+  const completeCount = items.filter((item) => item.status === "complete").length;
+  const remainingItems = items.filter((item) => item.status !== "complete");
+  return {
+    totalCount: items.length,
+    completeCount,
+    warningCount,
+    remainingCount: remainingItems.length,
+    completedKeys: items.filter((item) => item.status === "complete").map((item) => item.key),
+    nextRecommendedKey: remainingItems[0]?.key ?? null,
+  };
+}
+
+async function loadCreatorCampaignPlaybookOnboarding(campaign: CreatorCampaignRecord, creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [detail, readinessCollection, appliedProfileRows, pinnedRows] = await Promise.all([
+    loadCreatorCampaignDetail(campaign, creatorUserId),
+    loadCreatorCampaignLaunchReadiness(creatorUserId, campaign.id),
+    campaign.appliedPlaybookProfileId
+      ? db
+          .select()
+          .from(creatorCampaignPlaybookProfiles)
+          .where(and(
+            eq(creatorCampaignPlaybookProfiles.id, campaign.appliedPlaybookProfileId),
+            eq(creatorCampaignPlaybookProfiles.creatorUserId, creatorUserId),
+          ))
+          .limit(1)
+      : Promise.resolve([] as CreatorCampaignPlaybookProfileRecord[]),
+    db
+      .select({
+        id: creatorCampaigns.id,
+        name: creatorCampaigns.name,
+        slug: creatorCampaigns.slug,
+        isPinned: creatorCampaigns.isPinned,
+      })
+      .from(creatorCampaigns)
+      .where(and(eq(creatorCampaigns.creatorUserId, creatorUserId), eq(creatorCampaigns.isPinned, true)))
+      .limit(1),
+  ]);
+
+  const readiness = readinessCollection.items[0] ?? null;
+  const profile = appliedProfileRows[0] ?? null;
+  const serializedProfile = profile ? serializeCreatorCampaignPlaybookProfile(profile) : null;
+  const rollout = detail.campaign.rollout ?? deriveCreatorCampaignRollout(campaign, new Date());
+  const linkedDrops = detail.linkedContent.drops;
+  const linkedPromos = detail.linkedContent.promos;
+  const linkedPosts = detail.linkedContent.posts;
+  const linkedCollections = detail.linkedContent.collections;
+  const linkedRoadmap = detail.linkedContent.roadmap;
+  const publicUpdatesCount = linkedPosts.filter((post) => post.visibility === "public").length
+    + linkedRoadmap.filter((item) => item.visibility === "public").length
+    + linkedDrops.filter((drop) => drop.visibility === "public").length;
+  const memberOnlyCollectionCount = linkedCollections.filter((collection) => collection.accessType === "membership_only").length;
+  const hasMemberDrop = linkedDrops.some((drop) => drop.visibility === "members");
+  const hasAnyVariant = Boolean(detail.activeVariant) || detail.variants.length > 0;
+  const checkByKey = new Map((readiness?.checks ?? []).map((check) => [check.key, check]));
+  const pinnedCampaign = pinnedRows[0] ?? null;
+  const memberFocused = detail.campaign.visibility === "members"
+    || rollout.startsWithAudience === "members"
+    || rollout.currentAudience === "members"
+    || rollout.nextAudience === "members"
+    || serializedProfile?.preferredAudienceFit === "members"
+    || serializedProfile?.visibilityStrategy === "members";
+  const wantsRsvpSurface = serializedProfile?.preferredCtaDirection === "rsvp"
+    || serializedProfile?.preferredCtaDirection === "drop"
+    || serializedProfile?.preferredExperimentTypes.includes("push_rsvp")
+    || linkedDrops.length > 0;
+  const wantsPromoSurface = serializedProfile?.preferredExperimentTypes.includes("launch_promo")
+    || serializedProfile?.preferredCtaDirection === "purchase"
+    || linkedPromos.length > 0;
+  const needsPublicFacingTouchpoint = rollout.nextAudience === "public" || detail.campaign.visibility === "public";
+
+  const items: Array<{
+    key: string;
+    label: string;
+    status: CreatorCampaignPlaybookOnboardingItemStatus;
+    note: string;
+    targetRoute: string | null;
+  }> = [];
+
+  const pushItem = (
+    key: string,
+    label: string,
+    status: CreatorCampaignPlaybookOnboardingItemStatus,
+    note: string,
+    targetRoute: string | null,
+  ) => {
+    items.push({ key, label, status, note, targetRoute });
+  };
+
+  const rolloutMatchesProfile = serializedProfile
+    ? campaign.rolloutMode === serializedProfile.rolloutMode
+      && (!serializedProfile.startsWithAudience || (campaign.startsWithAudience ?? null) === serializedProfile.startsWithAudience)
+    : true;
+  pushItem(
+    "confirm_rollout_mode",
+    "Confirm rollout mode",
+    checkByKey.get("rollout_timing")?.status === "fail"
+      ? "warning"
+      : rolloutMatchesProfile
+        ? "complete"
+        : serializedProfile
+          ? "ready"
+          : "complete",
+    checkByKey.get("rollout_timing")?.status === "fail"
+      ? checkByKey.get("rollout_timing")?.note ?? "The staged rollout still needs a valid unlock setup."
+      : serializedProfile
+        ? `Playbook points to ${serializedProfile.rolloutMode.replaceAll("_", " ")}${serializedProfile.startsWithAudience ? ` starting with ${serializedProfile.startsWithAudience}` : ""}.`
+        : `Campaign is already set to ${campaign.rolloutMode.replaceAll("_", " ")} rollout mode.`,
+    "/drinks/creator-dashboard#campaigns",
+  );
+
+  const hasUnlockTiming = campaign.rolloutMode !== "staged"
+    || (Boolean(rollout.unlockFollowersAt) || Boolean(rollout.unlockPublicAt) || !rollout.isRolloutActive);
+  pushItem(
+    "confirm_unlock_timing",
+    "Confirm unlock timing",
+    checkByKey.get("rollout_timing")?.status === "fail"
+      ? "warning"
+      : hasUnlockTiming
+        ? "complete"
+        : serializedProfile?.recommendedFollowerUnlockDelayHours || serializedProfile?.recommendedPublicUnlockDelayHours
+          ? "ready"
+          : "todo",
+    checkByKey.get("rollout_timing")?.status === "fail"
+      ? checkByKey.get("rollout_timing")?.note ?? "Add the missing follower/public unlock time."
+      : campaign.rolloutMode !== "staged"
+        ? `This campaign uses ${campaign.rolloutMode.replaceAll("_", " ")}, so extra staged timing is optional.`
+        : rollout.nextUnlockAt
+          ? `Next unlock is already scheduled for ${campaignReadinessWindowLabel(rollout.nextUnlockAt, "the configured window")}.`
+          : serializedProfile?.recommendedFollowerUnlockDelayHours || serializedProfile?.recommendedPublicUnlockDelayHours
+            ? `Playbook suggests follower/public unlock delays of ${serializedProfile.recommendedFollowerUnlockDelayHours ?? 0}h and ${serializedProfile.recommendedPublicUnlockDelayHours ?? 0}h from campaign start.`
+            : "Set the next staged unlock window if this campaign should widen later.",
+    "/drinks/creator-dashboard#campaigns",
+  );
+
+  pushItem(
+    "add_cta_variant",
+    "Add CTA variant",
+    hasAnyVariant
+      ? "complete"
+      : serializedProfile?.preferredCtaDirection
+        ? "ready"
+        : checkByKey.get("cta_path")?.status === "fail"
+          ? "warning"
+          : "todo",
+    hasAnyVariant
+      ? `${detail.variants.length} CTA variant${detail.variants.length === 1 ? " is" : "s are"} already configured.`
+      : serializedProfile?.preferredCtaDirection
+        ? `Playbook leans ${formatPlaybookCtaDirectionLabel(serializedProfile.preferredCtaDirection)}, so a focused CTA variant would make that ask explicit.`
+        : checkByKey.get("cta_path")?.note ?? "Add one CTA variant if you want a sharper ask than the default linked destination.",
+    "/drinks/creator-dashboard#campaigns",
+  );
+
+  if (wantsRsvpSurface || linkedDrops.length > 0) {
+    pushItem(
+      "add_linked_drop",
+      "Add linked drop",
+      linkedDrops.length > 0
+        ? "complete"
+        : checkByKey.get("launch_support")?.status === "warning"
+          ? "ready"
+          : "todo",
+      linkedDrops.length > 0
+        ? `${linkedDrops.length} linked drop${linkedDrops.length === 1 ? " gives" : "s give"} the campaign an RSVP / Notify Me destination.`
+        : serializedProfile?.preferredCtaDirection === "drop" || serializedProfile?.preferredCtaDirection === "rsvp"
+          ? "This playbook is better with a linked drop so the next audience has a concrete launch moment."
+          : checkByKey.get("launch_support")?.note ?? "Add a linked drop when this campaign needs a concrete next beat.",
+      "/drinks/creator-dashboard#drops",
+    );
+  }
+
+  pushItem(
+    "add_creator_update",
+    "Add creator update/post",
+    checkByKey.get("recent_update")?.status === "pass"
+      ? "complete"
+      : linkedPosts.length > 0 || linkedRoadmap.length > 0
+        ? "ready"
+        : wantsRsvpSurface || wantsPromoSurface || linkedDrops.length > 0
+          ? "ready"
+          : "todo",
+    checkByKey.get("recent_update")?.status === "pass"
+      ? checkByKey.get("recent_update")?.note ?? "A recent campaign update is already linked."
+      : linkedPosts.length > 0 || linkedRoadmap.length > 0
+        ? "There is already some campaign storytelling linked, but a fresh update would make the next step clearer."
+        : "A short creator update keeps the playbook strategy visible without turning this into a bigger workflow.",
+    "/drinks/creator-dashboard#posts",
+  );
+
+  if (memberFocused) {
+    pushItem(
+      "add_member_only_asset",
+      "Add member-only asset",
+      memberOnlyCollectionCount > 0 || hasMemberDrop
+        ? "complete"
+        : checkByKey.get("member_destination")?.status === "fail"
+          ? "warning"
+          : "ready",
+      memberOnlyCollectionCount > 0 || hasMemberDrop
+        ? "A member-only collection or members-only drop is already linked."
+        : checkByKey.get("member_destination")?.note ?? "This playbook leans member-focused, so add one member-only destination.",
+      "/drinks/creator-dashboard#membership",
+    );
+  }
+
+  if (wantsPromoSurface || wantsRsvpSurface) {
+    const hasSupportSurface = linkedPromos.length > 0 || linkedDrops.length > 0;
+    pushItem(
+      "add_promo_or_rsvp_surface",
+      "Add promo or RSVP surface",
+      hasSupportSurface
+        ? "complete"
+        : wantsPromoSurface || wantsRsvpSurface
+          ? "ready"
+          : "todo",
+      hasSupportSurface
+        ? linkedPromos.length > 0
+          ? `${linkedPromos.length} promo${linkedPromos.length === 1 ? " is" : "s are"} already linked for this campaign.`
+          : `${linkedDrops.length} linked drop${linkedDrops.length === 1 ? " already provides" : "s already provide"} an RSVP path.`
+        : wantsPromoSurface && wantsRsvpSurface
+          ? "This playbook suggests either a lightweight promo or an RSVP-friendly surface before the next wider push."
+          : wantsPromoSurface
+            ? "This playbook suggests a lightweight promo surface to support conversion."
+            : "This playbook suggests making RSVP / Notify Me more explicit before the next campaign step.",
+      wantsPromoSurface ? "/drinks/creator-dashboard#promotions" : "/drinks/creator-dashboard#drops",
+    );
+  }
+
+  pushItem(
+    "review_pinned_spotlight",
+    "Review pinned spotlight choice",
+    detail.campaign.isPinned
+      ? "complete"
+      : needsPublicFacingTouchpoint
+        ? "ready"
+        : "todo",
+    detail.campaign.isPinned
+      ? "This campaign is already the pinned spotlight."
+      : pinnedCampaign
+        ? `${pinnedCampaign.name} is pinned right now, so decide whether this campaign should replace it for the next launch beat.`
+        : "No pinned spotlight is set yet; near-launch campaigns are easier to find with one lightweight spotlight choice.",
+    "/drinks/creator-dashboard#campaigns",
+  );
+
+  pushItem(
+    "review_launch_readiness",
+    "Review launch readiness",
+    readiness?.readinessState === "ready"
+      ? "complete"
+      : readiness?.readinessState === "almost_ready"
+        ? "ready"
+        : readiness?.readinessState === "missing_key_items" || readiness?.readinessState === "blocked"
+          ? "warning"
+          : "todo",
+    readiness
+      ? readiness.nextLaunchStep
+        ?? readiness.recommendedFixes[0]
+        ?? readiness.warnings[0]
+        ?? readiness.blockers[0]
+        ?? `Readiness is currently ${readiness.readinessState.replaceAll("_", " ")}.`
+      : "Readiness has not been derived for this campaign yet.",
+    "/drinks/creator-dashboard#campaign-launch-readiness",
+  );
+
+  const orderedItems = items.sort((left, right) => {
+    const rank = (value: CreatorCampaignPlaybookOnboardingItemStatus) => {
+      switch (value) {
+        case "warning":
+          return 0;
+        case "todo":
+          return 1;
+        case "ready":
+          return 2;
+        default:
+          return 3;
+      }
+    };
+    return rank(left.status) - rank(right.status) || left.label.localeCompare(right.label);
+  });
+
+  return {
+    campaignId: campaign.id,
+    campaignName: campaign.name,
+    campaignSlug: campaign.slug,
+    campaignRoute: detail.campaign.route,
+    isPlaybookApplied: Boolean(campaign.appliedPlaybookProfileId),
+    appliedPlaybookProfileId: campaign.appliedPlaybookProfileId ?? null,
+    playbookAppliedAt: campaign.playbookAppliedAt?.toISOString() ?? null,
+    profile: serializedProfile,
+    checklist: orderedItems,
+    summary: buildCreatorCampaignPlaybookOnboardingSummary(orderedItems),
+    readinessState: readiness?.readinessState ?? null,
+    readinessRoute: "/drinks/creator-dashboard#campaign-launch-readiness",
+    attributionNotes: [
+      "Playbook onboarding stays intentionally lightweight: it only derives the next campaign setup steps from the campaign's saved playbook link plus existing rollout, CTA, linked content, pinned spotlight, and readiness signals.",
+      "This is not a new workflow engine or task system. Items are recomputed at read time so creators only see the next practical gaps after a playbook is applied.",
+      "Checklist items map back to existing drinks-platform surfaces like campaigns, drops, posts, promotions, membership, and launch readiness instead of introducing a new setup product.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 function fitScoreLabel(score: number): CreatorCampaignPlaybookFitLabel {
@@ -23060,6 +23366,36 @@ r.get("/campaigns/:id/playbook-fit", requireAuth, async (req, res) => {
   }
 });
 
+r.get("/campaigns/:id/playbook-onboarding", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const onboarding = await loadCreatorCampaignPlaybookOnboarding(campaign, req.user!.id);
+
+    return res.json({
+      ok: true,
+      campaignId,
+      item: onboarding,
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Failed to load playbook onboarding";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/playbook-onboarding", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign playbook onboarding"));
+  }
+});
+
 r.post("/campaigns/:id/save-playbook-profile", requireAuth, async (req, res) => {
   try {
     await ensureDrinkCollectionsSchema();
@@ -23154,13 +23490,17 @@ r.post("/creator-dashboard/campaign-playbook-profiles/:id/apply-to-campaign/:cam
       campaign,
       actorUserId: req.user!.id,
     });
-    const detail = await loadCreatorCampaignDetail(updatedCampaign, req.user!.id);
+    const [detail, onboarding] = await Promise.all([
+      loadCreatorCampaignDetail(updatedCampaign, req.user!.id),
+      loadCreatorCampaignPlaybookOnboarding(updatedCampaign, req.user!.id),
+    ]);
 
     return res.json({
       ok: true,
       profile: serializeCreatorCampaignPlaybookProfile(profile),
       appliedToCampaignId: updatedCampaign.id,
       message: "Campaign playbook profile applied.",
+      playbookOnboarding: onboarding,
       ...detail,
     });
   } catch (error) {
