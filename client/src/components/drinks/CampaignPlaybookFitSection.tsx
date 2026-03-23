@@ -135,10 +135,20 @@ export default function CampaignPlaybookFitSection(props: {
     onSuccess: async (payload) => {
       setMessage(payload?.message || "Campaign playbook profile applied.");
       setError("");
+      const appliedCampaignId = String(payload?.appliedToCampaignId ?? campaignId ?? "").trim();
+      if (appliedCampaignId && payload?.playbookOnboarding) {
+        queryClient.setQueryData([`/api/drinks/campaigns/${appliedCampaignId}/playbook-onboarding`, user?.id ?? ""], {
+          ok: true,
+          campaignId: appliedCampaignId,
+          item: payload.playbookOnboarding,
+        });
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-fit"] }),
         campaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${campaignId}/playbook-fit`] }) : Promise.resolve(),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-profiles"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-onboarding"] }),
+        appliedCampaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${appliedCampaignId}/playbook-onboarding`] }) : Promise.resolve(),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns"] }),
       ]);
     },

@@ -246,11 +246,20 @@ export default function CampaignPlaybookProfilesSection() {
       if (!response.ok) throw new Error(body?.error || body?.message || `Failed to apply playbook profile (${response.status})`);
       return body;
     },
-    onSuccess: async (payload) => {
+    onSuccess: async (payload, variables) => {
       setMessage(payload?.message || "Campaign playbook profile applied.");
       setError("");
+      if (variables.campaignId && payload?.playbookOnboarding) {
+        queryClient.setQueryData([`/api/drinks/campaigns/${variables.campaignId}/playbook-onboarding`, user?.id ?? ""], {
+          ok: true,
+          campaignId: variables.campaignId,
+          item: payload.playbookOnboarding,
+        });
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-profiles"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-onboarding"] }),
+        variables.campaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${variables.campaignId}/playbook-onboarding`] }) : Promise.resolve(),
         queryClient.invalidateQueries({ queryKey: ["/api/drinks/campaigns/creator"] }),
       ]);
     },
