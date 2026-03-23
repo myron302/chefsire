@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 
 import { Badge } from "@/components/ui/badge";
@@ -22,6 +22,13 @@ type DriftItem = {
   playbookDescription: string | null;
   playbookAppliedAt: string | null;
   isPlaybookApplied: boolean;
+  playbookLineage: {
+    parentPlaybook: { id: string; name: string; versionLabel: string | null } | null;
+    sourceCampaign: { id: string; name: string; slug: string; route: string } | null;
+    derivedFromType: "playbook" | "campaign" | null;
+    versionLabel: string | null;
+    basedOnLabel: string | null;
+  };
   severity: DriftSeverity;
   severityLabel: string;
   severityVariant: BadgeVariant;
@@ -149,6 +156,9 @@ export default function CampaignPlaybookDriftSection(props: {
 }) {
   const { campaignId, compact = false } = props;
   const { user } = useUser();
+  const queryClient = useQueryClient();
+  const [message, setMessage] = React.useState("");
+  const [error, setError] = React.useState("");
 
   const query = useQuery<DriftDashboardResponse | DriftDetailResponse>({
     queryKey: [campaignId ? `/api/drinks/campaigns/${campaignId}/playbook-drift` : "/api/drinks/creator-dashboard/campaign-playbook-drift", user?.id ?? ""],
@@ -172,6 +182,85 @@ export default function CampaignPlaybookDriftSection(props: {
   }, [campaignId, query.data]);
 
   const summary = !campaignId ? (query.data as DriftDashboardResponse | undefined)?.summary : null;
+
+  const realignMutation = useMutation({
+    mutationFn: async ({ profileId, targetCampaignId }: { profileId: string; targetCampaignId: string }) => {
+      const response = await fetch(`/api/drinks/creator-dashboard/campaign-playbook-profiles/${encodeURIComponent(profileId)}/apply-to-campaign/${encodeURIComponent(targetCampaignId)}`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to realign campaign (${response.status})`);
+      return payload;
+    },
+    onSuccess: async () => {
+      setMessage("Campaign realigned to the saved playbook.");
+      setError("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-profiles"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-drift"] }),
+        campaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${campaignId}/playbook-drift`] }) : Promise.resolve(),
+        campaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${campaignId}/playbook-onboarding`] }) : Promise.resolve(),
+      ]);
+    },
+    onError: (mutationError) => {
+      setMessage("");
+      setError(readErrorMessage(mutationError, "Unable to realign this campaign right now."));
+    },
+  });
+
+  const updatePlaybookMutation = useMutation({
+    mutationFn: async (targetCampaignId: string) => {
+      const response = await fetch(`/api/drinks/campaigns/${encodeURIComponent(targetCampaignId)}/update-playbook-from-campaign`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to update playbook from campaign (${response.status})`);
+      return payload;
+    },
+    onSuccess: async () => {
+      setMessage("Saved current campaign strategy back into the existing playbook.");
+      setError("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-profiles"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-lineage"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-drift"] }),
+        campaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${campaignId}/playbook-drift`] }) : Promise.resolve(),
+      ]);
+    },
+    onError: (mutationError) => {
+      setMessage("");
+      setError(readErrorMessage(mutationError, "Unable to update the playbook from this campaign right now."));
+    },
+  });
+
+  const createForkMutation = useMutation({
+    mutationFn: async (targetCampaignId: string) => {
+      const response = await fetch(`/api/drinks/campaigns/${encodeURIComponent(targetCampaignId)}/create-playbook-fork`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to save playbook fork (${response.status})`);
+      return payload;
+    },
+    onSuccess: async () => {
+      setMessage("Created a new playbook fork from the current campaign.");
+      setError("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-profiles"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-lineage"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-drift"] }),
+      ]);
+    },
+    onError: (mutationError) => {
+      setMessage("");
+      setError(readErrorMessage(mutationError, "Unable to save a new playbook from this campaign right now."));
+    },
+  });
 
   return (
     <Card id={campaignId ? undefined : "campaign-playbook-drift"}>
@@ -216,6 +305,8 @@ export default function CampaignPlaybookDriftSection(props: {
 
         {query.isLoading ? <p className="text-sm text-muted-foreground">Loading playbook drift…</p> : null}
         {query.isError ? <p className="text-sm text-destructive">{readErrorMessage(query.error, "Unable to load playbook drift right now.")}</p> : null}
+        {message ? <p className="text-sm text-emerald-600">{message}</p> : null}
+        {error ? <p className="text-sm text-destructive">{error}</p> : null}
 
         {!query.isLoading && !query.isError && items.length === 0 ? (
           <div className="rounded-md border p-4 text-sm text-muted-foreground">
@@ -254,6 +345,12 @@ export default function CampaignPlaybookDriftSection(props: {
                         </>
                       ) : item.summary}
                     </p>
+                    {item.playbookLineage.basedOnLabel ? (
+                      <p className="text-xs text-muted-foreground">
+                        {item.playbookLineage.basedOnLabel}
+                        {item.playbookLineage.versionLabel ? ` · ${item.playbookLineage.versionLabel}` : ""}
+                      </p>
+                    ) : null}
                   </div>
 
                   {recommendedDecision ? (
@@ -269,6 +366,26 @@ export default function CampaignPlaybookDriftSection(props: {
                     </div>
                   ) : null}
                 </div>
+
+                {compact ? (
+                  <div className="mt-4 rounded-md border border-dashed p-3 text-sm">
+                    <p className="font-medium text-foreground">Playbook evolution actions</p>
+                    <p className="mt-1 text-muted-foreground">
+                      Realign reapplies the saved playbook. Update overwrites only strategic playbook fields. Save as new creates a new forked variant from this campaign.
+                    </p>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button size="sm" variant="outline" onClick={() => realignMutation.mutate({ profileId: item.playbookId, targetCampaignId: item.campaignId })} disabled={realignMutation.isPending}>
+                        {realignMutation.isPending ? "Realigning…" : "Realign to playbook"}
+                      </Button>
+                      <Button size="sm" onClick={() => updatePlaybookMutation.mutate(item.campaignId)} disabled={updatePlaybookMutation.isPending}>
+                        {updatePlaybookMutation.isPending ? "Updating…" : "Update playbook from current campaign"}
+                      </Button>
+                      <Button size="sm" variant="secondary" onClick={() => createForkMutation.mutate(item.campaignId)} disabled={createForkMutation.isPending}>
+                        {createForkMutation.isPending ? "Saving…" : "Save as new playbook"}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
 
                 {!compact ? (
                   <div className="mt-4 grid gap-3 md:grid-cols-3">

@@ -28,6 +28,10 @@ type ExperimentType =
 type PlaybookProfileItem = {
   id: string;
   creatorUserId: string;
+  parentPlaybookProfileId: string | null;
+  sourceCampaignId: string | null;
+  derivedFromType: "playbook" | "campaign" | null;
+  versionLabel: string | null;
   name: string;
   description: string | null;
   visibilityStrategy: CampaignAudience | null;
@@ -39,7 +43,11 @@ type PlaybookProfileItem = {
   preferredExperimentTypes: ExperimentType[];
   preferredAudienceFit: CampaignAudience | null;
   notes: string | null;
-  outcomeSnapshot: {
+  childCount: number;
+  basedOnLabel: string | null;
+  parentPlaybook: { id: string; name: string; versionLabel: string | null } | null;
+  sourceCampaign: { id: string; name: string; slug: string; route: string } | null;
+  outcomeSnapshot?: {
     appliedCount: number;
     scorecardLabel: "strong" | "promising" | "mixed" | "weak";
     outcomeLabel: string;
@@ -54,6 +62,13 @@ type PlaybookProfilesResponse = {
   count: number;
   items: PlaybookProfileItem[];
   availableCampaigns: Array<{ id: string; name: string; slug: string; route: string }>;
+  attributionNotes: string[];
+};
+
+type PlaybookLineageResponse = {
+  ok: boolean;
+  count: number;
+  items: PlaybookProfileItem[];
   attributionNotes: string[];
 };
 
@@ -122,6 +137,7 @@ export default function CampaignPlaybookProfilesSection() {
   const [error, setError] = React.useState("");
   const [form, setForm] = React.useState(emptyForm);
   const [saveFromCampaignId, setSaveFromCampaignId] = React.useState("");
+  const [evolutionPlaybookId, setEvolutionPlaybookId] = React.useState("");
   const [applyCampaignIdByProfile, setApplyCampaignIdByProfile] = React.useState<Record<string, string>>({});
 
   const query = useQuery<PlaybookProfilesResponse>({
@@ -135,11 +151,28 @@ export default function CampaignPlaybookProfilesSection() {
     enabled: Boolean(user?.id),
   });
 
+  const lineageQuery = useQuery<PlaybookLineageResponse>({
+    queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-lineage", user?.id ?? ""],
+    queryFn: async () => {
+      const response = await fetch("/api/drinks/creator-dashboard/campaign-playbook-lineage", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load campaign playbook lineage (${response.status})`);
+      return payload as PlaybookLineageResponse;
+    },
+    enabled: Boolean(user?.id),
+  });
+
   React.useEffect(() => {
     if (!saveFromCampaignId && query.data?.availableCampaigns?.[0]?.id) {
       setSaveFromCampaignId(query.data.availableCampaigns[0].id);
     }
   }, [query.data?.availableCampaigns, saveFromCampaignId]);
+
+  React.useEffect(() => {
+    if (!evolutionPlaybookId && query.data?.items?.[0]?.id) {
+      setEvolutionPlaybookId(query.data.items[0].id);
+    }
+  }, [evolutionPlaybookId, query.data?.items]);
 
   const resetForm = React.useCallback(() => {
     setForm(emptyForm);
@@ -209,30 +242,62 @@ export default function CampaignPlaybookProfilesSection() {
     },
   });
 
-  const saveFromCampaignMutation = useMutation({
+  const updateFromCampaignMutation = useMutation({
     mutationFn: async () => {
-      const response = await fetch(`/api/drinks/campaigns/${encodeURIComponent(saveFromCampaignId)}/save-playbook-profile`, {
+      const response = await fetch(`/api/drinks/campaigns/${encodeURIComponent(saveFromCampaignId)}/update-playbook-from-campaign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          name: form.name.trim() || undefined,
-          description: form.description.trim() || undefined,
-          notes: form.notes.trim() || undefined,
+          playbookProfileId: evolutionPlaybookId,
         }),
       });
       const body = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(body?.error || body?.message || `Failed to save from campaign (${response.status})`);
+      if (!response.ok) throw new Error(body?.error || body?.message || `Failed to update playbook from campaign (${response.status})`);
       return body;
     },
     onSuccess: async (payload) => {
-      setMessage(payload?.message || "Saved reusable strategy from campaign.");
+      setMessage(payload?.message || "Updated playbook from current campaign strategy.");
       setError("");
-      await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-profiles"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-profiles"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-lineage"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-drift"] }),
+        saveFromCampaignId ? queryClient.invalidateQueries({ queryKey: [`/api/drinks/campaigns/${saveFromCampaignId}/playbook-drift`] }) : Promise.resolve(),
+      ]);
     },
     onError: (mutationError) => {
       setMessage("");
-      setError(readErrorMessage(mutationError, "Unable to save the strategy from this campaign right now."));
+      setError(readErrorMessage(mutationError, "Unable to update the selected playbook from this campaign right now."));
+    },
+  });
+
+  const createForkMutation = useMutation({
+    mutationFn: async () => {
+      const response = await fetch(`/api/drinks/campaigns/${encodeURIComponent(saveFromCampaignId)}/create-playbook-fork`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          parentPlaybookProfileId: evolutionPlaybookId || undefined,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(body?.error || body?.message || `Failed to create playbook fork (${response.status})`);
+      return body;
+    },
+    onSuccess: async (payload) => {
+      setMessage(payload?.message || "Created a new playbook from this campaign.");
+      setError("");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-profiles"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-lineage"] }),
+        queryClient.invalidateQueries({ queryKey: ["/api/drinks/creator-dashboard/campaign-playbook-drift"] }),
+      ]);
+    },
+    onError: (mutationError) => {
+      setMessage("");
+      setError(readErrorMessage(mutationError, "Unable to create a new playbook from this campaign right now."));
     },
   });
 
@@ -429,21 +494,68 @@ export default function CampaignPlaybookProfilesSection() {
           <div className="space-y-4">
             <div className="rounded-lg border p-4">
               <div className="space-y-1">
-                <h3 className="font-semibold">Save what worked from a campaign</h3>
+                <h3 className="font-semibold">Evolve or fork from a campaign</h3>
                 <p className="text-sm text-muted-foreground">
-                  Pull a campaign&apos;s reusable rollout, timing, audience-fit, CTA, and experiment tendencies into a strategy preset without copying analytics or linked content.
+                  Choose whether to overwrite only the reusable strategy fields on an existing playbook or create a fresh variant. This copies strategic defaults only — never analytics history, followers, purchases, memberships, or action state.
                 </p>
               </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr),auto]">
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={saveFromCampaignId} onChange={(event) => setSaveFromCampaignId(event.target.value)}>
                   {availableCampaigns.length === 0 ? <option value="">No campaigns available</option> : null}
                   {availableCampaigns.map((campaign) => (
                     <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
                   ))}
                 </select>
-                <Button onClick={() => { setMessage(""); setError(""); saveFromCampaignMutation.mutate(); }} disabled={saveFromCampaignMutation.isPending || !saveFromCampaignId}>
-                  {saveFromCampaignMutation.isPending ? "Saving…" : "Save from campaign"}
+                <select className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm" value={evolutionPlaybookId} onChange={(event) => setEvolutionPlaybookId(event.target.value)}>
+                  {query.data?.items?.length === 0 ? <option value="">No saved playbooks</option> : null}
+                  {query.data?.items?.map((playbook) => (
+                    <option key={`evolve-${playbook.id}`} value={playbook.id}>
+                      {playbook.name}{playbook.versionLabel ? ` (${playbook.versionLabel})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button onClick={() => { setMessage(""); setError(""); updateFromCampaignMutation.mutate(); }} disabled={updateFromCampaignMutation.isPending || !saveFromCampaignId || !evolutionPlaybookId}>
+                  {updateFromCampaignMutation.isPending ? "Updating…" : "Update playbook from campaign"}
                 </Button>
+                <Button variant="outline" onClick={() => { setMessage(""); setError(""); createForkMutation.mutate(); }} disabled={createForkMutation.isPending || !saveFromCampaignId}>
+                  {createForkMutation.isPending ? "Creating…" : "Create new playbook from this campaign"}
+                </Button>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Updating keeps the existing playbook id. Creating new makes a forked strategy variant with lineage back to the campaign and, when possible, the source playbook.
+              </p>
+            </div>
+
+            <div className="rounded-lg border p-4">
+              <div className="space-y-1">
+                <h3 className="font-semibold">Playbook lineage</h3>
+                <p className="text-sm text-muted-foreground">
+                  Lightweight origin tracking only: “based on” and “forked from,” not a giant history graph.
+                </p>
+              </div>
+              {lineageQuery.isLoading ? <p className="mt-4 text-sm text-muted-foreground">Loading playbook lineage…</p> : null}
+              {lineageQuery.isError ? <p className="mt-4 text-sm text-destructive">{readErrorMessage(lineageQuery.error, "Unable to load playbook lineage right now.")}</p> : null}
+              {!lineageQuery.isLoading && !lineageQuery.isError && !lineageQuery.data?.items?.length ? (
+                <p className="mt-4 text-sm text-muted-foreground">No playbook lineage yet. Once you evolve or fork from a campaign, it will show up here.</p>
+              ) : null}
+              <div className="mt-4 space-y-3">
+                {lineageQuery.data?.items?.slice(0, 6).map((item) => (
+                  <div key={`lineage-${item.id}`} className="rounded-md border border-dashed p-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-foreground">{item.name}</span>
+                      {item.versionLabel ? <Badge variant="secondary">{item.versionLabel}</Badge> : null}
+                      {item.childCount > 0 ? <Badge variant="outline">{item.childCount} fork{item.childCount === 1 ? "" : "s"}</Badge> : null}
+                    </div>
+                    {item.basedOnLabel ? <p className="mt-1 text-muted-foreground">{item.basedOnLabel}</p> : <p className="mt-1 text-muted-foreground">Original saved playbook.</p>}
+                    {item.sourceCampaign ? (
+                      <Link href={item.sourceCampaign.route} className="mt-2 inline-flex text-xs underline underline-offset-2">
+                        Source campaign: {item.sourceCampaign.name}
+                      </Link>
+                    ) : null}
+                  </div>
+                ))}
               </div>
             </div>
 
@@ -456,12 +568,14 @@ export default function CampaignPlaybookProfilesSection() {
                       <div className="space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="font-medium">{item.name}</p>
+                          {item.versionLabel ? <Badge variant="secondary">{item.versionLabel}</Badge> : null}
                           <Badge variant="secondary">{rolloutModeLabel(item.rolloutMode)}</Badge>
                           {item.preferredAudienceFit ? <Badge variant="outline">Best fit: {audienceLabel(item.preferredAudienceFit)}</Badge> : null}
                           {item.preferredCtaDirection ? <Badge variant="outline">CTA: {ctaDirectionLabel(item.preferredCtaDirection)}</Badge> : null}
                           {item.outcomeSnapshot ? <Badge variant="outline">{item.outcomeSnapshot.outcomeLabel}</Badge> : null}
                         </div>
                         {item.description ? <p className="text-sm text-muted-foreground">{item.description}</p> : null}
+                        {item.basedOnLabel ? <p className="text-xs text-muted-foreground">{item.basedOnLabel}</p> : null}
                         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                           <span>Visibility: {audienceLabel(item.visibilityStrategy)}</span>
                           <span>Starts with: {audienceLabel(item.startsWithAudience)}</span>

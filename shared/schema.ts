@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  AnyPgColumn,
   pgTable,
   text,
   varchar,
@@ -1492,6 +1493,10 @@ export const creatorCampaignPlaybookProfiles = pgTable(
   {
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     creatorUserId: varchar("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    parentPlaybookProfileId: varchar("parent_playbook_profile_id").references((): AnyPgColumn => creatorCampaignPlaybookProfiles.id, { onDelete: "set null" }),
+    sourceCampaignId: varchar("source_campaign_id").references(() => creatorCampaigns.id, { onDelete: "set null" }),
+    derivedFromType: text("derived_from_type"),
+    versionLabel: varchar("version_label", { length: 80 }),
     name: varchar("name", { length: 160 }).notNull(),
     description: text("description"),
     visibilityStrategy: text("visibility_strategy"),
@@ -1509,6 +1514,8 @@ export const creatorCampaignPlaybookProfiles = pgTable(
   (table) => ({
     creatorIdx: index("creator_campaign_playbook_profiles_creator_idx").on(table.creatorUserId),
     creatorUpdatedIdx: index("creator_campaign_playbook_profiles_creator_updated_at_idx").on(table.creatorUserId, table.updatedAt),
+    parentIdx: index("creator_campaign_playbook_profiles_parent_idx").on(table.parentPlaybookProfileId),
+    sourceIdx: index("creator_campaign_playbook_profiles_source_campaign_idx").on(table.sourceCampaignId),
     creatorNameIdx: uniqueIndex("creator_campaign_playbook_profiles_creator_name_idx").on(table.creatorUserId, table.name),
   })
 );

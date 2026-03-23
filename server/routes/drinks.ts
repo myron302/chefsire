@@ -268,6 +268,7 @@ type CreatorCampaignPlaybookFitRecommendation = "apply_as_is" | "apply_with_adju
 type CreatorCampaignPlaybookScorecardLabel = "strong" | "promising" | "mixed" | "weak";
 type CreatorCampaignPlaybookDriftSeverity = "aligned" | "watch" | "drifted" | "misaligned";
 type CreatorCampaignPlaybookRealignAction = "realign_campaign" | "update_playbook" | "keep_new_direction";
+type CreatorCampaignPlaybookDerivedFromType = "playbook" | "campaign";
 type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
 type DrinkCollectionAccessType = "public" | "premium_purchase" | "membership_only";
 
@@ -1037,6 +1038,7 @@ const campaignTemplateActionBodySchema = z.object({
 });
 
 const creatorCampaignPlaybookCtaDirectionSchema = z.enum(["follow", "rsvp", "membership", "purchase", "drop", "mixed"]);
+const creatorCampaignPlaybookDerivedFromTypeSchema = z.enum(["playbook", "campaign"]);
 
 const creatorCampaignPlaybookProfileBodyBaseSchema = z.object({
   name: z.string().trim().min(2).max(160),
@@ -1063,6 +1065,22 @@ const saveCampaignPlaybookProfileBodySchema = z.object({
   name: z.string().trim().min(2).max(160).optional(),
   description: z.string().trim().max(1000).nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+const updatePlaybookFromCampaignBodySchema = z.object({
+  playbookProfileId: z.string().trim().min(1).optional(),
+  versionLabel: z.string().trim().min(1).max(80).nullable().optional(),
+  description: z.string().trim().max(1000).nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+});
+
+const createPlaybookForkFromCampaignBodySchema = z.object({
+  parentPlaybookProfileId: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(2).max(160).optional(),
+  description: z.string().trim().max(1000).nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+  versionLabel: z.string().trim().min(1).max(80).nullable().optional(),
+  derivedFromType: creatorCampaignPlaybookDerivedFromTypeSchema.optional(),
 });
 
 const creatorCampaignVariantBodySchema = z.object({
@@ -2376,6 +2394,10 @@ async function ensureDrinkCollectionsSchema() {
       CREATE TABLE IF NOT EXISTS creator_campaign_playbook_profiles (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         creator_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        parent_playbook_profile_id varchar REFERENCES creator_campaign_playbook_profiles(id) ON DELETE SET NULL,
+        source_campaign_id varchar REFERENCES creator_campaigns(id) ON DELETE SET NULL,
+        derived_from_type text,
+        version_label varchar(80),
         name varchar(160) NOT NULL,
         description text,
         visibility_strategy text,
@@ -2715,6 +2737,10 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_source_idx ON creator_campaign_templates(source_campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_updated_at_idx ON creator_campaign_templates(creator_user_id, updated_at);`);
     await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS description text;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS parent_playbook_profile_id varchar REFERENCES creator_campaign_playbook_profiles(id) ON DELETE SET NULL;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS source_campaign_id varchar REFERENCES creator_campaigns(id) ON DELETE SET NULL;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS derived_from_type text;`);
+    await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS version_label varchar(80);`);
     await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS visibility_strategy text;`);
     await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS rollout_mode text NOT NULL DEFAULT 'public_first';`);
     await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS starts_with_audience text;`);
@@ -2728,6 +2754,8 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`ALTER TABLE creator_campaign_playbook_profiles ADD COLUMN IF NOT EXISTS updated_at timestamp NOT NULL DEFAULT now();`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_playbook_profiles_creator_idx ON creator_campaign_playbook_profiles(creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_playbook_profiles_creator_updated_at_idx ON creator_campaign_playbook_profiles(creator_user_id, updated_at);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_playbook_profiles_parent_idx ON creator_campaign_playbook_profiles(parent_playbook_profile_id);`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_playbook_profiles_source_campaign_idx ON creator_campaign_playbook_profiles(source_campaign_id);`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_campaign_playbook_profiles_creator_name_idx ON creator_campaign_playbook_profiles(creator_user_id, name);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_campaign_idx ON creator_campaign_links(campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_links_target_idx ON creator_campaign_links(target_type, target_id);`);
@@ -4444,6 +4472,10 @@ function serializeCreatorCampaignPlaybookProfile(profile: CreatorCampaignPlayboo
   return {
     id: profile.id,
     creatorUserId: profile.creatorUserId,
+    parentPlaybookProfileId: profile.parentPlaybookProfileId ?? null,
+    sourceCampaignId: profile.sourceCampaignId ?? null,
+    derivedFromType: (profile.derivedFromType as CreatorCampaignPlaybookDerivedFromType | null) ?? null,
+    versionLabel: profile.versionLabel ?? null,
     name: profile.name,
     description: profile.description ?? null,
     visibilityStrategy: (profile.visibilityStrategy as CreatorCampaignVisibility | null) ?? null,
@@ -4457,6 +4489,115 @@ function serializeCreatorCampaignPlaybookProfile(profile: CreatorCampaignPlayboo
     notes: profile.notes ?? null,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
+  };
+}
+
+function inferPreferredAudienceFitFromCampaign(campaign: Pick<CreatorCampaignRecord, "visibility" | "startsWithAudience">): CreatorCampaignRolloutAudience | null {
+  const candidate = (campaign.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null;
+  if (candidate === "members" || candidate === "followers" || candidate === "public") return candidate;
+  if (campaign.visibility === "members" || campaign.visibility === "followers" || campaign.visibility === "public") {
+    return campaign.visibility as CreatorCampaignRolloutAudience;
+  }
+  return null;
+}
+
+const PLAYBOOK_EVOLUTION_STRATEGY_FIELDS = [
+  "visibilityStrategy",
+  "rolloutMode",
+  "startsWithAudience",
+  "recommendedFollowerUnlockDelayHours",
+  "recommendedPublicUnlockDelayHours",
+  "preferredCtaDirection",
+  "preferredExperimentTypes",
+  "preferredAudienceFit",
+  "description",
+  "notes",
+] as const;
+
+async function loadCreatorCampaignPlaybookLineageCollection(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const profiles = await db
+    .select()
+    .from(creatorCampaignPlaybookProfiles)
+    .where(eq(creatorCampaignPlaybookProfiles.creatorUserId, creatorUserId))
+    .orderBy(desc(creatorCampaignPlaybookProfiles.updatedAt), desc(creatorCampaignPlaybookProfiles.createdAt));
+
+  const parentIds = [...new Set(profiles.map((profile) => profile.parentPlaybookProfileId).filter((value): value is string => Boolean(value)))];
+  const sourceCampaignIds = [...new Set(profiles.map((profile) => profile.sourceCampaignId).filter((value): value is string => Boolean(value)))];
+
+  const [parents, sourceCampaigns] = await Promise.all([
+    parentIds.length
+      ? db
+          .select({
+            id: creatorCampaignPlaybookProfiles.id,
+            name: creatorCampaignPlaybookProfiles.name,
+            versionLabel: creatorCampaignPlaybookProfiles.versionLabel,
+          })
+          .from(creatorCampaignPlaybookProfiles)
+          .where(and(
+            eq(creatorCampaignPlaybookProfiles.creatorUserId, creatorUserId),
+            inArray(creatorCampaignPlaybookProfiles.id, parentIds),
+          ))
+      : Promise.resolve([] as Array<{ id: string; name: string; versionLabel: string | null }>),
+    sourceCampaignIds.length
+      ? db
+          .select({
+            id: creatorCampaigns.id,
+            name: creatorCampaigns.name,
+            slug: creatorCampaigns.slug,
+          })
+          .from(creatorCampaigns)
+          .where(and(
+            eq(creatorCampaigns.creatorUserId, creatorUserId),
+            inArray(creatorCampaigns.id, sourceCampaignIds),
+          ))
+      : Promise.resolve([] as Array<{ id: string; name: string; slug: string }>),
+  ]);
+
+  const parentById = new Map(parents.map((item) => [item.id, item]));
+  const sourceCampaignById = new Map(sourceCampaigns.map((item) => [item.id, item]));
+  const childCountByParentId = new Map<string, number>();
+  for (const profile of profiles) {
+    if (!profile.parentPlaybookProfileId) continue;
+    childCountByParentId.set(profile.parentPlaybookProfileId, (childCountByParentId.get(profile.parentPlaybookProfileId) ?? 0) + 1);
+  }
+
+  const items = profiles.map((profile) => {
+    const serialized = serializeCreatorCampaignPlaybookProfile(profile);
+    const parent = profile.parentPlaybookProfileId ? parentById.get(profile.parentPlaybookProfileId) ?? null : null;
+    const sourceCampaign = profile.sourceCampaignId ? sourceCampaignById.get(profile.sourceCampaignId) ?? null : null;
+    const basedOnLabel = parent
+      ? `Forked from ${parent.name}${parent.versionLabel ? ` (${parent.versionLabel})` : ""}`
+      : sourceCampaign
+        ? `Based on campaign ${sourceCampaign.name}`
+        : null;
+
+    return {
+      ...serialized,
+      childCount: childCountByParentId.get(profile.id) ?? 0,
+      parentPlaybook: parent
+        ? {
+            id: parent.id,
+            name: parent.name,
+            versionLabel: parent.versionLabel ?? null,
+          }
+        : null,
+      sourceCampaign: sourceCampaign
+        ? {
+            id: sourceCampaign.id,
+            name: sourceCampaign.name,
+            slug: sourceCampaign.slug,
+            route: `/drinks/campaigns/${encodeURIComponent(sourceCampaign.slug)}`,
+          }
+        : null,
+      basedOnLabel,
+    };
+  });
+
+  return {
+    items,
+    itemById: new Map(items.map((item) => [item.id, item])),
   };
 }
 
@@ -4623,6 +4764,38 @@ async function loadCreatorCampaignPlaybookDriftCollection(creatorUserId: string,
   ]);
 
   const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  const parentProfileIds = [...new Set(profiles.map((profile) => profile.parentPlaybookProfileId).filter((value): value is string => Boolean(value)))];
+  const sourceCampaignIds = [...new Set(profiles.map((profile) => profile.sourceCampaignId).filter((value): value is string => Boolean(value)))];
+  const [parentProfiles, sourceCampaigns] = await Promise.all([
+    parentProfileIds.length
+      ? db
+          .select({
+            id: creatorCampaignPlaybookProfiles.id,
+            name: creatorCampaignPlaybookProfiles.name,
+            versionLabel: creatorCampaignPlaybookProfiles.versionLabel,
+          })
+          .from(creatorCampaignPlaybookProfiles)
+          .where(and(
+            eq(creatorCampaignPlaybookProfiles.creatorUserId, creatorUserId),
+            inArray(creatorCampaignPlaybookProfiles.id, parentProfileIds),
+          ))
+      : Promise.resolve([] as Array<{ id: string; name: string; versionLabel: string | null }>),
+    sourceCampaignIds.length
+      ? db
+          .select({
+            id: creatorCampaigns.id,
+            name: creatorCampaigns.name,
+            slug: creatorCampaigns.slug,
+          })
+          .from(creatorCampaigns)
+          .where(and(
+            eq(creatorCampaigns.creatorUserId, creatorUserId),
+            inArray(creatorCampaigns.id, sourceCampaignIds),
+          ))
+      : Promise.resolve([] as Array<{ id: string; name: string; slug: string }>),
+  ]);
+  const parentProfileById = new Map(parentProfiles.map((item) => [item.id, item]));
+  const sourceCampaignById = new Map(sourceCampaigns.map((item) => [item.id, item]));
   const audienceFitByCampaignId = new Map(audienceFit.items.map((item) => [item.campaignId, item]));
   const healthByCampaignId = new Map(health.items.map((item) => [item.campaignId, item]));
   const readinessByCampaignId = new Map<string, Array<typeof readiness.items[number]>>();
@@ -4646,6 +4819,8 @@ async function loadCreatorCampaignPlaybookDriftCollection(creatorUserId: string,
     if (!profile) return [];
 
     const serializedProfile = serializeCreatorCampaignPlaybookProfile(profile);
+    const lineageParent = profile.parentPlaybookProfileId ? parentProfileById.get(profile.parentPlaybookProfileId) ?? null : null;
+    const lineageSourceCampaign = profile.sourceCampaignId ? sourceCampaignById.get(profile.sourceCampaignId) ?? null : null;
     const startAnchor = campaign.startsAt ?? campaign.createdAt ?? null;
     const actualFollowerDelay = diffHoursBetween(startAnchor, campaign.unlockFollowersAt);
     const actualPublicDelay = diffHoursBetween(startAnchor, campaign.unlockPublicAt);
@@ -4865,6 +5040,26 @@ async function loadCreatorCampaignPlaybookDriftCollection(creatorUserId: string,
       playbookDescription: profile.description ?? null,
       playbookAppliedAt: campaign.playbookAppliedAt?.toISOString() ?? null,
       isPlaybookApplied: true,
+      playbookLineage: {
+        parentPlaybook: lineageParent ? {
+          id: lineageParent.id,
+          name: lineageParent.name,
+          versionLabel: lineageParent.versionLabel ?? null,
+        } : null,
+        sourceCampaign: lineageSourceCampaign ? {
+          id: lineageSourceCampaign.id,
+          name: lineageSourceCampaign.name,
+          slug: lineageSourceCampaign.slug,
+          route: `/drinks/campaigns/${encodeURIComponent(lineageSourceCampaign.slug)}`,
+        } : null,
+        derivedFromType: serializedProfile.derivedFromType,
+        versionLabel: serializedProfile.versionLabel,
+        basedOnLabel: lineageParent
+          ? `Forked from ${lineageParent.name}${lineageParent.versionLabel ? ` (${lineageParent.versionLabel})` : ""}`
+          : lineageSourceCampaign
+            ? `Based on campaign ${lineageSourceCampaign.name}`
+            : null,
+      },
       severity,
       severityLabel: playbookDriftSeverityLabel(severity),
       severityVariant: playbookDriftSeverityVariant(severity),
@@ -4999,16 +5194,15 @@ async function buildCreatorCampaignPlaybookProfileFromCampaign(input: {
   name?: string | null;
   description?: string | null;
   notes?: string | null;
+  parentPlaybookProfileId?: string | null;
+  sourceCampaignId?: string | null;
+  derivedFromType?: CreatorCampaignPlaybookDerivedFromType | null;
+  versionLabel?: string | null;
 }) {
   if (!db) throw new Error("Database unavailable");
 
   const { creatorUserId, campaign } = input;
-  const [audienceFit, timingAdvisor, fixMatching, benchmarks, retrospectives, variants, experiments] = await Promise.all([
-    loadCreatorCampaignAudienceFit(creatorUserId),
-    loadCreatorCampaignTimingAdvisor(creatorUserId, campaign.id),
-    loadCreatorCampaignFixMatching(creatorUserId, campaign.id),
-    loadCreatorCampaignBenchmarks(creatorUserId),
-    loadCreatorCampaignRetrospectives(creatorUserId),
+  const [variants, experiments] = await Promise.all([
     loadCreatorCampaignVariantsByCampaignIds([campaign.id]).then((map) => map.get(campaign.id) ?? []),
     db
       .select()
@@ -5018,32 +5212,22 @@ async function buildCreatorCampaignPlaybookProfileFromCampaign(input: {
       .limit(6),
   ]);
 
-  const audienceFitItem = audienceFit.items.find((item) => item.campaignId === campaign.id) ?? null;
-  const timingItem = timingAdvisor.items.find((item) => item.campaignId === campaign.id) ?? null;
-  const fixItem = fixMatching.items.find((item) => item.campaignId === campaign.id) ?? null;
-  const benchmarkItem = benchmarks.items.find((item) => item.campaignId === campaign.id) ?? null;
-  const retrospectiveItem = retrospectives.items.find((item) => item.campaignId === campaign.id) ?? null;
-
   const startsAt = campaign.startsAt ?? campaign.createdAt ?? null;
   const preferredExperimentTypes = uniqueStringList([
     ...experiments.map((item) => item.experimentType),
-    fixItem?.recommendedExperimentType ?? null,
-    ...(fixItem?.alternativeFixes.map((item) => item.experimentType) ?? []),
   ], 5).filter((value): value is CreatorCampaignExperimentType => creatorCampaignExperimentTypeSchema.safeParse(value).success);
 
   const generatedNotes = uniqueStringList([
     input.notes?.trim() || null,
     campaign.rolloutNotes?.trim() || null,
-    timingItem?.recommendationSummary ?? null,
-    audienceFitItem?.bestAudienceFitReason ?? null,
-    fixItem?.matchReason ?? null,
-    retrospectiveItem?.summary ?? null,
-    retrospectiveItem?.lessons?.[0]?.message ?? null,
-    benchmarkItem?.benchmarkLabels?.[0] ? `Benchmark context: ${benchmarkItem.benchmarkLabels[0]}.` : null,
   ], 6).join(" ");
 
   return insertCreatorCampaignPlaybookProfileSchema.parse({
     creatorUserId,
+    parentPlaybookProfileId: input.parentPlaybookProfileId ?? null,
+    sourceCampaignId: input.sourceCampaignId ?? campaign.id,
+    derivedFromType: input.derivedFromType ?? (input.parentPlaybookProfileId ? "playbook" : "campaign"),
+    versionLabel: input.versionLabel ?? null,
     name: input.name?.trim() || `${campaign.name} Strategy`,
     description: input.description?.trim() || campaign.description || `Reusable strategy preset based on ${campaign.name}.`,
     visibilityStrategy: campaign.visibility,
@@ -5053,9 +5237,29 @@ async function buildCreatorCampaignPlaybookProfileFromCampaign(input: {
     recommendedPublicUnlockDelayHours: diffHoursBetween(startsAt, campaign.unlockPublicAt),
     preferredCtaDirection: inferPreferredCtaDirectionFromVariants(variants) ?? null,
     preferredExperimentTypes,
-    preferredAudienceFit: audienceFitItem?.bestAudienceFit ?? null,
+    preferredAudienceFit: inferPreferredAudienceFitFromCampaign(campaign),
     notes: generatedNotes || null,
   });
+}
+
+async function buildNextPlaybookVersionLabel(input: {
+  creatorUserId: string;
+  parentPlaybookProfileId?: string | null;
+  requestedVersionLabel?: string | null;
+}) {
+  if (input.requestedVersionLabel?.trim()) return input.requestedVersionLabel.trim();
+  if (!input.parentPlaybookProfileId || !db) return null;
+
+  const siblingRows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(creatorCampaignPlaybookProfiles)
+    .where(and(
+      eq(creatorCampaignPlaybookProfiles.creatorUserId, input.creatorUserId),
+      eq(creatorCampaignPlaybookProfiles.parentPlaybookProfileId, input.parentPlaybookProfileId),
+    ));
+
+  const nextVersionNumber = Number(siblingRows[0]?.count ?? 0) + 2;
+  return `v${nextVersionNumber}`;
 }
 
 async function applyCreatorCampaignPlaybookProfileToCampaign(input: {
@@ -23553,12 +23757,8 @@ r.get("/creator-dashboard/campaign-playbook-profiles", requireAuth, async (req, 
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
 
-    const [profiles, campaigns, outcomes] = await Promise.all([
-      db
-        .select()
-        .from(creatorCampaignPlaybookProfiles)
-        .where(eq(creatorCampaignPlaybookProfiles.creatorUserId, req.user!.id))
-        .orderBy(desc(creatorCampaignPlaybookProfiles.updatedAt), desc(creatorCampaignPlaybookProfiles.createdAt)),
+    const [lineage, campaigns, outcomes] = await Promise.all([
+      loadCreatorCampaignPlaybookLineageCollection(req.user!.id),
       db
         .select()
         .from(creatorCampaigns)
@@ -23578,9 +23778,9 @@ r.get("/creator-dashboard/campaign-playbook-profiles", requireAuth, async (req, 
 
     return res.json({
       ok: true,
-      count: profiles.length,
-      items: profiles.map((profile) => ({
-        ...serializeCreatorCampaignPlaybookProfile(profile),
+      count: lineage.items.length,
+      items: lineage.items.map((profile) => ({
+        ...profile,
         outcomeSnapshot: outcomeByPlaybookId.get(profile.id)
           ? {
               appliedCount: outcomeByPlaybookId.get(profile.id)!.appliedCount,
@@ -23732,6 +23932,29 @@ r.delete("/creator-dashboard/campaign-playbook-profiles/:id", requireAuth, async
   } catch (error) {
     const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-profiles/:id", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to delete campaign playbook profile"));
+  }
+});
+
+r.get("/creator-dashboard/campaign-playbook-lineage", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const lineage = await loadCreatorCampaignPlaybookLineageCollection(req.user!.id);
+    return res.json({
+      ok: true,
+      count: lineage.items.length,
+      items: lineage.items,
+      attributionNotes: [
+        "Playbook evolution stays intentionally lightweight: ChefSire only records parent/source relationships plus a small version label when it helps.",
+        "Lineage shows where a saved strategy came from, not a giant diff history or full document version tree.",
+      ],
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-lineage", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign playbook lineage"));
   }
 });
 
@@ -23953,6 +24176,8 @@ r.post("/campaigns/:id/save-playbook-profile", requireAuth, async (req, res) => 
           preferredExperimentTypes: values.preferredExperimentTypes,
           preferredAudienceFit: values.preferredAudienceFit,
           notes: values.notes,
+          sourceCampaignId: values.sourceCampaignId,
+          derivedFromType: values.derivedFromType,
           updatedAt: new Date(),
         },
       })
@@ -23971,6 +24196,183 @@ r.post("/campaigns/:id/save-playbook-profile", requireAuth, async (req, res) => 
     }
     const message = logCollectionRouteError("/campaigns/:id/save-playbook-profile", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to save campaign playbook profile"));
+  }
+});
+
+r.post("/campaigns/:id/update-playbook-from-campaign", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const parsed = updatePlaybookFromCampaignBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid playbook evolution payload." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const targetPlaybookId = parsed.data.playbookProfileId?.trim() || campaign.appliedPlaybookProfileId || "";
+    if (!targetPlaybookId) {
+      return res.status(400).json({ ok: false, error: "Choose a saved playbook to update from this campaign." });
+    }
+
+    const targetRows = await db
+      .select()
+      .from(creatorCampaignPlaybookProfiles)
+      .where(and(
+        eq(creatorCampaignPlaybookProfiles.id, targetPlaybookId),
+        eq(creatorCampaignPlaybookProfiles.creatorUserId, req.user!.id),
+      ))
+      .limit(1);
+    const target = targetRows[0];
+    if (!target) {
+      return res.status(404).json({ ok: false, error: "Campaign playbook profile not found." });
+    }
+
+    const evolvedValues = await buildCreatorCampaignPlaybookProfileFromCampaign({
+      creatorUserId: req.user!.id,
+      campaign,
+      name: target.name,
+      description: parsed.data.description !== undefined ? parsed.data.description : target.description,
+      notes: parsed.data.notes !== undefined ? parsed.data.notes : target.notes,
+      parentPlaybookProfileId: target.parentPlaybookProfileId ?? null,
+      sourceCampaignId: campaign.id,
+      derivedFromType: target.parentPlaybookProfileId ? "playbook" : "campaign",
+      versionLabel: parsed.data.versionLabel !== undefined ? parsed.data.versionLabel : target.versionLabel,
+    });
+
+    const updatedRows = await db
+      .update(creatorCampaignPlaybookProfiles)
+      .set({
+        description: evolvedValues.description,
+        visibilityStrategy: evolvedValues.visibilityStrategy,
+        rolloutMode: evolvedValues.rolloutMode,
+        startsWithAudience: evolvedValues.startsWithAudience,
+        recommendedFollowerUnlockDelayHours: evolvedValues.recommendedFollowerUnlockDelayHours,
+        recommendedPublicUnlockDelayHours: evolvedValues.recommendedPublicUnlockDelayHours,
+        preferredCtaDirection: evolvedValues.preferredCtaDirection,
+        preferredExperimentTypes: evolvedValues.preferredExperimentTypes,
+        preferredAudienceFit: evolvedValues.preferredAudienceFit,
+        notes: evolvedValues.notes,
+        sourceCampaignId: campaign.id,
+        derivedFromType: evolvedValues.derivedFromType,
+        versionLabel: evolvedValues.versionLabel,
+        updatedAt: new Date(),
+      })
+      .where(eq(creatorCampaignPlaybookProfiles.id, target.id))
+      .returning();
+
+    return res.json({
+      ok: true,
+      sourceCampaignId: campaign.id,
+      playbookProfileId: target.id,
+      item: serializeCreatorCampaignPlaybookProfile(updatedRows[0]!),
+      copiedFields: [...PLAYBOOK_EVOLUTION_STRATEGY_FIELDS],
+      message: "Saved campaign strategy back into the selected playbook.",
+      safety: {
+        analyticsCopied: false,
+        followersCopied: false,
+        purchasesCopied: false,
+        membershipsCopied: false,
+        alertsCopied: false,
+        actionStateCopied: false,
+      },
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Failed to update playbook from campaign";
+    if (baseMessage === "Campaign not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/update-playbook-from-campaign", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to update playbook from campaign"));
+  }
+});
+
+r.post("/campaigns/:id/create-playbook-fork", requireAuth, async (req, res) => {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const campaignId = String(req.params.id ?? "").trim();
+    if (!campaignId) {
+      return res.status(400).json({ ok: false, error: "Campaign id is required." });
+    }
+
+    const parsed = createPlaybookForkFromCampaignBodySchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.issues[0]?.message ?? "Invalid playbook fork payload." });
+    }
+
+    const campaign = await loadCampaignForOwnerOrThrow(campaignId, req.user!.id);
+    const parentPlaybookId = parsed.data.parentPlaybookProfileId?.trim() || campaign.appliedPlaybookProfileId || null;
+    const parentRows = parentPlaybookId
+      ? await db
+          .select()
+          .from(creatorCampaignPlaybookProfiles)
+          .where(and(
+            eq(creatorCampaignPlaybookProfiles.id, parentPlaybookId),
+            eq(creatorCampaignPlaybookProfiles.creatorUserId, req.user!.id),
+          ))
+          .limit(1)
+      : [];
+    const parent = parentRows[0] ?? null;
+    if (parentPlaybookId && !parent) {
+      return res.status(404).json({ ok: false, error: "Parent playbook profile not found." });
+    }
+
+    const versionLabel = await buildNextPlaybookVersionLabel({
+      creatorUserId: req.user!.id,
+      parentPlaybookProfileId: parent?.id ?? null,
+      requestedVersionLabel: parsed.data.versionLabel,
+    });
+
+    const values = await buildCreatorCampaignPlaybookProfileFromCampaign({
+      creatorUserId: req.user!.id,
+      campaign,
+      name: parsed.data.name ?? (parent ? `${parent.name} ${versionLabel ?? "Fork"}` : `${campaign.name} Strategy`),
+      description: parsed.data.description ?? parent?.description ?? campaign.description,
+      notes: parsed.data.notes ?? parent?.notes ?? null,
+      parentPlaybookProfileId: parent?.id ?? null,
+      sourceCampaignId: campaign.id,
+      derivedFromType: parsed.data.derivedFromType ?? (parent ? "playbook" : "campaign"),
+      versionLabel,
+    });
+
+    const insertedRows = await db
+      .insert(creatorCampaignPlaybookProfiles)
+      .values(values)
+      .returning();
+
+    return res.status(201).json({
+      ok: true,
+      sourceCampaignId: campaign.id,
+      item: serializeCreatorCampaignPlaybookProfile(insertedRows[0]!),
+      copiedFields: [...PLAYBOOK_EVOLUTION_STRATEGY_FIELDS],
+      message: "Created a new playbook fork from this campaign.",
+      safety: {
+        analyticsCopied: false,
+        followersCopied: false,
+        purchasesCopied: false,
+        membershipsCopied: false,
+        alertsCopied: false,
+        actionStateCopied: false,
+      },
+    });
+  } catch (error) {
+    const baseMessage = error instanceof Error ? error.message : "Failed to create playbook fork from campaign";
+    if (baseMessage === "Campaign not found." || baseMessage === "Parent playbook profile not found.") {
+      return res.status(404).json({ ok: false, error: baseMessage });
+    }
+    const message = logCollectionRouteError("/campaigns/:id/create-playbook-fork", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to create playbook fork from campaign"));
   }
 });
 
