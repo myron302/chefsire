@@ -1401,6 +1401,8 @@ export const creatorCampaigns = pgTable(
     isRolloutPaused: boolean("is_rollout_paused").default(false).notNull(),
     rolloutPausedAt: timestamp("rollout_paused_at"),
     isPinned: boolean("is_pinned").default(false).notNull(),
+    appliedPlaybookProfileId: varchar("applied_playbook_profile_id"),
+    playbookAppliedAt: timestamp("playbook_applied_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
