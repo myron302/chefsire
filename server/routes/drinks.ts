@@ -1,5 +1,5 @@
 // server/routes/drinks.ts
-import { Router, type Request } from "express";
+import { Router, type Request, type Response } from "express";
 import { and, asc, desc, eq, gt, ilike, inArray, lte, or, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import { listMeta, lookupDrink, randomDrink, searchDrinks } from "../services/drinks-service";
@@ -264,6 +264,7 @@ type CreatorMembershipRecord = typeof creatorMemberships.$inferSelect;
 type CreatorMembershipCheckoutSessionRecord = typeof creatorMembershipCheckoutSessions.$inferSelect;
 type CreatorCampaignPlaybookFitLabel = "strong_match" | "partial_match" | "weak_match";
 type CreatorCampaignPlaybookFitRecommendation = "apply_as_is" | "apply_with_adjustments" | "loose_inspiration";
+type CreatorCampaignPlaybookScorecardLabel = "strong" | "promising" | "mixed" | "weak";
 type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
 type DrinkCollectionAccessType = "public" | "premium_purchase" | "membership_only";
 
@@ -2347,6 +2348,8 @@ async function ensureDrinkCollectionsSchema() {
         is_rollout_paused boolean NOT NULL DEFAULT false,
         rollout_paused_at timestamp,
         is_pinned boolean NOT NULL DEFAULT false,
+        applied_playbook_profile_id varchar,
+        playbook_applied_at timestamp,
         created_at timestamp NOT NULL DEFAULT now(),
         updated_at timestamp NOT NULL DEFAULT now()
       );
@@ -2701,7 +2704,10 @@ async function ensureDrinkCollectionsSchema() {
     await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS is_rollout_paused boolean NOT NULL DEFAULT false;`);
     await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS rollout_paused_at timestamp;`);
     await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS is_pinned boolean NOT NULL DEFAULT false;`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS applied_playbook_profile_id varchar REFERENCES creator_campaign_playbook_profiles(id) ON DELETE SET NULL;`);
+    await db.execute(sql`ALTER TABLE creator_campaigns ADD COLUMN IF NOT EXISTS playbook_applied_at timestamp;`);
     await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS creator_campaigns_single_pinned_idx ON creator_campaigns(creator_user_id) WHERE is_pinned = true;`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaigns_applied_playbook_idx ON creator_campaigns(creator_user_id, applied_playbook_profile_id, playbook_applied_at);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_idx ON creator_campaign_templates(creator_user_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_source_idx ON creator_campaign_templates(source_campaign_id);`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS creator_campaign_templates_creator_updated_at_idx ON creator_campaign_templates(creator_user_id, updated_at);`);
@@ -4451,6 +4457,55 @@ function serializeCreatorCampaignPlaybookProfile(profile: CreatorCampaignPlayboo
   };
 }
 
+function roundPlaybookMetric(value: number | null | undefined, digits = 1) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const factor = 10 ** digits;
+  return Math.round(value * factor) / factor;
+}
+
+function playbookScorecardLabel(input: { averageOutcomeScore: number; appliedCount: number }): CreatorCampaignPlaybookScorecardLabel {
+  if (input.appliedCount <= 0) return "promising";
+  if (input.appliedCount === 1) {
+    if (input.averageOutcomeScore >= 8) return "promising";
+    if (input.averageOutcomeScore <= -6) return "weak";
+    return "mixed";
+  }
+  if (input.averageOutcomeScore >= 12) return "strong";
+  if (input.averageOutcomeScore >= 2) return "promising";
+  if (input.averageOutcomeScore <= -8) return "weak";
+  return "mixed";
+}
+
+function playbookOutcomeStrengthLabel(value: CreatorCampaignPlaybookScorecardLabel) {
+  switch (value) {
+    case "strong":
+      return "Strong past results";
+    case "promising":
+      return "Promising, limited history";
+    case "weak":
+      return "Weaker past results";
+    default:
+      return "Mixed historical results";
+  }
+}
+
+function healthStateRank(state: CreatorCampaignHealthState | null | undefined) {
+  switch (state) {
+    case "thriving":
+      return 2;
+    case "healthy":
+      return 1;
+    case "completed":
+      return 1;
+    case "watch":
+      return -1;
+    case "at_risk":
+      return -2;
+    default:
+      return 0;
+  }
+}
+
 function diffHoursBetween(start: Date | null | undefined, end: Date | null | undefined) {
   if (!start || !end) return null;
   const diffMs = end.getTime() - start.getTime();
@@ -4568,6 +4623,7 @@ async function applyCreatorCampaignPlaybookProfileToCampaign(input: {
     profile.notes?.trim() || null,
     profile.preferredCtaDirection ? `Suggested CTA direction: ${profile.preferredCtaDirection.replaceAll("_", " ")}.` : null,
   ], 4).join(" ");
+  const appliedAt = new Date();
 
   const updatedRows = await db
     .update(creatorCampaigns)
@@ -4578,6 +4634,8 @@ async function applyCreatorCampaignPlaybookProfileToCampaign(input: {
       unlockFollowersAt: nextFollowerUnlock,
       unlockPublicAt: nextPublicUnlock,
       rolloutNotes: mergedNotes || null,
+      appliedPlaybookProfileId: profile.id,
+      playbookAppliedAt: appliedAt,
       updatedAt: new Date(),
     })
     .where(eq(creatorCampaigns.id, campaign.id))
@@ -4897,14 +4955,452 @@ async function loadCreatorCampaignPlaybookFitCollection(creatorUserId: string, c
     };
   });
 
+  const outcomes = await loadCreatorCampaignPlaybookOutcomeCollection(creatorUserId);
+  const outcomeByPlaybookId = new Map(
+    outcomes.items.map((item) => [
+      String((item as { playbookId: string }).playbookId),
+      item as {
+        playbookId: string;
+        appliedCount: number;
+        scorecardLabel: CreatorCampaignPlaybookScorecardLabel;
+        confidenceNote: string | null;
+      },
+    ] as const),
+  );
+
+  const itemsWithOutcomeContext = items.map((item) => ({
+    ...item,
+    bestMatch: item.bestMatch
+      ? {
+          ...item.bestMatch,
+          historicalOutcomeLabel: outcomeByPlaybookId.get(item.bestMatch.playbookId)
+            ? playbookOutcomeStrengthLabel(outcomeByPlaybookId.get(item.bestMatch.playbookId)!.scorecardLabel)
+            : null,
+          historicalOutcomeConfidenceNote: outcomeByPlaybookId.get(item.bestMatch.playbookId)?.confidenceNote ?? null,
+          historicalOutcomeAppliedCount: outcomeByPlaybookId.get(item.bestMatch.playbookId)?.appliedCount ?? 0,
+        }
+      : null,
+    runnerUp: item.runnerUp
+      ? {
+          ...item.runnerUp,
+          historicalOutcomeLabel: outcomeByPlaybookId.get(item.runnerUp.playbookId)
+            ? playbookOutcomeStrengthLabel(outcomeByPlaybookId.get(item.runnerUp.playbookId)!.scorecardLabel)
+            : null,
+          historicalOutcomeConfidenceNote: outcomeByPlaybookId.get(item.runnerUp.playbookId)?.confidenceNote ?? null,
+          historicalOutcomeAppliedCount: outcomeByPlaybookId.get(item.runnerUp.playbookId)?.appliedCount ?? 0,
+        }
+      : null,
+    matches: item.matches.map((match) => ({
+      ...match,
+      historicalOutcomeLabel: outcomeByPlaybookId.get(match.playbookId)
+        ? playbookOutcomeStrengthLabel(outcomeByPlaybookId.get(match.playbookId)!.scorecardLabel)
+        : null,
+      historicalOutcomeConfidenceNote: outcomeByPlaybookId.get(match.playbookId)?.confidenceNote ?? null,
+      historicalOutcomeAppliedCount: outcomeByPlaybookId.get(match.playbookId)?.appliedCount ?? 0,
+    })),
+  }));
+
   return {
-    items,
+    items: itemsWithOutcomeContext,
     profiles: profiles.map(serializeCreatorCampaignPlaybookProfile),
     attributionNotes: [
       "Playbook fit is intentionally rules-based and lightweight. It compares only campaign fields and saved playbook profile fields already stored in ChefSire.",
       "This is not a recommendation engine and it does not use hidden ML scoring, external creator clusters, or cross-creator strategy borrowing.",
       "Templates and clone/reuse stay separate: playbook fit only answers which saved strategy preset looks closest to this campaign right now.",
       "Rollout advisor and timing advisor stay separate too: playbook fit checks alignment with a saved preset, rather than generating a new advisor thesis from scratch.",
+    ],
+    generatedAt: new Date().toISOString(),
+  };
+}
+
+async function loadCreatorCampaignPlaybookOutcomeCollection(creatorUserId: string) {
+  if (!db) throw new Error("Database unavailable");
+
+  const [profiles, campaigns, performance, health, readiness, bottlenecks] = await Promise.all([
+    db
+      .select()
+      .from(creatorCampaignPlaybookProfiles)
+      .where(eq(creatorCampaignPlaybookProfiles.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorCampaignPlaybookProfiles.updatedAt), desc(creatorCampaignPlaybookProfiles.createdAt)),
+    db
+      .select()
+      .from(creatorCampaigns)
+      .where(eq(creatorCampaigns.creatorUserId, creatorUserId))
+      .orderBy(desc(creatorCampaigns.updatedAt), desc(creatorCampaigns.createdAt))
+      .limit(160),
+    loadCreatorCampaignPerformanceSnapshots(creatorUserId),
+    loadCreatorCampaignHealth(creatorUserId),
+    loadCreatorCampaignLaunchReadiness(creatorUserId),
+    loadCreatorCampaignFunnelBottlenecks(creatorUserId),
+  ]);
+
+  if (!profiles.length) {
+    return {
+      items: [] as Array<Record<string, unknown>>,
+      strongestPlaybooks: [] as Array<Record<string, unknown>>,
+      weakestPlaybooks: [] as Array<Record<string, unknown>>,
+      attributionNotes: [
+        "Playbook outcomes stay creator-private and only summarize this creator's own campaigns where a saved playbook was explicitly applied.",
+        "No saved playbook profiles exist yet, so there is no strategy scorecard to summarize.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const appliedCampaigns = campaigns.filter((campaign) => Boolean(campaign.appliedPlaybookProfileId));
+  if (!appliedCampaigns.length) {
+    const emptyItems = profiles.map((profile) => ({
+      playbookId: profile.id,
+      playbookName: profile.name,
+      playbookDescription: profile.description ?? null,
+      appliedCount: 0,
+      appliedCampaignCount: 0,
+      campaignsUsingIt: [] as Array<Record<string, unknown>>,
+      activeCampaignCount: 0,
+      archivedCampaignCount: 0,
+      averageFollowerOutcome: null,
+      averageFollowerGain: null,
+      averageRsvpOutcome: null,
+      averageRsvpLift: null,
+      averageClickOutcome: null,
+      averageClickPerformance: null,
+      averageApproxPurchaseOutcome: null,
+      averageApproxPurchasePerformance: null,
+      averageApproxMembershipOutcome: null,
+      averageApproxMembershipPerformance: null,
+      averageGoalCompletionRate: null,
+      averageReadinessScore: null,
+      averageHealthStateImprovement: null,
+      averageBottleneckReduction: null,
+      strongestUseCase: "Apply this playbook to at least one campaign to start a lightweight scorecard.",
+      scorecardLabel: "promising" as CreatorCampaignPlaybookScorecardLabel,
+      confidenceNote: "No campaign has been explicitly linked to this playbook yet, so ChefSire is not inferring strategy outcomes.",
+      summary: "No applied-history signal yet.",
+      strongestCampaignExample: null,
+      weakestCampaignExample: null,
+    }));
+
+    return {
+      items: emptyItems,
+      strongestPlaybooks: [],
+      weakestPlaybooks: [],
+      attributionNotes: [
+        "Playbook outcomes stay creator-private and only summarize this creator's own campaigns where a saved playbook was explicitly applied.",
+        "This route stays intentionally lightweight: it uses the campaign → playbook link plus existing follower, RSVP, click, purchase, membership, readiness, health, and bottleneck signals already in ChefSire.",
+        "Outcome fields are directional and approximate. They show what happened after a playbook was applied, not strict causality.",
+      ],
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  const campaignIds = appliedCampaigns.map((campaign) => campaign.id);
+  const linkMap = await loadCreatorCampaignLinksByCampaignIds(campaignIds);
+  const dropIds = [...new Set(appliedCampaigns.flatMap((campaign) => (
+    (linkMap.get(campaign.id) ?? []).filter((link) => link.targetType === "drop").map((link) => link.targetId)
+  )))];
+  const collectionIds = [...new Set(appliedCampaigns.flatMap((campaign) => (
+    (linkMap.get(campaign.id) ?? []).filter((link) => link.targetType === "collection").map((link) => link.targetId)
+  )))];
+
+  const [goalRows, followRows, dropEventRows, rsvpRows, purchaseRows, membershipRows] = await Promise.all([
+    db
+      .select()
+      .from(creatorCampaignGoals)
+      .where(inArray(creatorCampaignGoals.campaignId, campaignIds))
+      .orderBy(desc(creatorCampaignGoals.updatedAt), asc(creatorCampaignGoals.createdAt)),
+    db.select({
+      campaignId: creatorCampaignFollows.campaignId,
+      createdAt: creatorCampaignFollows.createdAt,
+    }).from(creatorCampaignFollows).where(inArray(creatorCampaignFollows.campaignId, campaignIds)).orderBy(asc(creatorCampaignFollows.createdAt)),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropEvents.dropId,
+          eventType: creatorDropEvents.eventType,
+          createdAt: creatorDropEvents.createdAt,
+        }).from(creatorDropEvents).where(inArray(creatorDropEvents.dropId, dropIds)).orderBy(asc(creatorDropEvents.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; eventType: string; createdAt: Date }>),
+    dropIds.length
+      ? db.select({
+          dropId: creatorDropRsvps.dropId,
+          createdAt: creatorDropRsvps.createdAt,
+        }).from(creatorDropRsvps).where(inArray(creatorDropRsvps.dropId, dropIds)).orderBy(asc(creatorDropRsvps.createdAt))
+      : Promise.resolve([] as Array<{ dropId: string; createdAt: Date }>),
+    collectionIds.length
+      ? db.select({
+          collectionId: drinkCollectionPurchases.collectionId,
+          createdAt: drinkCollectionPurchases.createdAt,
+          status: drinkCollectionPurchases.status,
+        }).from(drinkCollectionPurchases).where(inArray(drinkCollectionPurchases.collectionId, collectionIds)).orderBy(asc(drinkCollectionPurchases.createdAt))
+      : Promise.resolve([] as Array<{ collectionId: string; createdAt: Date; status: string }>),
+    db.select({
+      createdAt: creatorMemberships.createdAt,
+      status: creatorMemberships.status,
+    }).from(creatorMemberships).where(eq(creatorMemberships.creatorUserId, creatorUserId)).orderBy(asc(creatorMemberships.createdAt)),
+  ]);
+
+  const performanceByCampaignId = new Map(performance.items.map((item) => [item.campaignId, item]));
+  const healthByCampaignId = new Map(health.items.map((item) => [item.campaignId, item]));
+  const readinessByCampaignId = new Map<string, Array<typeof readiness.items[number]>>();
+  for (const item of readiness.items) {
+    const current = readinessByCampaignId.get(item.campaignId) ?? [];
+    current.push(item);
+    readinessByCampaignId.set(item.campaignId, current);
+  }
+  const bottleneckByCampaignId = new Map(bottlenecks.items.map((item) => [item.campaignId, item]));
+
+  const goalsByCampaignId = new Map<string, CreatorCampaignGoalRecord[]>();
+  for (const row of goalRows) {
+    const current = goalsByCampaignId.get(row.campaignId) ?? [];
+    current.push(row);
+    goalsByCampaignId.set(row.campaignId, current);
+  }
+
+  const followRowsByCampaignId = new Map<string, Array<{ createdAt: Date }>>();
+  for (const row of followRows) {
+    const current = followRowsByCampaignId.get(row.campaignId) ?? [];
+    current.push({ createdAt: row.createdAt });
+    followRowsByCampaignId.set(row.campaignId, current);
+  }
+
+  const dropEventRowsByDropId = new Map<string, Array<{ eventType: string; createdAt: Date }>>();
+  for (const row of dropEventRows) {
+    const current = dropEventRowsByDropId.get(row.dropId) ?? [];
+    current.push({ eventType: row.eventType, createdAt: row.createdAt });
+    dropEventRowsByDropId.set(row.dropId, current);
+  }
+
+  const rsvpRowsByDropId = new Map<string, Array<{ createdAt: Date }>>();
+  for (const row of rsvpRows) {
+    const current = rsvpRowsByDropId.get(row.dropId) ?? [];
+    current.push({ createdAt: row.createdAt });
+    rsvpRowsByDropId.set(row.dropId, current);
+  }
+
+  const purchaseRowsByCollectionId = new Map<string, Array<{ createdAt: Date; status: string }>>();
+  for (const row of purchaseRows) {
+    const current = purchaseRowsByCollectionId.get(row.collectionId) ?? [];
+    current.push({ createdAt: row.createdAt, status: row.status });
+    purchaseRowsByCollectionId.set(row.collectionId, current);
+  }
+
+  const activeMembershipRows = membershipRows.filter((row) => row.status === "active");
+
+  const campaignsByProfileId = new Map<string, CreatorCampaignRecord[]>();
+  for (const campaign of appliedCampaigns) {
+    const profileId = campaign.appliedPlaybookProfileId;
+    if (!profileId) continue;
+    const current = campaignsByProfileId.get(profileId) ?? [];
+    current.push(campaign);
+    campaignsByProfileId.set(profileId, current);
+  }
+
+  const items = profiles.map((profile) => {
+    const profileCampaigns = campaignsByProfileId.get(profile.id) ?? [];
+    const campaignSummaries = profileCampaigns.map((campaign) => {
+      const analytics = performanceByCampaignId.get(campaign.id) ?? null;
+      const healthItem = healthByCampaignId.get(campaign.id) ?? null;
+      const readinessItems = readinessByCampaignId.get(campaign.id) ?? [];
+      const bottleneckItem = bottleneckByCampaignId.get(campaign.id) ?? null;
+      const goals = (goalsByCampaignId.get(campaign.id) ?? []).map((goal) => serializeCreatorCampaignGoal(goal, analytics));
+      const windowStart = campaign.startsAt ?? campaign.createdAt;
+      const appliedAt = campaign.playbookAppliedAt ?? campaign.updatedAt ?? campaign.createdAt;
+      const links = linkMap.get(campaign.id) ?? [];
+      const dropLinkIds = links.filter((link) => link.targetType === "drop").map((link) => link.targetId);
+      const collectionLinkIds = links.filter((link) => link.targetType === "collection").map((link) => link.targetId);
+
+      const countSinceApplied = (rows: Array<{ createdAt: Date }>) => rows.filter((row) => row.createdAt >= appliedAt && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length;
+      const countBeforeApplied = (rows: Array<{ createdAt: Date }>) => rows.filter((row) => row.createdAt >= windowStart && row.createdAt < appliedAt && isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign)).length;
+
+      const followRowsForCampaign = followRowsByCampaignId.get(campaign.id) ?? [];
+      const rsvpRowsForCampaign = dropLinkIds.flatMap((dropId) => rsvpRowsByDropId.get(dropId) ?? []);
+      const clickRowsForCampaign = dropLinkIds.flatMap((dropId) => (dropEventRowsByDropId.get(dropId) ?? []).filter((row) => row.eventType === "click_drop_target"));
+      const viewRowsForCampaign = dropLinkIds.flatMap((dropId) => (dropEventRowsByDropId.get(dropId) ?? []).filter((row) => row.eventType === "view_drop"));
+      const purchaseRowsForCampaign = collectionLinkIds.flatMap((collectionId) => (purchaseRowsByCollectionId.get(collectionId) ?? []).filter((row) => row.status === "completed"));
+      const membershipRowsForCampaign = analytics?.membershipsFromCampaignNote
+        ? activeMembershipRows.filter((row) => isDateWithinCampaignAnalyticsWindow(row.createdAt, campaign))
+        : [];
+
+      const beforeFollowers = countBeforeApplied(followRowsForCampaign);
+      const afterFollowers = countSinceApplied(followRowsForCampaign);
+      const beforeRsvps = countBeforeApplied(rsvpRowsForCampaign);
+      const afterRsvps = countSinceApplied(rsvpRowsForCampaign);
+      const beforeClicks = countBeforeApplied(clickRowsForCampaign);
+      const afterClicks = countSinceApplied(clickRowsForCampaign);
+      const beforeViews = countBeforeApplied(viewRowsForCampaign);
+      const afterViews = countSinceApplied(viewRowsForCampaign);
+      const beforePurchases = countBeforeApplied(purchaseRowsForCampaign);
+      const afterPurchases = countSinceApplied(purchaseRowsForCampaign);
+      const beforeMemberships = countBeforeApplied(membershipRowsForCampaign);
+      const afterMemberships = countSinceApplied(membershipRowsForCampaign);
+      const beforeLeakage = beforeViews > 0 ? roundRate(100 - ((Math.max(beforePurchases, beforeMemberships) / beforeViews) * 100)) : null;
+      const afterLeakage = afterViews > 0 ? roundRate(100 - ((Math.max(afterPurchases, afterMemberships) / afterViews) * 100)) : null;
+      const bottleneckReduction = beforeLeakage !== null && afterLeakage !== null ? roundPlaybookMetric(beforeLeakage - afterLeakage) : null;
+      const averageReadinessScore = readinessItems.length
+        ? roundPlaybookMetric(readinessItems.reduce((sum, item) => sum + item.readinessScore, 0) / readinessItems.length)
+        : null;
+      const averageGoalCompletionRate = goals.length
+        ? roundPlaybookMetric(goals.reduce((sum, goal) => sum + goal.percentComplete, 0) / goals.length)
+        : null;
+      const healthImprovement = healthItem
+        ? roundPlaybookMetric(
+          healthStateRank(healthItem.healthState)
+          + (healthItem.recentFollowers > healthItem.previousFollowers ? 0.3 : healthItem.recentFollowers < healthItem.previousFollowers ? -0.3 : 0)
+          + (healthItem.recentRsvps > healthItem.previousRsvps ? 0.3 : healthItem.recentRsvps < healthItem.previousRsvps ? -0.3 : 0)
+          + (healthItem.recentClicks > healthItem.previousClicks ? 0.2 : healthItem.recentClicks < healthItem.previousClicks ? -0.2 : 0)
+          + (healthItem.recentPurchases > healthItem.previousPurchases ? 0.4 : healthItem.recentPurchases < healthItem.previousPurchases ? -0.4 : 0)
+          + (healthItem.recentMemberships > healthItem.previousMemberships ? 0.4 : healthItem.recentMemberships < healthItem.previousMemberships ? -0.4 : 0),
+        )
+        : null;
+
+      const weightedOutcomeScore = roundPlaybookMetric(
+        (afterFollowers - beforeFollowers)
+        + (afterRsvps - beforeRsvps) * 2
+        + (afterClicks - beforeClicks) * 3
+        + (afterPurchases - beforePurchases) * 5
+        + (afterMemberships - beforeMemberships) * 6,
+      ) ?? 0;
+
+      return {
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignSlug: campaign.slug,
+        campaignRoute: `/drinks/campaigns/${encodeURIComponent(campaign.slug)}`,
+        state: getCreatorCampaignState(campaign),
+        visibility: campaign.visibility as CreatorCampaignVisibility,
+        appliedAt: appliedAt.toISOString(),
+        followerOutcome: afterFollowers - beforeFollowers,
+        rsvpOutcome: afterRsvps - beforeRsvps,
+        clickOutcome: afterClicks - beforeClicks,
+        approxPurchaseOutcome: afterPurchases - beforePurchases,
+        approxMembershipOutcome: afterMemberships - beforeMemberships,
+        goalCompletionRate: averageGoalCompletionRate,
+        readinessScore: averageReadinessScore,
+        healthState: healthItem?.healthState ?? null,
+        healthScore: healthItem?.healthScore ?? null,
+        healthStateImprovement: healthImprovement,
+        bottleneckReduction,
+        currentLeakage: bottleneckItem?.overallLeakageFromViews ?? null,
+        weightedOutcomeScore,
+        notes: [
+          `Counts compare campaign signal after ${new Date(appliedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} against signal earlier in the same campaign window.`,
+          analytics?.purchasesFromLinkedCollectionsNote ?? null,
+          analytics?.membershipsFromCampaignNote ?? null,
+        ].filter((value): value is string => Boolean(value)),
+      };
+    });
+
+    const appliedCount = campaignSummaries.length;
+    const activeCampaignCount = campaignSummaries.filter((item) => item.state === "active" || item.state === "upcoming").length;
+    const archivedCampaignCount = campaignSummaries.filter((item) => item.state === "past").length;
+    const averageOutcomeScore = appliedCount
+      ? (campaignSummaries.reduce((sum, item) => sum + item.weightedOutcomeScore, 0) / appliedCount)
+      : 0;
+    const scorecardLabel = playbookScorecardLabel({ averageOutcomeScore, appliedCount });
+    const strongestCampaignExample = [...campaignSummaries].sort((a, b) => b.weightedOutcomeScore - a.weightedOutcomeScore || a.campaignName.localeCompare(b.campaignName))[0] ?? null;
+    const weakestCampaignExample = [...campaignSummaries].sort((a, b) => a.weightedOutcomeScore - b.weightedOutcomeScore || a.campaignName.localeCompare(b.campaignName))[0] ?? null;
+
+    const average = (selector: (item: typeof campaignSummaries[number]) => number | null) => {
+      const values = campaignSummaries.map(selector).filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+      if (!values.length) return null;
+      return roundPlaybookMetric(values.reduce((sum, value) => sum + value, 0) / values.length);
+    };
+
+    const visibilityCounts = campaignSummaries.reduce<Record<CreatorCampaignVisibility, number>>((acc, item) => {
+      acc[item.visibility] += 1;
+      return acc;
+    }, { public: 0, followers: 0, members: 0 });
+    const dominantVisibility = (Object.entries(visibilityCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? "public") as CreatorCampaignVisibility;
+    const averageFollowerOutcome = average((item) => item.followerOutcome);
+    const averageRsvpOutcome = average((item) => item.rsvpOutcome);
+    const averageClickOutcome = average((item) => item.clickOutcome);
+    const averageApproxPurchaseOutcome = average((item) => item.approxPurchaseOutcome);
+    const averageApproxMembershipOutcome = average((item) => item.approxMembershipOutcome);
+    const strongestUseCase = appliedCount === 0
+      ? "Apply this playbook to at least one campaign to start learning what it is actually good at."
+      : averageApproxMembershipOutcome && averageApproxMembershipOutcome > Math.max(averageFollowerOutcome ?? 0, averageRsvpOutcome ?? 0)
+        ? "This playbook tends to look best on member-first or membership-forward campaigns."
+        : averageApproxPurchaseOutcome && averageApproxPurchaseOutcome > Math.max(averageFollowerOutcome ?? 0, averageRsvpOutcome ?? 0)
+          ? "This playbook looks most useful on conversion-oriented launches with linked collections."
+          : averageRsvpOutcome && averageRsvpOutcome > Math.max(averageFollowerOutcome ?? 0, averageClickOutcome ?? 0)
+            ? "This playbook tends to work best when the campaign's main job is RSVP interest."
+            : dominantVisibility === "members"
+              ? "This playbook is showing its clearest signal on member-first campaigns."
+              : dominantVisibility === "followers"
+                ? "This playbook currently looks strongest on follower-first campaigns."
+                : "This playbook is currently strongest on broader public launches.";
+
+    const summaryParts = [
+      strongestUseCase,
+      appliedCount <= 1
+        ? "Promising, but the history is still limited."
+        : averageApproxPurchaseOutcome !== null && averageApproxPurchaseOutcome <= 0 && (averageFollowerOutcome ?? 0) > 0
+          ? "Follower growth looks stronger than conversion so far."
+          : averageApproxPurchaseOutcome !== null && averageApproxPurchaseOutcome > 0 && (averageFollowerOutcome ?? 0) <= 0
+            ? "Conversion looks stronger than top-of-funnel growth so far."
+            : null,
+    ].filter((value): value is string => Boolean(value));
+
+    return {
+      playbookId: profile.id,
+      playbookName: profile.name,
+      playbookDescription: profile.description ?? null,
+      appliedCount,
+      appliedCampaignCount: appliedCount,
+      campaignsUsingIt: campaignSummaries.map((item) => ({
+        campaignId: item.campaignId,
+        campaignName: item.campaignName,
+        campaignSlug: item.campaignSlug,
+        campaignRoute: item.campaignRoute,
+        state: item.state,
+        appliedAt: item.appliedAt,
+      })),
+      activeCampaignCount,
+      archivedCampaignCount,
+      averageFollowerOutcome,
+      averageFollowerGain: averageFollowerOutcome,
+      averageRsvpOutcome,
+      averageRsvpLift: averageRsvpOutcome,
+      averageClickOutcome,
+      averageClickPerformance: averageClickOutcome,
+      averageApproxPurchaseOutcome,
+      averageApproxPurchasePerformance: averageApproxPurchaseOutcome,
+      averageApproxMembershipOutcome,
+      averageApproxMembershipPerformance: averageApproxMembershipOutcome,
+      averageGoalCompletionRate: average((item) => item.goalCompletionRate),
+      averageReadinessScore: average((item) => item.readinessScore),
+      averageHealthStateImprovement: average((item) => item.healthStateImprovement),
+      averageBottleneckReduction: average((item) => item.bottleneckReduction),
+      strongestUseCase,
+      summary: summaryParts.join(" "),
+      confidenceNote: appliedCount === 0
+        ? "No applied playbook history yet."
+        : appliedCount === 1
+          ? "One applied campaign only — read this as directional learning, not a proven strategy."
+          : "Directional only: ChefSire compares the same campaign before vs. after playbook application plus current creator-private health/readiness context. It does not claim strict causality.",
+      strongestCampaignExample,
+      weakestCampaignExample,
+      scorecardLabel,
+    };
+  });
+
+  const ranked = [...items]
+    .filter((item) => item.appliedCount > 0)
+    .sort((a, b) => {
+      const rank = (value: CreatorCampaignPlaybookScorecardLabel) => value === "strong" ? 4 : value === "promising" ? 3 : value === "mixed" ? 2 : 1;
+      return rank(b.scorecardLabel) - rank(a.scorecardLabel)
+        || ((b.strongestCampaignExample?.weightedOutcomeScore ?? -999) - (a.strongestCampaignExample?.weightedOutcomeScore ?? -999))
+        || a.playbookName.localeCompare(b.playbookName);
+    });
+
+  return {
+    items,
+    strongestPlaybooks: ranked.filter((item) => item.scorecardLabel === "strong" || item.scorecardLabel === "promising").slice(0, 3),
+    weakestPlaybooks: [...ranked].reverse().filter((item) => item.scorecardLabel === "weak" || item.scorecardLabel === "mixed").slice(0, 3),
+    attributionNotes: [
+      "Playbook outcomes stay creator-private and only summarize this creator's own campaigns where a saved playbook was explicitly applied.",
+      "This route stays intentionally lightweight: it uses the campaign → playbook link plus existing follower, RSVP, click, purchase, membership, readiness, health, and bottleneck signals already in ChefSire.",
+      "Outcome fields are directional and approximate. They compare what happened after a playbook was applied against earlier signal in the same campaign window or current creator-private status layers.",
+      "Playbook profiles stay distinct from playbook fit, templates/clone, rollout advisors, and the experiment library: this layer only reports how saved strategy presets have performed once applied.",
     ],
     generatedAt: new Date().toISOString(),
   };
@@ -22296,7 +22792,7 @@ r.get("/creator-dashboard/campaign-playbook-profiles", requireAuth, async (req, 
       return res.status(503).json({ ok: false, error: "Database unavailable" });
     }
 
-    const [profiles, campaigns] = await Promise.all([
+    const [profiles, campaigns, outcomes] = await Promise.all([
       db
         .select()
         .from(creatorCampaignPlaybookProfiles)
@@ -22308,12 +22804,31 @@ r.get("/creator-dashboard/campaign-playbook-profiles", requireAuth, async (req, 
         .where(eq(creatorCampaigns.creatorUserId, req.user!.id))
         .orderBy(desc(creatorCampaigns.updatedAt))
         .limit(24),
+      loadCreatorCampaignPlaybookOutcomeCollection(req.user!.id),
     ]);
+    const outcomeByPlaybookId = new Map(
+      outcomes.items.map((item) => [String((item as { playbookId: string }).playbookId), item as {
+        playbookId: string;
+        appliedCount: number;
+        scorecardLabel: CreatorCampaignPlaybookScorecardLabel;
+        confidenceNote: string | null;
+      }] as const),
+    );
 
     return res.json({
       ok: true,
       count: profiles.length,
-      items: profiles.map(serializeCreatorCampaignPlaybookProfile),
+      items: profiles.map((profile) => ({
+        ...serializeCreatorCampaignPlaybookProfile(profile),
+        outcomeSnapshot: outcomeByPlaybookId.get(profile.id)
+          ? {
+              appliedCount: outcomeByPlaybookId.get(profile.id)!.appliedCount,
+              scorecardLabel: outcomeByPlaybookId.get(profile.id)!.scorecardLabel,
+              outcomeLabel: playbookOutcomeStrengthLabel(outcomeByPlaybookId.get(profile.id)!.scorecardLabel),
+              confidenceNote: outcomeByPlaybookId.get(profile.id)!.confidenceNote,
+            }
+          : null,
+      })),
       availableCampaigns: campaigns.map((campaign) => ({
         id: campaign.id,
         name: campaign.name,
@@ -22483,6 +22998,32 @@ r.get("/creator-dashboard/campaign-playbook-fit", requireAuth, async (req, res) 
     return res.status(500).json(collectionServerError(message, "Failed to load campaign playbook fit"));
   }
 });
+
+async function handleCreatorCampaignPlaybookOutcomesRoute(req: Request, res: Response) {
+  try {
+    await ensureDrinkCollectionsSchema();
+    if (!db) {
+      return res.status(503).json({ ok: false, error: "Database unavailable" });
+    }
+
+    const outcomes = await loadCreatorCampaignPlaybookOutcomeCollection(req.user!.id);
+    return res.json({
+      ok: true,
+      count: outcomes.items.length,
+      strongestPlaybooks: outcomes.strongestPlaybooks,
+      weakestPlaybooks: outcomes.weakestPlaybooks,
+      items: outcomes.items,
+      attributionNotes: outcomes.attributionNotes,
+      generatedAt: outcomes.generatedAt,
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/creator-dashboard/campaign-playbook-outcomes", req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load campaign playbook outcomes"));
+  }
+}
+
+r.get("/creator-dashboard/campaign-playbook-outcomes", requireAuth, handleCreatorCampaignPlaybookOutcomesRoute);
+r.get("/creator-dashboard/campaign-playbook-effectiveness", requireAuth, handleCreatorCampaignPlaybookOutcomesRoute);
 
 r.get("/campaigns/:id/playbook-fit", requireAuth, async (req, res) => {
   try {

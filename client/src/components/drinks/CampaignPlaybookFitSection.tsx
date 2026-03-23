@@ -20,6 +20,9 @@ type PlaybookMatch = {
   whyItFits: string[];
   mismatches: string[];
   suggestedAdjustments: string[];
+  historicalOutcomeLabel?: string | null;
+  historicalOutcomeConfidenceNote?: string | null;
+  historicalOutcomeAppliedCount?: number;
 };
 
 type CampaignPlaybookFitItem = {
@@ -195,6 +198,12 @@ export default function CampaignPlaybookFitSection(props: {
                       {item.bestMatch.fitScore}/100
                       {" · "}
                       {recommendationCopy(item.bestMatch.recommendation)}
+                      {item.bestMatch.historicalOutcomeLabel ? (
+                        <>
+                          {" · "}
+                          <span className="text-foreground">{item.bestMatch.historicalOutcomeLabel}</span>
+                        </>
+                      ) : null}
                     </p>
                   ) : (
                     <p className="text-sm text-muted-foreground">No saved playbook profile has enough signal to suggest yet.</p>
@@ -247,6 +256,18 @@ export default function CampaignPlaybookFitSection(props: {
                     <div className="rounded-md bg-muted/30 p-3 text-sm">
                       <p className="font-medium text-foreground">Suggested use</p>
                       <p className="mt-1 text-muted-foreground">{recommendationCopy(item.bestMatch.recommendation)}</p>
+                      {item.bestMatch.historicalOutcomeLabel ? (
+                        <p className="mt-2 text-muted-foreground">
+                          Historical outcome context: {item.bestMatch.historicalOutcomeLabel}
+                          {typeof item.bestMatch.historicalOutcomeAppliedCount === "number"
+                            ? ` across ${item.bestMatch.historicalOutcomeAppliedCount} applied campaign${item.bestMatch.historicalOutcomeAppliedCount === 1 ? "" : "s"}`
+                            : ""}
+                          .
+                        </p>
+                      ) : null}
+                      {item.bestMatch.historicalOutcomeConfidenceNote ? (
+                        <p className="mt-2 text-xs text-muted-foreground">{item.bestMatch.historicalOutcomeConfidenceNote}</p>
+                      ) : null}
                       {item.bestMatch.suggestedAdjustments.length > 0 ? (
                         <ul className="mt-2 list-disc space-y-1 pl-5 text-muted-foreground">
                           {item.bestMatch.suggestedAdjustments.map((adjustment) => <li key={adjustment}>{adjustment}</li>)}

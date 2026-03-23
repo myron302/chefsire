@@ -39,6 +39,12 @@ type PlaybookProfileItem = {
   preferredExperimentTypes: ExperimentType[];
   preferredAudienceFit: CampaignAudience | null;
   notes: string | null;
+  outcomeSnapshot: {
+    appliedCount: number;
+    scorecardLabel: "strong" | "promising" | "mixed" | "weak";
+    outcomeLabel: string;
+    confidenceNote: string | null;
+  } | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -442,6 +448,7 @@ export default function CampaignPlaybookProfilesSection() {
                           <Badge variant="secondary">{rolloutModeLabel(item.rolloutMode)}</Badge>
                           {item.preferredAudienceFit ? <Badge variant="outline">Best fit: {audienceLabel(item.preferredAudienceFit)}</Badge> : null}
                           {item.preferredCtaDirection ? <Badge variant="outline">CTA: {ctaDirectionLabel(item.preferredCtaDirection)}</Badge> : null}
+                          {item.outcomeSnapshot ? <Badge variant="outline">{item.outcomeSnapshot.outcomeLabel}</Badge> : null}
                         </div>
                         {item.description ? <p className="text-sm text-muted-foreground">{item.description}</p> : null}
                         <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
@@ -449,6 +456,7 @@ export default function CampaignPlaybookProfilesSection() {
                           <span>Starts with: {audienceLabel(item.startsWithAudience)}</span>
                           {item.recommendedFollowerUnlockDelayHours ? <span>Follower delay: {item.recommendedFollowerUnlockDelayHours}h</span> : null}
                           {item.recommendedPublicUnlockDelayHours ? <span>Public delay: {item.recommendedPublicUnlockDelayHours}h</span> : null}
+                          {item.outcomeSnapshot ? <span>Applied: {item.outcomeSnapshot.appliedCount}</span> : null}
                         </div>
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -488,6 +496,10 @@ export default function CampaignPlaybookProfilesSection() {
                           <Badge key={`${item.id}-${type}`} variant="secondary">{experimentOptions.find((option) => option.value === type)?.label ?? type}</Badge>
                         ))}
                       </div>
+                    ) : null}
+
+                    {item.outcomeSnapshot?.confidenceNote ? (
+                      <p className="mt-3 rounded-md border border-dashed p-3 text-sm text-muted-foreground">{item.outcomeSnapshot.confidenceNote}</p>
                     ) : null}
 
                     {item.notes ? <p className="mt-3 rounded-md border border-dashed p-3 text-sm text-muted-foreground">{item.notes}</p> : null}
