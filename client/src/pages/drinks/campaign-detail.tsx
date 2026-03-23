@@ -12,6 +12,10 @@ import CampaignStageRecapsSection from "@/components/drinks/CampaignStageRecapsS
 import CampaignUnlockControls from "@/components/drinks/CampaignUnlockControls";
 import CampaignFixExperimentsSection from "@/components/drinks/CampaignFixExperimentsSection";
 import CampaignPlaybookFitSection from "@/components/drinks/CampaignPlaybookFitSection";
+import CampaignPlaybookOnboardingChecklist, {
+  CampaignPlaybookOnboardingSummaryChips,
+  type CampaignPlaybookOnboardingItem,
+} from "@/components/drinks/CampaignPlaybookOnboardingChecklist";
 import { CampaignLifecycleSuggestionPanel, type CampaignLifecycleSuggestion } from "@/components/drinks/CampaignLifecycleSuggestionsSection";
 import { CampaignWrapUpPanel, type CampaignRetrospectiveItem } from "@/components/drinks/CampaignRetrospectivesSection";
 import CampaignFollowButton from "@/components/drinks/CampaignFollowButton";
@@ -281,6 +285,12 @@ interface CampaignDetailResponse {
   }>;
 }
 
+type CampaignPlaybookOnboardingResponse = {
+  ok: boolean;
+  campaignId: string;
+  item: CampaignPlaybookOnboardingItem;
+};
+
 function describeState(campaign: CreatorCampaignItem) {
   if (campaign.state === "upcoming") return "This story arc is queued up and will become more relevant as the linked drops and notes roll in.";
   if (campaign.state === "past") return "This arc has moved into recap mode, but the linked drops, posts, and roadmap notes still tell the full launch story.";
@@ -498,10 +508,22 @@ export default function DrinkCampaignDetailPage() {
     enabled: Boolean(slug),
   });
 
-  if (!matched) return null;
-
   const campaign = query.data?.campaign ?? null;
+  const isOwner = Boolean(user?.id && query.data?.campaign.creatorUserId && user.id === query.data.campaign.creatorUserId);
+  const onboardingQuery = useQuery<CampaignPlaybookOnboardingResponse>({
+    queryKey: [campaign?.id ? `/api/drinks/campaigns/${campaign.id}/playbook-onboarding` : "/api/drinks/campaigns/playbook-onboarding", user?.id ?? ""],
+    queryFn: async () => {
+      if (!campaign?.id) throw new Error("Campaign id is required.");
+      const response = await fetch(`/api/drinks/campaigns/${encodeURIComponent(campaign.id)}/playbook-onboarding`, { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.error || payload?.message || `Failed to load playbook onboarding (${response.status})`);
+      return payload as CampaignPlaybookOnboardingResponse;
+    },
+    enabled: Boolean(campaign?.id) && isOwner,
+  });
   const activeVariant = query.data?.activeVariant ?? null;
+
+  if (!matched) return null;
   const variantDestination = query.data ? buildVariantDestination(query.data) : null;
   const currentSurface = (() => {
     if (typeof window === "undefined" || !query.data?.campaign.id) return "direct_or_unknown" as const;
@@ -617,7 +639,7 @@ export default function DrinkCampaignDetailPage() {
           {pinMessage ? <p className="text-sm text-emerald-600">{pinMessage}</p> : null}
           {pinError ? <p className="text-sm text-destructive">{pinError}</p> : null}
 
-          {user?.id && user.id === query.data.campaign.creatorUserId ? (
+          {isOwner ? (
             <CampaignActionCenterSection
               campaignId={query.data.campaign.id}
               compact
@@ -627,8 +649,7 @@ export default function DrinkCampaignDetailPage() {
             />
           ) : null}
 
-          {user?.id
-          && user.id === query.data.campaign.creatorUserId
+          {isOwner
           && (
             query.data.campaign.state === "upcoming"
             || query.data.ownerRollout?.nextAudience
@@ -643,8 +664,7 @@ export default function DrinkCampaignDetailPage() {
             />
           ) : null}
 
-          {user?.id
-          && user.id === query.data.campaign.creatorUserId
+          {isOwner
           && query.data.ownerRollout?.nextAudience
           && query.data.ownerRollout?.nextUnlockAt ? (
             <CampaignUnlockReadinessAlertsSection
@@ -656,7 +676,7 @@ export default function DrinkCampaignDetailPage() {
             />
           ) : null}
 
-          {user?.id && user.id === query.data.campaign.creatorUserId ? (
+          {isOwner ? (
             <CampaignFixExperimentsSection
               campaignId={query.data.campaign.id}
               compact
@@ -1032,6 +1052,27 @@ export default function DrinkCampaignDetailPage() {
                       </div>
                     ) : null}
                   </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {isOwner && (onboardingQuery.isLoading || onboardingQuery.isError || onboardingQuery.data?.item?.isPlaybookApplied) ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Owner-only playbook onboarding / setup checklist</CardTitle>
+                <CardDescription>
+                  Private campaign setup steps after a playbook is applied. This stays distinct from playbook fit, playbook outcomes, launch readiness, and the broader action center.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {onboardingQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading playbook onboarding…</p> : null}
+                {onboardingQuery.isError ? <p className="text-sm text-destructive">{onboardingQuery.error instanceof Error ? onboardingQuery.error.message : "Unable to load playbook onboarding right now."}</p> : null}
+                {!onboardingQuery.isLoading && !onboardingQuery.isError && onboardingQuery.data?.item?.isPlaybookApplied ? (
+                  <>
+                    <CampaignPlaybookOnboardingSummaryChips item={onboardingQuery.data.item} />
+                    <CampaignPlaybookOnboardingChecklist items={onboardingQuery.data.item.checklist} emptyMessage="This campaign does not have any remaining playbook setup steps." />
+                  </>
                 ) : null}
               </CardContent>
             </Card>
