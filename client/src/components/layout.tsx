@@ -735,7 +735,7 @@ export default function Layout({ children }: LayoutProps) {
                                   🎯 My Quests
                                 </Link>
                                 <Link
-                                  href="/remixes"
+                                  href="/drinks/remixes"
                                   onClick={() => setIsDropdownOpen(false)}
                                   className="flex items-center px-2 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-sm"
                                 >

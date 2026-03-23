@@ -184,7 +184,7 @@ const NAV: NavItem[] = [
   { name: "divider-features", href: "#", isDivider: true } as any,
 
   { name: "🎯 My Quests", href: "/quests" },
-  { name: "🔄 Recipe Remixes", href: "/remixes" },
+  { name: "🔄 Recipe Remixes", href: "/drinks/remixes" },
   { name: "💡 AI Suggestions", href: "/suggestions" },
 
   { name: "👥 Cook Together", href: "/cook-together" },

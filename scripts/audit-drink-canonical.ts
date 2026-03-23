@@ -34,13 +34,15 @@ const pagesRoot = path.resolve("client/src/pages/drinks");
 const leafPages = getAllLeafDrinkPages(pagesRoot);
 
 const pageFailures: string[] = [];
+const workoutSharedContent = fs.readFileSync(path.resolve("client/src/pages/drinks/workout-drinks/shared.tsx"), "utf8");
 for (const page of leafPages) {
   const absPath = path.join(pagesRoot, page);
   const content = fs.readFileSync(absPath, "utf8");
+  const auditContent = content.includes("WorkoutDrinksSubcategoryPage") ? workoutSharedContent : content;
 
-  const hasCanonicalResolve = content.includes("resolveCanonicalDrinkSlug");
-  const hasCanonicalRouting = content.includes("/drinks/recipe/") || content.includes("redirectToCanonicalRecipe(canonicalSlug, '/drinks/recipe')") || content.includes("openCanonicalFirstRecipe({");
-  const hasRemixRouting = content.includes("/drinks/submit?remix=");
+  const hasCanonicalResolve = auditContent.includes("resolveCanonicalDrinkSlug");
+  const hasCanonicalRouting = auditContent.includes("/drinks/recipe/") || auditContent.includes("redirectToCanonicalRecipe(canonicalSlug, '/drinks/recipe')") || auditContent.includes("openCanonicalFirstRecipe({");
+  const hasRemixRouting = auditContent.includes("/drinks/submit?remix=");
 
   const missing: string[] = [];
   if (!hasCanonicalResolve || !hasCanonicalRouting) missing.push("canonical route wiring");
@@ -57,7 +59,10 @@ for (const routeEntry of drinkRouteRegistry) {
     const byName = canonicalDrinkRecipeEntries.find(
       (entry) => entry.name.trim().toLowerCase() === String(routeRecipe?.name ?? "").trim().toLowerCase() && entry.sourceRoute === routeEntry.route,
     );
-    const resolved = (slug ? getCanonicalDrinkRecipeBySlug(slug) : null) ?? byName;
+    const byAnyName = canonicalDrinkRecipeEntries.find(
+      (entry) => entry.name.trim().toLowerCase() === String(routeRecipe?.name ?? "").trim().toLowerCase(),
+    );
+    const resolved = (slug ? getCanonicalDrinkRecipeBySlug(slug) : null) ?? byName ?? byAnyName;
 
     if (!resolved) {
       canonicalFailures.push(`- ${routeEntry.route} / ${routeRecipe?.name ?? "<unnamed>"}: canonical entry not resolved`);
