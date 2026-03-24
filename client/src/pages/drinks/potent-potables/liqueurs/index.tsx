@@ -628,16 +628,6 @@ export default function LiqueursPage() {
 
                         <div className="flex gap-2 mt-3">
                           <Button
-                            className="bg-purple-600 hover:bg-purple-700"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openRecipeModal(cocktail);
-                            }}
-                          >
-                            Open Recipe
-                          </Button>
-                          <Button
                             variant="outline"
                             size="sm"
                             onClick={async (e) => {
@@ -681,6 +671,30 @@ export default function LiqueursPage() {
                           {tag}
                         </Badge>
                       ))}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+                      <Button
+                        className="flex-1 bg-purple-600 hover:bg-purple-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRecipeModal(cocktail);
+                        }}
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Open Recipe
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleShareCocktail(cocktail);
+                        }}
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>

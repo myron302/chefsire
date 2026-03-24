@@ -619,16 +619,6 @@ export default function SpritzMimosasPage() {
 
                         <div className="flex gap-2 mt-3">
                           <Button
-                            className="bg-yellow-600 hover:bg-yellow-700"
-                            size="sm"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              openRecipeModal(cocktail);
-                            }}
-                          >
-                            Open Recipe
-                          </Button>
-                          <Button
                             variant="outline"
                             size="sm"
                             onClick={async (e) => {
@@ -672,6 +662,30 @@ export default function SpritzMimosasPage() {
                           {tag}
                         </Badge>
                       ))}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+                      <Button
+                        className="flex-1 bg-yellow-600 hover:bg-yellow-700"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openRecipeModal(cocktail);
+                        }}
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Open Recipe
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleShareCocktail(cocktail);
+                        }}
+                      >
+                        <Share2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
