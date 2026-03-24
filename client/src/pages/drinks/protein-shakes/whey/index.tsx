@@ -521,7 +521,7 @@ export default function WheyProteinShakesPage() {
               {filteredShakes.map(shake => {
                 const useMetric = !!metricFlags[shake.id];
                 const servings = servingsById[shake.id] ?? (shake.recipe?.servings || 1);
-                const canonicalSlug = String(shake.slug ?? '').trim() || null;
+                const canonicalSlug = resolveCanonicalDrinkSlug({ slug: shake.slug, name: shake.name, sourceRoute: '/drinks/protein-shakes/whey' });
 
                 return (
                   <Card

@@ -388,7 +388,18 @@ export default function DogsPage() {
     });
   };
 
+  const getCanonicalRecipePath = (recipe: any) => {
+    const canonicalSlug = resolveCanonicalPetFoodSlug(recipe.name);
+    return canonicalSlug ? `/pet-food/recipe/${encodeURIComponent(canonicalSlug)}` : null;
+  };
+
   const handleRecipeCardNavigation = (recipe: any) => {
+    const canonicalPath = getCanonicalRecipePath(recipe);
+    if (canonicalPath && typeof window !== 'undefined') {
+      window.location.href = canonicalPath;
+      return;
+    }
+
     openRecipeModal(recipe);
   };
 

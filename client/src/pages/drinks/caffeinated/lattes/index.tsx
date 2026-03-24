@@ -615,7 +615,7 @@ export default function LattesPage() {
               {filteredDrinks.map(drink => {
                 const useMetric = !!metricFlags[drink.id];
                 const servings = servingsById[drink.id] ?? (drink.recipe?.servings || 1);
-                const canonicalSlug = String(drink.slug ?? '').trim() || null;
+                const canonicalSlug = resolveCanonicalDrinkSlug({ slug: drink.slug, name: drink.name, sourceRoute: '/drinks/caffeinated/lattes' });
 
                 return (
                   <Card key={drink.id} onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }} className="hover:shadow-lg transition-shadow cursor-pointer">

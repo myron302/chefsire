@@ -471,7 +471,7 @@ export default function VodkaCocktailsPage() {
             {filteredCocktails.map(cocktail => {
               const useMetric = !!metricFlags[cocktail.id];
               const servings = servingsById[cocktail.id] ?? (cocktail.recipe?.servings || 1);
-              const canonicalSlug = String(cocktail.slug ?? '').trim() || null;
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: cocktail.slug, name: cocktail.name, sourceRoute: '/drinks/potent-potables/vodka' });
 
               return (
                 <Card 

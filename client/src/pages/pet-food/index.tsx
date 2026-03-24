@@ -343,7 +343,7 @@ export default function PetFoodHub() {
                         </Link>
                       </div>
                     </CardContent>
-                  </Card>
+                    </Card>
               );
             })}
           </div>
@@ -374,7 +374,8 @@ export default function PetFoodHub() {
               });
 
               return (
-                <Card key={recipe.id} className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden">
+                <Link key={recipe.id} href={targetPath}>
+                  <Card className="group hover:shadow-xl transition-all duration-300 border-gray-200 hover:border-purple-300 overflow-hidden cursor-pointer">
                 <div className="relative h-40 overflow-hidden">
                   <img 
                     src={recipe.image} 
@@ -389,7 +390,7 @@ export default function PetFoodHub() {
                 </div>
                 
                 <CardContent className="p-4">
-                  <h3 className="font-bold text-lg text-gray-900 mb-2"><Link href={targetPath} className="underline underline-offset-2 hover:text-foreground">{recipe.name}</Link></h3>
+                  <h3 className="font-bold text-lg text-gray-900 mb-2">{recipe.name}</h3>
                   
                   <div className="flex items-center justify-between text-sm text-gray-600 mb-3">
                     <span className="flex items-center gap-1">
@@ -408,12 +409,11 @@ export default function PetFoodHub() {
                       <span className="font-bold text-gray-900 ml-1">{recipe.calories}</span>
                     </div>
                     <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
-                    <Link href={targetPath}>
-                      <Button variant="outline" size="sm">View Recipe</Button>
-                    </Link>
+                    <Button variant="outline" size="sm">Open Recipe</Button>
                   </div>
                 </CardContent>
                   </Card>
+                </Link>
               );
             })}
           </div>
