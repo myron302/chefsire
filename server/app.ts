@@ -136,15 +136,20 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   const message = err instanceof Error ? err.message : "Unknown error";
   const stack = err instanceof Error ? err.stack : undefined;
 
-  // ALWAYS log the error
+  // ALWAYS log the error server-side
   console.error("[ERROR]", err);
 
-  // TEMPORARY: Show full error even in production to debug OAuth issue
-  res.status(500).json({
-    error: "Internal Server Error",
-    message: message, // Show actual error message
-    stack: stack, // Show stack trace
-  });
+  if (isProd) {
+    // Never expose internal details to clients in production
+    res.status(500).json({ error: "Internal Server Error" });
+  } else {
+    // In development, include details for debugging
+    res.status(500).json({
+      error: "Internal Server Error",
+      message,
+      stack,
+    });
+  }
 });
 
 export default app;
