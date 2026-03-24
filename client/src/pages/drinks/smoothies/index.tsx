@@ -16,6 +16,8 @@ import {
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 import { otherDrinkHubs } from '../data/detoxes';
+import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { getCanonicalFirstPath } from '@/lib/recipe-interactions';
 
 const smoothieSubcategories = [
   {
@@ -1009,8 +1011,28 @@ export default function SmoothiesPage() {
                   Popular Smoothie Recipes
                 </h3>
                 <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                  {premadeRecipes.map((recipe) => (
-                    <Card key={recipe.id} className="overflow-hidden hover:shadow-xl transition-shadow">
+                  {premadeRecipes.map((recipe) => {
+                    const targetPath = getCanonicalFirstPath({
+                      recipeName: recipe.name,
+                      fallbackPath: `/drinks/recipe/${encodeURIComponent(recipe.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))}`,
+                      resolveCanonicalSlug: resolveCanonicalDrinkSlug,
+                      recipeBasePath: '/drinks/recipe',
+                    });
+
+                    return (
+                    <Card
+                      key={recipe.id}
+                      className="overflow-hidden hover:shadow-xl transition-shadow cursor-pointer"
+                      role="link"
+                      tabIndex={0}
+                      onClick={() => { window.location.href = targetPath; }}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          window.location.href = targetPath;
+                        }
+                      }}
+                    >
                       <div className="relative h-48">
                         <img
                           src={recipe.image}
@@ -1065,16 +1087,30 @@ export default function SmoothiesPage() {
                           </div>
                         </div>
 
-                        <Button
-                          className="w-full bg-gradient-to-r from-purple-600 to-pink-600"
-                          onClick={() => makePremadeRecipe(recipe)}
-                        >
-                          <Sparkles className="w-4 h-4 mr-2" />
-                          Open Recipe
-                        </Button>
+                        <div className="pt-2 border-t flex gap-2">
+                          <Button
+                            className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              window.location.href = targetPath;
+                            }}
+                          >
+                            <Sparkles className="w-4 h-4 mr-2" />
+                            Open Recipe
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              makePremadeRecipe(recipe);
+                            }}
+                          >
+                            +100 XP
+                          </Button>
+                        </div>
                       </CardContent>
                     </Card>
-                  ))}
+                  )})}
                 </div>
               </CardContent>
             </Card>

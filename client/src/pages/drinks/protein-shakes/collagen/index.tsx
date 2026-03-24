@@ -17,6 +17,7 @@ import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit, { Measured } from '@/components/recipes/RecipeKit';
 import type { RecipeKitHandle } from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { getCanonicalFirstPath } from '@/lib/recipe-interactions';
 import { collagenShakes } from '@/data/drinks/protein-shakes/collagen';
 
 // Navigation data
@@ -600,7 +601,12 @@ export default function CollagenProteinPage() {
             {/* Results */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {filteredShakes.map(shake => {
-                const canonicalSlug = resolveCanonicalDrinkSlug({ slug: shake.slug, name: shake.name, sourceRoute: '/drinks/protein-shakes/collagen' });
+                const targetPath = getCanonicalFirstPath({
+                  recipeName: shake.name,
+                  fallbackPath: `/drinks/recipe/${encodeURIComponent((shake.slug || shake.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))}`,
+                  resolveCanonicalSlug: (name) => resolveCanonicalDrinkSlug({ slug: shake.slug, name, sourceRoute: '/drinks/protein-shakes/collagen' }),
+                  recipeBasePath: '/drinks/recipe',
+                });
                 const servings = getServings(shake);
                 const factor = (servings || 1) / (shake.recipe?.servings || 1);
 
@@ -609,7 +615,7 @@ export default function CollagenProteinPage() {
                     key={shake.id}
                     id={`card-${shake.id}`}
                     className="hover:shadow-lg transition-shadow cursor-pointer"
-                    onClick={() => kitRefs.current[shake.id]?.open?.()}
+                    onClick={() => { window.location.href = targetPath; }}
                   >
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between">
@@ -730,16 +736,27 @@ export default function CollagenProteinPage() {
                       </div>
 
                       {/* Full-width CTA — Make Shake */}
+                      <div className="pt-2 border-t flex gap-2">
                       <Button
-                        className="w-full bg-pink-600 hover:bg-pink-700 text-white"
+                        className="flex-1 bg-pink-600 hover:bg-pink-700 text-white"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.location.href = targetPath;
+                        }}
+                      >
+                        <Sparkles className="h-4 w-4 mr-2" />
+                        Open Recipe
+                      </Button>
+                      <Button
+                        variant="outline"
                         onClick={(e) => {
                           e.stopPropagation();
                           kitRefs.current[shake.id]?.open?.();
                         }}
                       >
-                        <Sparkles className="h-4 w-4 mr-2" />
-                        Open Recipe (+35 XP)
+                        Preview Kit
                       </Button>
+                      </div>
 </CardContent>
                   </Card>
                 );
@@ -954,12 +971,17 @@ export default function CollagenProteinPage() {
         {activeTab === 'featured' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {featuredShakes.map(shake => {
-              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: shake.slug, name: shake.name, sourceRoute: '/drinks/protein-shakes/collagen' });
+              const targetPath = getCanonicalFirstPath({
+                recipeName: shake.name,
+                fallbackPath: `/drinks/recipe/${encodeURIComponent((shake.slug || shake.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))}`,
+                resolveCanonicalSlug: (name) => resolveCanonicalDrinkSlug({ slug: shake.slug, name, sourceRoute: '/drinks/protein-shakes/collagen' }),
+                recipeBasePath: '/drinks/recipe',
+              });
               return (
               <Card
                 key={shake.id}
                 className="overflow-hidden hover:shadow-xl transition-shadow cursor-pointer"
-                onClick={() => kitRefs.current[shake.id]?.open?.()}
+                onClick={() => { window.location.href = targetPath; }}
               >
                 <div className="relative">
                   <img
@@ -1071,16 +1093,27 @@ export default function CollagenProteinPage() {
                   </div>
 
                   {/* Full-width CTA — Make Shake */}
+                  <div className="pt-2 border-t flex gap-2">
                   <Button
-                    className="w-full bg-pink-600 hover:bg-pink-700 text-white"
+                    className="flex-1 bg-pink-600 hover:bg-pink-700 text-white"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      window.location.href = targetPath;
+                    }}
+                  >
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Open Recipe
+                  </Button>
+                  <Button
+                    variant="outline"
                     onClick={(e) => {
                       e.stopPropagation();
                       kitRefs.current[shake.id]?.open?.();
                     }}
                   >
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Open Recipe (+35 XP)
+                    Preview Kit
                   </Button>
+                  </div>
 </CardContent>
               </Card>
             )})}

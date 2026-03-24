@@ -14,6 +14,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import { virginDrinks } from "@/data/drinks/potent-potables/virgin-cocktails";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
+import { getCanonicalFirstPath } from '@/lib/recipe-interactions';
 
 
 
@@ -327,9 +328,26 @@ export default function VirginDrinksPage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredDrinks.map((drink) => {
-              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: drink.slug, name: drink.name, sourceRoute: '/drinks/potent-potables/virgin-cocktails' });
+              const targetPath = getCanonicalFirstPath({
+                recipeName: drink.name,
+                fallbackPath: `/drinks/recipe/${encodeURIComponent(drink.slug || drink.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''))}`,
+                resolveCanonicalSlug: (name) => resolveCanonicalDrinkSlug({ slug: drink.slug, name, sourceRoute: '/drinks/potent-potables/virgin-cocktails' }),
+                recipeBasePath: '/drinks/recipe',
+              });
               return (
-              <Card key={drink.id} className="hover:shadow-lg transition-all duration-300 overflow-hidden group">
+              <Card
+                key={drink.id}
+                className="hover:shadow-lg transition-all duration-300 overflow-hidden group cursor-pointer"
+                role="link"
+                tabIndex={0}
+                onClick={() => { window.location.href = targetPath; }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    window.location.href = targetPath;
+                  }
+                }}
+              >
                 <div className="relative bg-gradient-to-br from-green-100 to-emerald-100 p-6 h-48 flex items-center justify-center">
                   <Sparkles className="w-20 h-20 text-emerald-600 group-hover:scale-110 transition-transform" />
                   {drink.trending && (
@@ -348,7 +366,10 @@ export default function VirginDrinksPage() {
                     variant="ghost"
                     size="sm"
                     className="absolute bottom-3 right-3 bg-white/80 hover:bg-white"
-                    onClick={() => toggleFavorite(drink.id, 'virgin-drinks')}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      toggleFavorite(drink.id, 'virgin-drinks');
+                    }}
                   >
                     <Heart
                       className={`w-5 h-5 ${
@@ -459,12 +480,22 @@ export default function VirginDrinksPage() {
                   <div className="flex gap-2 pt-3">
                     <Button 
                       className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                      onClick={() => setSelectedDrink(drink)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        window.location.href = targetPath;
+                      }}
                     >
                       <Plus className="w-4 h-4 mr-2" />
                       Open Recipe
                     </Button>
-                    <Button variant="outline" size="icon">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedDrink(drink);
+                      }}
+                    >
                       <Share2 className="w-4 h-4" />
                     </Button>
                   </div>
