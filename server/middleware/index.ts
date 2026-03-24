@@ -6,3 +6,12 @@ export { validateRequest } from "./validation";
 // Re-export both names so either import works in routes
 export { requireAgeVerified } from "./ageGate";
 export { requireAgeVerified as requireAgeGate } from "./ageGate";
+
+// Rate limiters for auth / sensitive endpoints
+export {
+  loginLimiter,
+  signupLimiter,
+  emailSendLimiter,
+  passwordChangeLimiter,
+  verifyEmailLimiter,
+} from "./rate-limit";
