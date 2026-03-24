@@ -824,7 +824,7 @@ export default function TeaPage() {
                           onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }}
                         >
                           <Leaf className="h-4 w-4 mr-2" />
-                          Make Tea (+20 XP)
+                          Open Recipe (+20 XP)
                         </Button>
                       </div>
                     </CardContent>
@@ -859,18 +859,6 @@ export default function TeaPage() {
                     <Button className="w-full bg-green-400 hover:bg-green-500 text-white" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
-
-                    {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
-                          Canonical Recipe
-                        </Link>
-                        <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
-                          Remix
-                        </Link>
-                      </div>
-                    ) : null}
                   </CardContent>
                 </Card>
               );
@@ -929,7 +917,7 @@ export default function TeaPage() {
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }}
                   >
                     <Leaf className="h-4 w-4 mr-2" />
-                    Make This Tea
+                    Open Recipe
                   </Button>
                 </CardContent>
               </Card>

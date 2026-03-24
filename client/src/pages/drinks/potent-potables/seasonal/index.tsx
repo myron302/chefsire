@@ -410,18 +410,6 @@ export default function SeasonalCocktailsPage() {
                     <p className="text-xs text-gray-500 mb-4">{season.months}</p>
                     <div className="text-2xl font-bold text-gray-900">{seasonCocktails.length}</div>
                     <div className="text-sm text-gray-600">Cocktails</div>
-
-                    {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
-                          Canonical Recipe
-                        </Link>
-                        <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
-                          Remix
-                        </Link>
-                      </div>
-                    ) : null}
                   </CardContent>
                 </Card>
               );
@@ -700,7 +688,7 @@ export default function SeasonalCocktailsPage() {
                         }}
                       >
                         <Wine className="h-4 w-4 mr-2" />
-                        View Recipe
+                        Open Recipe
                       </Button>
                       <Button variant="outline" size="sm" onClick={(e) => {
                         e.stopPropagation();

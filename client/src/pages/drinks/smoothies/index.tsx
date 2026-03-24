@@ -1070,7 +1070,7 @@ export default function SmoothiesPage() {
                           onClick={() => makePremadeRecipe(recipe)}
                         >
                           <Sparkles className="w-4 h-4 mr-2" />
-                          Make It
+                          Open Recipe
                         </Button>
                       </CardContent>
                     </Card>

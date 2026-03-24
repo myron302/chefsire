@@ -80,6 +80,9 @@ export default function DrinksRoutes() {
         <Route path="/drinks/bundles/:id" component={DrinkBundleDetailPage} />
         <Route path="/drinks/challenges" component={DrinkChallengesPage} />
         <Route path="/drinks/challenges/:slug" component={DrinkChallengeDetailPage} />
+        <Route path="/drinks/seasonal">
+          <Redirect to="/drinks/potent-potables/seasonal" />
+        </Route>
 
         <Route path="/drinks/caffeinated">{() => <CaffeinatedSection />}</Route>
         <Route path="/drinks/caffeinated/:subcategory">{() => <CaffeinatedSection />}</Route>

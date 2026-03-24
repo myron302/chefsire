@@ -619,6 +619,16 @@ export default function SpritzMimosasPage() {
 
                         <div className="flex gap-2 mt-3">
                           <Button
+                            className="bg-yellow-600 hover:bg-yellow-700"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openRecipeModal(cocktail);
+                            }}
+                          >
+                            Open Recipe
+                          </Button>
+                          <Button
                             variant="outline"
                             size="sm"
                             onClick={async (e) => {
@@ -663,18 +673,6 @@ export default function SpritzMimosasPage() {
                         </Badge>
                       ))}
                     </div>
-
-                    {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
-                          Canonical Recipe
-                        </Link>
-                        <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
-                          Remix
-                        </Link>
-                      </div>
-                    ) : null}
                   </CardContent>
                 </Card>
               );

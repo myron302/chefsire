@@ -805,7 +805,7 @@ export default function ColdBrewDrinksPage() {
                           onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }}
                         >
                           <Droplets className="h-4 w-4 mr-2" />
-                          Make Drink (+25 XP)
+                          Open Recipe (+25 XP)
                         </Button>
                       </div>
                     </CardContent>
@@ -840,18 +840,6 @@ export default function ColdBrewDrinksPage() {
                     <Button className="w-full bg-rose-400 hover:bg-rose-500 text-white" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
-
-                    {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
-                          Canonical Recipe
-                        </Link>
-                        <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
-                          Remix
-                        </Link>
-                      </div>
-                    ) : null}
                   </CardContent>
                 </Card>
               );
@@ -916,7 +904,7 @@ export default function ColdBrewDrinksPage() {
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }}
                   >
                     <Droplets className="h-4 w-4 mr-2" />
-                    Make This Drink
+                    Open Recipe
                   </Button>
                 </CardContent>
               </Card>

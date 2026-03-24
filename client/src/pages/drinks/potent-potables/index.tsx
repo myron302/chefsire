@@ -633,18 +633,8 @@ export default function PotentPotablesPage() {
                       {cocktail.tags.map(tag => <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>)}
                     </div>
                     <Button className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 group-hover:scale-105 transition-transform">
-                      View Recipe
+                      Open Recipe
                     </Button>
-                    {canonicalSlug ? (
-                      <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground" onClick={(e) => e.stopPropagation()}>
-                          Canonical Recipe
-                        </Link>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground" onClick={(e) => e.stopPropagation()}>
-                          Remix
-                        </Link>
-                      </div>
-                    ) : null}
                   </CardContent>
                 </Card>
                 );

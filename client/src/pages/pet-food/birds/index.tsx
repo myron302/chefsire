@@ -732,6 +732,15 @@ export default function BirdsPage() {
                       <Badge key={tag} variant="secondary" className="text-xs bg-cyan-100 text-cyan-800 hover:bg-cyan-200">{tag}</Badge>
                     ))}
                   </div>
+                  <Button
+                    className="w-full"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleRecipeCardNavigation(recipe);
+                    }}
+                  >
+                    Open Recipe
+                  </Button>
 
                 </CardContent>
               </Card>
