@@ -20,7 +20,11 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 
-app.set("trust proxy", true);
+// Trust exactly one proxy hop (nginx on the same Plesk VPS).
+// This ensures req.ip comes from the first X-Forwarded-For entry
+// set by nginx, rather than trusting the entire chain which would
+// let attackers spoof their IP via extra X-Forwarded-For headers.
+app.set("trust proxy", 1);
 
 app.use(cors({
   credentials: true,
