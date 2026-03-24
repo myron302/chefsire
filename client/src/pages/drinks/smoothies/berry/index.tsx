@@ -597,7 +597,7 @@ export default function BerrySmoothiesPage() {
               {filteredSmoothies.map(smoothie => {
                 const useMetric = !!metricFlags[smoothie.id];
                 const servings = servingsById[smoothie.id] ?? (smoothie.recipe?.servings || 1);
-              const canonicalSlug = String(smoothie.slug ?? '').trim() || null;
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: smoothie.slug, name: smoothie.name, sourceRoute: '/drinks/smoothies/berry' });
 
                 return (
                   <Card key={smoothie.id} onClick={() => openRecipeModal(smoothie)} className="hover:shadow-lg transition-shadow cursor-pointer">

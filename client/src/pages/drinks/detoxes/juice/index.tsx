@@ -522,7 +522,7 @@ export default function DetoxJuicesPage() {
               {filteredJuices.map(juice => {
                 const useMetric = !!metricFlags[juice.id];
                 const servings = servingsById[juice.id] ?? (juice.recipe?.servings || 1);
-              const canonicalSlug = String(juice.slug ?? '').trim() || null;
+              const canonicalSlug = resolveCanonicalDrinkSlug({ slug: juice.slug, name: juice.name, sourceRoute: '/drinks/detoxes/juice' });
 
                 return (
                   <Card key={juice.id} onClick={(e) => { e.stopPropagation(); openRecipeModal(juice); }} className="hover:shadow-lg transition-shadow cursor-pointer">
