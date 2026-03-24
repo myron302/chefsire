@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { openCanonicalFirstRecipe } from '@/lib/recipe-interactions';
+import { buildFallbackRecipeSlug, redirectToRecipeWithFallback } from '@/lib/canonical-routing';
 import { Link } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -375,29 +375,26 @@ export default function SmallPetsPage() {
   }, [searchQuery, selectedCategory, sortBy]);
 
   const openRecipeModal = (recipe: any) => {
-    openCanonicalFirstRecipe({
-      recipeName: recipe?.name || '',
-      resolveCanonicalSlug: resolveCanonicalPetFoodSlug,
-      recipeBasePath: '/pet-food/recipe',
-      onFallback: () => {
-        setSelectedRecipe(recipe);
-        setShowKit(true);
-      },
-    });
-  };
+    const canonicalSlug = resolveCanonicalPetFoodSlug(recipe?.name || '');
+    const fallbackSlug = recipe?.slug || recipe?.name;
 
-  const getCanonicalRecipePath = (recipe: any) => {
-    const canonicalSlug = resolveCanonicalPetFoodSlug(recipe.name);
-    return canonicalSlug ? `/pet-food/recipe/${encodeURIComponent(canonicalSlug)}` : null;
-  };
-
-  const handleRecipeCardNavigation = (recipe: any) => {
-    const canonicalPath = getCanonicalRecipePath(recipe);
-    if (canonicalPath && typeof window !== 'undefined') {
-      window.location.href = canonicalPath;
+    if (redirectToRecipeWithFallback(canonicalSlug, fallbackSlug, '/pet-food/recipe')) {
       return;
     }
 
+    setSelectedRecipe(recipe);
+    setShowKit(true);
+  };
+
+  const getCanonicalRecipePath = (recipe: any) => {
+    const canonicalSlug = resolveCanonicalPetFoodSlug(recipe?.name || '');
+    const fallbackSlug = buildFallbackRecipeSlug(recipe?.slug || recipe?.name);
+    const resolvedSlug = canonicalSlug || fallbackSlug;
+
+    return resolvedSlug ? `/pet-food/recipe/${encodeURIComponent(resolvedSlug)}` : null;
+  };
+
+  const handleRecipeCardNavigation = (recipe: any) => {
     openRecipeModal(recipe);
   };
 
