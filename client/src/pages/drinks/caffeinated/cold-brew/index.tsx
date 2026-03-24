@@ -235,6 +235,12 @@ export default function ColdBrewDrinksPage() {
       return;
     }
 
+    const fallbackSlug = recipe?.slug || String(recipe?.name || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (fallbackSlug && typeof window !== 'undefined') {
+      window.location.href = `/drinks/recipe/${encodeURIComponent(fallbackSlug)}`;
+      return;
+    }
+
     setSelectedRecipe(recipe);
     setShowKit(true);
   };
