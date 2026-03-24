@@ -72,6 +72,9 @@ export function PotentPotablesSection() {
   return (
     <RequireAgeGate>
       <Switch>
+        <Route path="/drinks/potent-potables/cockta">
+          <Redirect to="/drinks/potent-potables/cocktails" />
+        </Route>
         <Route path="/drinks/potent-potables/cocktails" component={CocktailsPage} />
         <Route path="/drinks/potent-potables/cognac-brandy" component={CognacBrandyPage} />
         <Route path="/drinks/potent-potables/martinis" component={MartinisPage} />

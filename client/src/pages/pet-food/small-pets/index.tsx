@@ -732,6 +732,15 @@ export default function SmallPetsPage() {
                       <Badge key={tag} variant="secondary" className="text-xs bg-emerald-100 text-emerald-800 hover:bg-emerald-200">{tag}</Badge>
                     ))}
                   </div>
+                  <Button
+                    className="w-full"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      handleRecipeCardNavigation(recipe);
+                    }}
+                  >
+                    Open Recipe
+                  </Button>
 
                 </CardContent>
               </Card>

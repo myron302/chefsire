@@ -696,7 +696,7 @@ export default function VodkaCocktailsPage() {
                         }}
                       >
                         <Droplets className="h-4 w-4 mr-2" />
-                        View Recipe
+                        Open Recipe
                       </Button>
                       <Button variant="outline" size="sm" onClick={(e) => {
                         e.stopPropagation();
@@ -705,17 +705,6 @@ export default function VodkaCocktailsPage() {
                         <Share2 className="h-4 w-4" />
                       </Button>
                     </div>
-                    {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
-                          Canonical Recipe
-                        </Link>
-                        <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
-                          Remix
-                        </Link>
-                      </div>
-                    ) : null}
                   </CardContent>
                 </Card>
               );

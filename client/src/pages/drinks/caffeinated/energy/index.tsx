@@ -816,7 +816,7 @@ export default function EnergyPage() {
                           onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }}
                         >
                           <Coffee className="h-4 w-4 mr-2" />
-                          Make Drink (+20 XP)
+                          Open Recipe (+20 XP)
                         </Button>
                       </div>
                     </CardContent>
@@ -851,18 +851,6 @@ export default function EnergyPage() {
                     <Button className="w-full bg-orange-400 hover:bg-orange-500 text-white" onClick={() => setActiveTab('browse')}>
                       Explore {type.name}
                     </Button>
-
-                    {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground">
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground">
-                          Canonical Recipe
-                        </Link>
-                        <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground">
-                          Remix
-                        </Link>
-                      </div>
-                    ) : null}
                   </CardContent>
                 </Card>
               );
@@ -921,7 +909,7 @@ export default function EnergyPage() {
                     onClick={(e) => { e.stopPropagation(); openRecipeModal(drink); }}
                   >
                     <Coffee className="h-4 w-4 mr-2" />
-                    Make This Energy Drink
+                    Open Recipe
                   </Button>
                 </CardContent>
               </Card>

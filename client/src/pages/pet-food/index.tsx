@@ -339,7 +339,7 @@ export default function PetFoodHub() {
 
                       <div className="mt-4">
                         <Link href={category.path}>
-                          <Button variant="outline" size="sm">View Recipes</Button>
+                          <Button variant="outline" size="sm">Open Recipes</Button>
                         </Link>
                       </div>
                     </CardContent>

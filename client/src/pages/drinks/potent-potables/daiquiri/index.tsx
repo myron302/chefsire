@@ -525,7 +525,7 @@ export default function DaiquiriPage() {
                         <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
                           <Button className="flex-1 bg-teal-600 hover:bg-teal-700" onClick={() => openRecipeModal(c)}>
                             <GlassWater className="h-4 w-4 mr-2" />
-                            Make Daiquiri
+                            Open Recipe
                           </Button>
                           <Button variant="outline" size="sm" onClick={(e) => { e.stopPropagation(); handleShare(c); }}>
                             <Share2 className="h-4 w-4" />
@@ -646,24 +646,12 @@ export default function DaiquiriPage() {
                     <div className="flex gap-3">
                       <Button className="flex-1 bg-gradient-to-r from-teal-600 to-emerald-600" onClick={() => openRecipeModal(c)}>
                         <GlassWater className="h-4 w-4 mr-2" />
-                        Make Daiquiri
+                        Open Recipe
                       </Button>
                       <Button variant="outline" onClick={(e) => { e.stopPropagation(); handleShare(c); }}>
                         <Share2 className="h-4 w-4" />
                       </Button>
                     </div>
-
-                    {canonicalSlug ? (
-                      <div className="mt-3 flex gap-2 text-xs text-muted-foreground"> 
-                        <Link href={`/drinks/recipe/${canonicalSlug}`} className="underline underline-offset-2 hover:text-foreground"> 
-                          Canonical Recipe
-                        </Link>
-                        <span>•</span>
-                        <Link href={`/drinks/submit?remix=${encodeURIComponent(canonicalSlug)}`} className="underline underline-offset-2 hover:text-foreground"> 
-                          Remix
-                        </Link>
-                      </div>
-                    ) : null}
                   </CardContent>
                 </Card>
               ))}
