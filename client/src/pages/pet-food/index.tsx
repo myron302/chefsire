@@ -254,7 +254,16 @@ export default function PetFoodHub() {
               return (
                 <Card
                   key={category.id}
-                  className={`transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}
+                  className={`transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden cursor-pointer`}
+                  role="link"
+                  tabIndex={0}
+                  onClick={() => { window.location.href = category.path; }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault();
+                      window.location.href = category.path;
+                    }
+                  }}
                   onMouseEnter={() => setHoveredCard(category.id)}
                   onMouseLeave={() => setHoveredCard(null)}
                 >
@@ -337,9 +346,9 @@ export default function PetFoodHub() {
                         <span className="text-sm font-medium">{category.topBenefit}</span>
                       </div>
 
-                      <div className="mt-4">
+                      <div className="mt-4 pt-2 border-t">
                         <Link href={category.path}>
-                          <Button variant="outline" size="sm">Open Recipes</Button>
+                          <Button variant="outline" size="sm" onClick={(event) => event.stopPropagation()}>Open Recipes</Button>
                         </Link>
                       </div>
                     </CardContent>
@@ -403,12 +412,14 @@ export default function PetFoodHub() {
                     </span>
                   </div>
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mb-3">
                     <div className="text-sm">
                       <span className="text-gray-500">Calories:</span>
                       <span className="font-bold text-gray-900 ml-1">{recipe.calories}</span>
                     </div>
                     <Badge variant="outline" className="text-xs">{recipe.difficulty}</Badge>
+                  </div>
+                  <div className="pt-2 border-t">
                     <Button variant="outline" size="sm">Open Recipe</Button>
                   </div>
                 </CardContent>
