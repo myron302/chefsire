@@ -96,10 +96,12 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "date-fns": "^3.6.0",
+    "dotenv": "^16.6.1",
     "drizzle-orm": "^0.39.1",
     "drizzle-zod": "^0.7.0",
     "embla-carousel-react": "^8.6.0",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.3.1",
     "express-session": "^1.18.1",
     "framer-motion": "^11.13.1",
     "input-otp": "^1.4.2",
@@ -136,8 +138,7 @@
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
     "zod": "^3.24.2",
-    "zod-validation-error": "^3.4.0",
-    "dotenv": "^16.6.1"
+    "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
     "@replit/vite-plugin-cartographer": "^0.3.0",

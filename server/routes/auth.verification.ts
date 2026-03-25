@@ -4,12 +4,13 @@ import { db } from "../db";
 import { eq } from "drizzle-orm";
 import { users } from "../../shared/schema";
 import { AuthService } from "../services/auth.service";
+import { emailSendLimiter, verifyEmailLimiter } from "../middleware/rate-limit";
 
 const router = Router();
 
 // POST /api/auth/send-email-verification
 // body: { userId: string, email: string }
-router.post("/send-email-verification", async (req, res) => {
+router.post("/send-email-verification", emailSendLimiter, async (req, res) => {
   try {
     const { userId, email } = req.body ?? {};
     if (!userId || !email) {
@@ -37,7 +38,7 @@ router.post("/send-email-verification", async (req, res) => {
 });
 
 // GET /api/auth/verify-email?token=RAW
-router.get("/verify-email", async (req, res) => {
+router.get("/verify-email", verifyEmailLimiter, async (req, res) => {
   try {
     const token = String(req.query.token || "");
     if (!token) {

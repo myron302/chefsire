@@ -9,6 +9,13 @@ import { randomUUID } from "crypto";
 import fs from "fs";
 import { storage } from "../storage";
 import { AuthService } from "../services/auth.service";
+import {
+  loginLimiter,
+  signupLimiter,
+  emailSendLimiter,
+  passwordChangeLimiter,
+  verifyEmailLimiter,
+} from "../middleware/rate-limit";
 
 const RAW_SECRET =
   process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
@@ -70,7 +77,7 @@ const TITLE_LABELS: Record<string, string> = {
 /**
  * POST /auth/signup
  */
-router.post("/auth/signup", avatarUpload.single('avatar'), async (req, res) => {
+router.post("/auth/signup", signupLimiter, avatarUpload.single('avatar'), async (req, res) => {
   const { firstName, lastName, username, email, password, selectedTitle } = req.body ?? {};
   // Avatar file comes from req.file if multer is used, or handle manually from FormData
   const avatarFile = (req as any).file; // Will be set if multer middleware is used
@@ -146,7 +153,7 @@ router.post("/auth/signup", avatarUpload.single('avatar'), async (req, res) => {
 /**
  * POST /auth/login
  */
-router.post("/auth/login", async (req, res) => {
+router.post("/auth/login", loginLimiter, async (req, res) => {
   try {
     console.log("🔐 Login attempt started");
     const { email, password } = req.body;
@@ -235,7 +242,7 @@ router.post("/auth/login", async (req, res) => {
 /**
  * GET /auth/verify-email?token=xxx
  */
-router.get("/auth/verify-email", async (req, res) => {
+router.get("/auth/verify-email", verifyEmailLimiter, async (req, res) => {
   try {
     const { token } = req.query;
 
@@ -279,7 +286,7 @@ router.post("/auth/logout", async (req, res) => {
 /**
  * POST /auth/resend-verification
  */
-router.post("/auth/resend-verification", async (req, res) => {
+router.post("/auth/resend-verification", emailSendLimiter, async (req, res) => {
   const { email } = req.body ?? {};
 
   if (!email) {
@@ -317,7 +324,7 @@ router.post("/auth/resend-verification", async (req, res) => {
  * POST /auth/change-password
  * Change user password (requires authentication)
  */
-router.post("/auth/change-password", async (req, res) => {
+router.post("/auth/change-password", passwordChangeLimiter, async (req, res) => {
   try {
     // Extract token from cookie or authorization header
     const token = req.cookies?.auth_token || req.headers.authorization?.replace('Bearer ', '');
