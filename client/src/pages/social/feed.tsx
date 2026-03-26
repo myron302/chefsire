@@ -8,355 +8,13 @@ import { BitesRow } from "@/components/BitesRow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Heart, Clock, X, MessageCircle } from "lucide-react";
-import CommentsSection from "./CommentsSection";
 import { useQuery as useQueryClientLikes } from "@tanstack/react-query";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
 import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
-import CommentsSection from "./CommentsSection";
 import { useUser } from "@/contexts/UserContext";
 import { Link } from "wouter";
-
-const demoTrendingRecipes = [
-  {
-    id: "1",
-    title: "Creamy Mushroom Risotto",
-    cookTime: 35,
-    post: {
-      id: "post-1",
-      imageUrl:
-        "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-1", displayName: "Marco Romano" },
-      likesCount: 245,
-    },
-  },
-  {
-    id: "2",
-    title: "Classic Fish & Chips",
-    cookTime: 25,
-    post: {
-      id: "post-2",
-      imageUrl:
-        "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-2", displayName: "Emma Watson" },
-      likesCount: 189,
-    },
-  },
-  {
-    id: "3",
-    title: "Spicy Thai Green Curry",
-    cookTime: 30,
-    post: {
-      id: "post-3",
-      imageUrl:
-        "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-3", displayName: "Anong Siriporn" },
-      likesCount: 312,
-    },
-  },
-  {
-    id: "4",
-    title: "Chocolate Lava Cake",
-    cookTime: 20,
-    post: {
-      id: "post-4",
-      imageUrl:
-        "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-4", displayName: "Pierre Dubois" },
-      likesCount: 567,
-    },
-  },
-  {
-    id: "5",
-    title: "Fresh Caesar Salad",
-    cookTime: 15,
-    post: {
-      id: "post-5",
-      imageUrl:
-        "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=400&h=400&fit=crop&auto=format",
-      user: { id: "chef-5", displayName: "Julia Green" },
-      likesCount: 134,
-    },
-  },
-];
-
-const demoSuggestedUsers = [
-  {
-    id: "chef-6",
-    displayName: "Gordon Ramsay",
-    specialty: "Fine Dining",
-    avatar:
-      "https://images.unsplash.com/photo-1577219491135-ce391730fb2c?w=100&h=100&fit=crop&auto=format",
-  },
-  {
-    id: "chef-7",
-    displayName: "Nadia Singh",
-    specialty: "Indian Cuisine",
-    avatar:
-      "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=100&h=100&fit=crop&auto=format",
-  },
-  {
-    id: "chef-8",
-    displayName: "Carlos Rodriguez",
-    specialty: "Mexican Street Food",
-    avatar:
-      "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&h=100&fit=crop&auto=format",
-  },
-  {
-    id: "chef-9",
-    displayName: "Sakura Tanaka",
-    specialty: "Japanese Fusion",
-    avatar:
-      "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100&h=100&fit=crop&auto=format",
-  },
-  {
-    id: "chef-10",
-    displayName: "Oliver Bennett",
-    specialty: "Plant-Based",
-    avatar:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop&auto=format",
-  },
-];
-
-// Demo posts fallback (5)
-const demoPosts: PostWithUser[] = [
-  {
-    id: "demo-post-1",
-    caption: "Creamy Mushroom Risotto",
-    imageUrl:
-      "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true,
-    likesCount: 245,
-    commentsCount: 0,
-    tags: [],
-    userId: "chef-1",
-    createdAt: new Date(),
-    user: {
-      id: "chef-1",
-      username: "marco.romano",
-      email: "marco@example.com",
-      password: "",
-      displayName: "Marco Romano",
-      firstName: null,
-      lastName: null,
-      royalTitle: null,
-      showFullName: false,
-      bio: null,
-      avatar:
-        "https://images.unsplash.com/photo-1476124369491-e7addf5db371?w=100&h=100&fit=crop&auto=format",
-      specialty: "Italian",
-      isChef: true,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      cateringEnabled: false,
-      cateringLocation: null,
-      cateringRadius: 25,
-      cateringBio: null,
-      cateringAvailable: true,
-      subscriptionTier: "free",
-      subscriptionStatus: "active",
-      subscriptionEndsAt: null,
-      monthlyRevenue: "0",
-      nutritionPremium: false,
-      nutritionTrialEndsAt: null,
-      dailyCalorieGoal: null,
-      macroGoals: null,
-      dietaryRestrictions: [],
-      emailVerifiedAt: null,
-      createdAt: new Date(),
-    },
-  },
-  {
-    id: "demo-post-2",
-    caption: "Classic Fish & Chips",
-    imageUrl:
-      "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true,
-    likesCount: 189,
-    commentsCount: 0,
-    tags: [],
-    userId: "chef-2",
-    createdAt: new Date(),
-    user: {
-      id: "chef-2",
-      username: "emma.w",
-      email: "emma@example.com",
-      password: "",
-      displayName: "Emma Watson",
-      firstName: null,
-      lastName: null,
-      royalTitle: null,
-      showFullName: false,
-      bio: null,
-      avatar:
-        "https://images.unsplash.com/photo-1544982503-9f984c14501a?w=100&h=100&fit=crop&auto=format",
-      specialty: "British",
-      isChef: true,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      cateringEnabled: false,
-      cateringLocation: null,
-      cateringRadius: 25,
-      cateringBio: null,
-      cateringAvailable: true,
-      subscriptionTier: "free",
-      subscriptionStatus: "active",
-      subscriptionEndsAt: null,
-      monthlyRevenue: "0",
-      nutritionPremium: false,
-      nutritionTrialEndsAt: null,
-      dailyCalorieGoal: null,
-      macroGoals: null,
-      dietaryRestrictions: [],
-      emailVerifiedAt: null,
-      createdAt: new Date(),
-    },
-  },
-  {
-    id: "demo-post-3",
-    caption: "Spicy Thai Green Curry",
-    imageUrl:
-      "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true,
-    likesCount: 312,
-    commentsCount: 0,
-    tags: [],
-    userId: "chef-3",
-    createdAt: new Date(),
-    user: {
-      id: "chef-3",
-      username: "anong",
-      email: "anong@example.com",
-      password: "",
-      displayName: "Anong Siriporn",
-      firstName: null,
-      lastName: null,
-      royalTitle: null,
-      showFullName: false,
-      bio: null,
-      avatar:
-        "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=100&h=100&fit=crop&auto=format",
-      specialty: "Thai",
-      isChef: true,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      cateringEnabled: false,
-      cateringLocation: null,
-      cateringRadius: 25,
-      cateringBio: null,
-      cateringAvailable: true,
-      subscriptionTier: "free",
-      subscriptionStatus: "active",
-      subscriptionEndsAt: null,
-      monthlyRevenue: "0",
-      nutritionPremium: false,
-      nutritionTrialEndsAt: null,
-      dailyCalorieGoal: null,
-      macroGoals: null,
-      dietaryRestrictions: [],
-      emailVerifiedAt: null,
-      createdAt: new Date(),
-    },
-  },
-  {
-    id: "demo-post-4",
-    caption: "Chocolate Lava Cake",
-    imageUrl:
-      "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true,
-    likesCount: 567,
-    commentsCount: 0,
-    tags: [],
-    userId: "chef-4",
-    createdAt: new Date(),
-    user: {
-      id: "chef-4",
-      username: "pierre",
-      email: "pierre@example.com",
-      password: "",
-      displayName: "Pierre Dubois",
-      firstName: null,
-      lastName: null,
-      royalTitle: null,
-      showFullName: false,
-      bio: null,
-      avatar:
-        "https://images.unsplash.com/photo-1624353365286-3f8d62daad51?w=100&h=100&fit=crop&auto=format",
-      specialty: "Pastry",
-      isChef: true,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      cateringEnabled: false,
-      cateringLocation: null,
-      cateringRadius: 25,
-      cateringBio: null,
-      cateringAvailable: true,
-      subscriptionTier: "free",
-      subscriptionStatus: "active",
-      subscriptionEndsAt: null,
-      monthlyRevenue: "0",
-      nutritionPremium: false,
-      nutritionTrialEndsAt: null,
-      dailyCalorieGoal: null,
-      macroGoals: null,
-      dietaryRestrictions: [],
-      emailVerifiedAt: null,
-      createdAt: new Date(),
-    },
-  },
-  {
-    id: "demo-post-5",
-    caption: "Fresh Caesar Salad",
-    imageUrl:
-      "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=400&h=400&fit=crop&auto=format",
-    isRecipe: true,
-    likesCount: 134,
-    commentsCount: 0,
-    tags: [],
-    userId: "chef-5",
-    createdAt: new Date(),
-    user: {
-      id: "chef-5",
-      username: "julia.green",
-      email: "julia@example.com",
-      password: "",
-      displayName: "Julia Green",
-      firstName: null,
-      lastName: null,
-      royalTitle: null,
-      showFullName: false,
-      bio: null,
-      avatar:
-        "https://images.unsplash.com/photo-1551248429-40975aa4de74?w=100&h=100&fit=crop&auto=format",
-      specialty: "Salads",
-      isChef: true,
-      followersCount: 0,
-      followingCount: 0,
-      postsCount: 0,
-      cateringEnabled: false,
-      cateringLocation: null,
-      cateringRadius: 25,
-      cateringBio: null,
-      cateringAvailable: true,
-      subscriptionTier: "free",
-      subscriptionStatus: "active",
-      subscriptionEndsAt: null,
-      monthlyRevenue: "0",
-      nutritionPremium: false,
-      nutritionTrialEndsAt: null,
-      dailyCalorieGoal: null,
-      macroGoals: null,
-      dietaryRestrictions: [],
-      emailVerifiedAt: null,
-      createdAt: new Date(),
-    },
-  },
-];
 
 function SimpleRecipeCard({
   post,
@@ -481,19 +139,20 @@ export default function Feed() {
     retry: false,
   });
 
-  // Suggested users (sidebar) — falls back to demo if error
+  // Suggested users (sidebar)
   const {
-    data: suggestedUsers,
+    data: suggestedUsers = [],
     error: usersError,
   } = useQuery<User[]>({
     queryKey: ["/api/users", currentUserId, "suggested"],
-    queryFn: () => fetchJSON<User[]>("/api/users/suggested?limit=5"),
+    queryFn: () => fetchJSON<User[]>(`/api/users/${encodeURIComponent(currentUserId)}/suggested?limit=5`),
+    enabled: !!currentUserId,
     retry: false,
   });
 
-  // Trending recipes (sidebar) — falls back to demo if error
+  // Trending recipes (sidebar)
   const {
-    data: trendingRecipes,
+    data: trendingRecipes = [],
     error: recipesError,
   } = useQuery<(Recipe & { post: PostWithUser })[]>({
     queryKey: ["/api/recipes/trending"],
@@ -504,11 +163,9 @@ export default function Feed() {
     retry: false,
   });
 
-  // Prefer real posts; fall back to demo posts if the API returns nothing or errors
-  const realPosts = posts ?? [];
-  const displayPosts = postsError || realPosts.length === 0 ? demoPosts : realPosts;
-  const displaySuggestedUsers = suggestedUsers ?? [];
-  const displayTrendingRecipes = trendingRecipes ?? [];
+  const displayPosts = posts ?? [];
+  const displaySuggestedUsers = suggestedUsers;
+  const displayTrendingRecipes = trendingRecipes;
 
   if (postsLoading) {
     return (
@@ -540,7 +197,13 @@ export default function Feed() {
 
         {/* Posts */}
         <div className="space-y-8">
-          {/* Removed the visible error banner; we silently fall back */}
+          {postsError ? (
+            <Card>
+              <CardContent className="p-4 text-sm text-destructive">
+                {postsError instanceof Error ? postsError.message : "Unable to load posts right now."}
+              </CardContent>
+            </Card>
+          ) : null}
           {displayPosts.map((post) =>
             post.isRecipe ? (
               <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
@@ -579,6 +242,12 @@ export default function Feed() {
 
           <section className="mb-8">
             <h3 className="font-semibold mb-4">Suggested Chefs</h3>
+            {usersError ? (
+              <p className="mb-3 text-xs text-muted-foreground">Suggested chefs are unavailable right now.</p>
+            ) : null}
+            {!currentUserId ? (
+              <p className="mb-3 text-xs text-muted-foreground">Sign in to get suggested chefs.</p>
+            ) : null}
             <div className="space-y-3">
               {displaySuggestedUsers.slice(0, 5).map((user) => (
                 <div key={user.id} className="flex items-center justify-between">
@@ -618,6 +287,9 @@ export default function Feed() {
 
           <section className="mb-8">
             <h3 className="font-semibold mb-4">Trending Recipes</h3>
+            {recipesError ? (
+              <p className="mb-3 text-xs text-muted-foreground">Trending recipes are unavailable right now.</p>
+            ) : null}
             <div className="space-y-4">
               {displayTrendingRecipes.slice(0, 5).map((recipe) => (
                 <div
