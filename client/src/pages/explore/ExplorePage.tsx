@@ -40,6 +40,25 @@ type Post = {
   };
 };
 
+const SAMPLE_EXPLORE_POSTS: Post[] = [
+  {
+    id: "sample-explore-1",
+    title: "Sample: Weeknight Pasta",
+    caption: "Sample post preview for rollout environments.",
+    imageUrl: "https://images.unsplash.com/photo-1621996346565-e3dbc646d9a9?auto=format&fit=crop&w=1200&q=80",
+    likes: 24,
+    comments: 4,
+  },
+  {
+    id: "sample-explore-2",
+    title: "Sample: Garden Bowl",
+    caption: "Sample post preview for rollout environments.",
+    imageUrl: "https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=1200&q=80",
+    likes: 18,
+    comments: 2,
+  },
+];
+
 function ExploreTile({ post }: { post: Post }) {
   const imageUrl = post.image || post.imageUrl || "";
   
@@ -104,9 +123,13 @@ export default function ExplorePage() {
       if (!response.ok) {
         throw new Error(payload?.message || `Failed to load explore posts (${response.status})`);
       }
-      return Array.isArray(payload) ? payload : [];
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload?.items)) return payload.items;
+      return [];
     },
   });
+  const useSampleFallback = !isLoading && (isError || feed.length === 0);
+  const postsToRender = useSampleFallback ? SAMPLE_EXPLORE_POSTS : feed;
 
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-4 space-y-4">
@@ -144,30 +167,42 @@ export default function ExplorePage() {
             <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
               <p className="text-sm text-muted-foreground">Loading posts…</p>
             </div>
-          ) : isError ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
-              <p className="text-sm text-destructive">
-                {error instanceof Error ? error.message : "Unable to load explore posts right now."}
-              </p>
-            </div>
-          ) : feed.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
-              <p className="text-sm text-muted-foreground">No posts… yet.</p>
-            </div>
           ) : view === "grid" ? (
+            <>
+            {useSampleFallback ? (
+              <Card className="p-3 text-xs text-amber-700 bg-amber-50 border-amber-200">
+                {isError ? (
+                  <>Live explore posts are unavailable ({error instanceof Error ? error.message : "request failed"}). Showing sample posts.</>
+                ) : (
+                  <>No live explore posts yet. Showing sample posts.</>
+                )}
+              </Card>
+            ) : null}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-              {feed.map((p) => (
+              {postsToRender.map((p) => (
                 <ExploreTile key={p.id} post={p} />
               ))}
             </div>
+            </>
           ) : (
+            <>
+            {useSampleFallback ? (
+              <Card className="p-3 text-xs text-amber-700 bg-amber-50 border-amber-200">
+                {isError ? (
+                  <>Live explore posts are unavailable ({error instanceof Error ? error.message : "request failed"}). Showing sample posts.</>
+                ) : (
+                  <>No live explore posts yet. Showing sample posts.</>
+                )}
+              </Card>
+            ) : null}
             <div className="space-y-3">
-              {feed.map((p) => (
+              {postsToRender.map((p) => (
                 <div key={p.id}>
                   <ExploreTile post={p} />
                 </div>
               ))}
             </div>
+            </>
           )}
         </TabsContent>
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Share, Eye, Clock, ChevronLeft, ChevronRight, X, Plus } from 'lucide-react';
+import { Heart, MessageCircle, Share, ChevronLeft, ChevronRight, X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -47,6 +47,25 @@ type ActiveBiteApiItem = {
   } | null;
 };
 
+const SAMPLE_BITES: ActiveBiteApiItem[] = [
+  {
+    id: "sample-bite-1",
+    userId: "sample-chef-1",
+    imageUrl: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?auto=format&fit=crop&w=800&q=80",
+    caption: "Sample bite: quick plating idea for tonight's special.",
+    createdAt: new Date().toISOString(),
+    user: { username: "Chef Lina", avatar: "" },
+  },
+  {
+    id: "sample-bite-2",
+    userId: "sample-chef-2",
+    imageUrl: "https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?auto=format&fit=crop&w=800&q=80",
+    caption: "Sample bite: testing a citrus glaze.",
+    createdAt: new Date().toISOString(),
+    user: { username: "Chef Mateo", avatar: "" },
+  },
+];
+
 // Custom Logo Component
 const CustomLogo = () => (
   <div className="flex items-center">
@@ -67,6 +86,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const [userBites, setUserBites] = useState<UserBites[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [usingSampleBites, setUsingSampleBites] = useState(false);
   const [isViewing, setIsViewing] = useState(false);
   const [currentUserIndex, setCurrentUserIndex] = useState(0);
   const [currentBiteIndex, setCurrentBiteIndex] = useState(0);
@@ -79,58 +99,72 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   useEffect(() => {
     let active = true;
 
+    const mapItemsToUserBites = (items: ActiveBiteApiItem[]) => {
+      const grouped = new Map<string, UserBites>();
+      for (const item of items) {
+        if (!item?.id || !item?.userId || !item?.imageUrl) continue;
+        const username = item.user?.username || item.user?.displayName || "Chef";
+        const avatar = item.user?.avatar || "";
+        const bite: Bite = {
+          id: item.id,
+          userId: item.userId,
+          username,
+          avatar,
+          content: { type: "image", url: item.imageUrl },
+          caption: item.caption || "",
+          timestamp: item.createdAt ? new Date(item.createdAt) : new Date(),
+          duration: 5,
+          views: 0,
+          likes: 0,
+          isLiked: false,
+          tags: [],
+        };
+
+        const existing = grouped.get(item.userId);
+        if (existing) {
+          existing.bites.push(bite);
+        } else {
+          grouped.set(item.userId, {
+            userId: item.userId,
+            username,
+            avatar,
+            bites: [bite],
+            hasNewBites: true,
+            isViewed: false,
+          });
+        }
+      }
+      return Array.from(grouped.values());
+    };
+
     const loadBites = async () => {
       setLoading(true);
       setLoadError("");
+      setUsingSampleBites(false);
       try {
-        const viewerId = user?.id ?? "public";
-        const response = await fetch(`/api/bites/active/${encodeURIComponent(viewerId)}`, { credentials: "include" });
+        const endpoint = user?.id
+          ? `/api/bites/active/${encodeURIComponent(user.id)}`
+          : "/api/bites/active";
+        const response = await fetch(endpoint, { credentials: "include" });
         const payload = await response.json().catch(() => null);
         if (!response.ok) throw new Error(payload?.message || "Failed to load bites");
 
         const items = Array.isArray(payload) ? (payload as ActiveBiteApiItem[]) : [];
-        const grouped = new Map<string, UserBites>();
+        const mapped = mapItemsToUserBites(items);
 
-        for (const item of items) {
-          if (!item?.id || !item?.userId || !item?.imageUrl) continue;
-          const username = item.user?.username || item.user?.displayName || "Chef";
-          const avatar = item.user?.avatar || "";
-          const bite: Bite = {
-            id: item.id,
-            userId: item.userId,
-            username,
-            avatar,
-            content: { type: "image", url: item.imageUrl },
-            caption: item.caption || "",
-            timestamp: item.createdAt ? new Date(item.createdAt) : new Date(),
-            duration: 5,
-            views: 0,
-            likes: 0,
-            isLiked: false,
-            tags: [],
-          };
-
-          const existing = grouped.get(item.userId);
-          if (existing) {
-            existing.bites.push(bite);
-          } else {
-            grouped.set(item.userId, {
-              userId: item.userId,
-              username,
-              avatar,
-              bites: [bite],
-              hasNewBites: true,
-              isViewed: false,
-            });
-          }
+        if (!active) return;
+        if (mapped.length > 0) {
+          setUserBites(mapped);
+          return;
         }
 
-        if (!active) return;
-        setUserBites(Array.from(grouped.values()));
+        setUserBites(mapItemsToUserBites(SAMPLE_BITES));
+        setUsingSampleBites(true);
       } catch (error) {
         if (!active) return;
-        setUserBites([]);
         setLoadError(error instanceof Error ? error.message : "Unable to load bites right now.");
+        setUserBites(mapItemsToUserBites(SAMPLE_BITES));
+        setUsingSampleBites(true);
       } finally {
         if (active) setLoading(false);
       }
@@ -247,11 +281,15 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           </h2>
           {loading ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">Loading bites…</p>
-          ) : loadError ? (
-            <p className="text-sm text-red-500">{loadError}</p>
           ) : userBites.length === 0 ? (
             <p className="text-sm text-gray-500 dark:text-gray-400">No bites available yet.</p>
           ) : (
+          <>
+          {(loadError || usingSampleBites) ? (
+            <p className="mb-2 text-xs text-amber-600 dark:text-amber-400">
+              Showing sample bites while live bites are unavailable.
+            </p>
+          ) : null}
           <div className="flex items-center space-x-4 overflow-x-auto pb-2 scrollbar-hide">
             {/* Your Bite (Create) */}
             <div className="flex-shrink-0 cursor-pointer group">
@@ -301,6 +339,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
               </div>
             ))}
           </div>
+          </>
           )}
         </div>
       </div>
