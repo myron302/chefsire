@@ -3,6 +3,7 @@ import { Heart, MessageCircle, Share, Eye, Clock, ChevronLeft, ChevronRight, X, 
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
+import { useUser } from '@/contexts/UserContext';
 import chefLogo from '../asset/logo.jpg'; // Add import to match layout
 
 interface Bite {
@@ -33,115 +34,18 @@ interface UserBites {
   isViewed: boolean;
 }
 
-// Mock data with working image URLs
-const mockUserBites: UserBites[] = [
-  {
-    userId: '1',
-    username: 'chefmaria',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=chefmaria&backgroundColor=b6e3f4,c0aede,d1d4f9',
-    hasNewBites: true,
-    isViewed: false,
-    bites: [
-      {
-        id: '1',
-        userId: '1',
-        username: 'chefmaria',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=chefmaria&backgroundColor=b6e3f4,c0aede,d1d4f9',
-        content: { type: 'image', url: 'https://images.unsplash.com/photo-1551782450-a2132b4ba21d?w=400&h=600&fit=crop' },
-        caption: '🍝 Fresh pasta making process!',
-        timestamp: new Date('2024-01-15T10:30:00Z'),
-        duration: 5,
-        views: 127,
-        likes: 23,
-        isLiked: false,
-        tags: ['pasta', 'homemade', 'italian']
-      },
-      {
-        id: '2',
-        userId: '1',
-        username: 'chefmaria',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=chefmaria&backgroundColor=b6e3f4,c0aede,d1d4f9',
-        content: { type: 'image', url: 'https://images.unsplash.com/photo-1565299624946-b28f40a0ca4b?w=400&h=600&fit=crop' },
-        caption: 'The final result! Nothing beats fresh pasta 😋',
-        timestamp: new Date('2024-01-15T10:35:00Z'),
-        duration: 5,
-        views: 98,
-        likes: 31,
-        isLiked: true,
-        tags: ['pasta', 'delicious', 'foodie']
-      }
-    ]
-  },
-  {
-    userId: '2',
-    username: 'bakerben',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bakerben&backgroundColor=ffb3ba,bae1ff,ffffba',
-    hasNewBites: false,
-    isViewed: true,
-    bites: [
-      {
-        id: '3',
-        userId: '2',
-        username: 'bakerben',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=bakerben&backgroundColor=ffb3ba,bae1ff,ffffba',
-        content: { type: 'image', url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=400&h=600&fit=crop' },
-        caption: '🥖 Early morning bread prep',
-        timestamp: new Date('2024-01-15T06:00:00Z'),
-        duration: 4,
-        views: 234,
-        likes: 67,
-        isLiked: false,
-        tags: ['bread', 'baking']
-      }
-    ]
-  },
-  {
-    userId: '3',
-    username: 'veggievibes',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=veggievibes&backgroundColor=c7cedb,ffd1dc,e6e6fa',
-    hasNewBites: true,
-    isViewed: false,
-    bites: [
-      {
-        id: '4',
-        userId: '3',
-        username: 'veggievibes',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=veggievibes&backgroundColor=c7cedb,ffd1dc,e6e6fa',
-        content: { type: 'image', url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=400&h=600&fit=crop' },
-        caption: 'Rainbow veggie prep! 🌈',
-        timestamp: new Date('2024-01-14T15:20:00Z'),
-        duration: 6,
-        views: 89,
-        likes: 42,
-        isLiked: true,
-        tags: ['mealprep', 'vegetables']
-      }
-    ]
-  },
-  {
-    userId: '4',
-    username: 'dessertqueen',
-    avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=dessertqueen&backgroundColor=f7cac9,f7786b,c4e17f',
-    hasNewBites: true,
-    isViewed: false,
-    bites: [
-      {
-        id: '5',
-        userId: '4',
-        username: 'dessertqueen',
-        avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=dessertqueen&backgroundColor=f7cac9,f7786b,c4e17f',
-        content: { type: 'image', url: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?w=400&h=600&fit=crop' },
-        caption: 'Chocolate soufflé perfection ✨',
-        timestamp: new Date('2024-01-15T14:20:00Z'),
-        duration: 4,
-        views: 156,
-        likes: 78,
-        isLiked: false,
-        tags: ['dessert', 'chocolate']
-      }
-    ]
-  }
-];
+type ActiveBiteApiItem = {
+  id: string;
+  userId: string;
+  imageUrl: string;
+  caption?: string | null;
+  createdAt?: string | null;
+  user?: {
+    username?: string | null;
+    displayName?: string | null;
+    avatar?: string | null;
+  } | null;
+};
 
 // Custom Logo Component
 const CustomLogo = () => (
@@ -159,7 +63,10 @@ interface BitesRowProps {
 }
 
 export function BitesRow({ className = "" }: BitesRowProps) {
-  const [userBites, setUserBites] = useState<UserBites[]>(mockUserBites);
+  const { user } = useUser();
+  const [userBites, setUserBites] = useState<UserBites[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [isViewing, setIsViewing] = useState(false);
   const [currentUserIndex, setCurrentUserIndex] = useState(0);
   const [currentBiteIndex, setCurrentBiteIndex] = useState(0);
@@ -168,6 +75,72 @@ export function BitesRow({ className = "" }: BitesRowProps) {
 
   const currentUser = userBites[currentUserIndex];
   const currentBite = currentUser?.bites[currentBiteIndex];
+
+  useEffect(() => {
+    let active = true;
+
+    const loadBites = async () => {
+      setLoading(true);
+      setLoadError("");
+      try {
+        const viewerId = user?.id ?? "public";
+        const response = await fetch(`/api/bites/active/${encodeURIComponent(viewerId)}`, { credentials: "include" });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.message || "Failed to load bites");
+
+        const items = Array.isArray(payload) ? (payload as ActiveBiteApiItem[]) : [];
+        const grouped = new Map<string, UserBites>();
+
+        for (const item of items) {
+          if (!item?.id || !item?.userId || !item?.imageUrl) continue;
+          const username = item.user?.username || item.user?.displayName || "Chef";
+          const avatar = item.user?.avatar || "";
+          const bite: Bite = {
+            id: item.id,
+            userId: item.userId,
+            username,
+            avatar,
+            content: { type: "image", url: item.imageUrl },
+            caption: item.caption || "",
+            timestamp: item.createdAt ? new Date(item.createdAt) : new Date(),
+            duration: 5,
+            views: 0,
+            likes: 0,
+            isLiked: false,
+            tags: [],
+          };
+
+          const existing = grouped.get(item.userId);
+          if (existing) {
+            existing.bites.push(bite);
+          } else {
+            grouped.set(item.userId, {
+              userId: item.userId,
+              username,
+              avatar,
+              bites: [bite],
+              hasNewBites: true,
+              isViewed: false,
+            });
+          }
+        }
+
+        if (!active) return;
+        setUserBites(Array.from(grouped.values()));
+      } catch (error) {
+        if (!active) return;
+        setUserBites([]);
+        setLoadError(error instanceof Error ? error.message : "Unable to load bites right now.");
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+
+    void loadBites();
+    return () => {
+      active = false;
+    };
+  }, [user?.id]);
 
   // Auto-advance bites
   useEffect(() => {
@@ -272,6 +245,13 @@ export function BitesRow({ className = "" }: BitesRowProps) {
             <CustomLogo />
             <span className="ml-3">Chef's Corner - Quick Bites</span>
           </h2>
+          {loading ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">Loading bites…</p>
+          ) : loadError ? (
+            <p className="text-sm text-red-500">{loadError}</p>
+          ) : userBites.length === 0 ? (
+            <p className="text-sm text-gray-500 dark:text-gray-400">No bites available yet.</p>
+          ) : (
           <div className="flex items-center space-x-4 overflow-x-auto pb-2 scrollbar-hide">
             {/* Your Bite (Create) */}
             <div className="flex-shrink-0 cursor-pointer group">
@@ -321,6 +301,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
               </div>
             ))}
           </div>
+          )}
         </div>
       </div>
 

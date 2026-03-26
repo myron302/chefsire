@@ -3,11 +3,6 @@ import { useInfiniteQuery } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { useExploreFilters } from "./useExploreFilters";
 
-/**
- * Toggle this to false when your backend endpoint is ready.
- * While true, we serve filtered/sorted DEMO posts through react-query.
- */
-const USE_DEMO_DATA = true;
 
 export type ExplorePost = {
   id: string | number;
@@ -29,100 +24,6 @@ export type ExplorePost = {
   dietary?: string[];
   createdAt?: string;
 };
-
-/* ---------------- Demo data (images + fields match your earlier samples) ---------------- */
-const DEMO_POSTS: ExplorePost[] = [
-  {
-    id: "1",
-    title: "Margherita Pizza",
-    image: "https://images.unsplash.com/photo-1548365328-8b84986da7b3?q=80&w=1200&auto=format&fit=crop",
-    cuisine: "Italian",
-    isRecipe: true,
-    author: "Giulia",
-    cookTime: 25,
-    difficulty: "Easy",
-    rating: 4.7,
-    likes: 223,
-    mealType: "Dinner",
-    dietary: ["Vegetarian"],
-    createdAt: "2025-09-08T12:00:00Z",
-  },
-  {
-    id: "2",
-    title: "Rainbow Salad",
-    image: "https://images.unsplash.com/photo-1490474418585-ba9bad8fd0ea?q=80&w=1200&auto=format&fit=crop",
-    cuisine: "Healthy",
-    isRecipe: false,
-    author: "Ava",
-    cookTime: 10,
-    difficulty: "Easy",
-    rating: 4.2,
-    likes: 150,
-    mealType: "Lunch",
-    dietary: ["Vegan", "Gluten-Free"],
-    createdAt: "2025-09-07T10:00:00Z",
-  },
-  {
-    id: "3",
-    title: "Choco Truffles",
-    image: "https://images.unsplash.com/photo-1541781286675-09c7e9d404bc?q=80&w=1200&auto=format&fit=crop",
-    cuisine: "Desserts",
-    isRecipe: true,
-    author: "Noah",
-    cookTime: 45,
-    difficulty: "Medium",
-    rating: 4.9,
-    likes: 512,
-    mealType: "Dessert",
-    dietary: ["Vegetarian"],
-    createdAt: "2025-09-05T18:30:00Z",
-  },
-  {
-    id: "4",
-    title: "Spicy Ramen",
-    image: "https://images.unsplash.com/photo-1546549039-49cc4f5b3c89?q=80&w=1200&auto=format&fit=crop",
-    cuisine: "Asian",
-    isRecipe: true,
-    author: "Rin",
-    cookTime: 30,
-    difficulty: "Medium",
-    rating: 4.5,
-    likes: 340,
-    mealType: "Dinner",
-    dietary: [],
-    createdAt: "2025-09-03T21:15:00Z",
-  },
-  {
-    id: "5",
-    title: "BBQ Brisket",
-    image: "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1200&auto=format&fit=crop",
-    cuisine: "BBQ",
-    isRecipe: false,
-    author: "Mason",
-    cookTime: 240,
-    difficulty: "Hard",
-    rating: 4.1,
-    likes: 98,
-    mealType: "Dinner",
-    dietary: [],
-    createdAt: "2025-09-09T14:45:00Z",
-  },
-  {
-    id: "6",
-    title: "Avocado Toast",
-    image: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0?q=80&w=1200&auto=format&fit=crop",
-    cuisine: "Breakfast",
-    isRecipe: true,
-    author: "Ivy",
-    cookTime: 8,
-    difficulty: "Easy",
-    rating: 4.0,
-    likes: 77,
-    mealType: "Breakfast",
-    dietary: ["Vegetarian"],
-    createdAt: "2025-09-10T08:05:00Z",
-  },
-];
 
 /* ---------------- Helpers ---------------- */
 const LIMIT = 24;
@@ -211,18 +112,6 @@ export function useExploreData() {
       },
     ],
     queryFn: async ({ pageParam }) => {
-      // DEMO MODE: build paginated results fully on the client
-      if (USE_DEMO_DATA) {
-        const filtered = applyClientFilters(DEMO_POSTS, f);
-        const page = typeof pageParam === "number" ? pageParam : 0;
-        const start = page * LIMIT;
-        const end = start + LIMIT;
-        const items = filtered.slice(start, end);
-        const nextCursor = end < filtered.length ? page + 1 : null;
-        return { items, nextCursor, total: filtered.length };
-      }
-
-      // API MODE
       const params = new URLSearchParams();
       params.set("limit", String(LIMIT));
       params.set("sort", f.sortBy);
@@ -238,20 +127,12 @@ export function useExploreData() {
       (f.selectedEthnicities as string[]).forEach((v) => params.append("ethnicity", v));
       (f.excludedAllergens as string[]).forEach((v) => params.append("exclude_allergen", v));
       (f.selectedPreparation as string[]).forEach((v) => params.append("preparation", v));
-
-      try {
-        const page = await fetchServerPage(params);
-        // If server returns nothing, transparently fall back to client demo so UI still shows content
-        if (!page.items.length) {
-          const filtered = applyClientFilters(DEMO_POSTS, f);
-          return { items: filtered.slice(0, LIMIT), nextCursor: null, total: filtered.length };
-        }
-        return page;
-      } catch (e) {
-        // On any error, fall back to demo results (non-crashy)
-        const filtered = applyClientFilters(DEMO_POSTS, f);
-        return { items: filtered.slice(0, LIMIT), nextCursor: null, total: filtered.length };
-      }
+      const page = await fetchServerPage(params);
+      return {
+        items: applyClientFilters(page.items, f),
+        nextCursor: page.nextCursor,
+        total: page.total ?? page.items.length,
+      };
     },
     getNextPageParam: (last) => (last?.nextCursor ?? null) as any,
     staleTime: 30_000,

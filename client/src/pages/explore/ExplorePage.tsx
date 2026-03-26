@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
@@ -38,148 +39,6 @@ type Post = {
     allergens?: string[];
   };
 };
-
-const DEMO: Post[] = [
-  {
-    id: "1",
-    title: "Margherita Pizza",
-    image: "https://images.unsplash.com/photo-1604068549290-dea0e4a305ca?w=800&h=800&fit=crop&auto=format",
-    cuisine: "Italian",
-    isRecipe: true,
-    author: "Giulia",
-    cookTime: 25,
-    difficulty: "Easy",
-    rating: 4.7,
-    likes: 223,
-    comments: 18,
-    mealType: "Dinner",
-    dietary: ["Vegetarian"],
-    createdAt: "2025-09-08T12:00:00Z",
-    user: { displayName: "Giulia" },
-    recipe: {
-      title: "Margherita Pizza",
-      cookTime: 25,
-      servings: 2,
-      difficulty: "Easy",
-      cuisine: "Italian",
-      ingredients: ["Pizza dough", "Tomato sauce", "Mozzarella", "Basil", "Olive oil", "Salt"],
-      instructions: [
-        "Preheat oven to 500°F / 260°C.",
-        "Stretch dough, add sauce and mozzarella.",
-        "Bake 7–10 min. Finish with basil and oil.",
-      ],
-      ratingSpoons: 4.7,
-      dietTags: ["Vegetarian"],
-      allergens: ["Gluten", "Dairy"],
-    },
-  },
-  {
-    id: "2",
-    title: "Rainbow Salad",
-    image: "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=800&h=800&fit=crop&auto=format",
-    isRecipe: true,
-    author: "Ava",
-    cookTime: 10,
-    difficulty: "Easy",
-    rating: 4.2,
-    likes: 150,
-    comments: 9,
-    mealType: "Lunch",
-    dietary: ["Vegan", "Gluten-Free"],
-    createdAt: "2025-09-07T10:00:00Z",
-    user: { displayName: "Ava" },
-    recipe: {
-      title: "Rainbow Salad",
-      cookTime: 10,
-      servings: 2,
-      difficulty: "Easy",
-      cuisine: "Healthy",
-      ingredients: ["Lettuce", "Cherry tomatoes", "Cucumber", "Bell pepper", "Corn", "Olive oil", "Lemon"],
-      instructions: ["Chop veggies.", "Whisk oil and lemon.", "Toss and season."],
-      ratingSpoons: 4.2,
-      dietTags: ["Vegan", "Gluten-Free"],
-      allergens: [],
-    },
-  },
-  {
-    id: "3",
-    title: "Street Food Reel",
-    image: "https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=800&h=800&fit=crop&auto=format",
-    isRecipe: false,
-    author: "Diego",
-    likes: 412,
-    comments: 34,
-    createdAt: "2025-09-06T15:22:00Z",
-    user: { displayName: "Diego" },
-  },
-  {
-    id: "4",
-    title: "Choco Truffles",
-    image: "https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=800&h=800&fit=crop&auto=format",
-    isRecipe: true,
-    author: "Noah",
-    cookTime: 45,
-    difficulty: "Medium",
-    rating: 4.9,
-    likes: 512,
-    comments: 61,
-    mealType: "Dessert",
-    dietary: ["Vegetarian"],
-    createdAt: "2025-09-05T18:30:00Z",
-    user: { displayName: "Noah" },
-    recipe: {
-      title: "Choco Truffles",
-      cookTime: 45,
-      servings: 6,
-      difficulty: "Medium",
-      cuisine: "Desserts",
-      ingredients: ["Dark chocolate", "Cream", "Butter", "Cocoa powder", "Salt"],
-      instructions: ["Heat cream, pour over chocolate.", "Stir, chill, scoop balls.", "Roll in cocoa."],
-      ratingSpoons: 4.9,
-      dietTags: ["Vegetarian"],
-      allergens: ["Dairy"],
-    },
-  },
-  {
-    id: "5",
-    title: "BBQ Brisket",
-    image: "https://images.unsplash.com/photo-1558030006-450675393462?w=800&h=800&fit=crop&auto=format",
-    isRecipe: false,
-    author: "Mason",
-    likes: 98,
-    comments: 12,
-    createdAt: "2025-09-09T14:45:00Z",
-    user: { displayName: "Mason" },
-  },
-  {
-    id: "6",
-    title: "Avocado Toast",
-    image: "https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=800&h=800&fit=crop&auto=format",
-    isRecipe: true,
-    author: "Ivy",
-    cookTime: 8,
-    difficulty: "Easy",
-    rating: 4.0,
-    likes: 77,
-    comments: 4,
-    mealType: "Breakfast",
-    dietary: ["Vegetarian"],
-    createdAt: "2025-09-10T08:05:00Z",
-    user: { displayName: "Ivy" },
-    recipe: {
-      title: "Avocado Toast",
-      cookTime: 8,
-      servings: 1,
-      difficulty: "Easy",
-      cuisine: "Breakfast",
-      ingredients: ["Bread", "Avocado", "Lemon", "Chili flakes", "Salt", "Olive oil"],
-      instructions: ["Toast bread", "Mash avocado with lemon", "Assemble and season"],
-      ratingSpoons: 4.0,
-      dietTags: ["Vegetarian"],
-      allergens: ["Gluten"],
-    },
-  },
-];
 
 function ExploreTile({ post }: { post: Post }) {
   const imageUrl = post.image || post.imageUrl || "";
@@ -232,7 +91,22 @@ function ExploreTile({ post }: { post: Post }) {
 
 export default function ExplorePage() {
   const [view, setView] = React.useState<"grid" | "list">("grid");
-  const feed = React.useMemo(() => DEMO, []);
+  const {
+    data: feed = [],
+    isLoading,
+    isError,
+    error,
+  } = useQuery<Post[]>({
+    queryKey: ["/api/posts/explore"],
+    queryFn: async () => {
+      const response = await fetch("/api/posts/explore?offset=0&limit=24", { credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || `Failed to load explore posts (${response.status})`);
+      }
+      return Array.isArray(payload) ? payload : [];
+    },
+  });
 
   return (
     <div className="mx-auto max-w-6xl px-4 md:px-6 py-4 space-y-4">
@@ -266,7 +140,17 @@ export default function ExplorePage() {
             </div>
           </div>
 
-          {feed.length === 0 ? (
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
+              <p className="text-sm text-muted-foreground">Loading posts…</p>
+            </div>
+          ) : isError ? (
+            <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
+              <p className="text-sm text-destructive">
+                {error instanceof Error ? error.message : "Unable to load explore posts right now."}
+              </p>
+            </div>
+          ) : feed.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-lg border py-16 text-center">
               <p className="text-sm text-muted-foreground">No posts… yet.</p>
             </div>
