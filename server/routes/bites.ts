@@ -5,6 +5,15 @@ import { storage } from "../storage";
 
 const r = Router();
 
+function normalizeViewerId(rawUserId: string | undefined): string | undefined {
+  if (!rawUserId) return undefined;
+  const normalized = rawUserId.trim().toLowerCase();
+  if (!normalized || normalized === "public" || normalized === "anonymous" || normalized === "guest" || normalized === "null" || normalized === "undefined") {
+    return undefined;
+  }
+  return rawUserId;
+}
+
 /**
  * Bites = stories (same data, different name)
  * Routes are read-friendly and minimal-create to avoid auth complexity.
@@ -13,11 +22,22 @@ const r = Router();
 // List currently-active bites across network (optionally scoped by viewer)
 r.get("/active/:userId", async (req, res) => {
   try {
-    const { userId } = req.params;
-    const items = await storage.getActiveStories(userId);
+    const viewerId = normalizeViewerId(req.params.userId);
+    const items = await storage.getActiveStories(viewerId);
     res.json(items);
   } catch (error) {
-    console.error("bites/active error", e);
+    console.error("bites/active/:userId error", error);
+    res.status(500).json({ message: "Failed to fetch active bites" });
+  }
+});
+
+// List currently-active bites without viewer context
+r.get("/active", async (_req, res) => {
+  try {
+    const items = await storage.getActiveStories(undefined);
+    res.json(items);
+  } catch (error) {
+    console.error("bites/active error", error);
     res.status(500).json({ message: "Failed to fetch active bites" });
   }
 });
@@ -29,7 +49,7 @@ r.get("/user/:userId", async (req, res) => {
     const items = await storage.getUserStories(userId);
     res.json({ bites: items, total: items.length });
   } catch (error) {
-    console.error("bites/user error", e);
+    console.error("bites/user error", error);
     res.status(500).json({ message: "Failed to fetch user bites" });
   }
 });

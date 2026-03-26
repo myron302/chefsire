@@ -85,7 +85,11 @@ async function fetchServerPage(params: URLSearchParams): Promise<Page> {
     throw new Error(`${res.status}: ${text}`);
   }
   const data = await res.json();
-  // Expecting shape { items, nextCursor, total }; be defensive:
+  // Backend may return either { items, nextCursor, total } or just an array.
+  if (Array.isArray(data)) {
+    const items = data.filter(isPostLike);
+    return { items, nextCursor: null, total: items.length };
+  }
   const items = Array.isArray(data?.items) ? data.items.filter(isPostLike) : [];
   return { items, nextCursor: data?.nextCursor ?? null, total: data?.total ?? items.length };
 }
