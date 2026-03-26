@@ -103,6 +103,7 @@ export const dmMessages = pgTable(
   },
   (t) => ({
     threadIdx: index("dm_messages_thread_idx").on(t.threadId),
+    senderIdx: index("dm_messages_sender_idx").on(t.senderId),
     threadCreatedIdx: index("dm_messages_thread_created_idx").on(
       t.threadId,
       t.createdAt
