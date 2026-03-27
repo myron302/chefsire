@@ -3878,7 +3878,7 @@ async function trackCreatorCampaignVariantEvent(input: {
   eventType: CreatorCampaignVariantEventType;
   userId?: string | null;
   sessionKey?: string | null;
-  metadata?: Record<string, unknown> | null;
+  metadata?: typeof creatorCampaignVariantEvents.$inferInsert.metadata;
 }) {
   if (!db) return;
   await db.insert(creatorCampaignVariantEvents).values(insertCreatorCampaignVariantEventSchema.parse({
@@ -3897,7 +3897,7 @@ async function trackCreatorCampaignSpotlightEvent(input: {
   surface: CreatorCampaignSpotlightSurface;
   userId?: string | null;
   sessionKey?: string | null;
-  metadata?: Record<string, unknown> | null;
+  metadata?: typeof creatorCampaignSpotlightEvents.$inferInsert.metadata;
 }) {
   if (!db) return;
   await db.insert(creatorCampaignSpotlightEvents).values(insertCreatorCampaignSpotlightEventSchema.parse({
@@ -3924,7 +3924,7 @@ async function trackCreatorCampaignSurfaceEvent(input: {
   surface: CreatorCampaignSurface;
   userId?: string | null;
   sessionKey?: string | null;
-  metadata?: Record<string, unknown> | null;
+  metadata?: typeof creatorCampaignSurfaceEvents.$inferInsert.metadata;
 }) {
   if (!db) return;
   await db.insert(creatorCampaignSurfaceEvents).values(insertCreatorCampaignSurfaceEventSchema.parse({
