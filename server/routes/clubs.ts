@@ -602,6 +602,7 @@ router.post(
           currentProgress: 0,
           currentStreak: 0,
           completedSteps: [],
+          completed: false,
           isCompleted: false,
         })
         .returning();
@@ -668,6 +669,7 @@ router.post(
         .set({
           currentProgress: newProgress,
           completedSteps,
+          completed: isCompleted,
           isCompleted,
           completedAt: isCompleted ? new Date().toISOString() : null,
         })

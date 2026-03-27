@@ -14,6 +14,14 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 
+type RecipeNutrition = Record<string, unknown> & {
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+  fiber?: number;
+};
+
 export const posts = pgTable("posts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").references(() => users.id).notNull(),
@@ -37,7 +45,7 @@ export const recipes = pgTable("recipes", {
   cookTime: integer("cook_time"),
   servings: integer("servings"),
   difficulty: text("difficulty"),
-  nutrition: jsonb("nutrition").$type<Record<string, any>>(),
+  nutrition: jsonb("nutrition").$type<RecipeNutrition>(),
   calories: integer("calories"),
   protein: decimal("protein", { precision: 5, scale: 2 }),
   carbs: decimal("carbs", { precision: 5, scale: 2 }),
