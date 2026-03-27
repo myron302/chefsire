@@ -546,7 +546,8 @@ router.get("/challenges/:id", async (req: Request, res: Response) => {
     const [stats] = await db
       .select({
         participantCount: sql`count(distinct ${challengeProgress.userId})`,
-        completedCount: sql`count(*) filter (where ${challengeProgress.isCompleted} = true)`,
+        // `is_completed` is canonical, but count either flag to tolerate legacy drift.
+        completedCount: sql`count(*) filter (where ${challengeProgress.isCompleted} = true or ${challengeProgress.completed} = true)`,
       })
       .from(challengeProgress)
       .where(eq(challengeProgress.challengeId, challengeId));
@@ -662,7 +663,10 @@ router.post(
         (sum: number, req: any) => sum + (req.target || 1),
         0
       );
-      const isCompleted = newProgress >= totalRequired;
+      // `is_completed` is canonical in application logic, but we preserve backward
+      // compatibility with legacy rows where only `completed` may have been set.
+      const persistedCompletion = Boolean(progress.isCompleted || progress.completed);
+      const isCompleted = persistedCompletion || newProgress >= totalRequired;
 
       const [updated] = await db
         .update(challengeProgress)
