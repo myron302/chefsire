@@ -864,6 +864,12 @@ export const creatorCampaignCtaVariants = pgTable(
   })
 );
 
+export type CreatorCampaignEventMetadata = {
+  dropId?: string;
+  source?: "campaign_variant" | "campaign_surface";
+  referrerRoute?: string;
+};
+
 export const creatorCampaignVariantEvents = pgTable(
   "creator_campaign_variant_events",
   {
@@ -873,7 +879,7 @@ export const creatorCampaignVariantEvents = pgTable(
     eventType: text("event_type").notNull(),
     userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
     sessionKey: varchar("session_key", { length: 160 }),
-    metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
+    metadata: jsonb("metadata").$type<CreatorCampaignEventMetadata | null>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
@@ -895,7 +901,7 @@ export const creatorCampaignSpotlightEvents = pgTable(
     surface: text("surface").notNull(),
     userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
     sessionKey: varchar("session_key", { length: 160 }),
-    metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
+    metadata: jsonb("metadata").$type<CreatorCampaignEventMetadata | null>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
@@ -917,7 +923,7 @@ export const creatorCampaignSurfaceEvents = pgTable(
     surface: text("surface").notNull(),
     userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
     sessionKey: varchar("session_key", { length: 160 }),
-    metadata: jsonb("metadata").$type<Record<string, unknown> | null>(),
+    metadata: jsonb("metadata").$type<CreatorCampaignEventMetadata | null>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => ({
@@ -1223,4 +1229,3 @@ export const userDrinkStats = pgTable("user_drink_stats", {
   >().default(sql`'[]'::jsonb`),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-
