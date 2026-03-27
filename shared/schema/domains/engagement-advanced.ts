@@ -21,7 +21,7 @@ export const notifications = pgTable(
     message: text("message").notNull(),
     imageUrl: text("image_url"),
     linkUrl: text("link_url"),
-    metadata: jsonb("metadata").$type<Record<string, any>>().default(sql`'{}'::jsonb`),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>().default(sql`'{}'::jsonb`),
     read: boolean("read").default(false),
     readAt: timestamp("read_at"),
     priority: text("priority").default("normal"), // low, normal, high, urgent

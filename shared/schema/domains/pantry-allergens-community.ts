@@ -3,6 +3,26 @@ import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, decimal, in
 import { users } from "./users-auth";
 import { recipes } from "./social-content";
 
+type ChallengeRequirement = {
+  type: string;
+  target?: number;
+  metric?: string;
+  value?: string | number | boolean;
+};
+
+type ChallengeReward = {
+  type: string;
+  value: string;
+  amount?: number;
+  label?: string;
+};
+
+type ChallengeCompletedStep = {
+  step: string;
+  completedAt: string;
+  recipeId?: string | null;
+};
+
 /* ===== PANTRY ===== */
 /* ===== PANTRY HOUSEHOLDS ===== */
 export const pantryHouseholds = pgTable(
@@ -264,8 +284,8 @@ export const challenges = pgTable(
     name: text("name").notNull(),
     description: text("description"),
     goal: text("goal").notNull(),
-    requirements: jsonb("requirements").$type<any[]>().default(sql`'[]'::jsonb`),
-    rewards: jsonb("rewards").$type<any[]>().default(sql`'[]'::jsonb`),
+    requirements: jsonb("requirements").$type<ChallengeRequirement[]>().default(sql`'[]'::jsonb`),
+    rewards: jsonb("rewards").$type<ChallengeReward[]>().default(sql`'[]'::jsonb`),
     tier: text("tier").default("bronze"),
     startDate: timestamp("start_date").notNull(),
     endDate: timestamp("end_date").notNull(),
@@ -285,8 +305,10 @@ export const challengeProgress = pgTable(
     progress: integer("progress").default(0),
     currentProgress: integer("current_progress").default(0),
     currentStreak: integer("current_streak").default(0),
-    completedSteps: jsonb("completed_steps").$type<any[]>().default(sql`'[]'::jsonb`),
+    completedSteps: jsonb("completed_steps").$type<ChallengeCompletedStep[]>().default(sql`'[]'::jsonb`),
     completed: boolean("completed").default(false),
+    // Legacy duplicate completion flag retained for backward compatibility.
+    // `is_completed` is currently treated as canonical in routes/services.
     isCompleted: boolean("is_completed").default(false),
     completedAt: timestamp("completed_at"),
     startedAt: timestamp("started_at").defaultNow(),
@@ -322,4 +344,3 @@ export const userBadges = pgTable(
     userBadgeIdx: index("user_badges_user_badge_idx").on(table.userId, table.badgeId),
   })
 );
-

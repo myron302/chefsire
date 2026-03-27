@@ -3,6 +3,8 @@ import { pgTable, text, varchar, integer, boolean, timestamp, date, bigserial, j
 import { users } from "./users-auth";
 import { orders } from "./commerce-billing";
 
+type StorePresentationConfig = Record<string, unknown>;
+
 /* ===== STORES TABLE ===== */
 export const stores = pgTable(
   "stores",
@@ -15,8 +17,8 @@ export const stores = pgTable(
     handle: text("handle").notNull().unique(),
     name: text("name").notNull(),
     bio: text("bio"),
-    theme: jsonb("theme").$type<Record<string, any>>().default(sql`'{}'::jsonb`),
-    layout: jsonb("layout").$type<Record<string, any>>(),
+    theme: jsonb("theme").$type<StorePresentationConfig>().default(sql`'{}'::jsonb`),
+    layout: jsonb("layout").$type<StorePresentationConfig>(),
     published: boolean("published").default(false),
     viewCount: integer("view_count").default(0),
     createdAt: timestamp("created_at").defaultNow(),
@@ -104,7 +106,7 @@ export const payouts = pgTable(
     metadata: jsonb("metadata").$type<{
       ordersCount?: number;
       dateRange?: { from: string; to: string };
-      accountDetails?: Record<string, any>;
+      accountDetails?: Record<string, unknown>;
     }>(),
     createdAt: timestamp("created_at").defaultNow(),
   },
