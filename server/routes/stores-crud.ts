@@ -6,6 +6,16 @@ import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { requireAuth, optionalAuth } from "../middleware/auth";
 
 const router = Router();
+type StoreInsert = typeof stores.$inferInsert;
+type StoreLayout = NonNullable<StoreInsert["layout"]>;
+
+type StoreUpdateRequestBody = {
+  name?: StoreInsert["name"];
+  bio?: StoreInsert["bio"];
+  theme?: StoreInsert["theme"];
+  customization?: Partial<StoreLayout>;
+  layout?: StoreInsert["layout"];
+};
 
 /**
  * STORE CRUD ROUTER
@@ -143,7 +153,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
     }
 
     const { id } = req.params;
-    const { name, bio, theme, customization, layout } = req.body;
+    const { name, bio, theme, customization, layout } = req.body as StoreUpdateRequestBody;
 
     const existing = await db.query.stores.findFirst({
       where: eq(stores.id, id),
@@ -154,7 +164,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
     }
 
     // Build update object - only include fields that are provided
-    const updateData: any = {
+    const updateData: Partial<Pick<StoreInsert, "name" | "bio" | "theme" | "layout" | "updatedAt">> = {
       updatedAt: new Date(),
     };
 
@@ -164,7 +174,15 @@ router.patch("/:id", requireAuth, async (req, res) => {
 
     // Support both customization and layout fields
     if (customization !== undefined) {
-      updateData.layout = { ...existing.layout, ...customization };
+      const existingLayout =
+        existing.layout && typeof existing.layout === "object" && !Array.isArray(existing.layout)
+          ? (existing.layout as Record<string, unknown>)
+          : {};
+      const patchLayout =
+        customization && typeof customization === "object" && !Array.isArray(customization)
+          ? (customization as Record<string, unknown>)
+          : {};
+      updateData.layout = { ...existingLayout, ...patchLayout } as StoreInsert["layout"];
     } else if (layout !== undefined) {
       updateData.layout = layout;
     }
@@ -190,7 +208,7 @@ router.patch("/:id/layout", requireAuth, async (req, res) => {
     }
 
     const { id } = req.params;
-    const { layout } = req.body;
+    const { layout } = req.body as Pick<StoreUpdateRequestBody, "layout">;
 
     const existing = await db.query.stores.findFirst({
       where: eq(stores.id, id),
