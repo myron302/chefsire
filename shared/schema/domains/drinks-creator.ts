@@ -244,6 +244,8 @@ export type DrinkPurchaseType = (typeof DRINK_PURCHASE_TYPE_VALUES)[number];
 
 export const DRINK_COLLECTION_PROMOTION_DISCOUNT_TYPE_VALUES = ["percent", "fixed"] as const;
 export type DrinkCollectionPromotionDiscountType = (typeof DRINK_COLLECTION_PROMOTION_DISCOUNT_TYPE_VALUES)[number];
+export const CREATOR_POST_VISIBILITY_VALUES = ["public", "followers", "members"] as const;
+export type CreatorPostVisibility = (typeof CREATOR_POST_VISIBILITY_VALUES)[number];
 
 export const drinkCollections = pgTable(
   "drink_collections",
@@ -549,7 +551,7 @@ export const creatorPosts = pgTable(
     title: varchar("title", { length: 160 }).notNull(),
     body: text("body").notNull(),
     postType: text("post_type").default("update").notNull(),
-    visibility: text("visibility").default("public").notNull(),
+    visibility: text("visibility").$type<CreatorPostVisibility>().default("public").notNull(),
     linkedCollectionId: varchar("linked_collection_id").references(() => drinkCollections.id, { onDelete: "set null" }),
     linkedChallengeId: varchar("linked_challenge_id").references(() => drinkChallenges.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at").defaultNow().notNull(),
