@@ -41,6 +41,7 @@ import {
   DRINK_COLLECTION_PURCHASE_STATUS_VALUES,
   DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES,
   DRINK_PURCHASE_TYPE_VALUES,
+  CREATOR_POST_VISIBILITY_VALUES,
   insertCustomDrinkSchema, 
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
@@ -90,6 +91,7 @@ import {
   type DrinkCollectionPurchaseStatus,
   type DrinkCollectionSalesLedgerStatus,
   type DrinkPurchaseType,
+  type CreatorPostVisibility,
 } from "@shared/schema";
 import { z } from "zod";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
@@ -275,7 +277,6 @@ type CreatorMembershipBillingInterval = "monthly" | "yearly";
 type CreatorMembershipStatus = "active" | "canceled" | "expired" | "past_due";
 type CreatorMembershipCheckoutStatus = "pending" | "completed" | "failed" | "canceled";
 type CreatorPostType = "update" | "promo" | "collection_launch" | "challenge" | "member_only";
-type CreatorPostVisibility = "public" | "followers" | "members";
 type CreatorDropType = "collection_launch" | "promo_launch" | "member_drop" | "challenge_launch" | "update";
 type CreatorDropVisibility = "public" | "followers" | "members";
 type CreatorDropStatus = "upcoming" | "live" | "archived";
@@ -607,8 +608,16 @@ const DRINK_PURCHASE_TYPE_SET = new Set<string>(DRINK_PURCHASE_TYPE_VALUES);
 const DRINK_COLLECTION_CHECKOUT_STATUS_SET = new Set<string>(DRINK_COLLECTION_CHECKOUT_STATUS_VALUES);
 const DRINK_COLLECTION_PURCHASE_STATUS_SET = new Set<string>(DRINK_COLLECTION_PURCHASE_STATUS_VALUES);
 const DRINK_COLLECTION_SALES_LEDGER_STATUS_SET = new Set<string>(DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES);
+const CREATOR_POST_VISIBILITY_SET = new Set<string>(CREATOR_POST_VISIBILITY_VALUES);
 const PREMIUM_COLLECTION_PLATFORM_FEE_BPS = 1500;
 const PREMIUM_COLLECTION_CREATOR_SHARE_BPS = 10000 - PREMIUM_COLLECTION_PLATFORM_FEE_BPS;
+
+function normalizeCreatorPostVisibility(value: unknown): CreatorPostVisibility {
+  if (typeof value === "string" && CREATOR_POST_VISIBILITY_SET.has(value)) {
+    return value as CreatorPostVisibility;
+  }
+  return "public";
+}
 
 function slugifyDrinkRecipeName(value: string): string {
   return value
@@ -895,7 +904,7 @@ const creatorMembershipPlanInputSchema = z.object({
 });
 
 const creatorPostTypeSchema = z.enum(["update", "promo", "collection_launch", "challenge", "member_only"]);
-const creatorPostVisibilitySchema = z.enum(["public", "followers", "members"]);
+const creatorPostVisibilitySchema = z.enum(CREATOR_POST_VISIBILITY_VALUES);
 const creatorDropTypeSchema = z.enum(["collection_launch", "promo_launch", "member_drop", "challenge_launch", "update"]);
 const creatorDropVisibilitySchema = z.enum(["public", "followers", "members"]);
 const creatorRoadmapItemTypeSchema = z.enum(["collection", "promo", "challenge", "member_drop", "update", "roadmap"]);
@@ -21705,7 +21714,7 @@ r.patch("/creator-posts/:id", requireAuth, async (req, res) => {
       postType: payload.postType ?? (existing.postType as CreatorPostType),
       visibility: (payload.postType ?? existing.postType) === "member_only"
         ? "members" as const
-        : (payload.visibility ?? (existing.visibility as CreatorPostVisibility)),
+        : (payload.visibility ?? normalizeCreatorPostVisibility(existing.visibility)),
       linkedCollectionId: payload.linkedCollectionId !== undefined ? normalizeNullableForeignId(payload.linkedCollectionId) : existing.linkedCollectionId,
       linkedChallengeId: payload.linkedChallengeId !== undefined ? normalizeNullableForeignId(payload.linkedChallengeId) : existing.linkedChallengeId,
       updatedAt: new Date(),
