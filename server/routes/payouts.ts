@@ -11,8 +11,18 @@ const { Client, Environment } = square;
 
 type PaymentMethodRecord = typeof paymentMethods.$inferSelect;
 type PayoutMetadata = NonNullable<typeof payouts.$inferInsert["metadata"]>;
+type OrderRecord = typeof orders.$inferSelect;
+type PayoutRecord = typeof payouts.$inferSelect;
 
 const router = Router();
+
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unknown error";
+};
 
 // Initialize Square client
 const getSquareClient = () => {
@@ -71,32 +81,28 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
     }
 
     // Get orders ready for payout
-    let ordersQuery = db
-      .select()
-      .from(orders)
-      .where(
-        and(
-          eq(orders.sellerId, sellerId),
-          eq(orders.status, "delivered"), // Only pay for delivered orders
-          // Add a check for orders not already paid out
-          // eq(orders.payoutStatus, 'pending')
-        )
-      );
-
-    if (orderIds && orderIds.length > 0) {
-      ordersQuery = db
-        .select()
-        .from(orders)
-        .where(
-          and(
-            eq(orders.sellerId, sellerId),
-            inArray(orders.id, orderIds),
-            eq(orders.status, "delivered")
+    const ordersToPayout: OrderRecord[] = orderIds && orderIds.length > 0
+      ? await db
+          .select()
+          .from(orders)
+          .where(
+            and(
+              eq(orders.sellerId, sellerId),
+              inArray(orders.id, orderIds),
+              eq(orders.status, "delivered")
+            )
           )
-        ) as any;
-    }
-
-    const ordersToPayout = await ordersQuery;
+      : await db
+          .select()
+          .from(orders)
+          .where(
+            and(
+              eq(orders.sellerId, sellerId),
+              eq(orders.status, "delivered"), // Only pay for delivered orders
+              // Add a check for orders not already paid out
+              // eq(orders.payoutStatus, 'pending')
+            )
+          );
 
     if (ordersToPayout.length === 0) {
       return res.json({
@@ -130,7 +136,7 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
           )
         )
         .limit(1);
-    } catch (error: any) {
+    } catch (_error: unknown) {
       // Table doesn't exist yet - return error indicating migration needed
       return res.status(503).json({
         ok: false,
@@ -198,13 +204,13 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
           completedAt: new Date(),
         }).where(eq(payouts.id, payoutRecord.id));
 
-      } catch (squareError: any) {
+      } catch (squareError: unknown) {
         console.error("Square payout error:", squareError);
 
         // Mark payout as failed
         await db.update(payouts).set({
           status: 'failed',
-          failureReason: squareError.message || 'Square payout failed',
+          failureReason: getErrorMessage(squareError) || 'Square payout failed',
           processedAt: new Date(),
         }).where(eq(payouts.id, payoutRecord.id));
 
@@ -266,7 +272,7 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
         provider: paymentMethod.provider,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Payout error:", error);
     res.status(500).json({ ok: false, error: "Failed to process payout" });
   }
@@ -281,14 +287,14 @@ router.get("/my-payouts", requireAuth, async (req, res) => {
     const sellerId = req.user!.id;
 
     // Query payouts table
-    let sellerPayouts: any[];
+    let sellerPayouts: PayoutRecord[];
     try {
       sellerPayouts = await db
         .select()
         .from(payouts)
         .where(eq(payouts.sellerId, sellerId))
         .orderBy(payouts.createdAt);
-    } catch (error: any) {
+    } catch (_error: unknown) {
       // Table doesn't exist yet - return empty state
       return res.json({
         ok: true,
