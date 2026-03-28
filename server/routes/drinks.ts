@@ -14944,8 +14944,7 @@ async function maybeSendCampaignLinkedContentAlerts(input: {
     let recipientIds = await loadCampaignAlertRecipientIds(campaign, input.contentVisibility);
     if (!recipientIds.length) continue;
 
-    const rawEventKey = input.metadata?.event;
-    const eventKey = typeof rawEventKey === "string" ? rawEventKey : null;
+    const eventKey = input.metadata?.event ?? null;
     if (eventKey) {
       const existingRows = await db
         .select({ userId: notifications.userId })
