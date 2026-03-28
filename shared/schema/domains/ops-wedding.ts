@@ -3,7 +3,63 @@ import { pgTable, text, varchar, integer, boolean, timestamp, date, bigserial, j
 import { users } from "./users-auth";
 import { orders } from "./commerce-billing";
 
-type StorePresentationConfig = Record<string, unknown>;
+type StoreThemeConfig =
+  | string
+  | {
+      preset?: string;
+      primaryColor?: string;
+      secondaryColor?: string;
+      accentColor?: string;
+      backgroundColor?: string;
+    };
+
+type StoreLayoutCustomizationConfig = {
+  logo?: string;
+  bannerImage?: string;
+  bannerTitle?: string;
+  bannerSubtitle?: string;
+  showBanner?: boolean;
+  aboutEnabled?: boolean;
+  aboutTitle?: string;
+  aboutContent?: string;
+  announcementBar?: string;
+  announcementEnabled?: boolean;
+  socialLinks?: {
+    instagram?: string;
+    facebook?: string;
+    twitter?: string;
+    email?: string;
+    phone?: string;
+  };
+  contactInfo?: {
+    address?: string;
+    hours?: string;
+  };
+  layout?: {
+    gridColumns?: number;
+    productCardStyle?: "elevated" | "flat";
+    spacing?: "compact" | "normal" | "relaxed";
+  };
+  colors?: {
+    primary?: string;
+    secondary?: string;
+    accent?: string;
+  };
+};
+
+type StoreBuilderNode = {
+  type?: string;
+  isCanvas?: boolean;
+  props?: Record<string, unknown>;
+  custom?: Record<string, unknown>;
+  displayName?: string;
+  parent?: string | null;
+  nodes?: string[];
+  linkedNodes?: Record<string, string>;
+};
+
+type StoreBuilderLayoutConfig = Record<string, StoreBuilderNode>;
+type StoreLayoutConfig = StoreLayoutCustomizationConfig | StoreBuilderLayoutConfig;
 
 /* ===== STORES TABLE ===== */
 export const stores = pgTable(
@@ -17,8 +73,8 @@ export const stores = pgTable(
     handle: text("handle").notNull().unique(),
     name: text("name").notNull(),
     bio: text("bio"),
-    theme: jsonb("theme").$type<StorePresentationConfig>().default(sql`'{}'::jsonb`),
-    layout: jsonb("layout").$type<StorePresentationConfig>(),
+    theme: jsonb("theme").$type<StoreThemeConfig>().default(sql`'{}'::jsonb`),
+    layout: jsonb("layout").$type<StoreLayoutConfig>(),
     published: boolean("published").default(false),
     viewCount: integer("view_count").default(0),
     createdAt: timestamp("created_at").defaultNow(),
