@@ -7,7 +7,7 @@ import PostCard from "@/components/post-card";
 import { BitesRow } from "@/components/BitesRow";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Heart, Clock, X, MessageCircle } from "lucide-react";
+import { Heart, Clock, X, MessageCircle, ChefHat, Utensils, Users, Trophy, Sparkles, BookOpen } from "lucide-react";
 import { useQuery as useQueryClientLikes } from "@tanstack/react-query";
 import type { PostWithUser, User, Recipe } from "@shared/schema";
 import DailyQuests from "@/components/DailyQuests";
@@ -15,6 +15,7 @@ import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useUser } from "@/contexts/UserContext";
 import { Link } from "wouter";
+import CommentsSection from "./CommentsSection";
 
 function SimpleRecipeCard({
   post,
@@ -91,17 +92,135 @@ function SimpleRecipeCard({
   );
 }
 
+// ─── Landing hero shown to visitors who aren't signed in ───────────────────
+
+function LandingHero() {
+  return (
+    <div className="w-full">
+      {/* Hero */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 dark:from-orange-950/30 dark:via-amber-950/20 dark:to-yellow-950/10 border border-orange-100 dark:border-orange-900/30 p-8 mb-8 text-center">
+        <div className="flex justify-center mb-4">
+          <div className="p-3 bg-orange-100 dark:bg-orange-900/40 rounded-2xl">
+            <ChefHat className="w-10 h-10 text-orange-500" />
+          </div>
+        </div>
+        <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-gray-50 mb-3">
+          Where Chefs Come Together
+        </h1>
+        <p className="text-lg text-gray-600 dark:text-gray-400 max-w-xl mx-auto mb-6">
+          Share recipes, discover drinks, join cook-off battles, and connect
+          with a community that lives and breathes food.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Link href="/auth">
+            <a>
+              <Button size="lg" className="bg-orange-500 hover:bg-orange-600 text-white w-full sm:w-auto px-8">
+                Join ChefSire — it's free
+              </Button>
+            </a>
+          </Link>
+          <Link href="/auth">
+            <a>
+              <Button size="lg" variant="outline" className="w-full sm:w-auto px-8">
+                Sign in
+              </Button>
+            </a>
+          </Link>
+        </div>
+      </div>
+
+      {/* Feature grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-8">
+        {[
+          {
+            icon: <BookOpen className="w-5 h-5 text-green-500" />,
+            bg: "bg-green-50 dark:bg-green-950/30",
+            title: "Recipes",
+            desc: "Post, save & remix recipes from chefs worldwide",
+          },
+          {
+            icon: <Utensils className="w-5 h-5 text-blue-500" />,
+            bg: "bg-blue-50 dark:bg-blue-950/30",
+            title: "Drinks Hub",
+            desc: "Smoothies, cocktails, detoxes — all in one place",
+          },
+          {
+            icon: <Trophy className="w-5 h-5 text-amber-500" />,
+            bg: "bg-amber-50 dark:bg-amber-950/30",
+            title: "Cook-Off Arena",
+            desc: "Compete live, earn badges, climb the leaderboard",
+          },
+          {
+            icon: <Users className="w-5 h-5 text-purple-500" />,
+            bg: "bg-purple-50 dark:bg-purple-950/30",
+            title: "Chef Clubs",
+            desc: "Join or start clubs around any cuisine or style",
+          },
+          {
+            icon: <Sparkles className="w-5 h-5 text-pink-500" />,
+            bg: "bg-pink-50 dark:bg-pink-950/30",
+            title: "Quests & XP",
+            desc: "Daily quests and rewards to keep cooking fresh",
+          },
+          {
+            icon: <ChefHat className="w-5 h-5 text-orange-500" />,
+            bg: "bg-orange-50 dark:bg-orange-950/30",
+            title: "Meal Planning",
+            desc: "Plan, track macros and build weekly meal blueprints",
+          },
+        ].map((f) => (
+          <div
+            key={f.title}
+            className={`${f.bg} rounded-xl p-4 border border-transparent`}
+          >
+            <div className="mb-2">{f.icon}</div>
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-0.5">{f.title}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 leading-snug">{f.desc}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Divider before community posts */}
+      <div className="flex items-center gap-3 mb-6">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-sm text-muted-foreground font-medium">Latest from the community</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Empty state shown when no community posts exist yet ────────────────────
+
+function EmptyPublicFeed() {
+  return (
+    <div className="text-center py-12 px-4">
+      <div className="flex justify-center mb-4">
+        <div className="p-4 bg-muted rounded-2xl">
+          <ChefHat className="w-8 h-8 text-muted-foreground" />
+        </div>
+      </div>
+      <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
+        Be the first to share
+      </h3>
+      <p className="text-muted-foreground text-sm max-w-xs mx-auto mb-6">
+        No posts yet — sign up and share your first recipe to get the community started.
+      </p>
+      <Link href="/auth">
+        <a>
+          <Button className="bg-orange-500 hover:bg-orange-600 text-white">
+            Join ChefSire
+          </Button>
+        </a>
+      </Link>
+    </div>
+  );
+}
+
 async function fetchJSON<T>(url: string): Promise<T> {
   const res = await fetch(url, { credentials: "include" });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return res.json();
-}
-
-// Helper to validate dates and prevent crashes
-function isValidDate(dateStr: string | undefined | null): boolean {
-  if (!dateStr) return false;
-  const date = new Date(dateStr);
-  return !isNaN(date.getTime()) && date.getFullYear() >= 1900 && date.getFullYear() <= 2100;
 }
 
 export default function Feed() {
@@ -125,7 +244,7 @@ export default function Feed() {
 
   // Posts feed
   // - If logged in: /api/posts/feed?userId=... returns your posts + followed users
-  // - If logged out: /api/posts/feed falls back to explore
+  // - If logged out: /api/posts/feed falls back to explore (all public posts)
   const {
     data: posts,
     isLoading: postsLoading,
@@ -139,7 +258,7 @@ export default function Feed() {
     retry: false,
   });
 
-  // Suggested users (sidebar)
+  // Suggested users (sidebar — logged-in only)
   const {
     data: suggestedUsers = [],
     error: usersError,
@@ -166,6 +285,7 @@ export default function Feed() {
   const displayPosts = posts ?? [];
   const displaySuggestedUsers = suggestedUsers;
   const displayTrendingRecipes = trendingRecipes;
+  const isGuest = !currentUserId;
 
   if (postsLoading) {
     return (
@@ -193,7 +313,12 @@ export default function Feed() {
   return (
     <div className="flex max-w-7xl mx-auto">
       <div className="flex-1 max-w-4xl px-4 py-6">
-        <BitesRow />
+        {/* Show landing hero for guests, bites row for logged-in users */}
+        {isGuest ? (
+          <LandingHero />
+        ) : (
+          <BitesRow />
+        )}
 
         {/* Posts */}
         <div className="space-y-8">
@@ -204,6 +329,7 @@ export default function Feed() {
               </CardContent>
             </Card>
           ) : null}
+
           {displayPosts.map((post) =>
             post.isRecipe ? (
               <SimpleRecipeCard key={post.id} post={post} currentUserId={currentUserId} onCardClick={setSelectedPost} />
@@ -213,82 +339,123 @@ export default function Feed() {
           )}
 
           {displayPosts.length === 0 && !postsLoading && !postsError && (
-            <p className="text-center text-muted-foreground py-8">No posts yet. Start following chefs!</p>
+            isGuest ? (
+              <EmptyPublicFeed />
+            ) : (
+              <p className="text-center text-muted-foreground py-8">No posts yet. Start following chefs!</p>
+            )
           )}
         </div>
 
-        <div className="flex justify-center mt-8">
-          <Button variant="outline" className="px-6 py-3" data-testid="button-load-more">
-            Load More Posts
-          </Button>
-        </div>
+        {displayPosts.length > 0 && (
+          <div className="flex justify-center mt-8">
+            <Button variant="outline" className="px-6 py-3" data-testid="button-load-more">
+              Load More Posts
+            </Button>
+          </div>
+        )}
+
+        {/* Bottom CTA for guests who scrolled through posts */}
+        {isGuest && displayPosts.length > 0 && (
+          <div className="mt-10 rounded-2xl border border-orange-100 dark:border-orange-900/30 bg-orange-50 dark:bg-orange-950/20 p-6 text-center">
+            <p className="font-semibold text-gray-900 dark:text-gray-100 mb-1">Enjoying the feed?</p>
+            <p className="text-sm text-muted-foreground mb-4">Sign up free to like, comment, save recipes and more.</p>
+            <Link href="/auth">
+              <a>
+                <Button className="bg-orange-500 hover:bg-orange-600 text-white px-8">
+                  Create your free account
+                </Button>
+              </a>
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Sidebar */}
       <aside className="hidden xl:block w-80 bg-card border-l border-border overflow-y-auto max-h-screen no-scrollbar">
         <div className="p-6 space-y-8">
-          {/* Phase 1: Daily Addiction Features */}
-          <section>
-            <ErrorBoundary>
-              <DailyQuests />
-            </ErrorBoundary>
-          </section>
-
-          <section>
-            <ErrorBoundary>
-              <AISuggestions />
-            </ErrorBoundary>
-          </section>
-
-          <section className="mb-8">
-            <h3 className="font-semibold mb-4">Suggested Chefs</h3>
-            {usersError ? (
-              <p className="mb-3 text-xs text-muted-foreground">Suggested chefs are unavailable right now.</p>
-            ) : null}
-            {!currentUserId ? (
-              <p className="mb-3 text-xs text-muted-foreground">Sign in to get suggested chefs.</p>
-            ) : null}
-            <div className="space-y-3">
-              {displaySuggestedUsers.slice(0, 5).map((user) => (
-                <div key={user.id} className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Link href={`/profile/${user.id}`}>
-                      <a>
-                        <Avatar className="w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity">
-                          <AvatarImage src={user.avatar || ""} alt={user.displayName} />
-                          <AvatarFallback>{user.displayName[0]}</AvatarFallback>
-                        </Avatar>
-                      </a>
-                    </Link>
-                    <div>
-                      <Link href={`/profile/${user.id}`}>
-                        <a>
-                          <p className="text-sm font-medium cursor-pointer hover:underline" data-testid={`text-suggested-chef-${user.id}`}>
-                            {user.displayName}
-                          </p>
-                        </a>
-                      </Link>
-                      <p className="text-xs text-muted-foreground">
-                        {(user as any).specialty || "Expert Chef"}
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    size="sm"
-                    className="bg-primary text-primary-foreground hover:opacity-90"
-                    data-testid={`button-follow-${user.id}`}
-                  >
-                    Follow
+          {/* Guest sidebar CTA */}
+          {isGuest && (
+            <section className="rounded-xl bg-gradient-to-br from-orange-50 to-amber-50 dark:from-orange-950/30 dark:to-amber-950/20 border border-orange-100 dark:border-orange-900/30 p-4 text-center">
+              <ChefHat className="w-7 h-7 text-orange-500 mx-auto mb-2" />
+              <p className="font-semibold text-sm text-gray-900 dark:text-gray-100 mb-1">Join ChefSire</p>
+              <p className="text-xs text-muted-foreground mb-3">Free to join. Start sharing your recipes today.</p>
+              <Link href="/auth">
+                <a>
+                  <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white w-full">
+                    Sign up free
                   </Button>
+                </a>
+              </Link>
+            </section>
+          )}
+
+          {/* Phase 1: Daily Addiction Features (logged-in only) */}
+          {!isGuest && (
+            <>
+              <section>
+                <ErrorBoundary>
+                  <DailyQuests />
+                </ErrorBoundary>
+              </section>
+
+              <section>
+                <ErrorBoundary>
+                  <AISuggestions />
+                </ErrorBoundary>
+              </section>
+
+              <section className="mb-8">
+                <h3 className="font-semibold mb-4">Suggested Chefs</h3>
+                {usersError ? (
+                  <p className="mb-3 text-xs text-muted-foreground">Suggested chefs are unavailable right now.</p>
+                ) : null}
+                <div className="space-y-3">
+                  {displaySuggestedUsers.slice(0, 5).map((u) => (
+                    <div key={u.id} className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Link href={`/profile/${u.id}`}>
+                          <a>
+                            <Avatar className="w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity">
+                              <AvatarImage src={u.avatar || ""} alt={u.displayName} />
+                              <AvatarFallback>{u.displayName[0]}</AvatarFallback>
+                            </Avatar>
+                          </a>
+                        </Link>
+                        <div>
+                          <Link href={`/profile/${u.id}`}>
+                            <a>
+                              <p className="text-sm font-medium cursor-pointer hover:underline" data-testid={`text-suggested-chef-${u.id}`}>
+                                {u.displayName}
+                              </p>
+                            </a>
+                          </Link>
+                          <p className="text-xs text-muted-foreground">
+                            {(u as any).specialty || "Expert Chef"}
+                          </p>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        className="bg-primary text-primary-foreground hover:opacity-90"
+                        data-testid={`button-follow-${u.id}`}
+                      >
+                        Follow
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
+              </section>
+            </>
+          )}
 
           <section className="mb-8">
             <h3 className="font-semibold mb-4">Trending Recipes</h3>
             {recipesError ? (
               <p className="mb-3 text-xs text-muted-foreground">Trending recipes are unavailable right now.</p>
+            ) : null}
+            {displayTrendingRecipes.length === 0 && !recipesError ? (
+              <p className="text-xs text-muted-foreground">No trending recipes yet.</p>
             ) : null}
             <div className="space-y-4">
               {displayTrendingRecipes.slice(0, 5).map((recipe) => (
@@ -465,44 +632,28 @@ export default function Feed() {
                       onClick={async () => {
                         if (!confirm("Delete this post? This action cannot be undone.")) return;
                         try {
-                          console.log("=== DELETE POST DEBUG ===");
-                          console.log("Post ID:", selectedPost.id);
-                          console.log("Current User ID:", currentUserId);
-                          console.log("Post Owner ID:", selectedPost.user?.id);
-                          console.log("Auth token cookie:", document.cookie);
-
                           const res = await fetch(`/api/posts/${selectedPost.id}`, {
                             method: "DELETE",
                             credentials: "include",
                           });
 
-                          console.log("Response status:", res.status);
-                          console.log("Response headers:", Object.fromEntries(res.headers.entries()));
-
                           const responseText = await res.text();
-                          console.log("Response body:", responseText);
 
                           if (!res.ok) {
-                            let errorMsg = `HTTP Status: ${res.status}\n\nResponse Body:\n${responseText}\n\nCookies:\n${document.cookie}`;
+                            let errorMsg = `HTTP Status: ${res.status}\n\nResponse Body:\n${responseText}`;
                             try {
                               const err = JSON.parse(responseText);
-                              errorMsg = `HTTP Status: ${res.status}\n\nError Message: ${err.message || err.error || 'Unknown'}\n\nFull Response:\n${JSON.stringify(err, null, 2)}\n\nAuth Cookie:\n${document.cookie}`;
-                            } catch (e) {
-                              // Response wasn't JSON, use text
-                            }
-                            console.error("DELETE FAILED:", errorMsg);
+                              errorMsg = `HTTP Status: ${res.status}\n\nError: ${err.message || err.error || "Unknown"}`;
+                            } catch (_) {}
                             alert(`❌ DELETE FAILED\n\n${errorMsg}`);
                             return;
                           }
 
-                          console.log("✅ Delete successful");
                           setSelectedPost(null);
                           window.location.reload();
                         } catch (error) {
                           const errorMsg = error instanceof Error ? error.message : String(error);
-                          const stack = error instanceof Error ? error.stack : 'N/A';
-                          console.error("DELETE EXCEPTION:", error);
-                          alert(`❌ DELETE EXCEPTION\n\nError: ${errorMsg}\n\nStack:\n${stack}\n\nCookies:\n${document.cookie}`);
+                          alert(`❌ DELETE EXCEPTION\n\nError: ${errorMsg}`);
                         }
                       }}
                     >
