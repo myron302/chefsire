@@ -219,6 +219,32 @@ export const drinkRecipes = pgTable(
   })
 );
 
+export const DRINK_COLLECTION_ACCESS_TYPE_VALUES = ["public", "premium_purchase", "membership_only"] as const;
+export type DrinkCollectionAccessType = (typeof DRINK_COLLECTION_ACCESS_TYPE_VALUES)[number];
+
+export const DRINK_COLLECTION_PURCHASE_STATUS_VALUES = ["completed", "refunded_pending", "refunded", "revoked"] as const;
+export type DrinkCollectionPurchaseStatus = (typeof DRINK_COLLECTION_PURCHASE_STATUS_VALUES)[number];
+
+export const DRINK_COLLECTION_CHECKOUT_STATUS_VALUES = [
+  "pending",
+  "completed",
+  "failed",
+  "canceled",
+  "refunded_pending",
+  "refunded",
+  "revoked",
+] as const;
+export type DrinkCollectionCheckoutStatus = (typeof DRINK_COLLECTION_CHECKOUT_STATUS_VALUES)[number];
+
+export const DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES = ["completed", "refunded_pending", "refunded", "revoked"] as const;
+export type DrinkCollectionSalesLedgerStatus = (typeof DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES)[number];
+
+export const DRINK_PURCHASE_TYPE_VALUES = ["self", "gift"] as const;
+export type DrinkPurchaseType = (typeof DRINK_PURCHASE_TYPE_VALUES)[number];
+
+export const DRINK_COLLECTION_PROMOTION_DISCOUNT_TYPE_VALUES = ["percent", "fixed"] as const;
+export type DrinkCollectionPromotionDiscountType = (typeof DRINK_COLLECTION_PROMOTION_DISCOUNT_TYPE_VALUES)[number];
+
 export const drinkCollections = pgTable(
   "drink_collections",
   {
@@ -227,7 +253,7 @@ export const drinkCollections = pgTable(
     name: varchar("name", { length: 160 }).notNull(),
     description: text("description"),
     isPublic: boolean("is_public").default(false).notNull(),
-    accessType: text("access_type").default("public").notNull(),
+    accessType: text("access_type").$type<DrinkCollectionAccessType>().default("public").notNull(),
     isPremium: boolean("is_premium").default(false).notNull(),
     priceCents: integer("price_cents").default(0).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -262,7 +288,7 @@ export const drinkCollectionPurchases = pgTable(
     id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
     userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
     collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
-    status: text("status").default("completed").notNull(),
+    status: text("status").$type<DrinkCollectionPurchaseStatus>().default("completed").notNull(),
     statusReason: text("status_reason"),
     accessRevokedAt: timestamp("access_revoked_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -319,8 +345,8 @@ export const drinkCollectionCheckoutSessions = pgTable(
     userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
     collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
     provider: text("provider").default("square").notNull(),
-    purchaseType: text("purchase_type").default("self").notNull(),
-    status: text("status").default("pending").notNull(),
+    purchaseType: text("purchase_type").$type<DrinkPurchaseType>().default("self").notNull(),
+    status: text("status").$type<DrinkCollectionCheckoutStatus>().default("pending").notNull(),
     promotionId: varchar("promotion_id"),
     promotionCode: text("promotion_code"),
     originalAmountCents: integer("original_amount_cents"),
@@ -413,7 +439,7 @@ export const drinkCollectionSalesLedger = pgTable(
     platformFeeCents: integer("platform_fee_cents"),
     creatorShareCents: integer("creator_share_cents"),
     currencyCode: text("currency_code").default("USD").notNull(),
-    status: text("status").default("completed").notNull(),
+    status: text("status").$type<DrinkCollectionSalesLedgerStatus>().default("completed").notNull(),
     statusReason: text("status_reason"),
     refundedAt: timestamp("refunded_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -435,7 +461,7 @@ export const drinkCollectionPromotions = pgTable(
     creatorUserId: varchar("creator_user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
     collectionId: varchar("collection_id").references(() => drinkCollections.id, { onDelete: "cascade" }).notNull(),
     code: varchar("code", { length: 64 }).notNull(),
-    discountType: text("discount_type").notNull(),
+    discountType: text("discount_type").$type<DrinkCollectionPromotionDiscountType>().notNull(),
     discountValue: integer("discount_value").notNull(),
     startsAt: timestamp("starts_at"),
     endsAt: timestamp("ends_at"),

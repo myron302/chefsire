@@ -35,6 +35,12 @@ import {
   drinkBundlePurchases,
   drinkBundleSquareWebhookEvents,
   drinkBundles,
+  DRINK_COLLECTION_ACCESS_TYPE_VALUES,
+  DRINK_COLLECTION_PROMOTION_DISCOUNT_TYPE_VALUES,
+  DRINK_COLLECTION_CHECKOUT_STATUS_VALUES,
+  DRINK_COLLECTION_PURCHASE_STATUS_VALUES,
+  DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES,
+  DRINK_PURCHASE_TYPE_VALUES,
   insertCustomDrinkSchema, 
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
@@ -78,6 +84,12 @@ import {
   insertDrinkRecipeSchema,
   notifications,
   users,
+  type DrinkCollectionAccessType,
+  type DrinkCollectionPromotionDiscountType,
+  type DrinkCollectionCheckoutStatus,
+  type DrinkCollectionPurchaseStatus,
+  type DrinkCollectionSalesLedgerStatus,
+  type DrinkPurchaseType,
 } from "@shared/schema";
 import { z } from "zod";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
@@ -254,16 +266,11 @@ function getDrinksRouteContext() {
 
 type EventType = "view" | "remix" | "grocery_add";
 
-type DrinkCollectionPurchaseStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
-type DrinkCollectionCheckoutStatus = "pending" | "completed" | "failed" | "canceled" | "refunded_pending" | "refunded" | "revoked";
-type DrinkCollectionSalesLedgerStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
 type DrinkBundlePurchaseStatus = "completed" | "refunded_pending" | "refunded" | "revoked";
 type DrinkBundleCheckoutStatus = "pending" | "completed" | "failed" | "canceled" | "refunded_pending" | "refunded" | "revoked";
 type DrinkGiftTargetType = "collection" | "bundle";
 type DrinkGiftStatus = "pending" | "completed" | "revoked";
-type DrinkPurchaseType = "self" | "gift";
 type DrinkCollectionEventType = "view";
-type DrinkCollectionPromotionDiscountType = "percent" | "fixed";
 type CreatorMembershipBillingInterval = "monthly" | "yearly";
 type CreatorMembershipStatus = "active" | "canceled" | "expired" | "past_due";
 type CreatorMembershipCheckoutStatus = "pending" | "completed" | "failed" | "canceled";
@@ -426,8 +433,6 @@ type CreatorCampaignPlaybookDriftSeverity = "aligned" | "watch" | "drifted" | "m
 type CreatorCampaignPlaybookRealignAction = "realign_campaign" | "update_playbook" | "keep_new_direction";
 type CreatorCampaignPlaybookDerivedFromType = "playbook" | "campaign";
 type CollectionAccessGrant = "creator" | "direct_purchase" | "bundle" | "membership";
-type DrinkCollectionAccessType = "public" | "premium_purchase" | "membership_only";
-
 const CREATOR_DROP_ARCHIVE_WINDOW_MS = 1000 * 60 * 60 * 24 * 7;
 const CREATOR_CAMPAIGN_EXPERIMENT_WINDOW_HOURS = 72;
 const CREATOR_CAMPAIGN_SURFACE_VALUES = [
@@ -597,6 +602,11 @@ const DRINK_ALERT_TYPE_VALUES = Object.values(DRINK_ALERT_TYPES) as DrinkAlertTy
 
 const TRACKABLE_DRINK_EVENTS = new Set<EventType>(["view", "remix", "grocery_add"]);
 const TRACKABLE_COLLECTION_EVENTS = new Set<DrinkCollectionEventType>(["view"]);
+const DRINK_COLLECTION_ACCESS_TYPE_SET = new Set<string>(DRINK_COLLECTION_ACCESS_TYPE_VALUES);
+const DRINK_PURCHASE_TYPE_SET = new Set<string>(DRINK_PURCHASE_TYPE_VALUES);
+const DRINK_COLLECTION_CHECKOUT_STATUS_SET = new Set<string>(DRINK_COLLECTION_CHECKOUT_STATUS_VALUES);
+const DRINK_COLLECTION_PURCHASE_STATUS_SET = new Set<string>(DRINK_COLLECTION_PURCHASE_STATUS_VALUES);
+const DRINK_COLLECTION_SALES_LEDGER_STATUS_SET = new Set<string>(DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES);
 const PREMIUM_COLLECTION_PLATFORM_FEE_BPS = 1500;
 const PREMIUM_COLLECTION_CREATOR_SHARE_BPS = 10000 - PREMIUM_COLLECTION_PLATFORM_FEE_BPS;
 
@@ -816,7 +826,7 @@ const createDrinkCollectionItemBodySchema = z.object({
 
 const promoCodeSchema = z.string().trim().min(1).max(64).transform((value) => value.toUpperCase());
 
-const promotionDiscountTypeSchema = z.enum(["percent", "fixed"]);
+const promotionDiscountTypeSchema = z.enum(DRINK_COLLECTION_PROMOTION_DISCOUNT_TYPE_VALUES);
 
 const promotionInputSchema = z.object({
   collectionId: z.string().trim().min(1),
@@ -871,7 +881,7 @@ const applyPromoBodySchema = z.object({
 
 const createCheckoutBodySchema = z.object({
   promoCode: promoCodeSchema.optional(),
-  purchaseType: z.enum(["self", "gift"]).optional(),
+  purchaseType: z.enum(DRINK_PURCHASE_TYPE_VALUES).optional(),
 });
 
 const creatorMembershipIntervalSchema = z.enum(["monthly", "yearly"]);
@@ -1283,7 +1293,7 @@ const createCreatorCollaborationBodySchema = z.object({
   targetId: z.string().trim().min(1),
 });
 
-const collectionAccessTypeSchema = z.enum(["public", "premium_purchase", "membership_only"]);
+const collectionAccessTypeSchema = z.enum(DRINK_COLLECTION_ACCESS_TYPE_VALUES);
 
 const updateDrinkCollectionBodySchema = z.object({
   name: z.string().trim().min(1).max(160).optional(),
@@ -1326,7 +1336,7 @@ function normalizeCollectionDescription(value: string | null | undefined): strin
 }
 
 function normalizeCollectionAccessType(value: unknown, fallback: DrinkCollectionAccessType = "public"): DrinkCollectionAccessType {
-  if (value === "membership_only" || value === "premium_purchase" || value === "public") return value;
+  if (typeof value === "string" && DRINK_COLLECTION_ACCESS_TYPE_SET.has(value)) return value as DrinkCollectionAccessType;
   return fallback;
 }
 
@@ -1510,7 +1520,7 @@ function serializePromotionPricing(
   return {
     promotionId: promotion.id,
     code: promotion.code,
-    discountType: promotion.discountType as DrinkCollectionPromotionDiscountType,
+    discountType: promotion.discountType,
     discountValue: Number(promotion.discountValue ?? 0),
     originalAmountCents: safeOriginal,
     discountAmountCents,
@@ -15607,7 +15617,7 @@ function formatBundleCheckoutReferenceId(checkoutSessionId: string) {
 }
 
 function normalizePurchaseType(value?: string | null): DrinkPurchaseType {
-  return value === "gift" ? "gift" : "self";
+  return typeof value === "string" && DRINK_PURCHASE_TYPE_SET.has(value) ? value as DrinkPurchaseType : "self";
 }
 
 function normalizeSquareCurrencyCode(value?: string | null) {
@@ -15823,12 +15833,7 @@ async function loadBundleCheckoutSessionForUser(checkoutSessionId: string, userI
 }
 
 function getCollectionCheckoutPollStatus(session: DrinkCollectionCheckoutSessionRecord): DrinkCollectionCheckoutStatus {
-  if (session.status === "completed") return "completed";
-  if (session.status === "failed") return "failed";
-  if (session.status === "canceled") return "canceled";
-  if (session.status === "refunded_pending") return "refunded_pending";
-  if (session.status === "refunded") return "refunded";
-  if (session.status === "revoked") return "revoked";
+  if (DRINK_COLLECTION_CHECKOUT_STATUS_SET.has(session.status)) return session.status;
   return "pending";
 }
 
@@ -16185,7 +16190,9 @@ async function updateCollectionAccessState(
 
   await db.transaction(async (tx) => {
     const now = new Date();
-    const revokeTimestamp = input.purchaseStatus === "completed" ? null : (input.refundedAt ?? now);
+    const purchaseStatus = DRINK_COLLECTION_PURCHASE_STATUS_SET.has(input.purchaseStatus) ? input.purchaseStatus : "revoked";
+    const ledgerStatus = DRINK_COLLECTION_SALES_LEDGER_STATUS_SET.has(input.ledgerStatus) ? input.ledgerStatus : "revoked";
+    const revokeTimestamp = purchaseStatus === "completed" ? null : (input.refundedAt ?? now);
     const purchaseType = normalizePurchaseType(session.purchaseType);
     const gift = purchaseType === "gift"
       ? await (tx as typeof db)
@@ -16217,7 +16224,7 @@ async function updateCollectionAccessState(
       await tx
         .update(drinkCollectionPurchases)
         .set({
-          status: input.purchaseStatus,
+          status: purchaseStatus,
           statusReason: input.reason ?? null,
           accessRevokedAt: revokeTimestamp,
           updatedAt: now,
@@ -16256,9 +16263,9 @@ async function updateCollectionAccessState(
         .update(drinkCollectionSalesLedger)
         .set({
           purchaseId: existingPurchase?.id ?? null,
-          status: input.ledgerStatus,
+          status: ledgerStatus,
           statusReason: input.reason ?? null,
-          refundedAt: isRefundRelatedStatus(input.ledgerStatus) ? (input.refundedAt ?? now) : null,
+          refundedAt: isRefundRelatedStatus(ledgerStatus) ? (input.refundedAt ?? now) : null,
           updatedAt: now,
         })
         .where(eq(drinkCollectionSalesLedger.checkoutSessionId, session.id));
