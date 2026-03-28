@@ -644,6 +644,34 @@ export const creatorCampaigns = pgTable(
   })
 );
 
+type CreatorCampaignRolloutTimelineChange<T> = {
+  from: T;
+  to: T;
+};
+
+export type CreatorCampaignRolloutTimelineMetadata = {
+  rolloutMode?: string | CreatorCampaignRolloutTimelineChange<string>;
+  startsWithAudience?: CreatorCampaignRolloutTimelineChange<string | null>;
+  unlockFollowersAt?: string | null | CreatorCampaignRolloutTimelineChange<string | null>;
+  unlockPublicAt?: string | null | CreatorCampaignRolloutTimelineChange<string | null>;
+  rolloutNotesChanged?: boolean;
+  isRolloutActive?: boolean | CreatorCampaignRolloutTimelineChange<boolean>;
+  currentAudience?: string;
+  finalAudience?: string;
+  readinessState?: "blocked" | "almost_ready" | "missing_key_items";
+  preflightKind?: string;
+  targetAt?: string | null;
+  dropId?: string;
+  dropType?: string;
+  route?: string;
+  delayedByHours?: number;
+  nextUnlockAt?: string | null;
+  field?: "unlockFollowersAt" | "unlockPublicAt";
+  releasedAt?: string;
+  nextAudience?: "members" | "followers" | "public";
+  previousPausedAt?: string | null;
+};
+
 export const creatorCampaignRolloutTimelineEvents = pgTable(
   "creator_campaign_rollout_timeline_events",
   {
@@ -654,7 +682,7 @@ export const creatorCampaignRolloutTimelineEvents = pgTable(
     title: varchar("title", { length: 160 }).notNull(),
     message: text("message").notNull(),
     audienceStage: text("audience_stage"),
-    metadata: jsonb("metadata").$type<Record<string, unknown>>().default(sql`'{}'::jsonb`).notNull(),
+    metadata: jsonb("metadata").$type<CreatorCampaignRolloutTimelineMetadata>().default(sql`'{}'::jsonb`).notNull(),
     occurredAt: timestamp("occurred_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
