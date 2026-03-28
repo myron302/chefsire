@@ -9,6 +9,9 @@ import { requireAuth } from "../middleware";
 import square from "square";
 const { Client, Environment } = square;
 
+type PaymentMethodRecord = typeof paymentMethods.$inferSelect;
+type PayoutMetadata = NonNullable<typeof payouts.$inferInsert["metadata"]>;
+
 const router = Router();
 
 // Initialize Square client
@@ -114,7 +117,7 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
     );
 
     // Check if seller has a payment method connected
-    let paymentMethod: any;
+    let paymentMethod: PaymentMethodRecord | undefined;
     try {
       [paymentMethod] = await db
         .select()
@@ -143,8 +146,21 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
       });
     }
 
-    let payoutResult: any;
+    let payoutResult: {
+      id: string;
+      status: "SENT";
+      amount: number;
+      createdAt: string;
+    };
     const useSquare = process.env.SQUARE_ACCESS_TOKEN && paymentMethod.provider === 'square';
+
+    const payoutMetadata: PayoutMetadata = {
+      ordersCount: ordersToPayout.length,
+      dateRange: {
+        from: new Date(Math.min(...ordersToPayout.map((o) => new Date(o.createdAt!).getTime()))).toISOString(),
+        to: new Date().toISOString(),
+      },
+    };
 
     // Create payout record first
     const [payoutRecord] = await db.insert(payouts).values({
@@ -155,20 +171,13 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
       provider: paymentMethod.provider,
       status: 'processing',
       scheduledFor: new Date(),
-      metadata: {
-        ordersCount: ordersToPayout.length,
-        dateRange: {
-          from: new Date(Math.min(...ordersToPayout.map(o => new Date(o.createdAt!).getTime()))).toISOString(),
-          to: new Date().toISOString()
-        }
-      }
+      metadata: payoutMetadata,
     }).returning();
 
     if (useSquare && paymentMethod.accountDetails) {
       // Real Square payout processing
       try {
         const squareClient = getSquareClient();
-        const accountDetails = paymentMethod.accountDetails as any;
 
         // Note: Square Connect payouts require special merchant setup
         // For now, this is a placeholder for the actual Square payout API
