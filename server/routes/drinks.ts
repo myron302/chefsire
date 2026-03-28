@@ -41,6 +41,7 @@ import {
   DRINK_COLLECTION_PURCHASE_STATUS_VALUES,
   DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES,
   DRINK_PURCHASE_TYPE_VALUES,
+  CREATOR_DROP_VISIBILITY_VALUES,
   CREATOR_POST_VISIBILITY_VALUES,
   insertCustomDrinkSchema, 
   insertDrinkPhotoSchema,
@@ -91,6 +92,7 @@ import {
   type DrinkCollectionPurchaseStatus,
   type DrinkCollectionSalesLedgerStatus,
   type DrinkPurchaseType,
+  type CreatorDropVisibility,
   type CreatorPostVisibility,
 } from "@shared/schema";
 import { z } from "zod";
@@ -278,7 +280,6 @@ type CreatorMembershipStatus = "active" | "canceled" | "expired" | "past_due";
 type CreatorMembershipCheckoutStatus = "pending" | "completed" | "failed" | "canceled";
 type CreatorPostType = "update" | "promo" | "collection_launch" | "challenge" | "member_only";
 type CreatorDropType = "collection_launch" | "promo_launch" | "member_drop" | "challenge_launch" | "update";
-type CreatorDropVisibility = "public" | "followers" | "members";
 type CreatorDropStatus = "upcoming" | "live" | "archived";
 type CreatorRoadmapItemType = "collection" | "promo" | "challenge" | "member_drop" | "update" | "roadmap";
 type CreatorRoadmapVisibility = "public" | "followers" | "members";
@@ -608,6 +609,7 @@ const DRINK_PURCHASE_TYPE_SET = new Set<string>(DRINK_PURCHASE_TYPE_VALUES);
 const DRINK_COLLECTION_CHECKOUT_STATUS_SET = new Set<string>(DRINK_COLLECTION_CHECKOUT_STATUS_VALUES);
 const DRINK_COLLECTION_PURCHASE_STATUS_SET = new Set<string>(DRINK_COLLECTION_PURCHASE_STATUS_VALUES);
 const DRINK_COLLECTION_SALES_LEDGER_STATUS_SET = new Set<string>(DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES);
+const CREATOR_DROP_VISIBILITY_SET = new Set<string>(CREATOR_DROP_VISIBILITY_VALUES);
 const CREATOR_POST_VISIBILITY_SET = new Set<string>(CREATOR_POST_VISIBILITY_VALUES);
 const PREMIUM_COLLECTION_PLATFORM_FEE_BPS = 1500;
 const PREMIUM_COLLECTION_CREATOR_SHARE_BPS = 10000 - PREMIUM_COLLECTION_PLATFORM_FEE_BPS;
@@ -615,6 +617,13 @@ const PREMIUM_COLLECTION_CREATOR_SHARE_BPS = 10000 - PREMIUM_COLLECTION_PLATFORM
 function normalizeCreatorPostVisibility(value: unknown): CreatorPostVisibility {
   if (typeof value === "string" && CREATOR_POST_VISIBILITY_SET.has(value)) {
     return value as CreatorPostVisibility;
+  }
+  return "public";
+}
+
+function normalizeCreatorDropVisibility(value: unknown): CreatorDropVisibility {
+  if (typeof value === "string" && CREATOR_DROP_VISIBILITY_SET.has(value)) {
+    return value as CreatorDropVisibility;
   }
   return "public";
 }
@@ -906,7 +915,7 @@ const creatorMembershipPlanInputSchema = z.object({
 const creatorPostTypeSchema = z.enum(["update", "promo", "collection_launch", "challenge", "member_only"]);
 const creatorPostVisibilitySchema = z.enum(CREATOR_POST_VISIBILITY_VALUES);
 const creatorDropTypeSchema = z.enum(["collection_launch", "promo_launch", "member_drop", "challenge_launch", "update"]);
-const creatorDropVisibilitySchema = z.enum(["public", "followers", "members"]);
+const creatorDropVisibilitySchema = z.enum(CREATOR_DROP_VISIBILITY_VALUES);
 const creatorRoadmapItemTypeSchema = z.enum(["collection", "promo", "challenge", "member_drop", "update", "roadmap"]);
 const creatorRoadmapVisibilitySchema = z.enum(["public", "followers", "members"]);
 const creatorRoadmapStatusSchema = z.enum(["upcoming", "live", "archived"]);
@@ -1166,7 +1175,7 @@ const creatorCampaignTemplateBlueprintSchema: z.ZodType<CreatorCampaignTemplateB
       title: z.string(),
       description: z.string().nullable(),
       dropType: z.enum(["collection_launch", "promo_launch", "member_drop", "challenge_launch", "update"]),
-      visibility: z.enum(["public", "followers", "members"]),
+      visibility: creatorDropVisibilitySchema,
       scheduledFor: z.string().nullable(),
       linkedCollectionId: z.string().nullable(),
       linkedChallengeId: z.string().nullable(),
@@ -21173,7 +21182,9 @@ r.patch("/drops/:id", requireAuth, async (req, res) => {
 
     const payload = parsed.data;
     const nextDropType = (payload.dropType ?? existing.dropType) as CreatorDropType;
-    const nextVisibility = (nextDropType === "member_drop" ? "members" : (payload.visibility ?? existing.visibility)) as CreatorDropVisibility;
+    const nextVisibility = nextDropType === "member_drop"
+      ? "members"
+      : normalizeCreatorDropVisibility(payload.visibility ?? existing.visibility);
     const nextScheduledFor = payload.scheduledFor ? new Date(payload.scheduledFor) : existing.scheduledFor;
 
     if (Number.isNaN(nextScheduledFor.getTime())) {
