@@ -93,6 +93,7 @@ import {
   DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES,
   DRINK_PURCHASE_TYPE_VALUES,
   DRINK_COLLECTION_PROMOTION_DISCOUNT_TYPE_VALUES,
+  CREATOR_DROP_VISIBILITY_VALUES,
   CREATOR_POST_VISIBILITY_VALUES,
   drinkCollections,
   drinkCollectionItems,
@@ -199,6 +200,7 @@ export {
   DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES,
   DRINK_PURCHASE_TYPE_VALUES,
   DRINK_COLLECTION_PROMOTION_DISCOUNT_TYPE_VALUES,
+  CREATOR_DROP_VISIBILITY_VALUES,
   CREATOR_POST_VISIBILITY_VALUES,
   drinkCollections,
   drinkCollectionItems,
@@ -251,6 +253,7 @@ export type {
   DrinkCollectionSalesLedgerStatus,
   DrinkPurchaseType,
   DrinkCollectionPromotionDiscountType,
+  CreatorDropVisibility,
   CreatorPostVisibility,
 } from "./schema/domains/drinks-creator";
 export {
