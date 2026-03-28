@@ -40,6 +40,9 @@ export type NotificationMetadata = {
   clubId?: string;
   clubPostId?: string;
   audience?: "wishlist" | "following" | "membership" | "public_followers" | "rsvp" | "campaign_follow";
+  // Keep metadata forward-compatible so new notification payload keys do not
+  // crash typed call sites during rollout.
+  [key: string]: unknown;
 };
 
 /* =========================================================================
