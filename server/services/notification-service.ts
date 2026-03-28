@@ -37,7 +37,7 @@ type DrinkAlertInsertInput = {
   linkUrl: string;
   imageUrl?: string | null;
   priority?: "low" | "normal" | "high" | "urgent";
-  metadata?: Record<string, any>;
+  metadata?: NonNullable<typeof notifications.$inferInsert["metadata"]>;
 };
 
 async function sendBulkDrinkAlerts(items: DrinkAlertInsertInput[]) {
@@ -367,7 +367,10 @@ export async function sendFollowedCampaignUpdateAlerts(params: {
   message: string;
   linkUrl: string;
   recipientIds?: string[];
-  metadata?: Record<string, any>;
+  metadata?: Partial<Pick<
+    NonNullable<typeof notifications.$inferInsert["metadata"]>,
+    "targetType" | "targetId" | "contentVisibility" | "event" | "dropId" | "creatorPostId" | "postType" | "promotionId" | "collectionId" | "scheduledFor"
+  >>;
 }) {
   const recipientIds = params.recipientIds?.length
     ? [...new Set(params.recipientIds.filter((userId) => Boolean(userId) && userId !== params.creatorUserId))]

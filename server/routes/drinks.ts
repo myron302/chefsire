@@ -1935,7 +1935,7 @@ function serializeCreatorCollaborationRow(
 }
 
 function serializeDrinkAlert(notification: typeof notifications.$inferSelect) {
-  const metadata = (notification.metadata ?? {}) as Record<string, any>;
+  const metadata = (notification.metadata ?? {}) as NonNullable<typeof notifications.$inferSelect["metadata"]>;
   return {
     id: notification.id,
     userId: notification.userId,
@@ -14920,7 +14920,10 @@ async function maybeSendCampaignLinkedContentAlerts(input: {
   creatorUserId: string;
   creatorUsername?: string | null;
   creatorAvatar?: string | null;
-  metadata?: Record<string, any>;
+  metadata?: Partial<Pick<
+    NonNullable<typeof notifications.$inferInsert["metadata"]>,
+    "event" | "dropId" | "creatorPostId" | "postType" | "promotionId" | "collectionId" | "scheduledFor"
+  >>;
 }) {
   if (!db) return;
 
@@ -14941,7 +14944,7 @@ async function maybeSendCampaignLinkedContentAlerts(input: {
     let recipientIds = await loadCampaignAlertRecipientIds(campaign, input.contentVisibility);
     if (!recipientIds.length) continue;
 
-    const eventKey = typeof input.metadata?.event === "string" ? input.metadata.event : null;
+    const eventKey = input.metadata?.event ?? null;
     if (eventKey) {
       const existingRows = await db
         .select({ userId: notifications.userId })
