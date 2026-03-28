@@ -118,6 +118,11 @@ export const paymentMethods = pgTable(
   })
 );
 
+type PayoutAccountDetailsSnapshot = {
+  merchantId?: string;
+  locationId?: string;
+};
+
 /* ===== COMMISSIONS ===== */
 export const commissions = pgTable(
   "commissions",
@@ -162,7 +167,7 @@ export const payouts = pgTable(
     metadata: jsonb("metadata").$type<{
       ordersCount?: number;
       dateRange?: { from: string; to: string };
-      accountDetails?: Record<string, unknown>;
+      accountDetails?: PayoutAccountDetailsSnapshot;
     }>(),
     createdAt: timestamp("created_at").defaultNow(),
   },
