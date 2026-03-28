@@ -408,6 +408,7 @@ type CreatorCampaignPlaybookProfileRecord = typeof creatorCampaignPlaybookProfil
 type CreatorCampaignLinkRecord = typeof creatorCampaignLinks.$inferSelect;
 type CreatorCampaignFollowRecord = typeof creatorCampaignFollows.$inferSelect;
 type CreatorCampaignRolloutTimelineEventRecord = typeof creatorCampaignRolloutTimelineEvents.$inferSelect;
+type CreatorCampaignRolloutTimelineMetadata = CreatorCampaignRolloutTimelineEventRecord["metadata"];
 type CreatorCampaignGoalRecord = typeof creatorCampaignGoals.$inferSelect;
 type CreatorCampaignExperimentRecord = typeof creatorCampaignExperiments.$inferSelect;
 type CreatorCampaignCtaVariantRecord = typeof creatorCampaignCtaVariants.$inferSelect;
@@ -4195,7 +4196,7 @@ function formatRolloutTimelineDate(value: Date | string | null | undefined) {
 }
 
 function buildCampaignRolloutTimelineMetadata(previous: CreatorCampaignRecord, next: CreatorCampaignRecord) {
-  const metadata: Record<string, unknown> = {};
+  const metadata: CreatorCampaignRolloutTimelineMetadata = {};
 
   if (previous.rolloutMode !== next.rolloutMode) {
     metadata.rolloutMode = {
@@ -4241,7 +4242,7 @@ async function createCampaignRolloutTimelineEvent(input: {
   title: string;
   message: string;
   audienceStage?: CreatorCampaignRolloutAudience | null;
-  metadata?: Record<string, unknown> | null;
+  metadata?: CreatorCampaignRolloutTimelineMetadata | null;
   occurredAt?: Date;
 }) {
   if (!db) throw new Error("Database unavailable");
@@ -4333,7 +4334,7 @@ async function loadCampaignRolloutTimelineEntriesForCampaign(campaign: CreatorCa
     title: string;
     message: string;
     audienceStage: CreatorCampaignRolloutAudience | null;
-    metadata: Record<string, unknown>;
+    metadata: CreatorCampaignRolloutTimelineMetadata;
     isDerived: boolean;
   }> = [];
 
@@ -4460,7 +4461,7 @@ async function loadCampaignRolloutTimelineEntriesForCampaign(campaign: CreatorCa
     title: row.title,
     message: row.message,
     audienceStage: (row.audienceStage as CreatorCampaignRolloutAudience | null) ?? null,
-    metadata: (row.metadata as Record<string, unknown> | null) ?? {},
+    metadata: row.metadata ?? {},
     isDerived: false,
   }));
 
