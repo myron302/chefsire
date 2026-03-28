@@ -5,6 +5,11 @@ import { and, eq, desc } from "drizzle-orm";
 import { db } from "../db";
 import { notifications, users } from "../../shared/schema";
 
+type SocketNotificationInput = Pick<
+  typeof notifications.$inferInsert,
+  "type" | "title" | "message" | "imageUrl" | "linkUrl" | "metadata" | "priority"
+>;
+
 function userIdFromSocket(socket: any): string | null {
   return (socket.handshake.auth?.userId ||
     socket.handshake.headers["x-user-id"] ||
@@ -110,22 +115,20 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
 
   // Helper function to send notification to user (called from other parts of the app)
   return {
-    notifyUser: async (userId: string, notification: {
-      type: string;
-      title: string;
-      message: string;
-      imageUrl?: string;
-      linkUrl?: string;
-      metadata?: Record<string, any>;
-      priority?: string;
-    }) => {
+    notifyUser: async (userId: string, notification: SocketNotificationInput) => {
       try {
         // Save to database
         const [savedNotif] = await db
           .insert(notifications)
           .values({
             userId,
-            ...notification,
+            type: notification.type,
+            title: notification.title,
+            message: notification.message,
+            imageUrl: notification.imageUrl,
+            linkUrl: notification.linkUrl,
+            metadata: notification.metadata,
+            priority: notification.priority,
           })
           .returning();
 
@@ -147,22 +150,20 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
       }
     },
 
-    notifyMultipleUsers: async (userIds: string[], notification: {
-      type: string;
-      title: string;
-      message: string;
-      imageUrl?: string;
-      linkUrl?: string;
-      metadata?: Record<string, any>;
-      priority?: string;
-    }) => {
+    notifyMultipleUsers: async (userIds: string[], notification: SocketNotificationInput) => {
       const results = await Promise.allSettled(
         userIds.map(async (userId) => {
           const [savedNotif] = await db
             .insert(notifications)
             .values({
               userId,
-              ...notification,
+              type: notification.type,
+              title: notification.title,
+              message: notification.message,
+              imageUrl: notification.imageUrl,
+              linkUrl: notification.linkUrl,
+              metadata: notification.metadata,
+              priority: notification.priority,
             })
             .returning();
 

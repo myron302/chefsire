@@ -6,6 +6,42 @@ import { badges, familyMembers } from "./pantry-allergens-community";
 import { customDrinks } from "./drinks-creator";
 import { mealPlanBlueprints, mealPlans } from "./meal-planning";
 
+export type NotificationMetadata = {
+  collectionId?: string;
+  creatorUserId?: string;
+  promotionId?: string;
+  promotionCode?: string;
+  previousPriceCents?: number;
+  nextPriceCents?: number;
+  currencyCode?: string;
+  dropId?: string;
+  visibility?: "public" | "followers" | "members";
+  scheduledFor?: string;
+  event?: "live" | "drop_live" | "drop_scheduled" | "promo_started" | "post_published";
+  campaignId?: string;
+  campaignName?: string;
+  targetType?: "drop" | "post" | "promo";
+  targetId?: string;
+  contentVisibility?: "public" | "followers" | "members";
+  creatorPostId?: string;
+  postType?: string;
+  linkedCollectionId?: string | null;
+  linkedChallengeId?: string | null;
+  threadId?: string;
+  senderId?: string;
+  messageId?: string;
+  questId?: string;
+  xpEarned?: number;
+  questCount?: number;
+  questIds?: string[];
+  achievementId?: string;
+  xpReward?: number;
+  streak?: number;
+  clubId?: string;
+  clubPostId?: string;
+  audience?: "wishlist" | "following" | "membership" | "public_followers" | "rsvp" | "campaign_follow";
+};
+
 /* =========================================================================
    ===== PHASE 1: DAILY ADDICTION FEATURES
    ========================================================================= */
@@ -21,7 +57,7 @@ export const notifications = pgTable(
     message: text("message").notNull(),
     imageUrl: text("image_url"),
     linkUrl: text("link_url"),
-    metadata: jsonb("metadata").$type<Record<string, unknown>>().default(sql`'{}'::jsonb`),
+    metadata: jsonb("metadata").$type<NotificationMetadata>().default(sql`'{}'::jsonb`),
     read: boolean("read").default(false),
     readAt: timestamp("read_at"),
     priority: text("priority").default("normal"), // low, normal, high, urgent
