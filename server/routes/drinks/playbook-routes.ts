@@ -26,6 +26,7 @@ export function registerPlaybookRoutes(r: Router, ctx: any) {
     PLAYBOOK_EVOLUTION_STRATEGY_FIELDS,
     createPlaybookForkFromCampaignBodySchema,
     applyCreatorCampaignPlaybookProfileToCampaign,
+    normalizeCreatorCampaignPlaybookPreferredAudienceFit,
     loadCreatorCampaignDetail,
     createCreatorCampaignPlaybookProfileBodySchema,
     insertCreatorCampaignPlaybookProfileSchema,
@@ -172,7 +173,9 @@ r.get("/creator-dashboard/campaign-playbook-profiles", requireAuth, async (req, 
           recommendedPublicUnlockDelayHours: payload.recommendedPublicUnlockDelayHours !== undefined ? payload.recommendedPublicUnlockDelayHours : existing.recommendedPublicUnlockDelayHours,
           preferredCtaDirection: payload.preferredCtaDirection !== undefined ? payload.preferredCtaDirection : existing.preferredCtaDirection,
           preferredExperimentTypes: payload.preferredExperimentTypes !== undefined ? payload.preferredExperimentTypes : existing.preferredExperimentTypes,
-          preferredAudienceFit: payload.preferredAudienceFit !== undefined ? payload.preferredAudienceFit : existing.preferredAudienceFit,
+          preferredAudienceFit: payload.preferredAudienceFit !== undefined
+            ? payload.preferredAudienceFit
+            : normalizeCreatorCampaignPlaybookPreferredAudienceFit(existing.preferredAudienceFit),
           notes: payload.notes !== undefined ? (payload.notes?.trim() || null) : existing.notes,
           updatedAt: new Date(),
         })

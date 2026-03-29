@@ -253,6 +253,9 @@ export type CreatorRoadmapVisibility = (typeof CREATOR_ROADMAP_VISIBILITY_VALUES
 export const CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES = ["members", "followers", "public"] as const;
 export type CreatorCampaignRolloutTimelineAudience = (typeof CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES)[number];
 
+export const CREATOR_CAMPAIGN_PLAYBOOK_PREFERRED_AUDIENCE_FIT_VALUES = ["members", "followers", "public"] as const;
+export type CreatorCampaignPlaybookPreferredAudienceFit = (typeof CREATOR_CAMPAIGN_PLAYBOOK_PREFERRED_AUDIENCE_FIT_VALUES)[number];
+
 export const drinkCollections = pgTable(
   "drink_collections",
   {
@@ -794,7 +797,7 @@ export const creatorCampaignPlaybookProfiles = pgTable(
     recommendedPublicUnlockDelayHours: integer("recommended_public_unlock_delay_hours"),
     preferredCtaDirection: text("preferred_cta_direction"),
     preferredExperimentTypes: jsonb("preferred_experiment_types").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
-    preferredAudienceFit: text("preferred_audience_fit"),
+    preferredAudienceFit: text("preferred_audience_fit").$type<CreatorCampaignPlaybookPreferredAudienceFit | null>(),
     notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -45,6 +45,7 @@ import {
   CREATOR_POST_VISIBILITY_VALUES,
   CREATOR_ROADMAP_VISIBILITY_VALUES,
   CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES,
+  CREATOR_CAMPAIGN_PLAYBOOK_PREFERRED_AUDIENCE_FIT_VALUES,
   insertCustomDrinkSchema, 
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
@@ -97,6 +98,7 @@ import {
   type CreatorDropVisibility,
   type CreatorPostVisibility,
   type CreatorCampaignRolloutTimelineAudience,
+  type CreatorCampaignPlaybookPreferredAudienceFit,
 } from "@shared/schema";
 import { z } from "zod";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
@@ -182,6 +184,7 @@ function getDrinksRouteContext() {
     logCollectionRouteError,
     maybeCreateCampaignRolloutConfiguredEvent,
     normalizeCampaignRolloutUpdate,
+    normalizeCreatorCampaignPlaybookPreferredAudienceFit,
     PLAYBOOK_EVOLUTION_STRATEGY_FIELDS,
     saveCampaignPlaybookProfileBodySchema,
     serializeAcceptedCollaboration,
@@ -1245,7 +1248,7 @@ const creatorCampaignPlaybookProfileBodyBaseSchema = z.object({
   recommendedPublicUnlockDelayHours: z.coerce.number().int().min(1).max(24 * 30).nullable().optional(),
   preferredCtaDirection: creatorCampaignPlaybookCtaDirectionSchema.nullable().optional(),
   preferredExperimentTypes: z.array(creatorCampaignExperimentTypeSchema).max(5).optional().default([]),
-  preferredAudienceFit: creatorCampaignRolloutAudienceSchema.nullable().optional(),
+  preferredAudienceFit: z.enum(CREATOR_CAMPAIGN_PLAYBOOK_PREFERRED_AUDIENCE_FIT_VALUES).nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
 });
 
@@ -4230,6 +4233,16 @@ function normalizeCreatorCampaignRolloutAudience(value: unknown): CreatorCampaig
   return null;
 }
 
+function normalizeCreatorCampaignPlaybookPreferredAudienceFit(value: unknown): CreatorCampaignPlaybookPreferredAudienceFit | null {
+  if (
+    typeof value === "string"
+    && (CREATOR_CAMPAIGN_PLAYBOOK_PREFERRED_AUDIENCE_FIT_VALUES as readonly string[]).includes(value)
+  ) {
+    return value as CreatorCampaignPlaybookPreferredAudienceFit;
+  }
+  return null;
+}
+
 function normalizeCreatorCampaignRolloutTimelineMetadata(
   metadata: CreatorCampaignRolloutTimelineMetadata | null | undefined,
 ): CreatorCampaignRolloutTimelineMetadata {
@@ -4707,18 +4720,18 @@ function serializeCreatorCampaignPlaybookProfile(profile: CreatorCampaignPlayboo
     recommendedPublicUnlockDelayHours: profile.recommendedPublicUnlockDelayHours ?? null,
     preferredCtaDirection: (profile.preferredCtaDirection as CreatorCampaignPlaybookCtaDirection | null) ?? null,
     preferredExperimentTypes,
-    preferredAudienceFit: (profile.preferredAudienceFit as CreatorCampaignRolloutAudience | null) ?? null,
+    preferredAudienceFit: normalizeCreatorCampaignPlaybookPreferredAudienceFit(profile.preferredAudienceFit),
     notes: profile.notes ?? null,
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
   };
 }
 
-function inferPreferredAudienceFitFromCampaign(campaign: Pick<CreatorCampaignRecord, "visibility" | "startsWithAudience">): CreatorCampaignRolloutAudience | null {
-  const candidate = (campaign.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null;
+function inferPreferredAudienceFitFromCampaign(campaign: Pick<CreatorCampaignRecord, "visibility" | "startsWithAudience">): CreatorCampaignPlaybookPreferredAudienceFit | null {
+  const candidate = normalizeCreatorCampaignPlaybookPreferredAudienceFit(campaign.startsWithAudience);
   if (candidate === "members" || candidate === "followers" || candidate === "public") return candidate;
   if (campaign.visibility === "members" || campaign.visibility === "followers" || campaign.visibility === "public") {
-    return campaign.visibility as CreatorCampaignRolloutAudience;
+    return campaign.visibility as CreatorCampaignPlaybookPreferredAudienceFit;
   }
   return null;
 }
@@ -5956,7 +5969,7 @@ async function loadCreatorCampaignPlaybookFitCollection(creatorUserId: string, c
     const matches = profiles.map((profile: CreatorCampaignPlaybookProfileRecord) => {
       const profileVisibility = (profile.visibilityStrategy as CreatorCampaignVisibility | null) ?? null;
       const profileStartsWithAudience = (profile.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null;
-      const profilePreferredAudienceFit = (profile.preferredAudienceFit as CreatorCampaignRolloutAudience | null) ?? null;
+      const profilePreferredAudienceFit = normalizeCreatorCampaignPlaybookPreferredAudienceFit(profile.preferredAudienceFit);
       const profilePreferredCtaDirection = (profile.preferredCtaDirection as CreatorCampaignPlaybookCtaDirection | null) ?? null;
       let earned = 0;
       let possible = 0;
@@ -6109,7 +6122,7 @@ async function loadCreatorCampaignPlaybookFitCollection(creatorUserId: string, c
           visibilityStrategy: profile.visibilityStrategy ?? null,
           rolloutMode: profile.rolloutMode,
           startsWithAudience: profile.startsWithAudience ?? null,
-          preferredAudienceFit: profile.preferredAudienceFit ?? null,
+          preferredAudienceFit: normalizeCreatorCampaignPlaybookPreferredAudienceFit(profile.preferredAudienceFit),
           preferredCtaDirection: profile.preferredCtaDirection ?? null,
           preferredExperimentTypes: experimentOverlap.preferred,
         },
