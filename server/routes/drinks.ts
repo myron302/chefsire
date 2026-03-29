@@ -44,7 +44,7 @@ import {
   CREATOR_DROP_VISIBILITY_VALUES,
   CREATOR_POST_VISIBILITY_VALUES,
   CREATOR_ROADMAP_VISIBILITY_VALUES,
-  CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES,
+  CREATOR_CAMPAIGN_STARTS_WITH_AUDIENCE_VALUES,
   CREATOR_CAMPAIGN_PLAYBOOK_PROFILE_STARTS_WITH_AUDIENCE_VALUES,
   CREATOR_CAMPAIGN_PLAYBOOK_PREFERRED_AUDIENCE_FIT_VALUES,
   insertCustomDrinkSchema, 
@@ -98,7 +98,7 @@ import {
   type DrinkPurchaseType,
   type CreatorDropVisibility,
   type CreatorPostVisibility,
-  type CreatorCampaignRolloutTimelineAudience,
+  type CreatorCampaignStartsWithAudience,
   type CreatorCampaignPlaybookProfileStartsWithAudience,
   type CreatorCampaignPlaybookPreferredAudienceFit,
 } from "@shared/schema";
@@ -299,7 +299,7 @@ type CreatorCampaignTargetType = "collection" | "drop" | "promo" | "challenge" |
 type CreatorCampaignCtaTargetType = "follow" | "rsvp" | "collection" | "membership" | "drop" | "challenge";
 type CreatorCampaignState = "upcoming" | "active" | "past";
 type CreatorCampaignRolloutMode = "public_first" | "followers_first" | "members_first" | "staged";
-type CreatorCampaignRolloutAudience = CreatorCampaignRolloutTimelineAudience;
+type CreatorCampaignRolloutAudience = CreatorCampaignStartsWithAudience;
 type CreatorCampaignPlaybookCtaDirection = "follow" | "rsvp" | "membership" | "purchase" | "drop" | "mixed";
 type CreatorCampaignPlaybookOnboardingItemStatus = "todo" | "ready" | "complete" | "warning";
 type CreatorCampaignRolloutState =
@@ -1017,7 +1017,7 @@ const creatorCampaignLinkBodySchema = z.object({
 });
 
 const creatorCampaignRolloutModeSchema = z.enum(["public_first", "followers_first", "members_first", "staged"]);
-const creatorCampaignRolloutAudienceSchema = z.enum(["public", "followers", "members"]);
+const creatorCampaignRolloutAudienceSchema = z.enum(CREATOR_CAMPAIGN_STARTS_WITH_AUDIENCE_VALUES);
 
 const creatorCampaignRolloutBodyBaseSchema = z.object({
   rolloutMode: creatorCampaignRolloutModeSchema,
@@ -3450,9 +3450,10 @@ function deriveCreatorCampaignRollout(
   const campaignState = getCreatorCampaignState(campaign, now);
   const visibility = campaign.visibility as CreatorCampaignVisibility;
   const rolloutMode = (campaign.rolloutMode as CreatorCampaignRolloutMode | null) ?? "public_first";
+  const normalizedStoredStartsWithAudience = normalizeCreatorCampaignRolloutAudience(campaign.startsWithAudience);
   const initialAudience = clampRolloutAudienceToVisibility(
     ((rolloutMode === "staged"
-      ? (campaign.startsWithAudience as CreatorCampaignRolloutAudience | null)
+      ? normalizedStoredStartsWithAudience
       : defaultStartsWithAudienceForRollout(rolloutMode, visibility))
       ?? defaultStartsWithAudienceForRollout(rolloutMode, visibility)),
     visibility,
@@ -3592,8 +3593,9 @@ function normalizeCampaignRolloutUpdate(input: {
 }) {
   const visibility = input.campaign.visibility as CreatorCampaignVisibility;
   const rolloutMode = input.payload.rolloutMode ?? (input.campaign.rolloutMode as CreatorCampaignRolloutMode | null) ?? "public_first";
+  const normalizedStoredStartsWithAudience = normalizeCreatorCampaignRolloutAudience(input.campaign.startsWithAudience);
   const startsWithAudience = clampRolloutAudienceToVisibility(
-    (input.payload.startsWithAudience ?? (input.campaign.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? defaultStartsWithAudienceForRollout(rolloutMode, visibility)),
+    (input.payload.startsWithAudience ?? normalizedStoredStartsWithAudience ?? defaultStartsWithAudienceForRollout(rolloutMode, visibility)),
     visibility,
   );
   const unlockFollowersAt = visibility === "members"
@@ -4228,7 +4230,7 @@ function formatRolloutTimelineAudience(audience: CreatorCampaignRolloutAudience 
 function normalizeCreatorCampaignRolloutAudience(value: unknown): CreatorCampaignRolloutAudience | null {
   if (
     typeof value === "string"
-    && (CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES as readonly string[]).includes(value)
+    && (CREATOR_CAMPAIGN_STARTS_WITH_AUDIENCE_VALUES as readonly string[]).includes(value)
   ) {
     return value as CreatorCampaignRolloutAudience;
   }

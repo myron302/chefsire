@@ -252,6 +252,8 @@ export const CREATOR_ROADMAP_VISIBILITY_VALUES = CREATOR_POST_VISIBILITY_VALUES;
 export type CreatorRoadmapVisibility = (typeof CREATOR_ROADMAP_VISIBILITY_VALUES)[number];
 export const CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES = ["members", "followers", "public"] as const;
 export type CreatorCampaignRolloutTimelineAudience = (typeof CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES)[number];
+export const CREATOR_CAMPAIGN_STARTS_WITH_AUDIENCE_VALUES = ["members", "followers", "public"] as const;
+export type CreatorCampaignStartsWithAudience = (typeof CREATOR_CAMPAIGN_STARTS_WITH_AUDIENCE_VALUES)[number];
 
 export const CREATOR_CAMPAIGN_PLAYBOOK_PROFILE_STARTS_WITH_AUDIENCE_VALUES = ["members", "followers", "public"] as const;
 export type CreatorCampaignPlaybookProfileStartsWithAudience = (typeof CREATOR_CAMPAIGN_PLAYBOOK_PROFILE_STARTS_WITH_AUDIENCE_VALUES)[number];
@@ -660,7 +662,7 @@ export const creatorCampaigns = pgTable(
     endsAt: timestamp("ends_at"),
     isActive: boolean("is_active").default(true).notNull(),
     rolloutMode: text("rollout_mode").default("public_first").notNull(),
-    startsWithAudience: text("starts_with_audience"),
+    startsWithAudience: text("starts_with_audience").$type<CreatorCampaignStartsWithAudience | null>(),
     unlockFollowersAt: timestamp("unlock_followers_at"),
     unlockPublicAt: timestamp("unlock_public_at"),
     rolloutNotes: text("rollout_notes"),
