@@ -248,6 +248,8 @@ export const CREATOR_POST_VISIBILITY_VALUES = ["public", "followers", "members"]
 export type CreatorPostVisibility = (typeof CREATOR_POST_VISIBILITY_VALUES)[number];
 export const CREATOR_DROP_VISIBILITY_VALUES = CREATOR_POST_VISIBILITY_VALUES;
 export type CreatorDropVisibility = (typeof CREATOR_DROP_VISIBILITY_VALUES)[number];
+export const CREATOR_ROADMAP_VISIBILITY_VALUES = CREATOR_POST_VISIBILITY_VALUES;
+export type CreatorRoadmapVisibility = (typeof CREATOR_ROADMAP_VISIBILITY_VALUES)[number];
 
 export const drinkCollections = pgTable(
   "drink_collections",
@@ -618,7 +620,7 @@ export const creatorRoadmapItems = pgTable(
     title: varchar("title", { length: 160 }).notNull(),
     description: text("description"),
     itemType: text("item_type").default("roadmap").notNull(),
-    visibility: text("visibility").default("public").notNull(),
+    visibility: text("visibility").$type<CreatorRoadmapVisibility>().default("public").notNull(),
     linkedCollectionId: varchar("linked_collection_id").references(() => drinkCollections.id, { onDelete: "set null" }),
     linkedChallengeId: varchar("linked_challenge_id").references(() => drinkChallenges.id, { onDelete: "set null" }),
     scheduledFor: timestamp("scheduled_for"),

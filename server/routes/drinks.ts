@@ -43,6 +43,7 @@ import {
   DRINK_PURCHASE_TYPE_VALUES,
   CREATOR_DROP_VISIBILITY_VALUES,
   CREATOR_POST_VISIBILITY_VALUES,
+  CREATOR_ROADMAP_VISIBILITY_VALUES,
   insertCustomDrinkSchema, 
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
@@ -611,6 +612,7 @@ const DRINK_COLLECTION_PURCHASE_STATUS_SET = new Set<string>(DRINK_COLLECTION_PU
 const DRINK_COLLECTION_SALES_LEDGER_STATUS_SET = new Set<string>(DRINK_COLLECTION_SALES_LEDGER_STATUS_VALUES);
 const CREATOR_DROP_VISIBILITY_SET = new Set<string>(CREATOR_DROP_VISIBILITY_VALUES);
 const CREATOR_POST_VISIBILITY_SET = new Set<string>(CREATOR_POST_VISIBILITY_VALUES);
+const CREATOR_ROADMAP_VISIBILITY_SET = new Set<string>(CREATOR_ROADMAP_VISIBILITY_VALUES);
 const PREMIUM_COLLECTION_PLATFORM_FEE_BPS = 1500;
 const PREMIUM_COLLECTION_CREATOR_SHARE_BPS = 10000 - PREMIUM_COLLECTION_PLATFORM_FEE_BPS;
 
@@ -624,6 +626,13 @@ function normalizeCreatorPostVisibility(value: unknown): CreatorPostVisibility {
 function normalizeCreatorDropVisibility(value: unknown): CreatorDropVisibility {
   if (typeof value === "string" && CREATOR_DROP_VISIBILITY_SET.has(value)) {
     return value as CreatorDropVisibility;
+  }
+  return "public";
+}
+
+function normalizeCreatorRoadmapVisibility(value: unknown): CreatorRoadmapVisibility {
+  if (typeof value === "string" && CREATOR_ROADMAP_VISIBILITY_SET.has(value)) {
+    return value as CreatorRoadmapVisibility;
   }
   return "public";
 }
@@ -917,7 +926,7 @@ const creatorPostVisibilitySchema = z.enum(CREATOR_POST_VISIBILITY_VALUES);
 const creatorDropTypeSchema = z.enum(["collection_launch", "promo_launch", "member_drop", "challenge_launch", "update"]);
 const creatorDropVisibilitySchema = z.enum(CREATOR_DROP_VISIBILITY_VALUES);
 const creatorRoadmapItemTypeSchema = z.enum(["collection", "promo", "challenge", "member_drop", "update", "roadmap"]);
-const creatorRoadmapVisibilitySchema = z.enum(["public", "followers", "members"]);
+const creatorRoadmapVisibilitySchema = z.enum(CREATOR_ROADMAP_VISIBILITY_VALUES);
 const creatorRoadmapStatusSchema = z.enum(["upcoming", "live", "archived"]);
 const creatorCampaignVisibilitySchema = z.enum(["public", "followers", "members"]);
 const creatorCampaignTargetTypeSchema = z.enum(["collection", "drop", "promo", "challenge", "post", "roadmap"]);
@@ -21491,7 +21500,9 @@ r.patch("/roadmap/:id", requireAuth, async (req, res) => {
     const payload = parsed.data;
     const nextItemType = (payload.itemType ?? existing.itemType) as CreatorRoadmapItemType;
     const nextStatus = (payload.status ?? existing.status) as CreatorRoadmapStatus;
-    const nextVisibility = (nextItemType === "member_drop" ? "members" : (payload.visibility ?? existing.visibility)) as CreatorRoadmapVisibility;
+    const nextVisibility = nextItemType === "member_drop"
+      ? "members"
+      : normalizeCreatorRoadmapVisibility(payload.visibility ?? existing.visibility);
     const nextReleasedAt = payload.releasedAt !== undefined
       ? (payload.releasedAt ? new Date(payload.releasedAt) : null)
       : nextStatus === "upcoming"
