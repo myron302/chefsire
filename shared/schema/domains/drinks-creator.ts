@@ -250,6 +250,8 @@ export const CREATOR_DROP_VISIBILITY_VALUES = CREATOR_POST_VISIBILITY_VALUES;
 export type CreatorDropVisibility = (typeof CREATOR_DROP_VISIBILITY_VALUES)[number];
 export const CREATOR_ROADMAP_VISIBILITY_VALUES = CREATOR_POST_VISIBILITY_VALUES;
 export type CreatorRoadmapVisibility = (typeof CREATOR_ROADMAP_VISIBILITY_VALUES)[number];
+export const CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES = ["members", "followers", "public"] as const;
+export type CreatorCampaignRolloutTimelineAudience = (typeof CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES)[number];
 
 export const drinkCollections = pgTable(
   "drink_collections",
@@ -700,7 +702,7 @@ export type CreatorCampaignRolloutTimelineMetadata = {
   nextUnlockAt?: string | null;
   field?: "unlockFollowersAt" | "unlockPublicAt";
   releasedAt?: string;
-  nextAudience?: "members" | "followers" | "public";
+  nextAudience?: CreatorCampaignRolloutTimelineAudience;
   previousPausedAt?: string | null;
 };
 
@@ -713,7 +715,7 @@ export const creatorCampaignRolloutTimelineEvents = pgTable(
     eventType: text("event_type").notNull(),
     title: varchar("title", { length: 160 }).notNull(),
     message: text("message").notNull(),
-    audienceStage: text("audience_stage"),
+    audienceStage: text("audience_stage").$type<CreatorCampaignRolloutTimelineAudience | null>(),
     metadata: jsonb("metadata").$type<CreatorCampaignRolloutTimelineMetadata>().default(sql`'{}'::jsonb`).notNull(),
     occurredAt: timestamp("occurred_at").defaultNow().notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
