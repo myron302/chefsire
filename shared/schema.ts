@@ -96,6 +96,7 @@ import {
   CREATOR_DROP_VISIBILITY_VALUES,
   CREATOR_POST_VISIBILITY_VALUES,
   CREATOR_ROADMAP_VISIBILITY_VALUES,
+  CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES,
   drinkCollections,
   drinkCollectionItems,
   drinkCollectionPurchases,
@@ -204,6 +205,7 @@ export {
   CREATOR_DROP_VISIBILITY_VALUES,
   CREATOR_POST_VISIBILITY_VALUES,
   CREATOR_ROADMAP_VISIBILITY_VALUES,
+  CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES,
   drinkCollections,
   drinkCollectionItems,
   drinkCollectionPurchases,
@@ -257,6 +259,7 @@ export type {
   DrinkCollectionPromotionDiscountType,
   CreatorDropVisibility,
   CreatorPostVisibility,
+  CreatorCampaignRolloutTimelineAudience,
 } from "./schema/domains/drinks-creator";
 export {
   stores,

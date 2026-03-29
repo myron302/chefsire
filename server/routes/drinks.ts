@@ -44,6 +44,7 @@ import {
   CREATOR_DROP_VISIBILITY_VALUES,
   CREATOR_POST_VISIBILITY_VALUES,
   CREATOR_ROADMAP_VISIBILITY_VALUES,
+  CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES,
   insertCustomDrinkSchema, 
   insertDrinkPhotoSchema,
   insertDrinkLikeSchema,
@@ -95,6 +96,7 @@ import {
   type DrinkPurchaseType,
   type CreatorDropVisibility,
   type CreatorPostVisibility,
+  type CreatorCampaignRolloutTimelineAudience,
 } from "@shared/schema";
 import { z } from "zod";
 import { parseTrackedEventBody, resolveEngagementUserId } from "./engagement-events";
@@ -292,7 +294,7 @@ type CreatorCampaignTargetType = "collection" | "drop" | "promo" | "challenge" |
 type CreatorCampaignCtaTargetType = "follow" | "rsvp" | "collection" | "membership" | "drop" | "challenge";
 type CreatorCampaignState = "upcoming" | "active" | "past";
 type CreatorCampaignRolloutMode = "public_first" | "followers_first" | "members_first" | "staged";
-type CreatorCampaignRolloutAudience = "public" | "followers" | "members";
+type CreatorCampaignRolloutAudience = CreatorCampaignRolloutTimelineAudience;
 type CreatorCampaignPlaybookCtaDirection = "follow" | "rsvp" | "membership" | "purchase" | "drop" | "mixed";
 type CreatorCampaignPlaybookOnboardingItemStatus = "todo" | "ready" | "complete" | "warning";
 type CreatorCampaignRolloutState =
@@ -4218,6 +4220,31 @@ function formatRolloutTimelineAudience(audience: CreatorCampaignRolloutAudience 
   return "campaign";
 }
 
+function normalizeCreatorCampaignRolloutAudience(value: unknown): CreatorCampaignRolloutAudience | null {
+  if (
+    typeof value === "string"
+    && (CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES as readonly string[]).includes(value)
+  ) {
+    return value as CreatorCampaignRolloutAudience;
+  }
+  return null;
+}
+
+function normalizeCreatorCampaignRolloutTimelineMetadata(
+  metadata: CreatorCampaignRolloutTimelineMetadata | null | undefined,
+): CreatorCampaignRolloutTimelineMetadata {
+  const normalized = (metadata ?? {}) as CreatorCampaignRolloutTimelineMetadata;
+  if (normalized.nextAudience === undefined) {
+    return normalized;
+  }
+  const nextAudience = normalizeCreatorCampaignRolloutAudience(normalized.nextAudience);
+  if (nextAudience) {
+    return { ...normalized, nextAudience };
+  }
+  const { nextAudience: _invalidNextAudience, ...rest } = normalized;
+  return rest;
+}
+
 function formatRolloutTimelineDate(value: Date | string | null | undefined) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
@@ -4283,14 +4310,16 @@ async function createCampaignRolloutTimelineEvent(input: {
   occurredAt?: Date;
 }) {
   if (!db) throw new Error("Database unavailable");
+  const normalizedAudienceStage = normalizeCreatorCampaignRolloutAudience(input.audienceStage);
+  const normalizedMetadata = normalizeCreatorCampaignRolloutTimelineMetadata(input.metadata ?? {});
   await db.insert(creatorCampaignRolloutTimelineEvents).values({
     campaignId: input.campaignId,
     actorUserId: input.actorUserId ?? null,
     eventType: input.eventType,
     title: input.title,
     message: input.message,
-    audienceStage: input.audienceStage ?? null,
-    metadata: input.metadata ?? {},
+    audienceStage: normalizedAudienceStage,
+    metadata: normalizedMetadata,
     occurredAt: input.occurredAt ?? new Date(),
   });
 }
@@ -4497,8 +4526,8 @@ async function loadCampaignRolloutTimelineEntriesForCampaign(campaign: CreatorCa
     occurredAt: row.occurredAt.toISOString(),
     title: row.title,
     message: row.message,
-    audienceStage: (row.audienceStage as CreatorCampaignRolloutAudience | null) ?? null,
-    metadata: row.metadata ?? {},
+    audienceStage: normalizeCreatorCampaignRolloutAudience(row.audienceStage),
+    metadata: normalizeCreatorCampaignRolloutTimelineMetadata(row.metadata),
     isDerived: false,
   }));
 
