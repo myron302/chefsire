@@ -24,6 +24,21 @@ const getErrorMessage = (error: unknown): string => {
   return "Unknown error";
 };
 
+const toPayoutAccountDetailsSnapshot = (
+  accountDetails: PaymentMethodRecord["accountDetails"]
+): PayoutMetadata["accountDetails"] => {
+  if (!accountDetails) {
+    return undefined;
+  }
+
+  const { merchantId, locationId } = accountDetails;
+  if (!merchantId && !locationId) {
+    return undefined;
+  }
+
+  return { merchantId, locationId };
+};
+
 // Initialize Square client
 const getSquareClient = () => {
   const accessToken = process.env.SQUARE_ACCESS_TOKEN;
@@ -166,6 +181,7 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
         from: new Date(Math.min(...ordersToPayout.map((o) => new Date(o.createdAt!).getTime()))).toISOString(),
         to: new Date().toISOString(),
       },
+      accountDetails: toPayoutAccountDetailsSnapshot(paymentMethod.accountDetails),
     };
 
     // Create payout record first

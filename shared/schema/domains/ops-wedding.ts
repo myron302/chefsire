@@ -60,6 +60,13 @@ type StoreBuilderNode = {
 
 type StoreBuilderLayoutConfig = Record<string, StoreBuilderNode>;
 type StoreLayoutConfig = StoreLayoutCustomizationConfig | StoreBuilderLayoutConfig;
+type PaymentMethodAccountDetails = {
+  merchantId?: string;
+  locationId?: string;
+  accessToken?: string; // encrypted
+  refreshToken?: string; // encrypted
+  tokenExpiresAt?: string;
+};
 
 /* ===== STORES TABLE ===== */
 export const stores = pgTable(
@@ -98,13 +105,7 @@ export const paymentMethods = pgTable(
     accountStatus: text("account_status").default("pending"), // pending, active, disabled, rejected
     accountType: text("account_type"), // individual, business
     accountEmail: text("account_email"),
-    accountDetails: jsonb("account_details").$type<{
-      merchantId?: string;
-      locationId?: string;
-      accessToken?: string; // encrypted
-      refreshToken?: string; // encrypted
-      tokenExpiresAt?: string;
-    }>(),
+    accountDetails: jsonb("account_details").$type<PaymentMethodAccountDetails>(),
     isDefault: boolean("is_default").default(false),
     verifiedAt: timestamp("verified_at"),
     lastVerifiedAt: timestamp("last_verified_at"),
@@ -118,10 +119,7 @@ export const paymentMethods = pgTable(
   })
 );
 
-type PayoutAccountDetailsSnapshot = {
-  merchantId?: string;
-  locationId?: string;
-};
+type PayoutAccountDetailsSnapshot = Pick<PaymentMethodAccountDetails, "merchantId" | "locationId">;
 
 /* ===== COMMISSIONS ===== */
 export const commissions = pgTable(
