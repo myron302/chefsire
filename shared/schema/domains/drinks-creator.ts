@@ -253,6 +253,9 @@ export type CreatorRoadmapVisibility = (typeof CREATOR_ROADMAP_VISIBILITY_VALUES
 export const CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES = ["members", "followers", "public"] as const;
 export type CreatorCampaignRolloutTimelineAudience = (typeof CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES)[number];
 
+export const CREATOR_CAMPAIGN_PLAYBOOK_PROFILE_STARTS_WITH_AUDIENCE_VALUES = ["members", "followers", "public"] as const;
+export type CreatorCampaignPlaybookProfileStartsWithAudience = (typeof CREATOR_CAMPAIGN_PLAYBOOK_PROFILE_STARTS_WITH_AUDIENCE_VALUES)[number];
+
 export const CREATOR_CAMPAIGN_PLAYBOOK_PREFERRED_AUDIENCE_FIT_VALUES = ["members", "followers", "public"] as const;
 export type CreatorCampaignPlaybookPreferredAudienceFit = (typeof CREATOR_CAMPAIGN_PLAYBOOK_PREFERRED_AUDIENCE_FIT_VALUES)[number];
 
@@ -792,7 +795,7 @@ export const creatorCampaignPlaybookProfiles = pgTable(
     description: text("description"),
     visibilityStrategy: text("visibility_strategy"),
     rolloutMode: text("rollout_mode").default("public_first").notNull(),
-    startsWithAudience: text("starts_with_audience"),
+    startsWithAudience: text("starts_with_audience").$type<CreatorCampaignPlaybookProfileStartsWithAudience | null>(),
     recommendedFollowerUnlockDelayHours: integer("recommended_follower_unlock_delay_hours"),
     recommendedPublicUnlockDelayHours: integer("recommended_public_unlock_delay_hours"),
     preferredCtaDirection: text("preferred_cta_direction"),

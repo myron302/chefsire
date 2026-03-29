@@ -45,6 +45,7 @@ import {
   CREATOR_POST_VISIBILITY_VALUES,
   CREATOR_ROADMAP_VISIBILITY_VALUES,
   CREATOR_CAMPAIGN_ROLLOUT_TIMELINE_AUDIENCE_VALUES,
+  CREATOR_CAMPAIGN_PLAYBOOK_PROFILE_STARTS_WITH_AUDIENCE_VALUES,
   CREATOR_CAMPAIGN_PLAYBOOK_PREFERRED_AUDIENCE_FIT_VALUES,
   insertCustomDrinkSchema, 
   insertDrinkPhotoSchema,
@@ -98,6 +99,7 @@ import {
   type CreatorDropVisibility,
   type CreatorPostVisibility,
   type CreatorCampaignRolloutTimelineAudience,
+  type CreatorCampaignPlaybookProfileStartsWithAudience,
   type CreatorCampaignPlaybookPreferredAudienceFit,
 } from "@shared/schema";
 import { z } from "zod";
@@ -1243,7 +1245,7 @@ const creatorCampaignPlaybookProfileBodyBaseSchema = z.object({
   description: z.string().trim().max(1000).nullable().optional(),
   visibilityStrategy: creatorCampaignVisibilitySchema.nullable().optional(),
   rolloutMode: creatorCampaignRolloutModeSchema,
-  startsWithAudience: creatorCampaignRolloutAudienceSchema.nullable().optional(),
+  startsWithAudience: z.enum(CREATOR_CAMPAIGN_PLAYBOOK_PROFILE_STARTS_WITH_AUDIENCE_VALUES).nullable().optional(),
   recommendedFollowerUnlockDelayHours: z.coerce.number().int().min(1).max(24 * 21).nullable().optional(),
   recommendedPublicUnlockDelayHours: z.coerce.number().int().min(1).max(24 * 30).nullable().optional(),
   preferredCtaDirection: creatorCampaignPlaybookCtaDirectionSchema.nullable().optional(),
@@ -4243,6 +4245,16 @@ function normalizeCreatorCampaignPlaybookPreferredAudienceFit(value: unknown): C
   return null;
 }
 
+function normalizeCreatorCampaignPlaybookProfileStartsWithAudience(value: unknown): CreatorCampaignPlaybookProfileStartsWithAudience | null {
+  if (
+    typeof value === "string"
+    && (CREATOR_CAMPAIGN_PLAYBOOK_PROFILE_STARTS_WITH_AUDIENCE_VALUES as readonly string[]).includes(value)
+  ) {
+    return value as CreatorCampaignPlaybookProfileStartsWithAudience;
+  }
+  return null;
+}
+
 function normalizeCreatorCampaignRolloutTimelineMetadata(
   metadata: CreatorCampaignRolloutTimelineMetadata | null | undefined,
 ): CreatorCampaignRolloutTimelineMetadata {
@@ -4715,7 +4727,7 @@ function serializeCreatorCampaignPlaybookProfile(profile: CreatorCampaignPlayboo
     description: profile.description ?? null,
     visibilityStrategy: (profile.visibilityStrategy as CreatorCampaignVisibility | null) ?? null,
     rolloutMode: (profile.rolloutMode as CreatorCampaignRolloutMode) ?? "public_first",
-    startsWithAudience: (profile.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null,
+    startsWithAudience: normalizeCreatorCampaignPlaybookProfileStartsWithAudience(profile.startsWithAudience),
     recommendedFollowerUnlockDelayHours: profile.recommendedFollowerUnlockDelayHours ?? null,
     recommendedPublicUnlockDelayHours: profile.recommendedPublicUnlockDelayHours ?? null,
     preferredCtaDirection: (profile.preferredCtaDirection as CreatorCampaignPlaybookCtaDirection | null) ?? null,
@@ -5525,7 +5537,7 @@ async function applyCreatorCampaignPlaybookProfileToCampaign(input: {
     .set({
       visibility: (profile.visibilityStrategy as CreatorCampaignVisibility | null) ?? campaign.visibility,
       rolloutMode: (profile.rolloutMode as CreatorCampaignRolloutMode | null) ?? campaign.rolloutMode,
-      startsWithAudience: (profile.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? campaign.startsWithAudience,
+      startsWithAudience: normalizeCreatorCampaignPlaybookProfileStartsWithAudience(profile.startsWithAudience) ?? campaign.startsWithAudience,
       unlockFollowersAt: nextFollowerUnlock,
       unlockPublicAt: nextPublicUnlock,
       rolloutNotes: mergedNotes || null,
@@ -5968,7 +5980,7 @@ async function loadCreatorCampaignPlaybookFitCollection(creatorUserId: string, c
 
     const matches = profiles.map((profile: CreatorCampaignPlaybookProfileRecord) => {
       const profileVisibility = (profile.visibilityStrategy as CreatorCampaignVisibility | null) ?? null;
-      const profileStartsWithAudience = (profile.startsWithAudience as CreatorCampaignRolloutAudience | null) ?? null;
+      const profileStartsWithAudience = normalizeCreatorCampaignPlaybookProfileStartsWithAudience(profile.startsWithAudience);
       const profilePreferredAudienceFit = normalizeCreatorCampaignPlaybookPreferredAudienceFit(profile.preferredAudienceFit);
       const profilePreferredCtaDirection = (profile.preferredCtaDirection as CreatorCampaignPlaybookCtaDirection | null) ?? null;
       let earned = 0;
@@ -6121,7 +6133,7 @@ async function loadCreatorCampaignPlaybookFitCollection(creatorUserId: string, c
         comparedSignals: {
           visibilityStrategy: profile.visibilityStrategy ?? null,
           rolloutMode: profile.rolloutMode,
-          startsWithAudience: profile.startsWithAudience ?? null,
+          startsWithAudience: normalizeCreatorCampaignPlaybookProfileStartsWithAudience(profile.startsWithAudience),
           preferredAudienceFit: normalizeCreatorCampaignPlaybookPreferredAudienceFit(profile.preferredAudienceFit),
           preferredCtaDirection: profile.preferredCtaDirection ?? null,
           preferredExperimentTypes: experimentOverlap.preferred,
