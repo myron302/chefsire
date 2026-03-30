@@ -647,6 +647,7 @@ export const creatorRoadmapItems = pgTable(
     creatorStatusIdx: index("creator_roadmap_items_creator_status_idx").on(table.creatorUserId, table.status),
     scheduledIdx: index("creator_roadmap_items_scheduled_idx").on(table.scheduledFor),
     releasedIdx: index("creator_roadmap_items_released_idx").on(table.releasedAt),
+    visibilityCheck: check("creator_roadmap_items_visibility_check", sql`${table.visibility} IN ('public', 'followers', 'members')`),
   })
 );
 
