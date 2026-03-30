@@ -2584,6 +2584,29 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      UPDATE creator_drops
+      SET visibility = 'public'
+      WHERE visibility IS NULL
+        OR visibility NOT IN ('public', 'followers', 'members');
+    `);
+
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'creator_drops_visibility_check'
+            AND conrelid = 'creator_drops'::regclass
+        ) THEN
+          ALTER TABLE creator_drops
+            ADD CONSTRAINT creator_drops_visibility_check
+            CHECK (visibility IN ('public', 'followers', 'members')) NOT VALID;
+        END IF;
+      END $$;
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS creator_drop_rsvps (
         id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
