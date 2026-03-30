@@ -1,0 +1,2 @@
+ALTER TABLE drink_collection_promotions
+  VALIDATE CONSTRAINT drink_collection_promotions_discount_type_check;
