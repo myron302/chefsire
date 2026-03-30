@@ -604,6 +604,7 @@ export const creatorDrops = pgTable(
     scheduledIdx: index("creator_drops_scheduled_for_idx").on(table.scheduledFor),
     publishedScheduledIdx: index("creator_drops_published_scheduled_idx").on(table.isPublished, table.scheduledFor),
     creatorScheduledIdx: index("creator_drops_creator_scheduled_idx").on(table.creatorUserId, table.scheduledFor),
+    visibilityCheck: check("creator_drops_visibility_check", sql`${table.visibility} IN ('public', 'followers', 'members')`),
   })
 );
 
