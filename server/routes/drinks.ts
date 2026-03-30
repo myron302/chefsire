@@ -2223,6 +2223,22 @@ async function ensureDrinkCollectionsSchema() {
     `);
 
     await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'drink_collections_access_type_check'
+            AND conrelid = 'drink_collections'::regclass
+        ) THEN
+          ALTER TABLE drink_collections
+            ADD CONSTRAINT drink_collections_access_type_check
+            CHECK (access_type IN ('public', 'premium_purchase', 'membership_only')) NOT VALID;
+        END IF;
+      END $$;
+    `);
+
+    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS drink_collection_items (
         collection_id varchar NOT NULL REFERENCES drink_collections(id) ON DELETE CASCADE,
         drink_slug varchar(200) NOT NULL,
@@ -2399,6 +2415,29 @@ async function ensureDrinkCollectionsSchema() {
         updated_at timestamp NOT NULL DEFAULT now(),
         CONSTRAINT drink_collection_promotions_collection_code_idx UNIQUE (collection_id, code)
       );
+    `);
+
+    await db.execute(sql`
+      UPDATE drink_collection_promotions
+      SET discount_type = lower(trim(discount_type))
+      WHERE discount_type IS NOT NULL
+        AND discount_type <> lower(trim(discount_type));
+    `);
+
+    await db.execute(sql`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'drink_collection_promotions_discount_type_check'
+            AND conrelid = 'drink_collection_promotions'::regclass
+        ) THEN
+          ALTER TABLE drink_collection_promotions
+            ADD CONSTRAINT drink_collection_promotions_discount_type_check
+            CHECK (discount_type IN ('percent', 'fixed')) NOT VALID;
+        END IF;
+      END $$;
     `);
 
     await db.execute(sql`
