@@ -1,0 +1,2 @@
+ALTER TABLE drink_collections
+  VALIDATE CONSTRAINT drink_collections_access_type_check;
