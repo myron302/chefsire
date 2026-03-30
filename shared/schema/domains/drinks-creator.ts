@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { AnyPgColumn, pgTable, text, varchar, integer, boolean, timestamp, bigserial, jsonb, decimal, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { AnyPgColumn, pgTable, text, varchar, integer, boolean, timestamp, bigserial, jsonb, decimal, index, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 import { recipes } from "./social-content";
 
@@ -576,6 +576,7 @@ export const creatorPosts = pgTable(
     visibilityIdx: index("creator_posts_visibility_idx").on(table.visibility),
     creatorCreatedAtIdx: index("creator_posts_creator_created_at_idx").on(table.creatorUserId, table.createdAt),
     visibilityCreatedAtIdx: index("creator_posts_visibility_created_at_idx").on(table.visibility, table.createdAt),
+    visibilityCheck: check("creator_posts_visibility_check", sql`${table.visibility} IN ('public', 'followers', 'members')`),
   })
 );
 
