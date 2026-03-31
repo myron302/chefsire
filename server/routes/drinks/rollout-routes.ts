@@ -76,6 +76,7 @@ export function registerRolloutRoutes(r: Router, ctx: any) {
     getCampaignEngagementSessionKey,
     loadFollowedCreatorIdsForUser,
     loadActiveMembershipCreatorIdsForUser,
+    loadCreatorMembershipPlanByCreatorId,
     loadFollowedCampaignIdsForUser,
     canViewerSeeCreatorCampaign,
     loadCreatorCampaignExperimentsCollection,
@@ -1702,9 +1703,40 @@ r.get("/campaigns/:id/rollout", requireAuth, async (req, res) => {
         ? (await loadCreatorCampaignRetrospectives(campaign.creatorUserId)).items.find((item) => item.campaignId === campaign.id) ?? null
         : null;
       const ownerRecoveryPlan = ownerHealth ? buildCampaignRecoveryPlan(ownerHealth) : null;
+      const activeMembershipPlan = await loadCreatorMembershipPlanByCreatorId(campaign.creatorUserId);
+      const activeLinkedPromo = detail.linkedContent.promos.find((promo) => promo.isActive) ?? null;
+      const premiumCollection = detail.linkedContent.collections.find((collection) => collection.accessType === "premium_purchase") ?? null;
+      const memberCollection = detail.linkedContent.collections.find((collection) => collection.accessType === "membership_only") ?? null;
+      const isMembershipOrientedCampaign = detail.campaign.visibility === "members"
+        || Boolean(memberCollection)
+        || detail.activeVariant?.ctaTargetType === "membership";
+      const primaryOffer = premiumCollection
+        ? {
+            type: "collection_checkout" as const,
+            ctaLabel: "Buy now",
+            helperText: activeLinkedPromo?.code
+              ? `Promo ${activeLinkedPromo.code} can be applied at checkout.`
+              : "Start checkout directly from this campaign.",
+            collectionId: premiumCollection.id,
+            collectionRoute: premiumCollection.route,
+            promoCode: activeLinkedPromo?.collectionId === premiumCollection.id
+              ? activeLinkedPromo.code
+              : null,
+          }
+        : isMembershipOrientedCampaign && activeMembershipPlan?.isActive
+          ? {
+              type: "membership_checkout" as const,
+              ctaLabel: "Join membership",
+              helperText: "Unlock member-only access directly from this campaign.",
+              creatorUserId: campaign.creatorUserId,
+              creatorRoute: detail.campaign.creator?.route ?? `/drinks/creator/${encodeURIComponent(campaign.creatorUserId)}`,
+            }
+          : null;
+
       return res.json({
         ok: true,
         ...detail,
+        primaryOffer,
         milestones: {
           public: (campaignSnapshot?.milestones ?? []).filter((milestone) => milestone.isPublic && milestone.achieved),
           owner: viewerId && viewerId === campaign.creatorUserId ? (campaignSnapshot?.milestones ?? []) : [],
