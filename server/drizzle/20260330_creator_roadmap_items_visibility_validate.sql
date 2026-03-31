@@ -1,0 +1,2 @@
+ALTER TABLE creator_roadmap_items
+  VALIDATE CONSTRAINT creator_roadmap_items_visibility_check;
