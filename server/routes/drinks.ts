@@ -20977,15 +20977,49 @@ r.get("/drops/:id", optionalAuth, async (req, res) => {
       loadCreatorDropLinkedMaps([access.drop]),
       loadCreatorDropRsvpMaps([access.drop], viewerId),
     ]);
+    const linkedCollection = access.drop.linkedCollectionId
+      ? maps.collectionMap.get(access.drop.linkedCollectionId) ?? null
+      : null;
+    const linkedPromotion = access.drop.linkedPromotionId
+      ? maps.promotionMap.get(access.drop.linkedPromotionId) ?? null
+      : null;
+    const activeMembershipPlan = await loadCreatorMembershipPlanByCreatorId(access.drop.creatorUserId);
+    const linkedCollectionAccessType = linkedCollection ? collectionAccessTypeForRow(linkedCollection) : null;
+    const isMembershipOrientedDrop = access.drop.visibility === "members"
+      || access.drop.dropType === "member_drop"
+      || linkedCollectionAccessType === "membership_only";
+    const primaryOffer = linkedCollectionAccessType === "premium_purchase"
+      ? {
+          type: "collection_checkout" as const,
+          ctaLabel: "Buy now",
+          helperText: linkedPromotion?.code
+            ? `Promo ${linkedPromotion.code} can be applied at checkout.`
+            : "Start checkout directly from this drop.",
+          collectionId: linkedCollection!.id,
+          collectionRoute: `/drinks/collections/${encodeURIComponent(linkedCollection!.id)}`,
+          promoCode: linkedPromotion?.collectionId === linkedCollection?.id
+            ? linkedPromotion.code
+            : null,
+        }
+      : isMembershipOrientedDrop && activeMembershipPlan?.isActive
+        ? {
+            type: "membership_checkout" as const,
+            ctaLabel: "Join membership",
+            helperText: "Unlock member-only access directly from this drop.",
+            creatorUserId: access.drop.creatorUserId,
+            creatorRoute: `/drinks/creator/${encodeURIComponent(access.drop.creatorUserId)}`,
+          }
+        : null;
 
     return res.json({
       ok: true,
+      primaryOffer,
       drop: serializeCreatorDrop(access.drop, {
         viewerId,
         creator: maps.creatorMap.get(access.drop.creatorUserId) ?? null,
-        linkedCollection: access.drop.linkedCollectionId ? maps.collectionMap.get(access.drop.linkedCollectionId) ?? null : null,
+        linkedCollection,
         linkedChallenge: access.drop.linkedChallengeId ? maps.challengeMap.get(access.drop.linkedChallengeId) ?? null : null,
-        linkedPromotion: access.drop.linkedPromotionId ? maps.promotionMap.get(access.drop.linkedPromotionId) ?? null : null,
+        linkedPromotion,
         acceptedCollaboration: serializeAcceptedCollaboration(maps.collaborationMap.get(`drop:${access.drop.id}`) ?? null, maps.collaborationProfileMap),
         rsvpCount: rsvpMaps.rsvpCountMap.get(access.drop.id) ?? 0,
         isRsvped: rsvpMaps.viewerRsvpSet.has(access.drop.id),

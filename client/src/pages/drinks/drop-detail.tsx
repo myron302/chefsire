@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRoute } from "wouter";
 
@@ -21,6 +21,20 @@ import {
 type DropDetailResponse = {
   ok: boolean;
   drop: CreatorDropItem;
+  primaryOffer: ({
+    type: "collection_checkout";
+    ctaLabel: string;
+    helperText: string | null;
+    collectionId: string;
+    collectionRoute: string;
+    promoCode: string | null;
+  } | {
+    type: "membership_checkout";
+    ctaLabel: string;
+    helperText: string | null;
+    creatorUserId: string;
+    creatorRoute: string;
+  }) | null;
 };
 
 function visibilityNarrative(drop: CreatorDropItem) {
@@ -52,6 +66,12 @@ export default function DrinkDropDetailPage() {
   });
 
   const drop = query.data?.drop;
+  const primaryOffer = query.data?.primaryOffer ?? null;
+  const hasPrimaryOffer = Boolean(primaryOffer);
+  const isOwner = Boolean(user?.id && drop?.creatorUserId && user.id === drop.creatorUserId);
+  const [primaryOfferMessage, setPrimaryOfferMessage] = useState("");
+  const [primaryOfferError, setPrimaryOfferError] = useState("");
+  const [isStartingPrimaryOffer, setIsStartingPrimaryOffer] = useState(false);
   useEffect(() => {
     if (!dropId || !query.data?.drop) return;
     void fetch(`/api/drinks/drops/${encodeURIComponent(dropId)}/events`, {
@@ -90,6 +110,70 @@ export default function DrinkDropDetailPage() {
       body: JSON.stringify({ eventType: "click_drop_target", targetType, targetId: targetId ?? null }),
     }).catch(() => undefined);
   };
+
+  async function startPrimaryOfferCheckout() {
+    if (!primaryOffer || isStartingPrimaryOffer) return;
+    if (!user?.id) {
+      window.location.href = "/auth/login";
+      return;
+    }
+
+    setPrimaryOfferError("");
+    setPrimaryOfferMessage("");
+    setIsStartingPrimaryOffer(true);
+
+    try {
+      if (primaryOffer.type === "collection_checkout") {
+        const response = await fetch(`/api/drinks/collections/${encodeURIComponent(primaryOffer.collectionId)}/create-checkout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            promoCode: primaryOffer.promoCode ?? undefined,
+            purchaseType: "self",
+          }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `Failed to start checkout (${response.status})`);
+        }
+        if (payload?.alreadyOwned || payload?.owned) {
+          setPrimaryOfferMessage("You already have access to this collection.");
+          return;
+        }
+        if (!payload?.checkoutUrl) {
+          throw new Error("Square checkout link was not returned.");
+        }
+        window.open(String(payload.checkoutUrl), "chefsire-drop-primary-offer-checkout", "popup,width=520,height=760");
+        setPrimaryOfferMessage(primaryOffer.promoCode
+          ? `Checkout opened with promo ${primaryOffer.promoCode}. Complete payment in Square.`
+          : "Checkout opened in a new tab. Complete payment in Square to unlock.");
+        return;
+      }
+
+      const response = await fetch(`/api/drinks/creators/${encodeURIComponent(primaryOffer.creatorUserId)}/membership/create-checkout`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to start membership checkout (${response.status})`);
+      }
+      if (payload?.alreadyActive) {
+        setPrimaryOfferMessage("You already have active membership access.");
+        return;
+      }
+      if (!payload?.checkoutUrl) {
+        throw new Error("Square membership checkout link was not returned.");
+      }
+      window.open(String(payload.checkoutUrl), "chefsire-drop-primary-membership-checkout", "popup,width=520,height=760");
+      setPrimaryOfferMessage("Membership checkout opened in a new tab. Complete payment in Square to unlock member access.");
+    } catch (error) {
+      setPrimaryOfferError(error instanceof Error ? error.message : "Unable to start checkout right now.");
+    } finally {
+      setIsStartingPrimaryOffer(false);
+    }
+  }
 
   if (!matched) return null;
 
@@ -170,12 +254,20 @@ export default function DrinkDropDetailPage() {
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  {!isOwner && primaryOffer ? (
+                    <Button onClick={startPrimaryOfferCheckout} disabled={isStartingPrimaryOffer}>
+                      {isStartingPrimaryOffer ? "Opening…" : primaryOffer.ctaLabel}
+                    </Button>
+                  ) : null}
                   <DropRsvpButton drop={drop} />
                   {primaryDestination ? (
-                    <Link href={primaryDestination.href}><Button onClick={() => trackClick(drop.linkedCollection ? "collection" : "challenge", drop.linkedCollection?.id ?? drop.linkedChallenge?.id)}>{primaryDestination.label}</Button></Link>
+                    <Link href={primaryDestination.href}><Button variant={hasPrimaryOffer ? "outline" : "default"} onClick={() => trackClick(drop.linkedCollection ? "collection" : "challenge", drop.linkedCollection?.id ?? drop.linkedChallenge?.id)}>{primaryDestination.label}</Button></Link>
                   ) : null}
                   {!primaryDestination ? <Link href={drop.creator?.route ?? "/drinks/drops"}><Button variant="outline">Open creator page</Button></Link> : null}
                 </div>
+                {primaryOffer?.helperText ? <p className="text-muted-foreground">{primaryOffer.helperText}</p> : null}
+                {primaryOfferMessage ? <p className="text-emerald-600">{primaryOfferMessage}</p> : null}
+                {primaryOfferError ? <p className="text-destructive">{primaryOfferError}</p> : null}
               </CardContent>
             </Card>
           </div>
