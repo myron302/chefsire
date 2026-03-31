@@ -63,6 +63,9 @@ export default function DrinkCampaignDetailPage() {
   const [pinError, setPinError] = React.useState("");
   const [unlockMessage, setUnlockMessage] = React.useState("");
   const [unlockError, setUnlockError] = React.useState("");
+  const [primaryOfferMessage, setPrimaryOfferMessage] = React.useState("");
+  const [primaryOfferError, setPrimaryOfferError] = React.useState("");
+  const [isStartingPrimaryOffer, setIsStartingPrimaryOffer] = React.useState(false);
 
   const query = useQuery<CampaignDetailResponse>({
     queryKey: ["/api/drinks/campaigns", slug, user?.id ?? "guest"],
@@ -95,6 +98,72 @@ export default function DrinkCampaignDetailPage() {
   if (!matched) return null;
   const variantDestination = query.data ? buildVariantDestination(query.data) : null;
   const { currentSurface, trackVariantClick } = useCampaignDetailSurfaceTracking(query.data);
+  const primaryOffer = query.data?.primaryOffer ?? null;
+  const hasPrimaryOffer = Boolean(primaryOffer);
+
+  async function startPrimaryOfferCheckout() {
+    if (!primaryOffer || isStartingPrimaryOffer) return;
+    if (!user?.id) {
+      window.location.href = "/auth/login";
+      return;
+    }
+
+    setPrimaryOfferError("");
+    setPrimaryOfferMessage("");
+    setIsStartingPrimaryOffer(true);
+
+    try {
+      if (primaryOffer.type === "collection_checkout") {
+        const response = await fetch(`/api/drinks/collections/${encodeURIComponent(primaryOffer.collectionId)}/create-checkout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            promoCode: primaryOffer.promoCode ?? undefined,
+            purchaseType: "self",
+          }),
+        });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(payload?.error || `Failed to start checkout (${response.status})`);
+        }
+        if (payload?.alreadyOwned || payload?.owned) {
+          setPrimaryOfferMessage("You already have access to this collection.");
+          return;
+        }
+        if (!payload?.checkoutUrl) {
+          throw new Error("Square checkout link was not returned.");
+        }
+        window.open(String(payload.checkoutUrl), "chefsire-campaign-primary-offer-checkout", "popup,width=520,height=760");
+        setPrimaryOfferMessage(primaryOffer.promoCode
+          ? `Checkout opened with promo ${primaryOffer.promoCode}. Complete payment in Square.`
+          : "Checkout opened in a new tab. Complete payment in Square to unlock.");
+        return;
+      }
+
+      const response = await fetch(`/api/drinks/creators/${encodeURIComponent(primaryOffer.creatorUserId)}/membership/create-checkout`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.error || `Failed to start membership checkout (${response.status})`);
+      }
+      if (payload?.alreadyActive) {
+        setPrimaryOfferMessage("You already have active membership access.");
+        return;
+      }
+      if (!payload?.checkoutUrl) {
+        throw new Error("Square membership checkout link was not returned.");
+      }
+      window.open(String(payload.checkoutUrl), "chefsire-campaign-primary-membership-checkout", "popup,width=520,height=760");
+      setPrimaryOfferMessage("Membership checkout opened in a new tab. Complete payment in Square to unlock member access.");
+    } catch (error) {
+      setPrimaryOfferError(error instanceof Error ? error.message : "Unable to start checkout right now.");
+    } finally {
+      setIsStartingPrimaryOffer(false);
+    }
+  }
 
   return (
     <div className="container mx-auto max-w-6xl space-y-6 px-4 py-8">
@@ -129,9 +198,14 @@ export default function DrinkCampaignDetailPage() {
                 <CampaignFollowButton
                   campaignId={campaign?.id}
                   creatorUserId={campaign?.creatorUserId}
-                  variant={campaign?.isFollowing ? "outline" : "default"}
+                  variant={hasPrimaryOffer ? "outline" : (campaign?.isFollowing ? "outline" : "default")}
                   followRequestBody={{ surface: currentSurface === "direct_or_unknown" ? "campaign_detail_page" : currentSurface }}
                 />
+                {!isOwner && primaryOffer ? (
+                  <Button onClick={startPrimaryOfferCheckout} disabled={isStartingPrimaryOffer}>
+                    {isStartingPrimaryOffer ? "Opening…" : primaryOffer.ctaLabel}
+                  </Button>
+                ) : null}
                 {user?.id && user.id === query.data.campaign.creatorUserId ? (
                   <CampaignPinButton
                     campaignId={query.data.campaign.id}
@@ -147,6 +221,9 @@ export default function DrinkCampaignDetailPage() {
 
           {pinMessage ? <p className="text-sm text-emerald-600">{pinMessage}</p> : null}
           {pinError ? <p className="text-sm text-destructive">{pinError}</p> : null}
+          {primaryOffer?.helperText ? <p className="text-sm text-muted-foreground">{primaryOffer.helperText}</p> : null}
+          {primaryOfferMessage ? <p className="text-sm text-emerald-600">{primaryOfferMessage}</p> : null}
+          {primaryOfferError ? <p className="text-sm text-destructive">{primaryOfferError}</p> : null}
 
           {isOwner ? (
             <CampaignActionCenterSection
@@ -260,6 +337,7 @@ export default function DrinkCampaignDetailPage() {
                       campaignId={campaign?.id}
                       creatorUserId={campaign?.creatorUserId}
                       size="default"
+                      variant={hasPrimaryOffer ? "outline" : undefined}
                       followRequestBody={{ variantId: activeVariant.id, surface: currentSurface === "direct_or_unknown" ? "campaign_detail_page" : currentSurface }}
                       onBeforeToggle={trackVariantClick}
                       idleLabel={activeVariant.ctaText}

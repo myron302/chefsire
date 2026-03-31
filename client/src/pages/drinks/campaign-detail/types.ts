@@ -162,6 +162,20 @@ export type CampaignRolloutAnalyticsItem = {
 export interface CampaignDetailResponse {
   ok: boolean;
   campaign: CreatorCampaignItem;
+  primaryOffer: {
+    type: "collection_checkout";
+    ctaLabel: string;
+    helperText: string;
+    collectionId: string;
+    collectionRoute: string;
+    promoCode: string | null;
+  } | {
+    type: "membership_checkout";
+    ctaLabel: string;
+    helperText: string;
+    creatorUserId: string;
+    creatorRoute: string;
+  } | null;
   linkedContent: {
     collections: Array<{ id: string; name: string; description: string | null; accessType: string; isPublic: boolean; route: string }>;
     drops: CreatorDropItem[];
