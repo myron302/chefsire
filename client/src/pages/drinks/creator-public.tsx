@@ -465,6 +465,10 @@ export default function PublicDrinkCreatorPage() {
   const membershipPlan = membershipStatusQuery.data?.plan ?? null;
   const viewerMembership = membershipStatusQuery.data?.membership ?? null;
   const membershipActive = Boolean(viewerMembership?.accessActive);
+  const membershipPriceLabel = `${formatCurrency(membershipPlan?.priceCents ?? 0)}/${membershipPlan?.billingInterval === "yearly" ? "year" : "month"}`;
+  const membershipValueSummary = memberOnlyCollections.length > 0
+    ? `Unlock ${memberOnlyCollections.length} member-only collection${memberOnlyCollections.length === 1 ? "" : "s"} with one membership.`
+    : "Membership is active now and ready for upcoming member-only collection drops.";
   const membershipOffer = membershipPlan?.isActive && creatorId
     ? {
       type: "membership_checkout" as const,
@@ -632,16 +636,19 @@ export default function PublicDrinkCreatorPage() {
           <CardHeader>
             <CardTitle>{membershipPlan.name}</CardTitle>
             <CardDescription>
-              Join this creator to unlock member-only collections and support them beyond one-off premium purchases.
+              Join this creator membership to instantly unlock member-only collections and support ongoing drops beyond one-off purchases.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="flex flex-wrap gap-2">
-              <Badge>{formatCurrency(membershipPlan.priceCents)}/{membershipPlan.billingInterval === "yearly" ? "year" : "month"}</Badge>
+              <Badge>{membershipPriceLabel}</Badge>
               <Badge variant={membershipActive ? "secondary" : "outline"}>{membershipActive ? "Member access active" : "Membership available"}</Badge>
               <Badge variant="secondary">{memberOnlyCollections.length} member-only collections</Badge>
               {viewerMembership?.endsAt ? <Badge variant="outline">Current term ends {formatDate(viewerMembership.endsAt)}</Badge> : null}
             </div>
+            <p className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 text-sm text-emerald-900">
+              {membershipValueSummary}
+            </p>
             {membershipPlan.description ? <p className="text-sm text-muted-foreground">{membershipPlan.description}</p> : null}
             <p className="text-sm text-muted-foreground">
               {memberOnlyCollections.length > 0
@@ -677,6 +684,11 @@ export default function PublicDrinkCreatorPage() {
                 <Button variant="ghost">See member perks</Button>
               </Link>
             </div>
+            {!membershipActive && user?.id && user.id !== data.userId ? (
+              <p className="text-xs text-muted-foreground">
+                Full member access starts after checkout confirmation. You&apos;ll return here and unlock member-only collections automatically.
+              </p>
+            ) : null}
             {membershipCheckoutHelperText ? <p className="text-sm text-muted-foreground">{membershipCheckoutHelperText}</p> : null}
             {membershipCheckoutMessage ? <p className="text-sm text-emerald-600">{membershipCheckoutMessage}</p> : null}
             {membershipCheckoutError ? <p className="text-sm text-destructive">{membershipCheckoutError}</p> : null}
@@ -703,6 +715,11 @@ export default function PublicDrinkCreatorPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
+            {membershipPlan?.isActive && !membershipActive && pinnedCampaign.visibility === "members" ? (
+              <p className="rounded-md border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-900">
+                Members-only spotlight: join membership to unlock this campaign and related drops.
+              </p>
+            ) : null}
             <div className="space-y-2">
               <h3 className="text-2xl font-semibold">{pinnedCampaign.name}</h3>
               {pinnedCampaign.description ? <p className="max-w-3xl text-sm text-muted-foreground">{pinnedCampaign.description}</p> : null}
@@ -742,10 +759,15 @@ export default function PublicDrinkCreatorPage() {
                   onClick={startMembershipCheckout}
                   disabled={isStartingMembershipCheckout}
                 >
-                  {isStartingMembershipCheckout ? membershipCheckoutLoadingLabel : "Join to unlock"}
+                  {isStartingMembershipCheckout ? membershipCheckoutLoadingLabel : `Join to unlock (${membershipPriceLabel})`}
                 </Button>
               ) : null}
             </div>
+            {membershipPlan?.isActive && !membershipActive && pinnedCampaign.visibility === "members" ? (
+              <p className="text-xs text-muted-foreground">
+                This uses the same secure membership checkout flow; campaign visibility updates after payment status sync.
+              </p>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}
