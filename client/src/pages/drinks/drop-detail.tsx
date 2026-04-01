@@ -121,6 +121,7 @@ export default function DrinkDropDetailPage() {
     offer: primaryOffer,
     isAuthenticated: Boolean(user?.id),
     popupNamePrefix: "chefsire-drop-primary-offer-checkout",
+    checkoutSource: "drop_detail",
   });
 
   if (!matched) return null;

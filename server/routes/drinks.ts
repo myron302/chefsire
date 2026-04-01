@@ -916,6 +916,11 @@ const applyPromoBodySchema = z.object({
 const createCheckoutBodySchema = z.object({
   promoCode: promoCodeSchema.optional(),
   purchaseType: z.enum(DRINK_PURCHASE_TYPE_VALUES).optional(),
+  checkoutSource: z.enum(["campaign_detail", "drop_detail", "creator_public"]).optional(),
+});
+
+const membershipCreateCheckoutBodySchema = z.object({
+  checkoutSource: z.enum(["campaign_detail", "drop_detail", "creator_public"]).optional(),
 });
 
 const creatorMembershipIntervalSchema = z.enum(["monthly", "yearly"]);
@@ -15793,6 +15798,10 @@ function formatCollectionCheckoutReferenceId(checkoutSessionId: string) {
   return `drink_collection_checkout:${checkoutSessionId}`;
 }
 
+function formatCheckoutReferenceWithSource(baseReferenceId: string, checkoutSource?: "campaign_detail" | "drop_detail" | "creator_public") {
+  return checkoutSource ? `${baseReferenceId}:src_${checkoutSource}` : baseReferenceId;
+}
+
 function buildBundleCheckoutRedirectUrl(req: Request, bundleId: string, checkoutSessionId: string) {
   const baseUrl = getCollectionCheckoutBaseUrl(req);
   return `${baseUrl}/drinks/bundles/${encodeURIComponent(bundleId)}?checkoutSessionId=${encodeURIComponent(checkoutSessionId)}&squareCheckout=return`;
@@ -23755,6 +23764,11 @@ r.post("/creators/:userId/membership/create-checkout", requireAuth, async (req, 
     if (isCreatorMembershipActiveRecord(existingMembership)) {
       return res.status(200).json({ ok: true, alreadyActive: true, membership: serializeMembershipRecord(existingMembership) });
     }
+    const parsedBody = membershipCreateCheckoutBodySchema.safeParse(req.body ?? {});
+    if (!parsedBody.success) {
+      return res.status(400).json({ ok: false, error: "Invalid checkout request", details: parsedBody.error.flatten() });
+    }
+    const checkoutSource = parsedBody.data.checkoutSource;
 
     const createdRows = await db
       .insert(creatorMembershipCheckoutSessions)
@@ -23766,7 +23780,7 @@ r.post("/creators/:userId/membership/create-checkout", requireAuth, async (req, 
         status: "pending",
         amountCents: Number(plan.priceCents ?? 0),
         currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
-        providerReferenceId: `membership:${plan.id}:${crypto.randomUUID()}`,
+        providerReferenceId: formatCheckoutReferenceWithSource(`membership:${plan.id}:${crypto.randomUUID()}`, checkoutSource),
         expiresAt: new Date(Date.now() + 1000 * 60 * 30),
       })
       .returning();
@@ -23789,7 +23803,8 @@ r.post("/creators/:userId/membership/create-checkout", requireAuth, async (req, 
       prePopulatedData: {
         buyerEmail: req.user?.email ?? undefined,
       },
-      description: `ChefSire creator membership ${plan.name}`,
+      paymentNote: checkoutSource ? `membership_checkout:${checkoutSource}` : undefined,
+      description: checkoutSource ? `ChefSire creator membership ${plan.name} (${checkoutSource})` : `ChefSire creator membership ${plan.name}`,
     });
 
     const paymentLink = squareResponse.paymentLink;
@@ -27741,6 +27756,7 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
     }
 
     const purchaseType = parsedBody.data.purchaseType ?? "self";
+    const checkoutSource = parsedBody.data.checkoutSource;
     const context = await resolveCollectionPurchaseContextWithPromo(req.params.id, req.user!.id, parsedBody.data.promoCode ?? null);
     if (purchaseType === "self" && context.alreadyOwned) {
       return res.json({
@@ -27765,7 +27781,7 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
         discountAmountCents: context.promoPricing?.discountAmountCents ?? 0,
         amountCents: context.promoPricing?.finalAmountCents ?? context.collection.priceCents,
         currencyCode: normalizeSquareCurrencyCode(squareConfig.currency),
-        providerReferenceId: formatCollectionCheckoutReferenceId(crypto.randomUUID()),
+        providerReferenceId: formatCheckoutReferenceWithSource(formatCollectionCheckoutReferenceId(crypto.randomUUID()), checkoutSource),
         expiresAt: new Date(Date.now() + 1000 * 60 * 30),
         updatedAt: new Date(),
       })
@@ -27784,6 +27800,7 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
           collectionId: context.collection.id,
           userId: req.user!.id,
           purchaseType,
+          ...(checkoutSource ? { checkoutSource } : {}),
         },
         lineItems: [
           {
@@ -27804,8 +27821,12 @@ r.post("/collections/:id/create-checkout", requireAuth, async (req, res) => {
         allowTipping: false,
         askForShippingAddress: false,
       },
-      paymentNote: `Premium collection ${purchaseType === "gift" ? "gift" : "unlock"}: ${context.collection.id}`,
-      description: `ChefSire premium drink collection ${purchaseType === "gift" ? "gift" : "checkout"}: ${context.collection.name}`,
+      paymentNote: checkoutSource
+        ? `Premium collection ${purchaseType === "gift" ? "gift" : "unlock"}: ${context.collection.id} (${checkoutSource})`
+        : `Premium collection ${purchaseType === "gift" ? "gift" : "unlock"}: ${context.collection.id}`,
+      description: checkoutSource
+        ? `ChefSire premium drink collection ${purchaseType === "gift" ? "gift" : "checkout"}: ${context.collection.name} (${checkoutSource})`
+        : `ChefSire premium drink collection ${purchaseType === "gift" ? "gift" : "checkout"}: ${context.collection.name}`,
     });
 
     const paymentLink = squareResponse.paymentLink;

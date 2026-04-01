@@ -489,6 +489,7 @@ export default function PublicDrinkCreatorPage() {
     offer: membershipOffer,
     isAuthenticated: Boolean(user?.id),
     popupNamePrefix: "chefsire-creator-membership-primary-offer-checkout",
+    checkoutSource: "creator_public",
   });
   const membershipReturnState = React.useMemo(() => {
     const params = new URLSearchParams(window.location.search);

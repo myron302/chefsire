@@ -111,6 +111,7 @@ export default function DrinkCampaignDetailPage() {
     offer: primaryOffer,
     isAuthenticated: Boolean(user?.id),
     popupNamePrefix: "chefsire-campaign-primary-offer-checkout",
+    checkoutSource: "campaign_detail",
   });
 
   return (
