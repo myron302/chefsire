@@ -124,6 +124,17 @@ import { registerRolloutRoutes } from "./drinks/rollout-routes";
 
 const r = Router();
 
+function requireAdmin(req: any, res: any, next: any) {
+  const adminEmails = (process.env.INTERNAL_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+  const requesterEmail = typeof req.user?.email === "string" ? req.user.email.trim().toLowerCase() : "";
+  const isAdmin = requesterEmail.length > 0 && adminEmails.includes(requesterEmail);
+  if (!isAdmin) return res.status(403).json({ ok: false, error: "Admin only" });
+  next();
+}
+
 function getDrinksRouteContext() {
   return {
     and,
@@ -15798,6 +15809,21 @@ function formatCollectionCheckoutReferenceId(checkoutSessionId: string) {
   return `drink_collection_checkout:${checkoutSessionId}`;
 }
 
+function inferCheckoutSourceFromReferenceId(referenceId?: string | null) {
+  const raw = typeof referenceId === "string" ? referenceId : "";
+  const marker = ":src_";
+  const markerIndex = raw.lastIndexOf(marker);
+  if (markerIndex === -1) return "unknown";
+  const source = raw.slice(markerIndex + marker.length).trim();
+  return source.length > 0 ? source : "unknown";
+}
+
+function normalizeCheckoutStatusBucket(status?: string | null): "pending" | "completed" | "failed" {
+  if (status === "completed") return "completed";
+  if (status === "pending") return "pending";
+  return "failed";
+}
+
 function formatCheckoutReferenceWithSource(baseReferenceId: string, checkoutSource?: "campaign_detail" | "drop_detail" | "creator_public") {
   return checkoutSource ? `${baseReferenceId}:src_${checkoutSource}` : baseReferenceId;
 }
@@ -27904,6 +27930,48 @@ r.get("/collections/checkout-sessions/:sessionId/status", requireAuth, async (re
   } catch (error) {
     const message = logCollectionRouteError("/checkout-sessions/:sessionId/status", req, error);
     return res.status(500).json(collectionServerError(message, "Failed to verify Square checkout"));
+  }
+});
+
+r.get("/admin/checkout-attribution-summary", requireAuth, requireAdmin, async (_req, res) => {
+  try {
+    if (!db) return res.status(503).json({ ok: false, error: "Database unavailable" });
+    await ensureDrinkCollectionsSchema();
+
+    const [collectionRows, membershipRows] = await Promise.all([
+      db
+        .select({
+          providerReferenceId: drinkCollectionCheckoutSessions.providerReferenceId,
+          status: drinkCollectionCheckoutSessions.status,
+        })
+        .from(drinkCollectionCheckoutSessions),
+      db
+        .select({
+          providerReferenceId: creatorMembershipCheckoutSessions.providerReferenceId,
+          status: creatorMembershipCheckoutSessions.status,
+        })
+        .from(creatorMembershipCheckoutSessions),
+    ]);
+
+    const summaryMap = new Map<string, { checkoutSource: string; total: number; completed: number; pending: number; failed: number }>();
+    const allRows = [...collectionRows, ...membershipRows];
+
+    for (const row of allRows) {
+      const checkoutSource = inferCheckoutSourceFromReferenceId(row.providerReferenceId);
+      const bucket = normalizeCheckoutStatusBucket(row.status);
+      const entry = summaryMap.get(checkoutSource) ?? { checkoutSource, total: 0, completed: 0, pending: 0, failed: 0 };
+      entry.total += 1;
+      entry[bucket] += 1;
+      summaryMap.set(checkoutSource, entry);
+    }
+
+    return res.json({
+      ok: true,
+      summary: Array.from(summaryMap.values()),
+    });
+  } catch (error) {
+    const message = logCollectionRouteError("/admin/checkout-attribution-summary", _req, error);
+    return res.status(500).json(collectionServerError(message, "Failed to load checkout attribution summary"));
   }
 });
 
