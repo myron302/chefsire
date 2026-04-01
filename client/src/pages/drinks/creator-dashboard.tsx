@@ -902,6 +902,8 @@ export default function CreatorDashboardPage() {
     },
   });
 
+  const handleTabChange = useDashboardHashSync(activeTab, setActiveTab);
+
   if (userLoading) {
     return <div className="container mx-auto p-6">Loading dashboard...</div>;
   }
@@ -1088,8 +1090,6 @@ export default function CreatorDashboardPage() {
       cta: "Open playbooks",
     },
   ];
-
-  const handleTabChange = useDashboardHashSync(activeTab, setActiveTab);
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-creator-dashboard">
