@@ -17,6 +17,7 @@ type UsePrimaryOfferCheckoutOptions = {
   offer: PrimaryOfferCheckoutOffer | null;
   isAuthenticated: boolean;
   popupNamePrefix: string;
+  checkoutSource?: "campaign_detail" | "drop_detail" | "creator_public";
 };
 
 const STANDARD_CTA_LABEL = {
@@ -32,7 +33,7 @@ const STANDARD_HELPER_TEXT = {
 const STANDARD_LAUNCH_MESSAGE = "Checkout opened in a new window. Complete payment in Square to unlock access.";
 const STANDARD_ALREADY_ACTIVE_MESSAGE = "You already have access to this offer.";
 
-export function usePrimaryOfferCheckout({ offer, isAuthenticated, popupNamePrefix }: UsePrimaryOfferCheckoutOptions) {
+export function usePrimaryOfferCheckout({ offer, isAuthenticated, popupNamePrefix, checkoutSource }: UsePrimaryOfferCheckoutOptions) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [isStartingCheckout, setIsStartingCheckout] = useState(false);
@@ -71,6 +72,7 @@ export function usePrimaryOfferCheckout({ offer, isAuthenticated, popupNamePrefi
           body: JSON.stringify({
             promoCode: offer.promoCode ?? undefined,
             purchaseType: "self",
+            checkoutSource,
           }),
         });
         const payload = await response.json().catch(() => null);
@@ -93,7 +95,11 @@ export function usePrimaryOfferCheckout({ offer, isAuthenticated, popupNamePrefi
 
       const response = await fetch(`/api/drinks/creators/${encodeURIComponent(offer.creatorUserId)}/membership/create-checkout`, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         credentials: "include",
+        body: JSON.stringify({
+          checkoutSource,
+        }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
