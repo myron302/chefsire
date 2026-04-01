@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Link, useRoute } from "wouter";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 
 import { useUser } from "@/contexts/UserContext";
 import CreatorCampaignCard, { type CreatorCampaignItem } from "@/components/drinks/CreatorCampaignCard";
@@ -17,6 +17,7 @@ import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import CollectionRatingSummary from "@/components/drinks/CollectionRatingSummary";
 import { buildCampaignRouteWithSurface, trackCampaignSurfaceEvent, trackCampaignSurfaceViewOnce } from "@/lib/drinks/campaignSurfaceAttribution";
 import { trackPinnedCampaignSpotlightEvent, trackPinnedCampaignSpotlightViewOnce } from "@/lib/drinks/pinnedCampaignSpotlight";
+import { usePrimaryOfferCheckout } from "@/pages/drinks/hooks/usePrimaryOfferCheckout";
 
 interface PublicCreatorDrinkItem {
   id: string;
@@ -256,9 +257,6 @@ export default function PublicDrinkCreatorPage() {
   const [matched, params] = useRoute<{ userId: string }>("/drinks/creator/:userId");
   const creatorId = matched ? String(params.userId ?? "") : "";
   const { user } = useUser();
-  const queryClient = useQueryClient();
-  const [membershipMessage, setMembershipMessage] = React.useState("");
-  const [membershipError, setMembershipError] = React.useState("");
 
   const query = useQuery<PublicCreatorResponse>({
     queryKey: ["/api/drinks/creators", creatorId],
@@ -392,46 +390,6 @@ export default function PublicDrinkCreatorPage() {
     enabled: Boolean(creatorId),
   });
 
-  const joinMembershipMutation = useMutation({
-    mutationFn: async () => {
-      const response = await fetch(`/api/drinks/creators/${encodeURIComponent(creatorId)}/membership/create-checkout`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || `Failed to start membership checkout (${response.status})`);
-      return payload;
-    },
-    onSuccess: async (payload) => {
-      if (payload?.alreadyActive) {
-        setMembershipMessage("You already have active membership access for this creator.");
-        await queryClient.invalidateQueries({ queryKey: ["/api/drinks/creators/membership/status", creatorId] });
-        return;
-      }
-      if (payload?.checkoutUrl) {
-        setMembershipMessage("Square membership checkout opened in a new tab. Complete payment there and this creator page will refresh your access.");
-        window.open(String(payload.checkoutUrl), "chefsire-square-membership-checkout", "popup,width=520,height=760");
-      }
-    },
-    onError: (error) => {
-      setMembershipError(error instanceof Error ? error.message : "Failed to start membership checkout");
-    },
-  });
-
-  React.useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const flag = params.get("membershipSquareCheckout");
-    if (!flag) return;
-    const status = membershipStatusQuery.data?.checkout?.status;
-    if (status === "completed") {
-      setMembershipMessage("Membership payment verified. Member-only collections from this creator are now unlocked for your active term.");
-    } else if (status === "failed" || status === "canceled") {
-      setMembershipError(membershipStatusQuery.data?.checkout?.failureReason || "Square membership checkout did not complete.");
-    } else {
-      setMembershipMessage("Finishing your Square membership checkout…");
-    }
-  }, [membershipStatusQuery.data]);
-
   const creatorCollections = publicCollectionsQuery.data?.collections ?? [];
   const creatorBundles = publicBundlesQuery.data?.bundles ?? [];
   const creatorPosts = creatorPostsQuery.data?.items ?? [];
@@ -507,6 +465,46 @@ export default function PublicDrinkCreatorPage() {
   const membershipPlan = membershipStatusQuery.data?.plan ?? null;
   const viewerMembership = membershipStatusQuery.data?.membership ?? null;
   const membershipActive = Boolean(viewerMembership?.accessActive);
+  const membershipOffer = membershipPlan?.isActive && creatorId
+    ? {
+      type: "membership_checkout" as const,
+      creatorUserId: creatorId,
+      ctaLabel: "Join Membership",
+      helperText: "Membership checkout opens in Square in a new window.",
+    }
+    : null;
+  const {
+    ctaLabel: membershipCtaLabel,
+    error: membershipCheckoutError,
+    helperText: membershipCheckoutHelperText,
+    isStartingCheckout: isStartingMembershipCheckout,
+    loadingLabel: membershipCheckoutLoadingLabel,
+    message: membershipCheckoutMessage,
+    startCheckout: startMembershipCheckout,
+  } = usePrimaryOfferCheckout({
+    offer: membershipOffer,
+    isAuthenticated: Boolean(user?.id),
+    popupNamePrefix: "chefsire-creator-membership-primary-offer-checkout",
+  });
+  const membershipReturnState = React.useMemo(() => {
+    const params = new URLSearchParams(window.location.search);
+    const flag = params.get("membershipSquareCheckout");
+    if (!flag) return { message: "", error: "" };
+    const status = membershipStatusQuery.data?.checkout?.status;
+    if (status === "completed") {
+      return {
+        message: "Membership payment verified. Member-only collections from this creator are now unlocked for your active term.",
+        error: "",
+      };
+    }
+    if (status === "failed" || status === "canceled") {
+      return {
+        message: "",
+        error: membershipStatusQuery.data?.checkout?.failureReason || "Square membership checkout did not complete.",
+      };
+    }
+    return { message: "Finishing your Square membership checkout…", error: "" };
+  }, [membershipStatusQuery.data]);
 
   return (
     <div className="container mx-auto p-6 space-y-6" data-testid="drinks-public-creator-page">
@@ -671,16 +669,19 @@ export default function PublicDrinkCreatorPage() {
                   <Button>Sign in to subscribe</Button>
                 </Link>
               ) : (
-                <Button onClick={() => { setMembershipError(""); setMembershipMessage(""); joinMembershipMutation.mutate(); }} disabled={joinMembershipMutation.isPending}>
-                  {joinMembershipMutation.isPending ? "Opening Square…" : "Join Membership"}
+                <Button onClick={startMembershipCheckout} disabled={isStartingMembershipCheckout}>
+                  {isStartingMembershipCheckout ? membershipCheckoutLoadingLabel : membershipCtaLabel}
                 </Button>
               )}
               <Link href="#creator-collections">
                 <Button variant="ghost">See member perks</Button>
               </Link>
             </div>
-            {membershipMessage ? <p className="text-sm text-emerald-600">{membershipMessage}</p> : null}
-            {membershipError ? <p className="text-sm text-destructive">{membershipError}</p> : null}
+            {membershipCheckoutHelperText ? <p className="text-sm text-muted-foreground">{membershipCheckoutHelperText}</p> : null}
+            {membershipCheckoutMessage ? <p className="text-sm text-emerald-600">{membershipCheckoutMessage}</p> : null}
+            {membershipCheckoutError ? <p className="text-sm text-destructive">{membershipCheckoutError}</p> : null}
+            {membershipReturnState.message ? <p className="text-sm text-emerald-600">{membershipReturnState.message}</p> : null}
+            {membershipReturnState.error ? <p className="text-sm text-destructive">{membershipReturnState.error}</p> : null}
             <p className="text-xs text-muted-foreground">
               Version one memberships unlock this creator&apos;s Members Only collections for the paid term. Renewals stay manual for now so finance reporting stays honest.
             </p>
@@ -738,10 +739,10 @@ export default function PublicDrinkCreatorPage() {
               {membershipPlan?.isActive && !membershipActive && pinnedCampaign.visibility === "members" ? (
                 <Button
                   variant="outline"
-                  onClick={() => { setMembershipError(""); setMembershipMessage(""); joinMembershipMutation.mutate(); }}
-                  disabled={joinMembershipMutation.isPending}
+                  onClick={startMembershipCheckout}
+                  disabled={isStartingMembershipCheckout}
                 >
-                  {joinMembershipMutation.isPending ? "Opening Square…" : "Join to unlock"}
+                  {isStartingMembershipCheckout ? membershipCheckoutLoadingLabel : "Join to unlock"}
                 </Button>
               ) : null}
             </div>
