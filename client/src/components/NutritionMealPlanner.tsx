@@ -18,24 +18,25 @@ import AdvancedFeaturesPanel from '@/components/meal-planner/AdvancedFeaturesPan
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 import { normalizeShoppingListItem } from '@/lib/shopping-list';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  DEFAULT_NUTRITION_GOALS,
+  MEAL_TYPES,
+  WEEK_DAYS,
+  DAY_NAMES,
+  formatLocalDate,
+  parseDateOnly,
+  getCurrentWeekAnchor as getWeekAnchorForDate,
+  getDateForWeekday as getDateForWeekdayFromAnchor,
+  getSlotItems as getMealSlotItems,
+  getSlotTotals as getMealSlotTotals,
+  calculateTodayNutritionTotals,
+  getNutritionGrade,
+  gradeClass,
+  clientSideNutritionLookup,
+  toGroceryExportItems,
+} from '@/components/meal-planner/nutritionMealPlannerUtils';
 
 const NutritionMealPlanner = () => {
-  const formatLocalDate = (date: Date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  const parseDateOnly = (value: string) => {
-    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-    if (match) {
-      const [, y, m, d] = match;
-      return new Date(Number(y), Number(m) - 1, Number(d));
-    }
-    return new Date(value);
-  };
-
   const { user, updateUser } = useUser();
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('planner');
@@ -80,24 +81,12 @@ const NutritionMealPlanner = () => {
   const [aiRecipes, setAiRecipes] = useState<any[]>([]);
   const [isLoadingAiRecipes, setIsLoadingAiRecipes] = useState(false);
 
-  const mealTypes = ['breakfast', 'lunch', 'dinner', 'snack'];
-  const weekDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const mealTypes = MEAL_TYPES;
+  const weekDays = WEEK_DAYS;
 
-  const getDateForWeekday = (weekday: string) => {
-    const anchor = parseDateOnly(getCurrentWeekAnchor());
-    const index = weekDays.indexOf(weekday);
-    const dayOffset = index >= 0 ? index : 0;
-    anchor.setDate(anchor.getDate() + dayOffset);
-    return formatLocalDate(anchor);
-  };
+  const getCurrentWeekAnchor = () => getWeekAnchorForDate(selectedDate);
 
-  const getCurrentWeekAnchor = () => {
-    const now = parseDateOnly(selectedDate);
-    const day = now.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    now.setDate(now.getDate() + diff);
-    return formatLocalDate(now);
-  };
+  const getDateForWeekday = (weekday: string) => getDateForWeekdayFromAnchor(getCurrentWeekAnchor(), weekday);
 
   useEffect(() => {
     fetchUserData();
@@ -157,7 +146,7 @@ const NutritionMealPlanner = () => {
 
       setNutritionGoals({
         dailyCalorieGoal: 2000,
-        macroGoals: { protein: 150, carbs: 200, fat: 65 }
+        macroGoals: DEFAULT_NUTRITION_GOALS.macroGoals
       });
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -185,27 +174,10 @@ const NutritionMealPlanner = () => {
 
   const fetchDailyNutrition = async () => {
     // Default goals used if the API call fails
-    const defaultGoals = { dailyCalorieGoal: 2000, macroGoals: { protein: 150, carbs: 200, fat: 65 } };
+    const defaultGoals = DEFAULT_NUTRITION_GOALS;
 
-    // Calculate today's actual nutrition totals from weeklyMeals state
     const calcTotals = (meals: Record<string, any>, goals: any) => {
-      // Get the day name for today (Monday–Sunday)
-      const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
-      const todayName = dayNames[new Date().getDay()];
-      const todayMeals = meals[todayName] || {};
-
-      // Sum all items across all meal slots for today
-      const totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-      Object.values(todayMeals).forEach((slotValue: any) => {
-        const items = Array.isArray(slotValue) ? slotValue : slotValue ? [slotValue] : [];
-        items.forEach((meal: any) => {
-          totals.calories += Number(meal?.calories || 0);
-          totals.protein  += Number(meal?.protein  || 0);
-          totals.carbs    += Number(meal?.carbs    || 0);
-          totals.fat      += Number(meal?.fat      || 0);
-        });
-      });
-
+      const totals = calculateTodayNutritionTotals(meals);
       setDailyNutrition({ ...totals, goal: goals });
     };
 
@@ -509,13 +481,7 @@ const NutritionMealPlanner = () => {
 
     try {
       // Convert grocery list to export format
-      const itemsToExport = groceryList.map((item: any) => ({
-        name: item.name || item.item,
-        quantity: parseFloat(item.amount?.split(' ')[0]) || 1,
-        unit: item.amount?.split(' ').slice(1).join(' ') || '',
-        category: item.category || 'Other',
-        checked: item.checked || false,
-      }));
+      const itemsToExport = toGroceryExportItems(groceryList);
 
       // Export as CSV
       await exportCSV(itemsToExport, `shopping-list-${new Date().toISOString().split('T')[0]}.csv`);
@@ -643,7 +609,7 @@ const NutritionMealPlanner = () => {
   };
 
   const removeMealItem = async (day: string, mealType: string, itemIndex: number) => {
-    const items = getSlotItems(day, mealType);
+    const items = getMealSlotItems(weeklyMeals, day, mealType);
     const target = items[itemIndex];
 
     try {
@@ -676,61 +642,6 @@ const NutritionMealPlanner = () => {
     }
   };
 
-  // Helper: get items for a slot as an array
-  const getSlotItems = (day: string, mealType: string): any[] => {
-    const val = weeklyMeals?.[day]?.[mealType];
-    if (!val) return [];
-    return Array.isArray(val) ? val : [val];
-  };
-
-  // Helper: sum macros for a slot
-  const getSlotTotals = (day: string, mealType: string) => {
-    const items = getSlotItems(day, mealType);
-    return items.reduce((acc, m) => ({
-      calories: acc.calories + (Number(m?.calories) || 0),
-      protein: acc.protein + (Number(m?.protein) || 0),
-      carbs: acc.carbs + (Number(m?.carbs) || 0),
-      fat: acc.fat + (Number(m?.fat) || 0),
-    }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-  };
-
-
-  const getNutritionGrade = (meal: any, dailyCalorieGoal: number): string => {
-    let score = 100;
-    const mealCals = Number(meal.calories) || 0;
-    const protein = Number(meal.protein) || 0;
-    const fat = Number(meal.fat) || 0;
-    const fiber = Number(meal.fiber) || 0;
-
-    const proteinDensity = mealCals > 0 ? (protein / mealCals) * 100 : 0;
-    if (proteinDensity < 3) score -= 30;
-    else if (proteinDensity < 5) score -= 15;
-    else if (proteinDensity >= 7) score += 10;
-
-    const fatPct = mealCals > 0 ? ((fat * 9) / mealCals) * 100 : 0;
-    if (fatPct > 50) score -= 20;
-    else if (fatPct > 40) score -= 10;
-
-    if (fiber >= 5) score += 10;
-    else if (fiber >= 3) score += 5;
-    else if (fiber === 0) score -= 10;
-
-    if (dailyCalorieGoal > 0 && mealCals > dailyCalorieGoal * 0.5) score -= 15;
-
-    if (score >= 90) return 'A';
-    if (score >= 75) return 'B';
-    if (score >= 60) return 'C';
-    if (score >= 45) return 'D';
-    return 'F';
-  };
-
-  const gradeClass = (grade: string) => ({
-    A: 'bg-green-100 text-green-700',
-    B: 'bg-blue-100 text-blue-700',
-    C: 'bg-yellow-100 text-yellow-700',
-    D: 'bg-orange-100 text-orange-700',
-    F: 'bg-red-100 text-red-700',
-  }[grade] || 'bg-gray-100 text-gray-700');
 
   const saveTemplate = () => {
     const templateName = prompt('Enter a name for this meal plan template:');
@@ -878,13 +789,7 @@ const NutritionMealPlanner = () => {
 
   const copyGroceryListToClipboard = async () => {
     try {
-      const itemsToExport = groceryList.map((item: any) => ({
-        name: item.name || item.item,
-        quantity: parseFloat(item.amount?.split(' ')[0]) || 1,
-        unit: item.amount?.split(' ').slice(1).join(' ') || '',
-        category: item.category || 'Other',
-        checked: item.checked || false,
-      }));
+      const itemsToExport = toGroceryExportItems(groceryList);
 
       const textContent = await exportText(itemsToExport);
       await navigator.clipboard.writeText(textContent);
@@ -1033,81 +938,6 @@ const NutritionMealPlanner = () => {
     }
   };
 
-
-  // ── Built-in nutrition lookup table (works without any API key) ──────────
-  const NUTRITION_TABLE: Record<string, {calories:number;protein:number;carbs:number;fat:number;fiber:number;servingSize:string}> = {
-    egg: { calories: 78, protein: 6, carbs: 1, fat: 5, fiber: 0, servingSize: '1 large egg' },
-    eggs: { calories: 156, protein: 12, carbs: 1, fat: 10, fiber: 0, servingSize: '2 large eggs' },
-    bacon: { calories: 161, protein: 12, carbs: 0, fat: 12, fiber: 0, servingSize: '3 strips' },
-    toast: { calories: 79, protein: 3, carbs: 15, fat: 1, fiber: 1, servingSize: '1 slice' },
-    oatmeal: { calories: 158, protein: 5, carbs: 27, fat: 3, fiber: 4, servingSize: '1 cup cooked' },
-    pancakes: { calories: 350, protein: 9, carbs: 56, fat: 10, fiber: 2, servingSize: '3 medium' },
-    waffles: { calories: 310, protein: 8, carbs: 45, fat: 12, fiber: 1, servingSize: '2 waffles' },
-    yogurt: { calories: 150, protein: 17, carbs: 9, fat: 4, fiber: 0, servingSize: '1 cup' },
-    banana: { calories: 89, protein: 1, carbs: 23, fat: 0, fiber: 3, servingSize: '1 medium' },
-    apple: { calories: 72, protein: 0, carbs: 19, fat: 0, fiber: 3, servingSize: '1 medium' },
-    orange: { calories: 62, protein: 1, carbs: 15, fat: 0, fiber: 3, servingSize: '1 medium' },
-    avocado: { calories: 160, protein: 2, carbs: 9, fat: 15, fiber: 7, servingSize: '1/2 avocado' },
-    chicken: { calories: 335, protein: 38, carbs: 0, fat: 19, fiber: 0, servingSize: '1 breast' },
-    salmon: { calories: 367, protein: 39, carbs: 0, fat: 22, fiber: 0, servingSize: '1 fillet (170g)' },
-    beef: { calories: 350, protein: 30, carbs: 0, fat: 24, fiber: 0, servingSize: '4 oz' },
-    rice: { calories: 206, protein: 4, carbs: 45, fat: 0, fiber: 1, servingSize: '1 cup cooked' },
-    pasta: { calories: 220, protein: 8, carbs: 43, fat: 1, fiber: 3, servingSize: '1 cup cooked' },
-    salad: { calories: 150, protein: 5, carbs: 12, fat: 8, fiber: 4, servingSize: '1 bowl' },
-    burger: { calories: 540, protein: 27, carbs: 40, fat: 28, fiber: 2, servingSize: '1 burger' },
-    sandwich: { calories: 350, protein: 18, carbs: 40, fat: 12, fiber: 3, servingSize: '1 sandwich' },
-    pizza: { calories: 570, protein: 23, carbs: 68, fat: 21, fiber: 3, servingSize: '2 slices' },
-    soup: { calories: 180, protein: 8, carbs: 22, fat: 6, fiber: 4, servingSize: '1.5 cups' },
-    steak: { calories: 420, protein: 38, carbs: 0, fat: 28, fiber: 0, servingSize: '6 oz' },
-    tuna: { calories: 290, protein: 40, carbs: 0, fat: 13, fiber: 0, servingSize: '1 can (5oz)' },
-    shrimp: { calories: 200, protein: 38, carbs: 3, fat: 3, fiber: 0, servingSize: '4 oz' },
-    broccoli: { calories: 55, protein: 4, carbs: 11, fat: 0, fiber: 5, servingSize: '1 cup' },
-    spinach: { calories: 41, protein: 5, carbs: 7, fat: 0, fiber: 4, servingSize: '1 cup cooked' },
-    sweet_potato: { calories: 103, protein: 2, carbs: 24, fat: 0, fiber: 4, servingSize: '1 medium' },
-    milk: { calories: 149, protein: 8, carbs: 12, fat: 8, fiber: 0, servingSize: '1 cup' },
-    cheese: { calories: 113, protein: 7, carbs: 0, fat: 9, fiber: 0, servingSize: '1 oz' },
-    almonds: { calories: 164, protein: 6, carbs: 6, fat: 14, fiber: 3, servingSize: '1 oz (23 nuts)' },
-    bread: { calories: 79, protein: 3, carbs: 15, fat: 1, fiber: 1, servingSize: '1 slice' },
-  };
-
-  // ── Nutrition Lookup — client-side first, AI refines silently ─────────────
-  const clientSideNutritionLookup = (name: string): { calories: number; protein: number; carbs: number; fat: number; fiber: number; servingSize: string } => {
-    const lower = name.toLowerCase();
-
-    // STEP 1: Split into multiple items first (handles "eggs, toast and bacon")
-    const parts = lower.split(/[,&+]|\band\b|\bwith\b/).map(s => s.trim()).filter(Boolean);
-
-    if (parts.length > 1) {
-      let combined = { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 };
-      let matched = 0;
-      const servings: string[] = [];
-      for (const part of parts) {
-        for (const [key, val] of Object.entries(NUTRITION_TABLE)) {
-          if (part.includes(key.replace('_', ' '))) {
-            combined.calories += val.calories;
-            combined.protein += val.protein;
-            combined.carbs += val.carbs;
-            combined.fat += val.fat;
-            combined.fiber += val.fiber;
-            servings.push(val.servingSize);
-            matched++;
-            break;
-          }
-        }
-      }
-      if (matched > 0) {
-        return { ...combined, servingSize: servings.join(' + ') };
-      }
-    }
-
-    // STEP 2: Single item scan
-    for (const [key, val] of Object.entries(NUTRITION_TABLE)) {
-      if (lower.includes(key.replace('_', ' '))) return val;
-    }
-
-    // STEP 3: Generic fallback — fields are NEVER left blank
-    return { calories: 400, protein: 25, carbs: 40, fat: 14, fiber: 4, servingSize: '1 serving' };
-  };
 
   const applyNutrition = (nutrition: { calories: number; protein: number; carbs: number; fat: number; fiber: number; servingSize: string }, qty?: number) => {
     const q = qty ?? 1;
@@ -1645,8 +1475,8 @@ const NutritionMealPlanner = () => {
                           <span className="text-sm font-medium text-gray-700 capitalize">{mealType}</span>
                         </div>
                         {weekDays.map((day) => {
-                          const items = getSlotItems(day, mealType);
-                          const totals = getSlotTotals(day, mealType);
+                          const items = getMealSlotItems(weeklyMeals, day, mealType);
+                          const totals = getMealSlotTotals(weeklyMeals, day, mealType);
                           return (
                             <div key={`${day}-${mealType}`} className="p-2 border-r last:border-r-0 min-h-[72px]">
                               {items.length > 0 && (
@@ -1703,12 +1533,12 @@ const NutritionMealPlanner = () => {
                                   onClick={() => handleAddMeal(day, mealType)}
                                 >
                                   <Plus className="w-3.5 h-3.5" />
-                                  {getSlotItems(day, mealType).length > 0 ? 'Add more' : 'Add'}
+                                  {getMealSlotItems(weeklyMeals, day, mealType).length > 0 ? 'Add more' : 'Add'}
                                 </button>
                               </div>
-                              {getSlotItems(day, mealType).length > 0 ? (
+                              {getMealSlotItems(weeklyMeals, day, mealType).length > 0 ? (
                                 <div className="space-y-2">
-                                  {getSlotItems(day, mealType).map((item: any, idx: number) => (
+                                  {getMealSlotItems(weeklyMeals, day, mealType).map((item: any, idx: number) => (
                                     <div key={idx} className="flex items-start justify-between gap-2 bg-white rounded p-2">
                                       <div className="flex-1 min-w-0">
                                         <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
@@ -1723,9 +1553,9 @@ const NutritionMealPlanner = () => {
                                       >✕</button>
                                     </div>
                                   ))}
-                                  {getSlotItems(day, mealType).length > 1 && (
+                                  {getMealSlotItems(weeklyMeals, day, mealType).length > 1 && (
                                     <div className="text-xs text-orange-600 font-semibold text-right">
-                                      Total: {getSlotTotals(day, mealType).calories} cal · P: {getSlotTotals(day, mealType).protein}g
+                                      Total: {getMealSlotTotals(weeklyMeals, day, mealType).calories} cal · P: {getMealSlotTotals(weeklyMeals, day, mealType).protein}g
                                     </div>
                                   )}
                                 </div>
@@ -1754,9 +1584,9 @@ const NutritionMealPlanner = () => {
                     )}
                     <div className="divide-y">
                       {mealTypes.map((mealType) => {
-                        const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][parseDateOnly(selectedDate).getDay()];
-                        const items = getSlotItems(dayName, mealType);
-                        const totals = getSlotTotals(dayName, mealType);
+                        const dayName = DAY_NAMES[parseDateOnly(selectedDate).getDay()];
+                        const items = getMealSlotItems(weeklyMeals, dayName, mealType);
+                        const totals = getMealSlotTotals(weeklyMeals, dayName, mealType);
                         return (
                           <div key={mealType} className="p-4">
                             <div className="flex items-center justify-between mb-3">
@@ -1816,9 +1646,9 @@ const NutritionMealPlanner = () => {
                     </div>
                     {/* Day nutrition summary */}
                     {(() => {
-                      const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][parseDateOnly(selectedDate).getDay()];
+                      const dayName = DAY_NAMES[parseDateOnly(selectedDate).getDay()];
                       const dayTotal = mealTypes.reduce((acc, mt) => {
-                        const t = getSlotTotals(dayName, mt);
+                        const t = getMealSlotTotals(weeklyMeals, dayName, mt);
                         return { calories: acc.calories + t.calories, protein: acc.protein + t.protein, carbs: acc.carbs + t.carbs, fat: acc.fat + t.fat };
                       }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
                       if (dayTotal.calories === 0) return null;
@@ -1866,8 +1696,8 @@ const NutritionMealPlanner = () => {
                       const isToday = cellStr === today;
                       const isSelected = cellStr === selectedDate;
                       const dayName = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][cellDate.getDay()];
-                      const hasAnyMeal = inMonth && mealTypes.some(mt => getSlotItems(dayName, mt).length > 0);
-                      const dayTotalCal = inMonth ? mealTypes.reduce((acc, mt) => acc + getSlotTotals(dayName, mt).calories, 0) : 0;
+                      const hasAnyMeal = inMonth && mealTypes.some(mt => getMealSlotItems(weeklyMeals, dayName, mt).length > 0);
+                      const dayTotalCal = inMonth ? mealTypes.reduce((acc, mt) => acc + getMealSlotTotals(weeklyMeals, dayName, mt).calories, 0) : 0;
 
                       cells.push(
                         <div
@@ -1886,7 +1716,7 @@ const NutritionMealPlanner = () => {
                             <div className="space-y-0.5">
                               <div className="text-xs text-orange-600 font-medium">{dayTotalCal} cal</div>
                               <div className="flex gap-0.5 flex-wrap">
-                                {mealTypes.filter(mt => getSlotItems(dayName, mt).length > 0).map(mt => (
+                                {mealTypes.filter(mt => getMealSlotItems(weeklyMeals, dayName, mt).length > 0).map(mt => (
                                   <span key={mt} className="text-xs bg-orange-100 text-orange-700 rounded px-1 leading-4">{mt[0].toUpperCase()}</span>
                                 ))}
                               </div>
