@@ -21,6 +21,8 @@ import PantryModal from '@/components/meal-planner/modals/PantryModal';
 import LoadTemplateModal from '@/components/meal-planner/modals/LoadTemplateModal';
 import AddGroceryItemModal from '@/components/meal-planner/modals/AddGroceryItemModal';
 import ShareFamilyDialog from '@/components/meal-planner/modals/ShareFamilyDialog';
+import AddMealModal from '@/components/meal-planner/modals/AddMealModal';
+import AIRecipeModal from '@/components/meal-planner/modals/AIRecipeModal';
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 import { normalizeShoppingListItem } from '@/lib/shopping-list';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -553,6 +555,17 @@ const NutritionMealPlanner = () => {
     fetchMealHistory();
   };
 
+  const resetAddMealModalState = () => {
+    setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 });
+    setBaseNutrition(null);
+  };
+
+  const closeAddMealModal = () => {
+    setShowAddMealModal(false);
+    setSelectedMealSlot(null);
+    resetAddMealModalState();
+  };
+
   const saveMealToSlot = async (mealData: any) => {
     if (!selectedMealSlot) {
       setShowAddMealModal(false);
@@ -1040,6 +1053,43 @@ const NutritionMealPlanner = () => {
     } finally {
       setIsLoadingAiRecipes(false);
     }
+  };
+
+  const toggleMealHistoryFavorite = async (meal: any) => {
+    await fetch('/api/meal-planner/history/favorite', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ mealName: meal.name, isFavorite: !meal.isFavorite }),
+    });
+    fetchMealHistory();
+  };
+
+  const handleAddMealFromModal = () => {
+    if (!mealForm.name || !mealForm.calories || !mealForm.protein) {
+      toast({ variant: 'destructive', description: 'Please fill in meal name, calories, and protein.' });
+      return;
+    }
+    const qtyLabel = mealForm.servingQty !== 1 ? ` (×${mealForm.servingQty})` : '';
+    saveMealToSlot({
+      name: mealForm.name + qtyLabel,
+      calories: Number(mealForm.calories),
+      protein: Number(mealForm.protein),
+      carbs: Number(mealForm.carbs) || 0,
+      fat: Number(mealForm.fat) || 0,
+      fiber: Number(mealForm.fiber) || 0,
+      servingSize: `${mealForm.servingQty === 1 ? '' : mealForm.servingQty + ' × '}${mealForm.servingSize || '1 serving'}`.trim(),
+    });
+    resetAddMealModalState();
+  };
+
+  const handleAddAIRecipe = (recipe: any) => {
+    if (selectedMealSlot) {
+      saveMealToSlot({ name: recipe.name, calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: recipe.fat });
+    } else {
+      toast({ description: `✅ ${recipe.name} saved!` });
+    }
+    setShowAIRecipeModal(false);
   };
 
   const PremiumUpgrade = () => (
@@ -1790,299 +1840,32 @@ const NutritionMealPlanner = () => {
           onSave={saveCalculatedGoals}
         />
 
-        {/* Add Meal Modal — AI-powered */}
-        {showAddMealModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-lg w-full p-6">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="text-xl font-bold">
-                  Add Meal {selectedMealSlot && `— ${selectedMealSlot.day} · ${selectedMealSlot.type}`}
-                </h3>
-                <Button variant="ghost" size="sm" onClick={() => { setShowAddMealModal(false); setSelectedMealSlot(null); setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 }); setBaseNutrition(null); }}>✕</Button>
-              </div>
-              <p className="text-xs text-gray-500 mb-5">Type the meal name, then tap <span className="font-semibold text-orange-600">✨ AI Lookup</span> to auto-fill nutrition.</p>
+        <AddMealModal
+          open={showAddMealModal}
+          selectedMealSlot={selectedMealSlot}
+          mealForm={mealForm}
+          baseNutrition={baseNutrition}
+          isLookingUpNutrition={isLookingUpNutrition}
+          showRecentMeals={showRecentMeals}
+          mealHistory={mealHistory}
+          onClose={closeAddMealModal}
+          onLookupNutrition={lookupNutritionWithAI}
+          onMealFormChange={setMealForm}
+          onToggleRecentMeals={() => setShowRecentMeals((v) => !v)}
+          onToggleFavorite={toggleMealHistoryFavorite}
+          onServingQtyChange={changeServingQty}
+          onAddToPlanner={handleAddMealFromModal}
+        />
 
-              <div className="space-y-4">
-                {/* Meal name + AI button */}
-                <div>
-                  <label className="block text-sm font-medium mb-2">Meal Name *</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      className="flex-1 border rounded px-3 py-2 text-sm"
-                      placeholder="e.g., Grilled Chicken Salad"
-                      value={mealForm.name}
-                      onChange={e => setMealForm(p => ({ ...p, name: e.target.value }))}
-                      onKeyDown={e => { if (e.key === 'Enter') lookupNutritionWithAI(); }}
-                    />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="shrink-0 border-orange-300 text-orange-600 hover:bg-orange-50 hover:border-orange-400"
-                      onClick={lookupNutritionWithAI}
-                      disabled={isLookingUpNutrition || !mealForm.name.trim()}
-                    >
-                      {isLookingUpNutrition ? (
-                        <span className="flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 animate-pulse" />Looking up…</span>
-                      ) : (
-                        <span className="flex items-center gap-1"><Sparkles className="w-3.5 h-3.5" />✨ AI Lookup</span>
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="border rounded-lg p-3">
-                  <button className="text-sm font-medium flex items-center justify-between w-full" onClick={() => setShowRecentMeals((v) => !v)}>
-                    <span>Recent & Favorites</span>
-                    <span>{showRecentMeals ? '−' : '+'}</span>
-                  </button>
-                  {showRecentMeals && (
-                    <div className="mt-3 overflow-x-auto">
-                      <div className="flex gap-2 min-w-max">
-                        {mealHistory.map((meal: any) => (
-                          <div key={meal.id} className="flex items-center gap-1">
-                            <button
-                              className="px-3 py-1.5 rounded-full bg-gray-100 hover:bg-orange-100 text-xs"
-                              onClick={() => setMealForm((p) => ({ ...p, name: meal.name, calories: String(meal.calories || ''), protein: String(meal.protein || ''), carbs: String(meal.carbs || ''), fat: String(meal.fat || ''), fiber: String(meal.fiber || '') }))}
-                            >
-                              {meal.isFavorite ? '⭐ ' : ''}{meal.name}
-                            </button>
-                            <button
-                              className="text-yellow-500 text-xs"
-                              onClick={async () => {
-                                await fetch('/api/meal-planner/history/favorite', {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  credentials: 'include',
-                                  body: JSON.stringify({ mealName: meal.name, isFavorite: !meal.isFavorite }),
-                                });
-                                fetchMealHistory();
-                              }}
-                            >
-                              {meal.isFavorite ? '★' : '☆'}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Serving size + Quantity — shown after lookup */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-2">Serving Size</label>
-                    <input
-                      type="text"
-                      className="w-full border rounded px-3 py-2 text-sm"
-                      placeholder="e.g., 1 cup, 1 egg"
-                      value={mealForm.servingSize}
-                      onChange={e => setMealForm(p => ({ ...p, servingSize: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-2">
-                      How many servings?
-                      {baseNutrition && (
-                        <span className="ml-1 font-normal text-orange-600 text-xs">
-                          (× {mealForm.servingQty})
-                        </span>
-                      )}
-                    </label>
-                    <select
-                      className="w-full border rounded px-3 py-2 text-sm bg-white"
-                      value={mealForm.servingQty}
-                      onChange={e => changeServingQty(Number(e.target.value))}
-                    >
-                      {[0.25, 0.5, 0.75, 1, 1.25, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10].map(q => (
-                        <option key={q} value={q}>
-                          {q === 0.25 ? '¼ serving' : q === 0.5 ? '½ serving' : q === 0.75 ? '¾ serving' : q === 1 ? '1 serving' : q === 1.25 ? '1¼ servings' : q === 1.5 ? '1½ servings' : `${q} servings`}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Live scaled preview banner */}
-                {baseNutrition && mealForm.servingQty !== 1 && (
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Sparkles className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                      <p className="text-xs font-medium text-orange-700">
-                        {mealForm.servingQty} × {mealForm.servingSize || 'serving'} · macros scaled automatically
-                      </p>
-                    </div>
-                    <div className="flex gap-3 text-xs text-orange-600">
-                      <span>Base: {baseNutrition.calories} cal</span>
-                      <span>→ Total: <strong>{mealForm.calories} cal</strong></span>
-                    </div>
-                  </div>
-                )}
-
-                {/* First lookup hint */}
-                {!baseNutrition && (mealForm.calories || mealForm.protein) && (
-                  <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2 flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-orange-500 shrink-0" />
-                    <p className="text-xs text-orange-700">Nutrition filled in — change servings above to auto-scale, or edit any field manually.</p>
-                  </div>
-                )}
-
-                {/* Macro grid */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Calories</label>
-                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="450" value={mealForm.calories} onChange={e => setMealForm(p => ({ ...p, calories: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Protein (g)</label>
-                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="35" value={mealForm.protein} onChange={e => setMealForm(p => ({ ...p, protein: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Carbs (g)</label>
-                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="45" value={mealForm.carbs} onChange={e => setMealForm(p => ({ ...p, carbs: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Fat (g)</label>
-                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="15" value={mealForm.fat} onChange={e => setMealForm(p => ({ ...p, fat: e.target.value }))} />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium mb-1">Fiber (g) <span className="text-gray-400 font-normal">optional</span></label>
-                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="4" value={mealForm.fiber} onChange={e => setMealForm(p => ({ ...p, fiber: e.target.value }))} />
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-2">
-                  <Button
-                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
-                    onClick={() => {
-                      if (!mealForm.name || !mealForm.calories || !mealForm.protein) {
-                        toast({ variant: 'destructive', description: 'Please fill in meal name, calories, and protein.' });
-                        return;
-                      }
-                      const qtyLabel = mealForm.servingQty !== 1 ? ` (×${mealForm.servingQty})` : '';
-                      saveMealToSlot({
-                        name: mealForm.name + qtyLabel,
-                        calories: Number(mealForm.calories),
-                        protein: Number(mealForm.protein),
-                        carbs: Number(mealForm.carbs) || 0,
-                        fat: Number(mealForm.fat) || 0,
-                        fiber: Number(mealForm.fiber) || 0,
-                        servingSize: `${mealForm.servingQty === 1 ? '' : mealForm.servingQty + ' × '}${mealForm.servingSize || '1 serving'}`.trim(),
-                      });
-                      setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 }); setBaseNutrition(null);
-                    }}
-                  >
-                    Add to Planner
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      setShowAddMealModal(false);
-                      setSelectedMealSlot(null);
-                      setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 }); setBaseNutrition(null);
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* AI Recipe Modal — live AI suggestions */}
-        {showAIRecipeModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[85vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <Sparkles className="w-6 h-6 text-orange-500" />
-                  AI Recipe Suggestions
-                </h3>
-                <div className="flex items-center gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={loadAIRecipeSuggestions}
-                    disabled={isLoadingAiRecipes}
-                    className="text-orange-600 border-orange-300 hover:bg-orange-50"
-                  >
-                    {isLoadingAiRecipes ? (
-                      <span className="flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 animate-pulse" />Generating…</span>
-                    ) : (
-                      <span className="flex items-center gap-1"><Zap className="w-3.5 h-3.5" />Refresh</span>
-                    )}
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => setShowAIRecipeModal(false)}>✕</Button>
-                </div>
-              </div>
-              <p className="text-sm text-gray-500 mb-5">
-                Personalized recipes based on your calorie goal
-                {selectedMealSlot ? ` for ${selectedMealSlot.type}` : ''}.
-              </p>
-
-              {isLoadingAiRecipes ? (
-                <div className="space-y-3">
-                  {[1, 2, 3, 4].map(i => (
-                    <div key={i} className="animate-pulse rounded-lg border p-4">
-                      <div className="h-5 bg-gray-200 rounded w-2/3 mb-2" />
-                      <div className="h-3 bg-gray-100 rounded w-full mb-3" />
-                      <div className="flex gap-2">
-                        {[1,2,3,4].map(j => <div key={j} className="h-5 bg-gray-100 rounded w-16" />)}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {aiRecipes.map((recipe: any, idx: number) => (
-                    <Card key={idx} className="hover:shadow-md transition-shadow">
-                      <CardContent className="p-4">
-                        <div className="flex items-start justify-between mb-1">
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-base">{recipe.name}</h4>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              {recipe.prepTime && <span className="text-xs text-gray-400 flex items-center gap-1"><Clock className="w-3 h-3" />{recipe.prepTime}</span>}
-                              {recipe.difficulty && <span className={`text-xs font-medium px-1.5 py-0.5 rounded-full ${recipe.difficulty === 'Easy' ? 'bg-green-100 text-green-700' : recipe.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{recipe.difficulty}</span>}
-                            </div>
-                          </div>
-                          <Button
-                            size="sm"
-                            className="bg-orange-500 hover:bg-orange-600 text-white shrink-0 ml-3"
-                            onClick={() => {
-                              if (selectedMealSlot) {
-                                saveMealToSlot({ name: recipe.name, calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: recipe.fat });
-                              } else {
-                                toast({ description: `✅ ${recipe.name} saved!` });
-                              }
-                              setShowAIRecipeModal(false);
-                            }}
-                          >
-                            Add
-                          </Button>
-                        </div>
-                        <p className="text-sm text-gray-600 my-2">{recipe.description}</p>
-                        <div className="flex flex-wrap gap-2 mb-2">
-                          <Badge variant="secondary" className="text-xs">{recipe.calories} cal</Badge>
-                          <Badge variant="secondary" className="text-xs">P: {recipe.protein}g</Badge>
-                          <Badge variant="secondary" className="text-xs">C: {recipe.carbs}g</Badge>
-                          <Badge variant="secondary" className="text-xs">F: {recipe.fat}g</Badge>
-                        </div>
-                        {recipe.tags?.length > 0 && (
-                          <div className="flex flex-wrap gap-1">
-                            {recipe.tags.map((tag: string, ti: number) => (
-                              <span key={ti} className="text-xs bg-orange-50 text-orange-700 border border-orange-200 px-2 py-0.5 rounded-full">{tag}</span>
-                            ))}
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <AIRecipeModal
+          open={showAIRecipeModal}
+          selectedMealSlot={selectedMealSlot}
+          isLoadingAiRecipes={isLoadingAiRecipes}
+          aiRecipes={aiRecipes}
+          onClose={() => setShowAIRecipeModal(false)}
+          onRefresh={loadAIRecipeSuggestions}
+          onAddRecipe={handleAddAIRecipe}
+        />
 
         <PantryModal
           open={showPantryModal}
