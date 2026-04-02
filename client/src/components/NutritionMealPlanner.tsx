@@ -1,22 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Calendar, Plus, Target, TrendingUp, Clock, Users, ChefHat, Star, Lock, Crown,
+  Calendar, Plus, Target, TrendingUp, Clock, ChefHat, Star, Lock, Crown,
   ShoppingCart, CheckCircle, BarChart3, PieChart, Download, Filter, Save,
   AlertCircle, Package, Utensils, CalendarDays, Zap, ListChecks, Settings, Camera,
-  DollarSign, Copy, Sparkles, Flame, Scale, Droplets
+  DollarSign, Sparkles, Flame, Scale, Droplets
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import AdvancedFeaturesPanel from '@/components/meal-planner/AdvancedFeaturesPanel';
 import PlannerTabSection from '@/components/meal-planner/sections/PlannerTabSection';
 import GroceryTabSection from '@/components/meal-planner/sections/GroceryTabSection';
+import GoalCalculatorDialog from '@/components/meal-planner/modals/GoalCalculatorDialog';
+import PantryModal from '@/components/meal-planner/modals/PantryModal';
+import LoadTemplateModal from '@/components/meal-planner/modals/LoadTemplateModal';
+import AddGroceryItemModal from '@/components/meal-planner/modals/AddGroceryItemModal';
+import ShareFamilyDialog from '@/components/meal-planner/modals/ShareFamilyDialog';
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 import { normalizeShoppingListItem } from '@/lib/shopping-list';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -1776,33 +1780,15 @@ const NutritionMealPlanner = () => {
           </TabsContent>
         </Tabs>
 
-        <Dialog open={showCalcModal} onOpenChange={setShowCalcModal}>
-          <DialogContent className="max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Calculate My Goals</DialogTitle>
-              <DialogDescription>Use Mifflin-St Jeor to estimate calories and macros.</DialogDescription>
-            </DialogHeader>
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <input type="number" className="border rounded px-3 py-2" placeholder="Age" value={calcForm.age} onChange={(e) => setCalcForm((p) => ({ ...p, age: Number(e.target.value) }))} />
-              <select className="border rounded px-3 py-2" value={calcForm.gender} onChange={(e) => setCalcForm((p) => ({ ...p, gender: e.target.value }))}><option value="male">Male</option><option value="female">Female</option></select>
-              <select className="border rounded px-3 py-2" value={calcForm.heightUnit} onChange={(e) => setCalcForm((p) => ({ ...p, heightUnit: e.target.value }))}><option value="ft">ft/in</option><option value="cm">cm</option></select>
-              {calcForm.heightUnit === 'cm' ? (
-                <input type="number" className="border rounded px-3 py-2" placeholder="Height (cm)" value={calcForm.cm} onChange={(e) => setCalcForm((p) => ({ ...p, cm: Number(e.target.value) }))} />
-              ) : (
-                <div className="flex gap-2"><input type="number" className="border rounded px-2 py-2 w-1/2" placeholder="ft" value={calcForm.feet} onChange={(e) => setCalcForm((p) => ({ ...p, feet: Number(e.target.value) }))} /><input type="number" className="border rounded px-2 py-2 w-1/2" placeholder="in" value={calcForm.inches} onChange={(e) => setCalcForm((p) => ({ ...p, inches: Number(e.target.value) }))} /></div>
-              )}
-              <select className="border rounded px-3 py-2" value={calcForm.weightUnit} onChange={(e) => setCalcForm((p) => ({ ...p, weightUnit: e.target.value }))}><option value="lbs">lbs</option><option value="kg">kg</option></select>
-              <input type="number" className="border rounded px-3 py-2" placeholder="Weight" value={calcForm.weight} onChange={(e) => setCalcForm((p) => ({ ...p, weight: Number(e.target.value) }))} />
-              <select className="border rounded px-3 py-2 col-span-2" value={calcForm.activity} onChange={(e) => setCalcForm((p) => ({ ...p, activity: e.target.value }))}><option>sedentary</option><option>lightly active</option><option>moderately active</option><option>very active</option><option>extra active</option></select>
-              <select className="border rounded px-3 py-2 col-span-2" value={calcForm.goal} onChange={(e) => setCalcForm((p) => ({ ...p, goal: e.target.value }))}><option>lose weight</option><option>maintain</option><option>gain muscle</option></select>
-            </div>
-            <div className="flex gap-2 mt-3">
-              <Button variant="outline" className="flex-1" onClick={calculateGoals}>Calculate</Button>
-              <Button className="flex-1" onClick={saveCalculatedGoals} disabled={!calcResult}>Save These Goals</Button>
-            </div>
-            {calcResult && <div className="text-sm bg-gray-50 rounded p-3">{calcResult.dailyCalorieGoal} kcal · P {calcResult.macroGoals.protein}g · C {calcResult.macroGoals.carbs}g · F {calcResult.macroGoals.fat}g</div>}
-          </DialogContent>
-        </Dialog>
+        <GoalCalculatorDialog
+          open={showCalcModal}
+          onOpenChange={setShowCalcModal}
+          calcForm={calcForm}
+          setCalcForm={setCalcForm}
+          calcResult={calcResult}
+          onCalculate={calculateGoals}
+          onSave={saveCalculatedGoals}
+        />
 
         {/* Add Meal Modal — AI-powered */}
         {showAddMealModal && (
@@ -2098,187 +2084,28 @@ const NutritionMealPlanner = () => {
           </div>
         )}
 
-        {/* Pantry Modal */}
-        {showPantryModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-2xl w-full p-6 max-h-[80vh] overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <Package className="w-6 h-6 text-green-500" />
-                  Use Pantry Items
-                </h3>
-                <Button variant="ghost" size="sm" onClick={() => setShowPantryModal(false)}>✕</Button>
-              </div>
+        <PantryModal
+          open={showPantryModal}
+          onClose={() => setShowPantryModal(false)}
+          onAddMeal={(meal) => {
+            toast({
+              description: `✅ ${meal.name} added to your planner!`,
+            });
+            setShowPantryModal(false);
+          }}
+        />
 
-              <p className="text-gray-600 mb-6">Select ingredients from your pantry to generate meal suggestions:</p>
+        <LoadTemplateModal
+          open={showLoadTemplateModal}
+          onClose={() => setShowLoadTemplateModal(false)}
+          onLoadTemplate={loadTemplate}
+        />
 
-              <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-6">
-                {['Chicken Breast', 'Rice', 'Eggs', 'Pasta', 'Tomatoes', 'Spinach', 'Cheese', 'Beans', 'Potatoes'].map((item) => (
-                  <label key={item} className="flex items-center gap-2 p-3 border rounded-lg cursor-pointer hover:bg-gray-50">
-                    <input type="checkbox" className="w-4 h-4" />
-                    <span className="text-sm">{item}</span>
-                  </label>
-                ))}
-              </div>
-
-              <div className="space-y-3">
-                <h4 className="font-medium">Suggested Meals:</h4>
-                {[
-                  { name: 'Chicken Fried Rice', calories: 420, protein: 32, carbs: 48, fat: 14 },
-                  { name: 'Pasta Primavera', calories: 380, protein: 18, carbs: 52, fat: 12 },
-                ].map((meal, idx) => (
-                  <div key={idx} className="p-4 bg-gray-50 rounded-lg flex items-center justify-between">
-                    <div>
-                      <h5 className="font-medium">{meal.name}</h5>
-                      <div className="flex gap-2 mt-1">
-                        <Badge variant="secondary" className="text-xs">{meal.calories} cal</Badge>
-                        <Badge variant="secondary" className="text-xs">P: {meal.protein}g</Badge>
-                      </div>
-                    </div>
-                    <Button
-                      size="sm"
-                      onClick={() => {
-                        toast({
-                          description: `✅ ${meal.name} added to your planner!`,
-                        });
-                        setShowPantryModal(false);
-                      }}
-                    >
-                      Add
-                    </Button>
-                  </div>
-                ))}
-              </div>
-
-              <Button variant="outline" className="w-full mt-6" onClick={() => setShowPantryModal(false)}>
-                Close
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Load Template Modal */}
-        {showLoadTemplateModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <Save className="w-6 h-6 text-blue-500" />
-                  Load Template
-                </h3>
-                <Button variant="ghost" size="sm" onClick={() => setShowLoadTemplateModal(false)}>✕</Button>
-              </div>
-
-              <p className="text-gray-600 mb-6">Select a saved meal plan template to load:</p>
-
-              <div className="space-y-3">
-                {(() => {
-                  const templates = [];
-                  for (let i = 0; i < localStorage.length; i++) {
-                    const key = localStorage.key(i);
-                    if (key?.startsWith('meal-template-')) {
-                      templates.push(key.replace('meal-template-', ''));
-                    }
-                  }
-
-                  if (templates.length === 0) {
-                    return (
-                      <div className="text-center py-8 text-gray-500">
-                        <Save className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p>No saved templates yet</p>
-                        <p className="text-sm mt-1">Create a meal plan and click "Save Template" to save it</p>
-                      </div>
-                    );
-                  }
-
-                  return templates.map((templateName) => (
-                    <div
-                      key={templateName}
-                      className="p-4 border rounded-lg hover:bg-gray-50 cursor-pointer flex items-center justify-between"
-                      onClick={() => loadTemplate(templateName)}
-                    >
-                      <div>
-                        <h4 className="font-medium">{templateName}</h4>
-                        <p className="text-xs text-gray-500">Click to load</p>
-                      </div>
-                      <Button size="sm">Load</Button>
-                    </div>
-                  ));
-                })()}
-              </div>
-
-              <Button variant="outline" className="w-full mt-6" onClick={() => setShowLoadTemplateModal(false)}>
-                Cancel
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {/* Add Grocery Item Modal */}
-        {showAddGroceryModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg max-w-md w-full p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xl font-bold flex items-center gap-2">
-                  <ShoppingCart className="w-6 h-6 text-green-500" />
-                  Add Grocery Item
-                </h3>
-                <Button variant="ghost" size="sm" onClick={() => setShowAddGroceryModal(false)}>✕</Button>
-              </div>
-
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium mb-2">Item Name *</label>
-                  <input
-                    id="groceryItemName"
-                    type="text"
-                    className="w-full border rounded px-3 py-2"
-                    placeholder="e.g., Chicken Breast"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Amount</label>
-                  <input
-                    id="groceryItemAmount"
-                    type="text"
-                    className="w-full border rounded px-3 py-2"
-                    placeholder="e.g., 2 lbs"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Category</label>
-                  <select
-                    id="groceryItemCategory"
-                    className="w-full border rounded px-3 py-2"
-                  >
-                    <option value="Protein">Protein</option>
-                    <option value="Produce">Produce</option>
-                    <option value="Grains">Grains</option>
-                    <option value="Dairy">Dairy</option>
-                    <option value="Other">Other</option>
-                  </select>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <Button
-                    className="flex-1"
-                    onClick={handleAddGroceryItem}
-                  >
-                    Add Item
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowAddGroceryModal(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        <AddGroceryItemModal
+          open={showAddGroceryModal}
+          onClose={() => setShowAddGroceryModal(false)}
+          onAddItem={handleAddGroceryItem}
+        />
 
         {/* Scan Barcode Modal */}
         {showScanModal && (
@@ -2291,64 +2118,13 @@ const NutritionMealPlanner = () => {
           />
         )}
 
-        {/* Share with Family Dialog */}
-        <Dialog open={showShareFamilyModal} onOpenChange={setShowShareFamilyModal}>
-          <DialogContent className="max-w-md">
-            <DialogHeader>
-              <DialogTitle>Share Grocery List with Family</DialogTitle>
-              <DialogDescription>
-                Copy your grocery list to share with family members
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              {/* Family Members List */}
-              <div className="space-y-2">
-                <h4 className="font-medium text-sm">Family Members:</h4>
-                {familyMembers.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    No family members found. Add them in the Allergies section.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {familyMembers.map((member: any) => (
-                      <div
-                        key={member.id}
-                        className="flex items-center gap-2 p-2 rounded-lg bg-muted/50"
-                      >
-                        <Users className="w-4 h-4 text-muted-foreground" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium">{member.name}</p>
-                          {member.relationship && (
-                            <p className="text-xs text-muted-foreground">{member.relationship}</p>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Grocery List Summary */}
-              <div className="border-t pt-4">
-                <h4 className="font-medium text-sm mb-2">Grocery List Summary:</h4>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {groceryList.length} items in your list
-                </p>
-
-                <Button
-                  onClick={copyGroceryListToClipboard}
-                  className="w-full"
-                >
-                  <Copy className="w-4 h-4 mr-2" />
-                  Copy List to Clipboard
-                </Button>
-                <p className="text-xs text-muted-foreground text-center mt-2">
-                  You can paste this list in any messaging app to share with family
-                </p>
-              </div>
-            </div>
-          </DialogContent>
-        </Dialog>
+        <ShareFamilyDialog
+          open={showShareFamilyModal}
+          onOpenChange={setShowShareFamilyModal}
+          familyMembers={familyMembers}
+          groceryCount={groceryList.length}
+          onCopyToClipboard={copyGroceryListToClipboard}
+        />
       </div>
     </div>
   );
