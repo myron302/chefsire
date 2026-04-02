@@ -44,6 +44,17 @@ import {
   toGroceryExportItems,
 } from '@/components/meal-planner/nutritionMealPlannerUtils';
 
+const INITIAL_MEAL_FORM = {
+  name: '',
+  calories: '',
+  protein: '',
+  carbs: '',
+  fat: '',
+  fiber: '',
+  servingSize: '',
+  servingQty: 1,
+};
+
 const NutritionMealPlanner = () => {
   const { user, updateUser } = useUser();
   const { toast } = useToast();
@@ -81,7 +92,7 @@ const NutritionMealPlanner = () => {
   const [calcResult, setCalcResult] = useState<any>(null);
 
   // Add Meal modal — controlled fields
-  const [mealForm, setMealForm] = useState({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 });
+  const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
   const [baseNutrition, setBaseNutrition] = useState<{ calories: number; protein: number; carbs: number; fat: number; fiber: number; servingSize: string } | null>(null);
   const [isLookingUpNutrition, setIsLookingUpNutrition] = useState(false);
 
@@ -281,17 +292,12 @@ const NutritionMealPlanner = () => {
           if (pending.length > 0) {
             // Add pending items to the database
             for (const item of pending) {
-              await fetch('/api/meal-planner/grocery-list', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({
-                  ingredientName: item.name,
-                  quantity: item.quantity,
-                  unit: item.unit,
-                  category: item.category || 'From Recipe',
-                  notes: item.note,
-                }),
+              await addGroceryListItem({
+                ingredientName: item.name,
+                quantity: item.quantity,
+                unit: item.unit,
+                category: item.category || 'From Recipe',
+                notes: item.note,
               });
             }
             // Clear pending items and refetch
@@ -549,15 +555,30 @@ const NutritionMealPlanner = () => {
     if (day && type) {
       setSelectedMealSlot({ day, type });
     }
-    setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 });
+    setMealForm(INITIAL_MEAL_FORM);
     setBaseNutrition(null);
     setShowAddMealModal(true);
     fetchMealHistory();
   };
 
   const resetAddMealModalState = () => {
-    setMealForm({ name: '', calories: '', protein: '', carbs: '', fat: '', fiber: '', servingSize: '', servingQty: 1 });
+    setMealForm(INITIAL_MEAL_FORM);
     setBaseNutrition(null);
+  };
+
+  const addGroceryListItem = async (payload: {
+    ingredientName: string;
+    quantity: string;
+    unit: string;
+    category: string;
+    notes?: string;
+  }) => {
+    return fetch('/api/meal-planner/grocery-list', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
   };
 
   const closeAddMealModal = () => {
@@ -860,12 +881,7 @@ const NutritionMealPlanner = () => {
       };
       console.log('Adding grocery item:', payload);
 
-      const response = await fetch('/api/meal-planner/grocery-list', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
+      const response = await addGroceryListItem(payload);
 
       if (response.ok) {
         const result = await response.json();
@@ -918,12 +934,7 @@ const NutritionMealPlanner = () => {
         };
         console.log('Adding scanned product to grocery list:', payload);
 
-        const response = await fetch('/api/meal-planner/grocery-list', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(payload),
-        });
+        const response = await addGroceryListItem(payload);
 
         if (response.ok) {
           const result = await response.json();
