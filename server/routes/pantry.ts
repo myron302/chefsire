@@ -1,9 +1,23 @@
 // server/routes/pantry.ts
 import { Router } from "express";
-import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
-import { randomBytes, randomUUID } from "crypto";
+import { randomUUID } from "crypto";
+import { ensureHouseholdSchema } from "./pantry/household-schema";
+import { getHouseholdInfoForUser, makeInviteCode } from "./pantry/household-utils";
+import { parseDaysWithDefault, parseOptionalDateTime, parseOptionalQuantity } from "./pantry/parsers";
+import {
+  householdCreateSchema,
+  householdInviteSchema,
+  householdJoinSchema,
+  householdLeaveSchema,
+  householdResolveDuplicatesSchema,
+  legacyPantryItemSchema,
+  pantryItemSchema,
+  pantryItemUpdateSchema,
+  pantrySuggestionsQuerySchema,
+} from "./pantry/schemas";
+import { serializeHouseholdInviteRow, serializeHouseholdPayload } from "./pantry/serializers";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
 import {
@@ -38,31 +52,15 @@ r.post("/items", requireAuth, async (req, res) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-    const schema = z.object({
-      name: z.string().min(1),
-      category: z.string().optional(),
-      quantity: z.union([z.string(), z.number()]).optional(),
-      unit: z.string().optional(),
-      expirationDate: z.string().datetime().optional(),
-      notes: z.string().optional(),
-      imageUrl: z.string().optional(),
-    });
-
-    const body = schema.parse(req.body);
-
-    // Convert quantity to number if it's a string
-    let quantityNum: number | undefined;
-    if (body.quantity !== undefined) {
-      quantityNum = typeof body.quantity === 'string' ? parseFloat(body.quantity) : body.quantity;
-      if (isNaN(quantityNum)) quantityNum = undefined;
-    }
+    const body = pantryItemSchema.parse(req.body);
+    const quantityNum = parseOptionalQuantity(body.quantity);
 
     const created = await storage.addPantryItem(userId, {
       name: body.name,
       category: body.category,
       quantity: quantityNum,
       unit: body.unit,
-      expirationDate: body.expirationDate ? new Date(body.expirationDate) : undefined,
+      expirationDate: parseOptionalDateTime(body.expirationDate),
       notes: body.notes,
     });
 
@@ -80,8 +78,8 @@ r.get("/expiring-soon", requireAuth, async (req, res) => {
     const userId = req.user?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
-    const days = Number(req.query.days ?? 7);
-    const items = await storage.getExpiringItems(userId, isNaN(days) ? 7 : days);
+    const days = parseDaysWithDefault(req.query.days, 7);
+    const items = await storage.getExpiringItems(userId, days);
     res.json({ items }); // Wrap in object to match frontend expectations
   } catch (error) {
     console.error("pantry/expiring-soon error", error);
@@ -116,22 +114,13 @@ r.get("/users/:id/pantry", async (req, res) => {
 // Add pantry item
 r.post("/users/:id/pantry", async (req, res) => {
   try {
-    const schema = z.object({
-      name: z.string().min(1),
-      category: z.string().optional(),
-      quantity: z.number().min(0).optional(),
-      unit: z.string().optional(),
-      expirationDate: z.string().datetime().optional(),
-      notes: z.string().optional(),
-    });
-
-    const body = schema.parse(req.body);
+    const body = legacyPantryItemSchema.parse(req.body);
     const created = await storage.addPantryItem(req.params.id, {
       name: body.name,
       category: body.category,
       quantity: body.quantity,
       unit: body.unit,
-      expirationDate: body.expirationDate ? new Date(body.expirationDate) : undefined,
+      expirationDate: parseOptionalDateTime(body.expirationDate),
       notes: body.notes,
     });
 
@@ -146,24 +135,8 @@ r.post("/users/:id/pantry", async (req, res) => {
 // Update pantry item
 r.put("/pantry/:itemId", requireAuth, async (req, res) => {
   try {
-    const schema = z.object({
-      name: z.string().min(1).optional(),
-      category: z.string().optional(),
-      quantity: z.union([z.number(), z.string()]).optional(),
-      unit: z.string().optional(),
-      location: z.string().optional(),
-      expirationDate: z.string().datetime().optional(),
-      notes: z.string().optional(),
-      isRunningLow: z.boolean().optional(),
-    });
-    const body = schema.parse(req.body);
-
-    // Convert quantity to number if it's a string
-    let quantityNum: number | undefined;
-    if (body.quantity !== undefined) {
-      quantityNum = typeof body.quantity === 'string' ? parseFloat(body.quantity) : body.quantity;
-      if (isNaN(quantityNum)) quantityNum = undefined;
-    }
+    const body = pantryItemUpdateSchema.parse(req.body);
+    const quantityNum = parseOptionalQuantity(body.quantity);
 
     const updated = await storage.updatePantryItem(req.params.itemId, {
       name: body.name,
@@ -171,7 +144,7 @@ r.put("/pantry/:itemId", requireAuth, async (req, res) => {
       quantity: quantityNum,
       unit: body.unit,
       location: body.location,
-      expirationDate: body.expirationDate ? new Date(body.expirationDate) : undefined,
+      expirationDate: parseOptionalDateTime(body.expirationDate),
       notes: body.notes,
       isRunningLow: body.isRunningLow,
     });
@@ -201,7 +174,7 @@ r.delete("/pantry/:itemId", async (req, res) => {
 r.get("/users/:id/pantry/expiring", async (req, res) => {
   try {
     const days = Number(req.query.days ?? 7);
-    const items = await storage.getExpiringItems(req.params.id, isNaN(days) ? 7 : days);
+    const items = await storage.getExpiringItems(req.params.id, parseDaysWithDefault(req.query.days, 7));
     res.json({ expiringItems: items, daysAhead: days, total: items.length });
   } catch (error) {
     console.error("pantry/expiring error", error);
@@ -212,13 +185,7 @@ r.get("/users/:id/pantry/expiring", async (req, res) => {
 // Pantry-based recipe suggestions
 r.get("/users/:id/pantry/recipe-suggestions", async (req, res) => {
   try {
-    const schema = z.object({
-      requireAllIngredients: z.coerce.boolean().default(false),
-      maxMissingIngredients: z.coerce.number().min(0).max(10).default(3),
-      includeExpiringSoon: z.coerce.boolean().default(true),
-      limit: z.coerce.number().min(1).max(50).default(20),
-    });
-    const opts = schema.parse(req.query);
+    const opts = pantrySuggestionsQuerySchema.parse(req.query);
 
     const suggestions = await storage.getRecipesFromPantryItems(req.params.id, opts);
     res.json({
@@ -247,129 +214,6 @@ r.get("/users/:id/pantry/recipe-suggestions", async (req, res) => {
  *  - POST   /api/pantry/household/leave    { householdId? }  (if omitted, leaves all)
  * ========================= */
 
-let _householdSchemaReady: Promise<void> | null = null;
-
-async function ensureHouseholdSchema() {
-  if (_householdSchemaReady) return _householdSchemaReady;
-
-  _householdSchemaReady = (async () => {
-    // These tables are created without gen_random_uuid() so we don't depend on pgcrypto.
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS pantry_households (
-        id varchar PRIMARY KEY,
-        name text NOT NULL,
-        owner_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        invite_code text NOT NULL UNIQUE,
-        created_at timestamp DEFAULT now()
-      );
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS pantry_household_members (
-        id varchar PRIMARY KEY,
-        household_id varchar NOT NULL REFERENCES pantry_households(id) ON DELETE CASCADE,
-        user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        role text NOT NULL DEFAULT 'member',
-        created_at timestamp DEFAULT now(),
-        UNIQUE (household_id, user_id)
-      );
-    `);
-
-    await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS pantry_household_members_user_idx
-      ON pantry_household_members(user_id);
-    `);
-
-    await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS pantry_household_members_household_idx
-      ON pantry_household_members(household_id);
-    `);
-
-    // Household invites table for pending invitations
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS pantry_household_invites (
-        id varchar PRIMARY KEY,
-        household_id varchar NOT NULL REFERENCES pantry_households(id) ON DELETE CASCADE,
-        invited_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        invited_by_user_id varchar NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        status text NOT NULL DEFAULT 'pending',
-        created_at timestamp DEFAULT now(),
-        UNIQUE (household_id, invited_user_id)
-      );
-    `);
-
-    await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS pantry_household_invites_user_idx
-      ON pantry_household_invites(invited_user_id);
-    `);
-
-    // Add household_id to pantry_items if missing (nullable; personal pantry items stay null)
-    await db.execute(sql`
-      ALTER TABLE pantry_items
-      ADD COLUMN IF NOT EXISTS household_id varchar REFERENCES pantry_households(id) ON DELETE SET NULL;
-    `);
-  })();
-
-  return _householdSchemaReady;
-}
-
-function makeInviteCode() {
-  // Short-ish code, URL-safe enough
-  return randomUUID().replace(/-/g, "").slice(0, 10).toUpperCase();
-}
-
-async function getHouseholdInfoForUser(userId: string) {
-  // If the user is in multiple households, return the most recent membership (created_at)
-  const m = await db.execute(sql`
-    SELECT m.household_id, m.role
-    FROM pantry_household_members m
-    WHERE m.user_id = ${userId}
-    ORDER BY m.created_at DESC
-    LIMIT 1;
-  `);
-  const row = (m as any)?.rows?.[0];
-  if (!row?.household_id) return null;
-
-  const householdId = String(row.household_id);
-  const role = String(row.role || "member");
-
-  const h = await db.execute(sql`
-    SELECT id, name, owner_id, invite_code, created_at
-    FROM pantry_households
-    WHERE id = ${householdId}
-    LIMIT 1;
-  `);
-  const hh = (h as any)?.rows?.[0];
-  if (!hh?.id) {
-    // Stale membership; clean it up
-    await db.execute(sql`DELETE FROM pantry_household_members WHERE household_id = ${householdId} AND user_id = ${userId};`);
-    return null;
-  }
-
-  const members = await db.execute(sql`
-    SELECT m.user_id, m.role, u.username, u.email
-    FROM pantry_household_members m
-    JOIN users u ON u.id = m.user_id
-    WHERE m.household_id = ${householdId}
-    ORDER BY m.created_at ASC;
-  `);
-
-  return {
-    id: String(hh.id),
-    name: String(hh.name),
-    ownerUserId: String(hh.owner_id),
-    inviteCode: String(hh.invite_code),
-    createdAt: hh.created_at,
-    myRole: role,
-    members: ((members as any)?.rows || []).map((r: any) => ({
-      userId: String(r.user_id),
-      role: String(r.role),
-      username: r.username ?? null,
-      email: r.email ?? null,
-    })),
-  };
-}
-
 /**
  * GET /api/pantry/household
  * Returns the household for the current user (or null).
@@ -388,17 +232,7 @@ r.get("/household", requireAuth, async (req, res) => {
     }
 
     // Restructure to match frontend expectations
-    res.json({
-      household: {
-        id: householdInfo.id,
-        name: householdInfo.name,
-        inviteCode: householdInfo.inviteCode,
-        ownerId: householdInfo.ownerUserId,
-        createdAt: householdInfo.createdAt,
-      },
-      userRole: householdInfo.myRole,
-      members: householdInfo.members,
-    });
+    res.json(serializeHouseholdPayload(householdInfo));
   } catch (e: any) {
     console.error("pantry/household get error", e);
     res.status(500).json({ message: "Failed to load household", details: String(e?.message || e) });
@@ -416,8 +250,7 @@ r.post("/household", requireAuth, async (req, res) => {
 
     await ensureHouseholdSchema();
 
-    const schema = z.object({ name: z.string().min(2).max(80) });
-    const body = schema.parse(req.body);
+    const body = householdCreateSchema.parse(req.body);
 
     // Clean up any stale memberships (household deleted but member row still exists)
     await db.execute(sql`
@@ -456,17 +289,7 @@ r.post("/household", requireAuth, async (req, res) => {
     }
 
     // Return same structure as GET /household
-    res.json({
-      household: {
-        id: householdInfo.id,
-        name: householdInfo.name,
-        inviteCode: householdInfo.inviteCode,
-        ownerId: householdInfo.ownerUserId,
-        createdAt: householdInfo.createdAt,
-      },
-      userRole: householdInfo.myRole,
-      members: householdInfo.members,
-    });
+    res.json(serializeHouseholdPayload(householdInfo));
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ message: "Invalid input", errors: e.issues });
     console.error("pantry/household create error", e);
@@ -484,8 +307,7 @@ r.post("/household/join", requireAuth, async (req, res) => {
 
     await ensureHouseholdSchema();
 
-    const schema = z.object({ inviteCode: z.string().min(4) });
-    const body = schema.parse(req.body);
+    const body = householdJoinSchema.parse(req.body);
 
     // Clean stale memberships
     await db.execute(sql`
@@ -522,17 +344,7 @@ r.post("/household/join", requireAuth, async (req, res) => {
     }
 
     // Return same structure as GET /household
-    res.json({
-      household: {
-        id: householdInfo.id,
-        name: householdInfo.name,
-        inviteCode: householdInfo.inviteCode,
-        ownerId: householdInfo.ownerUserId,
-        createdAt: householdInfo.createdAt,
-      },
-      userRole: householdInfo.myRole,
-      members: householdInfo.members,
-    });
+    res.json(serializeHouseholdPayload(householdInfo));
   } catch (e: any) {
     if (e?.issues) return res.status(400).json({ message: "Invalid input", errors: e.issues });
     console.error("pantry/household join error", e);
@@ -552,8 +364,7 @@ r.post("/household/leave", requireAuth, async (req, res) => {
 
     await ensureHouseholdSchema();
 
-    const schema = z.object({ householdId: z.string().optional() }).optional();
-    const body = schema?.parse(req.body ?? {}) as any;
+    const body = householdLeaveSchema?.parse(req.body ?? {}) as any;
     const targetHouseholdId = body?.householdId ? String(body.householdId) : null;
 
     const mems = await db.execute(sql`
@@ -621,8 +432,7 @@ r.post("/household/invite", requireAuth, async (req, res) => {
 
     await ensureHouseholdSchema();
 
-    const schema = z.object({ emailOrUserId: z.string().min(1) });
-    const body = schema.parse(req.body);
+    const body = householdInviteSchema.parse(req.body);
     const emailOrUserId = body.emailOrUserId.trim();
 
     // Get inviter's household
@@ -743,16 +553,7 @@ r.get("/household/invites", requireAuth, async (req, res) => {
 
     const rows = (invites as any)?.rows || [];
     res.json({
-      invites: rows.map((r: any) => ({
-        id: String(r.id),
-        householdId: String(r.household_id),
-        householdName: String(r.household_name),
-        invitedBy: {
-          username: r.invited_by_username,
-          email: r.invited_by_email,
-        },
-        createdAt: r.created_at,
-      })),
+      invites: rows.map(serializeHouseholdInviteRow),
     });
   } catch (e: any) {
     console.error("pantry/household/invites get error", e);
@@ -1044,17 +845,7 @@ r.post("/household/resolve-duplicates", requireAuth, async (req, res) => {
       return res.status(400).json({ message: "You are not in a household" });
     }
 
-    const schema = z.object({
-      decisions: z.array(
-        z.object({
-          incomingId: z.string(),
-          existingId: z.string(),
-          action: z.enum(["merge", "keepBoth", "discardIncoming"]),
-        })
-      ),
-    });
-
-    const body = schema.parse(req.body);
+    const body = householdResolveDuplicatesSchema.parse(req.body);
 
     let merged = 0;
     let discarded = 0;
