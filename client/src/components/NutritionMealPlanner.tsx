@@ -3,7 +3,7 @@ import {
   Calendar, Plus, Target, TrendingUp, Clock, ChefHat, Star, Lock, Crown,
   ShoppingCart, CheckCircle, BarChart3, PieChart, Download, Filter, Save,
   AlertCircle, Package, Utensils, CalendarDays, Zap, ListChecks, Settings, Camera,
-  DollarSign, Sparkles, Flame, Scale, Droplets
+  DollarSign, Sparkles, Flame, Scale, Droplets, Ruler
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,6 +23,7 @@ import AddGroceryItemModal from '@/components/meal-planner/modals/AddGroceryItem
 import ShareFamilyDialog from '@/components/meal-planner/modals/ShareFamilyDialog';
 import AddMealModal from '@/components/meal-planner/modals/AddMealModal';
 import AIRecipeModal from '@/components/meal-planner/modals/AIRecipeModal';
+import CookingToolsReference from '@/components/meal-planner/CookingToolsReference';
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 import { normalizeShoppingListItem } from '@/lib/shopping-list';
 import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -1362,7 +1363,7 @@ const NutritionMealPlanner = () => {
 
         {/* Navigation Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-7 mb-8 h-auto">
+          <TabsList className="mb-8 h-auto w-full flex flex-wrap gap-2">
             <TabsTrigger value="planner" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
               <Calendar className="w-4 h-4" />
               <span className="text-xs sm:text-sm">Planner</span>
@@ -1392,6 +1393,10 @@ const NutritionMealPlanner = () => {
             <TabsTrigger value="advanced" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
               <Sparkles className="w-4 h-4" />
               <span className="text-xs sm:text-sm">Advanced</span>
+            </TabsTrigger>
+            <TabsTrigger value="tools" className="flex-col sm:flex-row gap-1 sm:gap-2 py-3">
+              <Ruler className="w-4 h-4" />
+              <span className="text-xs sm:text-sm">Tools</span>
             </TabsTrigger>
           </TabsList>
 
@@ -1838,6 +1843,28 @@ const NutritionMealPlanner = () => {
 
           <TabsContent value="advanced">
             <AdvancedFeaturesPanel />
+          </TabsContent>
+
+          <TabsContent value="tools">
+            <div className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Cooking Tools & Measurement Conversions</CardTitle>
+                  <CardDescription>
+                    Quick kitchen conversion tables you can use while planning meals.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <a
+                    href="/pantry?tab=tools"
+                    className="text-sm font-medium text-orange-600 hover:text-orange-700 underline underline-offset-2"
+                  >
+                    Open in My Pantry →
+                  </a>
+                </CardContent>
+              </Card>
+              <CookingToolsReference />
+            </div>
           </TabsContent>
         </Tabs>
 
