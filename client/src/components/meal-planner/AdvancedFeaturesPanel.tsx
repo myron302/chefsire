@@ -10,61 +10,11 @@ import { MealPrepTabSection } from './sections/advanced/MealPrepTabSection';
 import { LeftoversTabSection } from './sections/advanced/LeftoversTabSection';
 import { GroceryTabSection } from './sections/advanced/GroceryTabSection';
 import { AchievementsTabSection } from './sections/advanced/AchievementsTabSection';
-
-interface Recommendation {
-  id: string;
-  recipe?: any;
-  recommendationType: string;
-  reason: string;
-  score: string;
-  targetDate: string;
-  mealType: string;
-}
-
-interface Leftover {
-  id: string;
-  recipeName: string;
-  quantity: string;
-  storedDate: string;
-  expiryDate?: string;
-  storageLocation: string;
-  consumed: boolean;
-}
-
-interface MealPrepSchedule {
-  id: string;
-  prepDay: string;
-  prepTime?: string;
-  batchRecipes: any[];
-  shoppingDay?: string;
-  completed: boolean;
-  reminderEnabled: boolean;
-}
-
-// Shape returned by GET /api/achievements
-interface Achievement {
-  id: string;
-  name: string;
-  description: string;
-  icon: string;
-  category: string;
-  xpReward: number;
-  unlocked: boolean;
-  progress: number;
-}
-
-interface GroceryItem {
-  id: string;
-  ingredientName: string;
-  quantity?: string;
-  category?: string;
-  estimatedPrice?: string;
-  actualPrice?: string;
-  purchased: boolean;
-  isPantryItem: boolean;
-  aisle?: string;
-  priority: string;
-}
+import { DEFAULT_BUDGET_SUMMARY, DEFAULT_LEFTOVER_FORM } from './advanced/constants';
+import {
+  Achievement, GroceryItem, Leftover, MealPrepSchedule, Recommendation,
+} from './advanced/types';
+import { buildLeftoverSubmitPayload, getDaysUntilExpiry } from './advanced/utils/leftovers';
 
 export const AdvancedFeaturesPanel = () => {
   const { user } = useUser();
@@ -76,13 +26,11 @@ export const AdvancedFeaturesPanel = () => {
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [totalPoints, setTotalPoints] = useState(0);
   const [groceryItems, setGroceryItems] = useState<GroceryItem[]>([]);
-  const [budgetSummary, setBudgetSummary] = useState({ estimated: 0, actual: 0, difference: 0 });
+  const [budgetSummary, setBudgetSummary] = useState({ ...DEFAULT_BUDGET_SUMMARY });
   const [loading, setLoading] = useState(false);
 
   const [showLeftoverForm, setShowLeftoverForm] = useState(false);
-  const [leftoverForm, setLeftoverForm] = useState({
-    recipeName: '', quantity: '', storageLocation: 'fridge', expiryDate: '',
-  });
+  const [leftoverForm, setLeftoverForm] = useState({ ...DEFAULT_LEFTOVER_FORM });
 
   useEffect(() => {
     if (user) loadData();
@@ -188,11 +136,11 @@ export const AdvancedFeaturesPanel = () => {
     try {
       const res = await fetch('/api/meal-planner/leftovers', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-        body: JSON.stringify({ ...leftoverForm, storedDate: new Date().toISOString().split('T')[0], expiryDate: leftoverForm.expiryDate || undefined }),
+        body: JSON.stringify(buildLeftoverSubmitPayload(leftoverForm)),
       });
       if (res.ok) {
         await fetchLeftovers();
-        setLeftoverForm({ recipeName: '', quantity: '', storageLocation: 'fridge', expiryDate: '' });
+        setLeftoverForm({ ...DEFAULT_LEFTOVER_FORM });
         setShowLeftoverForm(false);
         toast({ title: 'Tracked!', description: 'Leftover added.' });
       }
@@ -241,7 +189,7 @@ export const AdvancedFeaturesPanel = () => {
       if (res.ok) {
         const data = await res.json();
         setGroceryItems(data.items || []);
-        setBudgetSummary(data.budget || { estimated: 0, actual: 0, difference: 0 });
+        setBudgetSummary(data.budget || { ...DEFAULT_BUDGET_SUMMARY });
       }
     } catch (e) { console.error(e); }
   };
@@ -259,9 +207,6 @@ export const AdvancedFeaturesPanel = () => {
       if (res.ok) { const data = await res.json(); toast({ title: 'List Optimized', description: `Organized ${data.totalItems} items by store layout!` }); }
     } catch { toast({ variant: 'destructive', title: 'Error', description: 'Failed to optimize list' }); }
   };
-
-  const getDaysUntilExpiry = (expiryDate: string) =>
-    Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
 
   // ── Render ───────────────────────────────────────────────────────────────
 
