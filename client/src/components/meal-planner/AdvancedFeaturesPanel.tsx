@@ -32,6 +32,21 @@ export const AdvancedFeaturesPanel = () => {
   const [showLeftoverForm, setShowLeftoverForm] = useState(false);
   const [leftoverForm, setLeftoverForm] = useState({ ...DEFAULT_LEFTOVER_FORM });
 
+  const normalizeRecommendation = (item: any): Recommendation | null => {
+    const recommendation = item?.recommendation ?? item;
+    if (!recommendation?.id) return null;
+
+    return {
+      id: recommendation.id,
+      recommendationType: recommendation.recommendationType || 'nutritional_balance',
+      reason: recommendation.reason || '',
+      score: String(recommendation.score ?? '0'),
+      targetDate: recommendation.targetDate || '',
+      mealType: recommendation.mealType || '',
+      recipe: item?.recipe ?? recommendation.recipe,
+    };
+  };
+
   useEffect(() => {
     if (user) loadData();
   }, [user]);
@@ -55,7 +70,13 @@ export const AdvancedFeaturesPanel = () => {
   const fetchRecommendations = async () => {
     try {
       const res = await fetch('/api/meal-planner/meal-recommendations', { credentials: 'include' });
-      if (res.ok) setRecommendations((await res.json()).recommendations || []);
+      if (res.ok) {
+        const data = await res.json();
+        const normalized = (data.recommendations || [])
+          .map(normalizeRecommendation)
+          .filter(Boolean) as Recommendation[];
+        setRecommendations(normalized);
+      }
     } catch (e) { console.error(e); }
   };
 
@@ -67,8 +88,11 @@ export const AdvancedFeaturesPanel = () => {
       });
       if (res.ok) {
         const data = await res.json();
-        setRecommendations(data.recommendations || []);
-        toast({ title: 'Success', description: `Generated ${data.recommendations?.length || 0} recommendations!` });
+        const normalized = (data.recommendations || [])
+          .map(normalizeRecommendation)
+          .filter(Boolean) as Recommendation[];
+        setRecommendations(normalized);
+        toast({ title: 'Success', description: `Generated ${normalized.length} recommendations!` });
       }
     } catch { toast({ variant: 'destructive', title: 'Error', description: 'Failed to generate recommendations' }); }
   };
