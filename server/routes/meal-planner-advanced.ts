@@ -21,197 +21,20 @@ import {
   bodyMetrics,
   mealFavorites,
   waterLogs,
-  mealPlanEntries,
 } from "../../shared/schema.js";
 import { requireAuth } from "../middleware";
+import { ensureAdvancedMealPlanningSchema } from "./meal-planner-advanced/schema.js";
+import {
+  calculateBudgetSummary,
+  calculateSavingsReport,
+  groupItemsByCategoryAndSort,
+  leftoverSuggestions,
+  mapMealHistory,
+  toIsoDateString,
+  toSingleOrAnd,
+} from "./meal-planner-advanced/utils.js";
 
 const router = express.Router();
-
-// ============================================================
-// Schema safety: ensure advanced meal planning tables/columns exist
-// This keeps production DBs compatible even if a migration was missed.
-// ============================================================
-
-let _advancedMealPlanningSchemaReady: Promise<void> | null = null;
-
-async function ensureAdvancedMealPlanningSchema() {
-  if (_advancedMealPlanningSchemaReady) return _advancedMealPlanningSchemaReady;
-
-  _advancedMealPlanningSchemaReady = (async () => {
-    if (!db) {
-      throw new Error("Database is not configured (missing DATABASE_URL).");
-    }
-
-    // gen_random_uuid() is provided by pgcrypto
-    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pgcrypto;`);
-
-    // ---- Create tables if missing (id defaults match shared/schema) ----
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS meal_recommendations (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        recipe_id VARCHAR REFERENCES recipes(id),
-        blueprint_id VARCHAR REFERENCES meal_plan_blueprints(id),
-        recommendation_type TEXT NOT NULL,
-        target_date TIMESTAMP,
-        meal_type TEXT,
-        score DECIMAL(3, 2) NOT NULL,
-        reason TEXT NOT NULL,
-        metadata JSONB DEFAULT '{}'::jsonb,
-        accepted BOOLEAN DEFAULT false,
-        dismissed BOOLEAN DEFAULT false,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS meal_recommendations_user_idx ON meal_recommendations(user_id);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS meal_recommendations_date_idx ON meal_recommendations(target_date);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS meal_recommendations_score_idx ON meal_recommendations(score);`);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS meal_prep_schedules (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        meal_plan_id VARCHAR REFERENCES meal_plans(id),
-        prep_day TEXT NOT NULL,
-        prep_time TEXT,
-        batch_recipes JSONB DEFAULT '[]'::jsonb,
-        shopping_day TEXT,
-        notes TEXT,
-        is_running_low BOOLEAN DEFAULT false,
-        reminder_enabled BOOLEAN DEFAULT true,
-        reminder_time TEXT,
-        completed BOOLEAN DEFAULT false,
-        completed_at TIMESTAMP,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS meal_prep_schedules_user_idx ON meal_prep_schedules(user_id);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS meal_prep_schedules_prep_day_idx ON meal_prep_schedules(prep_day);`);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS leftovers (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        recipe_id VARCHAR REFERENCES recipes(id),
-        recipe_name TEXT NOT NULL,
-        quantity TEXT,
-        stored_date TIMESTAMP NOT NULL,
-        expiry_date TIMESTAMP,
-        storage_location TEXT,
-        notes TEXT,
-        is_running_low BOOLEAN DEFAULT false,
-        consumed BOOLEAN DEFAULT false,
-        consumed_at TIMESTAMP,
-        wasted BOOLEAN DEFAULT false,
-        repurposed_into VARCHAR REFERENCES recipes(id),
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS leftovers_user_idx ON leftovers(user_id);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS leftovers_expiry_idx ON leftovers(expiry_date);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS leftovers_consumed_idx ON leftovers(consumed);`);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS grocery_list_items (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        meal_plan_id VARCHAR REFERENCES meal_plans(id),
-        list_name TEXT DEFAULT 'My Grocery List',
-        ingredient_name TEXT NOT NULL,
-        quantity TEXT,
-        unit TEXT,
-        category TEXT,
-        location TEXT,
-        estimated_price DECIMAL(8, 2),
-        actual_price DECIMAL(8, 2),
-        store TEXT,
-        aisle TEXT,
-        priority TEXT DEFAULT 'normal',
-        is_pantry_item BOOLEAN DEFAULT false,
-        is_running_low BOOLEAN DEFAULT false,
-        purchased BOOLEAN DEFAULT false,
-        purchased_at TIMESTAMP,
-        notes TEXT,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS grocery_list_items_user_idx ON grocery_list_items(user_id);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS grocery_list_items_category_idx ON grocery_list_items(category);`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS grocery_list_items_purchased_idx ON grocery_list_items(purchased);`);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS meal_streaks (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        current_streak INTEGER NOT NULL DEFAULT 0,
-        longest_streak INTEGER NOT NULL DEFAULT 0,
-        last_logged_date DATE,
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS body_metrics (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        date DATE NOT NULL,
-        weight_lbs DECIMAL(8, 2) NOT NULL,
-        body_fat_pct DECIMAL(5, 2),
-        waist_in DECIMAL(6, 2),
-        hip_in DECIMAL(6, 2),
-        created_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS meal_favorites (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        meal_name TEXT NOT NULL,
-        calories INTEGER,
-        protein INTEGER,
-        carbs INTEGER,
-        fat INTEGER,
-        fiber INTEGER,
-        is_favorite BOOLEAN DEFAULT false,
-        times_logged INTEGER DEFAULT 0,
-        last_used TIMESTAMP
-      );
-    `);
-
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS water_logs (
-        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id VARCHAR NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        date DATE NOT NULL,
-        glasses_logged INTEGER NOT NULL DEFAULT 0,
-        daily_target INTEGER NOT NULL DEFAULT 8,
-        updated_at TIMESTAMP DEFAULT NOW()
-      );
-    `);
-
-    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS water_logs_user_date_uidx ON water_logs(user_id, date);`);
-    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS meal_streaks_user_uidx ON meal_streaks(user_id);`);
-    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS source VARCHAR(50);`);
-
-    // ---- Patch older deployments that created these tables without newer columns ----
-    await db.execute(sql`ALTER TABLE meal_prep_schedules ADD COLUMN IF NOT EXISTS is_running_low BOOLEAN DEFAULT false;`);
-    await db.execute(sql`ALTER TABLE leftovers ADD COLUMN IF NOT EXISTS is_running_low BOOLEAN DEFAULT false;`);
-    await db.execute(sql`ALTER TABLE grocery_list_items ADD COLUMN IF NOT EXISTS location TEXT;`);
-    await db.execute(sql`ALTER TABLE grocery_list_items ADD COLUMN IF NOT EXISTS is_running_low BOOLEAN DEFAULT false;`);
-
-    // Backfill nulls for safety (older rows)
-    await db.execute(sql`UPDATE meal_prep_schedules SET is_running_low = false WHERE is_running_low IS NULL;`);
-    await db.execute(sql`UPDATE leftovers SET is_running_low = false WHERE is_running_low IS NULL;`);
-    await db.execute(sql`UPDATE grocery_list_items SET is_running_low = false WHERE is_running_low IS NULL;`);
-  })();
-
-  return _advancedMealPlanningSchemaReady;
-}
 
 router.use(async (_req: Request, res: Response, next: NextFunction) => {
   try {
@@ -538,7 +361,7 @@ router.get("/leftovers", requireAuth, async (req: Request, res: Response) => {
     const conditions = [eq(leftovers.userId, userId)];
     if (consumed === "false") conditions.push(eq(leftovers.consumed, false));
 
-    const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+    const whereClause = toSingleOrAnd(conditions);
 
     const allLeftovers = await db
       .select()
@@ -585,13 +408,7 @@ router.get("/leftovers/:id/suggestions", requireAuth, async (req: Request, res: 
     }
 
     // Simple suggestion logic - in production, use AI
-    const suggestions = [
-      { idea: "Add to a stir-fry", difficulty: "easy" },
-      { idea: "Make a soup or stew", difficulty: "easy" },
-      { idea: "Create a casserole", difficulty: "medium" },
-      { idea: "Use in a wrap or sandwich", difficulty: "easy" },
-      { idea: "Top a salad", difficulty: "easy" },
-    ];
+    const suggestions = leftoverSuggestions;
 
     res.json({ leftover, suggestions });
   } catch (error) {
@@ -693,7 +510,7 @@ router.get("/grocery-list", requireAuth, async (req: Request, res: Response) => 
     if (purchased === "false") conditions.push(eq(groceryListItems.purchased, false));
     if (mealPlanId) conditions.push(eq(groceryListItems.mealPlanId, mealPlanId as string));
 
-    const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+    const whereClause = toSingleOrAnd(conditions);
 
     const items = await db
       .select()
@@ -702,20 +519,11 @@ router.get("/grocery-list", requireAuth, async (req: Request, res: Response) => 
       .orderBy(groceryListItems.category, groceryListItems.aisle);
 
     // Calculate budget summary
-    const totalEstimated = items.reduce((sum, item) =>
-      sum + Number(item.estimatedPrice || 0), 0
-    );
-    const totalActual = items.reduce((sum, item) =>
-      sum + Number(item.actualPrice || 0), 0
-    );
+    const budget = calculateBudgetSummary(items);
 
     res.json({
       items,
-      budget: {
-        estimated: totalEstimated,
-        actual: totalActual,
-        difference: totalActual - totalEstimated,
-      }
+      budget,
     });
   } catch (error) {
     console.error("Error fetching grocery list:", error);
@@ -740,35 +548,7 @@ router.get("/grocery-list/optimized", requireAuth, async (req: Request, res: Res
       )
       .orderBy(groceryListItems.aisle, groceryListItems.category);
 
-    // Group by category and aisle
-    const grouped = items.reduce((acc, item) => {
-      const key = item.category || "Other";
-      if (!acc[key]) acc[key] = [];
-      acc[key].push(item);
-      return acc;
-    }, {} as Record<string, typeof items>);
-
-    // Standard store layout order
-    const storeLayoutOrder = [
-      "produce",
-      "bakery",
-      "meat",
-      "seafood",
-      "dairy",
-      "frozen",
-      "pantry",
-      "snacks",
-      "beverages",
-      "household",
-      "other"
-    ];
-
-    // Sort groups by store layout order
-    const sortedGroups = Object.entries(grouped).sort(([a], [b]) => {
-      const aIndex = storeLayoutOrder.indexOf(a.toLowerCase());
-      const bIndex = storeLayoutOrder.indexOf(b.toLowerCase());
-      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
-    });
+    const sortedGroups = groupItemsByCategoryAndSort(items);
 
     res.json({ grouped: sortedGroups });
   } catch (error) {
@@ -1001,65 +781,15 @@ router.get("/grocery-list/savings-report", requireAuth, async (req: Request, res
     if (startDate) conditions.push(gte(groceryListItems.createdAt, new Date(startDate as string)));
     if (endDate) conditions.push(lte(groceryListItems.createdAt, new Date(endDate as string)));
 
-    const whereClause = conditions.length === 1 ? conditions[0] : and(...conditions);
+    const whereClause = toSingleOrAnd(conditions);
 
     const items = await db
       .select()
       .from(groceryListItems)
       .where(whereClause);
 
-    // Calculate savings metrics
-    const totalEstimated = items.reduce((sum, item) =>
-      sum + Number(item.estimatedPrice || 0), 0
-    );
-    const totalActual = items.reduce((sum, item) =>
-      sum + Number(item.actualPrice || 0), 0
-    );
-    const totalSaved = totalEstimated - totalActual;
-    const savingsRate = totalEstimated > 0
-      ? ((totalSaved / totalEstimated) * 100).toFixed(1)
-      : "0.0";
-
-    // Calculate pantry item savings (items already owned)
-    const pantryItems = items.filter(item => item.isPantryItem);
-    const pantrySavings = pantryItems.reduce((sum, item) =>
-      sum + Number(item.estimatedPrice || 0), 0
-    );
-
-    // Get most saved categories
-    const categoryStats = items.reduce((acc, item) => {
-      const category = item.category || "Other";
-      if (!acc[category]) {
-        acc[category] = {
-          estimated: 0,
-          actual: 0,
-          saved: 0,
-          count: 0
-        };
-      }
-      acc[category].estimated += Number(item.estimatedPrice || 0);
-      acc[category].actual += Number(item.actualPrice || 0);
-      acc[category].saved += Number(item.estimatedPrice || 0) - Number(item.actualPrice || 0);
-      acc[category].count++;
-      return acc;
-    }, {} as Record<string, { estimated: number; actual: number; saved: number; count: number }>);
-
-    const topSavingCategories = Object.entries(categoryStats)
-      .map(([category, stats]) => ({ category, ...(stats as { estimated: number; actual: number; saved: number; count: number }) }))
-      .sort((a, b) => b.saved - a.saved)
-      .slice(0, 5);
-
-    res.json({
-      summary: {
-        totalEstimated,
-        totalActual,
-        totalSaved,
-        savingsRate: Number(savingsRate),
-        pantrySavings,
-        itemsCount: items.length,
-      },
-      topSavingCategories,
-    });
+    const report = calculateSavingsReport(items);
+    res.json(report);
   } catch (error) {
     console.error("Error generating savings report:", error);
     res.status(500).json({ message: "Failed to generate report" });
@@ -1278,7 +1008,7 @@ router.post("/streak/log", requireAuth, async (req: Request, res: Response) => {
       await db.update(mealStreaks).set({
         currentStreak,
         longestStreak,
-        lastLoggedDate: date.toISOString().split("T")[0],
+        lastLoggedDate: toIsoDateString(date),
         updatedAt: new Date(),
       }).where(eq(mealStreaks.id, existing.id));
     } else {
@@ -1286,7 +1016,7 @@ router.post("/streak/log", requireAuth, async (req: Request, res: Response) => {
         userId,
         currentStreak: 1,
         longestStreak: 1,
-        lastLoggedDate: date.toISOString().split("T")[0],
+        lastLoggedDate: toIsoDateString(date),
         updatedAt: new Date(),
       });
     }
@@ -1358,18 +1088,7 @@ router.get("/history", requireAuth, async (req: Request, res: Response) => {
       .limit(20);
 
     res.json({
-      meals: meals.map((m) => ({
-        id: m.id,
-        name: m.mealName,
-        calories: m.calories || 0,
-        protein: m.protein || 0,
-        carbs: m.carbs || 0,
-        fat: m.fat || 0,
-        fiber: m.fiber || 0,
-        isFavorite: Boolean(m.isFavorite),
-        timesLogged: m.timesLogged || 0,
-        lastUsed: m.lastUsed,
-      })),
+      meals: mapMealHistory(meals),
     });
   } catch (error) {
     console.error("Error fetching meal history:", error);
@@ -1402,7 +1121,7 @@ router.post("/history/favorite", requireAuth, async (req: Request, res: Response
 router.get("/water", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const date = String(req.query.date || new Date().toISOString().split("T")[0]);
+    const date = String(req.query.date || toIsoDateString(new Date()));
 
     let [log] = await db.select().from(waterLogs).where(and(eq(waterLogs.userId, userId), eq(waterLogs.date, date))).limit(1);
 
@@ -1450,7 +1169,7 @@ router.patch("/water/target", requireAuth, async (req: Request, res: Response) =
 
     await db.update(waterLogs).set({ dailyTarget, updatedAt: new Date() }).where(eq(waterLogs.userId, userId));
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = toIsoDateString(new Date());
     const [existingToday] = await db.select().from(waterLogs).where(and(eq(waterLogs.userId, userId), eq(waterLogs.date, today))).limit(1);
     if (!existingToday) {
       await db.insert(waterLogs).values({ userId, date: today, glassesLogged: 0, dailyTarget, updatedAt: new Date() });
