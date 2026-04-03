@@ -7,7 +7,6 @@ import {
   DollarSign,
   Clock,
   Heart,
-  ChefHat,
   Camera,
   Music,
   Flower,
@@ -15,12 +14,11 @@ import {
   Mail,
   Bookmark,
   Gift,
-  Calendar as CalendarIcon,
   Link2,
   AlertCircle,
   Zap,
-  Building2,
-  ArrowRight,
+  Sparkles,
+  X,
 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -70,6 +68,9 @@ import { WeddingPlanningVendorQuoteDialog } from "@/pages/services/wedding-plann
 import { WeddingPlanningCalendarSection } from "@/pages/services/wedding-planning/components/WeddingPlanningCalendarSection";
 import { WeddingPlanningInvitationsSection } from "@/pages/services/wedding-planning/components/WeddingPlanningInvitationsSection";
 import { WeddingPlanningEventDetailsEditor } from "@/pages/services/wedding-planning/components/WeddingPlanningEventDetailsEditor";
+import { WeddingPlanningInvitationPreview } from "@/pages/services/wedding-planning/components/WeddingPlanningInvitationPreview";
+import { WeddingPlanningVendorPromoCard } from "@/pages/services/wedding-planning/components/WeddingPlanningVendorPromoCard";
+import { WeddingPlanningVendorCtaSection } from "@/pages/services/wedding-planning/components/WeddingPlanningVendorCtaSection";
 
 export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlanningView } = {}) {
   const { toast } = useToast();
@@ -1992,84 +1993,6 @@ const displaySmartTips = useMemo(() => {
   );
 
 
-  const InvitationPreview = () => {
-    try {
-      const styleTemplates = {
-        elegant: {
-          container: "bg-white font-serif border-double border-pink-200",
-          accent: "text-pink-500",
-          title: "font-light tracking-widest uppercase text-3xl",
-          button: "rounded-full border-pink-200",
-        },
-        rustic: {
-          container: "bg-orange-50 font-sans border-dashed border-amber-300",
-          accent: "text-amber-700",
-          title: "font-bold text-4xl italic text-amber-900",
-          button: "rounded-none border-amber-500 bg-amber-50",
-        },
-        modern: {
-          container: "bg-slate-900 text-white font-sans border-solid border-white/20",
-          accent: "text-cyan-400",
-          title: "font-black tracking-tighter text-5xl uppercase italic",
-          button: "rounded-md border-cyan-400 text-cyan-400 hover:bg-cyan-400/10",
-        },
-      };
-
-      const styles = (styleTemplates as any)[selectedTemplate] || styleTemplates.elegant;
-
-      return (
-        <div className={`p-8 rounded-lg text-center space-y-6 border-4 shadow-xl transition-all duration-500 ${styles.container}`}>
-          <div className="space-y-2">
-            <Sparkles className={`w-6 h-6 mx-auto ${styles.accent}`} />
-            <h2 className={styles.title}>
-              {partner1Name || "Partner 1"} <span className="text-xl block md:inline">&</span> {partner2Name || "Partner 2"}
-            </h2>
-            <div className={`h-px w-24 mx-auto opacity-50 ${selectedTemplate === "modern" ? "bg-cyan-400" : "bg-current"}`} />
-          </div>
-
-          <p className={`text-lg px-4 ${selectedTemplate === "modern" ? "text-slate-300" : "italic text-muted-foreground"}`}>
-            "{customMessage}"
-          </p>
-
-          <div className="space-y-6 py-4">
-            <div className="flex flex-col items-center">
-              <CalendarIcon className={`w-5 h-5 mb-1 ${styles.accent}`} />
-              <p className="font-semibold text-lg">{selectedDate || "Saturday, June 14th"}</p>
-              <p className="text-sm opacity-80">{weddingTime || "4:00 PM"}</p>
-            </div>
-
-            <div className="flex flex-col items-center">
-              <MapPin className={`w-5 h-5 mb-1 ${styles.accent}`} />
-              <p className="font-bold uppercase tracking-widest text-xs mb-1">The Ceremony</p>
-              <p className="text-sm max-w-xs">{weddingLocation || "The Grand Estate, Main Hall"}</p>
-            </div>
-
-            {!useSameLocation && receptionLocation ? (
-              <div className="flex flex-col items-center animate-in fade-in zoom-in duration-500 pt-4 border-t border-current/10">
-                <ChefHat className={`w-5 h-5 mb-1 ${styles.accent}`} />
-                <p className="font-bold uppercase tracking-widest text-xs mb-1">The Reception</p>
-                <p className="text-sm max-w-xs">{receptionLocation}</p>
-                {receptionTime && <p className="text-xs opacity-70 mt-1">Dinner served at {receptionTime}</p>}
-              </div>
-            ) : useSameLocation ? (
-              <div className="pt-4 border-t border-current/10">
-                <p className={`text-xs uppercase tracking-[0.2em] font-medium ${styles.accent}`}>Dinner & Dancing to follow at the same venue</p>
-              </div>
-            ) : null}
-          </div>
-
-          <Button variant="outline" className={`pointer-events-none px-10 ${styles.button}`}>
-            RSVP Online
-          </Button>
-        </div>
-      );
-    } catch (error) {
-      console.error("[InvitationPreview] Error rendering:", error);
-      toast({ title: "Debug Error", description: `Preview error: ${String(error)}`, variant: "destructive" });
-      return <div className="p-8 text-center text-red-500">Error rendering preview</div>;
-    }
-  };
-
   const sectionTitleMap: Record<WeddingPlanningView, string> = {
     hub: "Wedding Planning Hub",
     vendors: "Vendors & Quotes",
@@ -2186,76 +2109,7 @@ const displaySmartTips = useMemo(() => {
             </div>
 
             {/* Vendor CTA */}
-            <div className="w-full sm:w-[360px] md:w-[420px]">
-              <Card className="border-2 border-pink-200/70 dark:border-pink-900/50 bg-gradient-to-br from-pink-50 via-white to-purple-50 dark:from-pink-950/40 dark:via-background dark:to-purple-950/30 shadow-sm">
-                <CardContent className="p-4 md:p-5">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge className="bg-gradient-to-r from-pink-600 to-purple-600 text-white border-0 text-[10px] md:text-xs">
-                          Vendors
-                        </Badge>
-                        <span className="text-[11px] md:text-xs text-muted-foreground">Get more bookings</span>
-                      </div>
-
-                      <h2 className="text-base md:text-lg font-extrabold leading-tight">
-                        List your business where couples are actively planning
-                      </h2>
-
-                      <p className="text-sm md:text-[15px] text-muted-foreground mt-2 leading-relaxed">
-                        Show up in search & on the vendor map, get direct leads, and respond faster with built-in messaging.
-                      </p>
-                    </div>
-
-                    <div className="flex-shrink-0 rounded-xl p-2 bg-white/60 dark:bg-black/20 border border-pink-200/50 dark:border-pink-900/40">
-                      <Building2 className="w-6 h-6 md:w-7 md:h-7 text-pink-700 dark:text-pink-300" />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2 mt-3">
-                    <div className="rounded-lg border bg-background/70 p-2 text-center">
-                      <p className="text-xs font-semibold">More leads</p>
-                      <p className="text-[10px] text-muted-foreground">In search</p>
-                    </div>
-                    <div className="rounded-lg border bg-background/70 p-2 text-center">
-                      <p className="text-xs font-semibold">Direct chat</p>
-                      <p className="text-[10px] text-muted-foreground">Fast replies</p>
-                    </div>
-                    <div className="rounded-lg border bg-background/70 p-2 text-center">
-                      <p className="text-xs font-semibold">Boosted</p>
-                      <p className="text-[10px] text-muted-foreground">Feature options</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 flex flex-col sm:flex-row gap-2">
-                    <div className="flex-1">
-                      <Link href="/services/vendor-listing">
-                        <Button size="lg" className="w-full bg-gradient-to-r from-pink-600 to-purple-600 text-white shadow-md hover:opacity-95">
-                          <Building2 className="w-4 h-4 mr-2 text-white" />
-                          List My Business
-                          <ArrowRight className="w-4 h-4 ml-2 text-white/90" />
-                        </Button>
-                      </Link>
-                    </div>
-                    <div className="sm:w-[160px]">
-                      <Link href="/services/vendor-listing">
-                        <Button
-                          variant="outline"
-                          size="lg"
-                          className="w-full border-pink-300 text-pink-700 hover:bg-pink-50 dark:border-pink-800 dark:text-pink-200 dark:hover:bg-pink-950/40"
-                        >
-                          Learn More
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-
-                  <p className="mt-3 text-[11px] md:text-xs text-muted-foreground">
-                    Free to start • Upgrade anytime for featured placement & a verified badge
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
+            <WeddingPlanningVendorPromoCard />
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2">
@@ -2601,7 +2455,24 @@ const displaySmartTips = useMemo(() => {
             onSendInvitations={sendInvitations}
             isPreviewOpen={isPreviewOpen}
             setIsPreviewOpen={setIsPreviewOpen}
-            invitationPreview={<InvitationPreview />}
+            invitationPreview={
+              <WeddingPlanningInvitationPreview
+                selectedTemplate={selectedTemplate}
+                partner1Name={partner1Name}
+                partner2Name={partner2Name}
+                customMessage={customMessage}
+                selectedDate={selectedDate}
+                weddingTime={weddingTime}
+                weddingLocation={weddingLocation}
+                useSameLocation={useSameLocation}
+                receptionLocation={receptionLocation}
+                receptionTime={receptionTime}
+                onRenderError={(error) => {
+                  console.error("[InvitationPreview] Error rendering:", error);
+                  toast({ title: "Debug Error", description: `Preview error: ${String(error)}`, variant: "destructive" });
+                }}
+              />
+            }
             onGoPremium={handleGoPremium}
           />
         </CardContent>
@@ -2612,38 +2483,7 @@ const displaySmartTips = useMemo(() => {
       {showVendorCtaSection && (
       <>
       {/* ── Vendor CTA ─────────────────────────────────────────────────────── */}
-      <div className="mt-12 mb-4">
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-900 via-purple-950 to-pink-900 px-6 py-10 md:px-12 md:py-14 text-white">
-          <div className="pointer-events-none absolute -top-32 -right-32 h-80 w-80 rounded-full bg-pink-500/20 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-purple-500/20 blur-3xl" />
-          <div className="relative flex flex-col md:flex-row items-center justify-between gap-8">
-            <div className="space-y-4 max-w-lg">
-              <Badge className="bg-pink-500/80 text-white text-xs px-3 py-1">For Wedding Vendors</Badge>
-              <h2 className="text-2xl md:text-3xl font-bold leading-tight">
-                Are you a wedding vendor?
-                <span className="block text-pink-300 mt-1">List your business with us.</span>
-              </h2>
-              <p className="text-slate-300 text-sm md:text-base">
-                Reach thousands of couples actively planning weddings right now. Get discovered, accept bookings, and grow your business — all in one place.
-              </p>
-            </div>
-            <div className="flex flex-col sm:flex-row md:flex-col gap-3 w-full md:w-auto md:min-w-[200px]">
-              <Link href="/services/vendor-listing" className="w-full">
-                <Button size="lg" className="w-full bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-600 hover:to-purple-600 text-white font-semibold shadow-lg shadow-pink-900/40">
-                  <Building2 className="h-5 w-5 mr-2" />
-                  List My Business
-                  <ArrowRight className="h-4 w-4 ml-2" />
-                </Button>
-              </Link>
-              <Link href="/services/vendor-listing" className="w-full">
-                <Button size="lg" className="w-full bg-white/15 border border-white/40 text-white hover:bg-white/25 hover:text-white">
-                  Learn More
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
+      <WeddingPlanningVendorCtaSection />
       </>
       )}
     </div>
