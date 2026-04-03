@@ -66,6 +66,18 @@ interface GroceryItem {
   priority: string;
 }
 
+interface PanelEmptyStateProps {
+  icon: React.ReactNode;
+  message: string;
+}
+
+const PanelEmptyState = ({ icon, message }: PanelEmptyStateProps) => (
+  <div className="text-center py-8 text-muted-foreground">
+    {icon}
+    <p>{message}</p>
+  </div>
+);
+
 export const AdvancedFeaturesPanel = () => {
   const { user } = useUser();
   const { toast } = useToast();
@@ -286,7 +298,10 @@ export const AdvancedFeaturesPanel = () => {
             <CardContent className="space-y-4">
               <Button onClick={generateRecommendations} className="w-full"><Brain className="w-4 h-4 mr-2" />Generate Recommendations</Button>
               {recommendations.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground"><Brain className="w-12 h-12 mx-auto mb-2 opacity-50" /><p>No recommendations yet. Generate some to get started!</p></div>
+                <PanelEmptyState
+                  icon={<Brain className="w-12 h-12 mx-auto mb-2 opacity-50" />}
+                  message="No recommendations yet. Generate some to get started!"
+                />
               ) : recommendations.map((rec) => (
                 <Card key={rec.id} className="border-l-4 border-l-purple-500">
                   <CardContent className="pt-4">
@@ -328,7 +343,10 @@ export const AdvancedFeaturesPanel = () => {
             <CardContent className="space-y-4">
               <Button className="w-full" onClick={quickCreateMealPrepSchedule}><Plus className="w-4 h-4 mr-2" />Create Prep Schedule</Button>
               {mealPrepSchedules.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground"><Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" /><p>No meal prep schedules yet. Create one to get organized!</p></div>
+                <PanelEmptyState
+                  icon={<Calendar className="w-12 h-12 mx-auto mb-2 opacity-50" />}
+                  message="No meal prep schedules yet. Create one to get organized!"
+                />
               ) : mealPrepSchedules.map((schedule) => (
                 <Card key={schedule.id} className={schedule.completed ? 'opacity-60' : ''}>
                   <CardContent className="pt-4">
@@ -387,7 +405,10 @@ export const AdvancedFeaturesPanel = () => {
               )}
 
               {leftovers.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground"><Refrigerator className="w-12 h-12 mx-auto mb-2 opacity-50" /><p>No leftovers tracked. Add them to reduce food waste!</p></div>
+                <PanelEmptyState
+                  icon={<Refrigerator className="w-12 h-12 mx-auto mb-2 opacity-50" />}
+                  message="No leftovers tracked. Add them to reduce food waste!"
+                />
               ) : leftovers.map((leftover) => {
                 const daysLeft = leftover.expiryDate ? getDaysUntilExpiry(leftover.expiryDate) : null;
                 const isExpiring = daysLeft !== null && daysLeft <= 2;
@@ -435,7 +456,10 @@ export const AdvancedFeaturesPanel = () => {
                 <Button onClick={getOptimizedGroceryList} variant="outline" className="flex-1"><TrendingUp className="w-4 h-4 mr-2" />Optimize List</Button>
               </div>
               {groceryItems.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground"><ShoppingBag className="w-12 h-12 mx-auto mb-2 opacity-50" /><p>No items in your grocery list yet.</p></div>
+                <PanelEmptyState
+                  icon={<ShoppingBag className="w-12 h-12 mx-auto mb-2 opacity-50" />}
+                  message="No items in your grocery list yet."
+                />
               ) : groceryItems.map((item) => (
                 <div key={item.id} className="flex items-center justify-between p-3 border rounded-lg">
                   <div className="flex items-center gap-3 flex-1">
@@ -474,7 +498,10 @@ export const AdvancedFeaturesPanel = () => {
               </Card>
               <Button className="w-full" variant="outline" onClick={checkAchievements}>Check for New Achievements</Button>
               {achievements.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground"><Trophy className="w-12 h-12 mx-auto mb-2 opacity-50" /><p>Loading achievements…</p></div>
+                <PanelEmptyState
+                  icon={<Trophy className="w-12 h-12 mx-auto mb-2 opacity-50" />}
+                  message="Loading achievements…"
+                />
               ) : achievements.map((ach) => (
                 <Card key={ach.id} className={ach.unlocked ? 'border-2 border-yellow-400' : 'opacity-70'}>
                   <CardContent className="pt-4">
