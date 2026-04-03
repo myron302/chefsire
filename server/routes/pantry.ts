@@ -833,6 +833,8 @@ r.post("/household/sync", requireAuth, async (req, res) => {
           UPDATE pantry_items
           SET household_id = ${myHousehold.id}
           WHERE id = ${itemId}
+            AND user_id = ${userId}
+            AND household_id IS NULL
         `);
       }
     }
@@ -919,7 +921,12 @@ r.post("/household/resolve-duplicates", requireAuth, async (req, res) => {
 
         // Delete the incoming item
         await db.execute(sql`
-          DELETE FROM pantry_items WHERE id = ${decision.incomingId}
+          DELETE FROM pantry_items
+          WHERE id = ${decision.incomingId}
+            AND (
+              household_id = ${myHousehold.id}
+              OR (household_id IS NULL AND user_id = ${userId})
+            )
         `);
         merged++;
       } else if (decision.action === "keepBoth") {
@@ -928,12 +935,19 @@ r.post("/household/resolve-duplicates", requireAuth, async (req, res) => {
           UPDATE pantry_items
           SET household_id = ${myHousehold.id}
           WHERE id = ${decision.incomingId}
+            AND household_id IS NULL
+            AND user_id = ${userId}
         `);
         kept++;
       } else if (decision.action === "discardIncoming") {
         // Delete the incoming item
         await db.execute(sql`
-          DELETE FROM pantry_items WHERE id = ${decision.incomingId}
+          DELETE FROM pantry_items
+          WHERE id = ${decision.incomingId}
+            AND (
+              household_id = ${myHousehold.id}
+              OR (household_id IS NULL AND user_id = ${userId})
+            )
         `);
         discarded++;
       }
