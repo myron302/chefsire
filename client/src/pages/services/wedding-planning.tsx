@@ -66,7 +66,6 @@ import {
   BudgetAllocation,
   formatWeddingEventTypeLabel,
   inferBudgetKeyFromTask,
-  normalizeBudgetAllocations,
   normalizeRegistryLinks,
   PlanningInsightAction,
   PlanningInsightTip,
@@ -77,6 +76,12 @@ import {
   weddingEventTypeVariant,
   WeddingPlanningView,
 } from "@/pages/services/lib/wedding-planning-core";
+import {
+  useBudgetSettingsPersistence,
+  useInsightsPersistence,
+  usePlanningTasksPersistence,
+  useRegistryLinksPersistence,
+} from "@/pages/services/wedding-planning/hooks/useWeddingPlanningPersistence";
 
 // =========================================================
 // MEMOIZED VENDOR CARD
@@ -347,208 +352,35 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
     }
   }, [currentTier]);
 
-  // Load + persist wedding planning checklist (DB-first for signed-in users)
-  const savePlanningTasksTimeoutRef = useRef<number | null>(null);
+  usePlanningTasksPersistence({
+    userId: user?.id,
+    planningTasks,
+    hasLoadedPlanningTasks,
+    setPlanningTasks,
+    setHasLoadedPlanningTasks,
+  });
 
-  useEffect(() => {
-    let cancelled = false;
+  useBudgetSettingsPersistence({
+    userId: user?.id,
+    budgetRange,
+    guestCount,
+    budgetAllocations,
+    hasLoadedBudgetSettings,
+    setBudgetRange,
+    setGuestCount,
+    setBudgetAllocations,
+    setHasLoadedBudgetSettings,
+  });
 
-    const loadPlanningTasks = async () => {
-      setHasLoadedPlanningTasks(false);
-      // Logged-out guests: no persistence (in-memory only).
-      if (!user?.id) {
-        if (!cancelled) {
-          setPlanningTasks(DEFAULT_PLANNING_TASKS);
-          setHasLoadedPlanningTasks(true);
-        }
-        return;
-      }
-
-      // Signed-in users: try DB first.
-      try {
-        const resp = await fetch("/api/wedding/planning-tasks", { credentials: "include" });
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data?.ok && Array.isArray(data.tasks) && data.tasks.length > 0) {
-            if (!cancelled) {
-              setPlanningTasks(data.tasks);
-              setHasLoadedPlanningTasks(true);
-            }
-            return;
-          }
-        }
-      } catch (error) {
-        console.error("[Wedding Planning] Failed to fetch planning tasks from DB:", error);
-      }
-      // If DB fetch fails or returns nothing, fall back to defaults.
-      if (!cancelled) {
-        setPlanningTasks(DEFAULT_PLANNING_TASKS);
-        setHasLoadedPlanningTasks(true);
-      }
-    };
-
-    loadPlanningTasks();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!hasLoadedPlanningTasks) return;
-
-    // If signed in, sync to DB (debounced).
-    if (!user?.id) return;
-
-    if (savePlanningTasksTimeoutRef.current) {
-      window.clearTimeout(savePlanningTasksTimeoutRef.current);
-    }
-
-    savePlanningTasksTimeoutRef.current = window.setTimeout(async () => {
-      try {
-        await fetch("/api/wedding/planning-tasks", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tasks: planningTasks }),
-        });
-      } catch (error) {
-        console.error("[Wedding Planning] Failed to save planning tasks to DB:", error);
-      }
-    }, 400);
-  }, [planningTasks, user?.id, hasLoadedPlanningTasks]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadBudgetSettings = async () => {
-      setHasLoadedBudgetSettings(false);
-      if (!user?.id) {
-        if (!cancelled) {
-          setBudgetRange([5000, 50000]);
-          setGuestCount([100]);
-          setBudgetAllocations(DEFAULT_BUDGET_ALLOCATIONS);
-          setHasLoadedBudgetSettings(true);
-        }
-        return;
-      }
-
-      try {
-        const response = await fetch("/api/wedding/budget-settings", { credentials: "include" });
-        if (response.ok) {
-          const data = await response.json();
-          const settings = data?.settings;
-          if (settings && !cancelled) {
-            setBudgetRange([
-              Math.max(5000, Math.min(100000, Math.round(Number(settings.budgetMin) || 5000))),
-              Math.max(5000, Math.min(100000, Math.round(Number(settings.budgetMax) || 50000))),
-            ]);
-            setGuestCount([Math.max(1, Math.min(2000, Math.round(Number(settings.guestCount) || 100)))]);
-            setBudgetAllocations(normalizeBudgetAllocations(settings.allocations));
-          }
-        }
-      } catch (error) {
-        console.error("[Wedding Planning] Failed to fetch budget settings:", error);
-      }
-
-      if (!cancelled) setHasLoadedBudgetSettings(true);
-    };
-
-    loadBudgetSettings();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!hasLoadedBudgetSettings) return;
-
-    const [budgetMin, budgetMax] = budgetRange;
-    const payload = {
-      budgetMin,
-      budgetMax,
-      guestCount: guestCount[0],
-      allocations: budgetAllocations.map((a) => ({ key: a.key, label: a.category, percentage: a.percentage })),
-    };
-
-    if (!user?.id) return;
-
-    const timeout = window.setTimeout(async () => {
-      try {
-        await fetch("/api/wedding/budget-settings", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-      } catch (error) {
-        console.error("[Wedding Planning] Failed to save budget settings:", error);
-      }
-    }, 400);
-
-    return () => window.clearTimeout(timeout);
-  }, [budgetRange, guestCount, budgetAllocations, user?.id, hasLoadedBudgetSettings]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadRegistryLinks = async () => {
-      setHasLoadedRegistryLinks(false);
-
-      if (!user?.id) {
-        if (!cancelled) {
-          setRegistryLinks(DEFAULT_REGISTRY_LINKS);
-          setRegistryDraft(DEFAULT_REGISTRY_LINKS);
-          setHasLoadedRegistryLinks(true);
-        }
-        return;
-      }
-
-      try {
-        const response = await fetch("/api/wedding/registry-links", { credentials: "include" });
-        if (response.ok) {
-          const data = await response.json();
-          const fromServer =
-            data?.ok && Array.isArray(data.registryLinks) ? normalizeRegistryLinks(data.registryLinks) : null;
-
-          if (!cancelled) {
-            if (fromServer && fromServer.length > 0) {
-              setRegistryLinks(fromServer);
-              setRegistryDraft(fromServer);
-            } else {
-              setRegistryLinks(DEFAULT_REGISTRY_LINKS);
-              setRegistryDraft(DEFAULT_REGISTRY_LINKS);
-            }
-          }
-        } else if (!cancelled) {
-          setRegistryLinks(DEFAULT_REGISTRY_LINKS);
-          setRegistryDraft(DEFAULT_REGISTRY_LINKS);
-        }
-      } catch (error) {
-        console.error("[Wedding Planning] Failed to load registry links:", error);
-        if (!cancelled) {
-          setRegistryLinks(DEFAULT_REGISTRY_LINKS);
-          setRegistryDraft(DEFAULT_REGISTRY_LINKS);
-        }
-      } finally {
-        if (!cancelled) setHasLoadedRegistryLinks(true);
-      }
-    };
-
-    loadRegistryLinks();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!hasLoadedRegistryLinks) return;
-    if (!isEditingRegistryLinks) {
-      setRegistryDraft(registryLinks);
-    }
-  }, [registryLinks, hasLoadedRegistryLinks, isEditingRegistryLinks]);
+  useRegistryLinksPersistence({
+    userId: user?.id,
+    registryLinks,
+    hasLoadedRegistryLinks,
+    isEditingRegistryLinks,
+    setRegistryLinks,
+    setRegistryDraft,
+    setHasLoadedRegistryLinks,
+  });
 
   // Load guest list and wedding details from backend on mount
   useEffect(() => {
@@ -928,72 +760,15 @@ const [newCustomTipTitle, setNewCustomTipTitle] = useState("");
 const [newCustomTipDetail, setNewCustomTipDetail] = useState("");
 const [newCustomActionLabel, setNewCustomActionLabel] = useState("");
 
-useEffect(() => {
-  // Custom tips/actions live in the database for logged-in users.
-  // If the user is not logged in, we keep them in-memory (page-only).
-  if (!user?.id) {
-    setHasLoadedInsights(true);
-    return;
-  }
-
-  let cancelled = false;
-
-  (async () => {
-    try {
-      const res = await fetch("/api/wedding/insights", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load insights");
-      const data = await res.json();
-
-      const tips = Array.isArray(data?.tips) ? (data.tips as PlanningInsightTip[]) : [];
-      const actions = Array.isArray(data?.actions) ? (data.actions as PlanningInsightAction[]) : [];
-
-      if (!cancelled) {
-        setCustomTips(
-          tips
-            .filter((t) => t && typeof t.id === "string" && typeof t.title === "string" && typeof t.detail === "string")
-            .slice(0, 25)
-        );
-        setCustomActions(
-          actions
-            .filter((a) => a && typeof a.id === "string" && typeof a.label === "string")
-            .map((a) => ({ ...a, done: !!(a as any).done }))
-            .slice(0, 25)
-        );
-      }
-    } catch (e) {
-      if (!cancelled) {
-        setCustomTips([]);
-        setCustomActions([]);
-      }
-    } finally {
-      if (!cancelled) setHasLoadedInsights(true);
-    }
-  })();
-
-  return () => {
-    cancelled = true;
-  };
-}, [user?.id]);
-
-useEffect(() => {
-  // Save with a small debounce so edits don't spam the API.
-  if (!user?.id || !hasLoadedInsights) return;
-
-  const timeout = window.setTimeout(async () => {
-    try {
-      await fetch("/api/wedding/insights", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ tips: customTips, actions: customActions }),
-      });
-    } catch (e) {
-      console.error("[Wedding Planning] save insights failed:", e);
-    }
-  }, 800);
-
-  return () => window.clearTimeout(timeout);
-}, [customTips, customActions, user?.id, hasLoadedInsights]);
+useInsightsPersistence({
+  userId: user?.id,
+  customTips,
+  customActions,
+  hasLoadedInsights,
+  setCustomTips,
+  setCustomActions,
+  setHasLoadedInsights,
+});
 
 const addCustomAction = useCallback(() => {
   const label = newCustomActionLabel.trim();
