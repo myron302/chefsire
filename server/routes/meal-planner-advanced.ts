@@ -34,6 +34,12 @@ import {
   toSingleOrAnd,
 } from "./meal-planner-advanced/utils.js";
 import {
+  calculateUpdatedStreak,
+  filterExpiringLeftovers,
+  serializeStreak,
+  serializeWaterLog,
+} from "./meal-planner-advanced/feature-helpers.js";
+import {
   hasDefinedQueryValue,
   parseBodyBoolean,
   parseBodyMetricInput,
@@ -383,16 +389,7 @@ router.get("/leftovers", requireAuth, async (req: Request, res: Response) => {
       .where(whereClause)
       .orderBy(leftovers.expiryDate);
 
-    // Filter for expiring soon (within 2 days)
-    let result = allLeftovers;
-    if (expiringSoon === "true") {
-      const twoDaysFromNow = new Date();
-      twoDaysFromNow.setDate(twoDaysFromNow.getDate() + 2);
-
-      result = allLeftovers.filter(l =>
-        l.expiryDate && new Date(l.expiryDate) <= twoDaysFromNow && !l.consumed
-      );
-    }
+    const result = filterExpiringLeftovers(allLeftovers, expiringSoon);
 
     res.json({ leftovers: result });
   } catch (error) {
@@ -982,11 +979,7 @@ router.get("/streak", requireAuth, async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const [streak] = await db.select().from(mealStreaks).where(eq(mealStreaks.userId, userId)).limit(1);
 
-    res.json({
-      currentStreak: streak?.currentStreak || 0,
-      longestStreak: streak?.longestStreak || 0,
-      lastLoggedDate: streak?.lastLoggedDate || null,
-    });
+    res.json(serializeStreak(streak));
   } catch (error) {
     console.error("Error fetching streak:", error);
     res.status(500).json({ message: "Failed to fetch streak" });
@@ -1003,20 +996,9 @@ router.post("/streak/log", requireAuth, async (req: Request, res: Response) => {
 
     const [existing] = await db.select().from(mealStreaks).where(eq(mealStreaks.userId, userId)).limit(1);
 
-    let currentStreak = 1;
-    let longestStreak = 1;
+    const { currentStreak, longestStreak } = calculateUpdatedStreak(existing, date);
 
     if (existing) {
-      const last = existing.lastLoggedDate ? new Date(existing.lastLoggedDate) : null;
-      if (last) {
-        last.setHours(0,0,0,0);
-        const diff = Math.round((date.getTime() - last.getTime()) / (1000*60*60*24));
-        if (diff === 0) currentStreak = existing.currentStreak || 0;
-        else if (diff === 1) currentStreak = (existing.currentStreak || 0) + 1;
-        else currentStreak = 1;
-      }
-      longestStreak = Math.max(existing.longestStreak || 0, currentStreak);
-
       await db.update(mealStreaks).set({
         currentStreak,
         longestStreak,
@@ -1142,7 +1124,7 @@ router.get("/water", requireAuth, async (req: Request, res: Response) => {
       [log] = await db.insert(waterLogs).values({ userId, date, glassesLogged: 0, dailyTarget: target, updatedAt: new Date() }).returning();
     }
 
-    res.json({ date: log.date, glassesLogged: log.glassesLogged, dailyTarget: log.dailyTarget });
+    res.json(serializeWaterLog(log));
   } catch (error) {
     console.error("Error fetching water log:", error);
     res.status(500).json({ message: "Failed to fetch water log" });
@@ -1166,7 +1148,7 @@ router.post("/water", requireAuth, async (req: Request, res: Response) => {
       [log] = await db.insert(waterLogs).values({ userId, date, glassesLogged, dailyTarget: latest[0]?.dailyTarget || 8, updatedAt: new Date() }).returning();
     }
 
-    res.json({ date: log.date, glassesLogged: log.glassesLogged, dailyTarget: log.dailyTarget });
+    res.json(serializeWaterLog(log));
   } catch (error) {
     console.error("Error saving water log:", error);
     res.status(500).json({ message: "Failed to save water log" });
