@@ -2,25 +2,17 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import {
-  Package, Plus, Search, Filter, ScanLine, ChefHat,
-  Calendar, AlertCircle, CheckCircle, Clock, Home,
-  Trash2, Edit, MapPin, DollarSign, Users, ShoppingCart, AlertTriangle
+  Package, Plus, ScanLine, ChefHat, Calendar, Users, ShoppingCart
 } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CookingToolsReference from "@/components/meal-planner/CookingToolsReference";
 import { useToast } from "@/hooks/use-toast";
-import { format, differenceInDays, isPast, isFuture } from "date-fns";
+import { differenceInDays, isPast } from "date-fns";
 import {
-  addFormItemToGroceryList,
   addItemsToGroceryList,
-  addPantryItem,
   addScannedPantryItem,
   deletePantryItem,
   fetchAllergenWarnings,
@@ -33,7 +25,14 @@ import {
   normalizeExpiringItemsResponse,
   normalizePantryItemsResponse,
 } from "./lib/normalizers";
-import type { PantryFormData, PantryItem } from "./lib/types";
+import type { PantryItem } from "./lib/types";
+import { AddItemForm } from "./components/AddItemForm";
+import { PantryStatsCards } from "./components/PantryStatsCards";
+import { PantryFilters } from "./components/PantryFilters";
+import { PantryInventorySection } from "./components/PantryInventorySection";
+import { PantryStatsDialog } from "./components/PantryStatsDialog";
+import { ExpiryCalendarDialog } from "./components/ExpiryCalendarDialog";
+import { EditPantryItemDialog } from "./components/EditPantryItemDialog";
 
 export default function PantryDashboard() {
   const { toast } = useToast();
@@ -357,56 +356,7 @@ export default function PantryDashboard() {
           </div>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-          <Card className="cursor-pointer hover:bg-accent transition-colors" onClick={() => setShowStatsDialog('total')}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">Total Items</p>
-                  <p className="text-2xl font-bold">{stats.total}</p>
-                </div>
-                <Package className="w-8 h-8 text-gray-400" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-yellow-200 bg-yellow-50 cursor-pointer hover:bg-yellow-100 transition-colors" onClick={() => setShowStatsDialog('expiring')}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-yellow-700">Expiring Soon</p>
-                  <p className="text-2xl font-bold text-yellow-800">{stats.expiring}</p>
-                </div>
-                <Clock className="w-8 h-8 text-yellow-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-red-200 bg-red-50 cursor-pointer hover:bg-red-100 transition-colors" onClick={() => setShowStatsDialog('expired')}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-red-700">Expired</p>
-                  <p className="text-2xl font-bold text-red-800">{stats.expired}</p>
-                </div>
-                <AlertCircle className="w-8 h-8 text-red-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-blue-200 bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors" onClick={() => setShowStatsDialog('runningLow')}>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-blue-700">Running Low</p>
-                  <p className="text-2xl font-bold text-blue-800">{stats.runningLow}</p>
-                </div>
-                <AlertCircle className="w-8 h-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <PantryStatsCards stats={stats} onSelect={setShowStatsDialog} />
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
@@ -477,58 +427,18 @@ export default function PantryDashboard() {
 
         </div>
 
-        {/* Filters */}
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
-                  placeholder="Search items..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-
-              <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  {categories.map(cat => (
-                    <SelectItem key={cat} value={cat!}>{cat}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterLocation} onValueChange={setFilterLocation}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Location" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Locations</SelectItem>
-                  {locations.map(loc => (
-                    <SelectItem key={loc} value={loc!}>{loc}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-
-              <Select value={filterExpiry} onValueChange={setFilterExpiry}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Expiry Status" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Items</SelectItem>
-                  <SelectItem value="expiring">Expiring Soon</SelectItem>
-                  <SelectItem value="fresh">Fresh</SelectItem>
-                  <SelectItem value="expired">Expired</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
+        <PantryFilters
+          searchQuery={searchQuery}
+          filterCategory={filterCategory}
+          filterLocation={filterLocation}
+          filterExpiry={filterExpiry}
+          categories={categories as string[]}
+          locations={locations as string[]}
+          onSearchQueryChange={setSearchQuery}
+          onCategoryChange={setFilterCategory}
+          onLocationChange={setFilterLocation}
+          onExpiryChange={setFilterExpiry}
+        />
       </div>
 
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
@@ -538,169 +448,33 @@ export default function PantryDashboard() {
         </TabsList>
 
         <TabsContent value="inventory">
-      <div data-items-section>
-      {filteredItems.length === 0 ? (
-        <Card>
-          <CardContent className="p-12 text-center">
-            <Package className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-            <h3 className="text-xl font-semibold mb-2">
-              {searchQuery || filterCategory !== "all" ? "No items found" : "Your pantry is empty"}
-            </h3>
-            <p className="text-muted-foreground mb-4">
-              {searchQuery || filterCategory !== "all"
-                ? "Try adjusting your filters"
-                : "Start tracking your ingredients to reduce waste and discover recipes"}
-            </p>
-            {!searchQuery && filterCategory === "all" && (
-              <Button onClick={() => setShowAddDialog(true)}>
-                <Plus className="w-4 h-4 mr-2" />
-                Add Your First Item
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredItems.map((item) => {
-            const expiryStatus = getExpiryStatus(item.expirationDate);
-            const itemWarnings = getItemWarnings(item.id);
-
-            return (
-              <Card key={item.id} className="overflow-hidden">
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-3 mb-3">
-                    <Checkbox
-                      checked={selectedItems.has(item.id)}
-                      onCheckedChange={() => toggleItemSelection(item.id)}
-                      className="mt-1"
-                    />
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg mb-1">{item.name}</h3>
-                      <div className="flex flex-wrap gap-2">
-                        {item.category && (
-                          <Badge variant="outline" className="text-xs">
-                            {item.category}
-                          </Badge>
-                        )}
-                        {itemWarnings.map((warning: any, idx: number) => (
-                          <Badge
-                            key={idx}
-                            variant="outline"
-                            className={`text-xs ${
-                              warning.severity === "life-threatening" || warning.severity === "severe"
-                                ? "bg-red-100 text-red-800 border-red-300"
-                                : "bg-yellow-100 text-yellow-800 border-yellow-300"
-                            }`}
-                          >
-                            <AlertTriangle className="w-3 h-3 mr-1" />
-                            {warning.allergen} ({warning.memberName})
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0"
-                        onClick={() => {
-                          setItemToEdit(item);
-                          setShowEditDialog(true);
-                        }}
-                      >
-                        <Edit className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                        onClick={() => {
-                          if (confirm("Delete this item?")) {
-                            deleteMutation.mutate(item.id);
-                          }
-                        }}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-2 text-sm ml-9">
-                    {item.quantity && item.unit && (
-                      <div className="flex items-center gap-3">
-                        <Package className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                        <span className="text-muted-foreground">{item.quantity} {item.unit}</span>
-                      </div>
-                    )}
-
-                    {item.location && (
-                      <div className="flex items-center gap-3">
-                        <MapPin className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                        <span className="text-muted-foreground">{item.location}</span>
-                      </div>
-                    )}
-
-                    {item.expirationDate && (
-                      <div className="flex items-center gap-3">
-                        <Calendar className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          <span className="text-muted-foreground text-sm">
-                            Expires {format(new Date(item.expirationDate), "MMM d, yyyy")}
-                          </span>
-                          <Badge className={`text-xs ${expiryStatus.color} ml-auto`}>
-                            {expiryStatus.label}
-                          </Badge>
-                        </div>
-                      </div>
-                    )}
-
-                    {item.estimatedCost && (
-                      <div className="flex items-center gap-3">
-                        <DollarSign className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                        <span className="text-muted-foreground">${item.estimatedCost}</span>
-                      </div>
-                    )}
-
-                    {item.householdId && (
-                      <div className="flex items-center gap-3">
-                        <Users className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
-                        <Badge variant="secondary" className="text-xs">
-                          Household Item
-                        </Badge>
-                      </div>
-                    )}
-                  </div>
-
-                  {item.notes && (
-                    <p className="mt-3 text-sm text-muted-foreground border-t pt-2 ml-9">
-                      {item.notes}
-                    </p>
-                  )}
-
-                  {/* Running Low Button */}
-                  <div className="mt-3 border-t pt-3 ml-9">
-                    <Button
-                      size="sm"
-                      variant={item.isRunningLow ? "default" : "outline"}
-                      className="w-full"
-                      onClick={() => {
-                        updateMutation.mutate({
-                          id: item.id,
-                          isRunningLow: !item.isRunningLow,
-                        });
-                      }}
-                    >
-                      <AlertCircle className="w-4 h-4 mr-2" />
-                      {item.isRunningLow ? "Running Low ✓" : "Mark as Running Low"}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-      </div>
+          <div data-items-section>
+            <PantryInventorySection
+              filteredItems={filteredItems}
+              searchQuery={searchQuery}
+              filterCategory={filterCategory}
+              selectedItems={selectedItems}
+              getExpiryStatus={getExpiryStatus}
+              getItemWarnings={getItemWarnings}
+              onToggleItemSelection={toggleItemSelection}
+              onEditItem={(item) => {
+                setItemToEdit(item);
+                setShowEditDialog(true);
+              }}
+              onDeleteItem={(itemId) => {
+                if (confirm("Delete this item?")) {
+                  deleteMutation.mutate(itemId);
+                }
+              }}
+              onToggleRunningLow={(item) => {
+                updateMutation.mutate({
+                  id: item.id,
+                  isRunningLow: !item.isRunningLow,
+                });
+              }}
+              onShowAddDialog={() => setShowAddDialog(true)}
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="tools">
@@ -708,492 +482,37 @@ export default function PantryDashboard() {
         </TabsContent>
       </Tabs>
 
-      {/* Stats Dialog */}
-      <Dialog open={showStatsDialog !== null} onOpenChange={() => setShowStatsDialog(null)}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>
-              {showStatsDialog === 'total' && 'All Pantry Items'}
-              {showStatsDialog === 'expiring' && 'Expiring Soon'}
-              {showStatsDialog === 'expired' && 'Expired Items'}
-              {showStatsDialog === 'runningLow' && 'Running Low Items'}
-            </DialogTitle>
-          </DialogHeader>
+      <PantryStatsDialog
+        showStatsDialog={showStatsDialog}
+        items={items}
+        expiringItems={expiringItems}
+        getExpiryStatus={getExpiryStatus}
+        addToShoppingListPending={addToShoppingListMutation.isPending}
+        onOpenChange={() => setShowStatsDialog(null)}
+        onAddExpiredItemToList={(item) => addToShoppingListMutation.mutate([item])}
+      />
 
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-            {(() => {
-              let dialogItems: PantryItem[] = [];
+      <ExpiryCalendarDialog
+        open={showExpiryDialog}
+        expiringItems={expiringItems}
+        onOpenChange={setShowExpiryDialog}
+      />
 
-              if (showStatsDialog === 'total') {
-                dialogItems = items;
-              } else if (showStatsDialog === 'expiring') {
-                dialogItems = expiringItems;
-              } else if (showStatsDialog === 'expired') {
-                dialogItems = items.filter(i => getExpiryStatus(i.expirationDate).status === "expired");
-              } else if (showStatsDialog === 'runningLow') {
-                dialogItems = items.filter(i => i.isRunningLow);
-              }
-
-              if (dialogItems.length === 0) {
-                return <p className="text-muted-foreground">No items in this category.</p>;
-              }
-
-              return dialogItems.map((item) => (
-                <div key={item.id} className="border rounded-lg p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-lg">{item.name}</h3>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {item.category && (
-                          <Badge variant="outline">{item.category}</Badge>
-                        )}
-                        {item.quantity && item.unit && (
-                          <Badge variant="secondary">{item.quantity} {item.unit}</Badge>
-                        )}
-                        {item.location && (
-                          <Badge variant="outline">
-                            <MapPin className="w-3 h-3 mr-1" />
-                            {item.location}
-                          </Badge>
-                        )}
-                        {item.expirationDate && (
-                          <Badge className={getExpiryStatus(item.expirationDate).color}>
-                            {getExpiryStatus(item.expirationDate).label}
-                          </Badge>
-                        )}
-                        {item.isRunningLow && (
-                          <Badge className="bg-blue-100 text-blue-800">Running Low</Badge>
-                        )}
-                      </div>
-                      {item.notes && (
-                        <p className="text-sm text-muted-foreground mt-2">{item.notes}</p>
-                      )}
-                    </div>
-                    {showStatsDialog === 'expired' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => {
-                          addToShoppingListMutation.mutate([item]);
-                        }}
-                        disabled={addToShoppingListMutation.isPending}
-                      >
-                        <ShoppingCart className="w-4 h-4 mr-2" />
-                        Add to List
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              ));
-            })()}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Expiry Calendar Dialog */}
-      <Dialog open={showExpiryDialog} onOpenChange={setShowExpiryDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Expiry Calendar (Next 7 Days)</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-            {expiringItems.length === 0 ? (
-              <p className="text-muted-foreground">Nothing expiring in the next week.</p>
-            ) : (
-              Object.entries(
-                expiringItems.reduce<Record<string, PantryItem[]>>((acc, item) => {
-                  const key = item.expirationDate
-                    ? new Date(item.expirationDate).toISOString().split("T")[0]
-                    : "No date";
-                  (acc[key] ||= []).push(item);
-                  return acc;
-                }, {})
-              )
-              .sort(([a],[b]) => a.localeCompare(b))
-              .map(([day, items]) => (
-                <div key={day} className="border rounded-lg">
-                  <div className="px-4 py-2 font-semibold bg-muted/50">
-                    {day === "No date"
-                      ? "No expiration date"
-                      : format(new Date(day), "EEEE, MMM d, yyyy")}
-                  </div>
-                  <div className="p-4 space-y-2">
-                    {items.map((i) => (
-                      <div key={i.id} className="flex items-center justify-between">
-                        <span>{i.name}</span>
-                        <Badge variant="secondary">
-                          {i.quantity && i.unit ? `${i.quantity} ${i.unit}` : "—"}
-                        </Badge>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Item Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Pantry Item</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-            <div>
-              <label className="text-sm font-medium">Item Name *</label>
-              <Input
-                value={itemToEdit?.name || ""}
-                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, name: e.target.value } : null)}
-                placeholder="e.g., Milk, Eggs"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Category</label>
-              <Select
-                value={itemToEdit?.category || ""}
-                onValueChange={(value) => setItemToEdit(itemToEdit ? { ...itemToEdit, category: value } : null)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Produce">Produce</SelectItem>
-                  <SelectItem value="Dairy">Dairy</SelectItem>
-                  <SelectItem value="Meat">Meat</SelectItem>
-                  <SelectItem value="Bakery">Bakery</SelectItem>
-                  <SelectItem value="Pantry">Pantry</SelectItem>
-                  <SelectItem value="Frozen">Frozen</SelectItem>
-                  <SelectItem value="Beverages">Beverages</SelectItem>
-                  <SelectItem value="Snacks">Snacks</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium">Quantity</label>
-                <Input
-                  value={itemToEdit?.quantity || ""}
-                  onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, quantity: e.target.value } : null)}
-                  placeholder="e.g., 2"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Unit</label>
-                <Input
-                  value={itemToEdit?.unit || ""}
-                  onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, unit: e.target.value } : null)}
-                  placeholder="e.g., lbs, pieces"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium">Location</label>
-              <Input
-                value={itemToEdit?.location || ""}
-                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, location: e.target.value } : null)}
-                placeholder="e.g., Fridge, Pantry"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Expiration Date</label>
-              <Input
-                type="date"
-                value={itemToEdit?.expirationDate ? new Date(itemToEdit.expirationDate).toISOString().split('T')[0] : ""}
-                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, expirationDate: e.target.value ? new Date(e.target.value).toISOString() : null } : null)}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Notes</label>
-              <Input
-                value={itemToEdit?.notes || ""}
-                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, notes: e.target.value } : null)}
-                placeholder="Optional notes"
-              />
-            </div>
-            <Button
-              onClick={() => {
-                if (!itemToEdit?.name?.trim()) {
-                  toast({ title: "Please enter an item name", variant: "destructive" });
-                  return;
-                }
-                updateMutation.mutate(itemToEdit);
-              }}
-              className="w-full"
-              disabled={updateMutation.isPending}
-            >
-              {updateMutation.isPending ? "Updating..." : "Update Item"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit Item Dialog */}
-      <Dialog open={showEditDialog} onOpenChange={setShowEditDialog}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Edit Pantry Item</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
-            <div>
-              <label className="text-sm font-medium">Item Name *</label>
-              <Input
-                value={itemToEdit?.name || ""}
-                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, name: e.target.value } : null)}
-                placeholder="e.g., Milk, Eggs"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Category</label>
-              <Select
-                value={itemToEdit?.category || ""}
-                onValueChange={(value) => setItemToEdit(itemToEdit ? { ...itemToEdit, category: value } : null)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="Produce">Produce</SelectItem>
-                  <SelectItem value="Dairy">Dairy</SelectItem>
-                  <SelectItem value="Meat">Meat</SelectItem>
-                  <SelectItem value="Bakery">Bakery</SelectItem>
-                  <SelectItem value="Pantry">Pantry</SelectItem>
-                  <SelectItem value="Frozen">Frozen</SelectItem>
-                  <SelectItem value="Beverages">Beverages</SelectItem>
-                  <SelectItem value="Snacks">Snacks</SelectItem>
-                  <SelectItem value="Other">Other</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="text-sm font-medium">Quantity</label>
-                <Input
-                  value={itemToEdit?.quantity || ""}
-                  onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, quantity: e.target.value } : null)}
-                  placeholder="e.g., 2"
-                />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Unit</label>
-                <Input
-                  value={itemToEdit?.unit || ""}
-                  onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, unit: e.target.value } : null)}
-                  placeholder="e.g., lbs, pieces"
-                />
-              </div>
-            </div>
-            <div>
-              <label className="text-sm font-medium">Location</label>
-              <Input
-                value={itemToEdit?.location || ""}
-                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, location: e.target.value } : null)}
-                placeholder="e.g., Fridge, Pantry"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Expiration Date</label>
-              <Input
-                type="date"
-                value={itemToEdit?.expirationDate ? new Date(itemToEdit.expirationDate).toISOString().split('T')[0] : ""}
-                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, expirationDate: e.target.value ? new Date(e.target.value).toISOString() : null } : null)}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium">Notes</label>
-              <Input
-                value={itemToEdit?.notes || ""}
-                onChange={(e) => setItemToEdit(itemToEdit ? { ...itemToEdit, notes: e.target.value } : null)}
-                placeholder="Optional notes"
-              />
-            </div>
-            <Button
-              onClick={() => {
-                if (!itemToEdit?.name?.trim()) {
-                  toast({ title: "Please enter an item name", variant: "destructive" });
-                  return;
-                }
-                updateMutation.mutate(itemToEdit);
-              }}
-              className="w-full"
-              disabled={updateMutation.isPending}
-            >
-              {updateMutation.isPending ? "Updating..." : "Update Item"}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <EditPantryItemDialog
+        open={showEditDialog}
+        itemToEdit={itemToEdit}
+        isPending={updateMutation.isPending}
+        onOpenChange={setShowEditDialog}
+        onItemChange={setItemToEdit}
+        onSubmit={() => {
+          if (!itemToEdit?.name?.trim()) {
+            toast({ title: "Please enter an item name", variant: "destructive" });
+            return;
+          }
+          updateMutation.mutate(itemToEdit);
+        }}
+      />
 
     </div>
-  );
-}
-
-// Add Item Form Component
-function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const [formData, setFormData] = useState({
-    name: "",
-    category: "",
-    quantity: "",
-    unit: "",
-    location: "",
-    expirationDate: "",
-    notes: "",
-  });
-  const [alsoAddToShoppingList, setAlsoAddToShoppingList] = useState(false);
-
-  // Check if user is premium
-  const { data: userData } = useQuery({
-    queryKey: ["/api/user"],
-  });
-  const isPremium = userData?.nutritionPremium || false;
-
-  const addMutation = useMutation({
-    mutationFn: async (data: PantryFormData) => {
-      const pantryResponse = await addPantryItem(data);
-
-      if (alsoAddToShoppingList && isPremium) {
-        await addFormItemToGroceryList(data);
-      }
-
-      return pantryResponse;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon"] });
-      if (alsoAddToShoppingList && isPremium) {
-        queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
-        toast({ title: "Item added to pantry and shopping list!" });
-      } else {
-        toast({ title: "Item added to pantry!" });
-      }
-      // Reset form
-      setFormData({
-        name: "",
-        category: "",
-        quantity: "",
-        unit: "",
-        location: "",
-        expirationDate: "",
-        notes: "",
-      });
-      setAlsoAddToShoppingList(false);
-      onSuccess();
-    },
-    onError: (error: Error) => {
-      console.error("Error adding pantry item:", error);
-      toast({ title: error.message || "Failed to add item", variant: "destructive" });
-    },
-  });
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.name.trim()) {
-      toast({ title: "Item name is required", variant: "destructive" });
-      return;
-    }
-    addMutation.mutate(formData);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="text-sm font-medium">Item Name *</label>
-        <Input
-          required
-          value={formData.name}
-          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder="e.g., Milk, Eggs, Flour"
-        />
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <label className="text-sm font-medium">Quantity</label>
-          <Input
-            type="number"
-            step="0.01"
-            value={formData.quantity}
-            onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-            placeholder="2"
-          />
-        </div>
-        <div>
-          <label className="text-sm font-medium">Unit</label>
-          <Input
-            value={formData.unit}
-            onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
-            placeholder="cups, lbs, oz"
-          />
-        </div>
-      </div>
-
-      <div>
-        <label className="text-sm font-medium">Category</label>
-        <Input
-          value={formData.category}
-          onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-          placeholder="Dairy, Produce, Meat, etc."
-        />
-      </div>
-
-      <div>
-        <label className="text-sm font-medium">Location</label>
-        <Select value={formData.location} onValueChange={(val) => setFormData({ ...formData, location: val })}>
-          <SelectTrigger>
-            <SelectValue placeholder="Where is it stored?" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="fridge">Fridge</SelectItem>
-            <SelectItem value="freezer">Freezer</SelectItem>
-            <SelectItem value="pantry">Pantry</SelectItem>
-            <SelectItem value="spice-rack">Spice Rack</SelectItem>
-            <SelectItem value="counter">Counter</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-
-      <div>
-        <label className="text-sm font-medium">Expiration Date</label>
-        <Input
-          type="date"
-          value={formData.expirationDate}
-          onChange={(e) => setFormData({ ...formData, expirationDate: e.target.value })}
-        />
-      </div>
-
-      <div>
-        <label className="text-sm font-medium">Notes</label>
-        <Input
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Optional notes..."
-        />
-      </div>
-
-      {/* Shopping List Option (Premium Only) */}
-      {isPremium && (
-        <div className="flex items-center gap-2 p-3 bg-orange-50 border border-orange-200 rounded-lg">
-          <input
-            type="checkbox"
-            id="alsoAddToShoppingList"
-            checked={alsoAddToShoppingList}
-            onChange={(e) => setAlsoAddToShoppingList(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300"
-          />
-          <label htmlFor="alsoAddToShoppingList" className="text-sm font-medium cursor-pointer">
-            ✨ Also add to shopping list (for future purchases)
-          </label>
-        </div>
-      )}
-
-      <Button type="submit" className="w-full" disabled={addMutation.isPending}>
-        {addMutation.isPending ? "Adding..." : "Add Item"}
-      </Button>
-    </form>
   );
 }
