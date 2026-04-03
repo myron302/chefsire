@@ -1,5 +1,5 @@
 // client/src/pages/services/wedding-planning.tsx
-import { useState, useMemo, memo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 
 import {
   Calendar,
@@ -60,7 +60,6 @@ import {
   DEFAULT_PLANNING_TASKS,
   DEFAULT_REGISTRY_LINKS,
   VENDORS,
-  VENDOR_CATEGORIES,
   WEDDING_EVENT_TYPE_OPTIONS,
   budgetIconTone,
   BudgetAllocation,
@@ -71,8 +70,6 @@ import {
   PlanningInsightTip,
   PlanningTask,
   RegistryLink,
-  Vendor,
-  vendorIconTone,
   weddingEventTypeVariant,
   WeddingPlanningView,
 } from "@/pages/services/lib/wedding-planning-core";
@@ -86,148 +83,9 @@ import { WeddingPlanningBudgetSection } from "@/pages/services/wedding-planning/
 import { WeddingPlanningInsightsSection } from "@/pages/services/wedding-planning/components/WeddingPlanningInsightsSection";
 import { WeddingPlanningRegistrySection } from "@/pages/services/wedding-planning/components/WeddingPlanningRegistrySection";
 import { WeddingPlanningTasksSection } from "@/pages/services/wedding-planning/components/WeddingPlanningTasksSection";
-
-// =========================================================
-// MEMOIZED VENDOR CARD
-// =========================================================
-
-interface VendorCardProps {
-  vendor: Vendor;
-  isSaved: boolean;
-  isQuoteRequested: boolean;
-  onToggleSave: (id: number) => void;
-  onRequestQuote: (id: number) => void;
-}
-
-const VendorCard = memo(
-  ({ vendor, isSaved, isQuoteRequested, onToggleSave, onRequestQuote }: VendorCardProps) => {
-    return (
-      <Card className="overflow-hidden hover:shadow-lg transition-shadow">
-        <div className="relative">
-          <img
-            src={vendor.image}
-            alt={vendor.name}
-            className="w-full h-40 md:h-48 object-cover"
-            loading="lazy"
-            decoding="async"
-            fetchPriority="low"
-            crossOrigin="anonymous"
-            referrerPolicy="no-referrer"
-            style={{ contentVisibility: "auto" }}
-          />
-          {(vendor as any).sponsored && (
-            <Badge className="absolute top-2 left-2 bg-gradient-to-r from-yellow-500 to-orange-500 text-xs">
-              <TrendingUp className="w-3 h-3 mr-1 text-white" />
-              <span className="hidden sm:inline">Sponsored</span>
-            </Badge>
-          )}
-          {(vendor as any).featured && !(vendor as any).sponsored && (
-            <Badge className="absolute top-2 left-2 bg-gradient-to-r from-pink-600 to-purple-600 text-xs">
-              <Sparkles className="w-3 h-3 mr-1 text-white" />
-              <span className="hidden sm:inline">Featured</span>
-            </Badge>
-          )}
-          <Button
-            size="sm"
-            variant="secondary"
-            className="absolute top-2 right-2 rounded-full p-1.5 md:p-2"
-            onClick={() => onToggleSave(vendor.id)}
-          >
-            <Bookmark className={`w-3 h-3 md:w-4 md:h-4 ${isSaved ? "fill-current" : ""}`} />
-          </Button>
-
-          <Badge
-            className={`absolute bottom-2 left-2 text-xs ${
-              (vendor as any).availability === "Available"
-                ? "bg-green-500"
-                : (vendor as any).availability === "Limited"
-                ? "bg-yellow-500"
-                : "bg-red-500"
-            }`}
-          >
-            {(vendor as any).availability}
-          </Badge>
-        </div>
-
-        <CardContent className="p-3 md:p-4">
-          <div className="mb-2">
-            <h3 className="font-semibold text-base md:text-lg flex items-center gap-1">
-              {vendor.name}
-              {(vendor as any).verified && <Shield className="w-3 h-3 md:w-4 md:h-4 text-blue-500" />}
-            </h3>
-            <p className="text-xs md:text-sm text-muted-foreground line-clamp-2">{(vendor as any).description}</p>
-          </div>
-
-          <div className="flex items-center gap-3 md:gap-4 mb-2 md:mb-3">
-            <div className="flex items-center gap-1">
-              <Star className="w-3 h-3 md:w-4 md:h-4 fill-yellow-400 text-yellow-400" />
-              <span className="font-semibold text-sm md:text-base">{vendor.rating}</span>
-              <span className="text-xs md:text-sm text-muted-foreground">({vendor.reviews})</span>
-            </div>
-            <span className="text-xs md:text-sm font-medium">{vendor.priceRange}</span>
-          </div>
-
-          {(vendor as any).amenities && (
-            <div className="flex flex-wrap gap-1 mb-2 md:mb-3">
-              {(vendor as any).amenities.slice(0, 3).map((amenity: string) => (
-                <Badge key={amenity} variant="secondary" className="text-[10px] md:text-xs">
-                  {amenity}
-                </Badge>
-              ))}
-              {(vendor as any).amenities.length > 3 && (
-                <Badge variant="secondary" className="text-[10px] md:text-xs">
-                  +{(vendor as any).amenities.length - 3}
-                </Badge>
-              )}
-            </div>
-          )}
-
-          {(vendor as any).viewsToday && (
-            <Alert className="mb-2 md:mb-3 p-2">
-              <AlertCircle className="h-3 w-3" />
-              <AlertDescription className="text-[10px] md:text-xs">{(vendor as any).viewsToday} couples viewed today</AlertDescription>
-            </Alert>
-          )}
-
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-3 border-t">
-            <div className="flex items-center gap-1 text-[10px] md:text-xs text-muted-foreground">
-              <Clock className="w-3 h-3 text-amber-500" />
-              <span className="hidden sm:inline">Responds in {(vendor as any).responseTime}</span>
-              <span className="sm:hidden">{(vendor as any).responseTime}</span>
-            </div>
-            <div className="flex gap-2 w-full sm:w-auto">
-              {isQuoteRequested ? (
-                <Badge variant="secondary" className="text-[10px] md:text-xs">
-                  Quote Requested
-                </Badge>
-              ) : (
-                <>
-                  <Button size="sm" variant="outline" onClick={() => onRequestQuote(vendor.id)} className="flex-1 sm:flex-none text-xs">
-                    <span className="hidden sm:inline">Get Quote</span>
-                    <span className="sm:hidden">Quote</span>
-                  </Button>
-                  <Link href="/catering/wedding-map" className="flex-1 sm:flex-none">
-                    <Button size="sm" className="bg-gradient-to-r from-pink-600 to-purple-600 w-full text-xs">
-                      <span className="hidden sm:inline">View Map</span>
-                      <span className="sm:hidden">Map</span>
-                    </Button>
-                  </Link>
-                </>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  },
-  (prevProps, nextProps) =>
-    prevProps.vendor.id === nextProps.vendor.id &&
-    prevProps.isSaved === nextProps.isSaved &&
-    prevProps.isQuoteRequested === nextProps.isQuoteRequested
-);
-
-VendorCard.displayName = "VendorCard";
-
+import { WeddingPlanningVendorFilters } from "@/pages/services/wedding-planning/components/WeddingPlanningVendorFilters";
+import { WeddingPlanningVendorGrid } from "@/pages/services/wedding-planning/components/WeddingPlanningVendorGrid";
+import { WeddingPlanningVendorQuoteDialog } from "@/pages/services/wedding-planning/components/WeddingPlanningVendorQuoteDialog";
 
 export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlanningView } = {}) {
   const { toast } = useToast();
@@ -2589,203 +2447,27 @@ const displaySmartTips = useMemo(() => {
 
         {showVendorsSection && (
         <>
-        {/* Filters */}
-        <Card className="mb-6">
-          <CardContent className="p-4 md:p-6">
-            
-<div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-500 flex items-center justify-center shadow-sm">
-                    <CalendarIcon className="h-4 w-4 text-white" />
-                  </div>
-                  <label className="text-xs md:text-sm font-medium block">Event Date</label>
-                </div>
-                <Input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="w-full" />
-              </div>
+      <WeddingPlanningVendorFilters
+        selectedDate={selectedDate}
+        onSelectedDateChange={setSelectedDate}
+        guestCount={guestCount[0]}
+        onGuestCountChange={(nextCount) => setGuestCount([nextCount])}
+        searchLocation={searchLocation}
+        onSearchLocationChange={setSearchLocation}
+        vendorLocationRef={vendorLocationRef}
+        selectedVendorType={selectedVendorType}
+        onSelectedVendorTypeChange={setSelectedVendorType}
+        filteredVendorCount={filteredVendors.length}
+      />
 
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center shadow-sm">
-                    <Users className="h-4 w-4 text-white" />
-                  </div>
-                  <label className="text-xs md:text-sm font-medium block">Guest Count</label>
-                </div>
-                <Input
-                  type="number"
-                  value={guestCount[0]}
-                  onChange={(e) => setGuestCount([parseInt(e.target.value || "0", 10)])}
-                  className="w-full"
-                />
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-purple-600 to-pink-500 flex items-center justify-center shadow-sm">
-                    <MapPin className="h-4 w-4 text-white" />
-                  </div>
-                  <label className="text-xs md:text-sm font-medium block">Location</label>
-                </div>
-                <Input
-                  ref={vendorLocationRef}
-                  placeholder="City, State (e.g., New York, NY)"
-                  value={searchLocation}
-                  onChange={(e) => setSearchLocation(e.target.value)}
-                  className="w-full"
-                />
-                <p className="mt-1 text-[10px] md:text-xs text-muted-foreground">
-                  Start typing any city/state in the US — this is no longer limited to a single state.
-                </p>
-              </div>
-
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-pink-600 to-rose-500 flex items-center justify-center shadow-sm">
-                    <Sparkles className="h-4 w-4 text-white" />
-                  </div>
-                  <label className="text-xs md:text-sm font-medium block">Style</label>
-                </div>
-                <Select>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Wedding style" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="classic">Classic & Elegant</SelectItem>
-                    <SelectItem value="rustic">Rustic & Barn</SelectItem>
-                    <SelectItem value="modern">Modern & Chic</SelectItem>
-                    <SelectItem value="beach">Beach & Outdoor</SelectItem>
-                    <SelectItem value="vintage">Vintage</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-</div>
-          </CardContent>
-        </Card>
-
-      {/* Category buttons */}
-      <div className="grid grid-cols-4 sm:grid-cols-7 gap-2 mb-6">
-        {VENDOR_CATEGORIES.map((category) => {
-          const Icon = category.icon as any;
-          const isSelected = selectedVendorType === category.value;
-          const count = category.value === "all" ? VENDORS.length : VENDORS.filter((v) => v.type === category.value).length;
-
-          return (
-            <Button
-              key={category.value}
-              variant={isSelected ? "default" : "outline"}
-              onClick={() => setSelectedVendorType(category.value)}
-              className="w-full flex items-center justify-center sm:justify-between px-2"
-              size="sm"
-            >
-              <div className="flex items-center gap-1 min-w-0">
-                <Icon className={`w-4 h-4 flex-shrink-0 ${isSelected ? "text-white" : vendorIconTone(category.value)}`} />
-                <span className="text-xs sm:text-sm hidden sm:inline truncate">{category.label}</span>
-              </div>
-              <Badge variant="secondary" className="text-xs hidden sm:flex flex-shrink-0">
-                {count}
-              </Badge>
-            </Button>
-          );
-        })}
-      </div>
-
-      {/* Vendors header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4">
-          <h2 className="text-lg md:text-xl font-semibold">{filteredVendors.length} Vendors Available</h2>
-          {selectedDate && (
-            <Badge variant="secondary" className="w-fit">
-              <Calendar className="w-3 h-3 mr-1 text-blue-600" />
-              <span className="text-xs">
-                {new Date(selectedDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-              </span>
-            </Badge>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Select defaultValue="featured">
-            <SelectTrigger className="w-full sm:w-40 text-xs md:text-sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="featured">Featured</SelectItem>
-              <SelectItem value="rating">Highest Rated</SelectItem>
-              <SelectItem value="price-low">Price: Low to High</SelectItem>
-              <SelectItem value="price-high">Price: High to Low</SelectItem>
-              <SelectItem value="availability">Available First</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
-
-      {/* Get a Quote dialog */}
-      <Dialog open={isQuoteDialogOpen} onOpenChange={setIsQuoteDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Request a Quote</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="p-3 rounded-lg bg-muted">
-              <p className="text-sm font-medium">{quoteVendor?.name || "Vendor"}</p>
-              <p className="text-xs text-muted-foreground">
-                Fill this out and we&apos;ll send the vendor your request.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium mb-1 block">Event Date</label>
-                <Input
-                  type="date"
-                  value={quoteForm.eventDate}
-                  onChange={(e) => setQuoteForm((p) => ({ ...p, eventDate: e.target.value }))}
-                />
-              </div>
-              <div>
-                <label className="text-xs font-medium mb-1 block">Guest Count</label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={quoteForm.guestCount || ""}
-                  onChange={(e) => setQuoteForm((p) => ({ ...p, guestCount: Number(e.target.value) }))}
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="text-xs font-medium mb-1 block">Your Email</label>
-              <Input
-                type="email"
-                value={quoteForm.contactEmail}
-                onChange={(e) => setQuoteForm((p) => ({ ...p, contactEmail: e.target.value }))}
-                placeholder="you@example.com"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs font-medium mb-1 block">Message (optional)</label>
-              <Textarea
-                value={quoteForm.message}
-                onChange={(e) => setQuoteForm((p) => ({ ...p, message: e.target.value }))}
-                placeholder="Any details or questions for the vendor..."
-                rows={4}
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsQuoteDialogOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={submitQuoteRequest}>
-                Send Request
-              </Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
+      <WeddingPlanningVendorQuoteDialog
+        isOpen={isQuoteDialogOpen}
+        onOpenChange={setIsQuoteDialogOpen}
+        quoteVendor={quoteVendor}
+        quoteForm={quoteForm}
+        onQuoteFormChange={setQuoteForm}
+        onSubmit={submitQuoteRequest}
+      />
 
       
 
@@ -2930,18 +2612,13 @@ const displaySmartTips = useMemo(() => {
       </Dialog>
 
 {/* Vendors grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-8">
-        {filteredVendors.map((vendor) => (
-          <VendorCard
-            key={vendor.id}
-            vendor={vendor}
-            isSaved={savedVendors.has(vendor.id)}
-            isQuoteRequested={requestedQuotes.has(vendor.id)}
-            onToggleSave={toggleSaveVendor}
-            onRequestQuote={requestQuote}
-          />
-        ))}
-      </div>
+      <WeddingPlanningVendorGrid
+        filteredVendors={filteredVendors}
+        savedVendors={savedVendors}
+        requestedQuotes={requestedQuotes}
+        onToggleSave={toggleSaveVendor}
+        onRequestQuote={requestQuote}
+      />
         </>
         )}
 
