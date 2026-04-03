@@ -11,6 +11,15 @@ import {
   recipes
 } from "../../shared/schema.js";
 import { requireAuth } from "../middleware";
+import {
+  buildSimulatedTransactionId,
+  filterBrowsePlans,
+  normalizeAnalyticsTotals,
+  normalizeRatingStats,
+  parsePriceDollarsToCents,
+  sortBrowsePlans,
+  toIsoDateString,
+} from "./meal-plans/utils.js";
 
 const router = express.Router();
 
@@ -161,43 +170,17 @@ router.get("/meal-plans", async (req: Request, res: Response) => {
 
     const plans = await query;
 
-    let filtered = plans;
+    const filtered = filterBrowsePlans(plans, {
+      category,
+      difficulty,
+      minPriceCents: parsePriceDollarsToCents(minPrice),
+      maxPriceCents: parsePriceDollarsToCents(maxPrice),
+      search,
+    });
 
-    if (category && category !== "all") {
-      filtered = filtered.filter(p => p.blueprint.category === category);
-    }
+    const sorted = sortBrowsePlans(filtered, sort);
 
-    if (difficulty && difficulty !== "all") {
-      filtered = filtered.filter(p => p.blueprint.difficulty === difficulty);
-    }
-
-    if (minPrice) {
-      filtered = filtered.filter(p => p.blueprint.priceInCents >= parseInt(minPrice as string) * 100);
-    }
-
-    if (maxPrice) {
-      filtered = filtered.filter(p => p.blueprint.priceInCents <= parseInt(maxPrice as string) * 100);
-    }
-
-    if (search) {
-      const searchLower = (search as string).toLowerCase();
-      filtered = filtered.filter(p =>
-        p.blueprint.title.toLowerCase().includes(searchLower) ||
-        p.blueprint.description?.toLowerCase().includes(searchLower)
-      );
-    }
-
-    if (sort === "price-asc") {
-      filtered.sort((a, b) => a.blueprint.priceInCents - b.blueprint.priceInCents);
-    } else if (sort === "price-desc") {
-      filtered.sort((a, b) => b.blueprint.priceInCents - a.blueprint.priceInCents);
-    } else if (sort === "rating") {
-      filtered.sort((a, b) => (b.avgRating || 0) - (a.avgRating || 0));
-    } else {
-      filtered.sort((a, b) => new Date(b.blueprint.createdAt).getTime() - new Date(a.blueprint.createdAt).getTime());
-    }
-
-    res.json({ plans: filtered });
+    res.json({ plans: sorted });
   } catch (error) {
     console.error("Error browsing meal plans:", error);
     res.status(500).json({ message: "Failed to browse meal plans" });
@@ -262,10 +245,7 @@ router.get("/meal-plans/:id", async (req: Request, res: Response) => {
       plan,
       version,
       reviews,
-      ratingStats: {
-        avgRating: (ratingStats as any).avgRating || 0,
-        totalReviews: (ratingStats as any).totalReviews || 0,
-      },
+      ratingStats: normalizeRatingStats(ratingStats),
     });
   } catch (error) {
     console.error("Error fetching meal plan details:", error);
@@ -312,7 +292,7 @@ router.post("/meal-plans/:id/purchase", requireAuth, async (req: Request, res: R
         pricePaidCents: plan.priceInCents,
         paymentStatus: "completed",
         paymentMethod: paymentMethod || "stripe",
-        transactionId: `sim_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+        transactionId: buildSimulatedTransactionId(),
       })
       .returning();
 
@@ -325,7 +305,7 @@ router.post("/meal-plans/:id/purchase", requireAuth, async (req: Request, res: R
       .insert(creatorAnalytics)
       .values({
         creatorId: plan.creatorId,
-        date: new Date().toISOString().split("T")[0],
+        date: toIsoDateString(),
         totalSales: 1,
         totalRevenueCents: plan.priceInCents,
       })
@@ -458,10 +438,7 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
       .limit(10);
 
     res.json({
-      totals: {
-        totalSales: (totals as any)?.totalSales || 0,
-        totalRevenueCents: (totals as any)?.totalRevenue || 0,
-      },
+      totals: normalizeAnalyticsTotals(totals),
       daily,
       topPlans,
     });
