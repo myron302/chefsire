@@ -40,6 +40,41 @@ const metricFormulas = [
   { from: "Inch", multiplyBy: "2.54", to: "Centimeter" },
 ];
 
+const panCapacityReference = [
+  { panSize: '1 3/4-by 3/4-inch (4.5 by 2 cm)', panType: 'Mini muffin or madeleine cup', approxVolume: '2 tbsp (30 mL)' },
+  { panSize: '5-by 1 3/8-by 3/8-inch (12.5 by 3.4 by 1 cm)', panType: 'Cornstick pan / barquette shell / ladyfinger cup', approxVolume: '3 1/2 tbsp (52 mL)' },
+  { panSize: '2 3/4-by 1 1/8-inch (7 by 2.8 cm)', panType: 'Muffin cup', approxVolume: '1/4 cup (60 mL)' },
+  { panSize: '2 3/4-by 1 3/8-inch (7 by 3.4 cm)', panType: 'Deep muffin or popover cup', approxVolume: '7 tbsp (105 mL)' },
+  { panSize: '3-by 1 1/4-inch (7.5 by 3 cm)', panType: 'Jumbo muffin cup', approxVolume: '10 tbsp (150 mL)' },
+  { panSize: '3 1/2-by 1 3/4-inch (8.5 by 4.5 cm)', panType: 'Round ramekin or custard cup', approxVolume: '3/4 cup (175 mL)' },
+  { panSize: '5 1/2-by 3-by 2-inch (14 by 7.5 by 6 cm)', panType: 'Loaf', approxVolume: '2 cups (500 mL)' },
+  { panSize: '1 quart (1 L)', panType: 'Casserole', approxVolume: '4 cups (1 L)' },
+  { panSize: '8-by 1 1/2-inch (20 by 4 cm)', panType: 'Pie, quiche, round cake', approxVolume: '4 cups (1 L)' },
+  { panSize: '11-by 1-inch (27.5 by 2.5 cm)', panType: 'Tart or quiche', approxVolume: '4 cups (1 L)' },
+  { panSize: '9-by 1 1/2-inch (23 by 4 cm)', panType: 'Pie, quiche, round cake', approxVolume: '5 cups (1.25 L)' },
+  { panSize: '7 1/2-by 3-inch (19 by 7.5 cm)', panType: 'Bundt or Kugelhopf', approxVolume: '6 cups (1.5 L)' },
+  { panSize: '8-by 2-inch (20 by 5 cm)', panType: 'Round cake', approxVolume: '6 cups (1.5 L)' },
+  { panSize: '8-by 8-by 1 1/2-inch (20 by 20 by 4 cm)', panType: 'Square', approxVolume: '6 cups (1.5 L)' },
+  { panSize: '10-by 1 1/2-inch (25 by 4 cm)', panType: 'Pie or quiche', approxVolume: '6 cups (1.5 L)' },
+  { panSize: '11-by 7-by 2-inch (27.5 by 18 by 5 cm)', panType: 'Rectangular', approxVolume: '6 cups (1.5 L)' },
+  { panSize: '8 1/2-by 4 1/2-by 2 1/4-inch (21 by 11 by 6 cm)', panType: 'Loaf', approxVolume: '6 cups (1.5 L)' },
+  { panSize: '6-by 4 1/4-inch (15 by 10.5 cm)', panType: 'Charlotte / panettone / round mold', approxVolume: '7 1/2 cups (1.875 L)' },
+  { panSize: '2 quart (2 L)', panType: 'Casserole', approxVolume: '8 cups (2 L)' },
+  { panSize: '8-by 8-by 2-inch (20 by 20 by 5 cm)', panType: 'Square', approxVolume: '8 cups (2 L)' },
+  { panSize: '9-by 2-inch (23 by 5 cm)', panType: 'Deep-dish pie / quiche / round cake', approxVolume: '8 cups (2 L)' },
+  { panSize: '9-by 5-by 3-inch (23 by 12.5 by 7.5 cm)', panType: 'Loaf', approxVolume: '8 cups (2 L)' },
+  { panSize: '9 1/2-by 2 1/2-inch (24 by 6 cm)', panType: 'Springform', approxVolume: '10 cups (2.5 L)' },
+  { panSize: '15-by 10-by 1-inch (38 by 25 by 2.5 cm)', panType: 'Jelly roll', approxVolume: '10 cups (2.5 L)' },
+  { panSize: '10-by 2-inch (25 by 5 cm)', panType: 'Round cake', approxVolume: '11 cups (2.75 L)' },
+  { panSize: '10-by 2 1/2-inch (25 by 6 cm)', panType: 'Springform', approxVolume: '12 cups (3 L)' },
+  { panSize: '10-by 3 1/2-inch (25 by 8.5 cm)', panType: 'Bundt', approxVolume: '12 cups (3 L)' },
+  { panSize: '3 quart (3 L)', panType: 'Casserole', approxVolume: '12 cups (3 L)' },
+  { panSize: '13-by 9-by 2-inch (33 by 23 by 5 cm)', panType: 'Rectangular', approxVolume: '12 cups (3 L)' },
+  { panSize: '10-by 4-inch (25 by 10 cm)', panType: 'Tube', approxVolume: '16 cups (4 L)' },
+  { panSize: '14-by 10 1/2-by 2 1/2-inch (35 by 26 by 6 cm)', panType: 'Roasting pan', approxVolume: '18 cups (4.5 L)' },
+  { panSize: '10-by 5-inch (25 by 12.5 cm)', panType: 'Round cloche clay oven', approxVolume: '20 cups (5 L)' },
+];
+
 export default function CookingToolsReference() {
   return (
     <div className="space-y-6">
@@ -135,6 +170,35 @@ export default function CookingToolsReference() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pan Size & Filled Volume Guide</CardTitle>
+          <CardDescription>
+            Approximate capacities for common baking pans and molds.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Pan Size</TableHead>
+                <TableHead>Pan Type</TableHead>
+                <TableHead>Approximate Filled Volume</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {panCapacityReference.map((row) => (
+                <TableRow key={`${row.panSize}-${row.panType}`}>
+                  <TableCell className="font-medium">{row.panSize}</TableCell>
+                  <TableCell>{row.panType}</TableCell>
+                  <TableCell>{row.approxVolume}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }
