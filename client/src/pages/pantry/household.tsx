@@ -1,52 +1,38 @@
 // client/src/pages/pantry/household.tsx
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Users, Copy, Home, LogOut, RefreshCcw, Merge, Trash2 } from "lucide-react";
+import { Users, Copy, Home, LogOut, RefreshCcw, Trash2 } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-
-type HouseholdMember = {
-  userId: string;
-  role: "owner" | "admin" | "member";
-  joinedAt?: string;
-  username?: string | null;
-  displayName?: string | null;
-  avatarUrl?: string | null;
-};
-
-type HouseholdInfo = {
-  household: {
-    id: string;
-    name: string;
-    inviteCode: string;
-    ownerId: string;
-    createdAt?: string;
-  } | null;
-  userRole: "owner" | "admin" | "member" | null;
-  members: HouseholdMember[];
-};
-
-type DuplicatePair = {
-  existing: { id: string; name: string; unit?: string | null; category?: string | null; quantity?: string | null };
-  incoming: { id: string; name: string; unit?: string | null; category?: string | null; quantity?: string | null };
-};
-
-type HouseholdInvite = {
-  id: string;
-  householdId: string;
-  householdName: string;
-  invitedBy: {
-    username: string | null;
-    email: string | null;
-  };
-  createdAt: string;
-};
+import {
+  acceptHouseholdInvite,
+  createHousehold,
+  declineHouseholdInvite,
+  fetchHouseholdInfo,
+  fetchHouseholdInvites,
+  inviteHouseholdUser,
+  joinHousehold,
+  leaveHousehold,
+  removeHouseholdMember,
+  resolveHouseholdDuplicates,
+  syncHouseholdPantry,
+} from "./household/api";
+import {
+  buildInitialDuplicateDecisions,
+  buildResolveDuplicatesDecisions,
+  canManageHousehold,
+  HOUSEHOLD_INVITES_QUERY_KEY,
+  HOUSEHOLD_QUERY_KEY,
+  HOUSEHOLD_REFETCH_INTERVAL_MS,
+  PANTRY_ITEMS_QUERY_KEY,
+} from "./household/helpers";
+import { DuplicateResolutionDialog } from "./household/components/DuplicateResolutionDialog";
+import { HouseholdRoleBadge } from "./household/components/HouseholdRoleBadge";
+import type { DuplicateDecision, DuplicatePair, HouseholdInfo, HouseholdInvite } from "./household/types";
 
 export default function HouseholdPantryPage() {
   const qc = useQueryClient();
@@ -59,57 +45,30 @@ export default function HouseholdPantryPage() {
   // Duplicate resolution UI
   const [dupeOpen, setDupeOpen] = useState(false);
   const [duplicates, setDuplicates] = useState<DuplicatePair[]>([]);
-  const [decisions, setDecisions] = useState<Record<string, "merge" | "keepBoth" | "discardIncoming">>({});
+  const [decisions, setDecisions] = useState<Record<string, DuplicateDecision>>({});
 
   const { data, isLoading } = useQuery<HouseholdInfo>({
-    queryKey: ["/api/pantry/household"],
-    queryFn: async () => {
-      const res = await fetch("/api/pantry/household", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load household");
-      return res.json();
-    },
-    refetchInterval: 30000,
+    queryKey: HOUSEHOLD_QUERY_KEY,
+    queryFn: fetchHouseholdInfo,
+    refetchInterval: HOUSEHOLD_REFETCH_INTERVAL_MS,
   });
 
   const household = data?.household ?? null;
 
   // Query for pending invites
   const { data: invitesData } = useQuery<{ invites: HouseholdInvite[] }>({
-    queryKey: ["/api/pantry/household/invites"],
-    queryFn: async () => {
-      const res = await fetch("/api/pantry/household/invites", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load invites");
-      return res.json();
-    },
-    refetchInterval: 30000,
+    queryKey: HOUSEHOLD_INVITES_QUERY_KEY,
+    queryFn: fetchHouseholdInvites,
+    refetchInterval: HOUSEHOLD_REFETCH_INTERVAL_MS,
   });
 
   const pendingInvites = invitesData?.invites ?? [];
 
-  const roleBadge = (role: HouseholdMember["role"]) => {
-    if (role === "owner") return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Owner</Badge>;
-    if (role === "admin") return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Admin</Badge>;
-    return <Badge variant="outline">Member</Badge>;
-  };
-
   const createMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/pantry/household", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ name: createName }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const debugInfo = `Status: ${res.status}\nMessage: ${j.message || "Unknown"}\nDetails: ${j.details || "None"}\nResponse: ${JSON.stringify(j)}`;
-        throw new Error(debugInfo);
-      }
-      return j as HouseholdInfo;
-    },
+    mutationFn: async () => createHousehold(createName),
     onSuccess: () => {
       setCreateName("");
-      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
+      qc.invalidateQueries({ queryKey: HOUSEHOLD_QUERY_KEY });
       toast({ title: "Household created" });
     },
     onError: (e: any) => {
@@ -124,62 +83,34 @@ export default function HouseholdPantryPage() {
   });
 
   const joinMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/pantry/household/join", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ inviteCode }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || "Failed to join household");
-      return j as HouseholdInfo;
-    },
+    mutationFn: async () => joinHousehold(inviteCode),
     onSuccess: () => {
       setInviteCode("");
-      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
+      qc.invalidateQueries({ queryKey: HOUSEHOLD_QUERY_KEY });
       toast({ title: "Joined household" });
     },
     onError: (e: any) => toast({ title: "Join failed", description: e.message, variant: "destructive" }),
   });
 
   const leaveMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/pantry/household/leave", {
-        method: "POST",
-        credentials: "include",
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || "Failed to leave household");
-      return j;
-    },
+    mutationFn: leaveHousehold,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
-      qc.invalidateQueries({ queryKey: ["/api/pantry/items"] });
+      qc.invalidateQueries({ queryKey: HOUSEHOLD_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: PANTRY_ITEMS_QUERY_KEY });
       toast({ title: "Left household" });
     },
     onError: (e: any) => toast({ title: "Leave failed", description: e.message, variant: "destructive" }),
   });
 
   const syncMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/pantry/household/sync", {
-        method: "POST",
-        credentials: "include",
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || "Failed to sync pantry");
-      return j as { ok: boolean; moved: number; duplicates: DuplicatePair[] };
-    },
+    mutationFn: syncHouseholdPantry,
     onSuccess: (j) => {
-      qc.invalidateQueries({ queryKey: ["/api/pantry/items"] });
+      qc.invalidateQueries({ queryKey: PANTRY_ITEMS_QUERY_KEY });
       toast({ title: "Synced pantry", description: `${j.moved} item(s) moved into the household pantry.` });
 
       if (j.duplicates?.length) {
         setDuplicates(j.duplicates);
-        const initial: Record<string, "merge" | "keepBoth" | "discardIncoming"> = {};
-        for (const d of j.duplicates) initial[d.incoming.id] = "merge";
-        setDecisions(initial);
+        setDecisions(buildInitialDuplicateDecisions(j.duplicates));
         setDupeOpen(true);
       }
     },
@@ -187,29 +118,12 @@ export default function HouseholdPantryPage() {
   });
 
   const resolveDupesMutation = useMutation({
-    mutationFn: async () => {
-      const payload = {
-        decisions: duplicates.map((d) => ({
-          incomingId: d.incoming.id,
-          existingId: d.existing.id,
-          action: decisions[d.incoming.id] || "merge",
-        })),
-      };
-      const res = await fetch("/api/pantry/household/resolve-duplicates", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(payload),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || "Failed to resolve duplicates");
-      return j as { ok: boolean; merged: number; discarded: number; kept: number };
-    },
+    mutationFn: async () => resolveHouseholdDuplicates(buildResolveDuplicatesDecisions(duplicates, decisions)),
     onSuccess: (j) => {
       setDupeOpen(false);
       setDuplicates([]);
       setDecisions({});
-      qc.invalidateQueries({ queryKey: ["/api/pantry/items"] });
+      qc.invalidateQueries({ queryKey: PANTRY_ITEMS_QUERY_KEY });
       toast({
         title: "Duplicates resolved",
         description: `Merged: ${j.merged} • Discarded: ${j.discarded} • Kept both: ${j.kept}`,
@@ -219,25 +133,10 @@ export default function HouseholdPantryPage() {
   });
 
   const inviteUserMutation = useMutation({
-    mutationFn: async (emailOrUserId: string) => {
-      const res = await fetch("/api/pantry/household/invite", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ emailOrUserId }),
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        const debugInfo = `Status: ${res.status}\nMessage: ${j.message || "Unknown"}\nDetails: ${j.details || "None"}`;
-        const error = new Error(j.message || "Failed to invite user");
-        (error as any).debugInfo = debugInfo;
-        throw error;
-      }
-      return j;
-    },
+    mutationFn: inviteHouseholdUser,
     onSuccess: (data) => {
       setInviteEmail("");
-      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
+      qc.invalidateQueries({ queryKey: HOUSEHOLD_QUERY_KEY });
       toast({ title: "User invited", description: data.message });
     },
     onError: (e: any) => {
@@ -250,58 +149,34 @@ export default function HouseholdPantryPage() {
   });
 
   const acceptInviteMutation = useMutation({
-    mutationFn: async (inviteId: string) => {
-      const res = await fetch(`/api/pantry/household/invites/${inviteId}/accept`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || "Failed to accept invite");
-      return j;
-    },
+    mutationFn: acceptHouseholdInvite,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
-      qc.invalidateQueries({ queryKey: ["/api/pantry/household/invites"] });
+      qc.invalidateQueries({ queryKey: HOUSEHOLD_QUERY_KEY });
+      qc.invalidateQueries({ queryKey: HOUSEHOLD_INVITES_QUERY_KEY });
       toast({ title: "Invite accepted", description: "Welcome to the household!" });
     },
     onError: (e: any) => toast({ title: "Accept failed", description: e.message, variant: "destructive" }),
   });
 
   const declineInviteMutation = useMutation({
-    mutationFn: async (inviteId: string) => {
-      const res = await fetch(`/api/pantry/household/invites/${inviteId}/decline`, {
-        method: "POST",
-        credentials: "include",
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || "Failed to decline invite");
-      return j;
-    },
+    mutationFn: declineHouseholdInvite,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/pantry/household/invites"] });
+      qc.invalidateQueries({ queryKey: HOUSEHOLD_INVITES_QUERY_KEY });
       toast({ title: "Invite declined" });
     },
     onError: (e: any) => toast({ title: "Decline failed", description: e.message, variant: "destructive" }),
   });
 
   const removeMemberMutation = useMutation({
-    mutationFn: async (userId: string) => {
-      const res = await fetch(`/api/pantry/household/members/${userId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      const j = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(j.message || "Failed to remove member");
-      return j;
-    },
+    mutationFn: removeHouseholdMember,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/pantry/household"] });
+      qc.invalidateQueries({ queryKey: HOUSEHOLD_QUERY_KEY });
       toast({ title: "Member removed" });
     },
     onError: (e: any) => toast({ title: "Remove failed", description: e.message, variant: "destructive" }),
   });
 
-  const canManage = data?.userRole === "owner" || data?.userRole === "admin";
+  const canManage = canManageHousehold(data);
 
   const copyCode = async () => {
     if (!household?.inviteCode) return;
@@ -469,7 +344,7 @@ export default function HouseholdPantryPage() {
 
             <Button
               variant="outline"
-              onClick={() => qc.invalidateQueries({ queryKey: ["/api/pantry/household"] })}
+              onClick={() => qc.invalidateQueries({ queryKey: HOUSEHOLD_QUERY_KEY })}
               title="Refresh"
             >
               Refresh
@@ -513,7 +388,7 @@ export default function HouseholdPantryPage() {
                     {m.username && <div className="text-xs text-muted-foreground">@{m.username}</div>}
                   </div>
                   <div className="flex items-center gap-2">
-                    {roleBadge(m.role)}
+                    <HouseholdRoleBadge role={m.role} />
                     {canManage && m.role !== "owner" && (
                       <Button
                         variant="ghost"
@@ -561,72 +436,15 @@ export default function HouseholdPantryPage() {
         </CardContent>
       </Card>
 
-      {/* Duplicate Resolution Dialog */}
-      <Dialog open={dupeOpen} onOpenChange={setDupeOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Duplicate items found</DialogTitle>
-          </DialogHeader>
-
-          <div className="space-y-3 max-h-[60vh] overflow-auto">
-            <p className="text-sm text-muted-foreground">
-              Some items already existed in the household pantry. Choose what to do for each duplicate.
-            </p>
-
-            {duplicates.map((d) => {
-              const action = decisions[d.incoming.id] || "merge";
-              return (
-                <div key={d.incoming.id} className="border rounded p-3 space-y-2">
-                  <div className="text-sm">
-                    <div className="font-medium">{d.existing.name}</div>
-                    <div className="text-muted-foreground">
-                      Household: {d.existing.quantity ?? "—"} {d.existing.unit ?? ""} {d.existing.category ? `• ${d.existing.category}` : ""}
-                    </div>
-                    <div className="text-muted-foreground">
-                      Yours: {d.incoming.quantity ?? "—"} {d.incoming.unit ?? ""} {d.incoming.category ? `• ${d.incoming.category}` : ""}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      variant={action === "merge" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setDecisions((s) => ({ ...s, [d.incoming.id]: "merge" }))}
-                    >
-                      <Merge className="w-4 h-4 mr-2" />
-                      Merge quantities
-                    </Button>
-                    <Button
-                      variant={action === "keepBoth" ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setDecisions((s) => ({ ...s, [d.incoming.id]: "keepBoth" }))}
-                    >
-                      Keep both
-                    </Button>
-                    <Button
-                      variant={action === "discardIncoming" ? "destructive" : "outline"}
-                      size="sm"
-                      onClick={() => setDecisions((s) => ({ ...s, [d.incoming.id]: "discardIncoming" }))}
-                    >
-                      <Trash2 className="w-4 h-4 mr-2" />
-                      Discard mine
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setDupeOpen(false)}>
-              Close
-            </Button>
-            <Button onClick={() => resolveDupesMutation.mutate()} disabled={resolveDupesMutation.isPending}>
-              Apply choices
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <DuplicateResolutionDialog
+        open={dupeOpen}
+        onOpenChange={setDupeOpen}
+        duplicates={duplicates}
+        decisions={decisions}
+        onDecisionChange={(incomingId, action) => setDecisions((s) => ({ ...s, [incomingId]: action }))}
+        onApplyChoices={() => resolveDupesMutation.mutate()}
+        applyPending={resolveDupesMutation.isPending}
+      />
     </div>
   );
 }
