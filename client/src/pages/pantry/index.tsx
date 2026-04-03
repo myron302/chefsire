@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import CookingToolsReference from "@/components/meal-planner/CookingToolsReference";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInDays, isPast, isFuture } from "date-fns";
 
@@ -54,6 +56,9 @@ export default function PantryDashboard() {
   const [showStatsDialog, setShowStatsDialog] = useState<'total' | 'expiring' | 'expired' | 'runningLow' | null>(null);
   const [itemToEdit, setItemToEdit] = useState<PantryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState(() =>
+    new URLSearchParams(window.location.search).get("tab") === "tools" ? "tools" : "inventory"
+  );
 
   // Handle scanned barcode from URL parameters
   useEffect(() => {
@@ -359,6 +364,18 @@ export default function PantryDashboard() {
     runningLow: items.filter(i => i.isRunningLow).length,
   };
 
+  const handleTabChange = (nextTab: string) => {
+    setActiveTab(nextTab);
+    const params = new URLSearchParams(window.location.search);
+    if (nextTab === "tools") {
+      params.set("tab", "tools");
+    } else {
+      params.delete("tab");
+    }
+    const query = params.toString();
+    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -592,7 +609,13 @@ export default function PantryDashboard() {
         </Card>
       </div>
 
-      {/* Items Grid */}
+      <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
+        <TabsList className="mb-6 grid w-full max-w-md grid-cols-2">
+          <TabsTrigger value="inventory">Pantry Inventory</TabsTrigger>
+          <TabsTrigger value="tools">Cooking Tools</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="inventory">
       <div data-items-section>
       {filteredItems.length === 0 ? (
         <Card>
@@ -756,6 +779,12 @@ export default function PantryDashboard() {
         </div>
       )}
       </div>
+        </TabsContent>
+
+        <TabsContent value="tools">
+          <CookingToolsReference />
+        </TabsContent>
+      </Tabs>
 
       {/* Stats Dialog */}
       <Dialog open={showStatsDialog !== null} onOpenChange={() => setShowStatsDialog(null)}>
