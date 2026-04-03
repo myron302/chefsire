@@ -1,121 +1,20 @@
 // server/routes/nutrition.ts
 import { Router } from "express";
-import { z } from "zod";
-import { sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
-import { db } from "../db";
-import { subscriptionHistory } from "../../shared/schema";
+import {
+  NUTRITION_SUBSCRIPTION_TIERS,
+  nutritionTierPriceAsString,
+} from "./nutrition/constants";
+import {
+  coerceNutritionTierFromUser,
+  deriveNutritionStatus,
+  parseValidDateOrNull,
+} from "./nutrition/helpers";
+import { nutritionSubscriptionChangeSchema } from "./nutrition/schemas";
+import { logNutritionSubscriptionHistory } from "./nutrition/subscription-history";
 
 const r = Router();
-
-/**
- * Nutrition subscription tiers (separate from marketplace seller subscriptions)
- * These are intentionally separate so they don't get mixed into seller upgrades.
- */
-const NUTRITION_SUBSCRIPTION_TIERS = {
-  free: {
-    name: "Free",
-    price: 0,
-    features: [
-      "Basic nutrition logging",
-      "Daily calorie summary",
-      "Set nutrition goals",
-      "Manual meal entries",
-    ],
-  },
-  premium: {
-    name: "Premium",
-    price: 9.99,
-    features: [
-      "Everything in Free",
-      "Advanced nutrition insights",
-      "Premium tracking tools",
-      "Priority nutrition features",
-      "Expanded reports/history",
-    ],
-  },
-} as const;
-
-type NutritionTierKey = keyof typeof NUTRITION_SUBSCRIPTION_TIERS;
-
-function nutritionTierPriceAsString(tier: NutritionTierKey): string {
-  const price = NUTRITION_SUBSCRIPTION_TIERS[tier]?.price ?? 0;
-  return Number(price).toFixed(2);
-}
-
-function coerceNutritionTierFromUser(user: any): NutritionTierKey {
-  return user?.nutritionPremium ? "premium" : "free";
-}
-
-function deriveNutritionStatus(user: any): "active" | "inactive" | "expired" {
-  const isPremium = !!user?.nutritionPremium;
-  const endsAtRaw = user?.nutritionTrialEndsAt;
-  const endsAt = endsAtRaw ? new Date(endsAtRaw) : null;
-
-  if (!isPremium) return "inactive";
-  if (endsAt && !Number.isNaN(endsAt.getTime()) && endsAt.getTime() < Date.now()) return "expired";
-  return "active";
-}
-
-async function ensureSubscriptionHistoryTable() {
-  await db.execute(sql`
-    CREATE TABLE IF NOT EXISTS subscription_history (
-      id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id VARCHAR NOT NULL REFERENCES users(id),
-      tier TEXT NOT NULL,
-      amount NUMERIC(8,2) NOT NULL,
-      start_date TIMESTAMP NOT NULL,
-      end_date TIMESTAMP NOT NULL,
-      status TEXT NOT NULL,
-      payment_method TEXT,
-      subscription_type TEXT DEFAULT 'marketplace',
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
-    )
-  `);
-
-  await db.execute(sql`
-    ALTER TABLE subscription_history
-      ADD COLUMN IF NOT EXISTS subscription_type TEXT DEFAULT 'marketplace';
-  `);
-
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS subscription_history_user_idx
-      ON subscription_history(user_id)
-  `);
-
-  await db.execute(sql`
-    CREATE INDEX IF NOT EXISTS subscription_history_created_at_idx
-      ON subscription_history(created_at)
-  `);
-}
-
-async function logNutritionSubscriptionHistory(params: {
-  userId: string;
-  tier: NutritionTierKey;
-  amount: string;
-  startDate: Date;
-  endDate: Date;
-  status: string;
-  paymentMethod?: string | null;
-}) {
-  await ensureSubscriptionHistoryTable();
-
-  // Prefix tier values so shared /api/subscriptions/history can distinguish nutrition rows
-  // without changing the subscription_history schema.
-  const tierForHistory = `nutrition_${params.tier}`;
-
-  await db.insert(subscriptionHistory).values({
-    userId: params.userId,
-    tier: tierForHistory,
-    amount: params.amount,
-    startDate: params.startDate,
-    endDate: params.endDate,
-    status: params.status,
-    paymentMethod: params.paymentMethod ?? null,
-    subscriptionType: "nutrition",
-  } as any);
-}
 
 /**
  * ===========================
@@ -136,9 +35,8 @@ r.post("/users/:id/trial", async (req, res, next) => {
     // Log trial activation as a nutrition premium event (amount 0.00 for trial)
     const now = new Date();
     const endsAt =
-      (user as any)?.nutritionTrialEndsAt && !Number.isNaN(new Date((user as any).nutritionTrialEndsAt).getTime())
-        ? new Date((user as any).nutritionTrialEndsAt)
-        : new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      parseValidDateOrNull((user as any)?.nutritionTrialEndsAt) ??
+      new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
 
     await logNutritionSubscriptionHistory({
       userId: req.params.id,
@@ -290,12 +188,7 @@ r.get("/subscription", requireAuth, async (req, res) => {
 // Body: { tier: "free" | "premium" }
 r.post("/subscription/change", requireAuth, async (req, res) => {
   try {
-    const schema = z.object({
-      tier: z.enum(["free", "premium"]),
-      paymentMethod: z.string().optional(),
-    });
-
-    const { tier, paymentMethod } = schema.parse(req.body);
+    const { tier, paymentMethod } = nutritionSubscriptionChangeSchema.parse(req.body);
     const userId = req.user!.id;
 
     const existingUser = await storage.getUser(userId);
@@ -309,10 +202,7 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
     // no-op protection if already premium and still active
     if (tier === "premium") {
       const existingEndsAtRaw = (existingUser as any).nutritionTrialEndsAt;
-      const existingEndsAt =
-        existingEndsAtRaw && !Number.isNaN(new Date(existingEndsAtRaw).getTime())
-          ? new Date(existingEndsAtRaw)
-          : null;
+      const existingEndsAt = parseValidDateOrNull(existingEndsAtRaw);
 
       if (currentTier === "premium" && existingEndsAt && existingEndsAt.getTime() > Date.now()) {
         return res.json({
@@ -359,10 +249,7 @@ r.post("/subscription/change", requireAuth, async (req, res) => {
 
     // tier === "free" => immediate downgrade/cancel for nutrition
     const previousEndsAtRaw = (existingUser as any).nutritionTrialEndsAt;
-    const previousEndsAt =
-      previousEndsAtRaw && !Number.isNaN(new Date(previousEndsAtRaw).getTime())
-        ? new Date(previousEndsAtRaw)
-        : now;
+    const previousEndsAt = parseValidDateOrNull(previousEndsAtRaw) ?? now;
 
     const updated = await storage.updateUser(userId, {
       nutritionPremium: false,
@@ -426,10 +313,7 @@ r.post("/subscription/cancel", requireAuth, async (req, res) => {
     }
 
     const currentEndsAtRaw = (user as any).nutritionTrialEndsAt;
-    const currentEndsAt =
-      currentEndsAtRaw && !Number.isNaN(new Date(currentEndsAtRaw).getTime())
-        ? new Date(currentEndsAtRaw)
-        : now;
+    const currentEndsAt = parseValidDateOrNull(currentEndsAtRaw) ?? now;
 
     const updated = await storage.updateUser(userId, {
       nutritionPremium: false,
