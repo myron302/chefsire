@@ -16,7 +16,7 @@ import {
 
 // ---------- Config ----------
 const DATA_DIR = path.resolve("server/data/substitutions");
-const GLOB = /\.json$/i; // we'll also try NDJSON with .json files
+const GLOB = /\.(json|tsv)$/i; // supports JSON + tabular TSV uploads
 
 // ---------- Types ----------
 type Component = { item: string; amount?: number; unit?: string; note?: string };
@@ -97,6 +97,64 @@ function makeSignature(ingredient: string, text: string, components?: Component[
   const compStr = components?.map(c => `${(c.amount ?? "").toString()} ${c.unit ?? ""} ${c.item}`.trim()).join(" + ") ?? "";
   const base = (text || compStr || "").toLowerCase().trim();
   return `${ingredient.toLowerCase()} | ${base}`;
+}
+
+
+
+function parseTsvRows(file: string): Array<{ ingredient: string; amount: string; substitute: string }> {
+  const raw = fs.readFileSync(file, "utf8");
+  const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const out: Array<{ ingredient: string; amount: string; substitute: string }> = [];
+
+  for (const line of lines) {
+    if (/^ingredient\s+amount\s+substitute$/i.test(line.replace(/\t+/g, " "))) continue;
+    const cols = line.split(/\t+/).map((c) => c.trim()).filter(Boolean);
+    if (cols.length < 3) continue;
+    const [ingredient, amount, ...rest] = cols;
+    const substitute = rest.join(" ").trim();
+    if (!ingredient || !substitute) continue;
+    out.push({ ingredient, amount, substitute });
+  }
+
+  return out;
+}
+
+async function ingestTsv(file: string) {
+  const rows = parseTsvRows(file);
+  if (!rows.length) return 0;
+
+  let ing = 0, subs = 0;
+  const seenIngredient = new Set<string>();
+
+  for (const row of rows) {
+    const ingName = normIng(row.ingredient);
+    const ingredientId = await getOrCreateIngredientId(ingName);
+    if (!seenIngredient.has(ingName)) {
+      seenIngredient.add(ingName);
+      ing++;
+    }
+
+    const text = `Per ${row.amount}: ${row.substitute}`;
+    const components = toComponents(text);
+    const signature = makeSignature(ingName, text, components);
+    const signatureHash = sha256(signature);
+
+    subs += await insertSubOnce(ingredientId, {
+      text,
+      components,
+      method: {},
+      context: null,
+      dietTags: [],
+      allergenFlags: [],
+      signature,
+      signatureHash,
+      variants: [],
+      provenance: [{ file: path.basename(file), format: "tsv" }],
+    });
+  }
+
+  console.log(`→ ${path.basename(file)}: upserted ${ing} ingredients, ${subs} subs`);
+  return subs;
 }
 
 // ---------- DB helpers ----------
@@ -280,7 +338,7 @@ async function ingestNdjsonSimple(file: string) {
 
 // ---------- Main ----------
 (async function main() {
-  console.log("📦 Ingesting JSON/NDJSON substitutions from", DATA_DIR);
+  console.log("📦 Ingesting JSON/NDJSON/TSV substitutions from", DATA_DIR);
   if (!fs.existsSync(DATA_DIR)) {
     console.error(`❌ Not found: ${DATA_DIR}`);
     process.exit(1);
@@ -288,13 +346,18 @@ async function ingestNdjsonSimple(file: string) {
 
   const files = fs.readdirSync(DATA_DIR).filter((f) => GLOB.test(f)).sort();
   if (files.length === 0) {
-    console.error("❌ No .json files found.");
+    console.error("❌ No .json/.tsv files found.");
     process.exit(1);
   }
 
   let total = 0;
   for (const f of files) {
     const full = path.join(DATA_DIR, f);
+
+    if (full.toLowerCase().endsWith(".tsv")) {
+      total += await ingestTsv(full);
+      continue;
+    }
 
     // Try array JSON first (your seed-A-C.json):
     const asArray = tryParseJsonArray(full);
