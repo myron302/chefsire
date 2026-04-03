@@ -61,6 +61,11 @@ export default function PantryDashboard() {
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [activeTab, setActiveTab] = useState(() => getInitialPantryTab(window.location.search));
 
+  // Keep tab state synchronized with URL changes (e.g. browser navigation or external links)
+  useEffect(() => {
+    setActiveTab(getInitialPantryTab(window.location.search));
+  }, [location]);
+
   // Handle scanned barcode from URL parameters
   useEffect(() => {
     const scannedItem = parseScannedPantryItemFromSearch(window.location.search);
@@ -221,6 +226,7 @@ export default function PantryDashboard() {
   const stats = derivePantryStats(items, expiringItems);
 
   const handleTabChange = (nextTab: string) => {
+    if (nextTab === activeTab) return;
     setActiveTab(nextTab);
     const nextUrl = buildPantryTabUrl(window.location.pathname, window.location.search, nextTab);
     window.history.replaceState(null, "", nextUrl);
