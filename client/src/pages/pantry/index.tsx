@@ -10,7 +10,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CookingToolsReference from "@/components/meal-planner/CookingToolsReference";
 import { useToast } from "@/hooks/use-toast";
-import { differenceInDays, isPast } from "date-fns";
 import {
   addItemsToGroceryList,
   addScannedPantryItem,
@@ -26,6 +25,18 @@ import {
   normalizePantryItemsResponse,
 } from "./lib/normalizers";
 import type { PantryItem } from "./lib/types";
+import {
+  derivePantryCategories,
+  derivePantryLocations,
+  derivePantryStats,
+  filterPantryItems,
+  getExpiryStatus,
+} from "./lib/dashboard-helpers";
+import {
+  buildPantryTabUrl,
+  getInitialPantryTab,
+  parseScannedPantryItemFromSearch,
+} from "./lib/url-state";
 import { AddItemForm } from "./components/AddItemForm";
 import { PantryStatsCards } from "./components/PantryStatsCards";
 import { PantryFilters } from "./components/PantryFilters";
@@ -48,43 +59,26 @@ export default function PantryDashboard() {
   const [showStatsDialog, setShowStatsDialog] = useState<'total' | 'expiring' | 'expired' | 'runningLow' | null>(null);
   const [itemToEdit, setItemToEdit] = useState<PantryItem | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState(() =>
-    new URLSearchParams(window.location.search).get("tab") === "tools" ? "tools" : "inventory"
-  );
+  const [activeTab, setActiveTab] = useState(() => getInitialPantryTab(window.location.search));
 
   // Handle scanned barcode from URL parameters
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const barcode = params.get('barcode');
-    const name = params.get('name');
+    const scannedItem = parseScannedPantryItemFromSearch(window.location.search);
 
-    if (barcode && name) {
-      const category = params.get('category') || '';
-      const quantity = params.get('quantity') || '1';
-      const unit = params.get('unit') || 'piece';
-      const brand = params.get('brand') || '';
-      const imageUrl = params.get('imageUrl') || '';
-
+    if (scannedItem) {
       // Show toast that item was scanned
       toast({
         title: "Product Scanned!",
-        description: `Adding ${name} to your pantry...`,
+        description: `Adding ${scannedItem.name} to your pantry...`,
       });
 
       // Add item to pantry
-      addScannedPantryItem({
-        name,
-        category,
-        quantity,
-        unit,
-        brand,
-        imageUrl,
-      })
+      addScannedPantryItem(scannedItem)
         .then((res) => {
           if (res.ok) {
             toast({
               title: "Success!",
-              description: `${name} has been added to your pantry`,
+              description: `${scannedItem.name} has been added to your pantry`,
             });
             queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
             // Clear URL parameters
@@ -216,85 +210,20 @@ export default function PantryDashboard() {
     addToShoppingListMutation.mutate(itemsToAdd);
   };
 
-  // Get expiry status
-  const getExpiryStatus = (expirationDate: string | null) => {
-    if (!expirationDate) return { status: "none", label: "", color: "" };
-
-    const expDate = new Date(expirationDate);
-    const daysUntilExpiry = differenceInDays(expDate, new Date());
-
-    if (isPast(expDate)) {
-      return { status: "expired", label: "Expired", color: "bg-red-100 text-red-800" };
-    } else if (daysUntilExpiry <= 1) {
-      return { status: "urgent", label: `Expires today`, color: "bg-orange-100 text-orange-800" };
-    } else if (daysUntilExpiry <= 3) {
-      return { status: "warning", label: `${daysUntilExpiry}d left`, color: "bg-yellow-100 text-yellow-800" };
-    } else if (daysUntilExpiry <= 7) {
-      return { status: "soon", label: `${daysUntilExpiry}d left`, color: "bg-blue-100 text-blue-800" };
-    } else {
-      return { status: "fresh", label: `${daysUntilExpiry}d left`, color: "bg-green-100 text-green-800" };
-    }
-  };
-
-  // Filter items
-  const filteredItems = items.filter(item => {
-    // Search filter
-    if (searchQuery && !item.name.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-
-    // Category filter
-    if (filterCategory !== "all" && item.category !== filterCategory) {
-      return false;
-    }
-
-    // Location filter
-    if (filterLocation !== "all" && item.location !== filterLocation) {
-      return false;
-    }
-
-    // Expiry filter
-    if (filterExpiry !== "all") {
-      const expStatus = getExpiryStatus(item.expirationDate).status;
-      if (filterExpiry === "expiring" && !["urgent", "warning", "soon"].includes(expStatus)) {
-        return false;
-      }
-      if (filterExpiry === "fresh" && expStatus !== "fresh") {
-        return false;
-      }
-      if (filterExpiry === "expired" && expStatus !== "expired") {
-        return false;
-      }
-    }
-
-    return true;
+  const filteredItems = filterPantryItems(items, {
+    searchQuery,
+    filterCategory,
+    filterLocation,
+    filterExpiry,
   });
-
-  // Get unique categories and locations
-  const categories = Array.from(new Set(items.map(i => i.category).filter(Boolean)));
-  const locations = Array.from(new Set(items.map(i => i.location).filter(Boolean)));
-
-  // Stats
-  const stats = {
-    total: items.length,
-    expiring: expiringItems.length,
-    expired: items.filter(i => {
-      const exp = getExpiryStatus(i.expirationDate);
-      return exp.status === "expired";
-    }).length,
-    runningLow: items.filter(i => i.isRunningLow).length,
-  };
+  const categories = derivePantryCategories(items);
+  const locations = derivePantryLocations(items);
+  const stats = derivePantryStats(items, expiringItems);
 
   const handleTabChange = (nextTab: string) => {
     setActiveTab(nextTab);
-    const params = new URLSearchParams(window.location.search);
-    if (nextTab === "tools") {
-      params.set("tab", "tools");
-    } else {
-      params.delete("tab");
-    }
-    const query = params.toString();
-    window.history.replaceState(null, "", `${window.location.pathname}${query ? `?${query}` : ""}`);
+    const nextUrl = buildPantryTabUrl(window.location.pathname, window.location.search, nextTab);
+    window.history.replaceState(null, "", nextUrl);
   };
 
   if (isLoading) {
@@ -432,8 +361,8 @@ export default function PantryDashboard() {
           filterCategory={filterCategory}
           filterLocation={filterLocation}
           filterExpiry={filterExpiry}
-          categories={categories as string[]}
-          locations={locations as string[]}
+          categories={categories}
+          locations={locations}
           onSearchQueryChange={setSearchQuery}
           onCategoryChange={setFilterCategory}
           onLocationChange={setFilterLocation}
