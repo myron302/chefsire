@@ -130,8 +130,12 @@ r.get("/users/:id/pantry", async (req, res) => {
 });
 
 // Add pantry item
-r.post("/users/:id/pantry", async (req, res) => {
+r.post("/users/:id/pantry", requireAuth, async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    if (userId !== req.params.id) return res.status(403).json({ message: "Forbidden" });
+
     const body = legacyPantryItemSchema.parse(req.body);
     const created = await storage.addPantryItem(req.params.id, {
       name: body.name,
@@ -190,8 +194,21 @@ r.put("/pantry/:itemId", requireAuth, async (req, res) => {
 });
 
 // Delete pantry item
-r.delete("/pantry/:itemId", async (req, res) => {
+r.delete("/pantry/:itemId", requireAuth, async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const ownership = await db.execute(sql`
+      SELECT id
+      FROM pantry_items
+      WHERE id = ${req.params.itemId} AND user_id = ${userId}
+      LIMIT 1
+    `);
+    if (!(ownership as any)?.rows?.[0]?.id) {
+      return res.status(404).json({ message: "Pantry item not found" });
+    }
+
     const ok = await storage.deletePantryItem(req.params.itemId);
     if (!ok) return res.status(404).json({ message: "Pantry item not found" });
     res.json({ message: "Pantry item deleted" });
@@ -855,6 +872,30 @@ r.post("/household/resolve-duplicates", requireAuth, async (req, res) => {
     let kept = 0;
 
     for (const decision of body.decisions) {
+      const existingResult = await db.execute(sql`
+        SELECT id
+        FROM pantry_items
+        WHERE id = ${decision.existingId} AND household_id = ${myHousehold.id}
+        LIMIT 1
+      `);
+      if (!(existingResult as any)?.rows?.[0]?.id) {
+        return res.status(404).json({ message: "Pantry item not found" });
+      }
+
+      const incomingResult = await db.execute(sql`
+        SELECT id
+        FROM pantry_items
+        WHERE id = ${decision.incomingId}
+          AND (
+            household_id = ${myHousehold.id}
+            OR (household_id IS NULL AND user_id = ${userId})
+          )
+        LIMIT 1
+      `);
+      if (!(incomingResult as any)?.rows?.[0]?.id) {
+        return res.status(404).json({ message: "Pantry item not found" });
+      }
+
       if (decision.action === "merge") {
         // Merge quantities if both have them
         const existing = await db.execute(sql`
