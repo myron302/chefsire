@@ -95,6 +95,19 @@ r.get("/expiring-soon", requireAuth, async (req, res) => {
 // Delete pantry item by ID
 r.delete("/items/:itemId", requireAuth, async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const ownership = await db.execute(sql`
+      SELECT id
+      FROM pantry_items
+      WHERE id = ${req.params.itemId} AND user_id = ${userId}
+      LIMIT 1
+    `);
+    if (!(ownership as any)?.rows?.[0]?.id) {
+      return res.status(404).json({ message: "Pantry item not found" });
+    }
+
     const ok = await storage.deletePantryItem(req.params.itemId);
     if (!ok) return res.status(404).json({ message: "Pantry item not found" });
     res.json({ message: "Pantry item deleted" });
@@ -140,6 +153,19 @@ r.post("/users/:id/pantry", async (req, res) => {
 // Update pantry item
 r.put("/pantry/:itemId", requireAuth, async (req, res) => {
   try {
+    const userId = req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const ownership = await db.execute(sql`
+      SELECT id
+      FROM pantry_items
+      WHERE id = ${req.params.itemId} AND user_id = ${userId}
+      LIMIT 1
+    `);
+    if (!(ownership as any)?.rows?.[0]?.id) {
+      return res.status(404).json({ message: "Pantry item not found" });
+    }
+
     const body = pantryItemUpdateSchema.parse(req.body);
     const quantityNum = parseOptionalQuantity(body.quantity);
 
