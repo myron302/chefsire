@@ -18,6 +18,11 @@ import {
   pantrySuggestionsQuerySchema,
 } from "./pantry/schemas";
 import { serializeHouseholdInviteRow, serializeHouseholdPayload } from "./pantry/serializers";
+import {
+  getUserDisplayName,
+  isHouseholdManagerRole,
+  partitionPersonalItemsForHouseholdSync,
+} from "./pantry/feature-helpers";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
 import {
@@ -442,7 +447,7 @@ r.post("/household/invite", requireAuth, async (req, res) => {
     }
 
     // Check if inviter is owner or admin
-    if (myHousehold.myRole !== "owner" && myHousehold.myRole !== "admin") {
+    if (!isHouseholdManagerRole(myHousehold.myRole)) {
       return res.status(403).json({ message: "Only owners and admins can invite members" });
     }
 
@@ -467,7 +472,7 @@ r.post("/household/invite", requireAuth, async (req, res) => {
     const targetHousehold = await getHouseholdInfoForUser(targetUserId);
     if (targetHousehold) {
       return res.status(400).json({
-        message: `${targetUser.username || targetUser.email} is already in a household`,
+        message: `${getUserDisplayName(targetUser)} is already in a household`,
       });
     }
 
@@ -480,7 +485,7 @@ r.post("/household/invite", requireAuth, async (req, res) => {
     const existing = (existingInvite as any)?.rows?.[0];
     if (existing && existing.status === 'pending') {
       return res.status(400).json({
-        message: `${targetUser.username || targetUser.email} already has a pending invite`,
+        message: `${getUserDisplayName(targetUser)} already has a pending invite`,
       });
     }
 
@@ -510,7 +515,7 @@ r.post("/household/invite", requireAuth, async (req, res) => {
 
     res.json({
       ok: true,
-      message: `Invite sent to ${targetUser.username || targetUser.email}`,
+      message: `Invite sent to ${getUserDisplayName(targetUser)}`,
       user: {
         id: targetUser.id,
         username: targetUser.username,
@@ -710,7 +715,7 @@ r.delete("/household/members/:userId", requireAuth, async (req, res) => {
     }
 
     // Check if current user is owner or admin
-    if (myHousehold.myRole !== "owner" && myHousehold.myRole !== "admin") {
+    if (!isHouseholdManagerRole(myHousehold.myRole)) {
       return res.status(403).json({ message: "Only owners and admins can remove members" });
     }
 
@@ -776,35 +781,7 @@ r.post("/household/sync", requireAuth, async (req, res) => {
     `);
 
     const existingItems = (householdItems as any)?.rows || [];
-    const duplicates: any[] = [];
-    const itemsToMove: any[] = [];
-
-    for (const item of items) {
-      const existing = existingItems.find((e: any) =>
-        e.name.toLowerCase().trim() === item.name.toLowerCase().trim()
-      );
-
-      if (existing) {
-        duplicates.push({
-          existing: {
-            id: String(existing.id),
-            name: existing.name,
-            category: existing.category,
-            quantity: existing.quantity,
-            unit: existing.unit,
-          },
-          incoming: {
-            id: String(item.id),
-            name: item.name,
-            category: item.category,
-            quantity: item.quantity,
-            unit: item.unit,
-          },
-        });
-      } else {
-        itemsToMove.push(item.id);
-      }
-    }
+    const { duplicates, itemsToMove } = partitionPersonalItemsForHouseholdSync(items, existingItems);
 
     // Move non-duplicate items to household
     if (itemsToMove.length > 0) {
