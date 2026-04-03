@@ -11,23 +11,21 @@ import {
   users,
 } from "../../shared/schema.js";
 import { requireAuth } from "../middleware";
+import { ensureMealPlannerWeekSchema } from "./meal-planner-week/schema.js";
+import {
+  addDays,
+  assertPremiumNutrition,
+  endOfDay,
+  fmtISODate,
+  mapEntriesToWeeklyMeals,
+  pickRecipeFromPool,
+  startOfDay,
+  startOfWeekMonday,
+  toNonNegativeRoundedInt,
+  type MealType,
+} from "./meal-planner-week/utils.js";
 
 const router = express.Router();
-
-let _mealPlannerWeekSchemaReady: Promise<void> | null = null;
-
-async function ensureMealPlannerWeekSchema() {
-  if (_mealPlannerWeekSchemaReady) return _mealPlannerWeekSchemaReady;
-
-  _mealPlannerWeekSchemaReady = (async () => {
-    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_protein INTEGER;`);
-    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_carbs INTEGER;`);
-    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_fat INTEGER;`);
-    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS source VARCHAR(50);`);
-  })();
-
-  return _mealPlannerWeekSchemaReady;
-}
 
 router.use(async (_req: Request, res: Response, next: NextFunction) => {
   try {
@@ -38,68 +36,6 @@ router.use(async (_req: Request, res: Response, next: NextFunction) => {
     res.status(500).json({ message: "Meal planner schema is not ready" });
   }
 });
-
-type MealType = "breakfast" | "lunch" | "dinner" | "snack";
-
-function startOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(0, 0, 0, 0);
-  return x;
-}
-
-function endOfDay(d: Date) {
-  const x = new Date(d);
-  x.setHours(23, 59, 59, 999);
-  return x;
-}
-
-/**
- * Week starts on Monday.
- */
-function startOfWeekMonday(date: Date) {
-  const d = startOfDay(date);
-  const day = d.getDay(); // 0=Sun
-  const diff = day === 0 ? -6 : 1 - day;
-  d.setDate(d.getDate() + diff);
-  return d;
-}
-
-function addDays(d: Date, days: number) {
-  const x = new Date(d);
-  x.setDate(x.getDate() + days);
-  return x;
-}
-
-function fmtISODate(d: Date) {
-  return d.toISOString().split("T")[0];
-}
-
-function toWeekdayName(d: Date) {
-  const names = [
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-  ] as const;
-  return names[d.getDay()];
-}
-
-function assertPremiumNutrition(user: any) {
-  const hasAccess = Boolean(user?.nutritionPremium);
-  if (!hasAccess) return false;
-
-  if (user?.nutritionTrialEndsAt) {
-    const trialEnd = new Date(user.nutritionTrialEndsAt);
-    if (!isNaN(trialEnd.getTime()) && new Date() > trialEnd) {
-      return false;
-    }
-  }
-
-  return true;
-}
 
 async function buildRecipePool(args: {
   mealType: MealType;
@@ -129,54 +65,6 @@ async function buildRecipePool(args: {
     .limit(150);
 
   return rows.filter((r) => !excludeRecipeIds.has(r.id));
-}
-
-function pickRecipeFromPool(pool: any[]) {
-  if (!pool.length) return null;
-
-  // Prefer top-rated but add randomness so it’s not the same week every time
-  const top = pool.slice(0, Math.min(25, pool.length));
-  const idx = Math.floor(Math.random() * top.length);
-  return top[idx];
-}
-
-function mapEntriesToWeeklyMeals(entries: any[]) {
-  // Shape matches NutritionMealPlanner.tsx expectations.
-  // { Monday: { breakfast: {name, calories, protein, carbs, fat, recipeId, entryId} } }
-  const out: Record<string, Record<string, any>> = {};
-
-  for (const e of entries) {
-    const dayName = toWeekdayName(new Date(e.date));
-    if (!out[dayName]) out[dayName] = {};
-
-    const mappedMeal = e.recipe
-      ? {
-          name: e.recipe.title,
-          calories: e.recipe.calories || e.customCalories || 0,
-          protein: Number(e.recipe.protein || e.customProtein || 0),
-          carbs: Number(e.recipe.carbs || e.customCarbs || 0),
-          fat: Number(e.recipe.fat || e.customFat || 0),
-          recipeId: e.recipe.id,
-          entryId: e.id,
-          source: e.source || null,
-        }
-      : {
-          name: e.customName || "Meal",
-          calories: e.customCalories || 0,
-          protein: Number(e.customProtein || 0),
-          carbs: Number(e.customCarbs || 0),
-          fat: Number(e.customFat || 0),
-          recipeId: null,
-          entryId: e.id,
-          source: e.source || null,
-        };
-
-    const existing = out[dayName][e.mealType];
-    const existingItems = Array.isArray(existing) ? existing : existing ? [existing] : [];
-    out[dayName][e.mealType] = [...existingItems, mappedMeal];
-  }
-
-  return out;
 }
 
 // ============================================================
@@ -566,11 +454,6 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
       plan = createdPlan;
     }
 
-    const toInt = (value: any) => {
-      const num = Number(value);
-      return Number.isFinite(num) ? Math.max(0, Math.round(num)) : 0;
-    };
-
     const loggedDate = startOfDay(parsed);
 
     const [entry] = await db
@@ -582,10 +465,10 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
         mealType: mealTypeStr,
         servings: 1,
         customName: mealName,
-        customCalories: toInt(calories),
-        customProtein: toInt(protein),
-        customCarbs: toInt(carbs),
-        customFat: toInt(fat),
+        customCalories: toNonNegativeRoundedInt(calories),
+        customProtein: toNonNegativeRoundedInt(protein),
+        customCarbs: toNonNegativeRoundedInt(carbs),
+        customFat: toNonNegativeRoundedInt(fat),
         source: source || null,
       })
       .returning();
@@ -600,11 +483,11 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
       await db
         .update(mealFavorites)
         .set({
-          calories: toInt(calories),
-          protein: toInt(protein),
-          carbs: toInt(carbs),
-          fat: toInt(fat),
-          fiber: toInt(fiber),
+          calories: toNonNegativeRoundedInt(calories),
+          protein: toNonNegativeRoundedInt(protein),
+          carbs: toNonNegativeRoundedInt(carbs),
+          fat: toNonNegativeRoundedInt(fat),
+          fiber: toNonNegativeRoundedInt(fiber),
           timesLogged: (existingFavorite.timesLogged || 0) + 1,
           lastUsed: new Date(),
         })
@@ -613,11 +496,11 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
       await db.insert(mealFavorites).values({
         userId,
         mealName,
-        calories: toInt(calories),
-        protein: toInt(protein),
-        carbs: toInt(carbs),
-        fat: toInt(fat),
-        fiber: toInt(fiber),
+        calories: toNonNegativeRoundedInt(calories),
+        protein: toNonNegativeRoundedInt(protein),
+        carbs: toNonNegativeRoundedInt(carbs),
+        fat: toNonNegativeRoundedInt(fat),
+        fiber: toNonNegativeRoundedInt(fiber),
         isFavorite: false,
         timesLogged: 1,
         lastUsed: new Date(),
@@ -679,11 +562,11 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
         date: entry.date,
         mealType: entry.mealType,
         name: mealName,
-        calories: toInt(calories),
-        protein: toInt(protein),
-        carbs: toInt(carbs),
-        fat: toInt(fat),
-        fiber: toInt(fiber),
+        calories: toNonNegativeRoundedInt(calories),
+        protein: toNonNegativeRoundedInt(protein),
+        carbs: toNonNegativeRoundedInt(carbs),
+        fat: toNonNegativeRoundedInt(fat),
+        fiber: toNonNegativeRoundedInt(fiber),
         source: source || null,
       },
     });
