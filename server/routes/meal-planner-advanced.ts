@@ -33,6 +33,20 @@ import {
   toIsoDateString,
   toSingleOrAnd,
 } from "./meal-planner-advanced/utils.js";
+import {
+  hasDefinedQueryValue,
+  parseBodyBoolean,
+  parseBodyMetricInput,
+  parseClampedNumber,
+  parseDate,
+  parseDayStartDate,
+  parseMinimumNumber,
+  parseNumber,
+  parseOptionalDate,
+  parseQueryBoolean,
+  parseString,
+  parseTrimmedString,
+} from "./meal-planner-advanced/parsers.js";
 
 const router = express.Router();
 
@@ -113,7 +127,7 @@ router.post("/meal-recommendations/generate", requireAuth, async (req: Request, 
           userId,
           recipeId: recipe.id,
           recommendationType: "nutritional_balance",
-          targetDate: targetDate ? new Date(targetDate) : null,
+          targetDate: parseOptionalDate(targetDate),
           mealType,
           score: score.toFixed(2),
           reason,
@@ -146,16 +160,16 @@ router.get("/meal-recommendations", requireAuth, async (req: Request, res: Respo
     const whereConditions = [eq(mealRecommendations.userId, userId)];
 
     if (date) {
-      whereConditions.push(eq(mealRecommendations.targetDate, new Date(date as string)));
+      whereConditions.push(eq(mealRecommendations.targetDate, parseDate(date)));
     }
     if (mealType) {
       whereConditions.push(eq(mealRecommendations.mealType, mealType as string));
     }
-    if (accepted !== undefined) {
-      whereConditions.push(eq(mealRecommendations.accepted, accepted === "true"));
+    if (hasDefinedQueryValue(accepted)) {
+      whereConditions.push(eq(mealRecommendations.accepted, parseQueryBoolean(accepted)));
     }
-    if (dismissed !== undefined) {
-      whereConditions.push(eq(mealRecommendations.dismissed, dismissed === "true"));
+    if (hasDefinedQueryValue(dismissed)) {
+      whereConditions.push(eq(mealRecommendations.dismissed, parseQueryBoolean(dismissed)));
     }
 
     const recommendations = await db
@@ -270,8 +284,8 @@ router.get("/prep-schedules", requireAuth, async (req: Request, res: Response) =
     if (mealPlanId) {
       whereConditions.push(eq(mealPrepSchedules.mealPlanId, mealPlanId as string));
     }
-    if (completed !== undefined) {
-      whereConditions.push(eq(mealPrepSchedules.completed, completed === "true"));
+    if (hasDefinedQueryValue(completed)) {
+      whereConditions.push(eq(mealPrepSchedules.completed, parseQueryBoolean(completed)));
     }
 
     const schedules = await db
@@ -338,8 +352,8 @@ router.post("/leftovers", requireAuth, async (req: Request, res: Response) => {
         recipeId,
         recipeName,
         quantity,
-        storedDate: new Date(storedDate),
-        expiryDate: expiryDate ? new Date(expiryDate) : null,
+        storedDate: parseDate(storedDate),
+        expiryDate: parseOptionalDate(expiryDate),
         storageLocation,
         notes,
       })
@@ -778,8 +792,8 @@ router.get("/grocery-list/savings-report", requireAuth, async (req: Request, res
 
     // Get all grocery list items within date range
     const conditions = [eq(groceryListItems.userId, userId)];
-    if (startDate) conditions.push(gte(groceryListItems.createdAt, new Date(startDate as string)));
-    if (endDate) conditions.push(lte(groceryListItems.createdAt, new Date(endDate as string)));
+    if (startDate) conditions.push(gte(groceryListItems.createdAt, parseDate(startDate)));
+    if (endDate) conditions.push(lte(groceryListItems.createdAt, parseDate(endDate)));
 
     const whereClause = toSingleOrAnd(conditions);
 
@@ -982,12 +996,10 @@ router.get("/streak", requireAuth, async (req: Request, res: Response) => {
 router.post("/streak/log", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const dateRaw = String(req.body?.date || "");
-    const date = new Date(dateRaw);
-    if (!dateRaw || Number.isNaN(date.getTime())) {
+    const date = parseDayStartDate(req.body?.date);
+    if (!date) {
       return res.status(400).json({ message: "Invalid date" });
     }
-    date.setHours(0,0,0,0);
 
     const [existing] = await db.select().from(mealStreaks).where(eq(mealStreaks.userId, userId)).limit(1);
 
@@ -1031,7 +1043,7 @@ router.post("/streak/log", requireAuth, async (req: Request, res: Response) => {
 router.get("/body-metrics", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+    const limit = parseClampedNumber(req.query.limit, 30, 1, 100);
 
     const metrics = await db
       .select()
@@ -1050,12 +1062,11 @@ router.get("/body-metrics", requireAuth, async (req: Request, res: Response) => 
 router.post("/body-metrics", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { date, weightLbs, bodyFatPct, waistIn, hipIn } = req.body || {};
+    const { date, weight, bodyFatPct, waistIn, hipIn } = parseBodyMetricInput(req.body);
 
-    if (!date || Number.isNaN(new Date(date).getTime())) {
+    if (!date || Number.isNaN(parseDate(date).getTime())) {
       return res.status(400).json({ message: "Invalid date" });
     }
-    const weight = Number(weightLbs);
     if (!Number.isFinite(weight) || weight <= 0) {
       return res.status(400).json({ message: "weightLbs is required" });
     }
@@ -1064,9 +1075,9 @@ router.post("/body-metrics", requireAuth, async (req: Request, res: Response) =>
       userId,
       date: String(date),
       weightLbs: String(weight),
-      bodyFatPct: bodyFatPct != null ? String(Number(bodyFatPct)) : null,
-      waistIn: waistIn != null ? String(Number(waistIn)) : null,
-      hipIn: hipIn != null ? String(Number(hipIn)) : null,
+      bodyFatPct,
+      waistIn,
+      hipIn,
       createdAt: new Date(),
     }).returning();
 
@@ -1099,8 +1110,8 @@ router.get("/history", requireAuth, async (req: Request, res: Response) => {
 router.post("/history/favorite", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const mealName = String(req.body?.mealName || "").trim();
-    const isFavorite = Boolean(req.body?.isFavorite);
+    const mealName = parseTrimmedString(req.body?.mealName);
+    const isFavorite = parseBodyBoolean(req.body?.isFavorite);
     if (!mealName) return res.status(400).json({ message: "mealName is required" });
 
     const [existing] = await db.select().from(mealFavorites).where(and(eq(mealFavorites.userId, userId), eq(mealFavorites.mealName, mealName))).limit(1);
@@ -1121,7 +1132,7 @@ router.post("/history/favorite", requireAuth, async (req: Request, res: Response
 router.get("/water", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const date = String(req.query.date || toIsoDateString(new Date()));
+    const date = parseString(req.query.date, toIsoDateString(new Date()));
 
     let [log] = await db.select().from(waterLogs).where(and(eq(waterLogs.userId, userId), eq(waterLogs.date, date))).limit(1);
 
@@ -1141,8 +1152,8 @@ router.get("/water", requireAuth, async (req: Request, res: Response) => {
 router.post("/water", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const date = String(req.body?.date || "");
-    const glassesLogged = Number(req.body?.glassesLogged || 0);
+    const date = parseString(req.body?.date);
+    const glassesLogged = parseNumber(req.body?.glassesLogged);
     if (!date) return res.status(400).json({ message: "date is required" });
 
     const [existing] = await db.select().from(waterLogs).where(and(eq(waterLogs.userId, userId), eq(waterLogs.date, date))).limit(1);
@@ -1165,7 +1176,7 @@ router.post("/water", requireAuth, async (req: Request, res: Response) => {
 router.patch("/water/target", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const dailyTarget = Math.max(1, Number(req.body?.dailyTarget || 8));
+    const dailyTarget = parseMinimumNumber(req.body?.dailyTarget, 8, 1);
 
     await db.update(waterLogs).set({ dailyTarget, updatedAt: new Date() }).where(eq(waterLogs.userId, userId));
 
