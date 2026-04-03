@@ -17,30 +17,23 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CookingToolsReference from "@/components/meal-planner/CookingToolsReference";
 import { useToast } from "@/hooks/use-toast";
 import { format, differenceInDays, isPast, isFuture } from "date-fns";
-
-type PantryItem = {
-  id: string;
-  name: string;
-  category: string | null;
-  quantity: string | null;
-  unit: string | null;
-  location: string | null;
-  expirationDate: string | null;
-  purchaseDate: string | null;
-  openedDate: string | null;
-  estimatedCost: string | null;
-  store: string | null;
-  notes: string | null;
-  imageUrl: string | null;
-  isRunningLow: boolean;
-  householdId: string | null;
-  createdAt: string;
-  barcodeData?: {
-    productName: string;
-    brand?: string;
-    imageUrl?: string;
-  } | null;
-};
+import {
+  addFormItemToGroceryList,
+  addItemsToGroceryList,
+  addPantryItem,
+  addScannedPantryItem,
+  deletePantryItem,
+  fetchAllergenWarnings,
+  fetchExpiringPantryItems,
+  fetchPantryHousehold,
+  updatePantryItem,
+} from "./lib/api";
+import {
+  normalizeAllergenWarningsResponse,
+  normalizeExpiringItemsResponse,
+  normalizePantryItemsResponse,
+} from "./lib/normalizers";
+import type { PantryFormData, PantryItem } from "./lib/types";
 
 export default function PantryDashboard() {
   const { toast } = useToast();
@@ -80,18 +73,13 @@ export default function PantryDashboard() {
       });
 
       // Add item to pantry
-      fetch("/api/pantry/items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name,
-          category: category || null,
-          quantity,
-          unit,
-          notes: brand ? `Brand: ${brand}` : null,
-          imageUrl: imageUrl || null,
-        }),
+      addScannedPantryItem({
+        name,
+        category,
+        quantity,
+        unit,
+        brand,
+        imageUrl,
       })
         .then((res) => {
           if (res.ok) {
@@ -125,17 +113,11 @@ export default function PantryDashboard() {
   // Fetch allergen warnings for pantry items
   const { data: allergenWarningsData } = useQuery({
     queryKey: ["/api/allergies/pantry/check"],
-    queryFn: async () => {
-      const res = await fetch("/api/allergies/pantry/check", {
-        credentials: "include",
-      });
-      if (!res.ok) return { warnings: [] };
-      return res.json();
-    },
+    queryFn: fetchAllergenWarnings,
     refetchInterval: 60000, // Refresh every minute
   });
 
-  const allergenWarnings = allergenWarningsData?.warnings || [];
+  const allergenWarnings = normalizeAllergenWarningsResponse(allergenWarningsData);
 
   // Helper to get warnings for a specific item
   const getItemWarnings = (itemId: string) => {
@@ -145,11 +127,7 @@ export default function PantryDashboard() {
   // Household membership (so we can share items into a household pantry)
   const { data: householdInfo } = useQuery<any>({
     queryKey: ["/api/pantry/household"],
-    queryFn: async () => {
-      const res = await fetch("/api/pantry/household", { credentials: "include" });
-      if (!res.ok) return { household: null };
-      return res.json();
-    },
+    queryFn: fetchPantryHousehold,
     staleTime: 60_000,
   });
 
@@ -158,28 +136,15 @@ export default function PantryDashboard() {
   // Fetch expiring items
   const { data: expiringData } = useQuery({
     queryKey: ["/api/pantry/expiring-soon", { days: 7 }],
-    queryFn: async () => {
-      const res = await fetch("/api/pantry/expiring-soon?days=7", {
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to fetch expiring items");
-      return res.json();
-    },
+    queryFn: () => fetchExpiringPantryItems(7),
   });
 
-  const items: PantryItem[] = pantryData?.items || [];
-  const expiringItems: PantryItem[] = expiringData?.items || [];
+  const items: PantryItem[] = normalizePantryItemsResponse(pantryData);
+  const expiringItems: PantryItem[] = normalizeExpiringItemsResponse(expiringData);
 
   // Delete mutation
   const deleteMutation = useMutation({
-    mutationFn: async (itemId: string) => {
-      const res = await fetch(`/api/pantry/items/${itemId}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Failed to delete item");
-      return res.json();
-    },
+    mutationFn: deletePantryItem,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon"] });
@@ -192,26 +157,7 @@ export default function PantryDashboard() {
 
   // Update mutation
   const updateMutation = useMutation({
-    mutationFn: async (data: Partial<PantryItem> & { id: string }) => {
-      const res = await fetch(`/api/pantry/pantry/${data.id}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          name: data.name,
-          category: data.category,
-          quantity: data.quantity,
-          unit: data.unit,
-          location: data.location,
-          expirationDate: data.expirationDate,
-          notes: data.notes,
-          isRunningLow: data.isRunningLow,
-          householdId: data.householdId,
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to update item");
-      return res.json();
-    },
+    mutationFn: updatePantryItem,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/expiring-soon"] });
@@ -226,31 +172,7 @@ export default function PantryDashboard() {
 
   // Add to shopping list mutation
   const addToShoppingListMutation = useMutation({
-    mutationFn: async (items: PantryItem[]) => {
-      const promises = items.map(item =>
-        fetch("/api/meal-planner/grocery-list", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            ingredientName: item.name,
-            quantity: item.quantity || "1",
-            unit: item.unit || "",
-            category: item.category || "Other",
-            notes: item.notes,
-          }),
-        })
-      );
-
-      const results = await Promise.all(promises);
-      const failedResults = results.filter(r => !r.ok);
-
-      if (failedResults.length > 0) {
-        throw new Error(`Failed to add ${failedResults.length} item(s) to shopping list`);
-      }
-
-      return results;
-    },
+    mutationFn: addItemsToGroceryList,
     onSuccess: (_, items) => {
       queryClient.invalidateQueries({ queryKey: ["/api/meal-planner/grocery-list"] });
       toast({
@@ -1131,43 +1053,14 @@ function AddItemForm({ onSuccess }: { onSuccess: () => void }) {
   const isPremium = userData?.nutritionPremium || false;
 
   const addMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
-      // Clean data - remove empty strings for optional fields
-      const cleanedData = {
-        ...data,
-        expirationDate: data.expirationDate ? new Date(data.expirationDate).toISOString() : undefined,
-      };
+    mutationFn: async (data: PantryFormData) => {
+      const pantryResponse = await addPantryItem(data);
 
-      // Add to pantry
-      const res = await fetch("/api/pantry/items", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(cleanedData),
-      });
-      if (!res.ok) {
-        const error = await res.text();
-        throw new Error(error || "Failed to add item");
-      }
-
-      // Also add to shopping list if checkbox is checked and user is premium
       if (alsoAddToShoppingList && isPremium) {
-        await fetch("/api/meal-planner/grocery-list", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            ingredientName: data.name,
-            quantity: data.quantity || "1",
-            unit: data.unit || "",
-            category: data.category || "Other",
-            notes: data.notes,
-          isRunningLow: data.isRunningLow,
-          }),
-        });
+        await addFormItemToGroceryList(data);
       }
 
-      return res.json();
+      return pantryResponse;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/pantry/items"] });
