@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Store, Package, DollarSign, TrendingUp, Eye, EyeOff, Globe,
-  Edit, Plus, ShoppingCart, BarChart3, Users,
+  Edit, Plus, ShoppingCart, BarChart3,
   Crown, Palette, Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -18,16 +18,18 @@ import SubscriptionPlansModal from "@/components/store/SubscriptionPlansModal";
 import StoreBuilder from "@/components/store/StoreBuilder";
 import { getSellerMarketplaceProducts } from "@/lib/store/marketplaceApi";
 import StoreRecentSalesList from "./components/StoreRecentSalesList";
+import StoreDashboardStatsGrid from "./components/StoreDashboardStatsGrid";
+import StoreDashboardBuilderTab from "./components/StoreDashboardBuilderTab";
+import StoreDashboardAnalyticsTab from "./components/StoreDashboardAnalyticsTab";
+import StoreDashboardSubscriptionTab from "./components/StoreDashboardSubscriptionTab";
+import StoreDashboardQuickActions from "./components/StoreDashboardQuickActions";
 import {
-  buildAnalyticsCards,
-  buildMainStatsCards,
   buildSubscriptionCheckoutPayload,
   calculateTrialDaysLeft,
   DEFAULT_DASHBOARD_STATS,
   getInitialProductStats,
   getInitialStoreStats,
   isMissingPlanVariationError,
-  SUBSCRIPTION_PLANS,
   type DashboardStats,
 } from "./lib/storeDashboard";
 
@@ -309,22 +311,7 @@ export default function StoreDashboard() {
         </div>
 
         {/* Stats Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {buildMainStatsCards(stats).map(({ label, value, sub, icon: Icon, iconClass }) => (
-            <Card key={label}>
-              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                <CardTitle className="text-sm font-medium text-gray-500">{label}</CardTitle>
-                <div className={`p-1.5 rounded-lg ${iconClass}`}>
-                  <Icon className="w-4 h-4" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold">{value}</div>
-                <p className="text-xs text-gray-500 mt-0.5">{sub}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+        <StoreDashboardStatsGrid stats={stats} />
 
         {/* Main Tabs */}
         <Tabs defaultValue="products" className="space-y-6">
@@ -390,28 +377,7 @@ export default function StoreDashboard() {
 
           {/* Store Builder Tab */}
           <TabsContent value="builder">
-            <Card>
-              <CardHeader>
-                <CardTitle>Store Builder</CardTitle>
-                <CardDescription>Drag and drop elements to customise your storefront layout</CardDescription>
-              </CardHeader>
-              <CardContent className="text-center py-10">
-                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Edit className="w-8 h-8 text-orange-500" />
-                </div>
-                <h3 className="font-semibold text-lg mb-2">Launch the Visual Editor</h3>
-                <p className="text-gray-500 text-sm mb-6 max-w-sm mx-auto">
-                  Build your store layout with drag-and-drop containers, banners, text blocks, and product cards.
-                </p>
-                <Button
-                  className="bg-orange-500 hover:bg-orange-600"
-                  onClick={() => setShowBuilder(true)}
-                >
-                  <Edit className="w-4 h-4 mr-2" />
-                  Open Store Builder
-                </Button>
-              </CardContent>
-            </Card>
+            <StoreDashboardBuilderTab onOpenBuilder={() => setShowBuilder(true)} />
           </TabsContent>
 
           {/* Customize Tab */}
@@ -442,149 +408,27 @@ export default function StoreDashboard() {
 
           {/* Analytics Tab */}
           <TabsContent value="analytics">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {buildAnalyticsCards(stats).map(({ label, value, sub, icon: Icon }) => (
-                <Card key={label}>
-                  <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                    <CardTitle className="text-sm font-medium text-gray-500">{label}</CardTitle>
-                    <Icon className="w-4 h-4 text-gray-400" />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">{value}</div>
-                    <p className="text-xs text-gray-500 mt-0.5">{sub}</p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-            <Card>
-              <CardContent className="py-16 text-center text-gray-400">
-                <BarChart3 className="w-12 h-12 mx-auto mb-3 text-gray-200" />
-                <p className="font-medium">Detailed analytics coming soon</p>
-                <p className="text-sm mt-1">Track your store performance and customer insights over time</p>
-              </CardContent>
-            </Card>
+            <StoreDashboardAnalyticsTab stats={stats} />
           </TabsContent>
 
           {/* Subscription Tab */}
           <TabsContent value="subscription">
-            {/* Current Plan Banner */}
-            <Card className="mb-6 border-orange-200 bg-gradient-to-r from-orange-50 to-amber-50">
-              <CardHeader>
-                <div className="flex items-center justify-between flex-wrap gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-orange-100 rounded-lg">
-                      <Crown className="w-5 h-5 text-orange-600" />
-                    </div>
-                    <div>
-                      <CardTitle>Current Plan: {tierInfo?.name || currentTier}</CardTitle>
-                      {trialDaysLeft > 0 && (
-                        <p className="text-sm text-orange-600 mt-0.5">Trial active · {trialDaysLeft} days remaining</p>
-                      )}
-                    </div>
-                  </div>
-                  {tierInfo?.commission !== undefined && (
-                    <Badge className="bg-orange-500">{tierInfo.commission}% commission</Badge>
-                  )}
-                </div>
-              </CardHeader>
-              {tierInfo?.features && (
-                <CardContent>
-                  <div className="flex flex-wrap gap-x-6 gap-y-1">
-                    {tierInfo.features.map((f: string, i: number) => (
-                      <span key={i} className="text-sm text-gray-700 flex items-center gap-1.5">
-                        <span className="text-green-500">✓</span> {f}
-                      </span>
-                    ))}
-                  </div>
-                </CardContent>
-              )}
-            </Card>
-
-            {/* Upgrade Plans */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Available Plans</CardTitle>
-                <CardDescription>Upgrade to reduce commission fees and unlock more features</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {SUBSCRIPTION_PLANS.map((plan) => (
-                    <div key={plan.id} className={`relative border-2 rounded-xl p-5 ${plan.popular ? "border-orange-500" : "border-gray-200"}`}>
-                      {plan.popular && (
-                        <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                          <Badge className="bg-orange-500">Recommended</Badge>
-                        </div>
-                      )}
-                      <h4 className="font-bold mb-1">{plan.name}</h4>
-                      <div className="text-2xl font-bold mb-1">
-                        ${plan.price}<span className="text-sm text-gray-500 font-normal">/mo</span>
-                      </div>
-                      <p className="text-sm text-green-600 font-medium mb-3">{plan.commission} commission</p>
-                      <ul className="space-y-1 mb-5">
-                        {plan.features.map((f, i) => (
-                          <li key={i} className="text-sm text-gray-600 flex items-center gap-1.5">
-                            <span className="text-green-500">✓</span> {f}
-                          </li>
-                        ))}
-                      </ul>
-                      <div className="space-y-2">
-                        <Button
-                          onClick={() => handleSubscriptionUpgrade(plan.id, false)}
-                          className={`w-full ${plan.popular ? "bg-orange-500 hover:bg-orange-600" : ""}`}
-                          variant={plan.popular ? "default" : "outline"}
-                          disabled={currentTier === plan.id}
-                        >
-                          {currentTier === plan.id ? "Current Plan" : `Upgrade with Square`}
-                        </Button>
-                        {currentTier !== plan.id && (
-                          <Button
-                            onClick={() => handleSubscriptionUpgrade(plan.id, true)}
-                            variant="ghost"
-                            className="w-full text-sm text-gray-500 hover:text-gray-800"
-                          >
-                            Start 30-day free trial
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+            <StoreDashboardSubscriptionTab
+              currentTier={currentTier}
+              tierInfo={tierInfo}
+              trialDaysLeft={trialDaysLeft}
+              onUpgrade={handleSubscriptionUpgrade}
+            />
           </TabsContent>
         </Tabs>
 
         {/* Quick Action Cards */}
-        <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Link href="/store/products/new">
-            <Card className="hover:shadow-md transition-shadow cursor-pointer group">
-              <CardContent className="pt-5">
-                <Package className="text-orange-500 mb-2 w-6 h-6 group-hover:scale-110 transition-transform" />
-                <h3 className="font-semibold mb-1">Add a Product</h3>
-                <p className="text-sm text-gray-500">List a new item in your store</p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Link href={`/store/${store.handle}`}>
-            <Card className="hover:shadow-md transition-shadow cursor-pointer group">
-              <CardContent className="pt-5">
-                <Eye className="text-blue-500 mb-2 w-6 h-6 group-hover:scale-110 transition-transform" />
-                <h3 className="font-semibold mb-1">View Your Store</h3>
-                <p className="text-sm text-gray-500">See how customers see your storefront</p>
-              </CardContent>
-            </Card>
-          </Link>
-          <Card
-            className="hover:shadow-md transition-shadow cursor-pointer group"
-            onClick={() => toast({ title: "Coming Soon", description: "Customer insights will be available in a future update" })}
-          >
-            <CardContent className="pt-5">
-              <Users className="text-purple-500 mb-2 w-6 h-6 group-hover:scale-110 transition-transform" />
-              <h3 className="font-semibold mb-1">Customer Insights</h3>
-              <p className="text-sm text-gray-500">Analytics and customer behaviour — coming soon</p>
-            </CardContent>
-          </Card>
-        </div>
+        <StoreDashboardQuickActions
+          storeHandle={store.handle}
+          onCustomerInsightsClick={() =>
+            toast({ title: "Coming Soon", description: "Customer insights will be available in a future update" })
+          }
+        />
       </div>
 
       {/* Subscription Plans Modal */}
