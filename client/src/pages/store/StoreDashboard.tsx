@@ -2,8 +2,8 @@ import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import {
   Store, Package, DollarSign, TrendingUp, Eye, EyeOff, Globe,
-  Settings, Edit, Plus, ShoppingCart, BarChart3, Users, AlertCircle,
-  Crown, Palette, Sparkles, ArrowLeft,
+  Edit, Plus, ShoppingCart, BarChart3, Users,
+  Crown, Palette, Sparkles,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,15 +17,19 @@ import StoreCustomization from "@/components/store/StoreCustomization";
 import SubscriptionPlansModal from "@/components/store/SubscriptionPlansModal";
 import StoreBuilder from "@/components/store/StoreBuilder";
 import { getSellerMarketplaceProducts } from "@/lib/store/marketplaceApi";
-
-interface DashboardStats {
-  totalProducts: number;
-  publishedProducts: number;
-  totalViews: number;
-  totalSales: number;
-  revenue: number;
-  monthlyRevenue: number;
-}
+import StoreRecentSalesList from "./components/StoreRecentSalesList";
+import {
+  buildAnalyticsCards,
+  buildMainStatsCards,
+  buildSubscriptionCheckoutPayload,
+  calculateTrialDaysLeft,
+  DEFAULT_DASHBOARD_STATS,
+  getInitialProductStats,
+  getInitialStoreStats,
+  isMissingPlanVariationError,
+  SUBSCRIPTION_PLANS,
+  type DashboardStats,
+} from "./lib/storeDashboard";
 
 export default function StoreDashboard() {
   const { user, updateUser } = useUser();
@@ -33,14 +37,7 @@ export default function StoreDashboard() {
   const [, setLocation] = useLocation();
 
   const [store, setStore] = useState<any>(null);
-  const [stats, setStats] = useState<DashboardStats>({
-    totalProducts: 0,
-    publishedProducts: 0,
-    totalViews: 0,
-    totalSales: 0,
-    revenue: 0,
-    monthlyRevenue: 0,
-  });
+  const [stats, setStats] = useState<DashboardStats>(DEFAULT_DASHBOARD_STATS);
   const [tier, setTier] = useState<any>(null);
   const [recentSales, setRecentSales] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,7 +63,7 @@ export default function StoreDashboard() {
 
         if (s) {
           // Products
-          let productStats = { totalProducts: 0, publishedProducts: 0 };
+          let productStats = getInitialProductStats();
           try {
             const products = await getSellerMarketplaceProducts(user!.id, { credentials: "include" });
             productStats = {
@@ -74,12 +71,12 @@ export default function StoreDashboard() {
               publishedProducts: products.filter((p: any) => p.isActive).length,
             };
           } catch {
-            productStats = { totalProducts: 0, publishedProducts: 0 };
+            productStats = getInitialProductStats();
           }
 
           // Store stats
           const statsRes = await fetch(`/api/stores/${s.id}/stats`, { credentials: "include" });
-          let storeStats = { totalViews: 0, totalSales: 0, totalRevenue: 0 };
+          let storeStats = getInitialStoreStats();
           if (statsRes.ok) {
             const sd = await statsRes.json();
             storeStats = sd.stats || storeStats;
@@ -189,16 +186,13 @@ export default function StoreDashboard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          tier: tierName,
-          trial: isTrial,
-          userId: user.id,
-          email: user.email,
-        }),
+          ...buildSubscriptionCheckoutPayload(tierName, isTrial, user),
+        })
       });
       const data = await resp.json();
       if (!resp.ok || !data?.url) {
         const errorMsg = data?.error || "Could not start checkout";
-        if (errorMsg.includes("Missing plan variation")) {
+        if (isMissingPlanVariationError(errorMsg)) {
           toast({ title: "Coming soon", description: "Subscription service is being configured. Please check back later.", variant: "destructive" });
         } else {
           toast({ title: "Checkout error", description: errorMsg, variant: "destructive" });
@@ -258,9 +252,7 @@ export default function StoreDashboard() {
 
   const currentTier = tier?.currentTier || user?.subscription || "free";
   const tierInfo = tier?.tierInfo;
-  const trialDaysLeft = user?.trialEndDate
-    ? Math.max(0, Math.ceil((new Date(user.trialEndDate).getTime() - Date.now()) / 86400000))
-    : 0;
+  const trialDaysLeft = calculateTrialDaysLeft(user?.trialEndDate);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -318,12 +310,7 @@ export default function StoreDashboard() {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {[
-            { label: "Total Products", value: stats.totalProducts, sub: `${stats.publishedProducts} published`, icon: Package, iconClass: "text-orange-500 bg-orange-100" },
-            { label: "Store Views", value: stats.totalViews, sub: "+12% this week", icon: Eye, iconClass: "text-blue-500 bg-blue-100" },
-            { label: "Total Sales", value: stats.totalSales, sub: "All time", icon: ShoppingCart, iconClass: "text-green-500 bg-green-100" },
-            { label: "Revenue", value: `$${Number(stats.revenue).toLocaleString()}`, sub: "All time", icon: DollarSign, iconClass: "text-purple-500 bg-purple-100" },
-          ].map(({ label, value, sub, icon: Icon, iconClass }) => (
+          {buildMainStatsCards(stats).map(({ label, value, sub, icon: Icon, iconClass }) => (
             <Card key={label}>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-sm font-medium text-gray-500">{label}</CardTitle>
@@ -396,40 +383,7 @@ export default function StoreDashboard() {
                 <CardDescription>Orders placed by your customers</CardDescription>
               </CardHeader>
               <CardContent>
-                {recentSales.length === 0 ? (
-                  <div className="text-center py-16 text-gray-400">
-                    <ShoppingCart className="w-12 h-12 mx-auto mb-3 text-gray-200" />
-                    <p className="font-medium">No orders yet</p>
-                    <p className="text-sm mt-1">Orders will appear here when customers make purchases</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {recentSales.map((sale) => (
-                      <div key={sale.order.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                            <Package className="w-5 h-5 text-gray-400" />
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">{sale.product.name}</p>
-                            <p className="text-xs text-gray-500">
-                              {sale.buyer.displayName || sale.buyer.username} · {sale.order.quantity}x ·{" "}
-                              {new Date(sale.order.createdAt).toLocaleDateString()}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-green-600 text-sm">
-                            +${parseFloat(sale.order.sellerAmount).toFixed(2)}
-                          </p>
-                          <Badge variant={sale.order.status === "delivered" ? "default" : "secondary"} className="text-xs mt-0.5">
-                            {sale.order.status}
-                          </Badge>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <StoreRecentSalesList recentSales={recentSales} />
               </CardContent>
             </Card>
           </TabsContent>
@@ -489,12 +443,7 @@ export default function StoreDashboard() {
           {/* Analytics Tab */}
           <TabsContent value="analytics">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-              {[
-                { label: "Total Products", value: stats.totalProducts, sub: `${stats.publishedProducts} active`, icon: Package },
-                { label: "Total Sales", value: stats.totalSales, sub: "All time", icon: ShoppingCart },
-                { label: "Monthly Revenue", value: `$${Number(stats.monthlyRevenue).toFixed(2)}`, sub: "This month", icon: DollarSign },
-                { label: "Total Views", value: stats.totalViews, sub: "Product views", icon: TrendingUp },
-              ].map(({ label, value, sub, icon: Icon }) => (
+              {buildAnalyticsCards(stats).map(({ label, value, sub, icon: Icon }) => (
                 <Card key={label}>
                   <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                     <CardTitle className="text-sm font-medium text-gray-500">{label}</CardTitle>
@@ -559,11 +508,7 @@ export default function StoreDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  {[
-                    { id: "starter", name: "Starter", price: 15, commission: "8%", features: ["Up to 100 products", "Custom branding", "Basic analytics"] },
-                    { id: "professional", name: "Professional", price: 35, commission: "5%", features: ["Unlimited products", "Advanced analytics", "Priority support"], popular: true },
-                    { id: "enterprise", name: "Enterprise", price: 75, commission: "2%", features: ["Everything in Pro", "White-label", "Dedicated support"] },
-                  ].map((plan) => (
+                  {SUBSCRIPTION_PLANS.map((plan) => (
                     <div key={plan.id} className={`relative border-2 rounded-xl p-5 ${plan.popular ? "border-orange-500" : "border-gray-200"}`}>
                       {plan.popular && (
                         <div className="absolute -top-3 left-1/2 -translate-x-1/2">
