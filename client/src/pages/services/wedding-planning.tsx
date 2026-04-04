@@ -541,7 +541,9 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
         credentials: "include",
         body: JSON.stringify({
           vendorId: quoteVendorId,
+          // Keep legacy key and include active backend key for compatibility.
           eventDate: quoteForm.eventDate,
+          weddingDate: quoteForm.eventDate,
           guestCount: quoteForm.guestCount,
           contactEmail: quoteForm.contactEmail,
           message: quoteForm.message,
