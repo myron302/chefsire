@@ -1,28 +1,26 @@
 import React, { useState, useEffect } from "react";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import {
-  Store, Package, DollarSign, TrendingUp, Eye, EyeOff, Globe,
-  Edit, Plus, ShoppingCart, BarChart3,
-  Crown, Palette, Sparkles,
+  Package, ShoppingCart, Edit, Sparkles, Palette, BarChart3, Crown,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/contexts/UserContext";
 import { useToast } from "@/hooks/use-toast";
-import { ProductManager } from "@/components/store/ProductManager";
-import ThemeSelector from "@/components/store/ThemeSelector";
-import StoreCustomization from "@/components/store/StoreCustomization";
 import SubscriptionPlansModal from "@/components/store/SubscriptionPlansModal";
 import StoreBuilder from "@/components/store/StoreBuilder";
 import { getSellerMarketplaceProducts } from "@/lib/store/marketplaceApi";
-import StoreRecentSalesList from "./components/StoreRecentSalesList";
 import StoreDashboardStatsGrid from "./components/StoreDashboardStatsGrid";
 import StoreDashboardBuilderTab from "./components/StoreDashboardBuilderTab";
 import StoreDashboardAnalyticsTab from "./components/StoreDashboardAnalyticsTab";
 import StoreDashboardSubscriptionTab from "./components/StoreDashboardSubscriptionTab";
 import StoreDashboardQuickActions from "./components/StoreDashboardQuickActions";
+import StoreDashboardLoadingState from "./components/StoreDashboardLoadingState";
+import StoreDashboardEmptyState from "./components/StoreDashboardEmptyState";
+import StoreDashboardHeader from "./components/StoreDashboardHeader";
+import StoreDashboardProductsTab from "./components/StoreDashboardProductsTab";
+import StoreDashboardOrdersTab from "./components/StoreDashboardOrdersTab";
+import StoreDashboardCustomizeTab from "./components/StoreDashboardCustomizeTab";
+import StoreDashboardThemeTab from "./components/StoreDashboardThemeTab";
 import {
   buildSubscriptionCheckoutPayload,
   calculateTrialDaysLeft,
@@ -218,38 +216,12 @@ export default function StoreDashboard() {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <Store className="mx-auto w-12 h-12 text-orange-400 animate-pulse mb-3" />
-          <p className="text-gray-500">Loading your store...</p>
-        </div>
-      </div>
-    );
+    return <StoreDashboardLoadingState />;
   }
 
   // No store yet
   if (!store) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md px-4">
-          <div className="w-20 h-20 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Store className="w-10 h-10 text-orange-500" />
-          </div>
-          <h1 className="text-2xl font-bold mb-2">No Store Yet</h1>
-          <p className="text-gray-500 mb-6">
-            Create your storefront to start selling your products to the ChefSire community.
-          </p>
-          <Button
-            className="bg-orange-500 hover:bg-orange-600"
-            onClick={() => setLocation("/store/create")}
-          >
-            <Plus className="mr-2 w-4 h-4" />
-            Create Your Store
-          </Button>
-        </div>
-      </div>
-    );
+    return <StoreDashboardEmptyState onCreateStore={() => setLocation("/store/create")} />;
   }
 
   const currentTier = tier?.currentTier || user?.subscription || "free";
@@ -260,55 +232,15 @@ export default function StoreDashboard() {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Store Dashboard</h1>
-              <p className="text-gray-500 mt-1">{store.name}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link href={`/store/${store.handle}`}>
-                <Button variant="outline" size="sm">
-                  <Eye className="w-4 h-4 mr-1.5" />
-                  View Store
-                </Button>
-              </Link>
-              <Button
-                onClick={handleTogglePublish}
-                disabled={publishing}
-                size="sm"
-                variant={store.published ? "outline" : "default"}
-                className={!store.published ? "bg-green-600 hover:bg-green-700" : ""}
-              >
-                {store.published ? (
-                  <><EyeOff className="w-4 h-4 mr-1.5" />Unpublish</>
-                ) : (
-                  <><Globe className="w-4 h-4 mr-1.5" />Publish Store</>
-                )}
-              </Button>
-            </div>
-          </div>
-
-          {/* Status Row */}
-          <div className="flex flex-wrap items-center gap-2 mt-3">
-            <Badge variant={store.published ? "default" : "secondary"} className={store.published ? "bg-green-600" : ""}>
-              {store.published ? "Published" : "Draft"}
-            </Badge>
-            <Badge variant="outline" className="capitalize">
-              <Crown className="w-3 h-3 mr-1" />
-              {currentTier} plan
-            </Badge>
-            {trialDaysLeft > 0 && (
-              <Badge variant="outline" className="text-orange-600 border-orange-300">
-                Trial: {trialDaysLeft} days left
-              </Badge>
-            )}
-            <span className="text-sm text-gray-400">
-              chefsire.com/store/{store.handle}
-            </span>
-          </div>
-        </div>
+        <StoreDashboardHeader
+          storeName={store.name}
+          storeHandle={store.handle}
+          published={store.published}
+          currentTier={currentTier}
+          trialDaysLeft={trialDaysLeft}
+          publishing={publishing}
+          onTogglePublish={handleTogglePublish}
+        />
 
         {/* Stats Grid */}
         <StoreDashboardStatsGrid stats={stats} />
@@ -341,38 +273,12 @@ export default function StoreDashboard() {
 
           {/* Products Tab */}
           <TabsContent value="products">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle>Product Management</CardTitle>
-                    <CardDescription>Manage your store's product listings</CardDescription>
-                  </div>
-                  <Link href="/store/products/new">
-                    <Button className="bg-orange-500 hover:bg-orange-600">
-                      <Plus className="w-4 h-4 mr-1.5" />
-                      {stats.totalProducts === 0 ? "Add First Product" : "Add Product"}
-                    </Button>
-                  </Link>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <ProductManager sellerId={user!.id} />
-              </CardContent>
-            </Card>
+            <StoreDashboardProductsTab sellerId={user!.id} totalProducts={stats.totalProducts} />
           </TabsContent>
 
           {/* Orders Tab */}
           <TabsContent value="orders">
-            <Card>
-              <CardHeader>
-                <CardTitle>Recent Orders</CardTitle>
-                <CardDescription>Orders placed by your customers</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <StoreRecentSalesList recentSales={recentSales} />
-              </CardContent>
-            </Card>
+            <StoreDashboardOrdersTab recentSales={recentSales} />
           </TabsContent>
 
           {/* Store Builder Tab */}
@@ -382,28 +288,12 @@ export default function StoreDashboard() {
 
           {/* Customize Tab */}
           <TabsContent value="customize">
-            <Card>
-              <CardHeader>
-                <CardTitle>Store Customization</CardTitle>
-                <CardDescription>Branding, banner, about section, social links, and layout</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <StoreCustomization store={store} onUpdate={handleCustomizationUpdate} />
-              </CardContent>
-            </Card>
+            <StoreDashboardCustomizeTab store={store} onUpdate={handleCustomizationUpdate} />
           </TabsContent>
 
           {/* Theme Tab */}
           <TabsContent value="theme">
-            <Card>
-              <CardHeader>
-                <CardTitle>Store Theme</CardTitle>
-                <CardDescription>Choose a pre-designed colour theme for your storefront</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ThemeSelector selectedTheme={selectedTheme} onSelectTheme={handleThemeChange} />
-              </CardContent>
-            </Card>
+            <StoreDashboardThemeTab selectedTheme={selectedTheme} onSelectTheme={handleThemeChange} />
           </TabsContent>
 
           {/* Analytics Tab */}
