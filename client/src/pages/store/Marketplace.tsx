@@ -8,27 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-
-interface MarketplaceProduct {
-  id: number;
-  name: string;
-  description: string;
-  price: string;
-  images: string[];
-  sellerName: string;
-  sellerId: number;
-  storeName?: string;
-  storeHandle?: string;
-  rating?: number;
-  reviewCount?: number;
-  location?: string;
-  deliveryMethods: string[];
-  category: string;
-  isFeatured?: boolean;
-  isNew?: boolean;
-  viewCount?: number;
-  favoriteCount?: number;
-}
+import { matchesDeliveryFilter } from "@/lib/store/deliveryMethods";
+import { getMarketplaceProducts } from "@/lib/store/marketplaceApi";
+import { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
 
 interface MarketplaceFilters {
   search: string;
@@ -102,18 +84,14 @@ export default function Marketplace() {
       params.append("limit", "12");
       params.append("offset", ((currentPage - 1) * 12).toString());
 
-      const response = await fetch(`/api/marketplace/products?${params.toString()}`);
-      if (!response.ok) throw new Error("Failed to fetch products");
-
-      const data = await response.json();
-
+      const data = await getMarketplaceProducts(params);
       let filteredProducts = data.products || [];
 
       // Apply client-side filters
       if (filters.deliveryMethod !== "all") {
-        filteredProducts = filteredProducts.filter((product: MarketplaceProduct) =>
-          product.deliveryMethods?.includes(filters.deliveryMethod)
-        );
+        filteredProducts = filteredProducts.filter((product: MarketplaceProduct) => {
+          return matchesDeliveryFilter(product.deliveryMethods, filters.deliveryMethod);
+        });
       }
 
       // Apply sorting

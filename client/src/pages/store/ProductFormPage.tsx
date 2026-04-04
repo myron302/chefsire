@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/UserContext';
+import { getMarketplaceProduct, saveMarketplaceProduct } from '@/lib/store/marketplaceApi';
+import { buildMarketplaceProductPayload, ProductFormData, toProductFormData } from '@/lib/store/productPayload';
 
 export default function ProductFormPage() {
   const { user } = useUser();
@@ -20,7 +22,7 @@ export default function ProductFormPage() {
   const [loading, setLoading] = useState(false);
   const [loadingProduct, setLoadingProduct] = useState(!!productId);
   const [uploadingFile, setUploadingFile] = useState(false);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<ProductFormData>({
     name: '',
     description: '',
     price: '',
@@ -59,21 +61,9 @@ export default function ProductFormPage() {
 
   const loadProduct = async () => {
     try {
-      const response = await fetch(`/api/marketplace/products/${productId}`);
-      if (response.ok) {
-        const data = await response.json();
-        setFormData({
-          name: data.name || '',
-          description: data.description || '',
-          price: data.price?.toString() || '',
-          inventory: data.inventory?.toString() || '',
-          category: data.category || '',
-          images: data.images || [],
-          productCategory: data.productCategory || 'physical',
-          deliveryMethods: data.deliveryMethods || ['shipped'],
-          digitalFileUrl: data.digitalFileUrl || '',
-          digitalFileName: data.digitalFileName || ''
-        });
+      const data = await getMarketplaceProduct(productId!);
+      if (data) {
+        setFormData(toProductFormData(data));
       }
     } catch (error) {
       console.error('Error loading product:', error);
@@ -318,45 +308,18 @@ export default function ProductFormPage() {
     setLoading(true);
 
     try {
-      const url = productId
-        ? `/api/marketplace/products/${productId}`
-        : '/api/marketplace/products';
+      const result = await saveMarketplaceProduct(buildMarketplaceProductPayload(formData), productId);
 
-      const method = productId ? 'PUT' : 'POST';
-
-      const response = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          name: formData.name.trim(),
-          description: formData.description.trim(),
-          price: formData.price.trim(),
-          inventory: inventory,
-          category: formData.category.trim() || 'other',
-          images: formData.images,
-          productCategory: formData.productCategory,
-          deliveryMethods: formData.deliveryMethods,
-          digitalFileUrl: formData.digitalFileUrl.trim() || null,
-          digitalFileName: formData.digitalFileName.trim() || null,
-          isDigital: formData.productCategory === 'digital' || formData.productCategory === 'cookbook',
-          inStoreOnly: formData.deliveryMethods.length === 1 &&
-                       (formData.deliveryMethods[0] === 'pickup' || formData.deliveryMethods[0] === 'in_store')
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        const errorDetails = data.details ?
-          `\n${data.details.map((d: any) => `${d.path?.join('.')}: ${d.message}`).join('\n')}` :
+      if (!result.ok) {
+        const errorDetails = result.data?.details ?
+          `\n${result.data.details.map((d: any) => `${d.path?.join('.')}: ${d.message}`).join('\n')}` :
           '';
         toast({
           title: "Error",
-          description: `${data.error || 'Failed to save product'}${errorDetails}`,
+          description: `${result.data?.error || 'Failed to save product'}${errorDetails}`,
           variant: "destructive"
         });
-        console.error('Product save error:', data);
+        console.error('Product save error:', result.data);
         return;
       }
 
