@@ -16,6 +16,7 @@ import ThemeSelector from "@/components/store/ThemeSelector";
 import StoreCustomization from "@/components/store/StoreCustomization";
 import SubscriptionPlansModal from "@/components/store/SubscriptionPlansModal";
 import StoreBuilder from "@/components/store/StoreBuilder";
+import { getSellerMarketplaceProducts } from "@/lib/store/marketplaceApi";
 
 interface DashboardStats {
   totalProducts: number;
@@ -65,15 +66,15 @@ export default function StoreDashboard() {
 
         if (s) {
           // Products
-          const productsRes = await fetch(`/api/marketplace/sellers/${user!.id}/products`, { credentials: "include" });
           let productStats = { totalProducts: 0, publishedProducts: 0 };
-          if (productsRes.ok) {
-            const pd = await productsRes.json();
-            const products = pd.products || [];
+          try {
+            const products = await getSellerMarketplaceProducts(user!.id, { credentials: "include" });
             productStats = {
               totalProducts: products.length,
               publishedProducts: products.filter((p: any) => p.isActive).length,
             };
+          } catch {
+            productStats = { totalProducts: 0, publishedProducts: 0 };
           }
 
           // Store stats
