@@ -471,9 +471,19 @@ export function WeddingPlanningWorkspace({ mode = "hub" }: { mode?: WeddingPlann
     });
   }, []);
 
-  const requestQuote = useCallback((vendorId: number) => {
-    setRequestedQuotes((prev) => new Set(prev).add(vendorId));
-  }, []);
+  const requestQuote = useCallback(
+    (vendorId: number) => {
+      setQuoteVendorId(vendorId);
+      setQuoteForm((prev) => ({
+        ...prev,
+        eventDate: prev.eventDate || selectedDate || "",
+        guestCount: prev.guestCount || guestCount[0] || 0,
+        contactEmail: prev.contactEmail || user?.email || "",
+      }));
+      setIsQuoteDialogOpen(true);
+    },
+    [selectedDate, guestCount, user?.email]
+  );
 
 
   const quoteVendor = useMemo(() => {
@@ -1502,6 +1512,7 @@ const displaySmartTips = useMemo(() => {
       receptionTotal,
       declined,
       pending,
+      responded: acceptedBoth + ceremonyOnly + receptionOnly + declined,
       total: guestList.length,
     };
   }, [guestList]);
@@ -1619,6 +1630,11 @@ const displaySmartTips = useMemo(() => {
 
   const handleViewBudgetReport = useCallback(() => {
     setIsBudgetReportOpen(true);
+  }, []);
+
+  const setIsCalendarAddOpen = useCallback((open: boolean) => {
+    if (!open) return;
+    window.location.href = "/services/wedding-planning/calendar";
   }, []);
 
   const handleGoPremium = useCallback(() => {
@@ -2298,35 +2314,6 @@ const displaySmartTips = useMemo(() => {
         filteredVendorCount={filteredVendors.length}
       />
 
-      <WeddingPlanningVendorQuoteDialog
-        isOpen={isQuoteDialogOpen}
-        onOpenChange={setIsQuoteDialogOpen}
-        quoteVendor={quoteVendor}
-        quoteForm={quoteForm}
-        onQuoteFormChange={setQuoteForm}
-        onSubmit={submitQuoteRequest}
-      />
-
-      
-
-
-      {/* Budget Report dialog */}
-      <WeddingPlanningBudgetReportDialog
-        isOpen={isBudgetReportOpen}
-        onOpenChange={setIsBudgetReportOpen}
-        isPremium={isPremium}
-        totalBudget={totalBudget}
-        totalSpent={totalSpent}
-        budgetDelta={budgetDelta}
-        budgetStatusLabel={budgetStatusLabel}
-        budgetUsedPct={budgetUsedPct}
-        dynamicSavings={dynamicSavings}
-        budgetReportRows={budgetReportRows}
-        onClose={() => setIsBudgetReportOpen(false)}
-        onGoPremium={handleGoPremium}
-        onExportBudgetCsv={handleExportBudgetCsv}
-      />
-
 {/* Vendors grid */}
       <WeddingPlanningVendorGrid
         filteredVendors={filteredVendors}
@@ -2486,6 +2473,31 @@ const displaySmartTips = useMemo(() => {
       <WeddingPlanningVendorCtaSection />
       </>
       )}
+
+      <WeddingPlanningVendorQuoteDialog
+        isOpen={isQuoteDialogOpen}
+        onOpenChange={setIsQuoteDialogOpen}
+        quoteVendor={quoteVendor}
+        quoteForm={quoteForm}
+        onQuoteFormChange={setQuoteForm}
+        onSubmit={submitQuoteRequest}
+      />
+
+      <WeddingPlanningBudgetReportDialog
+        isOpen={isBudgetReportOpen}
+        onOpenChange={setIsBudgetReportOpen}
+        isPremium={isPremium}
+        totalBudget={totalBudget}
+        totalSpent={totalSpent}
+        budgetDelta={budgetDelta}
+        budgetStatusLabel={budgetStatusLabel}
+        budgetUsedPct={budgetUsedPct}
+        dynamicSavings={dynamicSavings}
+        budgetReportRows={budgetReportRows}
+        onClose={() => setIsBudgetReportOpen(false)}
+        onGoPremium={handleGoPremium}
+        onExportBudgetCsv={handleExportBudgetCsv}
+      />
     </div>
   );
 }
