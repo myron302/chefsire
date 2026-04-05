@@ -23,6 +23,12 @@ type IngredientBucket = {
   seenHash: Set<string>;
 };
 
+type NormalizedComparisonOverlapExample = {
+  ingredient: string;
+  imported: string;
+  normalizedKey: string;
+};
+
 const CURATED_INPUT_CANDIDATES = [
   "server/data/food_substitutions_complete.jsonl",
   "server/data/substitutions_seed_consolidated.jsonl",
@@ -85,6 +91,17 @@ function normalizeIngredient(value: string): string {
 
 function normalizeSubText(value: string): string {
   return value.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function normalizedComparisonKey(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\s*\([^)]*\)/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function toSubstitution(value: unknown): Substitution | null {
@@ -194,6 +211,7 @@ async function loadDataset(
   options?: {
     curatedSeenTextByIngredient?: Map<string, Set<string>>;
     curatedSeenHashByIngredient?: Map<string, Set<string>>;
+    curatedSeenComparisonKeyByIngredient?: Map<string, Set<string>>;
     curatedIngredientKeys?: Set<string>;
   }
 ) {
@@ -213,6 +231,8 @@ async function loadDataset(
   let loadedSubstitutions = 0;
   let skippedBecauseCuratedTextMatch = 0;
   let skippedBecauseCuratedHashMatch = 0;
+  let skippedBecauseCuratedComparisonKeyMatch = 0;
+  const normalizedComparisonOverlapExamples: NormalizedComparisonOverlapExample[] = [];
   const importedIngredientKeysAlreadyInCurated = new Set<string>();
 
   for await (const rawLine of rl) {
@@ -254,6 +274,9 @@ async function loadDataset(
         const curatedHashSet = options?.curatedSeenHashByIngredient?.get(
           normalizedIngredient
         );
+        const comparisonKey = normalizedComparisonKey(sub.text);
+        const curatedComparisonKeySet =
+          options?.curatedSeenComparisonKeyByIngredient?.get(normalizedIngredient);
 
         if (
           normalizedText.length > 0 &&
@@ -267,6 +290,22 @@ async function loadDataset(
           curatedHashSet.has(signatureHash)
         ) {
           skippedBecauseCuratedHashMatch += 1;
+        } else if (
+          comparisonKey.length > 0 &&
+          curatedComparisonKeySet &&
+          curatedComparisonKeySet.has(comparisonKey)
+        ) {
+          skippedBecauseCuratedComparisonKeyMatch += 1;
+          if (normalizedComparisonOverlapExamples.length < 10) {
+            normalizedComparisonOverlapExamples.push({
+              ingredient: normalizedIngredient,
+              imported: sub.text,
+              normalizedKey: comparisonKey,
+            });
+          }
+          importedRejected += 1;
+          duplicatesRemoved += 1;
+          continue;
         }
       }
 
@@ -293,6 +332,8 @@ async function loadDataset(
     loadedSubstitutions,
     skippedBecauseCuratedTextMatch,
     skippedBecauseCuratedHashMatch,
+    skippedBecauseCuratedComparisonKeyMatch,
+    normalizedComparisonOverlapExamples,
     importedIngredientKeysAlreadyInCurated:
       importedIngredientKeysAlreadyInCurated.size,
   };
@@ -328,15 +369,25 @@ async function main() {
   const curatedIngredientKeys = new Set(buckets.keys());
   const curatedSeenTextByIngredient = new Map<string, Set<string>>();
   const curatedSeenHashByIngredient = new Map<string, Set<string>>();
+  const curatedSeenComparisonKeyByIngredient = new Map<string, Set<string>>();
 
   for (const [ingredientKey, bucket] of buckets.entries()) {
     curatedSeenTextByIngredient.set(ingredientKey, new Set(bucket.seenText));
     curatedSeenHashByIngredient.set(ingredientKey, new Set(bucket.seenHash));
+    curatedSeenComparisonKeyByIngredient.set(
+      ingredientKey,
+      new Set(
+        bucket.subs
+          .map((sub) => normalizedComparisonKey(sub.text))
+          .filter((comparisonKey) => comparisonKey.length > 0)
+      )
+    );
   }
 
   const importedStats = await loadDataset(IMPORTED_INPUT, "imported", buckets, {
     curatedSeenTextByIngredient,
     curatedSeenHashByIngredient,
+    curatedSeenComparisonKeyByIngredient,
     curatedIngredientKeys,
   });
 
@@ -357,6 +408,19 @@ async function main() {
   console.log(
     `imported skipped (curated signature_hash already exists): ${importedStats.skippedBecauseCuratedHashMatch}`
   );
+  console.log(
+    `imported skipped (curated normalized comparison key already exists): ${importedStats.skippedBecauseCuratedComparisonKeyMatch}`
+  );
+  if (importedStats.normalizedComparisonOverlapExamples.length > 0) {
+    console.log(
+      "examples of normalized comparison key overlaps (up to 10):"
+    );
+    for (const example of importedStats.normalizedComparisonOverlapExamples) {
+      console.log(
+        `  - ingredient="${example.ingredient}" imported="${example.imported}" normalized="${example.normalizedKey}"`
+      );
+    }
+  }
   console.log(
     `imported ingredient keys already in curated: ${importedStats.importedIngredientKeysAlreadyInCurated}`
   );
