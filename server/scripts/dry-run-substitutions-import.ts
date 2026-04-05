@@ -1,4 +1,3 @@
-import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
@@ -42,9 +41,21 @@ type Counters = {
   malformedLines: number;
 };
 
+const hadDatabaseUrlInProcessEnv = !!process.env.DATABASE_URL?.trim();
+await import("../lib/load-env");
+const databaseUrlSource = hadDatabaseUrlInProcessEnv
+  ? "existing process env"
+  : process.env.DATABASE_URL?.trim()
+    ? "dotenv/env file loading"
+    : "not found";
+
 function reqEnv(name: string): string {
   const v = process.env[name];
-  if (!v || !v.trim()) throw new Error(`${name} is missing. Set it in server/.env`);
+  if (!v || !v.trim()) {
+    throw new Error(
+      `${name} is missing. Set it in process env (e.g., Plesk Node.js environment variables) or /httpdocs/server/.env`
+    );
+  }
   return v;
 }
 
@@ -58,6 +69,9 @@ function normIngredient(name: string) {
 
 const datasetPath = path.resolve("server/data/substitutions_merged.jsonl");
 
+console.log(
+  `[dry-run-substitutions-import] DATABASE_URL source: ${databaseUrlSource}`
+);
 const DATABASE_URL = reqEnv("DATABASE_URL");
 const pool = new Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool);
