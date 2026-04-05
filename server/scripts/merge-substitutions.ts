@@ -23,10 +23,11 @@ type IngredientBucket = {
   seenHash: Set<string>;
 };
 
-const CURATED_INPUT = path.join(
-  process.cwd(),
-  "server/data/substitutions_seed_consolidated .jsonl"
-);
+const CURATED_INPUT_CANDIDATES = [
+  "server/data/food_substitutions_complete.jsonl",
+  "server/data/substitutions_seed_consolidated.jsonl",
+  "server/data/substitutions_seed_consolidated .jsonl",
+];
 const IMPORTED_INPUT = path.join(
   process.cwd(),
   "server/data/substitutions_from_pairs.jsonl"
@@ -35,6 +36,48 @@ const OUTPUT_FILE = path.join(
   process.cwd(),
   "server/data/substitutions_merged.jsonl"
 );
+
+function resolveCuratedInput(): string {
+  const candidatePaths = CURATED_INPUT_CANDIDATES.map((relativePath) =>
+    path.join(process.cwd(), relativePath)
+  );
+  const existingCandidates = candidatePaths.filter((candidatePath) =>
+    fs.existsSync(candidatePath)
+  );
+
+  if (existingCandidates.length === 0) {
+    throw new Error(
+      `Missing curated input file. Checked candidates: ${CURATED_INPUT_CANDIDATES.join(
+        ", "
+      )}`
+    );
+  }
+
+  const chosenPath = existingCandidates[0];
+
+  if (existingCandidates.length > 1) {
+    console.log(
+      `[curated] multiple curated files found (${existingCandidates.length}); selected highest-priority candidate: ${chosenPath}`
+    );
+    console.log(
+      `[curated] selection priority order: ${CURATED_INPUT_CANDIDATES.join(
+        " > "
+      )}`
+    );
+  } else {
+    console.log(`[curated] selected curated input: ${chosenPath}`);
+  }
+
+  if (/\s+\.jsonl$/i.test(path.basename(chosenPath))) {
+    console.warn(
+      `[curated] warning: chosen curated filename appears to contain extra whitespace before .jsonl: ${path.basename(
+        chosenPath
+      )}`
+    );
+  }
+
+  return chosenPath;
+}
 
 function normalizeIngredient(value: string): string {
   return value.toLowerCase().trim().replace(/\s+/g, " ");
@@ -279,8 +322,9 @@ function writeOutput(map: Map<string, IngredientBucket>) {
 
 async function main() {
   const buckets = new Map<string, IngredientBucket>();
+  const curatedInput = resolveCuratedInput();
 
-  const curatedStats = await loadDataset(CURATED_INPUT, "curated", buckets);
+  const curatedStats = await loadDataset(curatedInput, "curated", buckets);
   const curatedIngredientKeys = new Set(buckets.keys());
   const curatedSeenTextByIngredient = new Map<string, Set<string>>();
   const curatedSeenHashByIngredient = new Map<string, Set<string>>();
