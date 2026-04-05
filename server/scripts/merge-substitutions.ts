@@ -147,11 +147,18 @@ function addSubstitution(
 async function loadDataset(
   filePath: string,
   source: "curated" | "imported",
-  map: Map<string, IngredientBucket>
+  map: Map<string, IngredientBucket>,
+  options?: {
+    curatedSeenTextByIngredient?: Map<string, Set<string>>;
+    curatedSeenHashByIngredient?: Map<string, Set<string>>;
+    curatedIngredientKeys?: Set<string>;
+  }
 ) {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Missing input file: ${filePath}`);
   }
+
+  console.log(`[${source}] reading input file: ${filePath}`);
 
   const stream = fs.createReadStream(filePath, { encoding: "utf8" });
   const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
@@ -159,6 +166,11 @@ async function loadDataset(
   let importedKept = 0;
   let importedRejected = 0;
   let duplicatesRemoved = 0;
+  const loadedIngredientKeys = new Set<string>();
+  let loadedSubstitutions = 0;
+  let skippedBecauseCuratedTextMatch = 0;
+  let skippedBecauseCuratedHashMatch = 0;
+  const importedIngredientKeysAlreadyInCurated = new Set<string>();
 
   for await (const rawLine of rl) {
     const line = rawLine.trim();
@@ -176,9 +188,45 @@ async function loadDataset(
       continue;
     }
 
+    loadedIngredientKeys.add(normalizedIngredient);
+
+    if (
+      source === "imported" &&
+      options?.curatedIngredientKeys?.has(normalizedIngredient)
+    ) {
+      importedIngredientKeysAlreadyInCurated.add(normalizedIngredient);
+    }
+
     const bucket = ensureBucket(map, normalizedIngredient);
 
     for (const sub of row.subs) {
+      loadedSubstitutions += 1;
+
+      if (source === "imported") {
+        const normalizedText = normalizeSubText(sub.text);
+        const signatureHash = (sub.signature_hash ?? "").trim();
+        const curatedTextSet = options?.curatedSeenTextByIngredient?.get(
+          normalizedIngredient
+        );
+        const curatedHashSet = options?.curatedSeenHashByIngredient?.get(
+          normalizedIngredient
+        );
+
+        if (
+          normalizedText.length > 0 &&
+          curatedTextSet &&
+          curatedTextSet.has(normalizedText)
+        ) {
+          skippedBecauseCuratedTextMatch += 1;
+        } else if (
+          signatureHash.length > 0 &&
+          curatedHashSet &&
+          curatedHashSet.has(signatureHash)
+        ) {
+          skippedBecauseCuratedHashMatch += 1;
+        }
+      }
+
       const result = addSubstitution(bucket, sub, source);
       if (!result.kept && result.duplicate) {
         duplicatesRemoved += 1;
@@ -194,7 +242,17 @@ async function loadDataset(
     }
   }
 
-  return { importedKept, importedRejected, duplicatesRemoved };
+  return {
+    importedKept,
+    importedRejected,
+    duplicatesRemoved,
+    loadedIngredients: loadedIngredientKeys.size,
+    loadedSubstitutions,
+    skippedBecauseCuratedTextMatch,
+    skippedBecauseCuratedHashMatch,
+    importedIngredientKeysAlreadyInCurated:
+      importedIngredientKeysAlreadyInCurated.size,
+  };
 }
 
 function writeOutput(map: Map<string, IngredientBucket>) {
@@ -223,13 +281,41 @@ async function main() {
   const buckets = new Map<string, IngredientBucket>();
 
   const curatedStats = await loadDataset(CURATED_INPUT, "curated", buckets);
-  const importedStats = await loadDataset(IMPORTED_INPUT, "imported", buckets);
+  const curatedIngredientKeys = new Set(buckets.keys());
+  const curatedSeenTextByIngredient = new Map<string, Set<string>>();
+  const curatedSeenHashByIngredient = new Map<string, Set<string>>();
+
+  for (const [ingredientKey, bucket] of buckets.entries()) {
+    curatedSeenTextByIngredient.set(ingredientKey, new Set(bucket.seenText));
+    curatedSeenHashByIngredient.set(ingredientKey, new Set(bucket.seenHash));
+  }
+
+  const importedStats = await loadDataset(IMPORTED_INPUT, "imported", buckets, {
+    curatedSeenTextByIngredient,
+    curatedSeenHashByIngredient,
+    curatedIngredientKeys,
+  });
 
   const outputStats = writeOutput(buckets);
 
   const duplicatesRemoved =
     curatedStats.duplicatesRemoved + importedStats.duplicatesRemoved;
 
+  console.log(
+    `curated loaded before merge: ${curatedStats.loadedIngredients} ingredients, ${curatedStats.loadedSubstitutions} substitutions`
+  );
+  console.log(
+    `imported loaded before merge: ${importedStats.loadedIngredients} ingredients, ${importedStats.loadedSubstitutions} substitutions`
+  );
+  console.log(
+    `imported skipped (curated normalized substitution already exists): ${importedStats.skippedBecauseCuratedTextMatch}`
+  );
+  console.log(
+    `imported skipped (curated signature_hash already exists): ${importedStats.skippedBecauseCuratedHashMatch}`
+  );
+  console.log(
+    `imported ingredient keys already in curated: ${importedStats.importedIngredientKeysAlreadyInCurated}`
+  );
   console.log(`total ingredients: ${outputStats.totalIngredients}`);
   console.log(`total substitutions: ${outputStats.totalSubstitutions}`);
   console.log(`imported kept: ${importedStats.importedKept}`);
