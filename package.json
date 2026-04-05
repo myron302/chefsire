@@ -47,7 +47,8 @@
     "audit:drink-canonical": "tsx scripts/audit-drink-canonical.ts",
     "audit:pet-food-pages": "tsx scripts/audit-pet-food-pages.ts",
     "audit:content": "npm run audit:drink-canonical && npm run audit:pet-food-pages",
-    "merge:substitutions": "tsx server/scripts/merge-substitutions.ts"
+    "merge:substitutions": "tsx server/scripts/merge-substitutions.ts",
+    "db:seed:subs:dry-run": "tsx server/scripts/dry-run-substitutions-import.ts"
   },
   "dependencies": {
     "@craftjs/core": "^0.2.12",
