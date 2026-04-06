@@ -1,5 +1,4 @@
 // server/seed-substitutions.ts
-import "dotenv/config";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
 import { eq, sql } from "drizzle-orm";
@@ -10,6 +9,14 @@ import crypto from "node:crypto";
 
 import { substitutionIngredients, substitutions } from "../shared/schema.js";
 
+const hadDatabaseUrlInProcessEnv = !!process.env.DATABASE_URL?.trim();
+await import("./lib/load-env");
+const databaseUrlSource = hadDatabaseUrlInProcessEnv
+  ? "existing process env"
+  : process.env.DATABASE_URL?.trim()
+    ? "dotenv/env file loading"
+    : "not found";
+
 function reqEnv(name: string): string {
   const v = process.env[name];
   if (!v || !v.trim())
@@ -17,6 +24,7 @@ function reqEnv(name: string): string {
   return v;
 }
 
+console.log(`[seed-substitutions] DATABASE_URL source: ${databaseUrlSource}`);
 const DATABASE_URL = reqEnv("DATABASE_URL");
 const pool = new Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool);
