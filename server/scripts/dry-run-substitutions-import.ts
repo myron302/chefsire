@@ -6,13 +6,20 @@ import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
 import { and, eq, sql } from "drizzle-orm";
 
-import {
-  substitutionIngredients,
-  substitutions,
-} from "../../shared/schema.js";
+import { substitutionIngredients, substitutions } from "../../shared/schema.js";
 
-type Component = { item: string; amount?: number; unit?: string; note?: string };
-type Method = { action?: string; time_min?: number; time_max?: number; temperature?: string };
+type Component = {
+  item: string;
+  amount?: number;
+  unit?: string;
+  note?: string;
+};
+type Method = {
+  action?: string;
+  time_min?: number;
+  time_max?: number;
+  temperature?: string;
+};
 type SubRow = {
   text: string;
   components?: Component[];
@@ -40,7 +47,8 @@ type Counters = {
   missingIngredientRows: number;
   malformedLines: number;
   exactIngredientMatchesUsed: number;
-  normalizedIngredientMatchesUsed: number;
+  safeNormalizedIngredientMatchesUsed: number;
+  ambiguousNormalizedIngredientCandidatesRejected: number;
   stillMissingIngredientMatches: number;
 };
 
@@ -56,7 +64,7 @@ function reqEnv(name: string): string {
   const v = process.env[name];
   if (!v || !v.trim()) {
     throw new Error(
-      `${name} is missing. Set it in process env (e.g., Plesk Node.js environment variables) or /httpdocs/server/.env`
+      `${name} is missing. Set it in process env (e.g., Plesk Node.js environment variables) or /httpdocs/server/.env`,
     );
   }
   return v;
@@ -71,18 +79,36 @@ function normIngredient(name: string) {
 }
 
 function normalizeIngredientForCompare(name: string) {
-  const withoutParentheticals = name.replace(/\([^)]*\)/g, " ");
-  return withoutParentheticals
+  return name
     .toLowerCase()
-    .replace(/[.,/#!$%^&*;:{}=\-_`~()'"[\]\\?<>+|]/g, " ")
+    .replace(/[-,]/g, " ")
+    .replace(/[./#!$%^&*;:{}=_`~()'"[\]\\?<>+|]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function hasUnsafeIngredientQualifier(name: string) {
+  const lower = name.toLowerCase();
+  return (
+    /\([^)]*\)/.test(name) ||
+    /\bfor\s+thickening\b/.test(lower) ||
+    /\b(salted|unsalted)\b/.test(lower) ||
+    /\b(beef|chicken)\b/.test(lower) ||
+    /\b(fresh|dried)\b/.test(lower) ||
+    /\bcloves?\b/.test(lower) ||
+    /\b\d+\s*(cup|cups|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|oz|ounce|ounces|lb|lbs|pound|pounds|g|gram|grams|kg|ml|l|liter|liters)\b/.test(
+      lower,
+    ) ||
+    /\b(?:a|an|one|two|three|four|five|six|seven|eight|nine|ten)\s+(cup|cups|tbsp|tablespoon|tablespoons|tsp|teaspoon|teaspoons|cloves?|oz|ounce|ounces|lb|lbs|pound|pounds|g|gram|grams|kg|ml|l|liter|liters)\b/.test(
+      lower,
+    )
+  );
 }
 
 const datasetPath = path.resolve("server/data/substitutions_merged.jsonl");
 
 console.log(
-  `[dry-run-substitutions-import] DATABASE_URL source: ${databaseUrlSource}`
+  `[dry-run-substitutions-import] DATABASE_URL source: ${databaseUrlSource}`,
 );
 const DATABASE_URL = reqEnv("DATABASE_URL");
 const pool = new Pool({ connectionString: DATABASE_URL });
@@ -91,6 +117,7 @@ const db = drizzle(pool);
 type IngredientLookup = {
   exact: Map<string, string>;
   normalized: Map<string, string>;
+  ambiguousNormalizedKeys: Set<string>;
 };
 
 async function buildIngredientLookup(): Promise<IngredientLookup> {
@@ -103,22 +130,39 @@ async function buildIngredientLookup(): Promise<IngredientLookup> {
 
   const exact = new Map<string, string>();
   const normalized = new Map<string, string>();
+  const ambiguousNormalizedKeys = new Set<string>();
 
   for (const row of rows) {
     const ingredient = normIngredient(String(row.ingredient || ""));
     if (!ingredient) continue;
     if (!exact.has(ingredient)) exact.set(ingredient, row.id);
 
+    if (hasUnsafeIngredientQualifier(ingredient)) {
+      continue;
+    }
+
     const normalizedKey = normalizeIngredientForCompare(ingredient);
-    if (normalizedKey && !normalized.has(normalizedKey)) {
+    if (!normalizedKey) continue;
+
+    const existing = normalized.get(normalizedKey);
+    if (!existing) {
       normalized.set(normalizedKey, row.id);
+      continue;
+    }
+
+    if (existing !== row.id) {
+      normalized.delete(normalizedKey);
+      ambiguousNormalizedKeys.add(normalizedKey);
     }
   }
 
-  return { exact, normalized };
+  return { exact, normalized, ambiguousNormalizedKeys };
 }
 
-async function readExistingBySignatureHash(ingredientId: string, signatureHash: string) {
+async function readExistingBySignatureHash(
+  ingredientId: string,
+  signatureHash: string,
+) {
   const rows = await db
     .select({
       id: substitutions.id,
@@ -134,10 +178,12 @@ async function readExistingBySignatureHash(ingredientId: string, signatureHash: 
       provenance: substitutions.provenance,
     })
     .from(substitutions)
-    .where(and(
-      eq(substitutions.ingredientId, ingredientId),
-      eq(substitutions.signatureHash, signatureHash),
-    ))
+    .where(
+      and(
+        eq(substitutions.ingredientId, ingredientId),
+        eq(substitutions.signatureHash, signatureHash),
+      ),
+    )
     .limit(1);
 
   return rows[0] ?? null;
@@ -156,7 +202,9 @@ async function readLiveDbIngredientDiagnostics() {
     .from(substitutionIngredients);
 
   return {
-    substitutionIngredientsCount: Number(substitutionIngredientCountRows[0]?.count ?? 0),
+    substitutionIngredientsCount: Number(
+      substitutionIngredientCountRows[0]?.count ?? 0,
+    ),
     substitutionsCount: Number(substitutionsCountRows[0]?.count ?? 0),
     dbIngredients: dbIngredientRows.map((row) => String(row.ingredient || "")),
   };
@@ -184,11 +232,16 @@ async function readDatasetIngredients() {
   return [...datasetIngredientSet];
 }
 
-function printIngredientMatchingDiagnostics(dbIngredients: string[], datasetIngredients: string[]) {
+function printIngredientMatchingDiagnostics(
+  dbIngredients: string[],
+  datasetIngredients: string[],
+) {
   const dbIngredientSet = new Set(dbIngredients);
   const normalizedDbIngredients = new Map<string, string[]>();
 
   for (const ingredient of dbIngredients) {
+    if (hasUnsafeIngredientQualifier(ingredient)) continue;
+
     const normalized = normalizeIngredientForCompare(ingredient);
     if (!normalized) continue;
     const existing = normalizedDbIngredients.get(normalized) ?? [];
@@ -197,25 +250,43 @@ function printIngredientMatchingDiagnostics(dbIngredients: string[], datasetIngr
   }
 
   let exactMatches = 0;
-  let normalizedMatches = 0;
+  let safeNormalizedMatches = 0;
+  let ambiguousNormalizedRejected = 0;
   const missingEvenAfterNormalization: string[] = [];
-  const exactFailedNormalizedSucceededExamples: Array<{ dataset: string; db: string }> = [];
+  const exactFailedNormalizedSucceededExamples: Array<{
+    dataset: string;
+    db: string;
+  }> = [];
+  const ambiguousNormalizedExamples: Array<{
+    dataset: string;
+    dbCandidates: string[];
+  }> = [];
 
   for (const ingredient of datasetIngredients) {
     if (dbIngredientSet.has(ingredient)) {
       exactMatches += 1;
-      normalizedMatches += 1;
       continue;
     }
 
     const normalized = normalizeIngredientForCompare(ingredient);
     const normalizedCandidates = normalizedDbIngredients.get(normalized) ?? [];
-    if (normalizedCandidates.length > 0) {
-      normalizedMatches += 1;
+    if (normalizedCandidates.length === 1) {
+      safeNormalizedMatches += 1;
       if (exactFailedNormalizedSucceededExamples.length < 20) {
         exactFailedNormalizedSucceededExamples.push({
           dataset: ingredient,
           db: normalizedCandidates[0],
+        });
+      }
+      continue;
+    }
+
+    if (normalizedCandidates.length > 1) {
+      ambiguousNormalizedRejected += 1;
+      if (ambiguousNormalizedExamples.length < 20) {
+        ambiguousNormalizedExamples.push({
+          dataset: ingredient,
+          dbCandidates: normalizedCandidates.slice(0, 5),
         });
       }
       continue;
@@ -226,12 +297,25 @@ function printIngredientMatchingDiagnostics(dbIngredients: string[], datasetIngr
 
   console.log("\n===== Live DB ingredient diagnostics =====");
   console.log(`substitution_ingredients rows: ${dbIngredients.length}`);
-  console.log(`Sample substitution_ingredients ingredient names (up to 20): ${dbIngredients.slice(0, 20).join(", ") || "(none)"}`);
-  console.log(`Sample substitutions_merged.jsonl ingredient names (up to 20): ${datasetIngredients.slice(0, 20).join(", ") || "(none)"}`);
+  console.log(
+    `Sample substitution_ingredients ingredient names (up to 20): ${dbIngredients.slice(0, 20).join(", ") || "(none)"}`,
+  );
+  console.log(
+    `Sample substitutions_merged.jsonl ingredient names (up to 20): ${datasetIngredients.slice(0, 20).join(", ") || "(none)"}`,
+  );
   console.log(`Exact ingredient matches (dataset -> DB): ${exactMatches}`);
-  console.log(`Normalized ingredient matches (dataset -> DB): ${normalizedMatches}`);
-  console.log(`Dataset ingredients not found in DB after normalization: ${missingEvenAfterNormalization.length}`);
-  console.log("Examples where exact match failed but normalized match succeeds (up to 20):");
+  console.log(
+    `Safe normalized ingredient matches (dataset -> DB): ${safeNormalizedMatches}`,
+  );
+  console.log(
+    `Ambiguous normalized candidates rejected: ${ambiguousNormalizedRejected}`,
+  );
+  console.log(
+    `Dataset ingredients not found in DB after safe normalization: ${missingEvenAfterNormalization.length}`,
+  );
+  console.log(
+    "Examples where exact match failed but normalized match succeeds (up to 20):",
+  );
   if (exactFailedNormalizedSucceededExamples.length === 0) {
     console.log("  (none)");
   } else {
@@ -239,31 +323,50 @@ function printIngredientMatchingDiagnostics(dbIngredients: string[], datasetIngr
       console.log(`  dataset="${example.dataset}" -> db="${example.db}"`);
     }
   }
+  console.log("Examples of ambiguous normalized matches rejected (up to 20):");
+  if (ambiguousNormalizedExamples.length === 0) {
+    console.log("  (none)");
+  } else {
+    for (const example of ambiguousNormalizedExamples) {
+      console.log(
+        `  dataset="${example.dataset}" -> dbCandidates="${example.dbCandidates.join(" | ")}"`,
+      );
+    }
+  }
 }
 
-function hasDataDifferences(existing: Awaited<ReturnType<typeof readExistingBySignatureHash>>, incoming: {
-  text: string;
-  signature: string;
-  components: unknown;
-  method: unknown;
-  context: string;
-  dietTags: unknown;
-  allergenFlags: unknown;
-  variants: unknown;
-  provenance: unknown;
-}) {
+function hasDataDifferences(
+  existing: Awaited<ReturnType<typeof readExistingBySignatureHash>>,
+  incoming: {
+    text: string;
+    signature: string;
+    components: unknown;
+    method: unknown;
+    context: string;
+    dietTags: unknown;
+    allergenFlags: unknown;
+    variants: unknown;
+    provenance: unknown;
+  },
+) {
   if (!existing) return false;
 
   return (
     existing.text !== incoming.text ||
     existing.signature !== incoming.signature ||
-    JSON.stringify(existing.components ?? []) !== JSON.stringify(incoming.components ?? []) ||
-    JSON.stringify(existing.method ?? {}) !== JSON.stringify(incoming.method ?? {}) ||
+    JSON.stringify(existing.components ?? []) !==
+      JSON.stringify(incoming.components ?? []) ||
+    JSON.stringify(existing.method ?? {}) !==
+      JSON.stringify(incoming.method ?? {}) ||
     (existing.context ?? "") !== incoming.context ||
-    JSON.stringify(existing.dietTags ?? []) !== JSON.stringify(incoming.dietTags ?? []) ||
-    JSON.stringify(existing.allergenFlags ?? []) !== JSON.stringify(incoming.allergenFlags ?? []) ||
-    JSON.stringify(existing.variants ?? []) !== JSON.stringify(incoming.variants ?? []) ||
-    JSON.stringify(existing.provenance ?? []) !== JSON.stringify(incoming.provenance ?? [])
+    JSON.stringify(existing.dietTags ?? []) !==
+      JSON.stringify(incoming.dietTags ?? []) ||
+    JSON.stringify(existing.allergenFlags ?? []) !==
+      JSON.stringify(incoming.allergenFlags ?? []) ||
+    JSON.stringify(existing.variants ?? []) !==
+      JSON.stringify(incoming.variants ?? []) ||
+    JSON.stringify(existing.provenance ?? []) !==
+      JSON.stringify(incoming.provenance ?? [])
   );
 }
 
@@ -276,9 +379,14 @@ async function runDryImportReport() {
   const datasetIngredients = await readDatasetIngredients();
 
   console.log("===== Live DB row counts =====");
-  console.log(`substitution_ingredients rows: ${liveDbDiagnostics.substitutionIngredientsCount}`);
+  console.log(
+    `substitution_ingredients rows: ${liveDbDiagnostics.substitutionIngredientsCount}`,
+  );
   console.log(`substitutions rows: ${liveDbDiagnostics.substitutionsCount}`);
-  printIngredientMatchingDiagnostics(liveDbDiagnostics.dbIngredients, datasetIngredients);
+  printIngredientMatchingDiagnostics(
+    liveDbDiagnostics.dbIngredients,
+    datasetIngredients,
+  );
 
   const counters: Counters = {
     linesRead: 0,
@@ -290,7 +398,8 @@ async function runDryImportReport() {
     missingIngredientRows: 0,
     malformedLines: 0,
     exactIngredientMatchesUsed: 0,
-    normalizedIngredientMatchesUsed: 0,
+    safeNormalizedIngredientMatchesUsed: 0,
+    ambiguousNormalizedIngredientCandidatesRejected: 0,
     stillMissingIngredientMatches: 0,
   };
 
@@ -304,8 +413,12 @@ async function runDryImportReport() {
 
   console.log("🧪 Dry-run substitution import");
   console.log(`📄 Dataset: ${datasetPath}`);
-  console.log("🔐 Existing DB uniqueness key used for substitutions: (ingredient_id, signature_hash)");
-  console.log("🔎 Existence check logic: ingredient exact match first, normalized ingredient key second, then substitution match by signature_hash under resolved ingredient_id");
+  console.log(
+    "🔐 Existing DB uniqueness key used for substitutions: (ingredient_id, signature_hash)",
+  );
+  console.log(
+    "🔎 Existence check logic: ingredient exact match first, normalized ingredient key second, then substitution match by signature_hash under resolved ingredient_id",
+  );
 
   for await (const rawLine of rl) {
     const line = rawLine.trim();
@@ -325,19 +438,30 @@ async function runDryImportReport() {
     if (!ingredientName || !Array.isArray(parsed.subs)) continue;
 
     if (!ingredientIdCache.has(ingredientName)) {
-      const exactIngredientId = ingredientLookup.exact.get(ingredientName) ?? null;
+      const exactIngredientId =
+        ingredientLookup.exact.get(ingredientName) ?? null;
       if (exactIngredientId) {
         ingredientIdCache.set(ingredientName, exactIngredientId);
       } else {
-        const normalizedIngredientName = normalizeIngredientForCompare(ingredientName);
-        const normalizedIngredientId = normalizedIngredientName
-          ? ingredientLookup.normalized.get(normalizedIngredientName) ?? null
-          : null;
-        ingredientIdCache.set(ingredientName, normalizedIngredientId);
+        const normalizedIngredientName =
+          normalizeIngredientForCompare(ingredientName);
+        if (!normalizedIngredientName) {
+          ingredientIdCache.set(ingredientName, null);
+        } else if (
+          ingredientLookup.ambiguousNormalizedKeys.has(normalizedIngredientName)
+        ) {
+          ingredientIdCache.set(ingredientName, null);
+          counters.ambiguousNormalizedIngredientCandidatesRejected += 1;
+        } else {
+          const normalizedIngredientId =
+            ingredientLookup.normalized.get(normalizedIngredientName) ?? null;
+          ingredientIdCache.set(ingredientName, normalizedIngredientId);
+        }
       }
     }
     const ingredientId = ingredientIdCache.get(ingredientName) ?? null;
-    const exactIngredientId = ingredientLookup.exact.get(ingredientName) ?? null;
+    const exactIngredientId =
+      ingredientLookup.exact.get(ingredientName) ?? null;
     const resolvedViaNormalized = !exactIngredientId && !!ingredientId;
 
     for (const sub of parsed.subs) {
@@ -348,7 +472,9 @@ async function runDryImportReport() {
       const method = sub.method ?? {};
       const context = sub.context ?? "";
       const dietTags = Array.isArray(sub.diet_tags) ? sub.diet_tags : [];
-      const allergenFlags = Array.isArray(sub.allergen_flags) ? sub.allergen_flags : [];
+      const allergenFlags = Array.isArray(sub.allergen_flags)
+        ? sub.allergen_flags
+        : [];
       const variants = Array.isArray(sub.variants) ? sub.variants : [];
       const provenance = Array.isArray(sub.provenance) ? sub.provenance : [];
       const signature = sub.signature || text;
@@ -361,12 +487,15 @@ async function runDryImportReport() {
         continue;
       }
       if (resolvedViaNormalized) {
-        counters.normalizedIngredientMatchesUsed += 1;
+        counters.safeNormalizedIngredientMatchesUsed += 1;
       } else {
         counters.exactIngredientMatchesUsed += 1;
       }
 
-      const existing = await readExistingBySignatureHash(ingredientId, signatureHash);
+      const existing = await readExistingBySignatureHash(
+        ingredientId,
+        signatureHash,
+      );
       if (!existing) {
         counters.wouldInsert += 1;
         continue;
@@ -401,12 +530,25 @@ async function runDryImportReport() {
   console.log(`Substitutions seen: ${counters.subsSeen}`);
   console.log(`Would insert: ${counters.wouldInsert}`);
   console.log(`Would skip as already existing: ${counters.wouldSkipExisting}`);
-  console.log(`Would update only if safe upsert logic exists: ${counters.wouldUpdateIfSafeUpsertExists}`);
+  console.log(
+    `Would update only if safe upsert logic exists: ${counters.wouldUpdateIfSafeUpsertExists}`,
+  );
   console.log(`Possible conflicts: ${counters.possibleConflicts}`);
-  console.log(`Rows that would require creating missing ingredient records first: ${counters.missingIngredientRows}`);
-  console.log(`Ingredient resolution via exact match: ${counters.exactIngredientMatchesUsed}`);
-  console.log(`Ingredient resolution via normalized match: ${counters.normalizedIngredientMatchesUsed}`);
-  console.log(`Ingredient matches still missing: ${counters.stillMissingIngredientMatches}`);
+  console.log(
+    `Rows that would require creating missing ingredient records first: ${counters.missingIngredientRows}`,
+  );
+  console.log(
+    `Ingredient resolution via exact match: ${counters.exactIngredientMatchesUsed}`,
+  );
+  console.log(
+    `Ingredient resolution via safe normalized match: ${counters.safeNormalizedIngredientMatchesUsed}`,
+  );
+  console.log(
+    `Ambiguous normalized candidates rejected: ${counters.ambiguousNormalizedIngredientCandidatesRejected}`,
+  );
+  console.log(
+    `Ingredient matches still missing: ${counters.stillMissingIngredientMatches}`,
+  );
   console.log("\nℹ️ This is a read-only dry run. No writes were executed.");
 }
 
