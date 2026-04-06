@@ -31,7 +31,11 @@ const candidateFiles = [
   path.join(process.cwd(), "data/substitutions_seed_consolidated.jsonl"),
   path.join(process.cwd(), "data/substitutions_seed_consolidated.ndjson"),
 ];
-const datasetPath = candidateFiles.find((p) => fs.existsSync(p));
+const datasetOverride = process.env.SUBSTITUTIONS_SEED_FILE?.trim();
+const datasetPath =
+  datasetOverride && fs.existsSync(datasetOverride)
+    ? datasetOverride
+    : candidateFiles.find((p) => fs.existsSync(p));
 
 type Component = {
   item: string;
@@ -293,14 +297,14 @@ async function seedFromJsonl(filePath: string) {
   try {
     if (!datasetPath) {
       console.error(
-        "❌ No dataset found. Place your JSONL/NDJSON file at one of these paths:\n" +
+        "❌ No dataset found. Set SUBSTITUTIONS_SEED_FILE or place your JSONL/NDJSON file at one of these paths:\n" +
           candidateFiles.map((p) => " - " + p).join("\n"),
       );
       process.exit(1);
     }
     await seedFromJsonl(datasetPath);
   } catch (error) {
-    console.error("❌ Seed failed:", e);
+    console.error("❌ Seed failed:", error);
     process.exit(1);
   } finally {
     await pool.end();
