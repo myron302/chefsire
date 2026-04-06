@@ -4,7 +4,7 @@ import readline from "node:readline";
 import crypto from "node:crypto";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool } from "@neondatabase/serverless";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 
 import {
   substitutionIngredients,
@@ -67,6 +67,14 @@ function normIngredient(name: string) {
   return name.replace(/\s+/g, " ").trim();
 }
 
+function normalizeIngredientForCompare(name: string) {
+  return name
+    .toLowerCase()
+    .replace(/[.,/#!$%^&*;:{}=\-_`~()'"[\]\\?<>+|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 const datasetPath = path.resolve("server/data/substitutions_merged.jsonl");
 
 console.log(
@@ -111,6 +119,104 @@ async function readExistingBySignatureHash(ingredientId: string, signatureHash: 
   return rows[0] ?? null;
 }
 
+async function readLiveDbIngredientDiagnostics() {
+  const substitutionIngredientCountRows = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(substitutionIngredients);
+  const substitutionsCountRows = await db
+    .select({ count: sql<number>`count(*)` })
+    .from(substitutions);
+
+  const dbIngredientRows = await db
+    .select({ ingredient: substitutionIngredients.ingredient })
+    .from(substitutionIngredients);
+
+  return {
+    substitutionIngredientsCount: Number(substitutionIngredientCountRows[0]?.count ?? 0),
+    substitutionsCount: Number(substitutionsCountRows[0]?.count ?? 0),
+    dbIngredients: dbIngredientRows.map((row) => String(row.ingredient || "")),
+  };
+}
+
+async function readDatasetIngredients() {
+  const datasetIngredientSet = new Set<string>();
+  const rl = readline.createInterface({
+    input: fs.createReadStream(datasetPath, { encoding: "utf8" }),
+    crlfDelay: Infinity,
+  });
+
+  for await (const rawLine of rl) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    try {
+      const parsed = JSON.parse(line) as Partial<Line>;
+      const ingredient = normIngredient(String(parsed.ingredient || ""));
+      if (ingredient) datasetIngredientSet.add(ingredient);
+    } catch {
+      // ignore malformed lines for diagnostics
+    }
+  }
+
+  return [...datasetIngredientSet];
+}
+
+function printIngredientMatchingDiagnostics(dbIngredients: string[], datasetIngredients: string[]) {
+  const dbIngredientSet = new Set(dbIngredients);
+  const normalizedDbIngredients = new Map<string, string[]>();
+
+  for (const ingredient of dbIngredients) {
+    const normalized = normalizeIngredientForCompare(ingredient);
+    if (!normalized) continue;
+    const existing = normalizedDbIngredients.get(normalized) ?? [];
+    existing.push(ingredient);
+    normalizedDbIngredients.set(normalized, existing);
+  }
+
+  let exactMatches = 0;
+  let normalizedMatches = 0;
+  const missingEvenAfterNormalization: string[] = [];
+  const exactFailedNormalizedSucceededExamples: Array<{ dataset: string; db: string }> = [];
+
+  for (const ingredient of datasetIngredients) {
+    if (dbIngredientSet.has(ingredient)) {
+      exactMatches += 1;
+      normalizedMatches += 1;
+      continue;
+    }
+
+    const normalized = normalizeIngredientForCompare(ingredient);
+    const normalizedCandidates = normalizedDbIngredients.get(normalized) ?? [];
+    if (normalizedCandidates.length > 0) {
+      normalizedMatches += 1;
+      if (exactFailedNormalizedSucceededExamples.length < 20) {
+        exactFailedNormalizedSucceededExamples.push({
+          dataset: ingredient,
+          db: normalizedCandidates[0],
+        });
+      }
+      continue;
+    }
+
+    missingEvenAfterNormalization.push(ingredient);
+  }
+
+  console.log("\n===== Live DB ingredient diagnostics =====");
+  console.log(`substitution_ingredients rows: ${dbIngredients.length}`);
+  console.log(`Sample substitution_ingredients ingredient names (up to 20): ${dbIngredients.slice(0, 20).join(", ") || "(none)"}`);
+  console.log(`Sample substitutions_merged.jsonl ingredient names (up to 20): ${datasetIngredients.slice(0, 20).join(", ") || "(none)"}`);
+  console.log(`Exact ingredient matches (dataset -> DB): ${exactMatches}`);
+  console.log(`Normalized ingredient matches (dataset -> DB): ${normalizedMatches}`);
+  console.log(`Dataset ingredients not found in DB after normalization: ${missingEvenAfterNormalization.length}`);
+  console.log("Examples where exact match failed but normalized match succeeds (up to 20):");
+  if (exactFailedNormalizedSucceededExamples.length === 0) {
+    console.log("  (none)");
+  } else {
+    for (const example of exactFailedNormalizedSucceededExamples) {
+      console.log(`  dataset="${example.dataset}" -> db="${example.db}"`);
+    }
+  }
+}
+
 function hasDataDifferences(existing: Awaited<ReturnType<typeof readExistingBySignatureHash>>, incoming: {
   text: string;
   signature: string;
@@ -141,6 +247,14 @@ async function runDryImportReport() {
   if (!fs.existsSync(datasetPath)) {
     throw new Error(`Dataset not found at ${datasetPath}`);
   }
+
+  const liveDbDiagnostics = await readLiveDbIngredientDiagnostics();
+  const datasetIngredients = await readDatasetIngredients();
+
+  console.log("===== Live DB row counts =====");
+  console.log(`substitution_ingredients rows: ${liveDbDiagnostics.substitutionIngredientsCount}`);
+  console.log(`substitutions rows: ${liveDbDiagnostics.substitutionsCount}`);
+  printIngredientMatchingDiagnostics(liveDbDiagnostics.dbIngredients, datasetIngredients);
 
   const counters: Counters = {
     linesRead: 0,
