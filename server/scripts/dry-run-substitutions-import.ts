@@ -39,6 +39,9 @@ type Counters = {
   possibleConflicts: number;
   missingIngredientRows: number;
   malformedLines: number;
+  exactIngredientMatchesUsed: number;
+  normalizedIngredientMatchesUsed: number;
+  stillMissingIngredientMatches: number;
 };
 
 const hadDatabaseUrlInProcessEnv = !!process.env.DATABASE_URL?.trim();
@@ -68,7 +71,8 @@ function normIngredient(name: string) {
 }
 
 function normalizeIngredientForCompare(name: string) {
-  return name
+  const withoutParentheticals = name.replace(/\([^)]*\)/g, " ");
+  return withoutParentheticals
     .toLowerCase()
     .replace(/[.,/#!$%^&*;:{}=\-_`~()'"[\]\\?<>+|]/g, " ")
     .replace(/\s+/g, " ")
@@ -84,14 +88,34 @@ const DATABASE_URL = reqEnv("DATABASE_URL");
 const pool = new Pool({ connectionString: DATABASE_URL });
 const db = drizzle(pool);
 
-async function findIngredientIdByName(ingredientName: string) {
-  const rows = await db
-    .select({ id: substitutionIngredients.id })
-    .from(substitutionIngredients)
-    .where(eq(substitutionIngredients.ingredient, ingredientName))
-    .limit(1);
+type IngredientLookup = {
+  exact: Map<string, string>;
+  normalized: Map<string, string>;
+};
 
-  return rows[0]?.id ?? null;
+async function buildIngredientLookup(): Promise<IngredientLookup> {
+  const rows = await db
+    .select({
+      id: substitutionIngredients.id,
+      ingredient: substitutionIngredients.ingredient,
+    })
+    .from(substitutionIngredients);
+
+  const exact = new Map<string, string>();
+  const normalized = new Map<string, string>();
+
+  for (const row of rows) {
+    const ingredient = normIngredient(String(row.ingredient || ""));
+    if (!ingredient) continue;
+    if (!exact.has(ingredient)) exact.set(ingredient, row.id);
+
+    const normalizedKey = normalizeIngredientForCompare(ingredient);
+    if (normalizedKey && !normalized.has(normalizedKey)) {
+      normalized.set(normalizedKey, row.id);
+    }
+  }
+
+  return { exact, normalized };
 }
 
 async function readExistingBySignatureHash(ingredientId: string, signatureHash: string) {
@@ -265,8 +289,12 @@ async function runDryImportReport() {
     possibleConflicts: 0,
     missingIngredientRows: 0,
     malformedLines: 0,
+    exactIngredientMatchesUsed: 0,
+    normalizedIngredientMatchesUsed: 0,
+    stillMissingIngredientMatches: 0,
   };
 
+  const ingredientLookup = await buildIngredientLookup();
   const ingredientIdCache = new Map<string, string | null>();
 
   const rl = readline.createInterface({
@@ -277,7 +305,7 @@ async function runDryImportReport() {
   console.log("🧪 Dry-run substitution import");
   console.log(`📄 Dataset: ${datasetPath}`);
   console.log("🔐 Existing DB uniqueness key used for substitutions: (ingredient_id, signature_hash)");
-  console.log("🔎 Existence check logic: ingredient exact match on substitution_ingredients.ingredient, then substitution match by signature_hash under that ingredient_id");
+  console.log("🔎 Existence check logic: ingredient exact match first, normalized ingredient key second, then substitution match by signature_hash under resolved ingredient_id");
 
   for await (const rawLine of rl) {
     const line = rawLine.trim();
@@ -297,9 +325,20 @@ async function runDryImportReport() {
     if (!ingredientName || !Array.isArray(parsed.subs)) continue;
 
     if (!ingredientIdCache.has(ingredientName)) {
-      ingredientIdCache.set(ingredientName, await findIngredientIdByName(ingredientName));
+      const exactIngredientId = ingredientLookup.exact.get(ingredientName) ?? null;
+      if (exactIngredientId) {
+        ingredientIdCache.set(ingredientName, exactIngredientId);
+      } else {
+        const normalizedIngredientName = normalizeIngredientForCompare(ingredientName);
+        const normalizedIngredientId = normalizedIngredientName
+          ? ingredientLookup.normalized.get(normalizedIngredientName) ?? null
+          : null;
+        ingredientIdCache.set(ingredientName, normalizedIngredientId);
+      }
     }
     const ingredientId = ingredientIdCache.get(ingredientName) ?? null;
+    const exactIngredientId = ingredientLookup.exact.get(ingredientName) ?? null;
+    const resolvedViaNormalized = !exactIngredientId && !!ingredientId;
 
     for (const sub of parsed.subs) {
       counters.subsSeen += 1;
@@ -316,9 +355,15 @@ async function runDryImportReport() {
       const signatureHash = sub.signature_hash || hashSignature(signature);
 
       if (!ingredientId) {
+        counters.stillMissingIngredientMatches += 1;
         counters.missingIngredientRows += 1;
         counters.wouldInsert += 1;
         continue;
+      }
+      if (resolvedViaNormalized) {
+        counters.normalizedIngredientMatchesUsed += 1;
+      } else {
+        counters.exactIngredientMatchesUsed += 1;
       }
 
       const existing = await readExistingBySignatureHash(ingredientId, signatureHash);
@@ -359,6 +404,9 @@ async function runDryImportReport() {
   console.log(`Would update only if safe upsert logic exists: ${counters.wouldUpdateIfSafeUpsertExists}`);
   console.log(`Possible conflicts: ${counters.possibleConflicts}`);
   console.log(`Rows that would require creating missing ingredient records first: ${counters.missingIngredientRows}`);
+  console.log(`Ingredient resolution via exact match: ${counters.exactIngredientMatchesUsed}`);
+  console.log(`Ingredient resolution via normalized match: ${counters.normalizedIngredientMatchesUsed}`);
+  console.log(`Ingredient matches still missing: ${counters.stillMissingIngredientMatches}`);
   console.log("\nℹ️ This is a read-only dry run. No writes were executed.");
 }
 

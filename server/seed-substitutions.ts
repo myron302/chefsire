@@ -51,14 +51,66 @@ type Line = {
   subs: SubRow[];
 };
 
+function normalizeIngredientForCompare(name: string) {
+  const withoutParentheticals = name.replace(/\([^)]*\)/g, " ");
+  return withoutParentheticals
+    .toLowerCase()
+    .replace(/[.,/#!$%^&*;:{}=\-_`~()'"[\]\\?<>+|]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const ingredientIdByExactName = new Map<string, string>();
+const ingredientIdByNormalizedName = new Map<string, string>();
+let ingredientLookupLoaded = false;
+
+async function loadIngredientLookup() {
+  if (ingredientLookupLoaded) return;
+
+  const rows = await db
+    .select({
+      id: substitutionIngredients.id,
+      ingredient: substitutionIngredients.ingredient,
+    })
+    .from(substitutionIngredients);
+
+  for (const row of rows) {
+    const ingredientName = String(row.ingredient || "").replace(/\s+/g, " ").trim();
+    if (!ingredientName) continue;
+    if (!ingredientIdByExactName.has(ingredientName)) {
+      ingredientIdByExactName.set(ingredientName, row.id);
+    }
+
+    const normalized = normalizeIngredientForCompare(ingredientName);
+    if (normalized && !ingredientIdByNormalizedName.has(normalized)) {
+      ingredientIdByNormalizedName.set(normalized, row.id);
+    }
+  }
+
+  ingredientLookupLoaded = true;
+}
+
 // helpers
 async function getOrCreateIngredientId(name: string) {
+  await loadIngredientLookup();
+
+  const exactCached = ingredientIdByExactName.get(name);
+  if (exactCached) return exactCached;
+
+  const normalized = normalizeIngredientForCompare(name);
+  const normalizedCached = normalized ? ingredientIdByNormalizedName.get(normalized) : null;
+  if (normalizedCached) return normalizedCached;
+
   const found = await db
     .select({ id: substitutionIngredients.id })
     .from(substitutionIngredients)
     .where(eq(substitutionIngredients.ingredient, name))
     .limit(1);
-  if (found[0]?.id) return found[0].id;
+  if (found[0]?.id) {
+    ingredientIdByExactName.set(name, found[0].id);
+    if (normalized) ingredientIdByNormalizedName.set(normalized, found[0].id);
+    return found[0].id;
+  }
 
   const inserted = await db
     .insert(substitutionIngredients)
@@ -72,6 +124,8 @@ async function getOrCreateIngredientId(name: string) {
     })
     .returning({ id: substitutionIngredients.id });
 
+  ingredientIdByExactName.set(name, inserted[0].id);
+  if (normalized) ingredientIdByNormalizedName.set(normalized, inserted[0].id);
   return inserted[0].id;
 }
 
