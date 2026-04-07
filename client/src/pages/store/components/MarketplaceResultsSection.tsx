@@ -12,7 +12,7 @@ interface MarketplaceResultsSectionProps {
   viewMode: "grid" | "list";
   hasMore: boolean;
   onLoadMore: () => void;
-  onSelectProduct: (productId: string) => void;
+  onSelectProduct: (productId: number) => void;
   onFavorite: (productName: string) => void;
   onClearFilters: () => void;
 }
@@ -43,7 +43,12 @@ export function MarketplaceResultsSection({
               onFavorite={onFavorite}
             />
           ) : (
-            <MarketplaceProductListItem key={product.id} product={product} onSelect={onSelectProduct} />
+            <MarketplaceProductListItem
+              key={product.id}
+              product={product}
+              onSelect={onSelectProduct}
+              onFavorite={onFavorite}
+            />
           )
         )}
       </div>

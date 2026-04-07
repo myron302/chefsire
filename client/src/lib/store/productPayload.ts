@@ -1,4 +1,7 @@
-import { normalizeDeliveryMethodsForForm } from './deliveryMethods';
+import {
+  normalizeDeliveryMethodsForForm,
+  normalizeDeliveryMethodsForMarketplace,
+} from './deliveryMethods';
 import { MarketplaceProduct, MarketplaceProductPayload } from './marketplaceTypes';
 
 export interface ProductFormData {
@@ -40,7 +43,7 @@ export function buildMarketplaceProductPayload(formData: ProductFormData): Marke
     category: formData.category.trim() || 'other',
     images: formData.images,
     productCategory: formData.productCategory,
-    deliveryMethods: normalizeDeliveryMethodsForForm(formData.deliveryMethods),
+    deliveryMethods: normalizeDeliveryMethodsForMarketplace(formData.deliveryMethods),
     digitalFileUrl: formData.digitalFileUrl.trim() || null,
     digitalFileName: formData.digitalFileName.trim() || null,
     isDigital: formData.productCategory === 'digital' || formData.productCategory === 'cookbook',
