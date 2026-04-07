@@ -1,4 +1,4 @@
-import { MapPin, Star, Store } from "lucide-react";
+import { Heart, MapPin, Star, Store } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -7,11 +7,13 @@ import { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
 interface MarketplaceProductListItemProps {
   product: MarketplaceProduct;
   onSelect: (productId: number) => void;
+  onFavorite: (productName: string) => void;
 }
 
 export function MarketplaceProductListItem({
   product,
   onSelect,
+  onFavorite,
 }: MarketplaceProductListItemProps) {
   return (
     <Card
@@ -63,6 +65,16 @@ export function MarketplaceProductListItem({
 
             <Button size="sm" variant="outline">
               View Details
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={(event) => {
+                event.stopPropagation();
+                onFavorite(product.name);
+              }}
+            >
+              <Heart className="w-4 h-4" />
             </Button>
           </div>
         </div>

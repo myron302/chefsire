@@ -37,7 +37,8 @@ export default function Marketplace() {
       const params = buildMarketplaceQueryParams(filters, currentPage);
 
       const data = await getMarketplaceProducts(params);
-      const transformedProducts = applyMarketplaceFiltersAndSorting(data.products || [], filters);
+      const fetchedProducts = data.products || [];
+      const transformedProducts = applyMarketplaceFiltersAndSorting(fetchedProducts, filters);
 
       if (reset) {
         setProducts(transformedProducts);
@@ -47,7 +48,7 @@ export default function Marketplace() {
       }
 
       setTotalCount(data.total || 0);
-      setHasMore(transformedProducts.length === MARKETPLACE_PAGE_SIZE);
+      setHasMore(fetchedProducts.length === MARKETPLACE_PAGE_SIZE);
     } catch (error) {
       console.error("Error fetching products:", error);
       toast({
