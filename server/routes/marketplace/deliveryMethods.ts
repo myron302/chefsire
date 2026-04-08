@@ -1,3 +1,7 @@
+const SHIPPING_METHODS = new Set(["shipped", "shipping"]);
+const PICKUP_METHODS = new Set(["pickup", "local_pickup"]);
+const DIGITAL_METHODS = new Set(["digital_download", "digital"]);
+
 export function addDeliveryMethods(product: any) {
   const deliveryMethods: string[] = [];
   if (product.shippingEnabled) deliveryMethods.push("shipped");
@@ -15,13 +19,19 @@ export function parseDeliveryMethods(deliveryMethods?: string[]) {
   const deliveryData: any = {};
 
   if (deliveryMethods && deliveryMethods.length > 0) {
-    deliveryData.shippingEnabled = deliveryMethods.includes("shipped");
-    deliveryData.localPickupEnabled = deliveryMethods.includes("pickup");
+    const normalized = new Set(deliveryMethods.map((method) => method?.toLowerCase()));
+    const hasShipping = Array.from(normalized).some((method) => SHIPPING_METHODS.has(method));
+    const hasPickup = Array.from(normalized).some((method) => PICKUP_METHODS.has(method));
+    const hasInStore = normalized.has("in_store");
+    const hasDigital = Array.from(normalized).some((method) => DIGITAL_METHODS.has(method));
+
+    deliveryData.shippingEnabled = hasShipping;
+    deliveryData.localPickupEnabled = hasPickup;
     deliveryData.inStoreOnly =
-      deliveryMethods.includes("in_store") &&
-      !deliveryMethods.includes("shipped") &&
-      !deliveryMethods.includes("pickup");
-    deliveryData.isDigital = deliveryMethods.includes("digital_download");
+      hasInStore &&
+      !hasShipping &&
+      !hasPickup;
+    deliveryData.isDigital = hasDigital;
   }
 
   return deliveryData;
