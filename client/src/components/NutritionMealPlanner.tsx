@@ -15,7 +15,11 @@ import { useToast } from '@/hooks/use-toast';
 import BarcodeScanner from '@/components/BarcodeScanner';
 import AdvancedFeaturesPanel from '@/components/meal-planner/AdvancedFeaturesPanel';
 import PlannerTabSection from '@/components/meal-planner/sections/PlannerTabSection';
+import NutritionTabSection from '@/components/meal-planner/sections/NutritionTabSection';
+import BodyTabSection from '@/components/meal-planner/sections/BodyTabSection';
 import GroceryTabSection from '@/components/meal-planner/sections/GroceryTabSection';
+import PrepTabSection from '@/components/meal-planner/sections/PrepTabSection';
+import AnalyticsTabSection from '@/components/meal-planner/sections/AnalyticsTabSection';
 import GoalCalculatorDialog from '@/components/meal-planner/modals/GoalCalculatorDialog';
 import PantryModal from '@/components/meal-planner/modals/PantryModal';
 import LoadTemplateModal from '@/components/meal-planner/modals/LoadTemplateModal';
@@ -26,7 +30,6 @@ import AIRecipeModal from '@/components/meal-planner/modals/AIRecipeModal';
 import CookingToolsReference from '@/components/meal-planner/CookingToolsReference';
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 import { normalizeShoppingListItem } from '@/lib/shopping-list';
-import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import {
   DEFAULT_NUTRITION_GOALS,
   MEAL_TYPES,
@@ -1155,7 +1158,7 @@ const NutritionMealPlanner = () => {
     </div>
   );
 
-  const FeatureItem = ({ icon, text }) => (
+  const FeatureItem = ({ icon, text }: { icon: React.ReactNode; text: string }) => (
     <div className="flex items-center space-x-2 text-white">
       <div className="w-5 h-5">{icon}</div>
       <span className="text-sm font-medium">{text}</span>
@@ -1440,250 +1443,31 @@ const NutritionMealPlanner = () => {
 
           {/* Nutrition Tracking Tab */}
           <TabsContent value="nutrition">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Today's Nutrition</CardTitle>
-                    <CardDescription>{new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium">Calories</span>
-                        <span className="text-sm text-gray-600">{caloriesCurrent} / {calorieGoal}</span>
-                      </div>
-                      <Progress value={calorieProgress} className="h-2" />
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <MacroCard label="Protein" current={proteinCurrent} goal={macroGoals.protein || 150} unit="g" color="blue" />
-                      <MacroCard label="Carbs" current={carbsCurrent} goal={macroGoals.carbs || 200} unit="g" color="orange" />
-                      <MacroCard label="Fat" current={fatCurrent} goal={macroGoals.fat || 65} unit="g" color="purple" />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Weekly Progress</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
-                      <div className="text-center text-gray-500">
-                        <BarChart3 className="w-12 h-12 mx-auto mb-2" />
-                        <p>{plannedSlots}/{totalSlots} weekly meal slots planned</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Nutrition Goals</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Daily Calories</span>
-                      <span className="text-sm font-medium">{calorieGoal} kcal</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Protein</span>
-                      <span className="text-sm font-medium">{macroGoals.protein || 150}g</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Carbs</span>
-                      <span className="text-sm font-medium">{macroGoals.carbs || 200}g</span>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm">Fat</span>
-                      <span className="text-sm font-medium">{macroGoals.fat || 65}g</span>
-                    </div>
-                    <Button variant="outline" size="sm" className="w-full mt-4" onClick={() => setShowCalcModal(true)}>
-                      <Target className="w-4 h-4 mr-2" />
-                      Calculate My Goals
-                    </Button>
-                  </CardContent>
-                </Card>
-
-                {/* Food Scanner Card */}
-                <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200">
-                  <CardHeader>
-                    <CardTitle className="text-lg flex items-center gap-2">
-                      <Camera className="w-5 h-5 text-purple-600" />
-                      Food Scanner
-                    </CardTitle>
-                    <CardDescription>Scan food to track calories instantly</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <p className="text-sm text-gray-600">Point your camera at any food item to automatically detect and log nutrition info.</p>
-                    <div className="flex flex-col gap-2">
-                      <Button
-                        className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white"
-                        onClick={() => {
-                          const input = document.getElementById('food-scanner-camera');
-                          if (input) input.click();
-                        }}
-                      >
-                        <Camera className="w-4 h-4 mr-2" />
-                        Scan Food Now
-                      </Button>
-                      <input
-                        id="food-scanner-camera"
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            // In production, this would call an AI vision API
-                            toast({
-                              description: "Food scanning detected: Chicken Breast (200g) - 330 calories, 62g protein",
-                            });
-                          }
-                        }}
-                      />
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => {
-                          const input = document.getElementById('food-scanner-upload');
-                          if (input) input.click();
-                        }}
-                      >
-                        Upload Photo
-                      </Button>
-                      <input
-                        id="food-scanner-upload"
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            toast({
-                              description: "Food scanning detected: Mixed Salad - 150 calories, 8g protein",
-                            });
-                          }
-                        }}
-                      />
-                    </div>
-                    <div className="bg-white rounded-lg p-3 space-y-2">
-                      <p className="text-xs font-medium text-gray-700">Recently Scanned:</p>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-600">Grilled Chicken</span>
-                        <span className="font-medium">330 cal</span>
-                      </div>
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="text-gray-600">Greek Yogurt</span>
-                        <span className="font-medium">120 cal</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">Quick Tips</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-start gap-2">
-                      <CheckCircle className="w-5 h-5 text-green-500 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium">Great protein intake!</p>
-                        <p className="text-xs text-gray-600">You're hitting your targets consistently</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <AlertCircle className="w-5 h-5 text-orange-500 mt-0.5" />
-                      <div>
-                        <p className="text-sm font-medium">Low on vegetables</p>
-                        <p className="text-xs text-gray-600">Try adding more greens to lunch</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle className="text-lg">Water Intake</CardTitle>
-                      <Button size="icon" variant="ghost" className="h-7 w-7" onClick={updateWaterTarget}><Settings className="w-4 h-4" /></Button>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-4 gap-2 mb-3">
-                      {Array.from({ length: water.dailyTarget || 8 }).slice(0, 8).map((_, idx) => {
-                        const filled = idx < water.glassesLogged;
-                        return (
-                          <button key={idx} onClick={() => saveWater(filled ? idx : idx + 1)} className={`p-2 rounded border ${filled ? 'bg-blue-100 border-blue-300' : 'bg-white border-gray-200'}`}>
-                            <Droplets className={`w-5 h-5 mx-auto ${filled ? 'text-blue-600 fill-blue-500' : 'text-gray-300'}`} />
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-sm text-gray-600">{water.glassesLogged} / {water.dailyTarget} glasses</p>
-                  </CardContent>
-                </Card>
-              </div>
-            </div>
+            <NutritionTabSection
+              caloriesCurrent={caloriesCurrent}
+              calorieGoal={calorieGoal}
+              calorieProgress={calorieProgress}
+              proteinCurrent={proteinCurrent}
+              carbsCurrent={carbsCurrent}
+              fatCurrent={fatCurrent}
+              macroGoals={macroGoals}
+              plannedSlots={plannedSlots}
+              totalSlots={totalSlots}
+              setShowCalcModal={setShowCalcModal}
+              toast={toast}
+              water={water}
+              updateWaterTarget={updateWaterTarget}
+              saveWater={saveWater}
+            />
           </TabsContent>
 
           <TabsContent value="body">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <div className="lg:col-span-2 space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Weight Trend</CardTitle>
-                  </CardHeader>
-                  <CardContent className="h-72">
-                    {bodyMetricsLog.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={bodyMetricsLog.map((m: any) => ({ date: m.date, weight: Number(m.weightLbs) }))}>
-                          <CartesianGrid strokeDasharray="3 3" />
-                          <XAxis dataKey="date" />
-                          <YAxis />
-                          <Tooltip />
-                          <Line type="monotone" dataKey="weight" stroke="#f97316" strokeWidth={2} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-sm text-gray-500">No body metrics yet.</div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-              <div className="space-y-6">
-                <Card>
-                  <CardHeader><CardTitle className="text-lg">Log Body Metrics</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                    <input type="date" className="w-full border rounded px-3 py-2 text-sm" value={bodyForm.date} onChange={(e) => setBodyForm((p) => ({ ...p, date: e.target.value }))} />
-                    <div className="flex gap-2">
-                      <input type="number" className="flex-1 border rounded px-3 py-2 text-sm" placeholder={`Weight (${bodyForm.unit})`} value={bodyForm.weight} onChange={(e) => setBodyForm((p) => ({ ...p, weight: e.target.value }))} />
-                      <Button variant="outline" size="sm" onClick={() => setBodyForm((p) => ({ ...p, unit: p.unit === 'lbs' ? 'kg' : 'lbs' }))}>{bodyForm.unit.toUpperCase()}</Button>
-                    </div>
-                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="Body fat %" value={bodyForm.bodyFatPct} onChange={(e) => setBodyForm((p) => ({ ...p, bodyFatPct: e.target.value }))} />
-                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="Waist (in)" value={bodyForm.waistIn} onChange={(e) => setBodyForm((p) => ({ ...p, waistIn: e.target.value }))} />
-                    <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="Hips (in)" value={bodyForm.hipIn} onChange={(e) => setBodyForm((p) => ({ ...p, hipIn: e.target.value }))} />
-                    <Button className="w-full" onClick={saveBodyMetric}>Save Metric</Button>
-                  </CardContent>
-                </Card>
-                {bodyMetricsLog.length > 0 && (
-                  <Card>
-                    <CardHeader><CardTitle className="text-lg">Latest Entry</CardTitle></CardHeader>
-                    <CardContent>
-                      <p className="text-sm">Weight: <span className="font-semibold">{Number(bodyMetricsLog[bodyMetricsLog.length - 1]?.weightLbs).toFixed(1)} lbs</span></p>
-                      <p className="text-sm">Body Fat: <span className="font-semibold">{bodyMetricsLog[bodyMetricsLog.length - 1]?.bodyFatPct || '-'}%</span></p>
-                      <p className="text-sm">Waist: <span className="font-semibold">{bodyMetricsLog[bodyMetricsLog.length - 1]?.waistIn || '-'} in</span></p>
-                      <p className="text-sm">Hips: <span className="font-semibold">{bodyMetricsLog[bodyMetricsLog.length - 1]?.hipIn || '-'} in</span></p>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            </div>
+            <BodyTabSection
+              bodyMetricsLog={bodyMetricsLog}
+              bodyForm={bodyForm}
+              setBodyForm={setBodyForm}
+              saveBodyMetric={saveBodyMetric}
+            />
           </TabsContent>
 
           {/* Grocery List Tab */}
@@ -1705,140 +1489,12 @@ const NutritionMealPlanner = () => {
 
           {/* Meal Prep Tab */}
           <TabsContent value="prep">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Batch Cooking Planner</CardTitle>
-                  <CardDescription>Prepare multiple meals efficiently</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="p-4 bg-blue-50 rounded-lg">
-                      <div className="flex items-start gap-3">
-                        <Clock className="w-5 h-5 text-blue-600 mt-1" />
-                        <div className="flex-1">
-                          <h4 className="font-medium mb-1">Sunday Meal Prep</h4>
-                          <p className="text-sm text-gray-600 mb-3">Prepare 5 meals in 2 hours</p>
-                          <ul className="space-y-1 text-sm text-gray-700">
-                            <li>• Cook 2lbs chicken breast</li>
-                            <li>• Roast vegetables (carrots, broccoli)</li>
-                            <li>• Prepare 3 cups quinoa</li>
-                            <li>• Portion into containers</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 bg-green-50 rounded-lg">
-                      <div className="flex items-start gap-3">
-                        <Clock className="w-5 h-5 text-green-600 mt-1" />
-                        <div className="flex-1">
-                          <h4 className="font-medium mb-1">Wednesday Prep</h4>
-                          <p className="text-sm text-gray-600 mb-3">Quick 30-minute session</p>
-                          <ul className="space-y-1 text-sm text-gray-700">
-                            <li>• Hard boil 6 eggs</li>
-                            <li>• Prep overnight oats</li>
-                            <li>• Cut fruit for snacks</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-
-                    <Button className="w-full">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Prep Session
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Storage Tips</CardTitle>
-                  <CardDescription>Keep your meals fresh</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <StorageTip
-                      icon={<ChefHat className="w-5 h-5 text-orange-500" />}
-                      title="Chicken & Rice"
-                      tip="Refrigerate up to 4 days, freeze up to 3 months"
-                    />
-                    <StorageTip
-                      icon={<Utensils className="w-5 h-5 text-green-500" />}
-                      title="Chopped Vegetables"
-                      tip="Store in airtight container, use within 3-5 days"
-                    />
-                    <StorageTip
-                      icon={<Package className="w-5 h-5 text-blue-500" />}
-                      title="Cooked Grains"
-                      tip="Refrigerate up to 5 days, freeze up to 6 months"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <PrepTabSection />
           </TabsContent>
 
           {/* Analytics Tab */}
           <TabsContent value="analytics">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Weekly Overview</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
-                    <div className="text-center text-gray-500">
-                      <PieChart className="w-12 h-12 mx-auto mb-2" />
-                      <p>Macro distribution chart</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Progress Trends</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
-                    <div className="text-center text-gray-500">
-                      <TrendingUp className="w-12 h-12 mx-auto mb-2" />
-                      <p>Progress trend chart</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="lg:col-span-2">
-                <CardHeader>
-                  <CardTitle>Insights & Recommendations</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <InsightCard
-                      icon={<Star className="w-6 h-6 text-yellow-500" />}
-                      title="Great Week!"
-                      description="You hit your protein goal 6 out of 7 days"
-                      trend="positive"
-                    />
-                    <InsightCard
-                      icon={<TrendingUp className="w-6 h-6 text-green-500" />}
-                      title="Consistent Progress"
-                      description="Your meal prep adherence is up 15%"
-                      trend="positive"
-                    />
-                    <InsightCard
-                      icon={<AlertCircle className="w-6 h-6 text-orange-500" />}
-                      title="Room for Improvement"
-                      description="Try adding more vegetables at dinner"
-                      trend="neutral"
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <AnalyticsTabSection />
           </TabsContent>
 
           <TabsContent value="advanced">
@@ -1952,46 +1608,10 @@ const NutritionMealPlanner = () => {
 };
 
 // Helper Components
-const MacroCard = ({ label, current, goal, unit, color }) => {
-  const percentage = (current / goal) * 100;
-  const colorClasses = {
-    blue: 'text-blue-600 bg-blue-50',
-    orange: 'text-orange-600 bg-orange-50',
-    purple: 'text-purple-600 bg-purple-50'
-  };
 
-  return (
-    <div className={`p-4 rounded-lg ${colorClasses[color]}`}>
-      <div className="text-sm font-medium mb-2">{label}</div>
-      <div className="text-2xl font-bold mb-1">{current}{unit}</div>
-      <div className="text-xs opacity-75">of {goal}{unit} ({Math.round(percentage)}%)</div>
-    </div>
-  );
-};
 
-const StorageTip = ({ icon, title, tip }) => (
-  <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
-    {icon}
-    <div>
-      <h4 className="font-medium text-sm mb-1">{title}</h4>
-      <p className="text-xs text-gray-600">{tip}</p>
-    </div>
-  </div>
-);
 
-const InsightCard = ({ icon, title, description, trend }) => {
-  const borderColor = trend === 'positive' ? 'border-green-200' : 'border-gray-200';
-
-  return (
-    <div className={`p-4 border-2 ${borderColor} rounded-lg`}>
-      <div className="mb-2">{icon}</div>
-      <h4 className="font-medium mb-1">{title}</h4>
-      <p className="text-sm text-gray-600">{description}</p>
-    </div>
-  );
-};
-
-const Testimonial = ({ name, text, rating }) => (
+const Testimonial = ({ name, text, rating }: { name: string; text: string; rating: number }) => (
   <div className="bg-white p-4 rounded-lg border border-purple-200">
     <div className="flex gap-1 mb-2">
       {[...Array(rating)].map((_, i) => (
