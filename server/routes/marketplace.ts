@@ -111,8 +111,10 @@ r.get("/products", async (req, res) => {
 // Seller's products
 r.get("/sellers/:sellerId/products", async (req, res) => {
   try {
-    const offset = Number(req.query.offset ?? 0);
-    const limit = Number(req.query.limit ?? 20);
+    const parsedOffset = Number(req.query.offset ?? 0);
+    const parsedLimit = Number(req.query.limit ?? 20);
+    const offset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+    const limit = Number.isFinite(parsedLimit) && parsedLimit >= 1 ? Math.min(parsedLimit, 50) : 20;
     const items = await storage.getUserProducts(req.params.sellerId, offset, limit);
     const itemsWithDelivery = mapProductsWithDeliveryMethods(items);
     res.json({ products: itemsWithDelivery, total: itemsWithDelivery.length, sellerId: req.params.sellerId });
@@ -125,6 +127,12 @@ r.get("/sellers/:sellerId/products", async (req, res) => {
 // Update product
 r.put("/products/:id", requireAuth, async (req, res) => {
   try {
+    const existingProduct = await storage.getProduct(req.params.id);
+    if (!existingProduct) return res.status(404).json({ error: "Product not found" });
+    if (existingProduct.sellerId !== req.user!.id) {
+      return res.status(403).json({ error: "Not allowed to update this product" });
+    }
+
     const body = updateProductSchema.parse(req.body);
 
     const deliveryData = parseDeliveryMethods(body.deliveryMethods);
@@ -148,6 +156,12 @@ r.put("/products/:id", requireAuth, async (req, res) => {
 // Deactivate product
 r.delete("/products/:id", requireAuth, async (req, res) => {
   try {
+    const existingProduct = await storage.getProduct(req.params.id);
+    if (!existingProduct) return res.status(404).json({ message: "Product not found" });
+    if (existingProduct.sellerId !== req.user!.id) {
+      return res.status(403).json({ message: "Not allowed to delete this product" });
+    }
+
     const ok = await storage.deleteProduct(req.params.id);
     if (!ok) return res.status(404).json({ message: "Product not found" });
     res.json({ message: "Product deactivated" });
