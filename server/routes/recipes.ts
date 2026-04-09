@@ -4,28 +4,19 @@ import { z } from "zod";
 import { searchRecipes } from "../services/recipes-service";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
-import { parseContentSourceFilter } from "@shared/content-source";
+import { resolveAuthenticatedUserId } from "./recipes/auth";
+import { normalizeIngredients, normalizeInstructions, withItemsFromResults } from "./recipes/serializers";
+import {
+  DEFAULT_RECIPES_PAGE_SIZE,
+  DEFAULT_TRENDING_LIMIT,
+  parseNumberParam,
+  parseRecipeSearchParams,
+} from "./recipes/search-params";
 
 const router = Router();
 
 function noStore(res: any) {
   res.setHeader("Cache-Control", "no-store, max-age=0");
-}
-
-function parseList(input: unknown): string[] {
-  if (Array.isArray(input)) {
-    return input
-      .flatMap((x) => String(x).split(","))
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  if (typeof input === "string") {
-    return input
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
-  return [];
 }
 
 /**
@@ -35,54 +26,6 @@ function parseList(input: unknown): string[] {
  * - Club recipes may have postId = null and are managed via /api/clubs routes
  */
 
-type IngredientRow = {
-  amount?: string | number;
-  unit?: string;
-  ingredient?: string;
-  name?: string;
-};
-type InstructionRow = { step?: string; text?: string };
-
-function normalizeIngredients(input: unknown): string[] {
-  if (!input) return [];
-  if (Array.isArray(input)) {
-    // Already array of strings
-    if (input.every((x) => typeof x === "string")) {
-      return (input as string[]).map((s) => s.trim()).filter(Boolean);
-    }
-
-    // Array of objects -> join into a nice single string per row
-    return (input as any[])
-      .map((row: IngredientRow) => {
-        const amount = row.amount ?? "";
-        const unit = row.unit ?? "";
-        const name = row.ingredient ?? row.name ?? "";
-        const joined = [amount, unit, name]
-          .map((x) => String(x ?? "").trim())
-          .filter(Boolean)
-          .join(" ");
-        return joined.trim();
-      })
-      .filter(Boolean);
-  }
-  return [];
-}
-
-function normalizeInstructions(input: unknown): string[] {
-  if (!input) return [];
-  if (Array.isArray(input)) {
-    // Already array of strings
-    if (input.every((x) => typeof x === "string")) {
-      return (input as string[]).map((s) => s.trim()).filter(Boolean);
-    }
-
-    // Array of objects -> extract text
-    return (input as any[])
-      .map((row: InstructionRow) => String(row.step ?? row.text ?? "").trim())
-      .filter(Boolean);
-  }
-  return [];
-}
 
 /**
  * POST /api/recipes
@@ -231,25 +174,9 @@ router.patch("/:id", requireAuth, async (req, res) => {
 router.get("/search", async (req, res) => {
   noStore(res);
   try {
-    const q = typeof req.query.q === "string" ? req.query.q : undefined;
-    const cuisines = parseList(req.query.cuisines);
-    const diets = parseList(req.query.diets);
-    const mealTypes = parseList(req.query.mealTypes);
-    const source = parseContentSourceFilter(req.query.source);
-
-    const pageSize =
-      typeof req.query.pageSize === "string"
-        ? Number(req.query.pageSize)
-        : typeof req.query.pageSize === "number"
-        ? req.query.pageSize
-        : 24;
-
-    const offset =
-      typeof req.query.offset === "string"
-        ? Number(req.query.offset)
-        : typeof req.query.offset === "number"
-        ? req.query.offset
-        : 0;
+    const { q, cuisines, diets, mealTypes, source, pageSize, offset } = parseRecipeSearchParams(
+      req.query as Record<string, unknown>,
+    );
 
     const result = await searchRecipes({
       q,
@@ -257,13 +184,12 @@ router.get("/search", async (req, res) => {
       diets,
       mealTypes,
       source,
-      pageSize: Number.isFinite(pageSize) ? pageSize : 24,
-      offset: Number.isFinite(offset) ? offset : 0,
+      pageSize,
+      offset,
     });
 
-    // Return `items` (what the client expects) aliased from `results`
-    const { results, ...rest } = result;
-    res.json({ ok: true, ...rest, items: results });
+    // Return `items` (what the client expects) aliased from `results`.
+    res.json({ ok: true, ...withItemsFromResults(result) });
   } catch (err: any) {
     console.error("recipes search error:", err);
     res.status(500).json({ ok: false, error: err?.message || "Search failed" });
@@ -277,10 +203,9 @@ router.get("/search", async (req, res) => {
 router.get("/random", async (req, res) => {
   noStore(res);
   try {
-    const source = parseContentSourceFilter(req.query.source);
-    const result = await searchRecipes({ pageSize: 24, source });
-    const { results, ...rest } = result;
-    res.json({ ok: true, ...rest, items: results });
+    const { source } = parseRecipeSearchParams(req.query as Record<string, unknown>);
+    const result = await searchRecipes({ pageSize: DEFAULT_RECIPES_PAGE_SIZE, source });
+    res.json({ ok: true, ...withItemsFromResults(result) });
   } catch (err: any) {
     console.error("recipes random error:", err);
     res.status(500).json({ ok: false, error: err?.message || "Random failed" });
@@ -294,14 +219,8 @@ router.get("/random", async (req, res) => {
 router.get("/trending", async (req, res) => {
   noStore(res);
   try {
-    const limit =
-      typeof req.query.limit === "string"
-        ? Number(req.query.limit)
-        : typeof req.query.limit === "number"
-        ? req.query.limit
-        : 10;
-
-    const recipes = await storage.getTrendingRecipes(Number.isFinite(limit) ? limit : 10);
+    const limit = parseNumberParam(req.query.limit, DEFAULT_TRENDING_LIMIT);
+    const recipes = await storage.getTrendingRecipes(limit);
     res.json({ ok: true, recipes });
   } catch (err: any) {
     console.error("recipes trending error:", err);
@@ -313,13 +232,13 @@ router.get("/trending", async (req, res) => {
  * POST /api/recipes/:id/save
  * Save a recipe for the authenticated user
  */
-router.post("/:id/save", async (req, res) => {
+router.post("/:id/save", requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body;
+    const requestedUserId = typeof req.body?.userId === "string" ? req.body.userId : undefined;
     const recipeId = req.params.id;
-
+    const userId = resolveAuthenticatedUserId(req, requestedUserId);
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "userId is required" });
+      return res.status(403).json({ ok: false, error: "Not allowed" });
     }
 
     const save = await storage.saveRecipe(userId, recipeId);
@@ -334,13 +253,13 @@ router.post("/:id/save", async (req, res) => {
  * DELETE /api/recipes/:id/save
  * Unsave a recipe for the authenticated user
  */
-router.delete("/:id/save", async (req, res) => {
+router.delete("/:id/save", requireAuth, async (req, res) => {
   try {
-    const userId = req.query.userId as string;
+    const requestedUserId = typeof req.query.userId === "string" ? req.query.userId : undefined;
     const recipeId = req.params.id;
-
+    const userId = resolveAuthenticatedUserId(req, requestedUserId);
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "userId is required" });
+      return res.status(403).json({ ok: false, error: "Not allowed" });
     }
 
     const ok = await storage.unsaveRecipe(userId, recipeId);
@@ -354,13 +273,13 @@ router.delete("/:id/save", async (req, res) => {
 /**
  * GET /api/recipes/:id/save-status?userId=...
  */
-router.get("/:id/save-status", async (req, res) => {
+router.get("/:id/save-status", requireAuth, async (req, res) => {
   try {
-    const userId = req.query.userId as string;
+    const requestedUserId = typeof req.query.userId === "string" ? req.query.userId : undefined;
     const recipeId = req.params.id;
-
+    const userId = resolveAuthenticatedUserId(req, requestedUserId);
     if (!userId) {
-      return res.status(400).json({ ok: false, error: "userId is required" });
+      return res.status(403).json({ ok: false, error: "Not allowed" });
     }
 
     const isSaved = await storage.isRecipeSaved(userId, recipeId);
