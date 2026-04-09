@@ -9,6 +9,10 @@ import {
   substitutionIngredients,
   substitutions,
 } from "../../shared/schema.js";
+import {
+  rankSubstitutions,
+  tierSubstitutions,
+} from "../lib/substitution-ranking.js";
 
 const router = Router();
 
@@ -27,7 +31,8 @@ if (DATABASE_URL) {
  * Query params:
  *  - q: free text search (ingredient name or substitution text)
  *  - ingredient: exact ingredient filter (e.g. "Buttermilk")
- *  - limit: number (default 20, max 100)
+ *  - context: ranking context hint (e.g. "baking", "dairy", "seasoning", "general")
+ *  - limit: number (default 10, max 100)
  *  - offset: number (default 0)
  */
 router.get("/", async (req: Request, res: Response) => {
@@ -42,8 +47,9 @@ router.get("/", async (req: Request, res: Response) => {
   try {
     const q = (req.query.q as string | undefined)?.trim();
     const ingredientFilter = (req.query.ingredient as string | undefined)?.trim();
+    const context = (req.query.context as string | undefined)?.trim();
     const limit = Math.min(
-      Math.max(parseInt(String(req.query.limit ?? "20"), 10) || 20, 1),
+      Math.max(parseInt(String(req.query.limit ?? "10"), 10) || 10, 1),
       100
     );
     const offset = Math.max(parseInt(String(req.query.offset ?? "0"), 10) || 0, 0);
@@ -84,6 +90,7 @@ router.get("/", async (req: Request, res: Response) => {
         context: substitutions.context,
         dietTags: substitutions.dietTags,
         allergenFlags: substitutions.allergenFlags,
+        provenance: substitutions.provenance,
       })
       .from(substitutions)
       .innerJoin(
@@ -91,10 +98,13 @@ router.get("/", async (req: Request, res: Response) => {
         eq(substitutions.ingredientId, substitutionIngredients.id)
       )
       .where(where as any)
-      .limit(limit)
-      .offset(offset);
+      .limit(Math.min(Math.max(offset + limit, 50), 500));
 
-    res.json({ items: rows, total, limit, offset });
+    const rankedRows = rankSubstitutions(rows, { requestedContext: context });
+    const pagedItems = rankedRows.slice(offset, offset + limit);
+    const tiers = tierSubstitutions(rankedRows);
+
+    res.json({ items: pagedItems, total, limit, offset, tiers });
   } catch (err: any) {
     console.error("GET /api/substitutions error:", err);
     res.status(500).json({ error: "Failed to fetch substitutions" });
@@ -131,6 +141,7 @@ router.get("/:ingredient", async (req: Request, res: Response) => {
         context: substitutions.context,
         dietTags: substitutions.dietTags,
         allergenFlags: substitutions.allergenFlags,
+        provenance: substitutions.provenance,
       })
       .from(substitutions)
       .innerJoin(
@@ -139,7 +150,10 @@ router.get("/:ingredient", async (req: Request, res: Response) => {
       )
       .where(eq(substitutionIngredients.ingredient, name));
 
-    res.json({ items: rows, total: rows.length });
+    const rankedRows = rankSubstitutions(rows);
+    const tiers = tierSubstitutions(rankedRows);
+
+    res.json({ items: rankedRows, total: rankedRows.length, tiers });
   } catch (err: any) {
     console.error("GET /api/substitutions/:ingredient error:", err);
     res.status(500).json({ error: "Failed to fetch substitutions" });
