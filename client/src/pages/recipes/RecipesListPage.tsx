@@ -9,11 +9,14 @@ import { RecipeModal } from "./components/RecipeModal";
 import { RecipesResults } from "./components/RecipesResults";
 import { RecipesToolbar } from "./components/RecipesToolbar";
 import { useInfiniteScrollSentinel } from "./hooks/useInfiniteScrollSentinel";
+import { useRecipesFilters } from "./useRecipesFilters";
 import {
   DEFAULT_PAGE_SIZE,
+  getQueryTermFromUrlSearch,
   fetchRandomRecipes,
   fetchSearchRecipes,
   getSourceFilterFromUrlParam,
+  hasRecipeSearchFilters,
 } from "./lib/recipeSearchApi";
 
 export default function RecipesListPage() {
@@ -27,23 +30,50 @@ export default function RecipesListPage() {
   const [view, setView] = React.useState<"grid" | "list">("grid");
   const [hasMore, setHasMore] = React.useState(true);
   const [offset, setOffset] = React.useState(0); // used only for q-mode
+  const { state: filterState, setQ: setFilterQuery } = useRecipesFilters();
+
+  const activeFilters = React.useMemo(
+    () => ({
+      cuisines: filterState.cuisines,
+      ethnicities: filterState.ethnicities,
+      dietary: filterState.dietary,
+      mealTypes: filterState.mealTypes,
+    }),
+    [filterState.cuisines, filterState.ethnicities, filterState.dietary, filterState.mealTypes]
+  );
+
+  const hasStructuredFilters = hasRecipeSearchFilters(activeFilters);
 
   // initial load: read ?q=, run search or random
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const urlQuery = params.get("q");
+    const urlQuery = getQueryTermFromUrlSearch(window.location.search);
     const source = getSourceFilterFromUrlParam(params.get("source"));
 
     setSourceFilter(source);
 
     if (urlQuery) {
       setQ(urlQuery);
+      setFilterQuery(urlQuery);
       startNewSearch(urlQuery, source);
+    } else if (hasStructuredFilters) {
+      startNewSearch("", source);
     } else {
       startRandom(source); // initial random
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // when advanced filters change on /recipes/filters and user comes back, re-run current mode safely
+  React.useEffect(() => {
+    // avoid override during initial load
+    if (loading) return;
+
+    if (q.trim() || hasStructuredFilters) {
+      startNewSearch(q, sourceFilter);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasStructuredFilters, filterState.cuisines, filterState.ethnicities, filterState.dietary, filterState.mealTypes]);
 
   // ---- mode runners
   async function startRandom(source: ContentSourceFilter = sourceFilter) {
@@ -80,6 +110,7 @@ export default function RecipesListPage() {
         pageOffset: 0,
         pageSize: DEFAULT_PAGE_SIZE,
         source,
+        filters: activeFilters,
       });
       setItems(first);
       setOffset(first.length);
@@ -96,7 +127,7 @@ export default function RecipesListPage() {
   async function loadMore() {
     if (isFetchingNext || loading || !hasMore) return;
     // RANDOM mode (no q) => just fetch another random page, append
-    if (!q.trim()) {
+    if (!q.trim() && !hasStructuredFilters) {
       try {
         setIsFetchingNext(true);
         const next = await fetchRandomRecipes({ count: DEFAULT_PAGE_SIZE, source: sourceFilter });
@@ -118,6 +149,7 @@ export default function RecipesListPage() {
         pageOffset: offset,
         pageSize: DEFAULT_PAGE_SIZE,
         source: sourceFilter,
+        filters: activeFilters,
       });
       setItems((prev) => [...prev, ...next]);
       setOffset((prev) => prev + next.length);
@@ -133,13 +165,15 @@ export default function RecipesListPage() {
 
   // ---- Handlers
   const handleSearchClick = () => {
+    setFilterQuery(q);
     if (q.trim()) startNewSearch(q);
+    else if (hasStructuredFilters) startNewSearch("");
     else startRandom();
   };
 
   const handleSourceChange = (source: ContentSourceFilter) => {
     setSourceFilter(source);
-    if (q.trim()) {
+    if (q.trim() || hasStructuredFilters) {
       startNewSearch(q, source);
     } else {
       startRandom(source);
@@ -168,7 +202,10 @@ export default function RecipesListPage() {
       <RecipesToolbar
         q={q}
         sourceFilter={sourceFilter}
-        onQueryChange={setQ}
+        onQueryChange={(nextQ) => {
+          setQ(nextQ);
+          setFilterQuery(nextQ);
+        }}
         onSearch={handleSearchClick}
         onRandom={() => startRandom()}
         onSourceChange={handleSourceChange}
@@ -193,7 +230,7 @@ export default function RecipesListPage() {
       ) : null}
 
       {/* No more results (for search mode) */}
-      {!q.trim() ? null : !hasMore && items.length > 0 ? (
+      {!q.trim() && !hasStructuredFilters ? null : !hasMore && items.length > 0 ? (
         <div className="text-center py-8 text-muted-foreground">No more recipes to load</div>
       ) : null}
 
