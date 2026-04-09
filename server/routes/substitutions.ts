@@ -15,6 +15,12 @@ import {
 } from "../lib/substitution-ranking.js";
 
 const router = Router();
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 100;
+const MAX_SCAN_LIMIT = 500;
+const MIN_RANKING_WINDOW = 50;
+const INGREDIENT_CACHE_TTL_MS = 60_000;
+const INGREDIENT_CACHE_MAX_ENTRIES = 300;
 
 const DATABASE_URL = process.env.DATABASE_URL ?? "";
 
@@ -23,6 +29,60 @@ let db: ReturnType<typeof drizzle> | null = null;
 if (DATABASE_URL) {
   const pool = new Pool({ connectionString: DATABASE_URL });
   db = drizzle(pool);
+}
+
+type IngredientLookupRow = {
+  id: string;
+  ingredient: string;
+  aliases: string[];
+};
+
+const ingredientLookupCache = new Map<
+  string,
+  { expiresAt: number; value: IngredientLookupRow | null }
+>();
+
+function normalizeIngredientLookup(value: string | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function upsertIngredientCache(
+  cacheKey: string,
+  value: IngredientLookupRow | null
+): IngredientLookupRow | null {
+  if (ingredientLookupCache.size >= INGREDIENT_CACHE_MAX_ENTRIES) {
+    const oldestKey = ingredientLookupCache.keys().next().value;
+    if (oldestKey) ingredientLookupCache.delete(oldestKey);
+  }
+  ingredientLookupCache.set(cacheKey, {
+    value,
+    expiresAt: Date.now() + INGREDIENT_CACHE_TTL_MS,
+  });
+  return value;
+}
+
+async function resolveIngredientLookup(
+  dbClient: NonNullable<typeof db>,
+  ingredientRaw: string | undefined
+): Promise<IngredientLookupRow | null> {
+  const cacheKey = normalizeIngredientLookup(ingredientRaw);
+  if (!cacheKey) return null;
+
+  const cached = ingredientLookupCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  if (cached) ingredientLookupCache.delete(cacheKey);
+
+  const rows = await dbClient
+    .select({
+      id: substitutionIngredients.id,
+      ingredient: substitutionIngredients.ingredient,
+      aliases: substitutionIngredients.aliases,
+    })
+    .from(substitutionIngredients)
+    .where(sql`lower(${substitutionIngredients.ingredient}) = ${cacheKey}`)
+    .limit(1);
+
+  return upsertIngredientCache(cacheKey, rows[0] ?? null);
 }
 
 /**
@@ -44,26 +104,33 @@ router.get("/", async (req: Request, res: Response) => {
     });
   }
 
+  const startedAt = process.hrtime.bigint();
   try {
     const q = (req.query.q as string | undefined)?.trim();
     const ingredientFilter = (req.query.ingredient as string | undefined)?.trim();
+    const normalizedIngredientFilter = normalizeIngredientLookup(ingredientFilter);
     const context = (req.query.context as string | undefined)?.trim();
     const limit = Math.min(
-      Math.max(parseInt(String(req.query.limit ?? "10"), 10) || 10, 1),
-      100
+      Math.max(parseInt(String(req.query.limit ?? String(DEFAULT_LIMIT)), 10) || DEFAULT_LIMIT, 1),
+      MAX_LIMIT
     );
     const offset = Math.max(parseInt(String(req.query.offset ?? "0"), 10) || 0, 0);
+    const ingredientLookup = normalizedIngredientFilter
+      ? await resolveIngredientLookup(db, ingredientFilter)
+      : null;
 
     const where =
-      ingredientFilter && q
+      ingredientLookup && q
         ? and(
-            eq(substitutionIngredients.ingredient, ingredientFilter),
+            eq(substitutions.ingredientId, ingredientLookup.id),
             sql`${substitutionIngredients.ingredient} ILIKE ${"%" + q + "%"} OR ${substitutions.text} ILIKE ${"%" + q + "%"}`
           )
         : q
         ? sql`${substitutionIngredients.ingredient} ILIKE ${"%" + q + "%"} OR ${substitutions.text} ILIKE ${"%" + q + "%"}`
-        : ingredientFilter
-        ? eq(substitutionIngredients.ingredient, ingredientFilter)
+        : ingredientLookup
+        ? eq(substitutions.ingredientId, ingredientLookup.id)
+        : normalizedIngredientFilter
+        ? sql`1 = 0`
         : undefined;
 
     const totalRows = await db
@@ -98,7 +165,7 @@ router.get("/", async (req: Request, res: Response) => {
         eq(substitutions.ingredientId, substitutionIngredients.id)
       )
       .where(where as any)
-      .limit(Math.min(Math.max(offset + limit, 50), 500));
+      .limit(Math.min(Math.max(offset + limit, MIN_RANKING_WINDOW), MAX_SCAN_LIMIT));
 
     const rankedRows = rankSubstitutions(rows, { requestedContext: context });
     const pagedItems = rankedRows.slice(offset, offset + limit);
@@ -108,6 +175,11 @@ router.get("/", async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error("GET /api/substitutions error:", err);
     res.status(500).json({ error: "Failed to fetch substitutions" });
+  } finally {
+    if (process.env.NODE_ENV === "development") {
+      const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+      console.info(`[subs] GET /api/substitutions completed in ${elapsedMs.toFixed(1)}ms`);
+    }
   }
 });
 
@@ -123,17 +195,25 @@ router.get("/:ingredient", async (req: Request, res: Response) => {
     });
   }
 
+  const startedAt = process.hrtime.bigint();
   try {
     const name = (req.params.ingredient || "").trim();
     if (!name)
       return res.status(400).json({ error: "ingredient path param is required" });
 
+    const ingredientLookup = await resolveIngredientLookup(db, name);
+    if (!ingredientLookup) {
+      return res.json({
+        items: [],
+        total: 0,
+        tiers: { best_match: [], good_fallback: [], last_resort: [] },
+      });
+    }
+
     const rows = await db
       .select({
         id: substitutions.id,
         ingredientId: substitutions.ingredientId,
-        ingredient: substitutionIngredients.ingredient,
-        aliases: substitutionIngredients.aliases,
         text: substitutions.text,
         components: substitutions.components,
         method: substitutions.method,
@@ -144,19 +224,26 @@ router.get("/:ingredient", async (req: Request, res: Response) => {
         provenance: substitutions.provenance,
       })
       .from(substitutions)
-      .innerJoin(
-        substitutionIngredients,
-        eq(substitutions.ingredientId, substitutionIngredients.id)
-      )
-      .where(eq(substitutionIngredients.ingredient, name));
+      .where(eq(substitutions.ingredientId, ingredientLookup.id));
 
-    const rankedRows = rankSubstitutions(rows);
+    const rowsWithIngredient = rows.map((row) => ({
+      ...row,
+      ingredient: ingredientLookup.ingredient,
+      aliases: ingredientLookup.aliases,
+    }));
+
+    const rankedRows = rankSubstitutions(rowsWithIngredient);
     const tiers = tierSubstitutions(rankedRows);
 
     res.json({ items: rankedRows, total: rankedRows.length, tiers });
   } catch (err: any) {
     console.error("GET /api/substitutions/:ingredient error:", err);
     res.status(500).json({ error: "Failed to fetch substitutions" });
+  } finally {
+    if (process.env.NODE_ENV === "development") {
+      const elapsedMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+      console.info(`[subs] GET /api/substitutions/:ingredient completed in ${elapsedMs.toFixed(1)}ms`);
+    }
   }
 });
 
