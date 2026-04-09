@@ -1,14 +1,20 @@
 // client/src/pages/recipes/RecipesListPage.tsx
 import * as React from "react";
 import { Link } from "wouter";
-import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2, LayoutGrid, List } from "lucide-react";
-import { CONTENT_SOURCE_LABELS, type ContentSourceFilter } from "@shared/content-source";
-import type { RecipeItem, SearchResponse } from "./lib/recipeList.types";
+import type { ContentSourceFilter } from "@shared/content-source";
+import type { RecipeItem } from "./lib/recipeList.types";
 import { RecipeModal } from "./components/RecipeModal";
 import { RecipesResults } from "./components/RecipesResults";
+import { RecipesToolbar } from "./components/RecipesToolbar";
 import { useInfiniteScrollSentinel } from "./hooks/useInfiniteScrollSentinel";
+import {
+  DEFAULT_PAGE_SIZE,
+  fetchRandomRecipes,
+  fetchSearchRecipes,
+  getSourceFilterFromUrlParam,
+} from "./lib/recipeSearchApi";
 
 export default function RecipesListPage() {
   const [q, setQ] = React.useState("");
@@ -26,47 +32,18 @@ export default function RecipesListPage() {
   React.useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const urlQuery = params.get("q");
-    const sourceFromUrl = params.get("source");
-    if (sourceFromUrl === "chefsire" || sourceFromUrl === "external" || sourceFromUrl === "all") {
-      setSourceFilter(sourceFromUrl);
-    }
+    const source = getSourceFilterFromUrlParam(params.get("source"));
+
+    setSourceFilter(source);
+
     if (urlQuery) {
       setQ(urlQuery);
-      startNewSearch(urlQuery, (sourceFromUrl === "chefsire" || sourceFromUrl === "external" || sourceFromUrl === "all") ? sourceFromUrl : "all");
+      startNewSearch(urlQuery, source);
     } else {
-      startRandom((sourceFromUrl === "chefsire" || sourceFromUrl === "external" || sourceFromUrl === "all") ? sourceFromUrl : "all"); // initial random
+      startRandom(source); // initial random
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // ---- API helpers
-  async function fetchRandom(count = 24, source: ContentSourceFilter = sourceFilter) {
-    const params = new URLSearchParams();
-    params.set("count", String(count));
-    params.set("source", source);
-    const res = await fetch(`/api/recipes/random?${params.toString()}`);
-    const json = (await res.json()) as SearchResponse;
-    if (!res.ok || !("ok" in json) || json.ok === false) {
-      const msg = (json as any)?.error || (await res.text()) || `Request failed (${res.status})`;
-      throw new Error(msg);
-    }
-    return json.items || [];
-  }
-
-  async function fetchSearch(term: string, pageOffset: number, pageSize = 24, source: ContentSourceFilter = sourceFilter) {
-    const params = new URLSearchParams();
-    params.set("q", term.trim());
-    params.set("pageSize", String(pageSize));
-    params.set("offset", String(pageOffset));
-    params.set("source", source);
-    const res = await fetch(`/api/recipes/search?${params.toString()}`);
-    const json = (await res.json()) as SearchResponse;
-    if (!res.ok || !("ok" in json) || json.ok === false) {
-      const msg = (json as any)?.error || (await res.text()) || `Request failed (${res.status})`;
-      throw new Error(msg);
-    }
-    return json.items || [];
-  }
 
   // ---- mode runners
   async function startRandom(source: ContentSourceFilter = sourceFilter) {
@@ -77,7 +54,7 @@ export default function RecipesListPage() {
     setHasMore(true);
     setOffset(0);
     try {
-      const first = await fetchRandom(24, source);
+      const first = await fetchRandomRecipes({ count: DEFAULT_PAGE_SIZE, source });
       setItems(first);
       // always allow more in random mode (you can cap if you want)
       setHasMore(true);
@@ -98,10 +75,15 @@ export default function RecipesListPage() {
     setHasMore(true);
     setOffset(0);
     try {
-      const first = await fetchSearch(term, 0, 24, source);
+      const first = await fetchSearchRecipes({
+        term,
+        pageOffset: 0,
+        pageSize: DEFAULT_PAGE_SIZE,
+        source,
+      });
       setItems(first);
       setOffset(first.length);
-      setHasMore(first.length === 24);
+      setHasMore(first.length === DEFAULT_PAGE_SIZE);
     } catch (e: any) {
       setErr(e?.message || "Something went wrong");
       setItems([]);
@@ -117,7 +99,7 @@ export default function RecipesListPage() {
     if (!q.trim()) {
       try {
         setIsFetchingNext(true);
-        const next = await fetchRandom(24, sourceFilter);
+        const next = await fetchRandomRecipes({ count: DEFAULT_PAGE_SIZE, source: sourceFilter });
         setItems((prev) => [...prev, ...next]);
         // keep hasMore true for endless random; cap if desired
       } catch (e: any) {
@@ -127,13 +109,19 @@ export default function RecipesListPage() {
       }
       return;
     }
+
     // SEARCH mode => use offset pagination
     try {
       setIsFetchingNext(true);
-      const next = await fetchSearch(q, offset, 24, sourceFilter);
+      const next = await fetchSearchRecipes({
+        term: q,
+        pageOffset: offset,
+        pageSize: DEFAULT_PAGE_SIZE,
+        source: sourceFilter,
+      });
       setItems((prev) => [...prev, ...next]);
       setOffset((prev) => prev + next.length);
-      setHasMore(next.length === 24);
+      setHasMore(next.length === DEFAULT_PAGE_SIZE);
     } catch (e: any) {
       setErr(e?.message || "Something went wrong");
     } finally {
@@ -147,6 +135,15 @@ export default function RecipesListPage() {
   const handleSearchClick = () => {
     if (q.trim()) startNewSearch(q);
     else startRandom();
+  };
+
+  const handleSourceChange = (source: ContentSourceFilter) => {
+    setSourceFilter(source);
+    if (q.trim()) {
+      startNewSearch(q, source);
+    } else {
+      startRandom(source);
+    }
   };
 
   return (
@@ -168,43 +165,14 @@ export default function RecipesListPage() {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-col sm:flex-row items-start sm:items-center gap-2">
-        <Input
-          placeholder="Search recipes…"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleSearchClick()}
-          className="flex-1 max-w-md"
-          aria-label="Search recipes"
-        />
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button onClick={handleSearchClick}>Search</Button>
-          <Button variant="ghost" onClick={() => startRandom()}>Random</Button>
-          <Link href="/recipes/filters">
-            <Button variant="ghost" className="whitespace-nowrap">Advanced filters</Button>
-          </Link>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-sm text-muted-foreground">Source:</span>
-          {(["all", "chefsire", "external"] as ContentSourceFilter[]).map((source) => (
-            <Button
-              key={source}
-              size="sm"
-              variant={sourceFilter === source ? "default" : "outline"}
-              onClick={() => {
-                setSourceFilter(source);
-                if (q.trim()) {
-                  startNewSearch(q, source);
-                } else {
-                  startRandom(source);
-                }
-              }}
-            >
-              {CONTENT_SOURCE_LABELS[source]}
-            </Button>
-          ))}
-        </div>
-      </div>
+      <RecipesToolbar
+        q={q}
+        sourceFilter={sourceFilter}
+        onQueryChange={setQ}
+        onSearch={handleSearchClick}
+        onRandom={() => startRandom()}
+        onSourceChange={handleSourceChange}
+      />
 
       <RecipesResults
         loading={loading}
