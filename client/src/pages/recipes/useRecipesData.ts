@@ -1,6 +1,7 @@
 // client/src/pages/recipes/useRecipesData.ts
 import { useEffect, useMemo, useState } from "react";
 import { useRecipesFilters } from "./useRecipesFilters";
+import { applyRecipeSearchFilters } from "./lib/recipeSearchApi";
 
 export type RecipeCardData = {
   id: string;
@@ -42,28 +43,16 @@ export function useRecipesData() {
     const params = new URLSearchParams();
 
     // Optional free-text search (you may add an input later)
-    if (state.search && state.search.trim()) {
-      params.set("q", state.search.trim());
+    if (state.q && state.q.trim()) {
+      params.set("q", state.q.trim());
     }
 
-    // We’ll send cuisines & diets as CSV (server expects CSV)
-    if (state.cuisines.length) {
-      params.set("cuisines", state.cuisines.join(","));
-    }
-    if (state.ethnicities.length) {
-      // Ethnicities map server-side to cuisines; for now we include directly
-      // so your server adapters can translate them if needed.
-      const combined = [...state.cuisines, ...state.ethnicities];
-      params.set("cuisines", Array.from(new Set(combined)).join(","));
-    }
-
-    if (state.dietary.length) {
-      params.set("diets", state.dietary.join(","));
-    }
-
-    if (state.mealTypes.length) {
-      params.set("mealTypes", state.mealTypes.join(","));
-    }
+    applyRecipeSearchFilters(params, {
+      cuisines: state.cuisines,
+      ethnicities: state.ethnicities,
+      dietary: state.dietary,
+      mealTypes: state.mealTypes,
+    });
 
     if (state.maxCookTime) {
       params.set("maxReadyMinutes", String(state.maxCookTime));
@@ -75,7 +64,7 @@ export function useRecipesData() {
 
     return params.toString();
   }, [
-    state.search,
+    state.q,
     state.cuisines,
     state.ethnicities,
     state.dietary,
