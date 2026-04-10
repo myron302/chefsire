@@ -4,7 +4,7 @@ import { SpoonRating } from "@/components/SpoonRating";
 import { RecipeReviews } from "@/components/RecipeReviews";
 import { Clock, ExternalLink, Users } from "lucide-react";
 import type { RecipeItem } from "../lib/recipeList.types";
-import { extractInstructions, getImage, getSourceUrl } from "../lib/recipeDisplay";
+import { extractInstructions, getImage, getSourceLabel, getSourceUrl } from "../lib/recipeDisplay";
 
 export function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOpen: boolean; onClose: () => void }) {
   if (!isOpen || !r) return null;
@@ -41,7 +41,7 @@ export function RecipeModal({ r, isOpen, onClose }: { r: RecipeItem | null; isOp
           <div className="flex flex-wrap gap-2 mb-4">
             {r.cuisine && <Badge variant="secondary">{r.cuisine}</Badge>}
             {r.mealType && <Badge variant="outline">{r.mealType}</Badge>}
-            <Badge variant="secondary">{r.source === "chefsire" ? "ChefSire" : "External"}</Badge>
+            <Badge variant="secondary">{getSourceLabel(r)}</Badge>
             {(r.dietTags || []).map((t) => (
               <Badge key={t} variant="outline" className="capitalize">
                 {t}
