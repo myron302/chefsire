@@ -19,7 +19,7 @@ const NAV_ITEMS = [
   { key: "roadmap", href: "/drinks/roadmap", label: "Roadmap + Archive" },
   { key: "campaigns", href: "/drinks/campaigns", label: "Campaigns" },
   { key: "notifications", href: "/drinks/alerts", label: "Alerts" },
-  { key: "collections", href: "/drinks/collections", label: "Collections" },
+  { key: "collections", href: "/drinks/collections/explore", label: "Collections" },
   { key: "wishlist", href: "/drinks/collections/wishlist", label: "Wishlist" },
   { key: "orders", href: "/drinks/orders", label: "Order History" },
   { key: "gifts", href: "/drinks/gifts", label: "Gifts" },

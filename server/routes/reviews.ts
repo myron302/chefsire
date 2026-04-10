@@ -12,7 +12,7 @@ import {
   type InsertRecipeReviewPhoto,
   type InsertReviewHelpful
 } from "../../shared/schema";
-import { eq, desc, and, sql } from "drizzle-orm";
+import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
 import { requireAuth } from "../middleware/auth";
@@ -20,6 +20,17 @@ import { RecipeService } from "../services/recipe.service";
 import { sendRecipeReviewNotification } from "../services/notification-service";
 
 const router = Router();
+
+async function resolveRecipeIdForReview(recipeId: string): Promise<string> {
+  if (!recipeId.includes("_")) return recipeId;
+
+  const savedRecipe = await RecipeService.findOrCreateExternalRecipe(db, recipeId);
+  if (!savedRecipe?.id) {
+    throw new Error("Failed to resolve external recipe id");
+  }
+
+  return savedRecipe.id;
+}
 
 // Multer config for review photos
 const multerStorage = multer.diskStorage({
@@ -52,6 +63,7 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
   try {
     const { recipeId } = req.params;
     const userId = (req as any).user?.id;
+    const resolvedRecipeId = await resolveRecipeIdForReview(recipeId);
 
     const reviews = await db
       .select({
@@ -78,7 +90,7 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
       })
       .from(recipeReviews)
       .leftJoin(users, eq(recipeReviews.userId, users.id))
-      .where(eq(recipeReviews.recipeId, recipeId))
+      .where(eq(recipeReviews.recipeId, resolvedRecipeId))
       .orderBy(desc(recipeReviews.createdAt));
 
     // Get photos for each review
@@ -88,7 +100,7 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
       photos = await db
         .select()
         .from(recipeReviewPhotos)
-        .where(sql`${recipeReviewPhotos.reviewId} IN ${sql.raw(`(${reviewIds.map(() => '?').join(',')})`, reviewIds)}`);
+        .where(inArray(recipeReviewPhotos.reviewId, reviewIds));
     }
 
     // Group photos by review
@@ -127,42 +139,16 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Rating must be between 1 and 5 spoons" });
     }
 
-    // Check if this is an external recipe (starts with "mealdb_", "spoonacular_", etc.)
-    if (recipeId && recipeId.includes("_")) {
-      console.log("🌐 External recipe detected:", recipeId);
-      console.log("🌐 Calling RecipeService.findOrCreateExternalRecipe...");
-
-      try {
-        const savedRecipe = await RecipeService.findOrCreateExternalRecipe(db, recipeId);
-
-        if (!savedRecipe) {
-          console.log("❌ findOrCreateExternalRecipe returned null");
-          return res.status(500).json({
-            error: "Failed to save recipe from external source",
-            details: "Recipe service returned null"
-          });
-        }
-
-        console.log("✅ Recipe saved/found in database:");
-        console.log("   - ID:", savedRecipe.id);
-        console.log("   - Title:", savedRecipe.title);
-        console.log("   - External Source:", savedRecipe.externalSource);
-        console.log("   - External ID:", savedRecipe.externalId);
-
-        // Use the local database ID for the review
-        recipeId = savedRecipe.id;
-        console.log("✅ Updated recipeId to local DB ID:", recipeId);
-      } catch (saveError: any) {
-        console.error("❌ Error in findOrCreateExternalRecipe:");
-        console.error("   Message:", saveError.message);
-        console.error("   Stack:", saveError.stack);
-        return res.status(500).json({
-          error: "Failed to save recipe from external source",
-          details: saveError.message
-        });
-      }
-    } else {
-      console.log("📍 Using existing recipe ID:", recipeId);
+    // Normalize external recipe IDs to local DB IDs so submit + read use the same key.
+    try {
+      recipeId = await resolveRecipeIdForReview(recipeId);
+      console.log("✅ Using normalized recipe ID:", recipeId);
+    } catch (saveError: any) {
+      console.error("❌ Error resolving recipe ID:", saveError);
+      return res.status(500).json({
+        error: "Failed to save recipe from external source",
+        details: saveError?.message || "Unable to resolve recipe id",
+      });
     }
 
     // Check if user already reviewed this recipe
