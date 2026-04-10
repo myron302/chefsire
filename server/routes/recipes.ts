@@ -4,7 +4,7 @@ import { z } from "zod";
 import { searchRecipes } from "../services/recipes-service";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware/auth";
-import { resolveAuthenticatedUserId } from "./recipes/auth";
+import { resolveSaveRouteUserId } from "./recipes/auth";
 import { normalizeIngredients, normalizeInstructions, withItemsFromResults } from "./recipes/serializers";
 import {
   DEFAULT_RECIPES_PAGE_SIZE,
@@ -242,12 +242,9 @@ router.get("/trending", async (req, res) => {
  */
 router.post("/:id/save", requireAuth, async (req, res) => {
   try {
-    const requestedUserId = typeof req.body?.userId === "string" ? req.body.userId : undefined;
     const recipeId = req.params.id;
-    const userId = resolveAuthenticatedUserId(req, requestedUserId);
-    if (!userId) {
-      return res.status(403).json({ ok: false, error: "Not allowed" });
-    }
+    const userId = resolveSaveRouteUserId(req, res);
+    if (!userId) return;
 
     const save = await storage.saveRecipe(userId, recipeId);
     res.status(201).json({ ok: true, save });
@@ -263,12 +260,9 @@ router.post("/:id/save", requireAuth, async (req, res) => {
  */
 router.delete("/:id/save", requireAuth, async (req, res) => {
   try {
-    const requestedUserId = typeof req.query.userId === "string" ? req.query.userId : undefined;
     const recipeId = req.params.id;
-    const userId = resolveAuthenticatedUserId(req, requestedUserId);
-    if (!userId) {
-      return res.status(403).json({ ok: false, error: "Not allowed" });
-    }
+    const userId = resolveSaveRouteUserId(req, res);
+    if (!userId) return;
 
     const ok = await storage.unsaveRecipe(userId, recipeId);
     res.json({ ok });
@@ -283,12 +277,9 @@ router.delete("/:id/save", requireAuth, async (req, res) => {
  */
 router.get("/:id/save-status", requireAuth, async (req, res) => {
   try {
-    const requestedUserId = typeof req.query.userId === "string" ? req.query.userId : undefined;
     const recipeId = req.params.id;
-    const userId = resolveAuthenticatedUserId(req, requestedUserId);
-    if (!userId) {
-      return res.status(403).json({ ok: false, error: "Not allowed" });
-    }
+    const userId = resolveSaveRouteUserId(req, res);
+    if (!userId) return;
 
     const isSaved = await storage.isRecipeSaved(userId, recipeId);
     res.json({ ok: true, isSaved });

@@ -1,4 +1,4 @@
-import type { Request } from "express";
+import type { Request, Response } from "express";
 
 type UserWithId = { id: string };
 
@@ -13,4 +13,22 @@ export function resolveAuthenticatedUserId(req: RequestWithUser, requestedUserId
   }
 
   return authenticatedUserId;
+}
+
+export function extractRequestedUserId(req: Request): string | undefined {
+  const fromBody = typeof req.body?.userId === "string" ? req.body.userId : undefined;
+  if (fromBody !== undefined) return fromBody;
+
+  return typeof req.query?.userId === "string" ? req.query.userId : undefined;
+}
+
+export function resolveSaveRouteUserId(req: RequestWithUser, res: Response): string | null {
+  const requestedUserId = extractRequestedUserId(req);
+  const userId = resolveAuthenticatedUserId(req, requestedUserId);
+  if (!userId) {
+    res.status(403).json({ ok: false, error: "Not allowed" });
+    return null;
+  }
+
+  return userId;
 }
