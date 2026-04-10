@@ -300,7 +300,7 @@ export default function DrinksPage() {
             <Link href="/drinks/alerts">
               <Button variant="outline">Alerts</Button>
             </Link>
-            <Link href="/drinks/collections">
+            <Link href="/drinks/collections/explore">
               <Button variant="outline">Collections</Button>
             </Link>
             <Link href="/drinks/collections/explore">
