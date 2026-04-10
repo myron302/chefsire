@@ -4,7 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { SpoonRating } from "@/components/SpoonRating";
 import { Clock, Users } from "lucide-react";
 import type { RecipeItem } from "../lib/recipeList.types";
-import { getImage, getInstructionPreview } from "../lib/recipeDisplay";
+import { getImage, getInstructionPreview, getSourceLabel } from "../lib/recipeDisplay";
 
 export function RecipeCard({ r, onCardClick }: { r: RecipeItem; onCardClick: (recipe: RecipeItem) => void }) {
   const img = getImage(r);
@@ -55,7 +55,7 @@ export function RecipeCard({ r, onCardClick }: { r: RecipeItem; onCardClick: (re
         <div className="flex flex-wrap gap-1">
           {r.cuisine ? <Badge variant="secondary">{r.cuisine}</Badge> : null}
           {r.mealType ? <Badge variant="outline">{r.mealType}</Badge> : null}
-          <Badge variant="secondary">{r.source === "chefsire" ? "ChefSire" : "External"}</Badge>
+          <Badge variant="secondary">{getSourceLabel(r)}</Badge>
           {(r.dietTags || []).slice(0, 3).map((t) => (
             <Badge key={t} variant="outline" className="capitalize">
               {t}

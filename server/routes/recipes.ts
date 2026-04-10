@@ -204,7 +204,15 @@ router.get("/random", async (req, res) => {
   noStore(res);
   try {
     const { source } = parseRecipeSearchParams(req.query as Record<string, unknown>);
-    const result = await searchRecipes({ pageSize: DEFAULT_RECIPES_PAGE_SIZE, source });
+    const requestedCount = parseNumberParam(
+      typeof req.query.count === "string" || typeof req.query.count === "number"
+        ? req.query.count
+        : req.query.pageSize,
+      DEFAULT_RECIPES_PAGE_SIZE,
+    );
+    const pageSize =
+      Number.isFinite(requestedCount) && requestedCount > 0 ? requestedCount : DEFAULT_RECIPES_PAGE_SIZE;
+    const result = await searchRecipes({ pageSize, source });
     res.json({ ok: true, ...withItemsFromResults(result) });
   } catch (err: any) {
     console.error("recipes random error:", err);

@@ -65,3 +65,10 @@ export function getSourceUrl(r: RecipeItem): string | null {
   }
   return null;
 }
+
+export function getSourceLabel(r: RecipeItem): string {
+  if (r.source === "chefsire") return "ChefSire";
+  if (r.source === "external") return "External";
+  if (r.source === "all") return "ChefSire + External";
+  return "External";
+}
