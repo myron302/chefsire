@@ -22,6 +22,10 @@ import { sendRecipeReviewNotification } from "../services/notification-service";
 const router = Router();
 
 async function resolveRecipeIdForReview(recipeId: string): Promise<string> {
+  if (typeof recipeId !== "string" || !recipeId.trim()) {
+    throw new Error("Recipe id is required");
+  }
+
   if (!recipeId.includes("_")) return recipeId;
 
   const savedRecipe = await RecipeService.findOrCreateExternalRecipe(db, recipeId);
@@ -130,7 +134,23 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     console.log("📝 Request body:", JSON.stringify(req.body, null, 2));
 
     const userId = (req as any).user.id;
-    let { recipeId, rating, reviewText } = req.body;
+    const body = (req.body && typeof req.body === "object") ? req.body : {};
+    let recipeId = typeof body.recipeId === "string" ? body.recipeId.trim() : "";
+    const rating = typeof body.rating === "number" ? body.rating : Number(body.rating);
+    const reviewText = typeof body.reviewText === "string" ? body.reviewText : null;
+
+    // Defensive normalization for optional client payload fields used by some review clients.
+    const media = Array.isArray(body.media) ? body.media : [];
+    const photos = Array.isArray(body.photos) ? body.photos : [];
+    const metadata = body.metadata && typeof body.metadata === "object" ? body.metadata : {};
+    const details = body.details && typeof body.details === "object" ? body.details : {};
+
+    console.log("📝 Optional payload normalized:", {
+      mediaCount: media.length,
+      photosCount: photos.length,
+      metadataKeys: Object.keys(metadata).length,
+      detailsKeys: Object.keys(details).length,
+    });
     console.log("📝 Parsed data:", { userId, recipeId, rating, reviewText, recipeIdType: typeof recipeId });
 
     // Validate rating
@@ -230,25 +250,29 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     console.log("📝 ============ CREATE REVIEW SUCCESS ============");
     res.status(201).json({ ...completeReview, photos: [] });
   } catch (error: any) {
+    const errorObj = (error && typeof error === "object")
+      ? error
+      : { message: typeof error === "string" ? error : "Unknown error", raw: error };
+
     console.error("❌ ============ CREATE REVIEW ERROR ============");
-    console.error("❌ Error creating review:", error);
+    console.error("❌ Error creating review:", errorObj);
     console.error("❌ Error details:", {
-      name: error.name,
-      message: error.message,
-      code: error.code,
-      detail: error.detail,
-      constraint: error.constraint,
-      table: error.table,
-      column: error.column,
-      stack: error.stack?.split('\n').slice(0, 5).join('\n')
+      name: (errorObj as any).name,
+      message: (errorObj as any).message,
+      code: (errorObj as any).code,
+      detail: (errorObj as any).detail,
+      constraint: (errorObj as any).constraint,
+      table: (errorObj as any).table,
+      column: (errorObj as any).column,
+      stack: (errorObj as any).stack?.split('\n').slice(0, 5).join('\n')
     });
-    console.error("❌ Full error object:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    console.error("❌ Full error object:", JSON.stringify(errorObj, Object.getOwnPropertyNames(errorObj), 2));
 
     res.status(500).json({
       error: "Failed to create review",
-      details: error.message,
-      code: error.code,
-      constraint: error.constraint
+      details: (errorObj as any).message || "Unknown error",
+      code: (errorObj as any).code,
+      constraint: (errorObj as any).constraint
     });
   }
 });
