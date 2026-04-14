@@ -236,7 +236,13 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
 
     const safeCompleteReview = completeReview ?? {
       ...review,
-      user: null,
+      user: {
+        id: userId,
+        username: "unknown",
+        displayName: null,
+        avatar: null,
+        royalTitle: null,
+      },
     };
 
     console.log("✅ Complete review fetched:", safeCompleteReview.id);
