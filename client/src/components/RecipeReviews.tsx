@@ -38,16 +38,21 @@ interface Review {
 }
 
 function normalizeReview(rawReview: any): Review {
+  const safeRawReview = (rawReview && typeof rawReview === "object") ? rawReview : {};
+  const safeUser = (safeRawReview.user && typeof safeRawReview.user === "object")
+    ? safeRawReview.user
+    : {};
+
   return {
-    ...rawReview,
-    user: rawReview?.user ?? {
-      id: "",
-      username: "Unknown",
-      displayName: null,
-      avatar: null,
-      royalTitle: null,
+    ...safeRawReview,
+    user: {
+      id: typeof safeUser.id === "string" ? safeUser.id : "",
+      username: typeof safeUser.username === "string" ? safeUser.username : "Unknown",
+      displayName: typeof safeUser.displayName === "string" ? safeUser.displayName : null,
+      avatar: typeof safeUser.avatar === "string" ? safeUser.avatar : null,
+      royalTitle: typeof safeUser.royalTitle === "string" ? safeUser.royalTitle : null,
     },
-    photos: Array.isArray(rawReview?.photos) ? rawReview.photos : [],
+    photos: Array.isArray(safeRawReview.photos) ? safeRawReview.photos : [],
   };
 }
 
@@ -125,7 +130,10 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
         // Trigger a page refresh or emit event to update recipe rating
         window.location.reload();
       } else {
-        const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        const parsedErrorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        const errorData = (parsedErrorData && typeof parsedErrorData === "object")
+          ? parsedErrorData
+          : { error: "Unknown error" };
         console.error("❌ Review submission failed:", {
           status: response.status,
           statusText: response.statusText,
