@@ -50,6 +50,46 @@ function serializeErrorSafely(error: unknown): string {
   }
 }
 
+type ReviewCreateStage =
+  | "request.normalization"
+  | "recipe.resolve"
+  | "duplicate.check"
+  | "insert"
+  | "media.optional"
+  | "stats.update"
+  | "readback"
+  | "notification"
+  | "response.serialize"
+  | "error.serialize";
+
+function createReviewDiagnostics(req: Request) {
+  const requestId = `review-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  let stage: ReviewCreateStage = "request.normalization";
+
+  const log = (level: "info" | "warn" | "error", message: string, data?: unknown) => {
+    const prefix = `[reviews.create][${requestId}][${stage}]`;
+    try {
+      if (level === "error") console.error(prefix, message, data ?? "");
+      else if (level === "warn") console.warn(prefix, message, data ?? "");
+      else console.log(prefix, message, data ?? "");
+    } catch {
+      // Diagnostics must never throw.
+    }
+  };
+
+  return {
+    requestId,
+    getStage: () => stage,
+    setStage: (next: ReviewCreateStage) => {
+      stage = next;
+      log("info", "stage.enter");
+    },
+    info: (message: string, data?: unknown) => log("info", message, data),
+    warn: (message: string, data?: unknown) => log("warn", message, data),
+    error: (message: string, data?: unknown) => log("error", message, data),
+  };
+}
+
 function isExternalRecipeRef(recipeId: string): boolean {
   // Only treat known external provider IDs as external refs.
   // This avoids misclassifying local IDs that happen to contain underscores.
@@ -165,10 +205,13 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
 
 // Create a review
 router.post("/", requireAuth, async (req: Request, res: Response) => {
+  const diagnostics = createReviewDiagnostics(req);
   try {
-    console.log("📝 ============ CREATE REVIEW START ============");
-    console.log("📝 User:", (req as any).user?.id);
-    console.log("📝 Request body:", JSON.stringify(req.body, null, 2));
+    diagnostics.setStage("request.normalization");
+    diagnostics.info("create.review.start", {
+      userId: (req as any).user?.id || null,
+      bodyKeys: safeObjectKeyCount(req.body),
+    });
 
     const userId = (req as any).user.id;
     const body = (req.body && typeof req.body === "object") ? req.body : {};
@@ -182,34 +225,42 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     const metadata = body.metadata && typeof body.metadata === "object" ? body.metadata : {};
     const details = body.details && typeof body.details === "object" ? body.details : {};
 
-    console.log("📝 Optional payload normalized:", {
+    diagnostics.setStage("media.optional");
+    diagnostics.info("optional.payload.normalized", {
       mediaCount: media.length,
       photosCount: photos.length,
       metadataKeys: safeObjectKeyCount(metadata),
       detailsKeys: safeObjectKeyCount(details),
     });
-    console.log("📝 Parsed data:", { userId, recipeId, rating, reviewText, recipeIdType: typeof recipeId });
+    diagnostics.setStage("request.normalization");
+    diagnostics.info("request.parsed", { userId, recipeId, rating, recipeIdType: typeof recipeId });
 
     // Validate rating
     if (!rating || rating < 1 || rating > 5) {
-      console.log("❌ Invalid rating:", rating);
+      diagnostics.warn("invalid.rating", { rating });
       return res.status(400).json({ error: "Rating must be between 1 and 5 spoons" });
     }
 
     // Normalize external recipe IDs to local DB IDs so submit + read use the same key.
     try {
+      diagnostics.setStage("recipe.resolve");
       recipeId = await resolveRecipeIdForReview(recipeId);
-      console.log("✅ Using normalized recipe ID:", recipeId);
+      diagnostics.info("recipe.resolved", { recipeId });
     } catch (saveError: any) {
-      console.error("❌ Error resolving recipe ID:", saveError);
+      diagnostics.error("recipe.resolve.failed", {
+        error: serializeErrorSafely(saveError),
+      });
       return res.status(500).json({
         error: "Failed to save recipe from external source",
         details: saveError?.message || "Unable to resolve recipe id",
+        stage: diagnostics.getStage(),
+        requestId: diagnostics.requestId,
       });
     }
 
     // Check if user already reviewed this recipe
-    console.log("🔍 Checking for existing review...");
+    diagnostics.setStage("duplicate.check");
+    diagnostics.info("duplicate.check.start");
     const existingReview = await db
       .select()
       .from(recipeReviews)
@@ -217,10 +268,14 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       .limit(1);
 
     if (existingReview.length > 0) {
-      console.log("❌ User already reviewed this recipe:", existingReview[0].id);
-      return res.status(400).json({ error: "You already reviewed this recipe. Use update instead." });
+      diagnostics.warn("duplicate.check.blocked", { existingReviewId: existingReview[0].id });
+      return res.status(400).json({
+        error: "You already reviewed this recipe. Use update instead.",
+        stage: diagnostics.getStage(),
+        requestId: diagnostics.requestId,
+      });
     }
-    console.log("✅ No existing review found");
+    diagnostics.info("duplicate.check.clear");
 
     // Create review
     const newReview: InsertRecipeReview = {
@@ -230,22 +285,27 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       reviewText: reviewText || null,
     };
 
-    console.log("💾 Inserting review into database:", JSON.stringify(newReview, null, 2));
+    diagnostics.setStage("insert");
+    diagnostics.info("insert.start", { recipeId, userId, rating, hasReviewText: !!reviewText });
     const [review] = await db.insert(recipeReviews).values(newReview).returning();
-    console.log("✅ Review inserted successfully with ID:", review.id);
+    diagnostics.info("insert.success", { reviewId: review?.id || null });
 
     // Update recipe average rating and count (non-fatal)
-    console.log("📊 Updating recipe rating statistics...");
+    diagnostics.setStage("stats.update");
+    diagnostics.info("stats.update.start");
     try {
       await updateRecipeRating(recipeId);
-      console.log("✅ Recipe rating updated");
+      diagnostics.info("stats.update.success");
     } catch (ratingError) {
       // Do not fail create-review after successful insert.
-      console.error("⚠️ Non-fatal: failed to update recipe rating stats:", ratingError);
+      diagnostics.warn("stats.update.failed.nonfatal", {
+        error: serializeErrorSafely(ratingError),
+      });
     }
 
     // Fetch the complete review with user data
-    console.log("📥 Fetching complete review with user data...");
+    diagnostics.setStage("readback");
+    diagnostics.info("readback.start");
     let completeReview: any = null;
     try {
       [completeReview] = await db
@@ -269,9 +329,12 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
         .from(recipeReviews)
         .leftJoin(users, eq(recipeReviews.userId, users.id))
         .where(eq(recipeReviews.id, review.id));
+      diagnostics.info("readback.success", { found: !!completeReview });
     } catch (fetchReviewError) {
       // Do not fail create-review after successful insert.
-      console.error("⚠️ Non-fatal: failed to fetch full review row:", fetchReviewError);
+      diagnostics.warn("readback.failed.nonfatal", {
+        error: serializeErrorSafely(fetchReviewError),
+      });
     }
 
     const safeReviewBase = (review && typeof review === "object") ? review : {
@@ -298,9 +361,10 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
           },
         };
 
-    console.log("✅ Complete review fetched:", safeCompleteReview.id);
+    diagnostics.info("response.review.normalized", { reviewId: safeCompleteReview.id || null });
 
     // Send notification to recipe author
+    diagnostics.setStage("notification");
     const [recipe] = await db
       .select({ userId: recipes.userId, title: recipes.title })
       .from(recipes)
@@ -320,20 +384,22 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
         );
       } catch (notificationError) {
         // Notification delivery should never fail a successful create-review call.
-        console.error("⚠️ Non-fatal: failed to send review notification:", notificationError);
+        diagnostics.warn("notification.failed.nonfatal", {
+          error: serializeErrorSafely(notificationError),
+        });
       }
     }
 
-    console.log("📝 ============ CREATE REVIEW SUCCESS ============");
+    diagnostics.setStage("response.serialize");
+    diagnostics.info("response.success");
     res.status(201).json({ ...safeCompleteReview, photos: [] });
   } catch (error: any) {
+    diagnostics.setStage("error.serialize");
     const errorObj = (error && typeof error === "object")
       ? error
       : { message: typeof error === "string" ? error : "Unknown error", raw: error };
 
-    console.error("❌ ============ CREATE REVIEW ERROR ============");
-    console.error("❌ Error creating review:", errorObj);
-    console.error("❌ Error details:", {
+    diagnostics.error("create.review.failed", {
       name: (errorObj as any).name,
       message: (errorObj as any).message,
       code: (errorObj as any).code,
@@ -343,13 +409,15 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       column: (errorObj as any).column,
       stack: (errorObj as any).stack?.split('\n').slice(0, 5).join('\n')
     });
-    console.error("❌ Full error object:", serializeErrorSafely(errorObj));
+    diagnostics.error("create.review.failed.full", serializeErrorSafely(errorObj));
 
     res.status(500).json({
       error: "Failed to create review",
       details: (errorObj as any).message || "Unknown error",
       code: (errorObj as any).code,
-      constraint: (errorObj as any).constraint
+      constraint: (errorObj as any).constraint,
+      stage: diagnostics.getStage(),
+      requestId: diagnostics.requestId,
     });
   }
 });

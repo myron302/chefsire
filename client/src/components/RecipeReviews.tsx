@@ -121,7 +121,19 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
       console.log("📥 Response status:", response.status, response.statusText);
 
       if (response.ok) {
-        const newReview = normalizeReview(await response.json());
+        const successPayloadText = await response.text();
+        let successPayload: unknown = {};
+        try {
+          successPayload = successPayloadText ? JSON.parse(successPayloadText) : {};
+        } catch (parseError) {
+          console.error("❌ Failed to parse success response JSON:", {
+            parseError,
+            successPayloadText,
+          });
+          throw new Error("Server returned an invalid success payload");
+        }
+
+        const newReview = normalizeReview(successPayload);
         console.log("✅ Review created successfully:", newReview);
         setReviews((prev) => [newReview, ...prev]);
         setNewRating(5);
@@ -130,10 +142,20 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
         // Trigger a page refresh or emit event to update recipe rating
         window.location.reload();
       } else {
-        const parsedErrorData = await response.json().catch(() => ({ error: "Unknown error" }));
+        const rawErrorText = await response.text();
+        let parsedErrorData: unknown = { error: "Unknown error" };
+        try {
+          parsedErrorData = rawErrorText ? JSON.parse(rawErrorText) : { error: "Unknown error" };
+        } catch {
+          parsedErrorData = {
+            error: "Unknown error",
+            details: rawErrorText || "No error body returned",
+          };
+        }
         const errorData = (parsedErrorData && typeof parsedErrorData === "object")
           ? parsedErrorData
           : { error: "Unknown error" };
+        console.error("❌ Raw review error payload:", rawErrorText || "<empty>");
         console.error("❌ Review submission failed:", {
           status: response.status,
           statusText: response.statusText,
