@@ -205,45 +205,69 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     const [review] = await db.insert(recipeReviews).values(newReview).returning();
     console.log("✅ Review inserted successfully with ID:", review.id);
 
-    // Update recipe average rating and count
+    // Update recipe average rating and count (non-fatal)
     console.log("📊 Updating recipe rating statistics...");
-    await updateRecipeRating(recipeId);
-    console.log("✅ Recipe rating updated");
+    try {
+      await updateRecipeRating(recipeId);
+      console.log("✅ Recipe rating updated");
+    } catch (ratingError) {
+      // Do not fail create-review after successful insert.
+      console.error("⚠️ Non-fatal: failed to update recipe rating stats:", ratingError);
+    }
 
     // Fetch the complete review with user data
     console.log("📥 Fetching complete review with user data...");
-    const [completeReview] = await db
-      .select({
-        id: recipeReviews.id,
-        recipeId: recipeReviews.recipeId,
-        userId: recipeReviews.userId,
-        rating: recipeReviews.rating,
-        reviewText: recipeReviews.reviewText,
-        helpfulCount: recipeReviews.helpfulCount,
-        createdAt: recipeReviews.createdAt,
-        updatedAt: recipeReviews.updatedAt,
-        user: {
-          id: users.id,
-          username: users.username,
-          displayName: users.displayName,
-          avatar: users.avatar,
-          royalTitle: users.royalTitle,
-        },
-      })
-      .from(recipeReviews)
-      .leftJoin(users, eq(recipeReviews.userId, users.id))
-      .where(eq(recipeReviews.id, review.id));
+    let completeReview: any = null;
+    try {
+      [completeReview] = await db
+        .select({
+          id: recipeReviews.id,
+          recipeId: recipeReviews.recipeId,
+          userId: recipeReviews.userId,
+          rating: recipeReviews.rating,
+          reviewText: recipeReviews.reviewText,
+          helpfulCount: recipeReviews.helpfulCount,
+          createdAt: recipeReviews.createdAt,
+          updatedAt: recipeReviews.updatedAt,
+          user: {
+            id: users.id,
+            username: users.username,
+            displayName: users.displayName,
+            avatar: users.avatar,
+            royalTitle: users.royalTitle,
+          },
+        })
+        .from(recipeReviews)
+        .leftJoin(users, eq(recipeReviews.userId, users.id))
+        .where(eq(recipeReviews.id, review.id));
+    } catch (fetchReviewError) {
+      // Do not fail create-review after successful insert.
+      console.error("⚠️ Non-fatal: failed to fetch full review row:", fetchReviewError);
+    }
 
-    const safeCompleteReview = completeReview ?? {
-      ...review,
-      user: {
-        id: userId,
-        username: "unknown",
-        displayName: null,
-        avatar: null,
-        royalTitle: null,
-      },
+    const safeReviewBase = (review && typeof review === "object") ? review : {
+      id: "",
+      recipeId,
+      userId,
+      rating,
+      reviewText: reviewText || null,
+      helpfulCount: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
+
+    const safeCompleteReview = (completeReview && typeof completeReview === "object")
+      ? completeReview
+      : {
+          ...safeReviewBase,
+          user: {
+            id: userId,
+            username: "unknown",
+            displayName: null,
+            avatar: null,
+            royalTitle: null,
+          },
+        };
 
     console.log("✅ Complete review fetched:", safeCompleteReview.id);
 
@@ -255,15 +279,20 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       .limit(1);
 
     if (recipe && recipe.userId && recipe.userId !== userId && safeCompleteReview.user) {
-      sendRecipeReviewNotification(
-        recipe.userId,
-        userId,
-        safeCompleteReview.user.username || safeCompleteReview.user.displayName || 'Someone',
-        safeCompleteReview.user.avatar,
-        recipeId,
-        recipe.title || 'your recipe',
-        rating
-      );
+      try {
+        await sendRecipeReviewNotification(
+          recipe.userId,
+          userId,
+          safeCompleteReview.user.username || safeCompleteReview.user.displayName || "Someone",
+          safeCompleteReview.user.avatar,
+          recipeId,
+          recipe.title || "your recipe",
+          rating
+        );
+      } catch (notificationError) {
+        // Notification delivery should never fail a successful create-review call.
+        console.error("⚠️ Non-fatal: failed to send review notification:", notificationError);
+      }
     }
 
     console.log("📝 ============ CREATE REVIEW SUCCESS ============");
