@@ -21,14 +21,22 @@ import { sendRecipeReviewNotification } from "../services/notification-service";
 
 const router = Router();
 
+function isExternalRecipeRef(recipeId: string): boolean {
+  // Only treat known external provider IDs as external refs.
+  // This avoids misclassifying local IDs that happen to contain underscores.
+  return /^mealdb_[^_]+$/i.test(recipeId);
+}
+
 async function resolveRecipeIdForReview(recipeId: string): Promise<string> {
   if (typeof recipeId !== "string" || !recipeId.trim()) {
     throw new Error("Recipe id is required");
   }
 
-  if (!recipeId.includes("_")) return recipeId;
+  const normalizedRecipeId = recipeId.trim();
 
-  const savedRecipe = await RecipeService.findOrCreateExternalRecipe(db, recipeId);
+  if (!isExternalRecipeRef(normalizedRecipeId)) return normalizedRecipeId;
+
+  const savedRecipe = await RecipeService.findOrCreateExternalRecipe(db, normalizedRecipeId);
   if (!savedRecipe?.id) {
     throw new Error("Failed to resolve external recipe id");
   }
@@ -226,7 +234,12 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       .leftJoin(users, eq(recipeReviews.userId, users.id))
       .where(eq(recipeReviews.id, review.id));
 
-    console.log("✅ Complete review fetched:", completeReview.id);
+    const safeCompleteReview = completeReview ?? {
+      ...review,
+      user: null,
+    };
+
+    console.log("✅ Complete review fetched:", safeCompleteReview.id);
 
     // Send notification to recipe author
     const [recipe] = await db
@@ -235,12 +248,12 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       .where(eq(recipes.id, recipeId))
       .limit(1);
 
-    if (recipe && recipe.userId && recipe.userId !== userId && completeReview.user) {
+    if (recipe && recipe.userId && recipe.userId !== userId && safeCompleteReview.user) {
       sendRecipeReviewNotification(
         recipe.userId,
         userId,
-        completeReview.user.username || completeReview.user.displayName || 'Someone',
-        completeReview.user.avatar,
+        safeCompleteReview.user.username || safeCompleteReview.user.displayName || 'Someone',
+        safeCompleteReview.user.avatar,
         recipeId,
         recipe.title || 'your recipe',
         rating
@@ -248,7 +261,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     }
 
     console.log("📝 ============ CREATE REVIEW SUCCESS ============");
-    res.status(201).json({ ...completeReview, photos: [] });
+    res.status(201).json({ ...safeCompleteReview, photos: [] });
   } catch (error: any) {
     const errorObj = (error && typeof error === "object")
       ? error
