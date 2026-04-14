@@ -21,6 +21,35 @@ import { sendRecipeReviewNotification } from "../services/notification-service";
 
 const router = Router();
 
+function safeObjectKeyCount(value: unknown): number {
+  if (!value || typeof value !== "object") return 0;
+  try {
+    return Object.keys(value as Record<string, unknown>).length;
+  } catch {
+    return 0;
+  }
+}
+
+function serializeErrorSafely(error: unknown): string {
+  const normalized = (error && typeof error === "object")
+    ? error
+    : { message: typeof error === "string" ? error : "Unknown error", raw: error };
+
+  try {
+    return JSON.stringify(normalized, Object.getOwnPropertyNames(normalized), 2);
+  } catch {
+    try {
+      return JSON.stringify({
+        name: (normalized as any)?.name,
+        message: (normalized as any)?.message,
+        code: (normalized as any)?.code,
+      });
+    } catch {
+      return "{\"message\":\"Unserializable error\"}";
+    }
+  }
+}
+
 function isExternalRecipeRef(recipeId: string): boolean {
   // Only treat known external provider IDs as external refs.
   // This avoids misclassifying local IDs that happen to contain underscores.
@@ -156,8 +185,8 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     console.log("📝 Optional payload normalized:", {
       mediaCount: media.length,
       photosCount: photos.length,
-      metadataKeys: Object.keys(metadata).length,
-      detailsKeys: Object.keys(details).length,
+      metadataKeys: safeObjectKeyCount(metadata),
+      detailsKeys: safeObjectKeyCount(details),
     });
     console.log("📝 Parsed data:", { userId, recipeId, rating, reviewText, recipeIdType: typeof recipeId });
 
@@ -314,7 +343,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       column: (errorObj as any).column,
       stack: (errorObj as any).stack?.split('\n').slice(0, 5).join('\n')
     });
-    console.error("❌ Full error object:", JSON.stringify(errorObj, Object.getOwnPropertyNames(errorObj), 2));
+    console.error("❌ Full error object:", serializeErrorSafely(errorObj));
 
     res.status(500).json({
       error: "Failed to create review",
