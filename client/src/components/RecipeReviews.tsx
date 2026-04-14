@@ -37,6 +37,20 @@ interface Review {
   isHelpful?: boolean;
 }
 
+function normalizeReview(rawReview: any): Review {
+  return {
+    ...rawReview,
+    user: rawReview?.user ?? {
+      id: "",
+      username: "Unknown",
+      displayName: null,
+      avatar: null,
+      royalTitle: null,
+    },
+    photos: Array.isArray(rawReview?.photos) ? rawReview.photos : [],
+  };
+}
+
 interface RecipeReviewsProps {
   recipeId: string;
   averageRating?: number;
@@ -65,7 +79,7 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
       });
       if (response.ok) {
         const data = await response.json();
-        setReviews(data);
+        setReviews(Array.isArray(data) ? data.map(normalizeReview) : []);
       }
     } catch (error) {
       console.error("Error fetching reviews:", error);
@@ -102,9 +116,9 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
       console.log("📥 Response status:", response.status, response.statusText);
 
       if (response.ok) {
-        const newReview = await response.json();
+        const newReview = normalizeReview(await response.json());
         console.log("✅ Review created successfully:", newReview);
-        setReviews([newReview, ...reviews]);
+        setReviews((prev) => [newReview, ...prev]);
         setNewRating(5);
         setNewReviewText("");
         setShowReviewForm(false);
