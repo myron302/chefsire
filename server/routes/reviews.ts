@@ -50,6 +50,96 @@ function serializeErrorSafely(error: unknown): string {
   }
 }
 
+
+function safeString(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return fallback;
+  try {
+    return String(value);
+  } catch {
+    return fallback;
+  }
+}
+
+function safeBoolean(value: unknown): boolean {
+  return value === true;
+}
+
+type ReviewCreateDebug = {
+  recipeId: string;
+  normalizedRecipeId: string;
+  linkedRecipeIds: string[];
+  userId: string | null;
+  isExternalRecipe: boolean;
+  duplicateCheckMode: "single" | "linked";
+};
+
+function toStableReviewDebug(debug: Partial<ReviewCreateDebug>): ReviewCreateDebug {
+  let linkedRecipeIds: string[] = [];
+  try {
+    linkedRecipeIds = Array.isArray(debug.linkedRecipeIds)
+      ? debug.linkedRecipeIds
+          .filter((value): value is string => typeof value === "string")
+          .map((value) => safeString(value, ""))
+      : [];
+  } catch {
+    linkedRecipeIds = [];
+  }
+
+  const duplicateCheckMode = debug.duplicateCheckMode === "linked" ? "linked" : "single";
+
+  return {
+    recipeId: safeString(debug.recipeId, ""),
+    normalizedRecipeId: safeString(debug.normalizedRecipeId, ""),
+    linkedRecipeIds,
+    userId: typeof debug.userId === "string" ? debug.userId : null,
+    isExternalRecipe: safeBoolean(debug.isExternalRecipe),
+    duplicateCheckMode,
+  };
+}
+
+function sendCreateReviewError(
+  res: Response,
+  {
+    status,
+    error,
+    details,
+    stage,
+    requestId,
+    debug,
+  }: {
+    status: number;
+    error: unknown;
+    details: unknown;
+    stage: unknown;
+    requestId: unknown;
+    debug: Partial<ReviewCreateDebug>;
+  }
+) {
+  try {
+    return res.status(status).json({
+      error: safeString(error, "Failed to create review"),
+      details: safeString(details, "No additional details"),
+      stage: safeString(stage, "unknown"),
+      requestId: safeString(requestId, "unknown"),
+      debug: toStableReviewDebug(debug),
+    });
+  } catch (serializationError) {
+    try {
+      console.error("[reviews.create][error.payload] serialization.failed", serializeErrorSafely(serializationError));
+    } catch {
+      // no-op
+    }
+    return res.status(500).json({
+      error: "Failed to create review",
+      details: "Failed to serialize error response payload",
+      stage: "error.serialize",
+      requestId: safeString(requestId, "unknown"),
+      debug: toStableReviewDebug(debug),
+    });
+  }
+}
+
 type ReviewCreateStage =
   | "request.normalization"
   | "recipe.resolve"
@@ -224,6 +314,14 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
 // Create a review
 router.post("/", requireAuth, async (req: Request, res: Response) => {
   const diagnostics = createReviewDiagnostics(req);
+  let debugContext: Partial<ReviewCreateDebug> = {
+    recipeId: "",
+    normalizedRecipeId: "",
+    linkedRecipeIds: [],
+    userId: safeString((req as any)?.user?.id, "") || null,
+    isExternalRecipe: false,
+    duplicateCheckMode: "single",
+  };
   try {
     diagnostics.setStage("request.normalization");
     diagnostics.info("create.review.start", {
@@ -231,10 +329,20 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       bodyKeys: safeObjectKeyCount(req.body),
     });
 
-    const userId = (req as any).user.id;
+    const userId = safeString((req as any)?.user?.id, "");
     const body = (req.body && typeof req.body === "object") ? req.body : {};
-    let recipeId = typeof body.recipeId === "string" ? body.recipeId.trim() : "";
+    const incomingRecipeId = typeof body.recipeId === "string" ? body.recipeId : "";
+    let recipeId = incomingRecipeId.trim();
+    let normalizedRecipeId = recipeId;
     let linkedRecipeIdsForIdentity: string[] = [];
+    debugContext = {
+      recipeId: incomingRecipeId,
+      normalizedRecipeId,
+      linkedRecipeIds: linkedRecipeIdsForIdentity,
+      userId: userId || null,
+      isExternalRecipe: isExternalRecipeRef(normalizedRecipeId),
+      duplicateCheckMode: "single",
+    };
     const rating = typeof body.rating === "number" ? body.rating : Number(body.rating);
     const reviewText = typeof body.reviewText === "string" ? body.reviewText : null;
 
@@ -257,7 +365,14 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     // Validate rating
     if (!rating || rating < 1 || rating > 5) {
       diagnostics.warn("invalid.rating", { rating });
-      return res.status(400).json({ error: "Rating must be between 1 and 5 spoons" });
+      return sendCreateReviewError(res, {
+        status: 400,
+        error: "Rating must be between 1 and 5 spoons",
+        details: `Received rating=${safeString(rating, "unknown")}`,
+        stage: diagnostics.getStage(),
+        requestId: diagnostics.requestId,
+        debug: debugContext,
+      });
     }
 
     // Normalize external recipe IDs to local DB IDs so submit + read use the same key.
@@ -266,6 +381,10 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       const identity = await resolveRecipeIdentityForReview(recipeId);
       recipeId = identity.canonicalRecipeId;
       linkedRecipeIdsForIdentity = identity.linkedRecipeIds;
+      normalizedRecipeId = recipeId;
+      debugContext.normalizedRecipeId = normalizedRecipeId;
+      debugContext.linkedRecipeIds = linkedRecipeIdsForIdentity;
+      debugContext.isExternalRecipe = isExternalRecipeRef(incomingRecipeId.trim());
       diagnostics.info("recipe.resolved", {
         recipeId,
         linkedRecipeIdsCount: linkedRecipeIdsForIdentity.length,
@@ -274,17 +393,21 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
       diagnostics.error("recipe.resolve.failed", {
         error: serializeErrorSafely(saveError),
       });
-      return res.status(500).json({
+      return sendCreateReviewError(res, {
+        status: 500,
         error: "Failed to save recipe from external source",
         details: saveError?.message || "Unable to resolve recipe id",
         stage: diagnostics.getStage(),
         requestId: diagnostics.requestId,
+        debug: debugContext,
       });
     }
 
     // Check if user already reviewed this recipe
     diagnostics.setStage("duplicate.check");
     diagnostics.info("duplicate.check.start");
+    debugContext.linkedRecipeIds = linkedRecipeIdsForIdentity;
+    debugContext.duplicateCheckMode = linkedRecipeIdsForIdentity.length > 1 ? "linked" : "single";
     const duplicateRecipeFilter = linkedRecipeIdsForIdentity.length > 1
       ? inArray(recipeReviews.recipeId, linkedRecipeIdsForIdentity)
       : eq(recipeReviews.recipeId, recipeId);
@@ -296,10 +419,13 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
 
     if (existingReview.length > 0) {
       diagnostics.warn("duplicate.check.blocked", { existingReviewId: existingReview[0].id });
-      return res.status(400).json({
+      return sendCreateReviewError(res, {
+        status: 400,
         error: "You already reviewed this recipe. Use update instead.",
+        details: `Existing review id=${safeString(existingReview[0]?.id, "unknown")}`,
         stage: diagnostics.getStage(),
         requestId: diagnostics.requestId,
+        debug: debugContext,
       });
     }
     diagnostics.info("duplicate.check.clear");
@@ -438,13 +564,13 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     });
     diagnostics.error("create.review.failed.full", serializeErrorSafely(errorObj));
 
-    res.status(500).json({
+    return sendCreateReviewError(res, {
+      status: 500,
       error: "Failed to create review",
       details: (errorObj as any).message || "Unknown error",
-      code: (errorObj as any).code,
-      constraint: (errorObj as any).constraint,
       stage: diagnostics.getStage(),
       requestId: diagnostics.requestId,
+      debug: debugContext,
     });
   }
 });
