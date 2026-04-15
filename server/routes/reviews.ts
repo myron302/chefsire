@@ -123,7 +123,7 @@ async function resolveRecipeIdentityForReview(recipeId: string): Promise<Resolve
   return {
     canonicalRecipeId: identity.recipe.id,
     linkedRecipeIds: identity.linkedRecipeIds.length > 0
-      ? identity.linkedRecipeIds
+      ? Array.from(new Set(identity.linkedRecipeIds))
       : [identity.recipe.id],
   };
 }
