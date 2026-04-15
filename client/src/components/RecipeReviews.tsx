@@ -155,6 +155,7 @@ export function RecipeReviews({ recipeId, averageRating, reviewCount }: RecipeRe
         const errorData = (parsedErrorData && typeof parsedErrorData === "object")
           ? parsedErrorData
           : { error: "Unknown error" };
+        console.error("❌ Parsed review error object:", parsedErrorData);
         console.error("❌ Raw review error payload:", rawErrorText || "<empty>");
         console.error("❌ Review submission failed:", {
           status: response.status,
