@@ -16,6 +16,19 @@ export class RecipeService {
     return { source, externalId };
   }
 
+  private static pickCanonicalRecipe<T extends { id: string; createdAt?: Date | string | null }>(
+    rows: T[]
+  ): T | null {
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+
+    return [...rows].sort((a, b) => {
+      const aCreatedAt = a.createdAt ? new Date(a.createdAt).getTime() : Number.POSITIVE_INFINITY;
+      const bCreatedAt = b.createdAt ? new Date(b.createdAt).getTime() : Number.POSITIVE_INFINITY;
+      if (aCreatedAt !== bCreatedAt) return aCreatedAt - bCreatedAt;
+      return a.id.localeCompare(b.id);
+    })[0];
+  }
+
   /**
    * Get recipe by ID
    */
@@ -264,26 +277,24 @@ export class RecipeService {
 
     const { source, externalId } = parsedRef;
 
-    // Check if recipe already exists in database
-    const existing = await db
-      .select()
-      .from(recipes)
-      .where(
-        and(
-          eq(recipes.externalSource, source),
-          eq(recipes.externalId, externalId)
-        )
+    const identity = await this.resolveExternalRecipeIdentity(db, externalRecipeId, { createIfMissing: false });
+    if (identity?.recipe) {
+      console.log(
+        "Recipe already exists in DB:",
+        identity.recipe.id,
+        "matches:",
+        identity.linkedRecipeIds.length
       );
-
-    if (existing.length > 0) {
-      const canonical = [...existing].sort((a, b) => a.id.localeCompare(b.id))[0];
-      console.log("Recipe already exists in DB:", canonical.id, "matches:", existing.length);
-      return canonical;
+      return identity.recipe;
     }
 
     // Fetch full recipe details from external source
     if (source === "mealdb") {
-      return await this.fetchAndSaveMealDBRecipe(db, externalId);
+      const created = await this.fetchAndSaveMealDBRecipe(db, externalId);
+      if (!created) return null;
+
+      const hydratedIdentity = await this.resolveExternalRecipeIdentity(db, externalRecipeId, { createIfMissing: false });
+      return hydratedIdentity?.recipe ?? created;
     }
 
     console.error("Unsupported external source:", source);
@@ -296,42 +307,64 @@ export class RecipeService {
    */
   static async resolveExternalRecipeIdentity(
     db: any,
-    externalRecipeId: string
+    externalRecipeId: string,
+    options: { createIfMissing?: boolean } = {}
   ): Promise<{ recipe: Recipe; linkedRecipeIds: string[] } | null> {
-    const recipe = await this.findOrCreateExternalRecipe(db, externalRecipeId);
-    if (!recipe) return null;
+    const parsedRef = this.parseExternalRecipeRef(externalRecipeId);
+    if (!parsedRef) return null;
 
-    if (!recipe.externalSource || !recipe.externalId) {
-      return { recipe, linkedRecipeIds: [recipe.id] };
-    }
+    const { source, externalId } = parsedRef;
 
-    const linked = await db
-      .select({ id: recipes.id })
+    const linkedRecipes = await db
+      .select()
       .from(recipes)
       .where(
         and(
-          eq(recipes.externalSource, recipe.externalSource),
-          eq(recipes.externalId, recipe.externalId)
+          eq(recipes.externalSource, source),
+          eq(recipes.externalId, externalId)
         )
       );
 
-    const linkedRecipeIds = linked
-      .map((row: { id: string }) => row.id)
+    let canonical = this.pickCanonicalRecipe(linkedRecipes);
+    let linkedRecipeIds = linkedRecipes
+      .map((row: Recipe) => row.id)
       .filter((id: string) => typeof id === "string" && id.length > 0)
       .sort((a: string, b: string) => a.localeCompare(b));
 
+    if (!canonical && options.createIfMissing !== false) {
+      if (source !== "mealdb") {
+        console.error("Unsupported external source:", source);
+        return null;
+      }
+
+      const created = await this.fetchAndSaveMealDBRecipe(db, externalId);
+      if (!created) return null;
+
+      const refreshed = await db
+        .select()
+        .from(recipes)
+        .where(
+          and(
+            eq(recipes.externalSource, source),
+            eq(recipes.externalId, externalId)
+          )
+        );
+
+      canonical = this.pickCanonicalRecipe(refreshed) ?? created;
+      linkedRecipeIds = refreshed
+        .map((row: Recipe) => row.id)
+        .filter((id: string) => typeof id === "string" && id.length > 0)
+        .sort((a: string, b: string) => a.localeCompare(b));
+    }
+
+    if (!canonical) return null;
+
     if (!linkedRecipeIds.length) {
-      return { recipe, linkedRecipeIds: [recipe.id] };
+      linkedRecipeIds = [canonical.id];
     }
 
-    const canonicalId = linkedRecipeIds[0];
-    if (recipe.id === canonicalId) {
-      return { recipe, linkedRecipeIds };
-    }
-
-    const canonicalRecipe = await this.getRecipe(db, canonicalId);
     return {
-      recipe: canonicalRecipe ?? recipe,
+      recipe: canonical,
       linkedRecipeIds,
     };
   }
