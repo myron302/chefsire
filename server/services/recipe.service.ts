@@ -6,6 +6,16 @@ import { recipes, posts, users, type Recipe, type InsertRecipe, type PostWithUse
  * RecipeService - Handles all recipe-related database operations
  */
 export class RecipeService {
+  private static parseExternalRecipeRef(externalRecipeId: string): { source: string; externalId: string } | null {
+    const normalized = typeof externalRecipeId === "string" ? externalRecipeId.trim() : "";
+    const match = normalized.match(/^([a-z0-9-]+)_(.+)$/i);
+    if (!match) return null;
+    const source = match[1].toLowerCase();
+    const externalId = match[2].trim();
+    if (!externalId) return null;
+    return { source, externalId };
+  }
+
   /**
    * Get recipe by ID
    */
@@ -246,14 +256,13 @@ export class RecipeService {
     db: any,
     externalRecipeId: string
   ): Promise<Recipe | null> {
-    // Parse external ID (e.g., "mealdb_52772")
-    const parts = externalRecipeId.split("_");
-    if (parts.length !== 2) {
+    const parsedRef = this.parseExternalRecipeRef(externalRecipeId);
+    if (!parsedRef) {
       console.error("Invalid external recipe ID format:", externalRecipeId);
       return null;
     }
 
-    const [source, externalId] = parts;
+    const { source, externalId } = parsedRef;
 
     // Check if recipe already exists in database
     const existing = await db
@@ -264,12 +273,12 @@ export class RecipeService {
           eq(recipes.externalSource, source),
           eq(recipes.externalId, externalId)
         )
-      )
-      .limit(1);
+      );
 
     if (existing.length > 0) {
-      console.log("Recipe already exists in DB:", existing[0].id);
-      return existing[0];
+      const canonical = [...existing].sort((a, b) => a.id.localeCompare(b.id))[0];
+      console.log("Recipe already exists in DB:", canonical.id, "matches:", existing.length);
+      return canonical;
     }
 
     // Fetch full recipe details from external source
@@ -279,6 +288,52 @@ export class RecipeService {
 
     console.error("Unsupported external source:", source);
     return null;
+  }
+
+  /**
+   * Resolve external identity to a canonical local recipe id and all linked local rows.
+   * This is resilient to duplicate local shadow rows for the same external recipe.
+   */
+  static async resolveExternalRecipeIdentity(
+    db: any,
+    externalRecipeId: string
+  ): Promise<{ recipe: Recipe; linkedRecipeIds: string[] } | null> {
+    const recipe = await this.findOrCreateExternalRecipe(db, externalRecipeId);
+    if (!recipe) return null;
+
+    if (!recipe.externalSource || !recipe.externalId) {
+      return { recipe, linkedRecipeIds: [recipe.id] };
+    }
+
+    const linked = await db
+      .select({ id: recipes.id })
+      .from(recipes)
+      .where(
+        and(
+          eq(recipes.externalSource, recipe.externalSource),
+          eq(recipes.externalId, recipe.externalId)
+        )
+      );
+
+    const linkedRecipeIds = linked
+      .map((row: { id: string }) => row.id)
+      .filter((id: string) => typeof id === "string" && id.length > 0)
+      .sort((a: string, b: string) => a.localeCompare(b));
+
+    if (!linkedRecipeIds.length) {
+      return { recipe, linkedRecipeIds: [recipe.id] };
+    }
+
+    const canonicalId = linkedRecipeIds[0];
+    if (recipe.id === canonicalId) {
+      return { recipe, linkedRecipeIds };
+    }
+
+    const canonicalRecipe = await this.getRecipe(db, canonicalId);
+    return {
+      recipe: canonicalRecipe ?? recipe,
+      linkedRecipeIds,
+    };
   }
 
   /**

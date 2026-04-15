@@ -96,21 +96,36 @@ function isExternalRecipeRef(recipeId: string): boolean {
   return /^mealdb_[^_]+$/i.test(recipeId);
 }
 
-async function resolveRecipeIdForReview(recipeId: string): Promise<string> {
+type ResolvedReviewRecipeIdentity = {
+  canonicalRecipeId: string;
+  linkedRecipeIds: string[];
+};
+
+async function resolveRecipeIdentityForReview(recipeId: string): Promise<ResolvedReviewRecipeIdentity> {
   if (typeof recipeId !== "string" || !recipeId.trim()) {
     throw new Error("Recipe id is required");
   }
 
   const normalizedRecipeId = recipeId.trim();
 
-  if (!isExternalRecipeRef(normalizedRecipeId)) return normalizedRecipeId;
+  if (!isExternalRecipeRef(normalizedRecipeId)) {
+    return {
+      canonicalRecipeId: normalizedRecipeId,
+      linkedRecipeIds: [normalizedRecipeId],
+    };
+  }
 
-  const savedRecipe = await RecipeService.findOrCreateExternalRecipe(db, normalizedRecipeId);
-  if (!savedRecipe?.id) {
+  const identity = await RecipeService.resolveExternalRecipeIdentity(db, normalizedRecipeId);
+  if (!identity?.recipe?.id) {
     throw new Error("Failed to resolve external recipe id");
   }
 
-  return savedRecipe.id;
+  return {
+    canonicalRecipeId: identity.recipe.id,
+    linkedRecipeIds: identity.linkedRecipeIds.length > 0
+      ? identity.linkedRecipeIds
+      : [identity.recipe.id],
+  };
 }
 
 // Multer config for review photos
@@ -144,7 +159,10 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
   try {
     const { recipeId } = req.params;
     const userId = (req as any).user?.id;
-    const resolvedRecipeId = await resolveRecipeIdForReview(recipeId);
+    const identity = await resolveRecipeIdentityForReview(recipeId);
+    const reviewRecipeFilter = identity.linkedRecipeIds.length > 1
+      ? inArray(recipeReviews.recipeId, identity.linkedRecipeIds)
+      : eq(recipeReviews.recipeId, identity.canonicalRecipeId);
 
     const reviews = await db
       .select({
@@ -171,7 +189,7 @@ router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
       })
       .from(recipeReviews)
       .leftJoin(users, eq(recipeReviews.userId, users.id))
-      .where(eq(recipeReviews.recipeId, resolvedRecipeId))
+      .where(reviewRecipeFilter)
       .orderBy(desc(recipeReviews.createdAt));
 
     // Get photos for each review
@@ -216,6 +234,7 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     const userId = (req as any).user.id;
     const body = (req.body && typeof req.body === "object") ? req.body : {};
     let recipeId = typeof body.recipeId === "string" ? body.recipeId.trim() : "";
+    let linkedRecipeIdsForIdentity: string[] = [];
     const rating = typeof body.rating === "number" ? body.rating : Number(body.rating);
     const reviewText = typeof body.reviewText === "string" ? body.reviewText : null;
 
@@ -244,8 +263,13 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     // Normalize external recipe IDs to local DB IDs so submit + read use the same key.
     try {
       diagnostics.setStage("recipe.resolve");
-      recipeId = await resolveRecipeIdForReview(recipeId);
-      diagnostics.info("recipe.resolved", { recipeId });
+      const identity = await resolveRecipeIdentityForReview(recipeId);
+      recipeId = identity.canonicalRecipeId;
+      linkedRecipeIdsForIdentity = identity.linkedRecipeIds;
+      diagnostics.info("recipe.resolved", {
+        recipeId,
+        linkedRecipeIdsCount: linkedRecipeIdsForIdentity.length,
+      });
     } catch (saveError: any) {
       diagnostics.error("recipe.resolve.failed", {
         error: serializeErrorSafely(saveError),
@@ -261,10 +285,13 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
     // Check if user already reviewed this recipe
     diagnostics.setStage("duplicate.check");
     diagnostics.info("duplicate.check.start");
+    const duplicateRecipeFilter = linkedRecipeIdsForIdentity.length > 1
+      ? inArray(recipeReviews.recipeId, linkedRecipeIdsForIdentity)
+      : eq(recipeReviews.recipeId, recipeId);
     const existingReview = await db
       .select()
       .from(recipeReviews)
-      .where(and(eq(recipeReviews.recipeId, recipeId), eq(recipeReviews.userId, userId)))
+      .where(and(duplicateRecipeFilter, eq(recipeReviews.userId, userId)))
       .limit(1);
 
     if (existingReview.length > 0) {
