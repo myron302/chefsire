@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Calendar, Plus, Target, TrendingUp, Clock, ChefHat, Star, Lock, Crown,
-  ShoppingCart, CheckCircle, BarChart3, PieChart, Download, Filter, Save,
+  ShoppingCart, CheckCircle, BarChart3, Download, Filter, Save,
   AlertCircle, Package, Utensils, CalendarDays, Zap, ListChecks, Settings, Camera,
   DollarSign, Sparkles, Flame, Scale, Droplets, Ruler
 } from 'lucide-react';
@@ -26,7 +26,23 @@ import AIRecipeModal from '@/components/meal-planner/modals/AIRecipeModal';
 import CookingToolsReference from '@/components/meal-planner/CookingToolsReference';
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 import { normalizeShoppingListItem } from '@/lib/shopping-list';
-import { LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+import {
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart as RechartsPieChart,
+  Pie,
+  Cell,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  Legend,
+} from 'recharts';
 import {
   DEFAULT_NUTRITION_GOALS,
   MEAL_TYPES,
@@ -1190,6 +1206,100 @@ const NutritionMealPlanner = () => {
       }
     : null;
 
+  const weeklyNutritionData = weekDays.map((day) => {
+    const totals = mealTypes.reduce((acc, type) => {
+      const slotTotals = getMealSlotTotals(weeklyMeals, day, type);
+      const slotItems = getMealSlotItems(weeklyMeals, day, type);
+      return {
+        calories: acc.calories + slotTotals.calories,
+        protein: acc.protein + slotTotals.protein,
+        carbs: acc.carbs + slotTotals.carbs,
+        fat: acc.fat + slotTotals.fat,
+        mealsLogged: acc.mealsLogged + slotItems.length,
+      };
+    }, { calories: 0, protein: 0, carbs: 0, fat: 0, mealsLogged: 0 });
+
+    return {
+      day,
+      shortDay: day.slice(0, 3),
+      ...totals,
+      calorieGoal,
+      proteinGoal: macroGoals.protein,
+      hydrationPct: Math.round(((water.glassesLogged || 0) / Math.max(1, water.dailyTarget || 8)) * 100),
+    };
+  });
+
+  const hasWeeklyNutritionData = weeklyNutritionData.some((day) => day.mealsLogged > 0 || day.calories > 0);
+
+  const weeklyMacroTotals = weeklyNutritionData.reduce((acc, day) => ({
+    protein: acc.protein + day.protein,
+    carbs: acc.carbs + day.carbs,
+    fat: acc.fat + day.fat,
+  }), { protein: 0, carbs: 0, fat: 0 });
+
+  const proteinCals = weeklyMacroTotals.protein * 4;
+  const carbCals = weeklyMacroTotals.carbs * 4;
+  const fatCals = weeklyMacroTotals.fat * 9;
+  const totalMacroCalories = proteinCals + carbCals + fatCals;
+
+  const macroDistributionData = totalMacroCalories > 0 ? [
+    { name: 'Protein', grams: weeklyMacroTotals.protein, calories: proteinCals, percent: Math.round((proteinCals / totalMacroCalories) * 100), color: '#3b82f6' },
+    { name: 'Carbs', grams: weeklyMacroTotals.carbs, calories: carbCals, percent: Math.round((carbCals / totalMacroCalories) * 100), color: '#22c55e' },
+    { name: 'Fat', grams: weeklyMacroTotals.fat, calories: fatCals, percent: Math.round((fatCals / totalMacroCalories) * 100), color: '#f59e0b' },
+  ] : [];
+
+  const metricsTrendData = weeklyNutritionData.map((day) => ({
+    day: day.shortDay,
+    calories: Math.round(day.calories),
+    calorieGoal,
+    protein: Math.round(day.protein),
+    proteinGoal: macroGoals.protein,
+  }));
+
+  const weeklyTotals = weeklyNutritionData.reduce((acc, day) => ({
+    calories: acc.calories + day.calories,
+    protein: acc.protein + day.protein,
+    mealsLogged: acc.mealsLogged + day.mealsLogged,
+  }), { calories: 0, protein: 0, mealsLogged: 0 });
+  const activeDays = weeklyNutritionData.filter((day) => day.mealsLogged > 0).length;
+  const avgCalories = activeDays > 0 ? Math.round(weeklyTotals.calories / activeDays) : 0;
+  const avgProtein = activeDays > 0 ? Math.round(weeklyTotals.protein / activeDays) : 0;
+  const calorieGoalHitDays = weeklyNutritionData.filter((day) => day.calories >= calorieGoal * 0.9 && day.calories <= calorieGoal * 1.1).length;
+  const proteinGoalHitDays = weeklyNutritionData.filter((day) => day.protein >= macroGoals.protein).length;
+  const latestBodyMetric = bodyMetricsLog.length > 0 ? bodyMetricsLog[bodyMetricsLog.length - 1] : null;
+  const firstBodyMetric = bodyMetricsLog.length > 0 ? bodyMetricsLog[0] : null;
+  const bodyWeightDelta = latestBodyMetric && firstBodyMetric
+    ? Number(latestBodyMetric.weightLbs || 0) - Number(firstBodyMetric.weightLbs || 0)
+    : 0;
+  const hydrationPct = Math.round(((water.glassesLogged || 0) / Math.max(1, water.dailyTarget || 8)) * 100);
+
+  const computedInsights = [
+    {
+      icon: <Flame className="w-6 h-6 text-orange-500" />,
+      title: calorieGoalHitDays > 0 ? `${calorieGoalHitDays} balanced day${calorieGoalHitDays === 1 ? '' : 's'}` : 'Calorie pacing in progress',
+      description: calorieGoalHitDays > 0
+        ? `You stayed within ±10% of your ${calorieGoal} kcal target on ${calorieGoalHitDays}/7 days.`
+        : `Average intake is ${avgCalories || 0} kcal. Keep logging meals to dial in your weekly target.`,
+      trend: calorieGoalHitDays >= 4 ? 'positive' : 'neutral',
+    },
+    {
+      icon: <Target className="w-6 h-6 text-blue-500" />,
+      title: proteinGoalHitDays > 0 ? `Protein target hit ${proteinGoalHitDays}/7 days` : 'Protein target opportunity',
+      description: proteinGoalHitDays > 0
+        ? `You're averaging ${avgProtein}g protein/day against a ${macroGoals.protein}g goal.`
+        : `Average protein is ${avgProtein}g/day. Add lean protein to breakfast or snacks for an easier boost.`,
+      trend: proteinGoalHitDays >= 4 ? 'positive' : 'neutral',
+    },
+    {
+      icon: <Droplets className="w-6 h-6 text-cyan-500" />,
+      title: hydrationPct >= 100 ? 'Hydration goal complete' : `${water.glassesLogged}/${water.dailyTarget} glasses today`,
+      description: latestBodyMetric
+        ? `Hydration is ${hydrationPct}% of target. Body weight trend: ${bodyWeightDelta > 0 ? '+' : ''}${bodyWeightDelta.toFixed(1)} lbs across your log history.`
+        : `Hydration is ${hydrationPct}% of target. Add body metrics entries to unlock trend correlations.`,
+      trend: hydrationPct >= 80 ? 'positive' : 'neutral',
+    },
+  ];
+
 
   const calculateGoals = () => {
     const weightKg = calcForm.weightUnit === 'kg' ? Number(calcForm.weight) : Number(calcForm.weight) * 0.453592;
@@ -1788,12 +1898,45 @@ const NutritionMealPlanner = () => {
                   <CardTitle>Weekly Overview</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
-                    <div className="text-center text-gray-500">
-                      <PieChart className="w-12 h-12 mx-auto mb-2" />
-                      <p>Macro distribution chart</p>
+                  {macroDistributionData.length > 0 ? (
+                    <div className="h-64 bg-gray-50 rounded-lg p-3">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RechartsPieChart>
+                          <Pie
+                            data={macroDistributionData}
+                            dataKey="calories"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={78}
+                            innerRadius={45}
+                            paddingAngle={4}
+                          >
+                            {macroDistributionData.map((entry) => (
+                              <Cell key={entry.name} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip formatter={(value: number, _name, payload: any) => [`${Math.round(Number(value))} kcal`, `${payload?.payload?.name || 'Macro'}`]} />
+                          <Legend />
+                        </RechartsPieChart>
+                      </ResponsiveContainer>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg text-sm text-gray-500">
+                      Add meals to see your weekly macro distribution.
+                    </div>
+                  )}
+                  {macroDistributionData.length > 0 && (
+                    <div className="grid grid-cols-3 gap-2 mt-3">
+                      {macroDistributionData.map((macro) => (
+                        <div key={macro.name} className="rounded-lg border bg-white p-2">
+                          <p className="text-xs text-gray-500">{macro.name}</p>
+                          <p className="text-sm font-semibold">{macro.grams.toFixed(0)}g</p>
+                          <p className="text-xs" style={{ color: macro.color }}>{macro.percent}% of kcal</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 
@@ -1802,10 +1945,76 @@ const NutritionMealPlanner = () => {
                   <CardTitle>Progress Trends</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
-                    <div className="text-center text-gray-500">
-                      <TrendingUp className="w-12 h-12 mx-auto mb-2" />
-                      <p>Progress trend chart</p>
+                  {hasWeeklyNutritionData ? (
+                    <div className="h-64 bg-gray-50 rounded-lg p-3">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={metricsTrendData}>
+                          <defs>
+                            <linearGradient id="calorieFill" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#fb923c" stopOpacity={0.35} />
+                              <stop offset="95%" stopColor="#fb923c" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="day" />
+                          <YAxis yAxisId="left" />
+                          <YAxis yAxisId="right" orientation="right" />
+                          <Tooltip />
+                          <Area yAxisId="left" type="monotone" dataKey="calories" name="Calories" stroke="#ea580c" fill="url(#calorieFill)" strokeWidth={2} />
+                          <Line yAxisId="left" type="monotone" dataKey="calorieGoal" name="Calorie Goal" stroke="#9ca3af" strokeDasharray="5 5" dot={false} />
+                          <Bar yAxisId="right" dataKey="protein" name="Protein (g)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                          <Line yAxisId="right" type="monotone" dataKey="proteinGoal" name="Protein Goal" stroke="#1d4ed8" strokeDasharray="3 4" dot={false} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg text-sm text-gray-500">
+                      Log meals this week to unlock calorie and protein trends.
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card className="lg:col-span-2">
+                <CardHeader>
+                  <CardTitle>Weekly Compliance Snapshot</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {hasWeeklyNutritionData ? (
+                    <div className="h-64 bg-gray-50 rounded-lg p-3">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={weeklyNutritionData}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="shortDay" />
+                          <YAxis />
+                          <Tooltip />
+                          <Legend />
+                          <Bar dataKey="calories" name="Calories" fill="#f97316" radius={[4, 4, 0, 0]} />
+                          <Bar dataKey="protein" name="Protein (g)" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg text-sm text-gray-500">
+                      Your weekly compliance snapshot appears once meal data is available.
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-gray-500">Meal Streak</p>
+                      <p className="text-lg font-semibold">{streak.currentStreak} days</p>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-gray-500">Weekly Meals Logged</p>
+                      <p className="text-lg font-semibold">{weeklyTotals.mealsLogged}</p>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-gray-500">Calorie Goal Days</p>
+                      <p className="text-lg font-semibold">{calorieGoalHitDays}/7</p>
+                    </div>
+                    <div className="rounded-lg border p-3">
+                      <p className="text-xs text-gray-500">Hydration</p>
+                      <p className="text-lg font-semibold">{water.glassesLogged}/{water.dailyTarget}</p>
                     </div>
                   </div>
                 </CardContent>
@@ -1817,24 +2026,15 @@ const NutritionMealPlanner = () => {
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <InsightCard
-                      icon={<Star className="w-6 h-6 text-yellow-500" />}
-                      title="Great Week!"
-                      description="You hit your protein goal 6 out of 7 days"
-                      trend="positive"
-                    />
-                    <InsightCard
-                      icon={<TrendingUp className="w-6 h-6 text-green-500" />}
-                      title="Consistent Progress"
-                      description="Your meal prep adherence is up 15%"
-                      trend="positive"
-                    />
-                    <InsightCard
-                      icon={<AlertCircle className="w-6 h-6 text-orange-500" />}
-                      title="Room for Improvement"
-                      description="Try adding more vegetables at dinner"
-                      trend="neutral"
-                    />
+                    {computedInsights.map((insight, idx) => (
+                      <InsightCard
+                        key={idx}
+                        icon={insight.icon}
+                        title={insight.title}
+                        description={insight.description}
+                        trend={insight.trend}
+                      />
+                    ))}
                   </div>
                 </CardContent>
               </Card>
