@@ -516,31 +516,44 @@ router.post("/", requireAuth, async (req: Request, res: Response) => {
 
     diagnostics.info("response.review.normalized", { reviewId: safeCompleteReview.id || null });
 
-    // Send notification to recipe author
+    // Send notification to recipe author (non-fatal — must never break a successful insert)
     diagnostics.setStage("notification");
-    const [recipe] = await db
-      .select({ userId: recipes.userId, title: recipes.title })
-      .from(recipes)
-      .where(eq(recipes.id, recipeId))
-      .limit(1);
+    try {
+      // NOTE: The recipes table does not have a userId column, so we can only notify
+      // if the recipe was created from a local post (postId is set). We look up the
+      // post author instead.
+      const [recipeRow] = await db
+        .select({ title: recipes.title, postId: recipes.postId })
+        .from(recipes)
+        .where(eq(recipes.id, recipeId))
+        .limit(1);
 
-    if (recipe && recipe.userId && recipe.userId !== userId && safeCompleteReview.user) {
-      try {
-        await sendRecipeReviewNotification(
-          recipe.userId,
-          userId,
-          safeCompleteReview.user.username || safeCompleteReview.user.displayName || "Someone",
-          safeCompleteReview.user.avatar,
-          recipeId,
-          recipe.title || "your recipe",
-          rating
-        );
-      } catch (notificationError) {
-        // Notification delivery should never fail a successful create-review call.
-        diagnostics.warn("notification.failed.nonfatal", {
-          error: serializeErrorSafely(notificationError),
-        });
+      if (recipeRow?.postId) {
+        const { posts: postsTable } = await import("../../shared/schema");
+        const [postRow] = await db
+          .select({ userId: postsTable.userId })
+          .from(postsTable)
+          .where(eq(postsTable.id, recipeRow.postId))
+          .limit(1);
+
+        if (postRow?.userId && postRow.userId !== userId && safeCompleteReview.user) {
+          await sendRecipeReviewNotification(
+            postRow.userId,
+            userId,
+            safeCompleteReview.user.username || safeCompleteReview.user.displayName || "Someone",
+            safeCompleteReview.user.avatar,
+            recipeId,
+            recipeRow.title || "your recipe",
+            rating
+          );
+        }
       }
+      diagnostics.info("notification.success");
+    } catch (notificationError) {
+      // Notification delivery must never fail a successful create-review call.
+      diagnostics.warn("notification.failed.nonfatal", {
+        error: serializeErrorSafely(notificationError),
+      });
     }
 
     diagnostics.setStage("response.serialize");
