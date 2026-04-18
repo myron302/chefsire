@@ -15,6 +15,8 @@ type WeeklyReadinessChecklistProps = {
   groceryCompletedCount: number;
   prepPlanMissing: boolean;
   prepRecommendationsAvailable: boolean;
+  prepSessionPlanned: boolean;
+  prepSessionCompleted: boolean;
   weekReadyNow: boolean;
   onGoToPlanner: () => void;
   onGoToGrocery: () => void;
@@ -32,6 +34,8 @@ const WeeklyReadinessChecklist = ({
   groceryCompletedCount,
   prepPlanMissing,
   prepRecommendationsAvailable,
+  prepSessionPlanned,
+  prepSessionCompleted,
   weekReadyNow,
   onGoToPlanner,
   onGoToGrocery,
@@ -113,13 +117,17 @@ const WeeklyReadinessChecklist = ({
               <Badge variant="outline">{statusLabel(prepStatus)}</Badge>
             </div>
             <p className="text-xs text-gray-600">
-              {prepPlanMissing
-                ? 'Planned meals are ready for a prep session.'
-                : 'Prep guidance is available for your planned meals.'}
+              {prepSessionCompleted
+                ? 'Prep session completed for this week.'
+                : prepSessionPlanned
+                  ? 'Prep session is scheduled and ready to execute.'
+                  : prepPlanMissing
+                    ? 'Planned meals are ready for a prep session.'
+                    : 'Prep guidance is available for your planned meals.'}
             </p>
             {prepRecommendationsAvailable && (
               <Button variant="outline" size="sm" className="mt-2" onClick={onGoToPrep}>
-                Go to Prep
+                {prepSessionCompleted ? 'Review Prep Session' : prepSessionPlanned ? 'Open Prep Session' : 'Go to Prep'}
               </Button>
             )}
           </div>

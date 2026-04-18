@@ -16,6 +16,7 @@ import BarcodeScanner from '@/components/BarcodeScanner';
 import AdvancedFeaturesPanel from '@/components/meal-planner/AdvancedFeaturesPanel';
 import PlannerTabSection from '@/components/meal-planner/sections/PlannerTabSection';
 import GroceryTabSection from '@/components/meal-planner/sections/GroceryTabSection';
+import PrepTabSection, { type PrepSessionState } from '@/components/meal-planner/sections/PrepTabSection';
 import WeeklyReadinessChecklist from '@/components/meal-planner/WeeklyReadinessChecklist';
 import GoalCalculatorDialog from '@/components/meal-planner/modals/GoalCalculatorDialog';
 import PantryModal from '@/components/meal-planner/modals/PantryModal';
@@ -73,6 +74,20 @@ const INITIAL_MEAL_FORM = {
   servingQty: 1,
 };
 
+const DEFAULT_PREP_SESSION_TASKS = [
+  { id: 'review-plan', label: 'Review planned meals and serving counts', done: false },
+  { id: 'portion-protein', label: 'Batch-cook and portion protein bases', done: false },
+  { id: 'prep-produce', label: 'Prep vegetables, fruit, and grab-and-go snacks', done: false },
+  { id: 'container-labels', label: 'Pack containers and label day/meal', done: false },
+];
+
+const createDefaultPrepSession = (): PrepSessionState => ({
+  scheduledAt: '',
+  notes: '',
+  tasks: DEFAULT_PREP_SESSION_TASKS.map((task) => ({ ...task })),
+  completedAt: null,
+});
+
 const NutritionMealPlanner = () => {
   const { user, updateUser } = useUser();
   const { toast } = useToast();
@@ -108,6 +123,7 @@ const NutritionMealPlanner = () => {
   const [showCalcModal, setShowCalcModal] = useState(false);
   const [calcForm, setCalcForm] = useState({ age: 30, gender: 'male', heightUnit: 'ft', feet: 5, inches: 10, cm: 178, weightUnit: 'lbs', weight: 180, activity: 'moderately active', goal: 'maintain' });
   const [calcResult, setCalcResult] = useState<any>(null);
+  const [prepSession, setPrepSession] = useState<PrepSessionState>(() => createDefaultPrepSession());
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -124,6 +140,7 @@ const NutritionMealPlanner = () => {
   const getCurrentWeekAnchor = () => getWeekAnchorForDate(selectedDate);
 
   const getDateForWeekday = (weekday: string) => getDateForWeekdayFromAnchor(getCurrentWeekAnchor(), weekday);
+  const getPrepSessionStorageKey = () => `meal-planner-prep-session-v1:${user?.id || 'anon'}:${getCurrentWeekAnchor()}`;
 
   useEffect(() => {
     fetchUserData();
@@ -143,6 +160,40 @@ const NutritionMealPlanner = () => {
       fetchDailyNutrition();
     }
   }, [weeklyMeals]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(getPrepSessionStorageKey());
+      if (!stored) {
+        setPrepSession(createDefaultPrepSession());
+        return;
+      }
+      const parsed = JSON.parse(stored);
+      const normalizedTasks = Array.isArray(parsed?.tasks)
+        ? DEFAULT_PREP_SESSION_TASKS.map((task) => {
+            const match = parsed.tasks.find((candidate: any) => candidate?.id === task.id);
+            return { ...task, done: Boolean(match?.done) };
+          })
+        : DEFAULT_PREP_SESSION_TASKS.map((task) => ({ ...task }));
+      setPrepSession({
+        scheduledAt: typeof parsed?.scheduledAt === 'string' ? parsed.scheduledAt : '',
+        notes: typeof parsed?.notes === 'string' ? parsed.notes : '',
+        tasks: normalizedTasks,
+        completedAt: typeof parsed?.completedAt === 'string' ? parsed.completedAt : null,
+      });
+    } catch (error) {
+      console.error('Error loading prep session:', error);
+      setPrepSession(createDefaultPrepSession());
+    }
+  }, [user?.id, selectedDate]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(getPrepSessionStorageKey(), JSON.stringify(prepSession));
+    } catch (error) {
+      console.error('Error saving prep session:', error);
+    }
+  }, [prepSession, user?.id, selectedDate]);
 
   const fetchSavingsReport = async () => {
     try {
@@ -1121,6 +1172,46 @@ const NutritionMealPlanner = () => {
     setShowAIRecipeModal(false);
   };
 
+  const updatePrepSchedule = (value: string) => {
+    setPrepSession((prev) => ({
+      ...prev,
+      scheduledAt: value,
+      completedAt: value ? prev.completedAt : null,
+    }));
+  };
+
+  const updatePrepNotes = (value: string) => {
+    setPrepSession((prev) => ({
+      ...prev,
+      notes: value,
+    }));
+  };
+
+  const togglePrepTask = (taskId: string) => {
+    setPrepSession((prev) => ({
+      ...prev,
+      tasks: prev.tasks.map((task) => task.id === taskId ? { ...task, done: !task.done } : task),
+      completedAt: prev.completedAt,
+    }));
+  };
+
+  const markPrepComplete = () => {
+    setPrepSession((prev) => ({
+      ...prev,
+      completedAt: formatLocalDate(new Date()),
+    }));
+    toast({
+      description: 'Prep session marked complete. Your readiness checklist is now execution-aware.',
+    });
+  };
+
+  const resetPrepCompletion = () => {
+    setPrepSession((prev) => ({
+      ...prev,
+      completedAt: null,
+    }));
+  };
+
   const PremiumUpgrade = () => (
     <div className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white rounded-xl shadow-2xl overflow-hidden">
       <div className="p-8">
@@ -1201,9 +1292,13 @@ const NutritionMealPlanner = () => {
   const groceryBuyItemCount = groceryList.filter((item: any) => !item.isPantryItem).length;
   const groceryListCreated = groceryList.length > 0;
   const unplannedMealSlots = Math.max(0, totalSlots - plannedSlots);
+  const prepSessionPlanned = Boolean(prepSession.scheduledAt);
+  const prepSessionCompleted = Boolean(prepSession.completedAt);
+  const prepProgress = Math.round((prepSession.tasks.filter((task) => task.done).length / Math.max(1, prepSession.tasks.length)) * 100);
   const prepRecommendationsAvailable = plannedSlots > 0;
-  const prepPlanMissing = plannedSlots > 0;
-  const weekReadyNow = plannedSlots === totalSlots && (groceryBuyItemCount === 0 || groceryPendingCount === 0);
+  const prepPlanMissing = plannedSlots > 0 && !prepSessionPlanned && !prepSessionCompleted;
+  const prepReadyForWeek = prepSessionCompleted || prepSessionPlanned;
+  const weekReadyNow = plannedSlots === totalSlots && (groceryBuyItemCount === 0 || groceryPendingCount === 0) && prepReadyForWeek;
   const rawSavingsSummary = savingsReport?.summary || {};
   const rawSavingsPantry = savingsReport?.pantry || {};
   const safeTopSavingCategories = Array.isArray(savingsReport?.topSavingCategories)
@@ -1535,6 +1630,8 @@ const NutritionMealPlanner = () => {
                 groceryCompletedCount={groceryCompletedCount}
                 prepPlanMissing={prepPlanMissing}
                 prepRecommendationsAvailable={prepRecommendationsAvailable}
+                prepSessionPlanned={prepSessionPlanned}
+                prepSessionCompleted={prepSessionCompleted}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
                 onGoToGrocery={() => setActiveTab('grocery')}
@@ -1845,6 +1942,8 @@ const NutritionMealPlanner = () => {
                 groceryCompletedCount={groceryCompletedCount}
                 prepPlanMissing={prepPlanMissing}
                 prepRecommendationsAvailable={prepRecommendationsAvailable}
+                prepSessionPlanned={prepSessionPlanned}
+                prepSessionCompleted={prepSessionCompleted}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
                 onGoToGrocery={() => setActiveTab('grocery')}
@@ -1882,10 +1981,25 @@ const NutritionMealPlanner = () => {
                 groceryCompletedCount={groceryCompletedCount}
                 prepPlanMissing={prepPlanMissing}
                 prepRecommendationsAvailable={prepRecommendationsAvailable}
+                prepSessionPlanned={prepSessionPlanned}
+                prepSessionCompleted={prepSessionCompleted}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
                 onGoToGrocery={() => setActiveTab('grocery')}
                 onGoToPrep={() => setActiveTab('prep')}
+              />
+              <PrepTabSection
+                prepSession={prepSession}
+                prepProgress={prepProgress}
+                prepSessionPlanned={prepSessionPlanned}
+                prepSessionCompleted={prepSessionCompleted}
+                prepRecommendationsAvailable={prepRecommendationsAvailable}
+                onScheduleChange={updatePrepSchedule}
+                onNotesChange={updatePrepNotes}
+                onToggleTask={togglePrepTask}
+                onMarkPrepComplete={markPrepComplete}
+                onResetPrepCompletion={resetPrepCompletion}
+                onGoToChecklist={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
               />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
