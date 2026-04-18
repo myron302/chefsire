@@ -16,6 +16,7 @@ import BarcodeScanner from '@/components/BarcodeScanner';
 import AdvancedFeaturesPanel from '@/components/meal-planner/AdvancedFeaturesPanel';
 import PlannerTabSection from '@/components/meal-planner/sections/PlannerTabSection';
 import GroceryTabSection from '@/components/meal-planner/sections/GroceryTabSection';
+import WeeklyReadinessChecklist from '@/components/meal-planner/WeeklyReadinessChecklist';
 import GoalCalculatorDialog from '@/components/meal-planner/modals/GoalCalculatorDialog';
 import PantryModal from '@/components/meal-planner/modals/PantryModal';
 import LoadTemplateModal from '@/components/meal-planner/modals/LoadTemplateModal';
@@ -1197,6 +1198,12 @@ const NutritionMealPlanner = () => {
   }));
   const groceryPendingCount = groceryList.filter((item: any) => !item.checked && !item.isPantryItem).length;
   const groceryCompletedCount = groceryList.filter((item: any) => item.checked && !item.isPantryItem).length;
+  const groceryBuyItemCount = groceryList.filter((item: any) => !item.isPantryItem).length;
+  const groceryListCreated = groceryList.length > 0;
+  const unplannedMealSlots = Math.max(0, totalSlots - plannedSlots);
+  const prepRecommendationsAvailable = plannedSlots > 0;
+  const prepPlanMissing = plannedSlots > 0;
+  const weekReadyNow = plannedSlots === totalSlots && (groceryBuyItemCount === 0 || groceryPendingCount === 0);
   const rawSavingsSummary = savingsReport?.summary || {};
   const rawSavingsPantry = savingsReport?.pantry || {};
   const safeTopSavingCategories = Array.isArray(savingsReport?.topSavingCategories)
@@ -1518,48 +1525,64 @@ const NutritionMealPlanner = () => {
 
           {/* Meal Planner Tab */}
           <TabsContent value="planner">
-            <PlannerTabSection
-              caloriesCurrent={caloriesCurrent}
-              calorieGoal={calorieGoal}
-              calorieProgress={calorieProgress}
-              remainingCalories={remainingCalories}
-              proteinCurrent={proteinCurrent}
-              carbsCurrent={carbsCurrent}
-              fatCurrent={fatCurrent}
-              viewMode={viewMode}
-              setViewMode={setViewMode}
-              generateWeekPlan={generateWeekPlan}
-              isGeneratingWeek={isGeneratingWeek}
-              saveTemplate={saveTemplate}
-              handleAddMeal={handleAddMeal}
-              selectedDate={selectedDate}
-              setSelectedDate={setSelectedDate}
-              weekRange={weekRange}
-              getCurrentWeekAnchor={getCurrentWeekAnchor}
-              parseDateOnly={parseDateOnly}
-              formatLocalDate={formatLocalDate}
-              weekDays={weekDays}
-              getDateForWeekday={getDateForWeekday}
-              mealTypes={mealTypes}
-              weeklyMeals={weeklyMeals}
-              getMealSlotItems={getMealSlotItems}
-              getMealSlotTotals={getMealSlotTotals}
-              gradeClass={gradeClass}
-              getNutritionGrade={getNutritionGrade}
-              removeMealItem={removeMealItem}
-              dayNames={DAY_NAMES}
-              handleAIRecipe={handleAIRecipe}
-              handleUsePantry={handleUsePantry}
-              handleLoadTemplate={handleLoadTemplate}
-              plannedSlots={plannedSlots}
-              totalSlots={totalSlots}
-              unplannedDays={unplannedDays}
-              groceryPendingCount={groceryPendingCount}
-              groceryCompletedCount={groceryCompletedCount}
-              switchToGroceryTab={() => setActiveTab('grocery')}
-              switchToPrepTab={() => setActiveTab('prep')}
-              switchToAnalyticsTab={() => setActiveTab('analytics')}
-            />
+            <div className="space-y-6">
+              <WeeklyReadinessChecklist
+                unplannedMealSlots={unplannedMealSlots}
+                unplannedDaysCount={unplannedDays.length}
+                totalSlots={totalSlots}
+                groceryListCreated={groceryListCreated}
+                groceryPendingCount={groceryPendingCount}
+                groceryCompletedCount={groceryCompletedCount}
+                prepPlanMissing={prepPlanMissing}
+                prepRecommendationsAvailable={prepRecommendationsAvailable}
+                weekReadyNow={weekReadyNow}
+                onGoToPlanner={() => setActiveTab('planner')}
+                onGoToGrocery={() => setActiveTab('grocery')}
+                onGoToPrep={() => setActiveTab('prep')}
+              />
+              <PlannerTabSection
+                caloriesCurrent={caloriesCurrent}
+                calorieGoal={calorieGoal}
+                calorieProgress={calorieProgress}
+                remainingCalories={remainingCalories}
+                proteinCurrent={proteinCurrent}
+                carbsCurrent={carbsCurrent}
+                fatCurrent={fatCurrent}
+                viewMode={viewMode}
+                setViewMode={setViewMode}
+                generateWeekPlan={generateWeekPlan}
+                isGeneratingWeek={isGeneratingWeek}
+                saveTemplate={saveTemplate}
+                handleAddMeal={handleAddMeal}
+                selectedDate={selectedDate}
+                setSelectedDate={setSelectedDate}
+                weekRange={weekRange}
+                getCurrentWeekAnchor={getCurrentWeekAnchor}
+                parseDateOnly={parseDateOnly}
+                formatLocalDate={formatLocalDate}
+                weekDays={weekDays}
+                getDateForWeekday={getDateForWeekday}
+                mealTypes={mealTypes}
+                weeklyMeals={weeklyMeals}
+                getMealSlotItems={getMealSlotItems}
+                getMealSlotTotals={getMealSlotTotals}
+                gradeClass={gradeClass}
+                getNutritionGrade={getNutritionGrade}
+                removeMealItem={removeMealItem}
+                dayNames={DAY_NAMES}
+                handleAIRecipe={handleAIRecipe}
+                handleUsePantry={handleUsePantry}
+                handleLoadTemplate={handleLoadTemplate}
+                plannedSlots={plannedSlots}
+                totalSlots={totalSlots}
+                unplannedDays={unplannedDays}
+                groceryPendingCount={groceryPendingCount}
+                groceryCompletedCount={groceryCompletedCount}
+                switchToGroceryTab={() => setActiveTab('grocery')}
+                switchToPrepTab={() => setActiveTab('prep')}
+                switchToAnalyticsTab={() => setActiveTab('analytics')}
+              />
+            </div>
           </TabsContent>
 
           {/* Nutrition Tracking Tab */}
@@ -1812,29 +1835,60 @@ const NutritionMealPlanner = () => {
 
           {/* Grocery List Tab */}
           <TabsContent value="grocery">
-            <GroceryTabSection
-              groceryList={groceryList}
-              weekRange={weekRange}
-              getCurrentWeekAnchor={getCurrentWeekAnchor}
-              setShowAddGroceryModal={setShowAddGroceryModal}
-              setShowScanModal={setShowScanModal}
-              optimizeShoppingList={optimizeShoppingList}
-              exportGroceryList={exportGroceryList}
-              toggleGroceryItem={toggleGroceryItem}
-              normalizedSavingsReport={normalizedSavingsReport}
-              checkPantryFirst={checkPantryFirst}
-              shareWithFamily={shareWithFamily}
-              onGoToPlanner={() => setActiveTab('planner')}
-              onGenerateWeekPlan={generateWeekPlan}
-              isGeneratingWeek={isGeneratingWeek}
-              onGoToPrep={() => setActiveTab('prep')}
-            />
+            <div className="space-y-6">
+              <WeeklyReadinessChecklist
+                unplannedMealSlots={unplannedMealSlots}
+                unplannedDaysCount={unplannedDays.length}
+                totalSlots={totalSlots}
+                groceryListCreated={groceryListCreated}
+                groceryPendingCount={groceryPendingCount}
+                groceryCompletedCount={groceryCompletedCount}
+                prepPlanMissing={prepPlanMissing}
+                prepRecommendationsAvailable={prepRecommendationsAvailable}
+                weekReadyNow={weekReadyNow}
+                onGoToPlanner={() => setActiveTab('planner')}
+                onGoToGrocery={() => setActiveTab('grocery')}
+                onGoToPrep={() => setActiveTab('prep')}
+              />
+              <GroceryTabSection
+                groceryList={groceryList}
+                weekRange={weekRange}
+                getCurrentWeekAnchor={getCurrentWeekAnchor}
+                setShowAddGroceryModal={setShowAddGroceryModal}
+                setShowScanModal={setShowScanModal}
+                optimizeShoppingList={optimizeShoppingList}
+                exportGroceryList={exportGroceryList}
+                toggleGroceryItem={toggleGroceryItem}
+                normalizedSavingsReport={normalizedSavingsReport}
+                checkPantryFirst={checkPantryFirst}
+                shareWithFamily={shareWithFamily}
+                onGoToPlanner={() => setActiveTab('planner')}
+                onGenerateWeekPlan={generateWeekPlan}
+                isGeneratingWeek={isGeneratingWeek}
+                onGoToPrep={() => setActiveTab('prep')}
+              />
+            </div>
           </TabsContent>
 
           {/* Meal Prep Tab */}
           <TabsContent value="prep">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
+            <div className="space-y-6">
+              <WeeklyReadinessChecklist
+                unplannedMealSlots={unplannedMealSlots}
+                unplannedDaysCount={unplannedDays.length}
+                totalSlots={totalSlots}
+                groceryListCreated={groceryListCreated}
+                groceryPendingCount={groceryPendingCount}
+                groceryCompletedCount={groceryCompletedCount}
+                prepPlanMissing={prepPlanMissing}
+                prepRecommendationsAvailable={prepRecommendationsAvailable}
+                weekReadyNow={weekReadyNow}
+                onGoToPlanner={() => setActiveTab('planner')}
+                onGoToGrocery={() => setActiveTab('grocery')}
+                onGoToPrep={() => setActiveTab('prep')}
+              />
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card>
                 <CardHeader>
                   <CardTitle>Batch Cooking Planner</CardTitle>
                   <CardDescription>Prepare multiple meals efficiently</CardDescription>
@@ -1878,9 +1932,9 @@ const NutritionMealPlanner = () => {
                     </Button>
                   </div>
                 </CardContent>
-              </Card>
+                </Card>
 
-              <Card>
+                <Card>
                 <CardHeader>
                   <CardTitle>Storage Tips</CardTitle>
                   <CardDescription>Keep your meals fresh</CardDescription>
@@ -1904,7 +1958,8 @@ const NutritionMealPlanner = () => {
                     />
                   </div>
                 </CardContent>
-              </Card>
+                </Card>
+              </div>
             </div>
           </TabsContent>
 
