@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Calendar, Plus, Target, TrendingUp, Clock, ChefHat, Star, Lock, Crown,
   ShoppingCart, CheckCircle, BarChart3, Download, Filter, Save,
@@ -89,6 +89,18 @@ const DEFAULT_PREP_BLOCKERS = [
   { id: 'kitchen-access', label: 'Kitchen access', active: false },
 ];
 const GROCERY_LINKED_PREP_BLOCKER_IDS = ['missing-ingredient', 'waiting-on-grocery'];
+const BLOCKER_SUGGESTION_CATEGORY_BY_ID: Record<string, string> = {
+  'missing-ingredient': 'From Recipe',
+  'waiting-on-grocery': 'Other',
+};
+const BLOCKER_SUGGESTION_SEEDS_BY_ID: Record<string, string[]> = {
+  'missing-ingredient': ['Meal prep protein', 'Fresh vegetables', 'Breakfast staples'],
+  'waiting-on-grocery': ['Weekly produce refill', 'Protein restock', 'Quick snack options'],
+};
+const BLOCKER_NOTE_STOP_WORDS = new Set([
+  'and', 'the', 'for', 'with', 'need', 'needs', 'needed', 'still', 'more', 'from', 'into', 'this', 'that',
+  'prep', 'meal', 'meals', 'week', 'grocery', 'shopping', 'store', 'list', 'item', 'items', 'to', 'a', 'an',
+]);
 
 const normalizePrepSession = (session: any): PrepSessionState => {
   const normalizedTasks = Array.isArray(session?.tasks)
@@ -121,6 +133,14 @@ const normalizePrepSession = (session: any): PrepSessionState => {
 };
 
 const createDefaultPrepSession = (): PrepSessionState => normalizePrepSession({});
+
+type BlockerItemSuggestion = {
+  id: string;
+  name: string;
+  category: string;
+  reason: string;
+  alreadyOnList: boolean;
+};
 
 const NutritionMealPlanner = () => {
   const { user, updateUser } = useUser();
@@ -672,6 +692,40 @@ const NutritionMealPlanner = () => {
       credentials: 'include',
       body: JSON.stringify(payload),
     });
+  };
+
+  const addBlockerSuggestionToGrocery = async (suggestion: BlockerItemSuggestion) => {
+    if (suggestion.alreadyOnList) {
+      toast({
+        description: `“${suggestion.name}” is already on your grocery list.`,
+      });
+      return;
+    }
+
+    try {
+      const response = await addGroceryListItem({
+        ingredientName: suggestion.name,
+        quantity: '1',
+        unit: '',
+        category: suggestion.category,
+        notes: `Prep blocker suggestion: ${suggestion.reason}`,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to add blocker suggestion item');
+      }
+
+      toast({
+        description: `✅ Added "${suggestion.name}" from prep blocker suggestions.`,
+      });
+      await fetchGroceryList();
+    } catch (error) {
+      console.error('Error adding blocker suggestion:', error);
+      toast({
+        variant: 'destructive',
+        description: 'Failed to add suggested blocker item',
+      });
+    }
   };
 
   const closeAddMealModal = () => {
@@ -1398,6 +1452,74 @@ const NutritionMealPlanner = () => {
   const prepGroceryBlockersCount = prepSession.blockers.filter(
     (blocker) => blocker.active && GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id),
   ).length;
+  const blockerItemSuggestions = useMemo<BlockerItemSuggestion[]>(() => {
+    if (prepGroceryBlockersCount === 0) {
+      return [];
+    }
+
+    const activeGroceryBlockers = prepSession.blockers.filter(
+      (blocker) => blocker.active && GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id),
+    );
+    const existingItemNames = new Set(
+      groceryList
+        .map((item: any) => String(item?.name || item?.item || '').trim().toLowerCase())
+        .filter(Boolean),
+    );
+
+    const noteCandidates = prepSession.blockerNote
+      .split(/[\n,;|]/)
+      .flatMap((part) => part.split(/\band\b/i))
+      .map((part) => part.trim())
+      .filter((part) => part.length > 1)
+      .map((part) => part.replace(/^[\-\d.)\s]+/, '').replace(/\s{2,}/g, ' '))
+      .filter((part) => {
+        const normalized = part.toLowerCase();
+        return normalized.length > 2 && !BLOCKER_NOTE_STOP_WORDS.has(normalized);
+      });
+
+    const suggestionRows: Array<{ name: string; category: string; reason: string }> = [];
+
+    noteCandidates.forEach((candidate) => {
+      suggestionRows.push({
+        name: candidate,
+        category: 'From Recipe',
+        reason: 'from prep blocker note',
+      });
+    });
+
+    activeGroceryBlockers.forEach((blocker) => {
+      const seedItems = BLOCKER_SUGGESTION_SEEDS_BY_ID[blocker.id] || [];
+      seedItems.forEach((seed) => {
+        suggestionRows.push({
+          name: seed,
+          category: BLOCKER_SUGGESTION_CATEGORY_BY_ID[blocker.id] || 'Other',
+          reason: blocker.label.toLowerCase(),
+        });
+      });
+    });
+
+    const uniqueByName = new Map<string, { name: string; category: string; reason: string }>();
+    suggestionRows.forEach((row) => {
+      const normalized = row.name.trim().toLowerCase();
+      if (!normalized) return;
+      if (!uniqueByName.has(normalized)) {
+        uniqueByName.set(normalized, row);
+      }
+    });
+
+    return Array.from(uniqueByName.values())
+      .slice(0, 6)
+      .map((row) => {
+        const normalizedName = row.name.trim().toLowerCase();
+        return {
+          id: normalizedName.replace(/[^a-z0-9]+/g, '-'),
+          name: row.name,
+          category: row.category,
+          reason: row.reason,
+          alreadyOnList: existingItemNames.has(normalizedName),
+        };
+      });
+  }, [groceryList, prepGroceryBlockersCount, prepSession.blockerNote, prepSession.blockers]);
   const prepCarryoverCount = prepSession.carryoverTaskIds.filter((taskId) => prepSession.tasks.some((task) => task.id === taskId && !task.done)).length;
   const prepExecutionState = !prepSessionPlanned
     ? 'not_planned'
@@ -2113,6 +2235,8 @@ const NutritionMealPlanner = () => {
                 prepGroceryBlockersCount={prepGroceryBlockersCount}
                 canResolvePrepGroceryBlockers={canResolvePrepGroceryBlockers}
                 onResolvePrepGroceryBlockers={resolvePrepGroceryBlockers}
+                blockerItemSuggestions={blockerItemSuggestions}
+                onAddBlockerSuggestion={addBlockerSuggestionToGrocery}
               />
             </div>
           </TabsContent>

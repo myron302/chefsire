@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, CheckCircle, DollarSign, Download, Filter, Package, Plus, ShoppingCart, Star, TrendingUp, Users, Zap } from 'lucide-react';
+import { Camera, CheckCircle, DollarSign, Download, Filter, Lightbulb, Package, Plus, ShoppingCart, Star, TrendingUp, Users, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -24,6 +24,20 @@ type GroceryTabSectionProps = {
   prepGroceryBlockersCount: number;
   onResolvePrepGroceryBlockers: () => void;
   canResolvePrepGroceryBlockers: boolean;
+  blockerItemSuggestions: Array<{
+    id: string;
+    name: string;
+    category: string;
+    reason: string;
+    alreadyOnList: boolean;
+  }>;
+  onAddBlockerSuggestion: (suggestion: {
+    id: string;
+    name: string;
+    category: string;
+    reason: string;
+    alreadyOnList: boolean;
+  }) => void;
 };
 
 const GroceryTabSection = ({
@@ -45,6 +59,8 @@ const GroceryTabSection = ({
   prepGroceryBlockersCount,
   onResolvePrepGroceryBlockers,
   canResolvePrepGroceryBlockers,
+  blockerItemSuggestions,
+  onAddBlockerSuggestion,
 }: GroceryTabSectionProps) => {
   const buyItems = groceryList.filter((i: any) => !i.isPantryItem);
   const checkedBuyItems = buyItems.filter((i: any) => i.checked).length;
@@ -106,6 +122,41 @@ const GroceryTabSection = ({
                   Mark Grocery Blockers Resolved
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {blockerItemSuggestions.length > 0 && (
+          <Card className="border-indigo-200 bg-indigo-50/40">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2 text-indigo-800">
+                <Lightbulb className="w-4 h-4 text-indigo-600" />
+                Blocker item suggestions
+              </CardTitle>
+              <CardDescription className="text-xs text-indigo-700">
+                Quick-add likely grocery items from active prep blockers and blocker notes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {blockerItemSuggestions.map((suggestion) => (
+                <div key={suggestion.id} className="rounded-lg border border-indigo-100 bg-white p-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">{suggestion.name}</p>
+                    <p className="text-xs text-gray-500">
+                      {suggestion.category} • Suggested {suggestion.reason}
+                    </p>
+                  </div>
+                  {suggestion.alreadyOnList ? (
+                    <Badge variant="outline" className="text-green-700 border-green-200 bg-green-50">
+                      Already on list
+                    </Badge>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => onAddBlockerSuggestion(suggestion)}>
+                      Add to Grocery
+                    </Button>
+                  )}
+                </div>
+              ))}
             </CardContent>
           </Card>
         )}
