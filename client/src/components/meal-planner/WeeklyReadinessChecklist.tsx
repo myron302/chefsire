@@ -20,6 +20,7 @@ type WeeklyReadinessChecklistProps = {
   prepSessionCompleted: boolean;
   prepExecutionState: PrepExecutionState;
   prepActiveBlockersCount: number;
+  prepGroceryBlockersCount: number;
   prepCarryoverCount: number;
   weekReadyNow: boolean;
   onGoToPlanner: () => void;
@@ -65,6 +66,7 @@ const WeeklyReadinessChecklist = ({
   prepSessionCompleted,
   prepExecutionState,
   prepActiveBlockersCount,
+  prepGroceryBlockersCount,
   prepCarryoverCount,
   weekReadyNow,
   onGoToPlanner,
@@ -131,9 +133,16 @@ const WeeklyReadinessChecklist = ({
                   ? `${groceryPendingCount} items still need to be bought.`
                   : `Shopping complete with ${groceryCompletedCount} items checked off.`}
             </p>
+            {prepGroceryBlockersCount > 0 && (
+              <p className="text-xs text-amber-700 mt-2">
+                {prepGroceryBlockersCount === 1
+                  ? '1 prep blocker can be resolved from this grocery flow.'
+                  : `${prepGroceryBlockersCount} prep blockers can be resolved from this grocery flow.`}
+              </p>
+            )}
             {(groceryPendingCount > 0 || !groceryListCreated) && (
               <Button variant="outline" size="sm" className="mt-2" onClick={onGoToGrocery}>
-                Go to Grocery
+                {prepGroceryBlockersCount > 0 ? 'Resolve in Grocery' : 'Go to Grocery'}
               </Button>
             )}
           </div>
