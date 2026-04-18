@@ -43,6 +43,8 @@ type PrepTabSectionProps = {
   onMarkPrepComplete: () => void;
   onResetPrepCompletion: () => void;
   onGoToChecklist: () => void;
+  prepGroceryBlockersCount: number;
+  onResolveBlockersInGrocery: () => void;
 };
 
 const PrepTabSection = ({
@@ -60,6 +62,8 @@ const PrepTabSection = ({
   onMarkPrepComplete,
   onResetPrepCompletion,
   onGoToChecklist,
+  prepGroceryBlockersCount,
+  onResolveBlockersInGrocery,
 }: PrepTabSectionProps) => {
   const activeBlockers = prepSession.blockers.filter((blocker) => blocker.active);
   const unfinishedTasks = prepSession.tasks.filter((task) => !task.done);
@@ -137,6 +141,18 @@ const PrepTabSection = ({
             onChange={(e) => onBlockerNoteChange(e.target.value)}
             placeholder="Optional blocker note (ex: chicken still thawing until Monday)"
           />
+          {prepGroceryBlockersCount > 0 && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 p-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs text-blue-800">
+                {prepGroceryBlockersCount === 1
+                  ? '1 blocker depends on grocery completion.'
+                  : `${prepGroceryBlockersCount} blockers depend on grocery completion.`}
+              </p>
+              <Button size="sm" variant="outline" onClick={onResolveBlockersInGrocery}>
+                Resolve in Grocery
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border bg-white p-3">

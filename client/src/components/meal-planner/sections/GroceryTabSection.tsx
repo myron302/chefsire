@@ -21,6 +21,9 @@ type GroceryTabSectionProps = {
   onGenerateWeekPlan: () => void;
   isGeneratingWeek: boolean;
   onGoToPrep: () => void;
+  prepGroceryBlockersCount: number;
+  onResolvePrepGroceryBlockers: () => void;
+  canResolvePrepGroceryBlockers: boolean;
 };
 
 const GroceryTabSection = ({
@@ -39,6 +42,9 @@ const GroceryTabSection = ({
   onGenerateWeekPlan,
   isGeneratingWeek,
   onGoToPrep,
+  prepGroceryBlockersCount,
+  onResolvePrepGroceryBlockers,
+  canResolvePrepGroceryBlockers,
 }: GroceryTabSectionProps) => {
   const buyItems = groceryList.filter((i: any) => !i.isPantryItem);
   const checkedBuyItems = buyItems.filter((i: any) => i.checked).length;
@@ -80,6 +86,29 @@ const GroceryTabSection = ({
             </div>
           </CardContent>
         </Card>
+
+        {prepGroceryBlockersCount > 0 && (
+          <Card className="border-amber-200 bg-amber-50/60">
+            <CardContent className="p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-wide text-amber-700 font-semibold mb-1">Prep blocker bridge</p>
+                  <p className="text-sm font-medium text-amber-900">
+                    {prepGroceryBlockersCount === 1
+                      ? '1 prep blocker is waiting on grocery.'
+                      : `${prepGroceryBlockersCount} prep blockers are waiting on grocery.`}
+                  </p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    Finish shopping, then mark blockers resolved to continue prep.
+                  </p>
+                </div>
+                <Button size="sm" variant="outline" onClick={onResolvePrepGroceryBlockers} disabled={!canResolvePrepGroceryBlockers}>
+                  Mark Grocery Blockers Resolved
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {(() => {
           const pantryOwned = groceryList.filter((i: any) => i.isPantryItem && !i.checked);

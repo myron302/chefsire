@@ -88,6 +88,7 @@ const DEFAULT_PREP_BLOCKERS = [
   { id: 'waiting-on-grocery', label: 'Waiting on grocery', active: false },
   { id: 'kitchen-access', label: 'Kitchen access', active: false },
 ];
+const GROCERY_LINKED_PREP_BLOCKER_IDS = ['missing-ingredient', 'waiting-on-grocery'];
 
 const normalizePrepSession = (session: any): PrepSessionState => {
   const normalizedTasks = Array.isArray(session?.tasks)
@@ -1236,6 +1237,18 @@ const NutritionMealPlanner = () => {
     }));
   };
 
+  const resolvePrepGroceryBlockers = () => {
+    setPrepSession((prev) => ({
+      ...prev,
+      blockers: prev.blockers.map((blocker) => (
+        GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id)
+          ? { ...blocker, active: false }
+          : blocker
+      )),
+      completedAt: null,
+    }));
+  };
+
   const carryForwardUnfinishedPrepTasks = () => {
     const unfinishedTaskIds = prepSession.tasks.filter((task) => !task.done).map((task) => task.id);
 
@@ -1382,6 +1395,9 @@ const NutritionMealPlanner = () => {
   const prepRecommendationsAvailable = plannedSlots > 0;
   const prepPlanMissing = plannedSlots > 0 && !prepSessionPlanned && !prepSessionCompleted;
   const prepActiveBlockersCount = prepSession.blockers.filter((blocker) => blocker.active).length;
+  const prepGroceryBlockersCount = prepSession.blockers.filter(
+    (blocker) => blocker.active && GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id),
+  ).length;
   const prepCarryoverCount = prepSession.carryoverTaskIds.filter((taskId) => prepSession.tasks.some((task) => task.id === taskId && !task.done)).length;
   const prepExecutionState = !prepSessionPlanned
     ? 'not_planned'
@@ -1394,6 +1410,7 @@ const NutritionMealPlanner = () => {
           : 'in_progress';
   const prepReadyForWeek = prepSessionCompleted || (prepSessionPlanned && prepActiveBlockersCount === 0);
   const weekReadyNow = plannedSlots === totalSlots && (groceryBuyItemCount === 0 || groceryPendingCount === 0) && prepReadyForWeek;
+  const canResolvePrepGroceryBlockers = prepGroceryBlockersCount > 0 && groceryListCreated && groceryPendingCount === 0;
   const rawSavingsSummary = savingsReport?.summary || {};
   const rawSavingsPantry = savingsReport?.pantry || {};
   const safeTopSavingCategories = Array.isArray(savingsReport?.topSavingCategories)
@@ -1408,6 +1425,31 @@ const NutritionMealPlanner = () => {
         topSavingCategories: safeTopSavingCategories,
       }
     : null;
+
+  useEffect(() => {
+    if (!canResolvePrepGroceryBlockers) {
+      return;
+    }
+
+    setPrepSession((prev) => {
+      const hasActiveLinkedBlocker = prev.blockers.some(
+        (blocker) => blocker.active && GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id),
+      );
+
+      if (!hasActiveLinkedBlocker) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        blockers: prev.blockers.map((blocker) => (
+          GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id)
+            ? { ...blocker, active: false }
+            : blocker
+        )),
+      };
+    });
+  }, [canResolvePrepGroceryBlockers]);
 
   const weeklyNutritionData = weekDays.map((day) => {
     const totals = mealTypes.reduce((acc, type) => {
@@ -1729,6 +1771,7 @@ const NutritionMealPlanner = () => {
                 prepSessionCompleted={prepSessionCompleted}
                 prepExecutionState={prepExecutionState}
                 prepActiveBlockersCount={prepActiveBlockersCount}
+                prepGroceryBlockersCount={prepGroceryBlockersCount}
                 prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
@@ -2044,6 +2087,7 @@ const NutritionMealPlanner = () => {
                 prepSessionCompleted={prepSessionCompleted}
                 prepExecutionState={prepExecutionState}
                 prepActiveBlockersCount={prepActiveBlockersCount}
+                prepGroceryBlockersCount={prepGroceryBlockersCount}
                 prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
@@ -2066,6 +2110,9 @@ const NutritionMealPlanner = () => {
                 onGenerateWeekPlan={generateWeekPlan}
                 isGeneratingWeek={isGeneratingWeek}
                 onGoToPrep={() => setActiveTab('prep')}
+                prepGroceryBlockersCount={prepGroceryBlockersCount}
+                canResolvePrepGroceryBlockers={canResolvePrepGroceryBlockers}
+                onResolvePrepGroceryBlockers={resolvePrepGroceryBlockers}
               />
             </div>
           </TabsContent>
@@ -2086,6 +2133,7 @@ const NutritionMealPlanner = () => {
                 prepSessionCompleted={prepSessionCompleted}
                 prepExecutionState={prepExecutionState}
                 prepActiveBlockersCount={prepActiveBlockersCount}
+                prepGroceryBlockersCount={prepGroceryBlockersCount}
                 prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
@@ -2107,6 +2155,8 @@ const NutritionMealPlanner = () => {
                 onMarkPrepComplete={markPrepComplete}
                 onResetPrepCompletion={resetPrepCompletion}
                 onGoToChecklist={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                prepGroceryBlockersCount={prepGroceryBlockersCount}
+                onResolveBlockersInGrocery={() => setActiveTab('grocery')}
               />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
