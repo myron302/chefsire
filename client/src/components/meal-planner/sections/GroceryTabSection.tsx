@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, CheckCircle, DollarSign, Download, Filter, Package, Plus, ShoppingCart, Star, TrendingUp, Users } from 'lucide-react';
+import { Camera, CheckCircle, DollarSign, Download, Filter, Package, Plus, ShoppingCart, Star, TrendingUp, Users, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +17,10 @@ type GroceryTabSectionProps = {
   normalizedSavingsReport: any;
   checkPantryFirst: () => void;
   shareWithFamily: () => void;
+  onGoToPlanner: () => void;
+  onGenerateWeekPlan: () => void;
+  isGeneratingWeek: boolean;
+  onGoToPrep: () => void;
 };
 
 const GroceryTabSection = ({
@@ -31,10 +35,52 @@ const GroceryTabSection = ({
   normalizedSavingsReport,
   checkPantryFirst,
   shareWithFamily,
+  onGoToPlanner,
+  onGenerateWeekPlan,
+  isGeneratingWeek,
+  onGoToPrep,
 }: GroceryTabSectionProps) => {
+  const buyItems = groceryList.filter((i: any) => !i.isPantryItem);
+  const checkedBuyItems = buyItems.filter((i: any) => i.checked).length;
+  const pendingBuyItems = buyItems.filter((i: any) => !i.checked).length;
+
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       <div className="lg:col-span-2 space-y-4">
+        <Card className="border-blue-200 bg-gradient-to-r from-blue-50 via-white to-orange-50">
+          <CardContent className="p-4">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-blue-600 font-semibold mb-1">Next step</p>
+                <h3 className="font-semibold text-gray-900">
+                  {buyItems.length === 0 ? 'No list yet — start from your planner' : pendingBuyItems > 0 ? 'Finish this list, then prep meals' : 'Shopping complete — move to prep'}
+                </h3>
+                <p className="text-sm text-gray-600 mt-1">
+                  {buyItems.length === 0
+                    ? 'Generate a week plan to auto-populate your shopping list.'
+                    : `${checkedBuyItems}/${buyItems.length} shopping items checked off.`}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button variant="outline" size="sm" onClick={onGoToPlanner}>
+                  Back to Planner
+                </Button>
+                {buyItems.length === 0 && (
+                  <Button size="sm" onClick={onGenerateWeekPlan} disabled={isGeneratingWeek}>
+                    <Zap className="w-4 h-4 mr-2" />
+                    {isGeneratingWeek ? 'Generating...' : 'Auto-Plan Week'}
+                  </Button>
+                )}
+                {buyItems.length > 0 && (
+                  <Button size="sm" onClick={onGoToPrep}>
+                    Plan Prep Session
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
         {(() => {
           const pantryOwned = groceryList.filter((i: any) => i.isPantryItem && !i.checked);
           const stillNeeded = groceryList.filter((i: any) => !i.isPantryItem && !i.checked);
@@ -106,7 +152,6 @@ const GroceryTabSection = ({
                 <div className="text-center py-8"><CheckCircle className="w-12 h-12 mx-auto mb-3 text-green-400" /><p className="font-medium text-green-700">Your pantry covers everything!</p><p className="text-sm text-gray-500 mt-1">All items for this week are already in your pantry</p></div>
               ) : (
                 (() => {
-                  const buyItems = groceryList.filter((i: any) => !i.isPantryItem);
                   const categories = Array.from(new Set(buyItems.map((item: any) => item.category || 'Other')));
                   const categoryOrder = ['Protein', 'Produce', 'Grains', 'Dairy', 'From Recipe', 'Other'];
                   const sortedCategories = (categories as string[]).sort((a, b) => {

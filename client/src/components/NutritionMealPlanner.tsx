@@ -1191,6 +1191,12 @@ const NutritionMealPlanner = () => {
     return Array.isArray(val) ? val.length > 0 : Boolean(val);
   }).length, 0);
   const totalSlots = weekDays.length * mealTypes.length;
+  const unplannedDays = weekDays.filter((day) => !mealTypes.some((type) => {
+    const val = weeklyMeals?.[day]?.[type];
+    return Array.isArray(val) ? val.length > 0 : Boolean(val);
+  }));
+  const groceryPendingCount = groceryList.filter((item: any) => !item.checked && !item.isPantryItem).length;
+  const groceryCompletedCount = groceryList.filter((item: any) => item.checked && !item.isPantryItem).length;
   const rawSavingsSummary = savingsReport?.summary || {};
   const rawSavingsPantry = savingsReport?.pantry || {};
   const safeTopSavingCategories = Array.isArray(savingsReport?.topSavingCategories)
@@ -1545,6 +1551,14 @@ const NutritionMealPlanner = () => {
               handleAIRecipe={handleAIRecipe}
               handleUsePantry={handleUsePantry}
               handleLoadTemplate={handleLoadTemplate}
+              plannedSlots={plannedSlots}
+              totalSlots={totalSlots}
+              unplannedDays={unplannedDays}
+              groceryPendingCount={groceryPendingCount}
+              groceryCompletedCount={groceryCompletedCount}
+              switchToGroceryTab={() => setActiveTab('grocery')}
+              switchToPrepTab={() => setActiveTab('prep')}
+              switchToAnalyticsTab={() => setActiveTab('analytics')}
             />
           </TabsContent>
 
@@ -1810,6 +1824,10 @@ const NutritionMealPlanner = () => {
               normalizedSavingsReport={normalizedSavingsReport}
               checkPantryFirst={checkPantryFirst}
               shareWithFamily={shareWithFamily}
+              onGoToPlanner={() => setActiveTab('planner')}
+              onGenerateWeekPlan={generateWeekPlan}
+              isGeneratingWeek={isGeneratingWeek}
+              onGoToPrep={() => setActiveTab('prep')}
             />
           </TabsContent>
 

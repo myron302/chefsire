@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChefHat, Package, Plus, Save, Sparkles, Zap } from 'lucide-react';
+import { BarChart3, ChefHat, Clock, Package, Plus, Save, ShoppingCart, Sparkles, Target, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -40,6 +40,14 @@ type PlannerTabSectionProps = {
   handleAIRecipe: () => void;
   handleUsePantry: () => void;
   handleLoadTemplate: () => void;
+  plannedSlots: number;
+  totalSlots: number;
+  unplannedDays: string[];
+  groceryPendingCount: number;
+  groceryCompletedCount: number;
+  switchToGroceryTab: () => void;
+  switchToPrepTab: () => void;
+  switchToAnalyticsTab: () => void;
 };
 
 const PlannerTabSection = ({
@@ -75,7 +83,22 @@ const PlannerTabSection = ({
   handleAIRecipe,
   handleUsePantry,
   handleLoadTemplate,
+  plannedSlots,
+  totalSlots,
+  unplannedDays,
+  groceryPendingCount,
+  groceryCompletedCount,
+  switchToGroceryTab,
+  switchToPrepTab,
+  switchToAnalyticsTab,
 }: PlannerTabSectionProps) => {
+  const planningProgress = totalSlots > 0 ? Math.round((plannedSlots / totalSlots) * 100) : 0;
+  const completionLabel = plannedSlots === 0
+    ? 'No meals planned yet'
+    : plannedSlots === totalSlots
+      ? 'Week fully planned'
+      : `${plannedSlots}/${totalSlots} slots filled`;
+
   return (
     <div className="space-y-6">
       <Card className="bg-gradient-to-r from-orange-500 to-pink-500 text-white shadow-lg">
@@ -101,6 +124,59 @@ const PlannerTabSection = ({
             <div className="bg-white/15 backdrop-blur rounded-lg p-3 text-center"><p className="text-xs text-white/80">Protein</p><p className="text-lg font-semibold">{proteinCurrent}g</p></div>
             <div className="bg-white/15 backdrop-blur rounded-lg p-3 text-center"><p className="text-xs text-white/80">Carbs</p><p className="text-lg font-semibold">{carbsCurrent}g</p></div>
             <div className="bg-white/15 backdrop-blur rounded-lg p-3 text-center"><p className="text-xs text-white/80">Fat</p><p className="text-lg font-semibold">{fatCurrent}g</p></div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="border-orange-200 bg-gradient-to-r from-orange-50 via-white to-amber-50">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">Weekly Plan Status</CardTitle>
+          <CardDescription>
+            {completionLabel}. Keep momentum with the most useful next actions.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between text-sm mb-2">
+              <span className="text-gray-600">Planner Coverage</span>
+              <span className="font-semibold text-gray-900">{planningProgress}%</span>
+            </div>
+            <Progress value={planningProgress} className="h-2" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="rounded-lg border bg-white p-3">
+              <p className="text-xs text-gray-500 mb-1">Unplanned Days</p>
+              <p className="text-lg font-semibold text-gray-900">{unplannedDays.length}</p>
+              <p className="text-xs text-gray-500 mt-1 truncate">
+                {unplannedDays.length > 0 ? unplannedDays.join(', ') : 'All days have meals'}
+              </p>
+            </div>
+            <div className="rounded-lg border bg-white p-3">
+              <p className="text-xs text-gray-500 mb-1">Items to Buy</p>
+              <p className="text-lg font-semibold text-orange-600">{groceryPendingCount}</p>
+              <p className="text-xs text-gray-500 mt-1">{groceryCompletedCount} checked off</p>
+            </div>
+            <div className="rounded-lg border bg-white p-3">
+              <p className="text-xs text-gray-500 mb-1">Focus</p>
+              <p className="text-sm font-semibold text-gray-900">
+                {unplannedDays.length > 0 ? 'Finish your week plan' : groceryPendingCount > 0 ? 'Shop & prep meals' : 'Review performance'}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Use quick actions below</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <Button variant="outline" size="sm" className="justify-start" onClick={switchToGroceryTab}>
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              Open Grocery List
+            </Button>
+            <Button variant="outline" size="sm" className="justify-start" onClick={switchToPrepTab}>
+              <Clock className="w-4 h-4 mr-2" />
+              Build Prep Session
+            </Button>
+            <Button variant="outline" size="sm" className="justify-start" onClick={switchToAnalyticsTab}>
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Review Analytics
+            </Button>
           </div>
         </CardContent>
       </Card>
@@ -146,6 +222,32 @@ const PlannerTabSection = ({
 
       {viewMode === 'week' && (
         <>
+          {plannedSlots === 0 && (
+            <Card className="border-dashed border-orange-200 bg-orange-50/40">
+              <CardContent className="p-6 text-center">
+                <Target className="w-8 h-8 text-orange-500 mx-auto mb-2" />
+                <h3 className="font-semibold text-gray-900">Start your week plan</h3>
+                <p className="text-sm text-gray-600 mt-1 mb-4">
+                  Plan your first meals, auto-generate a week, or load a template to skip blank days.
+                </p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button size="sm" onClick={generateWeekPlan} disabled={isGeneratingWeek}>
+                    <Zap className="w-4 h-4 mr-2" />
+                    {isGeneratingWeek ? 'Generating...' : 'Auto-Plan Week'}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleAIRecipe}>
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    AI Suggestions
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleLoadTemplate}>
+                    <Save className="w-4 h-4 mr-2" />
+                    Load Template
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div className="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden overflow-x-auto">
             <div className="grid grid-cols-8 border-b min-w-[800px]">
               <div className="p-4 bg-gray-50 border-r"><span className="text-sm font-medium text-gray-500">Meal</span></div>
