@@ -2281,6 +2281,9 @@ const NutritionMealPlanner = () => {
                 onGoToChecklist={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                 prepGroceryBlockersCount={prepGroceryBlockersCount}
                 onResolveBlockersInGrocery={() => setActiveTab('grocery')}
+                blockerItemSuggestions={blockerItemSuggestions}
+                onAddBlockerSuggestion={addBlockerSuggestionToGrocery}
+                onGoToGrocery={() => setActiveTab('grocery')}
               />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>

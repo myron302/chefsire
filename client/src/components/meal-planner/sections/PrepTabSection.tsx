@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock, ListChecks, MoveRight } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCircle2, Clock, Lightbulb, ListChecks, MoveRight, ShoppingCart } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,6 +45,21 @@ type PrepTabSectionProps = {
   onGoToChecklist: () => void;
   prepGroceryBlockersCount: number;
   onResolveBlockersInGrocery: () => void;
+  blockerItemSuggestions: Array<{
+    id: string;
+    name: string;
+    category: string;
+    reason: string;
+    alreadyOnList: boolean;
+  }>;
+  onAddBlockerSuggestion: (suggestion: {
+    id: string;
+    name: string;
+    category: string;
+    reason: string;
+    alreadyOnList: boolean;
+  }) => void;
+  onGoToGrocery: () => void;
 };
 
 const PrepTabSection = ({
@@ -64,6 +79,9 @@ const PrepTabSection = ({
   onGoToChecklist,
   prepGroceryBlockersCount,
   onResolveBlockersInGrocery,
+  blockerItemSuggestions,
+  onAddBlockerSuggestion,
+  onGoToGrocery,
 }: PrepTabSectionProps) => {
   const activeBlockers = prepSession.blockers.filter((blocker) => blocker.active);
   const unfinishedTasks = prepSession.tasks.filter((task) => !task.done);
@@ -151,6 +169,43 @@ const PrepTabSection = ({
               <Button size="sm" variant="outline" onClick={onResolveBlockersInGrocery}>
                 Resolve in Grocery
               </Button>
+            </div>
+          )}
+          {blockerItemSuggestions.length > 0 && (
+            <div className="rounded-md border border-indigo-200 bg-indigo-50/70 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-indigo-900 flex items-center gap-1.5">
+                  <Lightbulb className="w-3.5 h-3.5 text-indigo-600" />
+                  Blocker item suggestions
+                </p>
+                <Button variant="ghost" size="sm" className="h-7 px-2 text-xs text-indigo-700" onClick={onGoToGrocery}>
+                  View in Grocery
+                </Button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {blockerItemSuggestions.map((suggestion) => (
+                  suggestion.alreadyOnList ? (
+                    <Badge key={suggestion.id} variant="outline" className="bg-green-50 border-green-200 text-green-700">
+                      {suggestion.name} • On list
+                    </Badge>
+                  ) : (
+                    <Button
+                      key={suggestion.id}
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs border-indigo-200 text-indigo-800"
+                      onClick={() => onAddBlockerSuggestion(suggestion)}
+                    >
+                      <ShoppingCart className="w-3.5 h-3.5 mr-1" />
+                      Add {suggestion.name}
+                    </Button>
+                  )
+                ))}
+              </div>
+              <p className="text-[11px] text-indigo-700">
+                Quick-add items now, then finish shopping to unblock prep.
+              </p>
             </div>
           )}
         </div>
