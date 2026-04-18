@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
 type ChecklistStatus = 'ready' | 'attention';
+type PrepExecutionState = 'not_planned' | 'blocked' | 'in_progress' | 'complete';
 
 type WeeklyReadinessChecklistProps = {
   unplannedMealSlots: number;
@@ -17,6 +18,9 @@ type WeeklyReadinessChecklistProps = {
   prepRecommendationsAvailable: boolean;
   prepSessionPlanned: boolean;
   prepSessionCompleted: boolean;
+  prepExecutionState: PrepExecutionState;
+  prepActiveBlockersCount: number;
+  prepCarryoverCount: number;
   weekReadyNow: boolean;
   onGoToPlanner: () => void;
   onGoToGrocery: () => void;
@@ -24,6 +28,29 @@ type WeeklyReadinessChecklistProps = {
 };
 
 const statusLabel = (status: ChecklistStatus) => status === 'ready' ? 'Ready' : 'Needs attention';
+
+const prepStateMessage = (
+  prepExecutionState: PrepExecutionState,
+  prepActiveBlockersCount: number,
+  prepCarryoverCount: number,
+) => {
+  if (prepExecutionState === 'complete') {
+    return 'Prep session completed for this week.';
+  }
+
+  if (prepExecutionState === 'blocked') {
+    const blockerLabel = prepActiveBlockersCount === 1 ? 'blocker' : 'blockers';
+    const carryoverText = prepCarryoverCount > 0 ? ` ${prepCarryoverCount} carryover tasks still need attention.` : '';
+    return `Prep session is planned but blocked by ${prepActiveBlockersCount} ${blockerLabel}.${carryoverText}`;
+  }
+
+  if (prepExecutionState === 'in_progress') {
+    const carryoverText = prepCarryoverCount > 0 ? ` ${prepCarryoverCount} tasks were carried in.` : '';
+    return `Prep is in progress.${carryoverText}`;
+  }
+
+  return 'Prep is not scheduled yet for this week.';
+};
 
 const WeeklyReadinessChecklist = ({
   unplannedMealSlots,
@@ -36,6 +63,9 @@ const WeeklyReadinessChecklist = ({
   prepRecommendationsAvailable,
   prepSessionPlanned,
   prepSessionCompleted,
+  prepExecutionState,
+  prepActiveBlockersCount,
+  prepCarryoverCount,
   weekReadyNow,
   onGoToPlanner,
   onGoToGrocery,
@@ -43,7 +73,7 @@ const WeeklyReadinessChecklist = ({
 }: WeeklyReadinessChecklistProps) => {
   const plannerStatus: ChecklistStatus = unplannedMealSlots === 0 ? 'ready' : 'attention';
   const groceryStatus: ChecklistStatus = groceryListCreated && groceryPendingCount === 0 ? 'ready' : 'attention';
-  const prepStatus: ChecklistStatus = prepPlanMissing ? 'attention' : 'ready';
+  const prepStatus: ChecklistStatus = prepExecutionState === 'complete' ? 'ready' : 'attention';
   const overallStatus: ChecklistStatus = weekReadyNow ? 'ready' : 'attention';
 
   return (
@@ -117,15 +147,9 @@ const WeeklyReadinessChecklist = ({
               <Badge variant="outline">{statusLabel(prepStatus)}</Badge>
             </div>
             <p className="text-xs text-gray-600">
-              {prepSessionCompleted
-                ? 'Prep session completed for this week.'
-                : prepSessionPlanned
-                  ? 'Prep session is scheduled and ready to execute.'
-                  : prepPlanMissing
-                    ? 'Planned meals are ready for a prep session.'
-                    : 'Prep guidance is available for your planned meals.'}
+              {prepStateMessage(prepExecutionState, prepActiveBlockersCount, prepCarryoverCount)}
             </p>
-            {prepRecommendationsAvailable && (
+            {(prepRecommendationsAvailable || prepPlanMissing) && (
               <Button variant="outline" size="sm" className="mt-2" onClick={onGoToPrep}>
                 {prepSessionCompleted ? 'Review Prep Session' : prepSessionPlanned ? 'Open Prep Session' : 'Go to Prep'}
               </Button>
