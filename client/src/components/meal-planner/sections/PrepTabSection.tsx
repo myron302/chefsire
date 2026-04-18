@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarClock, CheckCircle2, Clock, ListChecks } from 'lucide-react';
+import { AlertTriangle, CalendarClock, CheckCircle2, Clock, ListChecks, MoveRight } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,10 +12,19 @@ export type PrepTask = {
   done: boolean;
 };
 
+export type PrepBlocker = {
+  id: string;
+  label: string;
+  active: boolean;
+};
+
 export type PrepSessionState = {
   scheduledAt: string;
   notes: string;
   tasks: PrepTask[];
+  blockers: PrepBlocker[];
+  blockerNote: string;
+  carryoverTaskIds: string[];
   completedAt: string | null;
 };
 
@@ -28,6 +37,9 @@ type PrepTabSectionProps = {
   onScheduleChange: (value: string) => void;
   onNotesChange: (value: string) => void;
   onToggleTask: (taskId: string) => void;
+  onToggleBlocker: (blockerId: string) => void;
+  onBlockerNoteChange: (value: string) => void;
+  onCarryForwardUnfinished: () => void;
   onMarkPrepComplete: () => void;
   onResetPrepCompletion: () => void;
   onGoToChecklist: () => void;
@@ -42,10 +54,16 @@ const PrepTabSection = ({
   onScheduleChange,
   onNotesChange,
   onToggleTask,
+  onToggleBlocker,
+  onBlockerNoteChange,
+  onCarryForwardUnfinished,
   onMarkPrepComplete,
   onResetPrepCompletion,
   onGoToChecklist,
 }: PrepTabSectionProps) => {
+  const activeBlockers = prepSession.blockers.filter((blocker) => blocker.active);
+  const unfinishedTasks = prepSession.tasks.filter((task) => !task.done);
+
   return (
     <Card className="border-indigo-200 bg-gradient-to-r from-indigo-50 via-white to-orange-50">
       <CardHeader>
@@ -56,7 +74,7 @@ const PrepTabSection = ({
               Weekly Prep Session Tracker
             </CardTitle>
             <CardDescription>
-              Schedule prep, check off tasks, and mark the week execution-ready.
+              Schedule prep, resolve blockers, and carry unfinished tasks into the next session.
             </CardDescription>
           </div>
           <Badge variant={prepSessionCompleted ? 'default' : prepSessionPlanned ? 'outline' : 'secondary'} className={prepSessionCompleted ? 'bg-green-600 hover:bg-green-600' : ''}>
@@ -90,6 +108,37 @@ const PrepTabSection = ({
           </div>
         </div>
 
+        <div className="rounded-lg border bg-white p-3 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              Prep blockers
+            </p>
+            <Badge variant={activeBlockers.length > 0 ? 'secondary' : 'outline'}>
+              {activeBlockers.length > 0 ? `${activeBlockers.length} active` : 'No blockers'}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {prepSession.blockers.map((blocker) => (
+              <Button
+                key={blocker.id}
+                type="button"
+                variant={blocker.active ? 'default' : 'outline'}
+                size="sm"
+                className={blocker.active ? 'bg-amber-600 hover:bg-amber-600' : ''}
+                onClick={() => onToggleBlocker(blocker.id)}
+              >
+                {blocker.label}
+              </Button>
+            ))}
+          </div>
+          <Input
+            value={prepSession.blockerNote}
+            onChange={(e) => onBlockerNoteChange(e.target.value)}
+            placeholder="Optional blocker note (ex: chicken still thawing until Monday)"
+          />
+        </div>
+
         <div className="rounded-lg border bg-white p-3">
           <div className="flex items-center justify-between gap-2 mb-2">
             <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
@@ -99,19 +148,41 @@ const PrepTabSection = ({
             <p className="text-xs text-gray-600">{prepSession.tasks.filter((task) => task.done).length}/{prepSession.tasks.length} tasks</p>
           </div>
           <div className="space-y-2">
-            {prepSession.tasks.map((task) => (
-              <label key={task.id} className="flex items-center gap-2 text-sm text-gray-700">
-                <Checkbox checked={task.done} onCheckedChange={() => onToggleTask(task.id)} />
-                <span className={task.done ? 'line-through text-gray-500' : ''}>{task.label}</span>
-              </label>
-            ))}
+            {prepSession.tasks.map((task) => {
+              const carriedOver = prepSession.carryoverTaskIds.includes(task.id);
+              return (
+                <label key={task.id} className="flex items-center justify-between gap-2 text-sm text-gray-700">
+                  <div className="flex items-center gap-2">
+                    <Checkbox checked={task.done} onCheckedChange={() => onToggleTask(task.id)} />
+                    <span className={task.done ? 'line-through text-gray-500' : ''}>{task.label}</span>
+                  </div>
+                  {carriedOver && !task.done && <Badge variant="secondary" className="text-[10px]">Carryover</Badge>}
+                </label>
+              );
+            })}
           </div>
+        </div>
+
+        <div className="rounded-lg border bg-white p-3">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+              <MoveRight className="w-4 h-4 text-indigo-500" />
+              Carryover to next prep session
+            </p>
+            <Badge variant="outline">{unfinishedTasks.length} unfinished</Badge>
+          </div>
+          <p className="text-xs text-gray-600 mb-3">
+            Carry unfinished tasks forward so next week's prep starts with what slipped.
+          </p>
+          <Button variant="outline" size="sm" onClick={onCarryForwardUnfinished} disabled={unfinishedTasks.length === 0}>
+            Carry Forward Unfinished Tasks
+          </Button>
         </div>
 
         <div className="flex flex-wrap gap-2">
           <Button
             onClick={onMarkPrepComplete}
-            disabled={!prepSessionPlanned || !prepRecommendationsAvailable || prepSessionCompleted}
+            disabled={!prepSessionPlanned || !prepRecommendationsAvailable || prepSessionCompleted || activeBlockers.length > 0}
           >
             <CheckCircle2 className="w-4 h-4 mr-2" />
             Mark Prep Complete

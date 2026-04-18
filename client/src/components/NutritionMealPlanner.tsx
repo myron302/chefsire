@@ -81,12 +81,45 @@ const DEFAULT_PREP_SESSION_TASKS = [
   { id: 'container-labels', label: 'Pack containers and label day/meal', done: false },
 ];
 
-const createDefaultPrepSession = (): PrepSessionState => ({
-  scheduledAt: '',
-  notes: '',
-  tasks: DEFAULT_PREP_SESSION_TASKS.map((task) => ({ ...task })),
-  completedAt: null,
-});
+const DEFAULT_PREP_BLOCKERS = [
+  { id: 'missing-ingredient', label: 'Missing ingredient', active: false },
+  { id: 'missing-containers', label: 'Missing containers', active: false },
+  { id: 'time-conflict', label: 'Time conflict', active: false },
+  { id: 'waiting-on-grocery', label: 'Waiting on grocery', active: false },
+  { id: 'kitchen-access', label: 'Kitchen access', active: false },
+];
+
+const normalizePrepSession = (session: any): PrepSessionState => {
+  const normalizedTasks = Array.isArray(session?.tasks)
+    ? DEFAULT_PREP_SESSION_TASKS.map((task) => {
+        const match = session.tasks.find((candidate: any) => candidate?.id === task.id);
+        return { ...task, done: Boolean(match?.done) };
+      })
+    : DEFAULT_PREP_SESSION_TASKS.map((task) => ({ ...task }));
+
+  const normalizedBlockers = Array.isArray(session?.blockers)
+    ? DEFAULT_PREP_BLOCKERS.map((blocker) => {
+        const match = session.blockers.find((candidate: any) => candidate?.id === blocker.id);
+        return { ...blocker, active: Boolean(match?.active) };
+      })
+    : DEFAULT_PREP_BLOCKERS.map((blocker) => ({ ...blocker }));
+
+  const normalizedCarryoverIds = Array.isArray(session?.carryoverTaskIds)
+    ? session.carryoverTaskIds.filter((taskId: string) => normalizedTasks.some((task) => task.id === taskId))
+    : [];
+
+  return {
+    scheduledAt: typeof session?.scheduledAt === 'string' ? session.scheduledAt : '',
+    notes: typeof session?.notes === 'string' ? session.notes : '',
+    tasks: normalizedTasks,
+    blockers: normalizedBlockers,
+    blockerNote: typeof session?.blockerNote === 'string' ? session.blockerNote : '',
+    carryoverTaskIds: normalizedCarryoverIds,
+    completedAt: typeof session?.completedAt === 'string' ? session.completedAt : null,
+  };
+};
+
+const createDefaultPrepSession = (): PrepSessionState => normalizePrepSession({});
 
 const NutritionMealPlanner = () => {
   const { user, updateUser } = useUser();
@@ -141,6 +174,7 @@ const NutritionMealPlanner = () => {
 
   const getDateForWeekday = (weekday: string) => getDateForWeekdayFromAnchor(getCurrentWeekAnchor(), weekday);
   const getPrepSessionStorageKey = () => `meal-planner-prep-session-v1:${user?.id || 'anon'}:${getCurrentWeekAnchor()}`;
+  const getPrepSessionStorageKeyForAnchor = (anchorDate: string) => `meal-planner-prep-session-v1:${user?.id || 'anon'}:${anchorDate}`;
 
   useEffect(() => {
     fetchUserData();
@@ -169,18 +203,7 @@ const NutritionMealPlanner = () => {
         return;
       }
       const parsed = JSON.parse(stored);
-      const normalizedTasks = Array.isArray(parsed?.tasks)
-        ? DEFAULT_PREP_SESSION_TASKS.map((task) => {
-            const match = parsed.tasks.find((candidate: any) => candidate?.id === task.id);
-            return { ...task, done: Boolean(match?.done) };
-          })
-        : DEFAULT_PREP_SESSION_TASKS.map((task) => ({ ...task }));
-      setPrepSession({
-        scheduledAt: typeof parsed?.scheduledAt === 'string' ? parsed.scheduledAt : '',
-        notes: typeof parsed?.notes === 'string' ? parsed.notes : '',
-        tasks: normalizedTasks,
-        completedAt: typeof parsed?.completedAt === 'string' ? parsed.completedAt : null,
-      });
+      setPrepSession(normalizePrepSession(parsed));
     } catch (error) {
       console.error('Error loading prep session:', error);
       setPrepSession(createDefaultPrepSession());
@@ -1191,8 +1214,69 @@ const NutritionMealPlanner = () => {
     setPrepSession((prev) => ({
       ...prev,
       tasks: prev.tasks.map((task) => task.id === taskId ? { ...task, done: !task.done } : task),
+      carryoverTaskIds: prev.tasks.find((task) => task.id === taskId)?.done
+        ? [...new Set([...prev.carryoverTaskIds, taskId])]
+        : prev.carryoverTaskIds.filter((id) => id !== taskId),
       completedAt: prev.completedAt,
     }));
+  };
+
+  const togglePrepBlocker = (blockerId: string) => {
+    setPrepSession((prev) => ({
+      ...prev,
+      blockers: prev.blockers.map((blocker) => blocker.id === blockerId ? { ...blocker, active: !blocker.active } : blocker),
+      completedAt: null,
+    }));
+  };
+
+  const updatePrepBlockerNote = (value: string) => {
+    setPrepSession((prev) => ({
+      ...prev,
+      blockerNote: value,
+    }));
+  };
+
+  const carryForwardUnfinishedPrepTasks = () => {
+    const unfinishedTaskIds = prepSession.tasks.filter((task) => !task.done).map((task) => task.id);
+
+    if (unfinishedTaskIds.length === 0) {
+      toast({
+        description: 'No unfinished prep tasks to carry forward.',
+      });
+      return;
+    }
+
+    const nextWeekDate = parseDateOnly(getCurrentWeekAnchor());
+    nextWeekDate.setDate(nextWeekDate.getDate() + 7);
+    const nextWeekAnchor = formatLocalDate(nextWeekDate);
+
+    try {
+      const nextWeekStorageKey = getPrepSessionStorageKeyForAnchor(nextWeekAnchor);
+      const stored = localStorage.getItem(nextWeekStorageKey);
+      const parsed = stored ? JSON.parse(stored) : {};
+      const nextWeekSession = normalizePrepSession(parsed);
+      const mergedCarryoverIds = [...new Set([...nextWeekSession.carryoverTaskIds, ...unfinishedTaskIds])];
+
+      localStorage.setItem(nextWeekStorageKey, JSON.stringify({
+        ...nextWeekSession,
+        carryoverTaskIds: mergedCarryoverIds,
+      }));
+
+      setPrepSession((prev) => ({
+        ...prev,
+        carryoverTaskIds: [...new Set([...prev.carryoverTaskIds, ...unfinishedTaskIds])],
+      }));
+
+      toast({
+        description: `Carried ${unfinishedTaskIds.length} unfinished prep tasks to next week.`,
+      });
+    } catch (error) {
+      console.error('Error carrying prep tasks forward:', error);
+      toast({
+        variant: 'destructive',
+        description: 'Unable to carry forward prep tasks right now.',
+      });
+    }
   };
 
   const markPrepComplete = () => {
@@ -1297,7 +1381,18 @@ const NutritionMealPlanner = () => {
   const prepProgress = Math.round((prepSession.tasks.filter((task) => task.done).length / Math.max(1, prepSession.tasks.length)) * 100);
   const prepRecommendationsAvailable = plannedSlots > 0;
   const prepPlanMissing = plannedSlots > 0 && !prepSessionPlanned && !prepSessionCompleted;
-  const prepReadyForWeek = prepSessionCompleted || prepSessionPlanned;
+  const prepActiveBlockersCount = prepSession.blockers.filter((blocker) => blocker.active).length;
+  const prepCarryoverCount = prepSession.carryoverTaskIds.filter((taskId) => prepSession.tasks.some((task) => task.id === taskId && !task.done)).length;
+  const prepExecutionState = !prepSessionPlanned
+    ? 'not_planned'
+    : prepSessionCompleted
+      ? 'complete'
+      : prepActiveBlockersCount > 0
+        ? 'blocked'
+        : prepProgress > 0
+          ? 'in_progress'
+          : 'in_progress';
+  const prepReadyForWeek = prepSessionCompleted || (prepSessionPlanned && prepActiveBlockersCount === 0);
   const weekReadyNow = plannedSlots === totalSlots && (groceryBuyItemCount === 0 || groceryPendingCount === 0) && prepReadyForWeek;
   const rawSavingsSummary = savingsReport?.summary || {};
   const rawSavingsPantry = savingsReport?.pantry || {};
@@ -1632,6 +1727,9 @@ const NutritionMealPlanner = () => {
                 prepRecommendationsAvailable={prepRecommendationsAvailable}
                 prepSessionPlanned={prepSessionPlanned}
                 prepSessionCompleted={prepSessionCompleted}
+                prepExecutionState={prepExecutionState}
+                prepActiveBlockersCount={prepActiveBlockersCount}
+                prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
                 onGoToGrocery={() => setActiveTab('grocery')}
@@ -1944,6 +2042,9 @@ const NutritionMealPlanner = () => {
                 prepRecommendationsAvailable={prepRecommendationsAvailable}
                 prepSessionPlanned={prepSessionPlanned}
                 prepSessionCompleted={prepSessionCompleted}
+                prepExecutionState={prepExecutionState}
+                prepActiveBlockersCount={prepActiveBlockersCount}
+                prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
                 onGoToGrocery={() => setActiveTab('grocery')}
@@ -1983,6 +2084,9 @@ const NutritionMealPlanner = () => {
                 prepRecommendationsAvailable={prepRecommendationsAvailable}
                 prepSessionPlanned={prepSessionPlanned}
                 prepSessionCompleted={prepSessionCompleted}
+                prepExecutionState={prepExecutionState}
+                prepActiveBlockersCount={prepActiveBlockersCount}
+                prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
                 onGoToGrocery={() => setActiveTab('grocery')}
@@ -1997,6 +2101,9 @@ const NutritionMealPlanner = () => {
                 onScheduleChange={updatePrepSchedule}
                 onNotesChange={updatePrepNotes}
                 onToggleTask={togglePrepTask}
+                onToggleBlocker={togglePrepBlocker}
+                onBlockerNoteChange={updatePrepBlockerNote}
+                onCarryForwardUnfinished={carryForwardUnfinishedPrepTasks}
                 onMarkPrepComplete={markPrepComplete}
                 onResetPrepCompletion={resetPrepCompletion}
                 onGoToChecklist={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
