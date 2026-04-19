@@ -163,6 +163,7 @@ type BlockerItemSuggestion = {
 };
 
 type MealPlanVisibility = 'private' | 'friends' | 'public';
+type ShareMetadataSaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 const NutritionMealPlanner = () => {
   const { user, updateUser } = useUser();
@@ -201,6 +202,9 @@ const NutritionMealPlanner = () => {
   const [calcResult, setCalcResult] = useState<any>(null);
   const [prepSession, setPrepSession] = useState<PrepSessionState>(() => createDefaultPrepSession());
   const [shareVisibility, setShareVisibility] = useState<MealPlanVisibility>('private');
+  const [sharePublicToken, setSharePublicToken] = useState<string | null>(null);
+  const [shareMetadataLoaded, setShareMetadataLoaded] = useState(false);
+  const [shareMetadataSaveState, setShareMetadataSaveState] = useState<ShareMetadataSaveState>('idle');
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -264,18 +268,49 @@ const NutritionMealPlanner = () => {
   }, [prepSession, user?.id, selectedDate]);
 
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(getShareVisibilityStorageKey());
-      if (stored === 'private' || stored === 'friends' || stored === 'public') {
-        setShareVisibility(stored);
-      } else {
-        setShareVisibility('private');
+    const loadShareMetadata = async () => {
+      setShareMetadataLoaded(false);
+      try {
+        const response = await fetch(`/api/meal-planner/week/share-metadata?date=${getCurrentWeekAnchor()}`, {
+          credentials: 'include',
+        });
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const visibility = data?.visibility;
+        if (visibility === 'private' || visibility === 'friends' || visibility === 'public') {
+          setShareVisibility(visibility);
+        } else {
+          setShareVisibility('private');
+        }
+        setSharePublicToken(typeof data?.publicShareToken === 'string' ? data.publicShareToken : null);
+        setShareMetadataSaveState('saved');
+        setShareMetadataLoaded(true);
+        return;
+      } catch (error) {
+        console.error('Error loading meal plan share metadata from backend, falling back to local:', error);
       }
-    } catch (error) {
-      console.error('Error loading meal plan share visibility:', error);
-      setShareVisibility('private');
-    }
-  }, [user?.id]);
+
+      try {
+        const stored = localStorage.getItem(getShareVisibilityStorageKey());
+        if (stored === 'private' || stored === 'friends' || stored === 'public') {
+          setShareVisibility(stored);
+        } else {
+          setShareVisibility('private');
+        }
+      } catch (error) {
+        console.error('Error loading meal plan share visibility:', error);
+        setShareVisibility('private');
+      } finally {
+        setSharePublicToken(null);
+        setShareMetadataLoaded(true);
+      }
+    };
+
+    loadShareMetadata();
+  }, [user?.id, selectedDate]);
 
   useEffect(() => {
     try {
@@ -284,6 +319,68 @@ const NutritionMealPlanner = () => {
       console.error('Error saving meal plan share visibility:', error);
     }
   }, [shareVisibility, user?.id]);
+
+  useEffect(() => {
+    if (!shareMetadataLoaded) return;
+    if (!user?.id) return;
+
+    let cancelled = false;
+    const persistShareMetadata = async () => {
+      setShareMetadataSaveState('saving');
+      try {
+        const summaryFingerprint = [
+          getCurrentWeekAnchor(),
+          shareVisibility,
+          Object.keys(weeklyMeals || {}).length,
+          groceryList.length,
+          prepSession.tasks.filter((task) => task.done).length,
+          prepSession.blockers.filter((blocker) => blocker.active).length,
+        ].join('|');
+
+        const response = await fetch('/api/meal-planner/week/share-metadata', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            date: getCurrentWeekAnchor(),
+            visibility: shareVisibility,
+            summaryFingerprint,
+          }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        if (!cancelled) {
+          const token = typeof data?.publicShareToken === 'string' ? data.publicShareToken : null;
+          setSharePublicToken(token);
+          setShareMetadataSaveState('saved');
+        }
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Error saving meal plan share metadata to backend:', error);
+          setShareMetadataSaveState('error');
+        }
+      }
+    };
+
+    persistShareMetadata();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    shareMetadataLoaded,
+    shareVisibility,
+    user?.id,
+    selectedDate,
+    weeklyMeals,
+    groceryList,
+    prepSession.tasks,
+    prepSession.blockers,
+  ]);
 
   const fetchSavingsReport = async () => {
     try {
@@ -1806,6 +1903,10 @@ const NutritionMealPlanner = () => {
   const weekLabel = weekRange?.weekStart && weekRange?.weekEnd
     ? `${weekRange.weekStart} to ${weekRange.weekEnd}`
     : `${getCurrentWeekAnchor()} week`;
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const publicShareUrl = sharePublicToken
+    ? `${origin}/meal-planner/shared/${sharePublicToken}`
+    : '';
   const weeklyShareSummaryText = useMemo(() => {
     const lines = [
       `Chefsire Meal Plan • Week of ${weekLabel}`,
@@ -1909,6 +2010,29 @@ const NutritionMealPlanner = () => {
         console.error('Error sharing weekly summary:', error);
         await copyWeeklyShareSummary();
       }
+    }
+  };
+
+  const copyWeeklyPublicShareLink = async () => {
+    if (!publicShareUrl) {
+      toast({
+        variant: 'destructive',
+        description: 'Public share link is still preparing. Try again in a moment.',
+      });
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(publicShareUrl);
+      toast({
+        description: '✅ Public weekly share link copied to clipboard.',
+      });
+    } catch (error) {
+      console.error('Error copying weekly public share link:', error);
+      toast({
+        variant: 'destructive',
+        description: 'Unable to copy the public share link right now.',
+      });
     }
   };
 
@@ -2227,7 +2351,13 @@ const NutritionMealPlanner = () => {
                       })}
                     </div>
                     <p className="text-xs text-gray-500 mt-2">
-                      Visibility preference is currently saved locally for this account on this device.
+                      {shareMetadataSaveState === 'saving'
+                        ? 'Saving visibility to your account...'
+                        : shareMetadataSaveState === 'saved'
+                          ? 'Visibility preference saved to your account with local fallback.'
+                          : shareMetadataSaveState === 'error'
+                            ? 'Could not reach backend; using local fallback on this device.'
+                            : 'Visibility preference is currently saved locally for this account on this device.'}
                     </p>
                   </div>
 
@@ -2250,7 +2380,18 @@ const NutritionMealPlanner = () => {
                       <Share2 className="w-4 h-4 mr-2" />
                       Share / Export
                     </Button>
+                    {shareVisibility === 'public' && (
+                      <Button variant="outline" onClick={copyWeeklyPublicShareLink} disabled={!publicShareUrl}>
+                        <Globe className="w-4 h-4 mr-2" />
+                        Copy Public Link
+                      </Button>
+                    )}
                   </div>
+                  {shareVisibility === 'public' && (
+                    <p className="text-xs text-gray-500">
+                      Public link foundation: {publicShareUrl || 'generating secure link token...'}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </div>
