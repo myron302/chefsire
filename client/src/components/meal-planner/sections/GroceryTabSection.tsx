@@ -41,6 +41,9 @@ type GroceryTabSectionProps = {
   blockerSuggestionResolvedCount: number;
   blockerSuggestionTrackedCount: number;
   unresolvedBlockerSuggestionNames: string[];
+  resolvedBlockerSuggestionNames: string[];
+  canResolveTrackedSuggestionBlockers: boolean;
+  onResolveTrackedSuggestionBlockers: () => void;
 };
 
 const GroceryTabSection = ({
@@ -67,6 +70,9 @@ const GroceryTabSection = ({
   blockerSuggestionResolvedCount,
   blockerSuggestionTrackedCount,
   unresolvedBlockerSuggestionNames,
+  resolvedBlockerSuggestionNames,
+  canResolveTrackedSuggestionBlockers,
+  onResolveTrackedSuggestionBlockers,
 }: GroceryTabSectionProps) => {
   const buyItems = groceryList.filter((i: any) => !i.isPantryItem);
   const checkedBuyItems = buyItems.filter((i: any) => i.checked).length;
@@ -135,7 +141,7 @@ const GroceryTabSection = ({
         {blockerSuggestionTrackedCount > 0 && (
           <Card className="border-emerald-200 bg-emerald-50/50">
             <CardContent className="p-4 space-y-2">
-              <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <p className="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Suggestion resolution</p>
                 <Badge variant="outline" className="border-emerald-200 text-emerald-700">
                   {blockerSuggestionResolvedCount}/{blockerSuggestionTrackedCount} resolved
@@ -146,6 +152,16 @@ const GroceryTabSection = ({
                   ? `Pending blocker-linked items: ${unresolvedBlockerSuggestionNames.join(', ')}.`
                   : 'All blocker-linked suggestion items are checked off.'}
               </p>
+              {resolvedBlockerSuggestionNames.length > 0 && (
+                <p className="text-xs text-emerald-700">
+                  Completed from Grocery: {resolvedBlockerSuggestionNames.join(', ')}.
+                </p>
+              )}
+              {canResolveTrackedSuggestionBlockers && (
+                <Button size="sm" variant="outline" onClick={onResolveTrackedSuggestionBlockers}>
+                  Resolve blocker from Grocery
+                </Button>
+              )}
             </CardContent>
           </Card>
         )}

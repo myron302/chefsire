@@ -23,6 +23,7 @@ type WeeklyReadinessChecklistProps = {
   prepGroceryBlockersCount: number;
   blockerSuggestionResolvedCount: number;
   blockerSuggestionTrackedCount: number;
+  blockerSuggestionConfidenceLabel: 'Not started' | 'Low' | 'Medium' | 'High';
   prepCarryoverCount: number;
   weekReadyNow: boolean;
   onGoToPlanner: () => void;
@@ -71,6 +72,7 @@ const WeeklyReadinessChecklist = ({
   prepGroceryBlockersCount,
   blockerSuggestionResolvedCount,
   blockerSuggestionTrackedCount,
+  blockerSuggestionConfidenceLabel,
   prepCarryoverCount,
   weekReadyNow,
   onGoToPlanner,
@@ -146,7 +148,12 @@ const WeeklyReadinessChecklist = ({
             )}
             {blockerSuggestionTrackedCount > 0 && (
               <p className="text-xs text-emerald-700 mt-2">
-                {blockerSuggestionResolvedCount}/{blockerSuggestionTrackedCount} blocker suggestions resolved.
+                {blockerSuggestionResolvedCount}/{blockerSuggestionTrackedCount} blocker suggestions resolved • confidence {blockerSuggestionConfidenceLabel}.
+              </p>
+            )}
+            {blockerSuggestionTrackedCount > 0 && prepGroceryBlockersCount === 0 && blockerSuggestionConfidenceLabel === 'High' && (
+              <p className="text-xs text-green-700 mt-2">
+                Prep blockers linked to Grocery are now cleared.
               </p>
             )}
             {(groceryPendingCount > 0 || !groceryListCreated) && (
