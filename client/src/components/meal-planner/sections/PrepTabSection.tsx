@@ -24,6 +24,13 @@ export type PrepSessionState = {
   tasks: PrepTask[];
   blockers: PrepBlocker[];
   blockerNote: string;
+  blockerSuggestionLinks: Array<{
+    suggestionId: string;
+    name: string;
+    category: string;
+    reason: string;
+    addedAt: string;
+  }>;
   carryoverTaskIds: string[];
   completedAt: string | null;
 };
@@ -60,6 +67,10 @@ type PrepTabSectionProps = {
     alreadyOnList: boolean;
   }) => void;
   onGoToGrocery: () => void;
+  blockerSuggestionResolvedCount: number;
+  blockerSuggestionTrackedCount: number;
+  unresolvedBlockerSuggestionNames: string[];
+  blockerSuggestionConfidenceLabel: 'Not started' | 'Low' | 'Medium' | 'High';
 };
 
 const PrepTabSection = ({
@@ -82,6 +93,10 @@ const PrepTabSection = ({
   blockerItemSuggestions,
   onAddBlockerSuggestion,
   onGoToGrocery,
+  blockerSuggestionResolvedCount,
+  blockerSuggestionTrackedCount,
+  unresolvedBlockerSuggestionNames,
+  blockerSuggestionConfidenceLabel,
 }: PrepTabSectionProps) => {
   const activeBlockers = prepSession.blockers.filter((blocker) => blocker.active);
   const unfinishedTasks = prepSession.tasks.filter((task) => !task.done);
@@ -206,6 +221,30 @@ const PrepTabSection = ({
               <p className="text-[11px] text-indigo-700">
                 Quick-add items now, then finish shopping to unblock prep.
               </p>
+            </div>
+          )}
+          {blockerSuggestionTrackedCount > 0 && (
+            <div className="rounded-md border border-emerald-200 bg-emerald-50/70 p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs font-medium text-emerald-900">
+                  Suggestion resolution tracker
+                </p>
+                <Badge variant="outline" className="border-emerald-200 text-emerald-700">
+                  {blockerSuggestionResolvedCount}/{blockerSuggestionTrackedCount} resolved
+                </Badge>
+              </div>
+              <p className="text-[11px] text-emerald-700">
+                Blocker confidence: {blockerSuggestionConfidenceLabel}
+              </p>
+              {unresolvedBlockerSuggestionNames.length > 0 ? (
+                <p className="text-[11px] text-emerald-800">
+                  Still pending: {unresolvedBlockerSuggestionNames.join(', ')}.
+                </p>
+              ) : (
+                <p className="text-[11px] text-emerald-800">
+                  All tracked blocker suggestions are completed in Grocery.
+                </p>
+              )}
             </div>
           )}
         </div>

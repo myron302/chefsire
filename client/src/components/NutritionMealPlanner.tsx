@@ -102,6 +102,14 @@ const BLOCKER_NOTE_STOP_WORDS = new Set([
   'prep', 'meal', 'meals', 'week', 'grocery', 'shopping', 'store', 'list', 'item', 'items', 'to', 'a', 'an',
 ]);
 
+type BlockerSuggestionResolutionLink = {
+  suggestionId: string;
+  name: string;
+  category: string;
+  reason: string;
+  addedAt: string;
+};
+
 const normalizePrepSession = (session: any): PrepSessionState => {
   const normalizedTasks = Array.isArray(session?.tasks)
     ? DEFAULT_PREP_SESSION_TASKS.map((task) => {
@@ -120,6 +128,17 @@ const normalizePrepSession = (session: any): PrepSessionState => {
   const normalizedCarryoverIds = Array.isArray(session?.carryoverTaskIds)
     ? session.carryoverTaskIds.filter((taskId: string) => normalizedTasks.some((task) => task.id === taskId))
     : [];
+  const normalizedSuggestionLinks = Array.isArray(session?.blockerSuggestionLinks)
+    ? session.blockerSuggestionLinks
+        .map((link: any) => ({
+          suggestionId: typeof link?.suggestionId === 'string' ? link.suggestionId : '',
+          name: typeof link?.name === 'string' ? link.name : '',
+          category: typeof link?.category === 'string' ? link.category : 'Other',
+          reason: typeof link?.reason === 'string' ? link.reason : 'from prep blocker',
+          addedAt: typeof link?.addedAt === 'string' ? link.addedAt : '',
+        }))
+        .filter((link: BlockerSuggestionResolutionLink) => link.suggestionId && link.name)
+    : [];
 
   return {
     scheduledAt: typeof session?.scheduledAt === 'string' ? session.scheduledAt : '',
@@ -127,6 +146,7 @@ const normalizePrepSession = (session: any): PrepSessionState => {
     tasks: normalizedTasks,
     blockers: normalizedBlockers,
     blockerNote: typeof session?.blockerNote === 'string' ? session.blockerNote : '',
+    blockerSuggestionLinks: normalizedSuggestionLinks,
     carryoverTaskIds: normalizedCarryoverIds,
     completedAt: typeof session?.completedAt === 'string' ? session.completedAt : null,
   };
@@ -717,6 +737,31 @@ const NutritionMealPlanner = () => {
 
       toast({
         description: `✅ Added "${suggestion.name}" from prep blocker suggestions.`,
+      });
+      setPrepSession((prev) => {
+        const normalizedName = suggestion.name.trim().toLowerCase();
+        const alreadyTracked = prev.blockerSuggestionLinks.some((link) => (
+          link.suggestionId === suggestion.id
+          || link.name.trim().toLowerCase() === normalizedName
+        ));
+
+        if (alreadyTracked) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          blockerSuggestionLinks: [
+            ...prev.blockerSuggestionLinks,
+            {
+              suggestionId: suggestion.id,
+              name: suggestion.name,
+              category: suggestion.category,
+              reason: suggestion.reason,
+              addedAt: formatLocalDate(new Date()),
+            },
+          ],
+        };
       });
       await fetchGroceryList();
     } catch (error) {
@@ -1520,6 +1565,59 @@ const NutritionMealPlanner = () => {
         };
       });
   }, [groceryList, prepGroceryBlockersCount, prepSession.blockerNote, prepSession.blockers]);
+  const blockerSuggestionResolution = useMemo(() => {
+    const trackedByName = new Map<string, BlockerSuggestionResolutionLink>();
+    prepSession.blockerSuggestionLinks.forEach((link) => {
+      const normalized = link.name.trim().toLowerCase();
+      if (!normalized || trackedByName.has(normalized)) {
+        return;
+      }
+      trackedByName.set(normalized, link);
+    });
+
+    if (trackedByName.size === 0) {
+      return {
+        tracked: [] as Array<BlockerSuggestionResolutionLink & { resolved: boolean }>,
+        trackedCount: 0,
+        resolvedCount: 0,
+        unresolvedNames: [] as string[],
+      };
+    }
+
+    const groceryNameStatus = new Map<string, boolean>();
+    groceryList.forEach((item: any) => {
+      if (item?.isPantryItem) {
+        return;
+      }
+      const normalized = String(item?.name || item?.item || '').trim().toLowerCase();
+      if (!normalized) {
+        return;
+      }
+      const existing = groceryNameStatus.get(normalized) || false;
+      groceryNameStatus.set(normalized, existing || Boolean(item?.checked));
+    });
+
+    const tracked = Array.from(trackedByName.entries()).map(([normalizedName, link]) => ({
+      ...link,
+      resolved: Boolean(groceryNameStatus.get(normalizedName)),
+    }));
+    const resolvedCount = tracked.filter((link) => link.resolved).length;
+    const unresolvedNames = tracked.filter((link) => !link.resolved).map((link) => link.name);
+
+    return {
+      tracked,
+      trackedCount: tracked.length,
+      resolvedCount,
+      unresolvedNames,
+    };
+  }, [groceryList, prepSession.blockerSuggestionLinks]);
+  const blockerSuggestionConfidenceLabel = blockerSuggestionResolution.trackedCount === 0
+    ? 'Not started'
+    : blockerSuggestionResolution.resolvedCount === blockerSuggestionResolution.trackedCount
+      ? 'High'
+      : blockerSuggestionResolution.resolvedCount > 0
+        ? 'Medium'
+        : 'Low';
   const prepCarryoverCount = prepSession.carryoverTaskIds.filter((taskId) => prepSession.tasks.some((task) => task.id === taskId && !task.done)).length;
   const prepExecutionState = !prepSessionPlanned
     ? 'not_planned'
@@ -1894,6 +1992,8 @@ const NutritionMealPlanner = () => {
                 prepExecutionState={prepExecutionState}
                 prepActiveBlockersCount={prepActiveBlockersCount}
                 prepGroceryBlockersCount={prepGroceryBlockersCount}
+                blockerSuggestionResolvedCount={blockerSuggestionResolution.resolvedCount}
+                blockerSuggestionTrackedCount={blockerSuggestionResolution.trackedCount}
                 prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
@@ -2210,6 +2310,8 @@ const NutritionMealPlanner = () => {
                 prepExecutionState={prepExecutionState}
                 prepActiveBlockersCount={prepActiveBlockersCount}
                 prepGroceryBlockersCount={prepGroceryBlockersCount}
+                blockerSuggestionResolvedCount={blockerSuggestionResolution.resolvedCount}
+                blockerSuggestionTrackedCount={blockerSuggestionResolution.trackedCount}
                 prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
@@ -2237,6 +2339,9 @@ const NutritionMealPlanner = () => {
                 onResolvePrepGroceryBlockers={resolvePrepGroceryBlockers}
                 blockerItemSuggestions={blockerItemSuggestions}
                 onAddBlockerSuggestion={addBlockerSuggestionToGrocery}
+                blockerSuggestionResolvedCount={blockerSuggestionResolution.resolvedCount}
+                blockerSuggestionTrackedCount={blockerSuggestionResolution.trackedCount}
+                unresolvedBlockerSuggestionNames={blockerSuggestionResolution.unresolvedNames}
               />
             </div>
           </TabsContent>
@@ -2258,6 +2363,8 @@ const NutritionMealPlanner = () => {
                 prepExecutionState={prepExecutionState}
                 prepActiveBlockersCount={prepActiveBlockersCount}
                 prepGroceryBlockersCount={prepGroceryBlockersCount}
+                blockerSuggestionResolvedCount={blockerSuggestionResolution.resolvedCount}
+                blockerSuggestionTrackedCount={blockerSuggestionResolution.trackedCount}
                 prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
@@ -2284,6 +2391,10 @@ const NutritionMealPlanner = () => {
                 blockerItemSuggestions={blockerItemSuggestions}
                 onAddBlockerSuggestion={addBlockerSuggestionToGrocery}
                 onGoToGrocery={() => setActiveTab('grocery')}
+                blockerSuggestionResolvedCount={blockerSuggestionResolution.resolvedCount}
+                blockerSuggestionTrackedCount={blockerSuggestionResolution.trackedCount}
+                unresolvedBlockerSuggestionNames={blockerSuggestionResolution.unresolvedNames}
+                blockerSuggestionConfidenceLabel={blockerSuggestionConfidenceLabel}
               />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>

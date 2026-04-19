@@ -38,6 +38,9 @@ type GroceryTabSectionProps = {
     reason: string;
     alreadyOnList: boolean;
   }) => void;
+  blockerSuggestionResolvedCount: number;
+  blockerSuggestionTrackedCount: number;
+  unresolvedBlockerSuggestionNames: string[];
 };
 
 const GroceryTabSection = ({
@@ -61,6 +64,9 @@ const GroceryTabSection = ({
   canResolvePrepGroceryBlockers,
   blockerItemSuggestions,
   onAddBlockerSuggestion,
+  blockerSuggestionResolvedCount,
+  blockerSuggestionTrackedCount,
+  unresolvedBlockerSuggestionNames,
 }: GroceryTabSectionProps) => {
   const buyItems = groceryList.filter((i: any) => !i.isPantryItem);
   const checkedBuyItems = buyItems.filter((i: any) => i.checked).length;
@@ -122,6 +128,24 @@ const GroceryTabSection = ({
                   Mark Grocery Blockers Resolved
                 </Button>
               </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {blockerSuggestionTrackedCount > 0 && (
+          <Card className="border-emerald-200 bg-emerald-50/50">
+            <CardContent className="p-4 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs uppercase tracking-wide text-emerald-700 font-semibold">Suggestion resolution</p>
+                <Badge variant="outline" className="border-emerald-200 text-emerald-700">
+                  {blockerSuggestionResolvedCount}/{blockerSuggestionTrackedCount} resolved
+                </Badge>
+              </div>
+              <p className="text-sm text-emerald-900">
+                {unresolvedBlockerSuggestionNames.length > 0
+                  ? `Pending blocker-linked items: ${unresolvedBlockerSuggestionNames.join(', ')}.`
+                  : 'All blocker-linked suggestion items are checked off.'}
+              </p>
             </CardContent>
           </Card>
         )}
