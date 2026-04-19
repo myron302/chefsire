@@ -1348,6 +1348,31 @@ const NutritionMealPlanner = () => {
     }));
   };
 
+  const resolvePrepBlockersFromTrackedSuggestions = () => {
+    setPrepSession((prev) => {
+      const hasActiveLinkedBlocker = prev.blockers.some(
+        (blocker) => blocker.active && GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id),
+      );
+
+      if (!hasActiveLinkedBlocker) {
+        return prev;
+      }
+
+      return {
+        ...prev,
+        blockers: prev.blockers.map((blocker) => (
+          GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id)
+            ? { ...blocker, active: false }
+            : blocker
+        )),
+        completedAt: null,
+      };
+    });
+    toast({
+      description: 'Resolved grocery-linked prep blockers from completed blocker suggestions.',
+    });
+  };
+
   const carryForwardUnfinishedPrepTasks = () => {
     const unfinishedTaskIds = prepSession.tasks.filter((task) => !task.done).map((task) => task.id);
 
@@ -1618,6 +1643,15 @@ const NutritionMealPlanner = () => {
       : blockerSuggestionResolution.resolvedCount > 0
         ? 'Medium'
         : 'Low';
+  const resolvedTrackedSuggestionNames = blockerSuggestionResolution.tracked
+    .filter((link) => link.resolved)
+    .map((link) => link.name);
+  const canResolvePrepGroceryBlockersFromSuggestions = prepGroceryBlockersCount > 0
+    && blockerSuggestionResolution.trackedCount > 0
+    && blockerSuggestionResolution.resolvedCount === blockerSuggestionResolution.trackedCount;
+  const prepResolvedViaTrackedSuggestions = prepGroceryBlockersCount === 0
+    && blockerSuggestionResolution.trackedCount > 0
+    && blockerSuggestionResolution.resolvedCount === blockerSuggestionResolution.trackedCount;
   const prepCarryoverCount = prepSession.carryoverTaskIds.filter((taskId) => prepSession.tasks.some((task) => task.id === taskId && !task.done)).length;
   const prepExecutionState = !prepSessionPlanned
     ? 'not_planned'
@@ -1647,7 +1681,7 @@ const NutritionMealPlanner = () => {
     : null;
 
   useEffect(() => {
-    if (!canResolvePrepGroceryBlockers) {
+    if (!canResolvePrepGroceryBlockers && !canResolvePrepGroceryBlockersFromSuggestions) {
       return;
     }
 
@@ -1669,7 +1703,7 @@ const NutritionMealPlanner = () => {
         )),
       };
     });
-  }, [canResolvePrepGroceryBlockers]);
+  }, [canResolvePrepGroceryBlockers, canResolvePrepGroceryBlockersFromSuggestions]);
 
   const weeklyNutritionData = weekDays.map((day) => {
     const totals = mealTypes.reduce((acc, type) => {
@@ -1994,6 +2028,7 @@ const NutritionMealPlanner = () => {
                 prepGroceryBlockersCount={prepGroceryBlockersCount}
                 blockerSuggestionResolvedCount={blockerSuggestionResolution.resolvedCount}
                 blockerSuggestionTrackedCount={blockerSuggestionResolution.trackedCount}
+                blockerSuggestionConfidenceLabel={blockerSuggestionConfidenceLabel}
                 prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
@@ -2312,6 +2347,7 @@ const NutritionMealPlanner = () => {
                 prepGroceryBlockersCount={prepGroceryBlockersCount}
                 blockerSuggestionResolvedCount={blockerSuggestionResolution.resolvedCount}
                 blockerSuggestionTrackedCount={blockerSuggestionResolution.trackedCount}
+                blockerSuggestionConfidenceLabel={blockerSuggestionConfidenceLabel}
                 prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
@@ -2342,6 +2378,9 @@ const NutritionMealPlanner = () => {
                 blockerSuggestionResolvedCount={blockerSuggestionResolution.resolvedCount}
                 blockerSuggestionTrackedCount={blockerSuggestionResolution.trackedCount}
                 unresolvedBlockerSuggestionNames={blockerSuggestionResolution.unresolvedNames}
+                resolvedBlockerSuggestionNames={resolvedTrackedSuggestionNames}
+                canResolveTrackedSuggestionBlockers={canResolvePrepGroceryBlockersFromSuggestions}
+                onResolveTrackedSuggestionBlockers={resolvePrepBlockersFromTrackedSuggestions}
               />
             </div>
           </TabsContent>
@@ -2365,6 +2404,7 @@ const NutritionMealPlanner = () => {
                 prepGroceryBlockersCount={prepGroceryBlockersCount}
                 blockerSuggestionResolvedCount={blockerSuggestionResolution.resolvedCount}
                 blockerSuggestionTrackedCount={blockerSuggestionResolution.trackedCount}
+                blockerSuggestionConfidenceLabel={blockerSuggestionConfidenceLabel}
                 prepCarryoverCount={prepCarryoverCount}
                 weekReadyNow={weekReadyNow}
                 onGoToPlanner={() => setActiveTab('planner')}
@@ -2395,6 +2435,7 @@ const NutritionMealPlanner = () => {
                 blockerSuggestionTrackedCount={blockerSuggestionResolution.trackedCount}
                 unresolvedBlockerSuggestionNames={blockerSuggestionResolution.unresolvedNames}
                 blockerSuggestionConfidenceLabel={blockerSuggestionConfidenceLabel}
+                prepResolvedViaTrackedSuggestions={prepResolvedViaTrackedSuggestions}
               />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>

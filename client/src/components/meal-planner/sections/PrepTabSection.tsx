@@ -71,6 +71,7 @@ type PrepTabSectionProps = {
   blockerSuggestionTrackedCount: number;
   unresolvedBlockerSuggestionNames: string[];
   blockerSuggestionConfidenceLabel: 'Not started' | 'Low' | 'Medium' | 'High';
+  prepResolvedViaTrackedSuggestions: boolean;
 };
 
 const PrepTabSection = ({
@@ -97,6 +98,7 @@ const PrepTabSection = ({
   blockerSuggestionTrackedCount,
   unresolvedBlockerSuggestionNames,
   blockerSuggestionConfidenceLabel,
+  prepResolvedViaTrackedSuggestions,
 }: PrepTabSectionProps) => {
   const activeBlockers = prepSession.blockers.filter((blocker) => blocker.active);
   const unfinishedTasks = prepSession.tasks.filter((task) => !task.done);
@@ -243,6 +245,11 @@ const PrepTabSection = ({
               ) : (
                 <p className="text-[11px] text-emerald-800">
                   All tracked blocker suggestions are completed in Grocery.
+                </p>
+              )}
+              {prepResolvedViaTrackedSuggestions && (
+                <p className="text-[11px] text-emerald-900">
+                  Grocery-linked blockers were cleared from completed suggestion items.
                 </p>
               )}
             </div>
