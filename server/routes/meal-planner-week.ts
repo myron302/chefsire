@@ -1,4 +1,5 @@
 import express, { type NextFunction, type Request, type Response } from "express";
+import { randomUUID } from "crypto";
 import { and, desc, eq, gte, inArray, lte, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import {
@@ -26,6 +27,7 @@ import {
 } from "./meal-planner-week/utils.js";
 
 const router = express.Router();
+const MEAL_SHARE_VISIBILITY = ["private", "friends", "public"] as const;
 
 router.use(async (_req: Request, res: Response, next: NextFunction) => {
   try {
@@ -183,6 +185,114 @@ router.get("/week", requireAuth, async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error fetching week plan:", error);
     res.status(500).json({ message: "Failed to load week plan" });
+  }
+});
+
+// ============================================================
+// GET /api/meal-planner/week/share-metadata?date=YYYY-MM-DD
+// Lightweight persistence layer for weekly sharing foundation.
+// ============================================================
+router.get("/week/share-metadata", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const rawDate = String(req.query.date || "");
+    const parsed = rawDate ? new Date(rawDate) : new Date();
+    if (isNaN(parsed.getTime())) {
+      return res.status(400).json({ message: "Invalid date" });
+    }
+
+    const weekAnchor = fmtISODate(startOfWeekMonday(parsed));
+    const result = await db.execute(sql`
+      SELECT visibility, summary_fingerprint, public_share_token, updated_at
+      FROM meal_plan_week_shares
+      WHERE user_id = ${userId} AND week_anchor = ${weekAnchor}::date
+      LIMIT 1
+    `);
+    const row = (result as any).rows?.[0];
+
+    res.json({
+      weekAnchor,
+      visibility: row?.visibility || "private",
+      summaryFingerprint: row?.summary_fingerprint || null,
+      publicShareToken: row?.public_share_token || null,
+      updatedAt: row?.updated_at || null,
+    });
+  } catch (error) {
+    console.error("Error loading weekly share metadata:", error);
+    res.status(500).json({ message: "Failed to load weekly share metadata" });
+  }
+});
+
+// ============================================================
+// POST /api/meal-planner/week/share-metadata
+// Persist visibility + summary fingerprint, and generate token for public links.
+// ============================================================
+router.post("/week/share-metadata", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const rawDate = String(req.body?.date || "");
+    const parsed = rawDate ? new Date(rawDate) : new Date();
+    if (isNaN(parsed.getTime())) {
+      return res.status(400).json({ message: "Invalid date" });
+    }
+
+    const visibility = String(req.body?.visibility || "private").toLowerCase();
+    if (!MEAL_SHARE_VISIBILITY.includes(visibility as (typeof MEAL_SHARE_VISIBILITY)[number])) {
+      return res.status(400).json({ message: "Invalid visibility value" });
+    }
+
+    const summaryFingerprintRaw = String(req.body?.summaryFingerprint || "").trim();
+    const summaryFingerprint = summaryFingerprintRaw ? summaryFingerprintRaw.slice(0, 200) : null;
+    const weekAnchor = fmtISODate(startOfWeekMonday(parsed));
+
+    const existingResult = await db.execute(sql`
+      SELECT public_share_token
+      FROM meal_plan_week_shares
+      WHERE user_id = ${userId} AND week_anchor = ${weekAnchor}::date
+      LIMIT 1
+    `);
+    const existing = (existingResult as any).rows?.[0];
+    const token =
+      visibility === "public"
+        ? existing?.public_share_token || `mws_${randomUUID().replace(/-/g, "").slice(0, 20)}`
+        : existing?.public_share_token || null;
+
+    await db.execute(sql`
+      INSERT INTO meal_plan_week_shares (
+        user_id,
+        week_anchor,
+        visibility,
+        summary_fingerprint,
+        public_share_token,
+        created_at,
+        updated_at
+      ) VALUES (
+        ${userId},
+        ${weekAnchor}::date,
+        ${visibility},
+        ${summaryFingerprint},
+        ${token},
+        NOW(),
+        NOW()
+      )
+      ON CONFLICT (user_id, week_anchor)
+      DO UPDATE SET
+        visibility = EXCLUDED.visibility,
+        summary_fingerprint = EXCLUDED.summary_fingerprint,
+        public_share_token = EXCLUDED.public_share_token,
+        updated_at = NOW()
+    `);
+
+    res.json({
+      ok: true,
+      weekAnchor,
+      visibility,
+      summaryFingerprint,
+      publicShareToken: token,
+    });
+  } catch (error) {
+    console.error("Error saving weekly share metadata:", error);
+    res.status(500).json({ message: "Failed to save weekly share metadata" });
   }
 });
 
