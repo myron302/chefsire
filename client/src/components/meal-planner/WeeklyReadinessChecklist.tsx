@@ -21,6 +21,8 @@ type WeeklyReadinessChecklistProps = {
   prepExecutionState: PrepExecutionState;
   prepActiveBlockersCount: number;
   prepGroceryBlockersCount: number;
+  blockerSuggestionResolvedCount: number;
+  blockerSuggestionTrackedCount: number;
   prepCarryoverCount: number;
   weekReadyNow: boolean;
   onGoToPlanner: () => void;
@@ -67,6 +69,8 @@ const WeeklyReadinessChecklist = ({
   prepExecutionState,
   prepActiveBlockersCount,
   prepGroceryBlockersCount,
+  blockerSuggestionResolvedCount,
+  blockerSuggestionTrackedCount,
   prepCarryoverCount,
   weekReadyNow,
   onGoToPlanner,
@@ -138,6 +142,11 @@ const WeeklyReadinessChecklist = ({
                 {prepGroceryBlockersCount === 1
                   ? '1 prep blocker can be resolved from this grocery flow.'
                   : `${prepGroceryBlockersCount} prep blockers can be resolved from this grocery flow.`}
+              </p>
+            )}
+            {blockerSuggestionTrackedCount > 0 && (
+              <p className="text-xs text-emerald-700 mt-2">
+                {blockerSuggestionResolvedCount}/{blockerSuggestionTrackedCount} blocker suggestions resolved.
               </p>
             )}
             {(groceryPendingCount > 0 || !groceryListCreated) && (
