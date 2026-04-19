@@ -3,7 +3,7 @@ import {
   Calendar, Plus, Target, TrendingUp, Clock, ChefHat, Star, Lock, Crown,
   ShoppingCart, CheckCircle, BarChart3, Download, Filter, Save,
   AlertCircle, Package, Utensils, CalendarDays, Zap, ListChecks, Settings, Camera,
-  DollarSign, Sparkles, Flame, Scale, Droplets, Ruler
+  DollarSign, Sparkles, Flame, Scale, Droplets, Ruler, Users, Globe, Copy, Share2
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -162,6 +162,8 @@ type BlockerItemSuggestion = {
   alreadyOnList: boolean;
 };
 
+type MealPlanVisibility = 'private' | 'friends' | 'public';
+
 const NutritionMealPlanner = () => {
   const { user, updateUser } = useUser();
   const { toast } = useToast();
@@ -198,6 +200,7 @@ const NutritionMealPlanner = () => {
   const [calcForm, setCalcForm] = useState({ age: 30, gender: 'male', heightUnit: 'ft', feet: 5, inches: 10, cm: 178, weightUnit: 'lbs', weight: 180, activity: 'moderately active', goal: 'maintain' });
   const [calcResult, setCalcResult] = useState<any>(null);
   const [prepSession, setPrepSession] = useState<PrepSessionState>(() => createDefaultPrepSession());
+  const [shareVisibility, setShareVisibility] = useState<MealPlanVisibility>('private');
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -216,6 +219,7 @@ const NutritionMealPlanner = () => {
   const getDateForWeekday = (weekday: string) => getDateForWeekdayFromAnchor(getCurrentWeekAnchor(), weekday);
   const getPrepSessionStorageKey = () => `meal-planner-prep-session-v1:${user?.id || 'anon'}:${getCurrentWeekAnchor()}`;
   const getPrepSessionStorageKeyForAnchor = (anchorDate: string) => `meal-planner-prep-session-v1:${user?.id || 'anon'}:${anchorDate}`;
+  const getShareVisibilityStorageKey = () => `meal-planner-share-visibility-v1:${user?.id || 'anon'}`;
 
   useEffect(() => {
     fetchUserData();
@@ -258,6 +262,28 @@ const NutritionMealPlanner = () => {
       console.error('Error saving prep session:', error);
     }
   }, [prepSession, user?.id, selectedDate]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(getShareVisibilityStorageKey());
+      if (stored === 'private' || stored === 'friends' || stored === 'public') {
+        setShareVisibility(stored);
+      } else {
+        setShareVisibility('private');
+      }
+    } catch (error) {
+      console.error('Error loading meal plan share visibility:', error);
+      setShareVisibility('private');
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(getShareVisibilityStorageKey(), shareVisibility);
+    } catch (error) {
+      console.error('Error saving meal plan share visibility:', error);
+    }
+  }, [shareVisibility, user?.id]);
 
   const fetchSavingsReport = async () => {
     try {
@@ -1771,6 +1797,56 @@ const NutritionMealPlanner = () => {
     ? Number(latestBodyMetric.weightLbs || 0) - Number(firstBodyMetric.weightLbs || 0)
     : 0;
   const hydrationPct = Math.round(((water.glassesLogged || 0) / Math.max(1, water.dailyTarget || 8)) * 100);
+  const weeklyMealsCount = weeklyNutritionData.reduce((sum, day) => sum + day.mealsLogged, 0);
+  const visibilitySummaryLabel = shareVisibility === 'private'
+    ? 'Private (only you)'
+    : shareVisibility === 'friends'
+      ? 'Friends'
+      : 'Public';
+  const weekLabel = weekRange?.weekStart && weekRange?.weekEnd
+    ? `${weekRange.weekStart} to ${weekRange.weekEnd}`
+    : `${getCurrentWeekAnchor()} week`;
+  const weeklyShareSummaryText = useMemo(() => {
+    const lines = [
+      `Chefsire Meal Plan • Week of ${weekLabel}`,
+      `Visibility: ${visibilitySummaryLabel}`,
+      '',
+      `Planning coverage: ${plannedSlots}/${totalSlots} meal slots planned (${Math.round((plannedSlots / Math.max(1, totalSlots)) * 100)}%)`,
+      `Meals planned: ${weeklyMealsCount}`,
+      `Readiness: ${weekReadyNow ? 'Week ready ✅' : 'In progress'}`,
+      `Grocery progress: ${groceryCompletedCount}/${Math.max(1, groceryBuyItemCount)} purchased`,
+      `Prep progress: ${prepProgress}% (${prepSession.tasks.filter((task) => task.done).length}/${prepSession.tasks.length} tasks complete)`,
+      `Prep blockers: ${prepActiveBlockersCount}`,
+      '',
+      'Nutrition highlights:',
+      `• Avg calories/day: ${avgCalories} (goal: ${calorieGoal})`,
+      `• Avg protein/day: ${avgProtein}g (goal: ${macroGoals.protein || 150}g)`,
+      `• Protein goal hit days: ${proteinGoalHitDays}/7`,
+      `• Hydration today: ${water.glassesLogged}/${water.dailyTarget} glasses (${hydrationPct}%)`,
+    ];
+
+    return lines.join('\n');
+  }, [
+    weekLabel,
+    visibilitySummaryLabel,
+    plannedSlots,
+    totalSlots,
+    weeklyMealsCount,
+    weekReadyNow,
+    groceryCompletedCount,
+    groceryBuyItemCount,
+    prepProgress,
+    prepSession.tasks,
+    prepActiveBlockersCount,
+    avgCalories,
+    calorieGoal,
+    avgProtein,
+    macroGoals.protein,
+    proteinGoalHitDays,
+    water.glassesLogged,
+    water.dailyTarget,
+    hydrationPct,
+  ]);
 
   const computedInsights = [
     {
@@ -1798,6 +1874,43 @@ const NutritionMealPlanner = () => {
       trend: hydrationPct >= 80 ? 'positive' : 'neutral',
     },
   ];
+
+  const copyWeeklyShareSummary = async () => {
+    try {
+      await navigator.clipboard.writeText(weeklyShareSummaryText);
+      toast({
+        description: '✅ Weekly plan share summary copied to clipboard.',
+      });
+    } catch (error) {
+      console.error('Error copying weekly share summary:', error);
+      toast({
+        variant: 'destructive',
+        description: 'Unable to copy summary right now.',
+      });
+    }
+  };
+
+  const shareWeeklySummary = async () => {
+    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
+      await copyWeeklyShareSummary();
+      return;
+    }
+
+    try {
+      await navigator.share({
+        title: `Meal plan summary • ${weekLabel}`,
+        text: weeklyShareSummaryText,
+      });
+      toast({
+        description: 'Shared weekly meal plan summary.',
+      });
+    } catch (error: any) {
+      if (error?.name !== 'AbortError') {
+        console.error('Error sharing weekly summary:', error);
+        await copyWeeklyShareSummary();
+      }
+    }
+  };
 
 
   const calculateGoals = () => {
@@ -2077,6 +2190,69 @@ const NutritionMealPlanner = () => {
                 switchToPrepTab={() => setActiveTab('prep')}
                 switchToAnalyticsTab={() => setActiveTab('analytics')}
               />
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Share2 className="w-5 h-5 text-orange-600" />
+                    Share This Week
+                  </CardTitle>
+                  <CardDescription>
+                    Prepare a lightweight weekly summary you can keep private now and publish later when friend/public flows are connected.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 mb-2">Visibility</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                      {([
+                        { value: 'private', label: 'Private', help: 'Only you can see this summary.', icon: <Lock className="w-4 h-4" /> },
+                        { value: 'friends', label: 'Friends', help: 'Ready for friend-only sharing later.', icon: <Users className="w-4 h-4" /> },
+                        { value: 'public', label: 'Public', help: 'Ready for public discovery later.', icon: <Globe className="w-4 h-4" /> },
+                      ] as Array<{ value: MealPlanVisibility; label: string; help: string; icon: React.ReactNode }>).map((option) => {
+                        const active = shareVisibility === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setShareVisibility(option.value)}
+                            className={`text-left border rounded-lg p-3 transition ${active ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300'}`}
+                          >
+                            <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                              {option.icon}
+                              {option.label}
+                            </div>
+                            <p className="text-xs text-gray-600 mt-1">{option.help}</p>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">
+                      Visibility preference is currently saved locally for this account on this device.
+                    </p>
+                  </div>
+
+                  <div className="rounded-lg border bg-gray-50 p-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-medium text-gray-900">Weekly Share Preview</p>
+                      <Badge variant="outline">{visibilitySummaryLabel}</Badge>
+                    </div>
+                    <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                      {weeklyShareSummaryText}
+                    </pre>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <Button variant="outline" onClick={copyWeeklyShareSummary}>
+                      <Copy className="w-4 h-4 mr-2" />
+                      Copy Summary
+                    </Button>
+                    <Button onClick={shareWeeklySummary}>
+                      <Share2 className="w-4 h-4 mr-2" />
+                      Share / Export
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </div>
           </TabsContent>
 
