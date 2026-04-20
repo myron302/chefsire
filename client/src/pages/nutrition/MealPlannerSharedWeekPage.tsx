@@ -3,6 +3,7 @@ import { useRoute } from 'wouter';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
 import { CalendarDays, ShoppingCart, ShieldCheck, Utensils, Activity } from 'lucide-react';
 
 type SharedMeal = {
@@ -139,6 +140,9 @@ export default function MealPlannerSharedWeekPage() {
         <CardContent className="flex flex-wrap gap-2">
           <Badge variant="secondary">Read-only public view</Badge>
           <Badge variant="outline">Token shared</Badge>
+          <Button asChild size="sm" variant="outline" className="ml-auto">
+            <a href="/meal-planner/shared">Browse more public weeks</a>
+          </Button>
         </CardContent>
       </Card>
 
