@@ -2386,6 +2386,10 @@ const NutritionMealPlanner = () => {
                         Copy Public Link
                       </Button>
                     )}
+                    <Button variant="outline" onClick={() => window.location.assign('/meal-planner/shared')}>
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      Browse Public Week Ideas
+                    </Button>
                   </div>
                   {shareVisibility === 'public' && (
                     <p className="text-xs text-gray-500">

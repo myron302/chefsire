@@ -45,6 +45,7 @@ const CreatorAnalytics = React.lazy(() => import("@/pages/nutrition/CreatorAnaly
 const MealPlanDetailsPage = React.lazy(() => import("@/pages/nutrition/MealPlanDetailsPage"));
 const MyPurchasesPage = React.lazy(() => import("@/pages/nutrition/MyPurchasesPage"));
 const MealPlannerSharedWeekPage = React.lazy(() => import("@/pages/nutrition/MealPlannerSharedWeekPage"));
+const MealPlannerSharedBrowsePage = React.lazy(() => import("@/pages/nutrition/MealPlannerSharedBrowsePage"));
 const AnalyticsPage = React.lazy(() => import("@/pages/analytics/AnalyticsPage"));
 const CateringMarketplace = React.lazy(() => import("@/pages/services/catering"));
 const WeddingPlanning = React.lazy(() => import("@/pages/services/wedding-planning"));
@@ -259,6 +260,7 @@ export default function App() {
                 {/* =========================================================
                     Meal Planner aliases (✅ fixes 404 for meal-planner + subs)
                    ========================================================= */}
+                <Route path="/meal-planner/shared" component={MealPlannerSharedBrowsePage} />
                 <Route path="/meal-planner/shared/:token" component={MealPlannerSharedWeekPage} />
                 <Route path="/meal-planner">
                   <Redirect to="/nutrition" />
