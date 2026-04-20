@@ -28,6 +28,7 @@ import {
 
 const router = express.Router();
 const MEAL_SHARE_VISIBILITY = ["private", "friends", "public"] as const;
+const SHARED_WEEK_TOKEN_PATTERN = /^[a-zA-Z0-9_-]{8,80}$/;
 
 router.use(async (_req: Request, res: Response, next: NextFunction) => {
   try {
@@ -293,6 +294,154 @@ router.post("/week/share-metadata", requireAuth, async (req: Request, res: Respo
   } catch (error) {
     console.error("Error saving weekly share metadata:", error);
     res.status(500).json({ message: "Failed to save weekly share metadata" });
+  }
+});
+
+// ============================================================
+// GET /api/meal-planner/week/shared/:token
+// Public, read-only weekly summary for token-based sharing.
+// ============================================================
+router.get("/week/shared/:token", async (req: Request, res: Response) => {
+  try {
+    const token = String(req.params?.token || "").trim();
+    if (!SHARED_WEEK_TOKEN_PATTERN.test(token)) {
+      return res.status(400).json({ message: "Invalid share token" });
+    }
+
+    const shareResult = await db.execute(sql`
+      SELECT user_id, week_anchor, visibility, updated_at
+      FROM meal_plan_week_shares
+      WHERE public_share_token = ${token}
+      LIMIT 1
+    `);
+    const shareRow = (shareResult as any).rows?.[0];
+
+    if (!shareRow || shareRow.visibility !== "public") {
+      return res.status(404).json({ message: "Shared week not found" });
+    }
+
+    const weekStart = startOfWeekMonday(new Date(shareRow.week_anchor));
+    const weekEnd = endOfDay(addDays(weekStart, 6));
+    const weekAnchor = fmtISODate(weekStart);
+
+    const [plan] = await db
+      .select()
+      .from(mealPlans)
+      .where(
+        and(
+          eq(mealPlans.userId, shareRow.user_id),
+          lte(mealPlans.startDate, weekEnd),
+          gte(mealPlans.endDate, weekStart),
+          eq(mealPlans.isTemplate, false)
+        )
+      )
+      .orderBy(desc(mealPlans.createdAt))
+      .limit(1);
+
+    let entries: any[] = [];
+    let groceryItems: Array<{ purchased: boolean | null }> = [];
+
+    if (plan) {
+      entries = await db
+        .select({
+          id: mealPlanEntries.id,
+          recipeId: mealPlanEntries.recipeId,
+          date: mealPlanEntries.date,
+          mealType: mealPlanEntries.mealType,
+          servings: mealPlanEntries.servings,
+          customName: mealPlanEntries.customName,
+          customCalories: mealPlanEntries.customCalories,
+          customProtein: mealPlanEntries.customProtein,
+          customCarbs: mealPlanEntries.customCarbs,
+          customFat: mealPlanEntries.customFat,
+          source: mealPlanEntries.source,
+          recipe: recipes,
+        })
+        .from(mealPlanEntries)
+        .leftJoin(recipes, eq(mealPlanEntries.recipeId, recipes.id))
+        .where(eq(mealPlanEntries.mealPlanId, plan.id))
+        .orderBy(mealPlanEntries.date);
+
+      groceryItems = await db
+        .select({ purchased: groceryListItems.purchased })
+        .from(groceryListItems)
+        .where(and(eq(groceryListItems.userId, shareRow.user_id), eq(groceryListItems.mealPlanId, plan.id)));
+    }
+
+    const weeklyMeals = mapEntriesToWeeklyMeals(entries);
+    const plannedSlots = entries.length;
+    const totalSlots = 28; // 7 days x 4 meal types
+    const plannedCoveragePct = Math.round((plannedSlots / Math.max(1, totalSlots)) * 100);
+
+    const groceryTotalItems = groceryItems.length;
+    const groceryPurchasedItems = groceryItems.filter((item) => Boolean(item.purchased)).length;
+    const groceryCompletionPct = groceryTotalItems > 0
+      ? Math.round((groceryPurchasedItems / groceryTotalItems) * 100)
+      : 0;
+
+    const totalCalories = entries.reduce(
+      (sum, entry) => sum + Number(entry?.recipe?.calories || entry?.customCalories || 0),
+      0
+    );
+    const totalProtein = entries.reduce(
+      (sum, entry) => sum + Number(entry?.recipe?.protein || entry?.customProtein || 0),
+      0
+    );
+    const activePlannedDays = new Set(entries.map((entry) => fmtISODate(new Date(entry.date)))).size;
+
+    const publicWeeklyMeals = Object.fromEntries(
+      Object.entries(weeklyMeals).map(([day, mealsByType]) => [
+        day,
+        Object.fromEntries(
+          Object.entries(mealsByType as Record<string, any>).map(([mealType, meals]) => [
+            mealType,
+            (Array.isArray(meals) ? meals : [meals]).map((meal) => ({
+              name: meal.name,
+              calories: Number(meal.calories || 0),
+              protein: Number(meal.protein || 0),
+              carbs: Number(meal.carbs || 0),
+              fat: Number(meal.fat || 0),
+              servings: 1,
+            })),
+          ])
+        ),
+      ])
+    );
+
+    res.json({
+      token,
+      weekAnchor,
+      weekStart: fmtISODate(weekStart),
+      weekEnd: fmtISODate(weekEnd),
+      sharedAt: shareRow.updated_at || null,
+      visibility: "public",
+      plannedMeals: publicWeeklyMeals,
+      readiness: {
+        status: plannedSlots > 0 ? (plannedCoveragePct >= 70 ? "week-ready" : "in-progress") : "not-started",
+        plannedSlots,
+        totalSlots,
+        plannedCoveragePct,
+      },
+      grocery: {
+        totalItems: groceryTotalItems,
+        purchasedItems: groceryPurchasedItems,
+        completionPct: groceryCompletionPct,
+      },
+      prep: {
+        status: "not-shared",
+        note: "Prep details are not included in public shares yet.",
+      },
+      nutritionHighlights: {
+        plannedMealsCount: plannedSlots,
+        totalCalories,
+        totalProtein,
+        avgCaloriesPerPlannedDay: activePlannedDays > 0 ? Math.round(totalCalories / activePlannedDays) : 0,
+        avgProteinPerPlannedDay: activePlannedDays > 0 ? Math.round(totalProtein / activePlannedDays) : 0,
+      },
+    });
+  } catch (error) {
+    console.error("Error fetching public shared week:", error);
+    res.status(500).json({ message: "Failed to load shared week" });
   }
 });
 
