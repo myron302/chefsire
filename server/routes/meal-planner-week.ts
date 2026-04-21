@@ -31,6 +31,42 @@ const MEAL_SHARE_VISIBILITY = ["private", "friends", "public"] as const;
 const SHARED_WEEK_TOKEN_PATTERN = /^[a-zA-Z0-9_-]{8,80}$/;
 const PUBLIC_SHARED_WEEKS_LIMIT_DEFAULT = 20;
 const PUBLIC_SHARED_WEEKS_LIMIT_MAX = 50;
+type PublicSharedReadinessFilter = PublicWeekSummary["readinessStatus"] | "all";
+type PublicSharedCoverageFilter = "all" | "low" | "medium" | "high";
+type PublicSharedSort = "newest" | "readiness" | "coverage";
+
+function parsePublicSharedReadinessFilter(raw: unknown): PublicSharedReadinessFilter {
+  const value = String(raw || "all").trim();
+  if (value === "not-started" || value === "in-progress" || value === "week-ready") {
+    return value;
+  }
+  return "all";
+}
+
+function parsePublicSharedCoverageFilter(raw: unknown): PublicSharedCoverageFilter {
+  const value = String(raw || "all").trim();
+  if (value === "low" || value === "medium" || value === "high") return value;
+  return "all";
+}
+
+function parsePublicSharedSort(raw: unknown): PublicSharedSort {
+  const value = String(raw || "newest").trim();
+  if (value === "readiness" || value === "coverage") return value;
+  return "newest";
+}
+
+function isCoverageMatch(coveragePct: number, filter: PublicSharedCoverageFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "low") return coveragePct < 40;
+  if (filter === "medium") return coveragePct >= 40 && coveragePct < 70;
+  return coveragePct >= 70;
+}
+
+function readinessSortScore(status: PublicWeekSummary["readinessStatus"]): number {
+  if (status === "week-ready") return 3;
+  if (status === "in-progress") return 2;
+  return 1;
+}
 
 router.use(async (_req: Request, res: Response, next: NextFunction) => {
   try {
@@ -414,6 +450,9 @@ router.get("/week/shared", async (req: Request, res: Response) => {
   try {
     const parsedLimit = Number(req.query.limit ?? PUBLIC_SHARED_WEEKS_LIMIT_DEFAULT);
     const limit = Math.max(1, Math.min(PUBLIC_SHARED_WEEKS_LIMIT_MAX, Number.isFinite(parsedLimit) ? parsedLimit : PUBLIC_SHARED_WEEKS_LIMIT_DEFAULT));
+    const readinessFilter = parsePublicSharedReadinessFilter(req.query.readiness);
+    const coverageFilter = parsePublicSharedCoverageFilter(req.query.coverage);
+    const sort = parsePublicSharedSort(req.query.sort);
 
     const shareResult = await db.execute(sql`
       SELECT s.user_id, s.week_anchor, s.public_share_token, s.updated_at, u.display_name, u.username
@@ -421,7 +460,7 @@ router.get("/week/shared", async (req: Request, res: Response) => {
       LEFT JOIN users u ON u.id = s.user_id
       WHERE s.visibility = 'public' AND s.public_share_token IS NOT NULL
       ORDER BY s.updated_at DESC
-      LIMIT ${limit}
+      LIMIT ${Math.min(PUBLIC_SHARED_WEEKS_LIMIT_MAX, Math.max(limit * 3, limit))}
     `);
     const shareRows = ((shareResult as any).rows || []) as Array<{
       user_id: string;
@@ -432,7 +471,7 @@ router.get("/week/shared", async (req: Request, res: Response) => {
       username: string | null;
     }>;
 
-    const items = await Promise.all(
+    let items = await Promise.all(
       shareRows.map(async (row) => {
         const summary = await buildPublicWeekSummary(row.user_id, row.week_anchor);
         return {
@@ -467,7 +506,38 @@ router.get("/week/shared", async (req: Request, res: Response) => {
       })
     );
 
-    res.json({ items });
+    items = items.filter((item) => {
+      const readinessMatches = readinessFilter === "all" || item.readiness.status === readinessFilter;
+      const coverageMatches = isCoverageMatch(item.readiness.plannedCoveragePct, coverageFilter);
+      return readinessMatches && coverageMatches;
+    });
+
+    if (sort === "coverage") {
+      items.sort((a, b) => {
+        const coverageDiff = b.readiness.plannedCoveragePct - a.readiness.plannedCoveragePct;
+        if (coverageDiff !== 0) return coverageDiff;
+        return new Date(b.sharedAt || 0).getTime() - new Date(a.sharedAt || 0).getTime();
+      });
+    } else if (sort === "readiness") {
+      items.sort((a, b) => {
+        const readinessDiff = readinessSortScore(b.readiness.status as PublicWeekSummary["readinessStatus"]) - readinessSortScore(a.readiness.status as PublicWeekSummary["readinessStatus"]);
+        if (readinessDiff !== 0) return readinessDiff;
+        const coverageDiff = b.readiness.plannedCoveragePct - a.readiness.plannedCoveragePct;
+        if (coverageDiff !== 0) return coverageDiff;
+        return new Date(b.sharedAt || 0).getTime() - new Date(a.sharedAt || 0).getTime();
+      });
+    }
+
+    items = items.slice(0, limit);
+
+    res.json({
+      items,
+      filters: {
+        readiness: readinessFilter,
+        coverage: coverageFilter,
+        sort,
+      },
+    });
   } catch (error) {
     console.error("Error fetching public shared weeks list:", error);
     res.status(500).json({ message: "Failed to load public shared weeks" });
