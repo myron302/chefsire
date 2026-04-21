@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, ShoppingCart, ShieldCheck, Utensils, Activity } from 'lucide-react';
+import { useUser } from '@/contexts/UserContext';
+import { useToast } from '@/hooks/use-toast';
 
 type SharedMeal = {
   name: string;
@@ -47,12 +49,16 @@ type SharedWeekPayload = {
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 export default function MealPlannerSharedWeekPage() {
+  const { user } = useUser();
+  const { toast } = useToast();
   const [match, params] = useRoute('/meal-planner/shared/:token');
   const token = match ? params?.token : undefined;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SharedWeekPayload | null>(null);
+  const [isCopying, setIsCopying] = useState(false);
+  const [copySummary, setCopySummary] = useState<string | null>(null);
 
   useEffect(() => {
     if (!token) {
@@ -104,6 +110,39 @@ export default function MealPlannerSharedWeekPage() {
     return [...DAY_ORDER.filter((day) => existingDays.has(day)), ...extraDays];
   }, [data?.plannedMeals]);
 
+  const handleCopyWeek = async () => {
+    if (!token || !user || isCopying) return;
+
+    const confirmed = window.confirm('Copy this shared week into your planner for your current week? This will replace your existing meals for that week.');
+    if (!confirmed) return;
+
+    try {
+      setIsCopying(true);
+      const response = await fetch(`/api/meal-planner/week/shared/${encodeURIComponent(token)}/copy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ replaceExisting: true }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || `Failed to copy shared week (HTTP ${response.status}).`);
+      }
+
+      const summary = `Copied ${payload?.copiedEntriesCount ?? 0} meals to your week of ${payload?.targetWeekStart ?? 'this week'}.`;
+      setCopySummary(summary);
+      toast({ title: 'Week copied to your planner', description: summary });
+    } catch (copyError: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Unable to copy week',
+        description: copyError?.message || 'Please try again.',
+      });
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
   if (loading) {
     return <div className="p-6 text-sm text-muted-foreground">Loading shared meal planner week…</div>;
   }
@@ -140,11 +179,32 @@ export default function MealPlannerSharedWeekPage() {
         <CardContent className="flex flex-wrap gap-2">
           <Badge variant="secondary">Read-only public view</Badge>
           <Badge variant="outline">Token shared</Badge>
+          {user ? (
+            <Button size="sm" onClick={handleCopyWeek} disabled={isCopying}>
+              {isCopying ? 'Copying…' : 'Copy This Week to My Planner'}
+            </Button>
+          ) : (
+            <Button asChild size="sm">
+              <a href="/auth/login">Sign in to copy this week</a>
+            </Button>
+          )}
           <Button asChild size="sm" variant="outline" className="ml-auto">
             <a href="/meal-planner/shared">Browse more public weeks</a>
           </Button>
         </CardContent>
       </Card>
+
+      {copySummary && (
+        <Card>
+          <CardContent className="p-4 text-sm">
+            <div className="font-medium">Saved to your planner</div>
+            <div className="text-muted-foreground">{copySummary}</div>
+            <Button asChild size="sm" className="mt-3">
+              <a href="/nutrition">Open My Planner</a>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-3">
         <Card>
