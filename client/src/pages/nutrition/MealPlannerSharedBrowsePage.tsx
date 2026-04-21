@@ -5,6 +5,10 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, ShoppingCart, ShieldCheck, Activity, Globe, ArrowRight } from 'lucide-react';
 
+type BrowseReadinessFilter = 'all' | 'not-started' | 'in-progress' | 'week-ready';
+type BrowseCoverageFilter = 'all' | 'low' | 'medium' | 'high';
+type BrowseSort = 'newest' | 'readiness' | 'coverage';
+
 type SharedBrowseItem = {
   token: string;
   weekAnchor: string;
@@ -36,6 +40,24 @@ type SharedBrowseItem = {
 };
 
 export default function MealPlannerSharedBrowsePage() {
+  const [readinessFilter, setReadinessFilter] = useState<BrowseReadinessFilter>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const value = params.get('readiness');
+    if (value === 'not-started' || value === 'in-progress' || value === 'week-ready') return value;
+    return 'all';
+  });
+  const [coverageFilter, setCoverageFilter] = useState<BrowseCoverageFilter>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const value = params.get('coverage');
+    if (value === 'low' || value === 'medium' || value === 'high') return value;
+    return 'all';
+  });
+  const [sortBy, setSortBy] = useState<BrowseSort>(() => {
+    const params = new URLSearchParams(window.location.search);
+    const value = params.get('sort');
+    if (value === 'readiness' || value === 'coverage') return value;
+    return 'newest';
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<SharedBrowseItem[]>([]);
@@ -47,7 +69,16 @@ export default function MealPlannerSharedBrowsePage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await fetch('/api/meal-planner/week/shared');
+        const params = new URLSearchParams();
+        if (readinessFilter !== 'all') params.set('readiness', readinessFilter);
+        if (coverageFilter !== 'all') params.set('coverage', coverageFilter);
+        if (sortBy !== 'newest') params.set('sort', sortBy);
+
+        const query = params.toString();
+        const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+        window.history.replaceState({}, '', nextUrl);
+
+        const response = await fetch(`/api/meal-planner/week/shared${query ? `?${query}` : ''}`);
         if (!response.ok) {
           throw new Error(`Failed to load public shared weeks (HTTP ${response.status}).`);
         }
@@ -73,7 +104,7 @@ export default function MealPlannerSharedBrowsePage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [readinessFilter, coverageFilter, sortBy]);
 
   if (loading) {
     return <div className="p-6 text-sm text-muted-foreground">Loading public shared meal-planner weeks…</div>;
@@ -94,6 +125,55 @@ export default function MealPlannerSharedBrowsePage() {
         <CardContent className="flex flex-wrap gap-2">
           <Badge variant="secondary">Read-only public snapshots</Badge>
           <Badge variant="outline">Recent public shares</Badge>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Browse relevance controls</CardTitle>
+          <CardDescription>Filter by readiness + coverage and sort for inspiration quality.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 md:grid-cols-3">
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">Readiness</span>
+            <select
+              value={readinessFilter}
+              onChange={(event) => setReadinessFilter(event.target.value as BrowseReadinessFilter)}
+              className="h-9 rounded-md border bg-background px-2"
+            >
+              <option value="all">All readiness</option>
+              <option value="week-ready">Week ready</option>
+              <option value="in-progress">In progress</option>
+              <option value="not-started">Not started</option>
+            </select>
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">Planned coverage</span>
+            <select
+              value={coverageFilter}
+              onChange={(event) => setCoverageFilter(event.target.value as BrowseCoverageFilter)}
+              className="h-9 rounded-md border bg-background px-2"
+            >
+              <option value="all">All coverage</option>
+              <option value="high">High (70%+ planned)</option>
+              <option value="medium">Medium (40-69%)</option>
+              <option value="low">Low (&lt;40%)</option>
+            </select>
+          </label>
+
+          <label className="grid gap-1 text-sm">
+            <span className="font-medium">Sort</span>
+            <select
+              value={sortBy}
+              onChange={(event) => setSortBy(event.target.value as BrowseSort)}
+              className="h-9 rounded-md border bg-background px-2"
+            >
+              <option value="newest">Newest shared</option>
+              <option value="readiness">Best readiness</option>
+              <option value="coverage">Most planned coverage</option>
+            </select>
+          </label>
         </CardContent>
       </Card>
 
