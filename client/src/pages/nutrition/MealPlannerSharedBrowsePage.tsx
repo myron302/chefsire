@@ -4,6 +4,8 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, ShoppingCart, ShieldCheck, Activity, Globe, ArrowRight } from 'lucide-react';
+import { useUser } from '@/contexts/UserContext';
+import { useToast } from '@/hooks/use-toast';
 
 type BrowseReadinessFilter = 'all' | 'not-started' | 'in-progress' | 'week-ready';
 type BrowseCoverageFilter = 'all' | 'low' | 'medium' | 'high';
@@ -48,6 +50,8 @@ type SharedBrowseStats = {
 };
 
 export default function MealPlannerSharedBrowsePage() {
+  const { user } = useUser();
+  const { toast } = useToast();
   const resolvePresetConfig = (preset: BrowsePreset) => {
     if (preset === 'ready-high-coverage') {
       return { readiness: 'week-ready' as BrowseReadinessFilter, coverage: 'high' as BrowseCoverageFilter, sort: 'readiness' as BrowseSort };
@@ -100,6 +104,7 @@ export default function MealPlannerSharedBrowsePage() {
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<SharedBrowseItem[]>([]);
   const [stats, setStats] = useState<SharedBrowseStats | null>(null);
+  const [copyingToken, setCopyingToken] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -175,6 +180,40 @@ export default function MealPlannerSharedBrowsePage() {
   const handleSortChange = (value: BrowseSort) => {
     setSortBy(value);
     setActivePreset(null);
+  };
+
+  const handleCopyToPlanner = async (token: string) => {
+    if (!user || copyingToken) return;
+
+    const confirmed = window.confirm('Copy this shared plan into your planner for your current week? This will replace your existing meals for that week.');
+    if (!confirmed) return;
+
+    try {
+      setCopyingToken(token);
+      const response = await fetch(`/api/meal-planner/week/shared/${encodeURIComponent(token)}/copy`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ replaceExisting: true }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || `Failed to copy shared week (HTTP ${response.status}).`);
+      }
+
+      toast({
+        title: 'Plan copied to your planner',
+        description: `Copied ${payload?.copiedEntriesCount ?? 0} meals to your week of ${payload?.targetWeekStart ?? 'this week'}.`,
+      });
+    } catch (copyError: any) {
+      toast({
+        variant: 'destructive',
+        title: 'Unable to copy plan',
+        description: copyError?.message || 'Please try again.',
+      });
+    } finally {
+      setCopyingToken(null);
+    }
   };
 
   if (loading) {
@@ -355,11 +394,27 @@ export default function MealPlannerSharedBrowsePage() {
                     <CalendarDays className="h-3.5 w-3.5" />
                     {item.sharedAt ? `Updated ${new Date(item.sharedAt).toLocaleDateString()}` : 'Recently shared'}
                   </div>
-                  <Button asChild size="sm" variant="outline">
-                    <a href={`/meal-planner/shared/${item.token}`}>
-                      View week <ArrowRight className="ml-2 h-4 w-4" />
-                    </a>
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    {user ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => handleCopyToPlanner(item.token)}
+                        disabled={Boolean(copyingToken)}
+                      >
+                        {copyingToken === item.token ? 'Copying…' : 'Use This Plan'}
+                      </Button>
+                    ) : (
+                      <Button asChild size="sm">
+                        <a href="/auth/login">Sign in to use</a>
+                      </Button>
+                    )}
+                    <Button asChild size="sm" variant="outline">
+                      <a href={`/meal-planner/shared/${item.token}`}>
+                        View week <ArrowRight className="ml-2 h-4 w-4" />
+                      </a>
+                    </Button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
