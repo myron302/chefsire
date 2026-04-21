@@ -529,9 +529,18 @@ router.get("/week/shared", async (req: Request, res: Response) => {
     }
 
     items = items.slice(0, limit);
+    const stats = {
+      totalVisiblePlans: items.length,
+      readyPlans: items.filter((item) => item.readiness.status === "week-ready").length,
+      highCoveragePlans: items.filter((item) => item.readiness.plannedCoveragePct >= 70).length,
+      avgPlannedMealsPerPlan: items.length > 0
+        ? Math.round(items.reduce((sum, item) => sum + item.nutritionHighlights.plannedMealsCount, 0) / items.length)
+        : 0,
+    };
 
     res.json({
       items,
+      stats,
       filters: {
         readiness: readinessFilter,
         coverage: coverageFilter,
