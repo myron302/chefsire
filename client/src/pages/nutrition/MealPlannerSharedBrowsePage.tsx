@@ -8,6 +8,7 @@ import { CalendarDays, ShoppingCart, ShieldCheck, Activity, Globe, ArrowRight } 
 type BrowseReadinessFilter = 'all' | 'not-started' | 'in-progress' | 'week-ready';
 type BrowseCoverageFilter = 'all' | 'low' | 'medium' | 'high';
 type BrowseSort = 'newest' | 'readiness' | 'coverage';
+type BrowsePreset = 'ready-high-coverage' | 'newest-ideas' | 'in-progress' | 'balanced-browse';
 
 type SharedBrowseItem = {
   token: string;
@@ -39,28 +40,66 @@ type SharedBrowseItem = {
   };
 };
 
+type SharedBrowseStats = {
+  totalVisiblePlans: number;
+  readyPlans: number;
+  highCoveragePlans: number;
+  avgPlannedMealsPerPlan: number;
+};
+
 export default function MealPlannerSharedBrowsePage() {
+  const resolvePresetConfig = (preset: BrowsePreset) => {
+    if (preset === 'ready-high-coverage') {
+      return { readiness: 'week-ready' as BrowseReadinessFilter, coverage: 'high' as BrowseCoverageFilter, sort: 'readiness' as BrowseSort };
+    }
+    if (preset === 'newest-ideas') {
+      return { readiness: 'all' as BrowseReadinessFilter, coverage: 'all' as BrowseCoverageFilter, sort: 'newest' as BrowseSort };
+    }
+    if (preset === 'in-progress') {
+      return { readiness: 'in-progress' as BrowseReadinessFilter, coverage: 'all' as BrowseCoverageFilter, sort: 'newest' as BrowseSort };
+    }
+    return { readiness: 'all' as BrowseReadinessFilter, coverage: 'medium' as BrowseCoverageFilter, sort: 'coverage' as BrowseSort };
+  };
+
+  const parsePreset = (value: string | null): BrowsePreset | null => {
+    if (value === 'ready-high-coverage' || value === 'newest-ideas' || value === 'in-progress' || value === 'balanced-browse') {
+      return value;
+    }
+    return null;
+  };
+
   const [readinessFilter, setReadinessFilter] = useState<BrowseReadinessFilter>(() => {
     const params = new URLSearchParams(window.location.search);
+    const preset = parsePreset(params.get('preset'));
+    if (preset) return resolvePresetConfig(preset).readiness;
     const value = params.get('readiness');
     if (value === 'not-started' || value === 'in-progress' || value === 'week-ready') return value;
     return 'all';
   });
   const [coverageFilter, setCoverageFilter] = useState<BrowseCoverageFilter>(() => {
     const params = new URLSearchParams(window.location.search);
+    const preset = parsePreset(params.get('preset'));
+    if (preset) return resolvePresetConfig(preset).coverage;
     const value = params.get('coverage');
     if (value === 'low' || value === 'medium' || value === 'high') return value;
     return 'all';
   });
   const [sortBy, setSortBy] = useState<BrowseSort>(() => {
     const params = new URLSearchParams(window.location.search);
+    const preset = parsePreset(params.get('preset'));
+    if (preset) return resolvePresetConfig(preset).sort;
     const value = params.get('sort');
     if (value === 'readiness' || value === 'coverage') return value;
     return 'newest';
   });
+  const [activePreset, setActivePreset] = useState<BrowsePreset | null>(() => {
+    const params = new URLSearchParams(window.location.search);
+    return parsePreset(params.get('preset'));
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<SharedBrowseItem[]>([]);
+  const [stats, setStats] = useState<SharedBrowseStats | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +112,7 @@ export default function MealPlannerSharedBrowsePage() {
         if (readinessFilter !== 'all') params.set('readiness', readinessFilter);
         if (coverageFilter !== 'all') params.set('coverage', coverageFilter);
         if (sortBy !== 'newest') params.set('sort', sortBy);
+        if (activePreset) params.set('preset', activePreset);
 
         const query = params.toString();
         const nextUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
@@ -86,11 +126,13 @@ export default function MealPlannerSharedBrowsePage() {
         const payload = await response.json();
         if (!cancelled) {
           setItems(Array.isArray(payload?.items) ? payload.items : []);
+          setStats(payload?.stats ?? null);
         }
       } catch (loadError: any) {
         if (!cancelled) {
           setError(loadError?.message || 'Unable to load public shared weeks.');
           setItems([]);
+          setStats(null);
         }
       } finally {
         if (!cancelled) {
@@ -104,7 +146,36 @@ export default function MealPlannerSharedBrowsePage() {
     return () => {
       cancelled = true;
     };
-  }, [readinessFilter, coverageFilter, sortBy]);
+  }, [readinessFilter, coverageFilter, sortBy, activePreset]);
+
+  const readyPlansCount = stats?.readyPlans ?? items.filter((item) => item.readiness.status === 'week-ready').length;
+  const highCoverageCount = stats?.highCoveragePlans ?? items.filter((item) => item.readiness.plannedCoveragePct >= 70).length;
+  const avgPlannedMealsPerPlan = stats?.avgPlannedMealsPerPlan ?? (items.length > 0
+    ? Math.round(items.reduce((sum, item) => sum + item.nutritionHighlights.plannedMealsCount, 0) / items.length)
+    : 0);
+
+  const applyPreset = (preset: BrowsePreset) => {
+    const config = resolvePresetConfig(preset);
+    setReadinessFilter(config.readiness);
+    setCoverageFilter(config.coverage);
+    setSortBy(config.sort);
+    setActivePreset(preset);
+  };
+
+  const handleReadinessChange = (value: BrowseReadinessFilter) => {
+    setReadinessFilter(value);
+    setActivePreset(null);
+  };
+
+  const handleCoverageChange = (value: BrowseCoverageFilter) => {
+    setCoverageFilter(value);
+    setActivePreset(null);
+  };
+
+  const handleSortChange = (value: BrowseSort) => {
+    setSortBy(value);
+    setActivePreset(null);
+  };
 
   if (loading) {
     return <div className="p-6 text-sm text-muted-foreground">Loading public shared meal-planner weeks…</div>;
@@ -133,12 +204,26 @@ export default function MealPlannerSharedBrowsePage() {
           <CardTitle className="text-base">Browse relevance controls</CardTitle>
           <CardDescription>Filter by readiness + coverage and sort for inspiration quality.</CardDescription>
         </CardHeader>
+        <CardContent className="flex flex-wrap gap-2 border-b pb-3">
+          <Button type="button" size="sm" variant={activePreset === 'ready-high-coverage' ? 'default' : 'outline'} onClick={() => applyPreset('ready-high-coverage')}>
+            Ready + High coverage
+          </Button>
+          <Button type="button" size="sm" variant={activePreset === 'newest-ideas' ? 'default' : 'outline'} onClick={() => applyPreset('newest-ideas')}>
+            Newest ideas
+          </Button>
+          <Button type="button" size="sm" variant={activePreset === 'in-progress' ? 'default' : 'outline'} onClick={() => applyPreset('in-progress')}>
+            In progress
+          </Button>
+          <Button type="button" size="sm" variant={activePreset === 'balanced-browse' ? 'default' : 'outline'} onClick={() => applyPreset('balanced-browse')}>
+            Balanced browse
+          </Button>
+        </CardContent>
         <CardContent className="grid gap-3 md:grid-cols-3">
           <label className="grid gap-1 text-sm">
             <span className="font-medium">Readiness</span>
             <select
               value={readinessFilter}
-              onChange={(event) => setReadinessFilter(event.target.value as BrowseReadinessFilter)}
+              onChange={(event) => handleReadinessChange(event.target.value as BrowseReadinessFilter)}
               className="h-9 rounded-md border bg-background px-2"
             >
               <option value="all">All readiness</option>
@@ -152,7 +237,7 @@ export default function MealPlannerSharedBrowsePage() {
             <span className="font-medium">Planned coverage</span>
             <select
               value={coverageFilter}
-              onChange={(event) => setCoverageFilter(event.target.value as BrowseCoverageFilter)}
+              onChange={(event) => handleCoverageChange(event.target.value as BrowseCoverageFilter)}
               className="h-9 rounded-md border bg-background px-2"
             >
               <option value="all">All coverage</option>
@@ -166,7 +251,7 @@ export default function MealPlannerSharedBrowsePage() {
             <span className="font-medium">Sort</span>
             <select
               value={sortBy}
-              onChange={(event) => setSortBy(event.target.value as BrowseSort)}
+              onChange={(event) => handleSortChange(event.target.value as BrowseSort)}
               className="h-9 rounded-md border bg-background px-2"
             >
               <option value="newest">Newest shared</option>
@@ -183,6 +268,29 @@ export default function MealPlannerSharedBrowsePage() {
             <CardTitle>Unable to load public shares</CardTitle>
             <CardDescription>{error}</CardDescription>
           </CardHeader>
+        </Card>
+      )}
+
+      {!error && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Quick browse stats</CardTitle>
+            <CardDescription>At-a-glance summary for the currently visible public plans.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-2 sm:grid-cols-3">
+            <Badge variant="secondary" className="justify-center py-2 text-sm">
+              {stats?.totalVisiblePlans ?? items.length} visible plans
+            </Badge>
+            <Badge variant="outline" className="justify-center py-2 text-sm">
+              {readyPlansCount} week-ready plans
+            </Badge>
+            <Badge variant="outline" className="justify-center py-2 text-sm">
+              {highCoverageCount} high-coverage plans
+            </Badge>
+            <Badge variant="outline" className="justify-center py-2 text-sm sm:col-span-3">
+              Avg planned meals per plan: {avgPlannedMealsPerPlan}
+            </Badge>
+          </CardContent>
         </Card>
       )}
 
