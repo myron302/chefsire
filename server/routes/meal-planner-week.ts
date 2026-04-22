@@ -94,6 +94,48 @@ function buildCopyEntrySignature(entry: {
   return `${dateIso}|${entry.mealType}|${recipeSig}|${customSig}`;
 }
 
+type SharedWeekSourceEntry = {
+  date: Date | string;
+  mealType: string;
+  servings: number | null;
+  recipeId: string | null;
+  customName: string | null;
+  customCalories: number | null;
+  customProtein: number | null;
+  customCarbs: number | null;
+  customFat: number | null;
+  source: string | null;
+};
+
+function mapSharedEntriesToTargetWeek(args: {
+  sourceEntries: SharedWeekSourceEntry[];
+  sourceWeekStart: Date;
+  targetWeekStart: Date;
+  targetPlanId?: string | null;
+}) {
+  const { sourceEntries, sourceWeekStart, targetWeekStart, targetPlanId = null } = args;
+  return sourceEntries.map((entry) => {
+    const sourceDate = startOfDay(new Date(entry.date));
+    const dayOffset = Math.max(
+      0,
+      Math.min(6, Math.round((sourceDate.getTime() - startOfDay(sourceWeekStart).getTime()) / (1000 * 60 * 60 * 24)))
+    );
+    return {
+      mealPlanId: targetPlanId || "",
+      recipeId: entry.recipeId || null,
+      date: startOfDay(addDays(targetWeekStart, dayOffset)),
+      mealType: entry.mealType,
+      servings: Number(entry.servings || 1),
+      customName: entry.customName || null,
+      customCalories: entry.customCalories ?? null,
+      customProtein: entry.customProtein ?? null,
+      customCarbs: entry.customCarbs ?? null,
+      customFat: entry.customFat ?? null,
+      source: entry.source || "shared-copy",
+    };
+  });
+}
+
 router.use(async (_req: Request, res: Response, next: NextFunction) => {
   try {
     await ensureMealPlannerWeekSchema();
@@ -756,7 +798,7 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       return res.status(404).json({ message: "Shared plan data is no longer available." });
     }
 
-    const sourceEntries = await db
+    const sourceEntries: SharedWeekSourceEntry[] = await db
       .select({
         date: mealPlanEntries.date,
         mealType: mealPlanEntries.mealType,
@@ -815,25 +857,11 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       targetPlanId = createdPlan.id;
     }
 
-    const mappedEntries = sourceEntries.map((entry) => {
-      const sourceDate = startOfDay(new Date(entry.date));
-      const dayOffset = Math.max(
-        0,
-        Math.min(6, Math.round((sourceDate.getTime() - startOfDay(sourceWeekStart).getTime()) / (1000 * 60 * 60 * 24)))
-      );
-      return {
-        mealPlanId: targetPlanId!,
-        recipeId: entry.recipeId || null,
-        date: startOfDay(addDays(targetWeekStart, dayOffset)),
-        mealType: entry.mealType,
-        servings: Number(entry.servings || 1),
-        customName: entry.customName || null,
-        customCalories: entry.customCalories ?? null,
-        customProtein: entry.customProtein ?? null,
-        customCarbs: entry.customCarbs ?? null,
-        customFat: entry.customFat ?? null,
-        source: entry.source || "shared-copy",
-      };
+    const mappedEntries = mapSharedEntriesToTargetWeek({
+      sourceEntries,
+      sourceWeekStart,
+      targetWeekStart,
+      targetPlanId,
     });
 
     const existingTargetEntries = replaceExisting || !targetPlanId
@@ -900,6 +928,159 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
   } catch (error) {
     console.error("Error copying shared meal planner week:", error);
     res.status(500).json({ message: "Failed to copy shared week" });
+  }
+});
+
+// ============================================================
+// GET /api/meal-planner/week/shared/:token/copy-impact
+// Lightweight pre-copy summary for selected target week + merge mode.
+// ============================================================
+router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const token = String(req.params?.token || "").trim();
+    if (!SHARED_WEEK_TOKEN_PATTERN.test(token)) {
+      return res.status(400).json({ message: "Invalid share token" });
+    }
+
+    const targetDateRaw = String(req.query?.targetDate || req.query?.targetWeekStart || "").trim();
+    const copyMode = parseSharedWeekCopyMode(req.query?.mergeMode);
+    const parsedTargetDate = targetDateRaw ? new Date(targetDateRaw) : new Date();
+    if (isNaN(parsedTargetDate.getTime())) {
+      return res.status(400).json({ message: "Invalid target date" });
+    }
+
+    const shareResult = await db.execute(sql`
+      SELECT user_id, week_anchor, visibility
+      FROM meal_plan_week_shares
+      WHERE public_share_token = ${token}
+      LIMIT 1
+    `);
+    const shareRow = (shareResult as any).rows?.[0];
+    if (!shareRow || shareRow.visibility !== "public") {
+      return res.status(404).json({ message: "Shared week not found" });
+    }
+    if (shareRow.user_id === userId) {
+      return res.status(400).json({ message: "This is already your week plan." });
+    }
+
+    const sourceWeekStart = startOfWeekMonday(new Date(shareRow.week_anchor));
+    const sourceWeekEnd = endOfDay(addDays(sourceWeekStart, 6));
+    const [sourcePlan] = await db
+      .select()
+      .from(mealPlans)
+      .where(
+        and(
+          eq(mealPlans.userId, shareRow.user_id),
+          lte(mealPlans.startDate, sourceWeekEnd),
+          gte(mealPlans.endDate, sourceWeekStart),
+          eq(mealPlans.isTemplate, false)
+        )
+      )
+      .orderBy(desc(mealPlans.createdAt))
+      .limit(1);
+
+    if (!sourcePlan) {
+      return res.status(404).json({ message: "Shared plan data is no longer available." });
+    }
+
+    const sourceEntries: SharedWeekSourceEntry[] = await db
+      .select({
+        date: mealPlanEntries.date,
+        mealType: mealPlanEntries.mealType,
+        servings: mealPlanEntries.servings,
+        recipeId: mealPlanEntries.recipeId,
+        customName: mealPlanEntries.customName,
+        customCalories: mealPlanEntries.customCalories,
+        customProtein: mealPlanEntries.customProtein,
+        customCarbs: mealPlanEntries.customCarbs,
+        customFat: mealPlanEntries.customFat,
+        source: mealPlanEntries.source,
+      })
+      .from(mealPlanEntries)
+      .where(eq(mealPlanEntries.mealPlanId, sourcePlan.id))
+      .orderBy(mealPlanEntries.date);
+
+    if (!sourceEntries.length) {
+      return res.status(400).json({ message: "This shared week has no meals to copy yet." });
+    }
+
+    const targetWeekStart = startOfWeekMonday(parsedTargetDate);
+    const targetWeekEnd = endOfDay(addDays(targetWeekStart, 6));
+    const targetPlans = await db
+      .select({ id: mealPlans.id })
+      .from(mealPlans)
+      .where(
+        and(
+          eq(mealPlans.userId, userId),
+          lte(mealPlans.startDate, targetWeekEnd),
+          gte(mealPlans.endDate, targetWeekStart),
+          eq(mealPlans.isTemplate, false)
+        )
+      );
+    const targetPlanIds = targetPlans.map((plan) => plan.id);
+
+    const existingTargetEntries = targetPlanIds.length
+      ? await db
+          .select({
+            date: mealPlanEntries.date,
+            mealType: mealPlanEntries.mealType,
+            recipeId: mealPlanEntries.recipeId,
+            customName: mealPlanEntries.customName,
+            customCalories: mealPlanEntries.customCalories,
+            customProtein: mealPlanEntries.customProtein,
+            customCarbs: mealPlanEntries.customCarbs,
+            customFat: mealPlanEntries.customFat,
+          })
+          .from(mealPlanEntries)
+          .where(inArray(mealPlanEntries.mealPlanId, targetPlanIds))
+      : [];
+
+    const mappedEntries = mapSharedEntriesToTargetWeek({
+      sourceEntries,
+      sourceWeekStart,
+      targetWeekStart,
+    });
+    const sourceEntriesCount = mappedEntries.length;
+    const targetWeekMealsCount = existingTargetEntries.length;
+    const willReplaceExisting = copyMode === "replace";
+
+    let estimatedAddedCount = sourceEntriesCount;
+    let estimatedSkippedDuplicatesCount = 0;
+    if (copyMode === "skip-duplicates") {
+      const existingSignatures = new Set(existingTargetEntries.map((entry) => buildCopyEntrySignature(entry)));
+      let additions = 0;
+      for (const entry of mappedEntries) {
+        const signature = buildCopyEntrySignature(entry);
+        if (existingSignatures.has(signature)) continue;
+        existingSignatures.add(signature);
+        additions += 1;
+      }
+      estimatedAddedCount = additions;
+      estimatedSkippedDuplicatesCount = Math.max(0, sourceEntriesCount - additions);
+    }
+
+    const impactSummary = copyMode === "replace"
+      ? `Target week has ${targetWeekMealsCount} meals. Copy will replace that week with ${sourceEntriesCount} meals from this shared plan.`
+      : copyMode === "append"
+        ? `Target week has ${targetWeekMealsCount} meals. Copy will add ${sourceEntriesCount} meals.`
+        : `Target week has ${targetWeekMealsCount} meals. Copy will add about ${estimatedAddedCount} meals and skip about ${estimatedSkippedDuplicatesCount} duplicates.`;
+
+    res.json({
+      ok: true,
+      mergeMode: copyMode,
+      targetWeekStart: fmtISODate(targetWeekStart),
+      targetWeekEnd: fmtISODate(targetWeekEnd),
+      targetWeekMealsCount,
+      sourceEntriesCount,
+      estimatedAddedCount,
+      estimatedSkippedDuplicatesCount,
+      willReplaceExisting,
+      impactSummary,
+    });
+  } catch (error) {
+    console.error("Error building shared week copy impact:", error);
+    res.status(500).json({ message: "Failed to build copy impact summary" });
   }
 });
 

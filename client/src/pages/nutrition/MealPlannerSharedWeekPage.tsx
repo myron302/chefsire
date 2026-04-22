@@ -48,6 +48,16 @@ type SharedWeekPayload = {
 
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 type CopyMergeMode = 'replace' | 'append' | 'skip-duplicates';
+type CopyImpactSummary = {
+  mergeMode: CopyMergeMode;
+  targetWeekStart: string;
+  targetWeekMealsCount: number;
+  sourceEntriesCount: number;
+  estimatedAddedCount: number;
+  estimatedSkippedDuplicatesCount: number;
+  willReplaceExisting: boolean;
+  impactSummary: string;
+};
 
 function getWeekStartIso(date: Date) {
   const d = new Date(date);
@@ -77,6 +87,38 @@ export default function MealPlannerSharedWeekPage() {
   const [copySummary, setCopySummary] = useState<string | null>(null);
   const [targetWeekStart, setTargetWeekStart] = useState(() => getWeekStartIso(new Date()));
   const [mergeMode, setMergeMode] = useState<CopyMergeMode>('replace');
+  const [impactSummary, setImpactSummary] = useState<CopyImpactSummary | null>(null);
+  const [impactLoading, setImpactLoading] = useState(false);
+
+  const fetchCopyImpactSummary = async (opts?: { silent?: boolean; targetWeek?: string; mode?: CopyMergeMode }) => {
+    if (!token || !user) return null;
+    const nextTargetWeek = opts?.targetWeek ?? targetWeekStart;
+    const nextMode = opts?.mode ?? mergeMode;
+
+    try {
+      if (!opts?.silent) setImpactLoading(true);
+      const params = new URLSearchParams({
+        targetWeekStart: nextTargetWeek,
+        mergeMode: nextMode,
+      });
+      const response = await fetch(`/api/meal-planner/week/shared/${encodeURIComponent(token)}/copy-impact?${params.toString()}`, {
+        credentials: 'include',
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || `Failed to load copy impact (HTTP ${response.status}).`);
+      }
+      setImpactSummary(payload);
+      return payload as CopyImpactSummary;
+    } catch {
+      if (!opts?.silent) {
+        setImpactSummary(null);
+      }
+      return null;
+    } finally {
+      if (!opts?.silent) setImpactLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!token) {
@@ -121,6 +163,14 @@ export default function MealPlannerSharedWeekPage() {
     };
   }, [token]);
 
+  useEffect(() => {
+    if (!user || !token) {
+      setImpactSummary(null);
+      return;
+    }
+    fetchCopyImpactSummary();
+  }, [user, token, targetWeekStart, mergeMode]);
+
   const orderedDays = useMemo(() => {
     if (!data?.plannedMeals) return DAY_ORDER;
     const existingDays = new Set(Object.keys(data.plannedMeals));
@@ -131,7 +181,9 @@ export default function MealPlannerSharedWeekPage() {
   const handleCopyWeek = async () => {
     if (!token || !user || isCopying) return;
 
-    const confirmed = window.confirm(`Copy this shared week into your planner for the week of ${targetWeekStart}? ${modePreview(mergeMode)}`);
+    const preview = await fetchCopyImpactSummary({ silent: true });
+    const previewText = preview?.impactSummary || modePreview(mergeMode);
+    const confirmed = window.confirm(`Copy this shared week into your planner for the week of ${targetWeekStart}? ${previewText}`);
     if (!confirmed) return;
 
     try {
@@ -243,6 +295,20 @@ export default function MealPlannerSharedWeekPage() {
             </label>
             <div className="text-sm text-muted-foreground md:col-span-2">
               {modePreview(mergeMode)}
+            </div>
+            <div className="rounded-md border bg-muted/40 p-3 text-sm md:col-span-2">
+              <div className="font-medium">Pre-copy impact</div>
+              <div className="mt-1 text-muted-foreground">
+                {impactLoading
+                  ? 'Calculating impact preview…'
+                  : impactSummary?.impactSummary || 'Impact preview unavailable right now. Copy still works with your selected mode.'}
+              </div>
+              {!impactLoading && impactSummary && (
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Target week meals: {impactSummary.targetWeekMealsCount} • Shared meals: {impactSummary.sourceEntriesCount} • Estimated add: {impactSummary.estimatedAddedCount}
+                  {impactSummary.estimatedSkippedDuplicatesCount > 0 ? ` • Estimated skip: ${impactSummary.estimatedSkippedDuplicatesCount}` : ''}
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
