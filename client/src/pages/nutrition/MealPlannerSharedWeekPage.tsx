@@ -57,6 +57,18 @@ type CopyImpactSummary = {
   estimatedSkippedDuplicatesCount: number;
   willReplaceExisting: boolean;
   impactSummary: string;
+  affectedSlots?: Array<{
+    day: string;
+    mealType: string;
+    label: string;
+    addCount: number;
+    skipDuplicateCount: number;
+    replaceCount: number;
+    existingCount: number;
+    incomingCount: number;
+    summary: string;
+  }>;
+  affectedSlotsPreviewCount?: number;
 };
 
 function getWeekStartIso(date: Date) {
@@ -304,10 +316,31 @@ export default function MealPlannerSharedWeekPage() {
                   : impactSummary?.impactSummary || 'Impact preview unavailable right now. Copy still works with your selected mode.'}
               </div>
               {!impactLoading && impactSummary && (
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Target week meals: {impactSummary.targetWeekMealsCount} • Shared meals: {impactSummary.sourceEntriesCount} • Estimated add: {impactSummary.estimatedAddedCount}
-                  {impactSummary.estimatedSkippedDuplicatesCount > 0 ? ` • Estimated skip: ${impactSummary.estimatedSkippedDuplicatesCount}` : ''}
-                </div>
+                <>
+                  <div className="mt-2 text-xs text-muted-foreground">
+                    Target week meals: {impactSummary.targetWeekMealsCount} • Shared meals: {impactSummary.sourceEntriesCount} • Estimated add: {impactSummary.estimatedAddedCount}
+                    {impactSummary.estimatedSkippedDuplicatesCount > 0 ? ` • Estimated skip: ${impactSummary.estimatedSkippedDuplicatesCount}` : ''}
+                  </div>
+                  {Array.isArray(impactSummary.affectedSlots) && impactSummary.affectedSlots.length > 0 && (
+                    <div className="mt-3">
+                      <div className="text-xs font-medium text-foreground">Affected slots (mini diff)</div>
+                      <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                        {impactSummary.affectedSlots
+                          .slice(0, impactSummary.affectedSlotsPreviewCount || 12)
+                          .map((slot) => (
+                            <li key={`${slot.label}-${slot.summary}`}>
+                              {slot.label}: {slot.summary}
+                            </li>
+                          ))}
+                      </ul>
+                      {(impactSummary.affectedSlotsPreviewCount || 12) < impactSummary.affectedSlots.length && (
+                        <div className="mt-1 text-[11px] text-muted-foreground">
+                          +{impactSummary.affectedSlots.length - (impactSummary.affectedSlotsPreviewCount || 12)} more affected slots
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </CardContent>
