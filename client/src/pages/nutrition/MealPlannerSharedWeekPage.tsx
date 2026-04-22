@@ -47,6 +47,22 @@ type SharedWeekPayload = {
 };
 
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+type CopyMergeMode = 'replace' | 'append' | 'skip-duplicates';
+
+function getWeekStartIso(date: Date) {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d.toISOString().split('T')[0];
+}
+
+function modePreview(mode: CopyMergeMode) {
+  if (mode === 'append') return 'Append mode keeps your current meals and adds all copied meals into this week.';
+  if (mode === 'skip-duplicates') return 'Merge safely mode keeps your current meals and skips copied meals that look like duplicates in the same day + meal slot.';
+  return 'Replace mode clears existing meals in the target week, then copies this shared week.';
+}
 
 export default function MealPlannerSharedWeekPage() {
   const { user } = useUser();
@@ -59,6 +75,8 @@ export default function MealPlannerSharedWeekPage() {
   const [data, setData] = useState<SharedWeekPayload | null>(null);
   const [isCopying, setIsCopying] = useState(false);
   const [copySummary, setCopySummary] = useState<string | null>(null);
+  const [targetWeekStart, setTargetWeekStart] = useState(() => getWeekStartIso(new Date()));
+  const [mergeMode, setMergeMode] = useState<CopyMergeMode>('replace');
 
   useEffect(() => {
     if (!token) {
@@ -113,7 +131,7 @@ export default function MealPlannerSharedWeekPage() {
   const handleCopyWeek = async () => {
     if (!token || !user || isCopying) return;
 
-    const confirmed = window.confirm('Copy this shared week into your planner for your current week? This will replace your existing meals for that week.');
+    const confirmed = window.confirm(`Copy this shared week into your planner for the week of ${targetWeekStart}? ${modePreview(mergeMode)}`);
     if (!confirmed) return;
 
     try {
@@ -122,14 +140,15 @@ export default function MealPlannerSharedWeekPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ replaceExisting: true }),
+        body: JSON.stringify({ targetWeekStart, mergeMode, replaceExisting: mergeMode === 'replace' }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(payload?.message || `Failed to copy shared week (HTTP ${response.status}).`);
       }
 
-      const summary = `Copied ${payload?.copiedEntriesCount ?? 0} meals to your week of ${payload?.targetWeekStart ?? 'this week'}.`;
+      const skipped = Number(payload?.skippedDuplicatesCount || 0);
+      const summary = `Copied ${payload?.copiedEntriesCount ?? 0} meals to your week of ${payload?.targetWeekStart ?? targetWeekStart}${skipped > 0 ? ` (${skipped} duplicates skipped)` : ''}.`;
       setCopySummary(summary);
       toast({ title: 'Week copied to your planner', description: summary });
     } catch (copyError: any) {
@@ -193,6 +212,41 @@ export default function MealPlannerSharedWeekPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {user && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Copy options</CardTitle>
+            <CardDescription>Pick a target week and merge behavior before importing this shared plan.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-sm">
+              <div className="font-medium">Target week (Monday)</div>
+              <input
+                type="date"
+                value={targetWeekStart}
+                onChange={(event) => setTargetWeekStart(event.target.value || getWeekStartIso(new Date()))}
+                className="w-full rounded-md border bg-background px-3 py-2"
+              />
+            </label>
+            <label className="space-y-1 text-sm">
+              <div className="font-medium">Merge mode</div>
+              <select
+                value={mergeMode}
+                onChange={(event) => setMergeMode(event.target.value as CopyMergeMode)}
+                className="w-full rounded-md border bg-background px-3 py-2"
+              >
+                <option value="replace">Replace existing week meals</option>
+                <option value="append">Append copied meals</option>
+                <option value="skip-duplicates">Merge safely (skip duplicates)</option>
+              </select>
+            </label>
+            <div className="text-sm text-muted-foreground md:col-span-2">
+              {modePreview(mergeMode)}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {copySummary && (
         <Card>

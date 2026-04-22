@@ -34,6 +34,7 @@ const PUBLIC_SHARED_WEEKS_LIMIT_MAX = 50;
 type PublicSharedReadinessFilter = PublicWeekSummary["readinessStatus"] | "all";
 type PublicSharedCoverageFilter = "all" | "low" | "medium" | "high";
 type PublicSharedSort = "newest" | "readiness" | "coverage";
+type SharedWeekCopyMode = "replace" | "append" | "skip-duplicates";
 
 function parsePublicSharedReadinessFilter(raw: unknown): PublicSharedReadinessFilter {
   const value = String(raw || "all").trim();
@@ -66,6 +67,31 @@ function readinessSortScore(status: PublicWeekSummary["readinessStatus"]): numbe
   if (status === "week-ready") return 3;
   if (status === "in-progress") return 2;
   return 1;
+}
+
+function parseSharedWeekCopyMode(raw: unknown): SharedWeekCopyMode {
+  const value = String(raw || "").trim();
+  if (value === "append" || value === "skip-duplicates") return value;
+  return "replace";
+}
+
+function buildCopyEntrySignature(entry: {
+  date: Date | string;
+  mealType: string;
+  recipeId?: string | null;
+  customName?: string | null;
+  customCalories?: number | null;
+  customProtein?: number | null;
+  customCarbs?: number | null;
+  customFat?: number | null;
+}) {
+  const dateIso = fmtISODate(startOfDay(new Date(entry.date)));
+  const recipeSig = entry.recipeId ? `recipe:${entry.recipeId}` : "recipe:none";
+  const customName = String(entry.customName || "").trim().toLowerCase();
+  const customSig = customName
+    ? `custom:${customName}:${Number(entry.customCalories || 0)}:${Number(entry.customProtein || 0)}:${Number(entry.customCarbs || 0)}:${Number(entry.customFat || 0)}`
+    : "custom:none";
+  return `${dateIso}|${entry.mealType}|${recipeSig}|${customSig}`;
 }
 
 router.use(async (_req: Request, res: Response, next: NextFunction) => {
@@ -686,8 +712,11 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       return res.status(400).json({ message: "Invalid share token" });
     }
 
-    const targetDateRaw = String(req.body?.targetDate || "").trim();
-    const replaceExisting = req.body?.replaceExisting !== false;
+    const targetDateRaw = String(req.body?.targetDate || req.body?.targetWeekStart || "").trim();
+    const copyMode = parseSharedWeekCopyMode(req.body?.mergeMode);
+    const replaceExisting = copyMode === "replace"
+      ? req.body?.replaceExisting !== false
+      : false;
     const parsedTargetDate = targetDateRaw ? new Date(targetDateRaw) : new Date();
     if (isNaN(parsedTargetDate.getTime())) {
       return res.status(400).json({ message: "Invalid target date" });
@@ -786,7 +815,7 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       targetPlanId = createdPlan.id;
     }
 
-    const entriesToInsert = sourceEntries.map((entry) => {
+    const mappedEntries = sourceEntries.map((entry) => {
       const sourceDate = startOfDay(new Date(entry.date));
       const dayOffset = Math.max(
         0,
@@ -807,7 +836,35 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       };
     });
 
-    await db.insert(mealPlanEntries).values(entriesToInsert);
+    const existingTargetEntries = replaceExisting || !targetPlanId
+      ? []
+      : await db
+          .select({
+            date: mealPlanEntries.date,
+            mealType: mealPlanEntries.mealType,
+            recipeId: mealPlanEntries.recipeId,
+            customName: mealPlanEntries.customName,
+            customCalories: mealPlanEntries.customCalories,
+            customProtein: mealPlanEntries.customProtein,
+            customCarbs: mealPlanEntries.customCarbs,
+            customFat: mealPlanEntries.customFat,
+          })
+          .from(mealPlanEntries)
+          .where(eq(mealPlanEntries.mealPlanId, targetPlanId));
+
+    const existingSignatures = new Set(existingTargetEntries.map((entry) => buildCopyEntrySignature(entry)));
+    const entriesToInsert = copyMode === "skip-duplicates"
+      ? mappedEntries.filter((entry) => {
+          const signature = buildCopyEntrySignature(entry);
+          if (existingSignatures.has(signature)) return false;
+          existingSignatures.add(signature);
+          return true;
+        })
+      : mappedEntries;
+
+    if (entriesToInsert.length > 0) {
+      await db.insert(mealPlanEntries).values(entriesToInsert);
+    }
 
     const copiedEntries = await db
       .select({
@@ -833,6 +890,9 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
     res.json({
       ok: true,
       copiedEntriesCount: entriesToInsert.length,
+      sourceEntriesCount: sourceEntries.length,
+      skippedDuplicatesCount: Math.max(0, mappedEntries.length - entriesToInsert.length),
+      mergeMode: copyMode,
       targetWeekStart: fmtISODate(targetWeekStart),
       targetWeekEnd: fmtISODate(targetWeekEnd),
       weeklyMeals: mapEntriesToWeeklyMeals(copiedEntries),
