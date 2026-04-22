@@ -12,6 +12,16 @@ type BrowseCoverageFilter = 'all' | 'low' | 'medium' | 'high';
 type BrowseSort = 'newest' | 'readiness' | 'coverage';
 type BrowsePreset = 'ready-high-coverage' | 'newest-ideas' | 'in-progress' | 'balanced-browse';
 type CopyMergeMode = 'replace' | 'append' | 'skip-duplicates';
+type CopyImpactSummary = {
+  mergeMode: CopyMergeMode;
+  targetWeekStart: string;
+  targetWeekMealsCount: number;
+  sourceEntriesCount: number;
+  estimatedAddedCount: number;
+  estimatedSkippedDuplicatesCount: number;
+  willReplaceExisting: boolean;
+  impactSummary: string;
+};
 
 type SharedBrowseItem = {
   token: string;
@@ -200,10 +210,32 @@ export default function MealPlannerSharedBrowsePage() {
     setActivePreset(null);
   };
 
+  const fetchCopyImpactSummary = async (token: string) => {
+    if (!user) return null;
+    try {
+      const params = new URLSearchParams({
+        targetWeekStart,
+        mergeMode,
+      });
+      const response = await fetch(`/api/meal-planner/week/shared/${encodeURIComponent(token)}/copy-impact?${params.toString()}`, {
+        credentials: 'include',
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(payload?.message || `Failed to load copy impact (HTTP ${response.status}).`);
+      }
+      return payload as CopyImpactSummary;
+    } catch {
+      return null;
+    }
+  };
+
   const handleCopyToPlanner = async (token: string) => {
     if (!user || copyingToken) return;
 
-    const confirmed = window.confirm(`Copy this shared plan into your planner for the week of ${targetWeekStart}? ${modePreview(mergeMode)}`);
+    const preview = await fetchCopyImpactSummary(token);
+    const previewText = preview?.impactSummary || modePreview(mergeMode);
+    const confirmed = window.confirm(`Copy this shared plan into your planner for the week of ${targetWeekStart}? ${previewText}`);
     if (!confirmed) return;
 
     try {
