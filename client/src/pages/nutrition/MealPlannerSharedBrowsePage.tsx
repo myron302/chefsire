@@ -253,7 +253,7 @@ export default function MealPlannerSharedBrowsePage() {
 
       toast({
         title: 'Plan copied to your planner',
-        description: `Copied ${payload?.copiedEntriesCount ?? 0} meals to your week of ${payload?.targetWeekStart ?? targetWeekStart}${Number(payload?.skippedDuplicatesCount || 0) > 0 ? ` (${payload?.skippedDuplicatesCount} duplicates skipped)` : ''}.`,
+        description: String(payload?.appliedSummary || `Copied ${payload?.copiedEntriesCount ?? 0} meals to your week of ${payload?.targetWeekStart ?? targetWeekStart}${Number(payload?.skippedDuplicatesCount || 0) > 0 ? ` (${payload?.skippedDuplicatesCount} duplicates skipped)` : ''}.`),
       });
     } catch (copyError: any) {
       toast({

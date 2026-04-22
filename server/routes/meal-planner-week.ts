@@ -119,6 +119,49 @@ type CopyImpactAffectedSlot = {
   summary: string;
 };
 
+function createImpactSlotTracker() {
+  const slotMap = new Map<string, Omit<CopyImpactAffectedSlot, "summary">>();
+  const getOrCreateSlot = (entry: { date: Date | string; mealType: string }) => {
+    const dateIso = fmtISODate(startOfDay(new Date(entry.date)));
+    const mealType = String(entry.mealType || "").trim().toLowerCase();
+    const key = `${dateIso}|${mealType}`;
+    const existing = slotMap.get(key);
+    if (existing) return existing;
+    const labelParts = formatImpactSlotLabel(entry.date, entry.mealType);
+    const next: Omit<CopyImpactAffectedSlot, "summary"> = {
+      day: labelParts.day,
+      mealType: labelParts.mealType,
+      label: labelParts.label,
+      addCount: 0,
+      skipDuplicateCount: 0,
+      replaceCount: 0,
+      existingCount: 0,
+      incomingCount: 0,
+    };
+    slotMap.set(key, next);
+    return next;
+  };
+
+  return {
+    slotMap,
+    getOrCreateSlot,
+  };
+}
+
+function finalizeAffectedSlots(slotMap: Map<string, Omit<CopyImpactAffectedSlot, "summary">>) {
+  return Array.from(slotMap.values())
+    .filter((slot) => slot.addCount > 0 || slot.skipDuplicateCount > 0 || slot.replaceCount > 0)
+    .sort((a, b) => {
+      if (b.replaceCount !== a.replaceCount) return b.replaceCount - a.replaceCount;
+      if (b.skipDuplicateCount !== a.skipDuplicateCount) return b.skipDuplicateCount - a.skipDuplicateCount;
+      return b.addCount - a.addCount;
+    })
+    .map((slot) => ({
+      ...slot,
+      summary: buildSlotImpactSummary(slot),
+    }));
+}
+
 function formatImpactSlotLabel(date: Date | string, mealTypeRaw: string) {
   const dateValue = startOfDay(new Date(date));
   const day = dateValue.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
@@ -865,11 +908,27 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
           eq(mealPlans.isTemplate, false)
         )
       );
+    const existingTargetPlanIds = existingTargetPlans.map((plan) => plan.id);
+    const existingTargetEntriesForWeek = existingTargetPlanIds.length
+      ? await db
+          .select({
+            date: mealPlanEntries.date,
+            mealType: mealPlanEntries.mealType,
+            recipeId: mealPlanEntries.recipeId,
+            customName: mealPlanEntries.customName,
+            customCalories: mealPlanEntries.customCalories,
+            customProtein: mealPlanEntries.customProtein,
+            customCarbs: mealPlanEntries.customCarbs,
+            customFat: mealPlanEntries.customFat,
+          })
+          .from(mealPlanEntries)
+          .where(inArray(mealPlanEntries.mealPlanId, existingTargetPlanIds))
+      : [];
+    const targetWeekMealsBeforeCount = existingTargetEntriesForWeek.length;
 
     if (replaceExisting && existingTargetPlans.length) {
-      const existingIds = existingTargetPlans.map((plan) => plan.id);
-      await db.delete(mealPlanEntries).where(inArray(mealPlanEntries.mealPlanId, existingIds));
-      await db.delete(mealPlans).where(inArray(mealPlans.id, existingIds));
+      await db.delete(mealPlanEntries).where(inArray(mealPlanEntries.mealPlanId, existingTargetPlanIds));
+      await db.delete(mealPlans).where(inArray(mealPlans.id, existingTargetPlanIds));
     }
 
     let targetPlanId: string | null = null;
@@ -912,15 +971,46 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
           .from(mealPlanEntries)
           .where(eq(mealPlanEntries.mealPlanId, targetPlanId));
 
+    const slotTracker = createImpactSlotTracker();
+    const slotBaselineEntries = replaceExisting ? existingTargetEntriesForWeek : existingTargetEntries;
+    for (const entry of slotBaselineEntries) {
+      const slot = slotTracker.getOrCreateSlot(entry);
+      slot.existingCount += 1;
+    }
+    for (const entry of mappedEntries) {
+      const slot = slotTracker.getOrCreateSlot(entry);
+      slot.incomingCount += 1;
+    }
+
     const existingSignatures = new Set(existingTargetEntries.map((entry) => buildCopyEntrySignature(entry)));
     const entriesToInsert = copyMode === "skip-duplicates"
       ? mappedEntries.filter((entry) => {
           const signature = buildCopyEntrySignature(entry);
-          if (existingSignatures.has(signature)) return false;
+          const slot = slotTracker.getOrCreateSlot(entry);
+          if (existingSignatures.has(signature)) {
+            slot.skipDuplicateCount += 1;
+            return false;
+          }
           existingSignatures.add(signature);
+          slot.addCount += 1;
           return true;
         })
       : mappedEntries;
+    if (copyMode === "append") {
+      for (const entry of mappedEntries) {
+        const slot = slotTracker.getOrCreateSlot(entry);
+        slot.addCount += 1;
+      }
+    } else if (copyMode === "replace") {
+      for (const entry of mappedEntries) {
+        const slot = slotTracker.getOrCreateSlot(entry);
+        if (slot.existingCount > 0) {
+          slot.replaceCount += 1;
+        } else {
+          slot.addCount += 1;
+        }
+      }
+    }
 
     if (entriesToInsert.length > 0) {
       await db.insert(mealPlanEntries).values(entriesToInsert);
@@ -946,15 +1036,28 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       .leftJoin(recipes, eq(mealPlanEntries.recipeId, recipes.id))
       .where(eq(mealPlanEntries.mealPlanId, targetPlanId))
       .orderBy(mealPlanEntries.date);
+    const targetWeekMealsAfterCount = copiedEntries.length;
+    const skippedDuplicatesCount = Math.max(0, mappedEntries.length - entriesToInsert.length);
+    const appliedAffectedSlots = finalizeAffectedSlots(slotTracker.slotMap);
+    const appliedSummary = copyMode === "replace"
+      ? `Replaced ${targetWeekMealsBeforeCount} existing meals with ${entriesToInsert.length} imported meals.`
+      : copyMode === "append"
+        ? `Added ${entriesToInsert.length} meals to ${targetWeekMealsBeforeCount} existing meals.`
+        : `Added ${entriesToInsert.length} meals and skipped ${skippedDuplicatesCount} duplicates.`;
 
     res.json({
       ok: true,
       copiedEntriesCount: entriesToInsert.length,
       sourceEntriesCount: sourceEntries.length,
-      skippedDuplicatesCount: Math.max(0, mappedEntries.length - entriesToInsert.length),
+      skippedDuplicatesCount,
       mergeMode: copyMode,
       targetWeekStart: fmtISODate(targetWeekStart),
       targetWeekEnd: fmtISODate(targetWeekEnd),
+      targetWeekMealsBeforeCount,
+      targetWeekMealsAfterCount,
+      appliedSummary,
+      appliedAffectedSlots,
+      appliedAffectedSlotsPreviewCount: Math.min(12, appliedAffectedSlots.length),
       weeklyMeals: mapEntriesToWeeklyMeals(copiedEntries),
     });
   } catch (error) {
@@ -1077,34 +1180,14 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
     const targetWeekMealsCount = existingTargetEntries.length;
     const willReplaceExisting = copyMode === "replace";
 
-    const slotMap = new Map<string, Omit<CopyImpactAffectedSlot, "summary">>();
-    const getOrCreateSlot = (entry: { date: Date | string; mealType: string }) => {
-      const dateIso = fmtISODate(startOfDay(new Date(entry.date)));
-      const mealType = String(entry.mealType || "").trim().toLowerCase();
-      const key = `${dateIso}|${mealType}`;
-      const existing = slotMap.get(key);
-      if (existing) return existing;
-      const labelParts = formatImpactSlotLabel(entry.date, entry.mealType);
-      const next: Omit<CopyImpactAffectedSlot, "summary"> = {
-        day: labelParts.day,
-        mealType: labelParts.mealType,
-        label: labelParts.label,
-        addCount: 0,
-        skipDuplicateCount: 0,
-        replaceCount: 0,
-        existingCount: 0,
-        incomingCount: 0,
-      };
-      slotMap.set(key, next);
-      return next;
-    };
+    const slotTracker = createImpactSlotTracker();
 
     for (const entry of existingTargetEntries) {
-      const slot = getOrCreateSlot(entry);
+      const slot = slotTracker.getOrCreateSlot(entry);
       slot.existingCount += 1;
     }
     for (const entry of mappedEntries) {
-      const slot = getOrCreateSlot(entry);
+      const slot = slotTracker.getOrCreateSlot(entry);
       slot.incomingCount += 1;
     }
 
@@ -1114,7 +1197,7 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
       const existingSignatures = new Set(existingTargetEntries.map((entry) => buildCopyEntrySignature(entry)));
       let additions = 0;
       for (const entry of mappedEntries) {
-        const slot = getOrCreateSlot(entry);
+        const slot = slotTracker.getOrCreateSlot(entry);
         const signature = buildCopyEntrySignature(entry);
         if (existingSignatures.has(signature)) {
           slot.skipDuplicateCount += 1;
@@ -1128,12 +1211,12 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
       estimatedSkippedDuplicatesCount = Math.max(0, sourceEntriesCount - additions);
     } else if (copyMode === "append") {
       for (const entry of mappedEntries) {
-        const slot = getOrCreateSlot(entry);
+        const slot = slotTracker.getOrCreateSlot(entry);
         slot.addCount += 1;
       }
     } else {
       for (const entry of mappedEntries) {
-        const slot = getOrCreateSlot(entry);
+        const slot = slotTracker.getOrCreateSlot(entry);
         if (slot.existingCount > 0) {
           slot.replaceCount += 1;
         } else {
@@ -1142,17 +1225,7 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
       }
     }
 
-    const affectedSlots = Array.from(slotMap.values())
-      .filter((slot) => slot.addCount > 0 || slot.skipDuplicateCount > 0 || slot.replaceCount > 0)
-      .sort((a, b) => {
-        if (b.replaceCount !== a.replaceCount) return b.replaceCount - a.replaceCount;
-        if (b.skipDuplicateCount !== a.skipDuplicateCount) return b.skipDuplicateCount - a.skipDuplicateCount;
-        return b.addCount - a.addCount;
-      })
-      .map((slot) => ({
-        ...slot,
-        summary: buildSlotImpactSummary(slot),
-      }));
+    const affectedSlots = finalizeAffectedSlots(slotTracker.slotMap);
 
     const impactSummary = copyMode === "replace"
       ? `Target week has ${targetWeekMealsCount} meals. Copy will replace that week with ${sourceEntriesCount} meals from this shared plan.`
