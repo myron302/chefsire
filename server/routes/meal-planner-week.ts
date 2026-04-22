@@ -107,6 +107,38 @@ type SharedWeekSourceEntry = {
   source: string | null;
 };
 
+type CopyImpactAffectedSlot = {
+  day: string;
+  mealType: string;
+  label: string;
+  addCount: number;
+  skipDuplicateCount: number;
+  replaceCount: number;
+  existingCount: number;
+  incomingCount: number;
+  summary: string;
+};
+
+function formatImpactSlotLabel(date: Date | string, mealTypeRaw: string) {
+  const dateValue = startOfDay(new Date(date));
+  const day = dateValue.toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+  const mealType = String(mealTypeRaw || "meal").trim().toLowerCase();
+  const prettyMealType = mealType ? `${mealType.charAt(0).toUpperCase()}${mealType.slice(1)}` : "Meal";
+  return {
+    day,
+    mealType,
+    label: `${day} ${prettyMealType}`,
+  };
+}
+
+function buildSlotImpactSummary(slot: Omit<CopyImpactAffectedSlot, "summary">): string {
+  if (slot.replaceCount > 0) return `replace ${slot.replaceCount}`;
+  const parts: string[] = [];
+  if (slot.addCount > 0) parts.push(`add ${slot.addCount}`);
+  if (slot.skipDuplicateCount > 0) parts.push(`skip ${slot.skipDuplicateCount} duplicate${slot.skipDuplicateCount === 1 ? "" : "s"}`);
+  return parts.length ? parts.join(", ") : "no change";
+}
+
 function mapSharedEntriesToTargetWeek(args: {
   sourceEntries: SharedWeekSourceEntry[];
   sourceWeekStart: Date;
@@ -1045,20 +1077,82 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
     const targetWeekMealsCount = existingTargetEntries.length;
     const willReplaceExisting = copyMode === "replace";
 
+    const slotMap = new Map<string, Omit<CopyImpactAffectedSlot, "summary">>();
+    const getOrCreateSlot = (entry: { date: Date | string; mealType: string }) => {
+      const dateIso = fmtISODate(startOfDay(new Date(entry.date)));
+      const mealType = String(entry.mealType || "").trim().toLowerCase();
+      const key = `${dateIso}|${mealType}`;
+      const existing = slotMap.get(key);
+      if (existing) return existing;
+      const labelParts = formatImpactSlotLabel(entry.date, entry.mealType);
+      const next: Omit<CopyImpactAffectedSlot, "summary"> = {
+        day: labelParts.day,
+        mealType: labelParts.mealType,
+        label: labelParts.label,
+        addCount: 0,
+        skipDuplicateCount: 0,
+        replaceCount: 0,
+        existingCount: 0,
+        incomingCount: 0,
+      };
+      slotMap.set(key, next);
+      return next;
+    };
+
+    for (const entry of existingTargetEntries) {
+      const slot = getOrCreateSlot(entry);
+      slot.existingCount += 1;
+    }
+    for (const entry of mappedEntries) {
+      const slot = getOrCreateSlot(entry);
+      slot.incomingCount += 1;
+    }
+
     let estimatedAddedCount = sourceEntriesCount;
     let estimatedSkippedDuplicatesCount = 0;
     if (copyMode === "skip-duplicates") {
       const existingSignatures = new Set(existingTargetEntries.map((entry) => buildCopyEntrySignature(entry)));
       let additions = 0;
       for (const entry of mappedEntries) {
+        const slot = getOrCreateSlot(entry);
         const signature = buildCopyEntrySignature(entry);
-        if (existingSignatures.has(signature)) continue;
+        if (existingSignatures.has(signature)) {
+          slot.skipDuplicateCount += 1;
+          continue;
+        }
         existingSignatures.add(signature);
+        slot.addCount += 1;
         additions += 1;
       }
       estimatedAddedCount = additions;
       estimatedSkippedDuplicatesCount = Math.max(0, sourceEntriesCount - additions);
+    } else if (copyMode === "append") {
+      for (const entry of mappedEntries) {
+        const slot = getOrCreateSlot(entry);
+        slot.addCount += 1;
+      }
+    } else {
+      for (const entry of mappedEntries) {
+        const slot = getOrCreateSlot(entry);
+        if (slot.existingCount > 0) {
+          slot.replaceCount += 1;
+        } else {
+          slot.addCount += 1;
+        }
+      }
     }
+
+    const affectedSlots = Array.from(slotMap.values())
+      .filter((slot) => slot.addCount > 0 || slot.skipDuplicateCount > 0 || slot.replaceCount > 0)
+      .sort((a, b) => {
+        if (b.replaceCount !== a.replaceCount) return b.replaceCount - a.replaceCount;
+        if (b.skipDuplicateCount !== a.skipDuplicateCount) return b.skipDuplicateCount - a.skipDuplicateCount;
+        return b.addCount - a.addCount;
+      })
+      .map((slot) => ({
+        ...slot,
+        summary: buildSlotImpactSummary(slot),
+      }));
 
     const impactSummary = copyMode === "replace"
       ? `Target week has ${targetWeekMealsCount} meals. Copy will replace that week with ${sourceEntriesCount} meals from this shared plan.`
@@ -1077,6 +1171,8 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
       estimatedSkippedDuplicatesCount,
       willReplaceExisting,
       impactSummary,
+      affectedSlots,
+      affectedSlotsPreviewCount: Math.min(12, affectedSlots.length),
     });
   } catch (error) {
     console.error("Error building shared week copy impact:", error);
