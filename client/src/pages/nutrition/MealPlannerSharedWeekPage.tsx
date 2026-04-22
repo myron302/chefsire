@@ -70,6 +70,28 @@ type CopyImpactSummary = {
   }>;
   affectedSlotsPreviewCount?: number;
 };
+type CopyAppliedSummary = {
+  mergeMode?: CopyMergeMode;
+  targetWeekStart: string;
+  sourceEntriesCount?: number;
+  copiedEntriesCount: number;
+  skippedDuplicatesCount: number;
+  targetWeekMealsBeforeCount?: number;
+  targetWeekMealsAfterCount?: number;
+  appliedSummary?: string;
+  appliedAffectedSlots?: Array<{
+    day: string;
+    mealType: string;
+    label: string;
+    addCount: number;
+    skipDuplicateCount: number;
+    replaceCount: number;
+    existingCount: number;
+    incomingCount: number;
+    summary: string;
+  }>;
+  appliedAffectedSlotsPreviewCount?: number;
+};
 
 function getWeekStartIso(date: Date) {
   const d = new Date(date);
@@ -101,6 +123,7 @@ export default function MealPlannerSharedWeekPage() {
   const [mergeMode, setMergeMode] = useState<CopyMergeMode>('replace');
   const [impactSummary, setImpactSummary] = useState<CopyImpactSummary | null>(null);
   const [impactLoading, setImpactLoading] = useState(false);
+  const [copyAppliedSummary, setCopyAppliedSummary] = useState<CopyAppliedSummary | null>(null);
 
   const fetchCopyImpactSummary = async (opts?: { silent?: boolean; targetWeek?: string; mode?: CopyMergeMode }) => {
     if (!token || !user) return null;
@@ -213,6 +236,18 @@ export default function MealPlannerSharedWeekPage() {
 
       const skipped = Number(payload?.skippedDuplicatesCount || 0);
       const summary = `Copied ${payload?.copiedEntriesCount ?? 0} meals to your week of ${payload?.targetWeekStart ?? targetWeekStart}${skipped > 0 ? ` (${skipped} duplicates skipped)` : ''}.`;
+      setCopyAppliedSummary({
+        mergeMode: payload?.mergeMode || mergeMode,
+        targetWeekStart: payload?.targetWeekStart ?? targetWeekStart,
+        sourceEntriesCount: Number(payload?.sourceEntriesCount || 0),
+        copiedEntriesCount: Number(payload?.copiedEntriesCount || 0),
+        skippedDuplicatesCount: skipped,
+        targetWeekMealsBeforeCount: Number(payload?.targetWeekMealsBeforeCount || 0),
+        targetWeekMealsAfterCount: Number(payload?.targetWeekMealsAfterCount || 0),
+        appliedSummary: String(payload?.appliedSummary || ''),
+        appliedAffectedSlots: Array.isArray(payload?.appliedAffectedSlots) ? payload.appliedAffectedSlots : [],
+        appliedAffectedSlotsPreviewCount: Number(payload?.appliedAffectedSlotsPreviewCount || 12),
+      });
       setCopySummary(summary);
       toast({ title: 'Week copied to your planner', description: summary });
     } catch (copyError: any) {
@@ -352,6 +387,36 @@ export default function MealPlannerSharedWeekPage() {
           <CardContent className="p-4 text-sm">
             <div className="font-medium">Saved to your planner</div>
             <div className="text-muted-foreground">{copySummary}</div>
+            {copyAppliedSummary && (
+              <div className="mt-3 rounded-md border bg-muted/40 p-3">
+                <div className="font-medium">Post-copy reconciliation</div>
+                <div className="mt-1 text-muted-foreground">
+                  {copyAppliedSummary.appliedSummary || `Applied ${copyAppliedSummary.copiedEntriesCount} imported meals.`}
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">
+                  Week {copyAppliedSummary.targetWeekStart}
+                  {typeof copyAppliedSummary.targetWeekMealsBeforeCount === 'number' ? ` • Before: ${copyAppliedSummary.targetWeekMealsBeforeCount}` : ''}
+                  {typeof copyAppliedSummary.targetWeekMealsAfterCount === 'number' ? ` • After: ${copyAppliedSummary.targetWeekMealsAfterCount}` : ''}
+                  {copyAppliedSummary.sourceEntriesCount ? ` • Incoming: ${copyAppliedSummary.sourceEntriesCount}` : ''}
+                  {' • Added: '} {copyAppliedSummary.copiedEntriesCount}
+                  {copyAppliedSummary.skippedDuplicatesCount > 0 ? ` • Duplicates skipped: ${copyAppliedSummary.skippedDuplicatesCount}` : ''}
+                </div>
+                {Array.isArray(copyAppliedSummary.appliedAffectedSlots) && copyAppliedSummary.appliedAffectedSlots.length > 0 && (
+                  <div className="mt-2">
+                    <div className="text-xs font-medium text-foreground">Applied slot deltas</div>
+                    <ul className="mt-1 space-y-1 text-xs text-muted-foreground">
+                      {copyAppliedSummary.appliedAffectedSlots
+                        .slice(0, copyAppliedSummary.appliedAffectedSlotsPreviewCount || 12)
+                        .map((slot) => (
+                          <li key={`${slot.label}-${slot.summary}`}>
+                            {slot.label}: {slot.summary}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
             <Button asChild size="sm" className="mt-3">
               <a href="/nutrition">Open My Planner</a>
             </Button>
