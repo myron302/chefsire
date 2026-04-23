@@ -10,8 +10,8 @@ import { Progress } from "@/components/ui/progress";
 import {
   IceCream, Heart, Star, Search, Share2, ArrowLeft,
   Camera, Cookie, ChefHat, X, Check, Zap, Activity, Sun, Sparkles, Trophy, Crown, Leaf,
-  Clipboard, RotateCcw
-, Coffee} from 'lucide-react';
+  Clipboard, RotateCcw, Coffee
+} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import UniversalSearch from '@/components/UniversalSearch';
 import RecipeKit from '@/components/recipes/RecipeKit';
