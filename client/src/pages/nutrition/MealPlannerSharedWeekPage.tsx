@@ -102,6 +102,13 @@ function getWeekStartIso(date: Date) {
   return d.toISOString().split('T')[0];
 }
 
+function getNextWeekStartIso(weekStartIso: string) {
+  const parsed = new Date(`${weekStartIso}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return getWeekStartIso(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+  parsed.setDate(parsed.getDate() + 7);
+  return getWeekStartIso(parsed);
+}
+
 function modePreview(mode: CopyMergeMode) {
   if (mode === 'append') return 'Append mode keeps your current meals and adds all copied meals into this week.';
   if (mode === 'skip-duplicates') return 'Merge safely mode keeps your current meals and skips copied meals that look like duplicates in the same day + meal slot.';
@@ -126,6 +133,7 @@ export default function MealPlannerSharedWeekPage() {
   const [copyAppliedSummary, setCopyAppliedSummary] = useState<CopyAppliedSummary | null>(null);
   const [templateNameDraft, setTemplateNameDraft] = useState('');
   const [templateSavedName, setTemplateSavedName] = useState<string | null>(null);
+  const [templateBridgeTargetWeekStart, setTemplateBridgeTargetWeekStart] = useState(() => getWeekStartIso(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
 
   const fetchCopyImpactSummary = async (opts?: { silent?: boolean; targetWeek?: string; mode?: CopyMergeMode }) => {
     if (!token || !user) return null;
@@ -254,6 +262,7 @@ export default function MealPlannerSharedWeekPage() {
       const defaultTemplateName = `Imported week ${payload?.targetWeekStart ?? targetWeekStart}`;
       setTemplateNameDraft(defaultTemplateName);
       setTemplateSavedName(null);
+      setTemplateBridgeTargetWeekStart(getNextWeekStartIso(payload?.targetWeekStart ?? targetWeekStart));
       toast({ title: 'Week copied to your planner', description: summary });
     } catch (copyError: any) {
       toast({
@@ -292,6 +301,34 @@ export default function MealPlannerSharedWeekPage() {
         variant: 'destructive',
         title: 'Unable to save template',
         description: 'Please try again.',
+      });
+    }
+  };
+
+  const handleUseSavedTemplateOnAnotherWeek = () => {
+    if (!templateSavedName) return;
+
+    const normalizedTargetWeek = templateBridgeTargetWeekStart || getWeekStartIso(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000));
+    const bridgePayload = {
+      templateName: templateSavedName,
+      targetWeekStart: normalizedTargetWeek,
+      requestedAt: new Date().toISOString(),
+      source: 'shared-week-import-success',
+    };
+
+    try {
+      localStorage.setItem('meal-planner-template-bridge-v1', JSON.stringify(bridgePayload));
+      toast({
+        title: 'Template ready to apply',
+        description: `Opening your planner to apply "${templateSavedName}" to week ${normalizedTargetWeek}.`,
+      });
+      window.location.href = '/nutrition';
+    } catch (error) {
+      console.error('Error preparing template bridge handoff:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Unable to open template bridge',
+        description: 'Please open your planner and load the template manually.',
       });
     }
   };
@@ -470,8 +507,25 @@ export default function MealPlannerSharedWeekPage() {
                 </Button>
               </div>
               {templateSavedName && (
-                <div className="mt-2 text-xs text-emerald-600">
-                  Saved as "{templateSavedName}".
+                <div className="mt-3 rounded-md border bg-emerald-50/60 p-3">
+                  <div className="text-xs font-medium text-emerald-700">Saved as "{templateSavedName}".</div>
+                  <div className="mt-1 text-xs text-emerald-700/90">
+                    Use it right away on another week without browsing away first.
+                  </div>
+                  <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <label className="space-y-1 text-xs">
+                      <div className="font-medium text-foreground">Apply template to week (Monday)</div>
+                      <input
+                        type="date"
+                        value={templateBridgeTargetWeekStart}
+                        onChange={(event) => setTemplateBridgeTargetWeekStart(event.target.value || getWeekStartIso(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)))}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm sm:w-56"
+                      />
+                    </label>
+                    <Button size="sm" onClick={handleUseSavedTemplateOnAnotherWeek}>
+                      Use This Template on Another Week
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
