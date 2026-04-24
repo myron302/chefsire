@@ -164,6 +164,12 @@ type BlockerItemSuggestion = {
 
 type MealPlanVisibility = 'private' | 'friends' | 'public';
 type ShareMetadataSaveState = 'idle' | 'saving' | 'saved' | 'error';
+type TemplateBridgePayload = {
+  templateName: string;
+  targetWeekStart?: string;
+  source?: string;
+  requestedAt?: string;
+};
 
 const NutritionMealPlanner = () => {
   const { user, updateUser } = useUser();
@@ -205,6 +211,7 @@ const NutritionMealPlanner = () => {
   const [sharePublicToken, setSharePublicToken] = useState<string | null>(null);
   const [shareMetadataLoaded, setShareMetadataLoaded] = useState(false);
   const [shareMetadataSaveState, setShareMetadataSaveState] = useState<ShareMetadataSaveState>('idle');
+  const [templateBridgeRequest, setTemplateBridgeRequest] = useState<TemplateBridgePayload | null>(null);
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -237,6 +244,27 @@ const NutritionMealPlanner = () => {
       fetchWater();
     }
   }, [selectedDate, isPremium, user]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem('meal-planner-template-bridge-v1');
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed.templateName !== 'string' || !parsed.templateName.trim()) {
+        localStorage.removeItem('meal-planner-template-bridge-v1');
+        return;
+      }
+      setTemplateBridgeRequest({
+        templateName: parsed.templateName.trim(),
+        targetWeekStart: typeof parsed.targetWeekStart === 'string' ? parsed.targetWeekStart : undefined,
+        source: typeof parsed.source === 'string' ? parsed.source : undefined,
+        requestedAt: typeof parsed.requestedAt === 'string' ? parsed.requestedAt : undefined,
+      });
+    } catch (error) {
+      console.error('Error loading template bridge request:', error);
+      localStorage.removeItem('meal-planner-template-bridge-v1');
+    }
+  }, []);
 
   useEffect(() => {
     if (isPremium) {
@@ -1049,6 +1077,44 @@ const NutritionMealPlanner = () => {
       setShowLoadTemplateModal(false);
     }
   };
+
+  useEffect(() => {
+    if (!templateBridgeRequest || loading || !isPremium) return;
+
+    const targetWeek = templateBridgeRequest.targetWeekStart?.trim();
+    if (targetWeek && targetWeek !== selectedDate) {
+      setSelectedDate(targetWeek);
+      return;
+    }
+
+    const saved = localStorage.getItem(`meal-template-${templateBridgeRequest.templateName}`);
+    if (!saved) {
+      toast({
+        variant: 'destructive',
+        description: `Template "${templateBridgeRequest.templateName}" was not found. Save it again and retry.`,
+      });
+      localStorage.removeItem('meal-planner-template-bridge-v1');
+      setTemplateBridgeRequest(null);
+      return;
+    }
+
+    try {
+      setWeeklyMeals(JSON.parse(saved));
+      toast({
+        title: 'Template applied',
+        description: `Loaded "${templateBridgeRequest.templateName}" into week ${targetWeek || selectedDate}.`,
+      });
+    } catch (error) {
+      console.error('Error applying bridged template:', error);
+      toast({
+        variant: 'destructive',
+        description: `Unable to apply "${templateBridgeRequest.templateName}".`,
+      });
+    } finally {
+      localStorage.removeItem('meal-planner-template-bridge-v1');
+      setTemplateBridgeRequest(null);
+    }
+  }, [templateBridgeRequest, loading, isPremium, selectedDate]);
 
   const handleAIRecipe = () => {
     setShowAIRecipeModal(true);
