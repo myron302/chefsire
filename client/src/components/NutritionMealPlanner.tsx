@@ -164,14 +164,18 @@ type BlockerItemSuggestion = {
 
 type MealPlanVisibility = 'private' | 'friends' | 'public';
 type ShareMetadataSaveState = 'idle' | 'saving' | 'saved' | 'error';
+type TemplateMergeMode = 'replace' | 'append';
+
 type TemplateBridgePayload = {
   templateName: string;
   targetWeekStart?: string;
   source?: string;
   requestedAt?: string;
+  mergeMode?: TemplateMergeMode;
 };
 type PendingTemplateBridgePreview = TemplateBridgePayload & {
   templateMeals: Record<string, any>;
+  mergeMode: TemplateMergeMode;
 };
 
 const NutritionMealPlanner = () => {
@@ -248,6 +252,58 @@ const NutritionMealPlanner = () => {
     }, 0);
   };
 
+  const toMealItems = (value: any): any[] => {
+    if (!value) return [];
+    return Array.isArray(value) ? value.filter(Boolean) : [value].filter(Boolean);
+  };
+
+  const applyTemplateMeals = (
+    currentWeek: Record<string, any>,
+    templateWeek: Record<string, any>,
+    mergeMode: TemplateMergeMode,
+  ) => {
+    if (mergeMode === 'replace') {
+      return templateWeek && typeof templateWeek === 'object' ? templateWeek : currentWeek;
+    }
+
+    const mergedWeek: Record<string, any> = { ...currentWeek };
+    for (const day of WEEK_DAYS) {
+      const currentDayMeals = currentWeek?.[day] && typeof currentWeek[day] === 'object' ? currentWeek[day] : {};
+      const nextDayMeals: Record<string, any> = { ...currentDayMeals };
+
+      for (const mealType of MEAL_TYPES) {
+        const currentItems = toMealItems(currentDayMeals?.[mealType]);
+        if (currentItems.length > 0) continue;
+
+        const templateItems = toMealItems(templateWeek?.[day]?.[mealType]);
+        if (templateItems.length === 0) continue;
+
+        nextDayMeals[mealType] = Array.isArray(templateWeek?.[day]?.[mealType])
+          ? templateItems
+          : templateItems[0];
+      }
+
+      if (Object.keys(nextDayMeals).length > 0) {
+        mergedWeek[day] = nextDayMeals;
+      }
+    }
+
+    return mergedWeek;
+  };
+
+  const estimateAppendAddedMeals = (currentWeek: Record<string, any>, templateWeek: Record<string, any>) => {
+    let addedMeals = 0;
+    for (const day of WEEK_DAYS) {
+      for (const mealType of MEAL_TYPES) {
+        const currentItems = toMealItems(currentWeek?.[day]?.[mealType]);
+        if (currentItems.length > 0) continue;
+
+        addedMeals += toMealItems(templateWeek?.[day]?.[mealType]).length;
+      }
+    }
+    return addedMeals;
+  };
+
   useEffect(() => {
     fetchUserData();
     if (isPremium) {
@@ -275,6 +331,7 @@ const NutritionMealPlanner = () => {
         targetWeekStart: typeof parsed.targetWeekStart === 'string' ? parsed.targetWeekStart : undefined,
         source: typeof parsed.source === 'string' ? parsed.source : undefined,
         requestedAt: typeof parsed.requestedAt === 'string' ? parsed.requestedAt : undefined,
+        mergeMode: parsed.mergeMode === 'append' ? 'append' : 'replace',
       });
     } catch (error) {
       console.error('Error loading template bridge request:', error);
@@ -1083,12 +1140,16 @@ const NutritionMealPlanner = () => {
     }
   };
 
-  const loadTemplate = (templateName: string) => {
+  const loadTemplate = (templateName: string, mergeMode: TemplateMergeMode = 'replace') => {
     const saved = localStorage.getItem(`meal-template-${templateName}`);
     if (saved) {
-      setWeeklyMeals(JSON.parse(saved));
+      const parsedTemplateMeals = JSON.parse(saved);
+      const nextWeeklyMeals = applyTemplateMeals(weeklyMeals, parsedTemplateMeals, mergeMode);
+      setWeeklyMeals(nextWeeklyMeals);
       toast({
-        description: `✅ Template "${templateName}" loaded successfully!`,
+        description: mergeMode === 'append'
+          ? `✅ Template "${templateName}" appended into open planner slots!`
+          : `✅ Template "${templateName}" loaded successfully!`,
       });
       setShowLoadTemplateModal(false);
     }
@@ -1126,6 +1187,7 @@ const NutritionMealPlanner = () => {
       setPendingTemplateBridgePreview({
         ...templateBridgeRequest,
         targetWeekStart: targetWeek || selectedDate,
+        mergeMode: templateBridgeRequest.mergeMode === 'append' ? 'append' : 'replace',
         templateMeals: parsedTemplateMeals,
       });
     } catch (error) {
@@ -1148,13 +1210,24 @@ const NutritionMealPlanner = () => {
     () => countMealEntries(pendingTemplateBridgePreview?.templateMeals),
     [pendingTemplateBridgePreview],
   );
+  const pendingTemplateAppendAddedMeals = useMemo(
+    () => estimateAppendAddedMeals(weeklyMeals, pendingTemplateBridgePreview?.templateMeals || {}),
+    [weeklyMeals, pendingTemplateBridgePreview],
+  );
 
   const handleApplyPendingTemplateBridge = () => {
     if (!pendingTemplateBridgePreview) return;
-    setWeeklyMeals(pendingTemplateBridgePreview.templateMeals);
+    const nextWeeklyMeals = applyTemplateMeals(
+      weeklyMeals,
+      pendingTemplateBridgePreview.templateMeals,
+      pendingTemplateBridgePreview.mergeMode,
+    );
+    setWeeklyMeals(nextWeeklyMeals);
     toast({
       title: 'Template applied',
-      description: `Loaded "${pendingTemplateBridgePreview.templateName}" into week ${pendingTemplateBridgePreview.targetWeekStart || selectedDate}.`,
+      description: pendingTemplateBridgePreview.mergeMode === 'append'
+        ? `Appended "${pendingTemplateBridgePreview.templateName}" into open slots for week ${pendingTemplateBridgePreview.targetWeekStart || selectedDate}.`
+        : `Loaded "${pendingTemplateBridgePreview.templateName}" into week ${pendingTemplateBridgePreview.targetWeekStart || selectedDate}.`,
     });
     localStorage.removeItem('meal-planner-template-bridge-v1');
     setTemplateBridgeRequest(null);
@@ -2398,9 +2471,34 @@ const NutritionMealPlanner = () => {
                         <p className="text-sm font-semibold text-gray-900 mt-1">{pendingTemplateMealsCount} meals in template</p>
                       </div>
                     </div>
-                    <p className="text-sm text-gray-700">
-                      Applying <span className="font-medium">"{pendingTemplateBridgePreview.templateName}"</span> will replace meals currently planned for this week.
-                    </p>
+                    <div className="rounded-lg border border-orange-200 bg-white p-3">
+                      <p className="text-xs text-gray-500 uppercase tracking-wide">Merge mode</p>
+                      <div className="mt-2 inline-flex rounded-md border border-orange-200 bg-orange-100/50 p-1">
+                        <button
+                          type="button"
+                          className={`px-3 py-1 text-xs font-medium rounded ${pendingTemplateBridgePreview.mergeMode === 'replace' ? 'bg-white text-orange-800 shadow-sm' : 'text-orange-700/80'}`}
+                          onClick={() => setPendingTemplateBridgePreview((prev) => (prev ? { ...prev, mergeMode: 'replace' } : prev))}
+                        >
+                          Replace
+                        </button>
+                        <button
+                          type="button"
+                          className={`px-3 py-1 text-xs font-medium rounded ${pendingTemplateBridgePreview.mergeMode === 'append' ? 'bg-white text-orange-800 shadow-sm' : 'text-orange-700/80'}`}
+                          onClick={() => setPendingTemplateBridgePreview((prev) => (prev ? { ...prev, mergeMode: 'append' } : prev))}
+                        >
+                          Append
+                        </button>
+                      </div>
+                    </div>
+                    {pendingTemplateBridgePreview.mergeMode === 'append' ? (
+                      <p className="text-sm text-gray-700">
+                        Append mode keeps existing meals and only fills empty slots. Estimated meals added: <span className="font-semibold text-emerald-700">{pendingTemplateAppendAddedMeals}</span>.
+                      </p>
+                    ) : (
+                      <p className="text-sm text-gray-700">
+                        Applying <span className="font-medium">"{pendingTemplateBridgePreview.templateName}"</span> will replace meals currently planned for this week.
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-2">
                       <Button onClick={handleApplyPendingTemplateBridge} className="bg-orange-600 hover:bg-orange-700">
                         Apply Template

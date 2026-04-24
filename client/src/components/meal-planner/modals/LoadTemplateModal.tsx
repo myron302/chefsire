@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 type LoadTemplateModalProps = {
   open: boolean;
   onClose: () => void;
-  onLoadTemplate: (templateName: string) => void;
+  onLoadTemplate: (templateName: string, mergeMode: 'replace' | 'append') => void;
   currentWeeklyMeals: Record<string, any>;
 };
 
@@ -14,6 +14,8 @@ type TemplateImpactSummary = {
   overwriteSlots: number;
   noChangeSlots: number;
   templateMealItems: number;
+  currentMealItems: number;
+  appendAddedMealItems: number;
 };
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'];
@@ -29,16 +31,23 @@ const buildImpactSummary = (currentWeek: Record<string, any>, templateWeek: Reco
   let overwriteSlots = 0;
   let noChangeSlots = 0;
   let templateMealItems = 0;
+  let currentMealItems = 0;
+  let appendAddedMealItems = 0;
 
   for (const day of WEEK_DAYS) {
     for (const mealType of MEAL_TYPES) {
       const currentItems = toItems(currentWeek?.[day]?.[mealType]);
       const templateItems = toItems(templateWeek?.[day]?.[mealType]);
+      if (currentItems.length > 0) {
+        currentMealItems += currentItems.length;
+      }
+
       if (templateItems.length === 0) continue;
 
       templateMealItems += templateItems.length;
       filledSlots += 1;
       if (currentItems.length === 0) {
+        appendAddedMealItems += templateItems.length;
         continue;
       }
 
@@ -52,11 +61,12 @@ const buildImpactSummary = (currentWeek: Record<string, any>, templateWeek: Reco
     }
   }
 
-  return { filledSlots, overwriteSlots, noChangeSlots, templateMealItems };
+  return { filledSlots, overwriteSlots, noChangeSlots, templateMealItems, currentMealItems, appendAddedMealItems };
 };
 
 const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }: LoadTemplateModalProps) => {
   const [selectedTemplate, setSelectedTemplate] = React.useState<string | null>(null);
+  const [mergeMode, setMergeMode] = React.useState<'replace' | 'append'>('replace');
 
   const templates = React.useMemo(() => {
     const savedTemplates: string[] = [];
@@ -85,6 +95,7 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
   React.useEffect(() => {
     if (!open) {
       setSelectedTemplate(null);
+      setMergeMode('replace');
       return;
     }
     if (templates.length > 0) {
@@ -132,7 +143,7 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
                     </div>
                     <Button size="sm" variant={isSelected ? 'default' : 'outline'} onClick={(event) => {
                       event.stopPropagation();
-                      onLoadTemplate(templateName);
+                      onLoadTemplate(templateName, mergeMode);
                     }}>
                       Apply
                     </Button>
@@ -141,14 +152,43 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
               })}
 
               {selectedTemplate && impactPreview && (
-                <div className="rounded-lg border bg-gray-50 p-3">
+                <div className="rounded-lg border bg-gray-50 p-3 space-y-3">
                   <p className="text-sm font-medium text-gray-900">Impact preview for "{selectedTemplate}"</p>
+                  <div>
+                    <p className="text-xs text-gray-500 uppercase tracking-wide">Merge mode</p>
+                    <div className="mt-2 inline-flex rounded-md border border-gray-200 bg-white p-1">
+                      <button
+                        type="button"
+                        className={`px-3 py-1 text-xs font-medium rounded ${mergeMode === 'replace' ? 'bg-blue-100 text-blue-800' : 'text-gray-600'}`}
+                        onClick={() => setMergeMode('replace')}
+                      >
+                        Replace
+                      </button>
+                      <button
+                        type="button"
+                        className={`px-3 py-1 text-xs font-medium rounded ${mergeMode === 'append' ? 'bg-blue-100 text-blue-800' : 'text-gray-600'}`}
+                        onClick={() => setMergeMode('append')}
+                      >
+                        Append
+                      </button>
+                    </div>
+                  </div>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-gray-600">
+                    <div>Target week meals: <span className="font-semibold text-gray-900">{impactPreview.currentMealItems}</span></div>
+                    <div>Template meals: <span className="font-semibold text-gray-900">{impactPreview.templateMealItems}</span></div>
                     <div>Filled slots: <span className="font-semibold text-gray-900">{impactPreview.filledSlots}</span></div>
-                    <div>Total meals: <span className="font-semibold text-gray-900">{impactPreview.templateMealItems}</span></div>
-                    <div>Will overwrite: <span className="font-semibold text-amber-700">{impactPreview.overwriteSlots}</span></div>
+                    {mergeMode === 'append' ? (
+                      <div>Estimated added: <span className="font-semibold text-emerald-700">{impactPreview.appendAddedMealItems}</span></div>
+                    ) : (
+                      <div>Will overwrite: <span className="font-semibold text-amber-700">{impactPreview.overwriteSlots}</span></div>
+                    )}
                     <div>Unchanged slots: <span className="font-semibold text-emerald-700">{impactPreview.noChangeSlots}</span></div>
                   </div>
+                  {mergeMode === 'replace' ? (
+                    <p className="text-xs text-amber-700">Replace mode overwrites existing meals in slots populated by the template.</p>
+                  ) : (
+                    <p className="text-xs text-emerald-700">Append mode keeps existing meals and only fills empty slots.</p>
+                  )}
                 </div>
               )}
             </>
