@@ -3130,6 +3130,7 @@ const NutritionMealPlanner = () => {
           open={showLoadTemplateModal}
           onClose={() => setShowLoadTemplateModal(false)}
           onLoadTemplate={loadTemplate}
+          currentWeeklyMeals={weeklyMeals}
         />
 
         <AddGroceryItemModal
