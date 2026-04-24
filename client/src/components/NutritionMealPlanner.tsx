@@ -170,6 +170,9 @@ type TemplateBridgePayload = {
   source?: string;
   requestedAt?: string;
 };
+type PendingTemplateBridgePreview = TemplateBridgePayload & {
+  templateMeals: Record<string, any>;
+};
 
 const NutritionMealPlanner = () => {
   const { user, updateUser } = useUser();
@@ -212,6 +215,7 @@ const NutritionMealPlanner = () => {
   const [shareMetadataLoaded, setShareMetadataLoaded] = useState(false);
   const [shareMetadataSaveState, setShareMetadataSaveState] = useState<ShareMetadataSaveState>('idle');
   const [templateBridgeRequest, setTemplateBridgeRequest] = useState<TemplateBridgePayload | null>(null);
+  const [pendingTemplateBridgePreview, setPendingTemplateBridgePreview] = useState<PendingTemplateBridgePreview | null>(null);
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -231,6 +235,18 @@ const NutritionMealPlanner = () => {
   const getPrepSessionStorageKey = () => `meal-planner-prep-session-v1:${user?.id || 'anon'}:${getCurrentWeekAnchor()}`;
   const getPrepSessionStorageKeyForAnchor = (anchorDate: string) => `meal-planner-prep-session-v1:${user?.id || 'anon'}:${anchorDate}`;
   const getShareVisibilityStorageKey = () => `meal-planner-share-visibility-v1:${user?.id || 'anon'}`;
+  const countMealEntries = (weekMeals: Record<string, any> | null | undefined) => {
+    if (!weekMeals || typeof weekMeals !== 'object') return 0;
+    return Object.values(weekMeals).reduce((weekTotal, dayValue) => {
+      if (!dayValue || typeof dayValue !== 'object') return weekTotal;
+      const dayTotal = Object.values(dayValue as Record<string, any>).reduce((slotTotal, slotValue) => {
+        if (Array.isArray(slotValue)) return slotTotal + slotValue.length;
+        if (slotValue && typeof slotValue === 'object') return slotTotal + 1;
+        return slotTotal;
+      }, 0);
+      return weekTotal + dayTotal;
+    }, 0);
+  };
 
   useEffect(() => {
     fetchUserData();
@@ -1087,6 +1103,10 @@ const NutritionMealPlanner = () => {
       return;
     }
 
+    if (pendingTemplateBridgePreview?.templateName === templateBridgeRequest.templateName && pendingTemplateBridgePreview?.targetWeekStart === targetWeek) {
+      return;
+    }
+
     const saved = localStorage.getItem(`meal-template-${templateBridgeRequest.templateName}`);
     if (!saved) {
       toast({
@@ -1099,10 +1119,14 @@ const NutritionMealPlanner = () => {
     }
 
     try {
-      setWeeklyMeals(JSON.parse(saved));
-      toast({
-        title: 'Template applied',
-        description: `Loaded "${templateBridgeRequest.templateName}" into week ${targetWeek || selectedDate}.`,
+      const parsedTemplateMeals = JSON.parse(saved);
+      if (!parsedTemplateMeals || typeof parsedTemplateMeals !== 'object') {
+        throw new Error('Invalid template payload');
+      }
+      setPendingTemplateBridgePreview({
+        ...templateBridgeRequest,
+        targetWeekStart: targetWeek || selectedDate,
+        templateMeals: parsedTemplateMeals,
       });
     } catch (error) {
       console.error('Error applying bridged template:', error);
@@ -1114,7 +1138,38 @@ const NutritionMealPlanner = () => {
       localStorage.removeItem('meal-planner-template-bridge-v1');
       setTemplateBridgeRequest(null);
     }
-  }, [templateBridgeRequest, loading, isPremium, selectedDate]);
+  }, [templateBridgeRequest, loading, isPremium, selectedDate, pendingTemplateBridgePreview, toast]);
+
+  const pendingTemplateCurrentWeekMealsCount = useMemo(
+    () => countMealEntries(weeklyMeals),
+    [weeklyMeals],
+  );
+  const pendingTemplateMealsCount = useMemo(
+    () => countMealEntries(pendingTemplateBridgePreview?.templateMeals),
+    [pendingTemplateBridgePreview],
+  );
+
+  const handleApplyPendingTemplateBridge = () => {
+    if (!pendingTemplateBridgePreview) return;
+    setWeeklyMeals(pendingTemplateBridgePreview.templateMeals);
+    toast({
+      title: 'Template applied',
+      description: `Loaded "${pendingTemplateBridgePreview.templateName}" into week ${pendingTemplateBridgePreview.targetWeekStart || selectedDate}.`,
+    });
+    localStorage.removeItem('meal-planner-template-bridge-v1');
+    setTemplateBridgeRequest(null);
+    setPendingTemplateBridgePreview(null);
+  };
+
+  const handleCancelPendingTemplateBridge = () => {
+    if (!pendingTemplateBridgePreview) return;
+    toast({
+      description: `Cancelled applying "${pendingTemplateBridgePreview.templateName}".`,
+    });
+    localStorage.removeItem('meal-planner-template-bridge-v1');
+    setTemplateBridgeRequest(null);
+    setPendingTemplateBridgePreview(null);
+  };
 
   const handleAIRecipe = () => {
     setShowAIRecipeModal(true);
@@ -2315,6 +2370,48 @@ const NutritionMealPlanner = () => {
           {/* Meal Planner Tab */}
           <TabsContent value="planner">
             <div className="space-y-6">
+              {pendingTemplateBridgePreview ? (
+                <Card className="border-orange-200 bg-orange-50/60">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-orange-900">
+                      <AlertCircle className="w-5 h-5" />
+                      Confirm template apply
+                    </CardTitle>
+                    <CardDescription className="text-orange-900/80">
+                      Review the impact before applying this bridged template to your planner week.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="rounded-lg border border-orange-200 bg-white p-3">
+                        <p className="text-xs text-gray-500 uppercase tracking-wide">Target week</p>
+                        <p className="text-sm font-semibold text-gray-900 mt-1">
+                          Week of {pendingTemplateBridgePreview.targetWeekStart || selectedDate}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-orange-200 bg-white p-3">
+                        <p className="text-xs text-gray-500 uppercase tracking-wide">Current meals</p>
+                        <p className="text-sm font-semibold text-gray-900 mt-1">{pendingTemplateCurrentWeekMealsCount} planned meals</p>
+                      </div>
+                      <div className="rounded-lg border border-orange-200 bg-white p-3">
+                        <p className="text-xs text-gray-500 uppercase tracking-wide">Template meals</p>
+                        <p className="text-sm font-semibold text-gray-900 mt-1">{pendingTemplateMealsCount} meals in template</p>
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-700">
+                      Applying <span className="font-medium">"{pendingTemplateBridgePreview.templateName}"</span> will replace meals currently planned for this week.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button onClick={handleApplyPendingTemplateBridge} className="bg-orange-600 hover:bg-orange-700">
+                        Apply Template
+                      </Button>
+                      <Button variant="outline" onClick={handleCancelPendingTemplateBridge}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : null}
               <WeeklyReadinessChecklist
                 unplannedMealSlots={unplannedMealSlots}
                 unplannedDaysCount={unplannedDays.length}
