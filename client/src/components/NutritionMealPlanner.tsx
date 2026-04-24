@@ -61,6 +61,7 @@ import {
   gradeClass,
   clientSideNutritionLookup,
   toGroceryExportItems,
+  buildTemplateSlotDiff,
 } from '@/components/meal-planner/nutritionMealPlannerUtils';
 
 const INITIAL_MEAL_FORM = {
@@ -1214,6 +1215,14 @@ const NutritionMealPlanner = () => {
     () => estimateAppendAddedMeals(weeklyMeals, pendingTemplateBridgePreview?.templateMeals || {}),
     [weeklyMeals, pendingTemplateBridgePreview],
   );
+  const pendingTemplateSlotDiffPreview = useMemo(() => {
+    if (!pendingTemplateBridgePreview) return [];
+    return buildTemplateSlotDiff(
+      weeklyMeals,
+      pendingTemplateBridgePreview.templateMeals || {},
+      pendingTemplateBridgePreview.mergeMode,
+    );
+  }, [weeklyMeals, pendingTemplateBridgePreview]);
 
   const handleApplyPendingTemplateBridge = () => {
     if (!pendingTemplateBridgePreview) return;
@@ -2499,6 +2508,42 @@ const NutritionMealPlanner = () => {
                         Applying <span className="font-medium">"{pendingTemplateBridgePreview.templateName}"</span> will replace meals currently planned for this week.
                       </p>
                     )}
+                    {pendingTemplateSlotDiffPreview.length > 0 ? (
+                      <div className="rounded-lg border border-orange-200 bg-white p-3">
+                        <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">Slot-level pre-apply diff</p>
+                        <div className="space-y-1.5">
+                          {pendingTemplateSlotDiffPreview.slice(0, 10).map((slot) => (
+                            <div key={slot.key} className="flex items-center justify-between text-xs">
+                              <span className="text-gray-700">
+                                {slot.day} • {slot.mealType}
+                              </span>
+                              <span
+                                className={`font-medium ${
+                                  slot.status === 'replace'
+                                    ? 'text-amber-700'
+                                    : slot.status === 'add'
+                                      ? 'text-emerald-700'
+                                      : slot.status === 'skip-existing'
+                                        ? 'text-sky-700'
+                                        : 'text-gray-500'
+                                }`}
+                              >
+                                {slot.status === 'replace'
+                                  ? `Replace ${slot.currentCount} → ${slot.templateCount}`
+                                  : slot.status === 'add'
+                                    ? `Add ${slot.templateCount}`
+                                    : slot.status === 'skip-existing'
+                                      ? `Keep current (${slot.currentCount})`
+                                      : 'No change'}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                        {pendingTemplateSlotDiffPreview.length > 10 ? (
+                          <p className="mt-2 text-[11px] text-gray-500">Showing 10 of {pendingTemplateSlotDiffPreview.length} template-filled slots.</p>
+                        ) : null}
+                      </div>
+                    ) : null}
                     <div className="flex flex-wrap gap-2">
                       <Button onClick={handleApplyPendingTemplateBridge} className="bg-orange-600 hover:bg-orange-700">
                         Apply Template

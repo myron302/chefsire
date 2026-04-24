@@ -1,6 +1,7 @@
 import React from 'react';
 import { Save } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { buildTemplateSlotDiff } from '@/components/meal-planner/nutritionMealPlannerUtils';
 
 type LoadTemplateModalProps = {
   open: boolean;
@@ -91,6 +92,18 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
       return null;
     }
   }, [selectedTemplate, open, currentWeeklyMeals]);
+
+  const slotDiffPreview = React.useMemo(() => {
+    if (!selectedTemplate) return [];
+    try {
+      const templateRaw = localStorage.getItem(`meal-template-${selectedTemplate}`);
+      if (!templateRaw) return [];
+      const templateWeek = JSON.parse(templateRaw);
+      return buildTemplateSlotDiff(currentWeeklyMeals, templateWeek, mergeMode);
+    } catch {
+      return [];
+    }
+  }, [selectedTemplate, open, currentWeeklyMeals, mergeMode]);
 
   React.useEffect(() => {
     if (!open) {
@@ -189,6 +202,42 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
                   ) : (
                     <p className="text-xs text-emerald-700">Append mode keeps existing meals and only fills empty slots.</p>
                   )}
+                  {slotDiffPreview.length > 0 ? (
+                    <div className="rounded-md border border-gray-200 bg-white p-2">
+                      <p className="text-xs font-semibold text-gray-700 mb-2">Slot-level pre-apply diff</p>
+                      <div className="space-y-1">
+                        {slotDiffPreview.slice(0, 8).map((slot) => (
+                          <div key={slot.key} className="flex items-center justify-between text-xs">
+                            <span className="text-gray-700">
+                              {slot.day} • {slot.mealType}
+                            </span>
+                            <span
+                              className={`font-medium ${
+                                slot.status === 'replace'
+                                  ? 'text-amber-700'
+                                  : slot.status === 'add'
+                                    ? 'text-emerald-700'
+                                    : slot.status === 'skip-existing'
+                                      ? 'text-sky-700'
+                                      : 'text-gray-500'
+                              }`}
+                            >
+                              {slot.status === 'replace'
+                                ? `Replace ${slot.currentCount} → ${slot.templateCount}`
+                                : slot.status === 'add'
+                                  ? `Add ${slot.templateCount}`
+                                  : slot.status === 'skip-existing'
+                                    ? `Keep current (${slot.currentCount})`
+                                    : 'No change'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                      {slotDiffPreview.length > 8 ? (
+                        <p className="text-[11px] text-gray-500 mt-2">Showing 8 of {slotDiffPreview.length} impacted slots.</p>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               )}
             </>

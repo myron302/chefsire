@@ -198,3 +198,61 @@ export const toGroceryExportItems = (groceryList: any[]) => groceryList.map((ite
   category: item.category || 'Other',
   checked: item.checked || false,
 }));
+
+export type TemplateMergeMode = 'replace' | 'append';
+export type TemplateSlotDiffStatus = 'add' | 'replace' | 'unchanged' | 'skip-existing';
+export type TemplateSlotDiffRow = {
+  key: string;
+  day: string;
+  mealType: string;
+  currentCount: number;
+  templateCount: number;
+  status: TemplateSlotDiffStatus;
+};
+
+const toMealItems = (value: any): any[] => {
+  if (!value) return [];
+  return Array.isArray(value) ? value.filter(Boolean) : [value].filter(Boolean);
+};
+
+export const buildTemplateSlotDiff = (
+  currentWeek: Record<string, any>,
+  templateWeek: Record<string, any>,
+  mergeMode: TemplateMergeMode,
+): TemplateSlotDiffRow[] => {
+  const rows: TemplateSlotDiffRow[] = [];
+
+  for (const day of WEEK_DAYS) {
+    for (const mealType of MEAL_TYPES) {
+      const currentItems = toMealItems(currentWeek?.[day]?.[mealType]);
+      const templateItems = toMealItems(templateWeek?.[day]?.[mealType]);
+      if (templateItems.length === 0) continue;
+
+      const currentSerialized = JSON.stringify(currentItems);
+      const templateSerialized = JSON.stringify(templateItems);
+      const sameItems = currentSerialized === templateSerialized;
+
+      let status: TemplateSlotDiffStatus;
+      if (currentItems.length === 0) {
+        status = 'add';
+      } else if (sameItems) {
+        status = 'unchanged';
+      } else if (mergeMode === 'append') {
+        status = 'skip-existing';
+      } else {
+        status = 'replace';
+      }
+
+      rows.push({
+        key: `${day}-${mealType}`,
+        day,
+        mealType,
+        currentCount: currentItems.length,
+        templateCount: templateItems.length,
+        status,
+      });
+    }
+  }
+
+  return rows;
+};
