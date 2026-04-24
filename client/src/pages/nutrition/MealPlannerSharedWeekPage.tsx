@@ -124,6 +124,8 @@ export default function MealPlannerSharedWeekPage() {
   const [impactSummary, setImpactSummary] = useState<CopyImpactSummary | null>(null);
   const [impactLoading, setImpactLoading] = useState(false);
   const [copyAppliedSummary, setCopyAppliedSummary] = useState<CopyAppliedSummary | null>(null);
+  const [templateNameDraft, setTemplateNameDraft] = useState('');
+  const [templateSavedName, setTemplateSavedName] = useState<string | null>(null);
 
   const fetchCopyImpactSummary = async (opts?: { silent?: boolean; targetWeek?: string; mode?: CopyMergeMode }) => {
     if (!token || !user) return null;
@@ -249,6 +251,9 @@ export default function MealPlannerSharedWeekPage() {
         appliedAffectedSlotsPreviewCount: Number(payload?.appliedAffectedSlotsPreviewCount || 12),
       });
       setCopySummary(summary);
+      const defaultTemplateName = `Imported week ${payload?.targetWeekStart ?? targetWeekStart}`;
+      setTemplateNameDraft(defaultTemplateName);
+      setTemplateSavedName(null);
       toast({ title: 'Week copied to your planner', description: summary });
     } catch (copyError: any) {
       toast({
@@ -258,6 +263,36 @@ export default function MealPlannerSharedWeekPage() {
       });
     } finally {
       setIsCopying(false);
+    }
+  };
+
+  const handleSaveImportedWeekAsTemplate = () => {
+    if (!data?.plannedMeals) return;
+
+    const normalizedName = templateNameDraft.trim() || `Imported week ${copyAppliedSummary?.targetWeekStart ?? targetWeekStart}`;
+    const storageKey = `meal-template-${normalizedName}`;
+    const hasExisting = localStorage.getItem(storageKey);
+
+    if (hasExisting) {
+      const confirmed = window.confirm(`Template "${normalizedName}" already exists. Replace it with this imported week?`);
+      if (!confirmed) return;
+    }
+
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(data.plannedMeals));
+      setTemplateSavedName(normalizedName);
+      setTemplateNameDraft(normalizedName);
+      toast({
+        title: 'Template saved',
+        description: `Saved "${normalizedName}". You can load it anytime from your planner templates.`,
+      });
+    } catch (error) {
+      console.error('Error saving imported week template:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Unable to save template',
+        description: 'Please try again.',
+      });
     }
   };
 
@@ -417,6 +452,29 @@ export default function MealPlannerSharedWeekPage() {
                 )}
               </div>
             )}
+            <div className="mt-3 rounded-md border bg-muted/30 p-3">
+              <div className="text-sm font-medium">Save this imported week as a reusable template</div>
+              <div className="mt-1 text-xs text-muted-foreground">
+                Keep this structure for future weeks without re-importing.
+              </div>
+              <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="text"
+                  value={templateNameDraft}
+                  onChange={(event) => setTemplateNameDraft(event.target.value)}
+                  placeholder={`Imported week ${copyAppliedSummary?.targetWeekStart ?? targetWeekStart}`}
+                  className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                />
+                <Button size="sm" variant="secondary" onClick={handleSaveImportedWeekAsTemplate}>
+                  Save This Week as Template
+                </Button>
+              </div>
+              {templateSavedName && (
+                <div className="mt-2 text-xs text-emerald-600">
+                  Saved as "{templateSavedName}".
+                </div>
+              )}
+            </div>
             <Button asChild size="sm" className="mt-3">
               <a href="/nutrition">Open My Planner</a>
             </Button>
