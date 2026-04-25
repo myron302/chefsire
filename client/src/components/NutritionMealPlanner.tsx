@@ -178,6 +178,15 @@ type PendingTemplateBridgePreview = TemplateBridgePayload & {
   templateMeals: Record<string, any>;
   mergeMode: TemplateMergeMode;
 };
+type RecentPinnedTemplateUsage = {
+  templateName: string;
+  lastUsedAt: string;
+  mergeMode: TemplateMergeMode;
+};
+
+const TEMPLATE_PINNED_STORAGE_KEY = 'meal-template-pinned-v1';
+const RECENT_PINNED_TEMPLATE_STORAGE_KEY = 'meal-template-recent-pinned-v1';
+const RECENT_PINNED_TEMPLATE_LIMIT = 3;
 
 const NutritionMealPlanner = () => {
   const { user, updateUser } = useUser();
@@ -221,6 +230,7 @@ const NutritionMealPlanner = () => {
   const [shareMetadataSaveState, setShareMetadataSaveState] = useState<ShareMetadataSaveState>('idle');
   const [templateBridgeRequest, setTemplateBridgeRequest] = useState<TemplateBridgePayload | null>(null);
   const [pendingTemplateBridgePreview, setPendingTemplateBridgePreview] = useState<PendingTemplateBridgePreview | null>(null);
+  const [recentPinnedTemplates, setRecentPinnedTemplates] = useState<RecentPinnedTemplateUsage[]>([]);
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -256,6 +266,79 @@ const NutritionMealPlanner = () => {
   const toMealItems = (value: any): any[] => {
     if (!value) return [];
     return Array.isArray(value) ? value.filter(Boolean) : [value].filter(Boolean);
+  };
+
+  const loadPinnedTemplateNames = () => {
+    try {
+      const raw = localStorage.getItem(TEMPLATE_PINNED_STORAGE_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) return [];
+      return parsed
+        .map((name) => (typeof name === 'string' ? name.trim() : ''))
+        .filter((name) => Boolean(name));
+    } catch {
+      return [];
+    }
+  };
+
+  const sanitizeRecentPinnedTemplates = (items: RecentPinnedTemplateUsage[]) => {
+    const pinned = new Set(loadPinnedTemplateNames());
+    return items
+      .filter((item) => pinned.has(item.templateName) && Boolean(localStorage.getItem(`meal-template-${item.templateName}`)))
+      .slice(0, RECENT_PINNED_TEMPLATE_LIMIT);
+  };
+
+  const refreshRecentPinnedTemplates = () => {
+    try {
+      const raw = localStorage.getItem(RECENT_PINNED_TEMPLATE_STORAGE_KEY);
+      if (!raw) {
+        setRecentPinnedTemplates([]);
+        return;
+      }
+      const parsed = JSON.parse(raw);
+      const normalized = Array.isArray(parsed)
+        ? parsed
+            .map((item) => ({
+              templateName: typeof item?.templateName === 'string' ? item.templateName.trim() : '',
+              lastUsedAt: typeof item?.lastUsedAt === 'string' ? item.lastUsedAt : '',
+              mergeMode: item?.mergeMode === 'append' ? 'append' : 'replace',
+            }))
+            .filter((item) => Boolean(item.templateName))
+        : [];
+      const sanitized = sanitizeRecentPinnedTemplates(normalized);
+      localStorage.setItem(RECENT_PINNED_TEMPLATE_STORAGE_KEY, JSON.stringify(sanitized));
+      setRecentPinnedTemplates(sanitized);
+    } catch (error) {
+      console.error('Error loading recent pinned templates:', error);
+      setRecentPinnedTemplates([]);
+    }
+  };
+
+  const recordRecentPinnedTemplateUse = (templateName: string, mergeMode: TemplateMergeMode) => {
+    const normalizedName = templateName.trim();
+    if (!normalizedName) return;
+    const pinned = new Set(loadPinnedTemplateNames());
+    if (!pinned.has(normalizedName)) return;
+
+    try {
+      const raw = localStorage.getItem(RECENT_PINNED_TEMPLATE_STORAGE_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      const existing = Array.isArray(parsed) ? parsed : [];
+      const withoutCurrent = existing.filter((item) => item?.templateName !== normalizedName);
+      const nextItems = sanitizeRecentPinnedTemplates([
+        {
+          templateName: normalizedName,
+          lastUsedAt: new Date().toISOString(),
+          mergeMode,
+        },
+        ...withoutCurrent,
+      ]);
+      localStorage.setItem(RECENT_PINNED_TEMPLATE_STORAGE_KEY, JSON.stringify(nextItems));
+      setRecentPinnedTemplates(nextItems);
+    } catch (error) {
+      console.error('Error storing recent pinned template use:', error);
+    }
   };
 
   const applyTemplateMeals = (
@@ -339,6 +422,10 @@ const NutritionMealPlanner = () => {
       localStorage.removeItem('meal-planner-template-bridge-v1');
     }
   }, []);
+
+  useEffect(() => {
+    refreshRecentPinnedTemplates();
+  }, [showLoadTemplateModal]);
 
   useEffect(() => {
     if (isPremium) {
@@ -1147,6 +1234,7 @@ const NutritionMealPlanner = () => {
       const parsedTemplateMeals = JSON.parse(saved);
       const nextWeeklyMeals = applyTemplateMeals(weeklyMeals, parsedTemplateMeals, mergeMode);
       setWeeklyMeals(nextWeeklyMeals);
+      recordRecentPinnedTemplateUse(templateName, mergeMode);
       toast({
         description: mergeMode === 'append'
           ? `✅ Template "${templateName}" appended into open planner slots!`
@@ -1232,6 +1320,7 @@ const NutritionMealPlanner = () => {
       pendingTemplateBridgePreview.mergeMode,
     );
     setWeeklyMeals(nextWeeklyMeals);
+    recordRecentPinnedTemplateUse(pendingTemplateBridgePreview.templateName, pendingTemplateBridgePreview.mergeMode);
     toast({
       title: 'Template applied',
       description: pendingTemplateBridgePreview.mergeMode === 'append'
@@ -1251,6 +1340,34 @@ const NutritionMealPlanner = () => {
     localStorage.removeItem('meal-planner-template-bridge-v1');
     setTemplateBridgeRequest(null);
     setPendingTemplateBridgePreview(null);
+  };
+
+  const handleUseRecentPinnedTemplate = (templateName: string) => {
+    const saved = localStorage.getItem(`meal-template-${templateName}`);
+    if (!saved) {
+      toast({
+        variant: 'destructive',
+        description: `Template "${templateName}" is no longer available.`,
+      });
+      refreshRecentPinnedTemplates();
+      return;
+    }
+
+    const request: TemplateBridgePayload = {
+      templateName,
+      targetWeekStart: getCurrentWeekAnchor(),
+      source: 'planner-recent-pinned-strip',
+      requestedAt: new Date().toISOString(),
+      mergeMode: 'replace',
+    };
+    localStorage.setItem('meal-planner-template-bridge-v1', JSON.stringify(request));
+    setTemplateBridgeRequest(request);
+  };
+
+  const formatRecentTemplateDate = (value: string) => {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return 'recently';
+    return parsed.toLocaleDateString();
   };
 
   const handleAIRecipe = () => {
@@ -2552,6 +2669,31 @@ const NutritionMealPlanner = () => {
                         Cancel
                       </Button>
                     </div>
+                  </CardContent>
+                </Card>
+              ) : null}
+              {recentPinnedTemplates.length > 0 ? (
+                <Card className="border-indigo-200 bg-indigo-50/40">
+                  <CardHeader>
+                    <CardTitle className="text-base text-indigo-900">Recently used pinned templates</CardTitle>
+                    <CardDescription className="text-indigo-900/80">
+                      Reuse your latest pinned templates quickly. “Use” opens the same pre-apply preview before anything changes.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {recentPinnedTemplates.map((template) => (
+                      <div key={template.templateName} className="rounded-lg border border-indigo-200 bg-white p-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-gray-900">{template.templateName}</p>
+                          <p className="text-xs text-gray-500">
+                            Last used {formatRecentTemplateDate(template.lastUsedAt)} • {template.mergeMode === 'append' ? 'Append' : 'Replace'} mode
+                          </p>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => handleUseRecentPinnedTemplate(template.templateName)}>
+                          Use
+                        </Button>
+                      </div>
+                    ))}
                   </CardContent>
                 </Card>
               ) : null}
