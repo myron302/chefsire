@@ -1,5 +1,5 @@
 import React from 'react';
-import { Save } from 'lucide-react';
+import { Save, Pin } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { buildTemplateSlotDiff } from '@/components/meal-planner/nutritionMealPlannerUtils';
 
@@ -21,10 +21,29 @@ type TemplateImpactSummary = {
 
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'];
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const TEMPLATE_PINNED_STORAGE_KEY = 'meal-template-pinned-v1';
 
 const toItems = (value: any): any[] => {
   if (!value) return [];
   return Array.isArray(value) ? value.filter(Boolean) : [value].filter(Boolean);
+};
+
+const loadPinnedTemplateNames = (): string[] => {
+  try {
+    const raw = localStorage.getItem(TEMPLATE_PINNED_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((name) => (typeof name === 'string' ? name.trim() : ''))
+      .filter((name) => Boolean(name));
+  } catch {
+    return [];
+  }
+};
+
+const savePinnedTemplateNames = (templateNames: string[]) => {
+  localStorage.setItem(TEMPLATE_PINNED_STORAGE_KEY, JSON.stringify(templateNames));
 };
 
 const buildImpactSummary = (currentWeek: Record<string, any>, templateWeek: Record<string, any>): TemplateImpactSummary => {
@@ -68,8 +87,9 @@ const buildImpactSummary = (currentWeek: Record<string, any>, templateWeek: Reco
 const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }: LoadTemplateModalProps) => {
   const [selectedTemplate, setSelectedTemplate] = React.useState<string | null>(null);
   const [mergeMode, setMergeMode] = React.useState<'replace' | 'append'>('replace');
+  const [pinnedTemplates, setPinnedTemplates] = React.useState<string[]>([]);
 
-  const templates = React.useMemo(() => {
+  const rawTemplates = React.useMemo(() => {
     const savedTemplates: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -77,8 +97,18 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
         savedTemplates.push(key.replace('meal-template-', ''));
       }
     }
-    return savedTemplates.sort((a, b) => a.localeCompare(b));
+    return savedTemplates;
   }, [open]);
+
+  const templates = React.useMemo(() => {
+    const pinnedSet = new Set(pinnedTemplates);
+    return [...rawTemplates].sort((a, b) => {
+      const aPinned = pinnedSet.has(a);
+      const bPinned = pinnedSet.has(b);
+      if (aPinned !== bPinned) return aPinned ? -1 : 1;
+      return a.localeCompare(b);
+    });
+  }, [rawTemplates, pinnedTemplates]);
 
   const impactPreview = React.useMemo(() => {
     if (!selectedTemplate) return null;
@@ -111,12 +141,37 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
       setMergeMode('replace');
       return;
     }
+
+    const rawPinnedTemplateNames = loadPinnedTemplateNames();
+    const availableTemplateNames = new Set(rawTemplates);
+    const sanitizedPinnedTemplateNames = rawPinnedTemplateNames.filter((templateName) => availableTemplateNames.has(templateName));
+
+    if (sanitizedPinnedTemplateNames.length !== rawPinnedTemplateNames.length) {
+      savePinnedTemplateNames(sanitizedPinnedTemplateNames);
+    }
+
+    setPinnedTemplates((prev) => {
+      const prevJoined = prev.join('||');
+      const nextJoined = sanitizedPinnedTemplateNames.join('||');
+      return prevJoined === nextJoined ? prev : sanitizedPinnedTemplateNames;
+    });
+
     if (templates.length > 0) {
       setSelectedTemplate((prev) => (prev && templates.includes(prev) ? prev : templates[0]));
     } else {
       setSelectedTemplate(null);
     }
-  }, [open, templates]);
+  }, [open, rawTemplates, templates]);
+
+  const togglePinnedTemplate = (templateName: string) => {
+    setPinnedTemplates((prev) => {
+      const nextPinnedTemplates = prev.includes(templateName)
+        ? prev.filter((name) => name !== templateName)
+        : [...prev, templateName];
+      savePinnedTemplateNames(nextPinnedTemplates);
+      return nextPinnedTemplates;
+    });
+  };
 
   if (!open) return null;
 
@@ -131,7 +186,8 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
           <Button variant="ghost" size="sm" onClick={onClose}>✕</Button>
         </div>
 
-        <p className="text-gray-600 mb-6">Select a saved meal plan template to load:</p>
+        <p className="text-gray-600 mb-2">Select a saved meal plan template to load:</p>
+        <p className="text-xs text-gray-500 mb-6">Pin your best templates to keep them at the top for faster weekly reuse.</p>
 
         <div className="space-y-3">
           {templates.length === 0 ? (
@@ -144,6 +200,7 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
             <>
               {templates.map((templateName) => {
                 const isSelected = selectedTemplate === templateName;
+                const isPinned = pinnedTemplates.includes(templateName);
                 return (
                   <div
                     key={templateName}
@@ -151,15 +208,34 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
                     onClick={() => setSelectedTemplate(templateName)}
                   >
                     <div>
-                      <h4 className="font-medium">{templateName}</h4>
+                      <h4 className="font-medium flex items-center gap-2">
+                        {templateName}
+                        {isPinned ? (
+                          <span className="text-[10px] uppercase tracking-wide rounded-full bg-indigo-100 text-indigo-700 px-2 py-0.5">Pinned</span>
+                        ) : null}
+                      </h4>
                       <p className="text-xs text-gray-500">{isSelected ? 'Selected for preview' : 'Click to preview impact'}</p>
                     </div>
-                    <Button size="sm" variant={isSelected ? 'default' : 'outline'} onClick={(event) => {
-                      event.stopPropagation();
-                      onLoadTemplate(templateName, mergeMode);
-                    }}>
-                      Apply
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        aria-label={isPinned ? `Unpin ${templateName}` : `Pin ${templateName}`}
+                        className={isPinned ? 'text-indigo-600 hover:text-indigo-700' : 'text-gray-500 hover:text-gray-700'}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          togglePinnedTemplate(templateName);
+                        }}
+                      >
+                        <Pin className={`w-4 h-4 ${isPinned ? 'fill-current' : ''}`} />
+                      </Button>
+                      <Button size="sm" variant={isSelected ? 'default' : 'outline'} onClick={(event) => {
+                        event.stopPropagation();
+                        onLoadTemplate(templateName, mergeMode);
+                      }}>
+                        Apply
+                      </Button>
+                    </div>
                   </div>
                 );
               })}
