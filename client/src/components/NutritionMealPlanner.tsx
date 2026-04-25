@@ -2314,6 +2314,62 @@ const NutritionMealPlanner = () => {
   });
 
   const hasWeeklyNutritionData = weeklyNutritionData.some((day) => day.mealsLogged > 0 || day.calories > 0);
+  const weeklyNutritionInsights = useMemo(() => {
+    const missingMealDays = weeklyNutritionData.filter((day) => day.mealsLogged === 0).length;
+    const plannedDays = weeklyNutritionData.filter((day) => day.mealsLogged > 0);
+    const proteinTrackedDays = plannedDays.filter((day) => day.protein > 0);
+    const calorieTrackedDays = plannedDays.filter((day) => day.calories > 0);
+    const lowProteinDays = proteinTrackedDays.filter((day) => day.protein < 60).length;
+
+    const caloriesVaryWidely = calorieTrackedDays.length >= 3
+      ? (() => {
+          const calorieValues = calorieTrackedDays.map((day) => day.calories);
+          const minCalories = Math.min(...calorieValues);
+          const maxCalories = Math.max(...calorieValues);
+          const spread = maxCalories - minCalories;
+          const ratio = maxCalories / Math.max(1, minCalories);
+          return ratio >= 1.6 || spread >= 800;
+        })()
+      : false;
+
+    const insights: string[] = [];
+    if (missingMealDays > 0) {
+      insights.push(`${missingMealDays} day${missingMealDays === 1 ? '' : 's'} have no meals planned.`);
+    } else {
+      insights.push('Week fully planned.');
+    }
+
+    if (proteinTrackedDays.length > 0) {
+      if (lowProteinDays > 0) {
+        insights.push(`Low protein on ${lowProteinDays} day${lowProteinDays === 1 ? '' : 's'} (<60g).`);
+      } else {
+        insights.push('Protein coverage looks steady across planned days.');
+      }
+    } else {
+      insights.push('Protein insights unlock as meal protein data is added.');
+    }
+
+    if (calorieTrackedDays.length >= 3) {
+      if (caloriesVaryWidely) {
+        insights.push('Calories vary widely across the week.');
+      } else {
+        insights.push('Calorie range is fairly consistent this week.');
+      }
+    } else {
+      insights.push('Add calorie details to at least 3 days to compare weekly consistency.');
+    }
+
+    const looksBalanced = missingMealDays === 0
+      && proteinTrackedDays.length > 0
+      && lowProteinDays === 0
+      && calorieTrackedDays.length >= 3
+      && !caloriesVaryWidely;
+
+    return {
+      insights,
+      looksBalanced,
+    };
+  }, [weeklyNutritionData]);
 
   const weeklyMacroTotals = weeklyNutritionData.reduce((acc, day) => ({
     protein: acc.protein + day.protein,
@@ -2864,6 +2920,32 @@ const NutritionMealPlanner = () => {
                   </CardContent>
                 </Card>
               ) : null}
+              <Card className="border-emerald-200 bg-emerald-50/40">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-emerald-900">
+                    <Sparkles className="w-5 h-5 text-emerald-600" />
+                    Weekly Nutrition Insights
+                  </CardTitle>
+                  <CardDescription className="text-emerald-900/80">
+                    Lightweight quality signals based on this week&apos;s planned meals.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  <ul className="space-y-1.5">
+                    {weeklyNutritionInsights.insights.map((insight) => (
+                      <li key={insight} className="flex items-start gap-2 text-sm text-gray-700">
+                        <span className="mt-0.5">•</span>
+                        <span>{insight}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {weeklyNutritionInsights.looksBalanced ? (
+                    <div className="rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700">
+                      Balanced week 👍
+                    </div>
+                  ) : null}
+                </CardContent>
+              </Card>
               <WeeklyReadinessChecklist
                 unplannedMealSlots={unplannedMealSlots}
                 unplannedDaysCount={unplannedDays.length}
