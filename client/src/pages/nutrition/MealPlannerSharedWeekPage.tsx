@@ -47,6 +47,30 @@ type SharedWeekPayload = {
 };
 
 const DAY_ORDER = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+const TEMPLATE_PINNED_STORAGE_KEY = 'meal-template-pinned-v1';
+
+const loadPinnedTemplateNames = (): string[] => {
+  try {
+    const raw = localStorage.getItem(TEMPLATE_PINNED_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .map((name) => (typeof name === 'string' ? name.trim() : ''))
+      .filter((name): name is string => Boolean(name));
+  } catch {
+    return [];
+  }
+};
+
+const savePinnedTemplateNames = (templateNames: string[]) => {
+  const deduped = Array.from(new Set(templateNames.map((name) => name.trim()).filter(Boolean)));
+  localStorage.setItem(TEMPLATE_PINNED_STORAGE_KEY, JSON.stringify(deduped));
+  return deduped;
+};
+
 type CopyMergeMode = 'replace' | 'append' | 'skip-duplicates';
 type CopyImpactSummary = {
   mergeMode: CopyMergeMode;
@@ -134,6 +158,7 @@ export default function MealPlannerSharedWeekPage() {
   const [templateNameDraft, setTemplateNameDraft] = useState('');
   const [templateSavedName, setTemplateSavedName] = useState<string | null>(null);
   const [templateBridgeTargetWeekStart, setTemplateBridgeTargetWeekStart] = useState(() => getWeekStartIso(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
+  const [templateWasPinnedAtSave, setTemplateWasPinnedAtSave] = useState(false);
 
   const fetchCopyImpactSummary = async (opts?: { silent?: boolean; targetWeek?: string; mode?: CopyMergeMode }) => {
     if (!token || !user) return null;
@@ -291,6 +316,7 @@ export default function MealPlannerSharedWeekPage() {
       localStorage.setItem(storageKey, JSON.stringify(data.plannedMeals));
       setTemplateSavedName(normalizedName);
       setTemplateNameDraft(normalizedName);
+      setTemplateWasPinnedAtSave(loadPinnedTemplateNames().includes(normalizedName));
       toast({
         title: 'Template saved',
         description: `Saved "${normalizedName}". You can load it anytime from your planner templates.`,
@@ -301,6 +327,37 @@ export default function MealPlannerSharedWeekPage() {
         variant: 'destructive',
         title: 'Unable to save template',
         description: 'Please try again.',
+      });
+    }
+  };
+
+
+  const handlePinSavedTemplate = () => {
+    if (!templateSavedName) return;
+
+    try {
+      const existingPinnedTemplates = loadPinnedTemplateNames();
+      if (existingPinnedTemplates.includes(templateSavedName)) {
+        setTemplateWasPinnedAtSave(true);
+        toast({
+          title: 'Template already pinned',
+          description: `"${templateSavedName}" is already pinned in your Load Template list.`,
+        });
+        return;
+      }
+
+      savePinnedTemplateNames([...existingPinnedTemplates, templateSavedName]);
+      setTemplateWasPinnedAtSave(true);
+      toast({
+        title: 'Template pinned',
+        description: `Pinned "${templateSavedName}" for quicker reuse in Load Template.`,
+      });
+    } catch (error) {
+      console.error('Error pinning imported week template:', error);
+      toast({
+        variant: 'destructive',
+        title: 'Unable to pin template',
+        description: 'Template was saved, but pinning failed. Please try again.',
       });
     }
   };
@@ -511,6 +568,18 @@ export default function MealPlannerSharedWeekPage() {
                   <div className="text-xs font-medium text-emerald-700">Saved as "{templateSavedName}".</div>
                   <div className="mt-1 text-xs text-emerald-700/90">
                     Use it right away on another week without browsing away first.
+                  </div>
+                  <div className="mt-2 rounded-md border border-emerald-200 bg-white/70 p-2">
+                    <div className="text-xs font-medium text-foreground">Pin this template for quick reuse</div>
+                    <div className="mt-1 text-xs text-muted-foreground">Pinned templates appear at the top of your Load Template modal.</div>
+                    <Button
+                      size="sm"
+                      variant={templateWasPinnedAtSave ? 'outline' : 'secondary'}
+                      className="mt-2"
+                      onClick={handlePinSavedTemplate}
+                    >
+                      {templateWasPinnedAtSave ? 'Pinned for quick reuse' : 'Pin This Template'}
+                    </Button>
                   </div>
                   <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
                     <label className="space-y-1 text-xs">
