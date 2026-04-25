@@ -35,16 +35,17 @@ const loadPinnedTemplateNames = (): string[] => {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
-    return parsed
+    return Array.from(new Set(parsed
       .map((name) => (typeof name === 'string' ? name.trim() : ''))
-      .filter((name) => Boolean(name));
+      .filter((name) => Boolean(name))));
   } catch {
     return [];
   }
 };
 
 const savePinnedTemplateNames = (templateNames: string[]) => {
-  localStorage.setItem(TEMPLATE_PINNED_STORAGE_KEY, JSON.stringify(templateNames));
+  const deduped = Array.from(new Set(templateNames.map((name) => name.trim()).filter(Boolean)));
+  localStorage.setItem(TEMPLATE_PINNED_STORAGE_KEY, JSON.stringify(deduped));
 };
 
 const loadTemplateMergePreferences = (): Record<string, 'replace' | 'append'> => {
