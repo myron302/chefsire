@@ -1395,6 +1395,27 @@ const NutritionMealPlanner = () => {
       pendingTemplateBridgePreview.mergeMode,
     );
   }, [weeklyMeals, pendingTemplateBridgePreview]);
+  const pendingTemplateImpactBadge = useMemo(() => {
+    if (!pendingTemplateBridgePreview) {
+      return { label: '', className: '' };
+    }
+    if (pendingTemplateBridgePreview.mergeMode === 'replace') {
+      return {
+        label: `Will replace with ${pendingTemplateMealsCount} ${pendingTemplateMealsCount === 1 ? 'meal' : 'meals'}`,
+        className: 'bg-amber-100 text-amber-800 border-amber-200',
+      };
+    }
+    if (pendingTemplateAppendAddedMeals > 0) {
+      return {
+        label: `Will add ${pendingTemplateAppendAddedMeals} ${pendingTemplateAppendAddedMeals === 1 ? 'meal' : 'meals'}`,
+        className: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      };
+    }
+    return {
+      label: 'No empty slots to fill',
+      className: 'bg-slate-100 text-slate-700 border-slate-200',
+    };
+  }, [pendingTemplateBridgePreview, pendingTemplateMealsCount, pendingTemplateAppendAddedMeals]);
 
   const handleApplyPendingTemplateBridge = () => {
     if (!pendingTemplateBridgePreview) return;
@@ -2677,6 +2698,11 @@ const NutritionMealPlanner = () => {
                     <CardDescription className="text-orange-900/80">
                       Review the impact before applying this bridged template to your planner week.
                     </CardDescription>
+                    <div>
+                      <Badge variant="outline" className={`mt-2 ${pendingTemplateImpactBadge.className}`}>
+                        {pendingTemplateImpactBadge.label}
+                      </Badge>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
