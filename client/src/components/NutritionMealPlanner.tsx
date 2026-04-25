@@ -182,8 +182,18 @@ type RecentPinnedTemplateUsage = {
   templateName: string;
   lastUsedAt: string;
   mergeMode: TemplateMergeMode;
+  lastAppliedSummary?: string;
+  appliedMealCount?: number;
+  addedMealCount?: number;
+  targetWeekStart?: string;
 };
 type TemplateMergePreferenceMap = Record<string, TemplateMergeMode>;
+type RecentPinnedTemplateApplyResult = {
+  appliedMealCount?: number;
+  addedMealCount?: number;
+  targetWeekStart?: string;
+  lastAppliedSummary?: string;
+};
 
 const TEMPLATE_PINNED_STORAGE_KEY = 'meal-template-pinned-v1';
 const RECENT_PINNED_TEMPLATE_STORAGE_KEY = 'meal-template-recent-pinned-v1';
@@ -327,6 +337,13 @@ const NutritionMealPlanner = () => {
       .slice(0, RECENT_PINNED_TEMPLATE_LIMIT);
   };
 
+  const buildLastAppliedSummary = (mergeMode: TemplateMergeMode, appliedMealCount: number, addedMealCount?: number) => {
+    if (mergeMode === 'append') {
+      return `Append, added ${addedMealCount || 0} meals`;
+    }
+    return `Replace, ${appliedMealCount} meals applied`;
+  };
+
   const refreshRecentPinnedTemplates = () => {
     try {
       const raw = localStorage.getItem(RECENT_PINNED_TEMPLATE_STORAGE_KEY);
@@ -346,6 +363,10 @@ const NutritionMealPlanner = () => {
                 : item?.mergeMode === 'append'
                   ? 'append'
                   : 'replace',
+              lastAppliedSummary: typeof item?.lastAppliedSummary === 'string' ? item.lastAppliedSummary : undefined,
+              appliedMealCount: Number.isFinite(item?.appliedMealCount) ? Number(item.appliedMealCount) : undefined,
+              addedMealCount: Number.isFinite(item?.addedMealCount) ? Number(item.addedMealCount) : undefined,
+              targetWeekStart: typeof item?.targetWeekStart === 'string' ? item.targetWeekStart : undefined,
             }))
             .filter((item) => Boolean(item.templateName))
         : [];
@@ -358,11 +379,20 @@ const NutritionMealPlanner = () => {
     }
   };
 
-  const recordRecentPinnedTemplateUse = (templateName: string, mergeMode: TemplateMergeMode) => {
+  const recordRecentPinnedTemplateUse = (
+    templateName: string,
+    mergeMode: TemplateMergeMode,
+    result: RecentPinnedTemplateApplyResult = {},
+  ) => {
     const normalizedName = templateName.trim();
     if (!normalizedName) return;
     const pinned = new Set(loadPinnedTemplateNames());
     if (!pinned.has(normalizedName)) return;
+    const appliedMealCount = Number.isFinite(result.appliedMealCount) ? Number(result.appliedMealCount) : 0;
+    const normalizedAddedMealCount = Number.isFinite(result.addedMealCount) ? Number(result.addedMealCount) : undefined;
+    const lastAppliedSummary = typeof result.lastAppliedSummary === 'string' && result.lastAppliedSummary.trim().length > 0
+      ? result.lastAppliedSummary.trim()
+      : buildLastAppliedSummary(mergeMode, appliedMealCount, normalizedAddedMealCount);
 
     try {
       const raw = localStorage.getItem(RECENT_PINNED_TEMPLATE_STORAGE_KEY);
@@ -374,6 +404,10 @@ const NutritionMealPlanner = () => {
           templateName: normalizedName,
           lastUsedAt: new Date().toISOString(),
           mergeMode,
+          lastAppliedSummary,
+          appliedMealCount,
+          addedMealCount: normalizedAddedMealCount,
+          targetWeekStart: typeof result.targetWeekStart === 'string' ? result.targetWeekStart : undefined,
         },
         ...withoutCurrent,
       ]);
@@ -1275,10 +1309,16 @@ const NutritionMealPlanner = () => {
     const saved = localStorage.getItem(`meal-template-${templateName}`);
     if (saved) {
       const parsedTemplateMeals = JSON.parse(saved);
+      const appliedMealCount = countMealEntries(parsedTemplateMeals);
+      const addedMealCount = mergeMode === 'append' ? estimateAppendAddedMeals(weeklyMeals, parsedTemplateMeals) : undefined;
       const nextWeeklyMeals = applyTemplateMeals(weeklyMeals, parsedTemplateMeals, mergeMode);
       setWeeklyMeals(nextWeeklyMeals);
       setTemplateMergePreference(templateName, mergeMode);
-      recordRecentPinnedTemplateUse(templateName, mergeMode);
+      recordRecentPinnedTemplateUse(templateName, mergeMode, {
+        appliedMealCount,
+        addedMealCount,
+        targetWeekStart: getCurrentWeekAnchor(),
+      });
       toast({
         description: mergeMode === 'append'
           ? `✅ Template "${templateName}" appended into open planner slots!`
@@ -1365,7 +1405,11 @@ const NutritionMealPlanner = () => {
     );
     setWeeklyMeals(nextWeeklyMeals);
     setTemplateMergePreference(pendingTemplateBridgePreview.templateName, pendingTemplateBridgePreview.mergeMode);
-    recordRecentPinnedTemplateUse(pendingTemplateBridgePreview.templateName, pendingTemplateBridgePreview.mergeMode);
+    recordRecentPinnedTemplateUse(pendingTemplateBridgePreview.templateName, pendingTemplateBridgePreview.mergeMode, {
+      appliedMealCount: pendingTemplateMealsCount,
+      addedMealCount: pendingTemplateBridgePreview.mergeMode === 'append' ? pendingTemplateAppendAddedMeals : undefined,
+      targetWeekStart: pendingTemplateBridgePreview.targetWeekStart || selectedDate,
+    });
     toast({
       title: 'Template applied',
       description: pendingTemplateBridgePreview.mergeMode === 'append'
@@ -2741,6 +2785,9 @@ const NutritionMealPlanner = () => {
                           <p className="text-sm font-medium text-gray-900">{template.templateName}</p>
                           <p className="text-xs text-gray-500">
                             Last used {formatRecentTemplateDate(template.lastUsedAt)} • Default {template.mergeMode === 'append' ? 'Append' : 'Replace'} mode
+                          </p>
+                          <p className="mt-1 text-xs text-indigo-800/90">
+                            Last result: {template.lastAppliedSummary || 'No recent apply result recorded yet'}
                           </p>
                           <div className="mt-2 inline-flex rounded-md border border-indigo-200 bg-indigo-50 p-1">
                             <button
