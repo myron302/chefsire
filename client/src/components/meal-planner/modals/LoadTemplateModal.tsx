@@ -22,6 +22,7 @@ type TemplateImpactSummary = {
 const MEAL_TYPES = ['breakfast', 'lunch', 'dinner', 'snack'];
 const WEEK_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const TEMPLATE_PINNED_STORAGE_KEY = 'meal-template-pinned-v1';
+const TEMPLATE_MERGE_PREFERENCES_STORAGE_KEY = 'meal-template-merge-preferences-v1';
 
 const toItems = (value: any): any[] => {
   if (!value) return [];
@@ -44,6 +45,40 @@ const loadPinnedTemplateNames = (): string[] => {
 
 const savePinnedTemplateNames = (templateNames: string[]) => {
   localStorage.setItem(TEMPLATE_PINNED_STORAGE_KEY, JSON.stringify(templateNames));
+};
+
+const loadTemplateMergePreferences = (): Record<string, 'replace' | 'append'> => {
+  try {
+    const raw = localStorage.getItem(TEMPLATE_MERGE_PREFERENCES_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    const normalizedEntries = Object.entries(parsed).flatMap(([templateName, mergeMode]) => {
+      const normalizedName = typeof templateName === 'string' ? templateName.trim() : '';
+      if (!normalizedName) return [];
+      return [[normalizedName, mergeMode === 'append' ? 'append' : 'replace'] as const];
+    });
+    return Object.fromEntries(normalizedEntries);
+  } catch {
+    return {};
+  }
+};
+
+const getTemplateMergePreference = (templateName: string): 'replace' | 'append' => {
+  const normalizedName = templateName.trim();
+  if (!normalizedName) return 'replace';
+  const preferences = loadTemplateMergePreferences();
+  return preferences[normalizedName] === 'append' ? 'append' : 'replace';
+};
+
+const setTemplateMergePreference = (templateName: string, mergeMode: 'replace' | 'append') => {
+  const normalizedName = templateName.trim();
+  if (!normalizedName) return;
+  const existing = loadTemplateMergePreferences();
+  localStorage.setItem(
+    TEMPLATE_MERGE_PREFERENCES_STORAGE_KEY,
+    JSON.stringify({ ...existing, [normalizedName]: mergeMode }),
+  );
 };
 
 const buildImpactSummary = (currentWeek: Record<string, any>, templateWeek: Record<string, any>): TemplateImpactSummary => {
@@ -163,6 +198,14 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
     }
   }, [open, rawTemplates, templates]);
 
+  React.useEffect(() => {
+    if (!selectedTemplate) {
+      setMergeMode('replace');
+      return;
+    }
+    setMergeMode(getTemplateMergePreference(selectedTemplate));
+  }, [selectedTemplate]);
+
   const togglePinnedTemplate = (templateName: string) => {
     setPinnedTemplates((prev) => {
       const nextPinnedTemplates = prev.includes(templateName)
@@ -231,7 +274,8 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
                       </Button>
                       <Button size="sm" variant={isSelected ? 'default' : 'outline'} onClick={(event) => {
                         event.stopPropagation();
-                        onLoadTemplate(templateName, mergeMode);
+                        const effectiveMergeMode = isSelected ? mergeMode : getTemplateMergePreference(templateName);
+                        onLoadTemplate(templateName, effectiveMergeMode);
                       }}>
                         Apply
                       </Button>
@@ -249,14 +293,20 @@ const LoadTemplateModal = ({ open, onClose, onLoadTemplate, currentWeeklyMeals }
                       <button
                         type="button"
                         className={`px-3 py-1 text-xs font-medium rounded ${mergeMode === 'replace' ? 'bg-blue-100 text-blue-800' : 'text-gray-600'}`}
-                        onClick={() => setMergeMode('replace')}
+                        onClick={() => {
+                          setMergeMode('replace');
+                          setTemplateMergePreference(selectedTemplate, 'replace');
+                        }}
                       >
                         Replace
                       </button>
                       <button
                         type="button"
                         className={`px-3 py-1 text-xs font-medium rounded ${mergeMode === 'append' ? 'bg-blue-100 text-blue-800' : 'text-gray-600'}`}
-                        onClick={() => setMergeMode('append')}
+                        onClick={() => {
+                          setMergeMode('append');
+                          setTemplateMergePreference(selectedTemplate, 'append');
+                        }}
                       >
                         Append
                       </button>

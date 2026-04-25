@@ -183,9 +183,11 @@ type RecentPinnedTemplateUsage = {
   lastUsedAt: string;
   mergeMode: TemplateMergeMode;
 };
+type TemplateMergePreferenceMap = Record<string, TemplateMergeMode>;
 
 const TEMPLATE_PINNED_STORAGE_KEY = 'meal-template-pinned-v1';
 const RECENT_PINNED_TEMPLATE_STORAGE_KEY = 'meal-template-recent-pinned-v1';
+const TEMPLATE_MERGE_PREFERENCES_STORAGE_KEY = 'meal-template-merge-preferences-v1';
 const RECENT_PINNED_TEMPLATE_LIMIT = 3;
 
 const NutritionMealPlanner = () => {
@@ -282,6 +284,42 @@ const NutritionMealPlanner = () => {
     }
   };
 
+  const loadTemplateMergePreferences = (): TemplateMergePreferenceMap => {
+    try {
+      const raw = localStorage.getItem(TEMPLATE_MERGE_PREFERENCES_STORAGE_KEY);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+      const normalizedEntries = Object.entries(parsed).flatMap(([templateName, mergeMode]) => {
+        const normalizedName = typeof templateName === 'string' ? templateName.trim() : '';
+        if (!normalizedName) return [];
+        return [[normalizedName, mergeMode === 'append' ? 'append' : 'replace'] as const];
+      });
+      return Object.fromEntries(normalizedEntries);
+    } catch {
+      return {};
+    }
+  };
+
+  const setTemplateMergePreference = (templateName: string, mergeMode: TemplateMergeMode) => {
+    const normalizedName = templateName.trim();
+    if (!normalizedName) return;
+    try {
+      const existing = loadTemplateMergePreferences();
+      const next = { ...existing, [normalizedName]: mergeMode };
+      localStorage.setItem(TEMPLATE_MERGE_PREFERENCES_STORAGE_KEY, JSON.stringify(next));
+    } catch (error) {
+      console.error('Error storing template merge preference:', error);
+    }
+  };
+
+  const getTemplateMergePreference = (templateName: string): TemplateMergeMode => {
+    const normalizedName = templateName.trim();
+    if (!normalizedName) return 'replace';
+    const preferences = loadTemplateMergePreferences();
+    return preferences[normalizedName] === 'append' ? 'append' : 'replace';
+  };
+
   const sanitizeRecentPinnedTemplates = (items: RecentPinnedTemplateUsage[]) => {
     const pinned = new Set(loadPinnedTemplateNames());
     return items
@@ -296,13 +334,18 @@ const NutritionMealPlanner = () => {
         setRecentPinnedTemplates([]);
         return;
       }
+      const mergePreferences = loadTemplateMergePreferences();
       const parsed = JSON.parse(raw);
       const normalized = Array.isArray(parsed)
         ? parsed
             .map((item) => ({
               templateName: typeof item?.templateName === 'string' ? item.templateName.trim() : '',
               lastUsedAt: typeof item?.lastUsedAt === 'string' ? item.lastUsedAt : '',
-              mergeMode: item?.mergeMode === 'append' ? 'append' : 'replace',
+              mergeMode: mergePreferences[typeof item?.templateName === 'string' ? item.templateName.trim() : ''] === 'append'
+                ? 'append'
+                : item?.mergeMode === 'append'
+                  ? 'append'
+                  : 'replace',
             }))
             .filter((item) => Boolean(item.templateName))
         : [];
@@ -1234,6 +1277,7 @@ const NutritionMealPlanner = () => {
       const parsedTemplateMeals = JSON.parse(saved);
       const nextWeeklyMeals = applyTemplateMeals(weeklyMeals, parsedTemplateMeals, mergeMode);
       setWeeklyMeals(nextWeeklyMeals);
+      setTemplateMergePreference(templateName, mergeMode);
       recordRecentPinnedTemplateUse(templateName, mergeMode);
       toast({
         description: mergeMode === 'append'
@@ -1320,6 +1364,7 @@ const NutritionMealPlanner = () => {
       pendingTemplateBridgePreview.mergeMode,
     );
     setWeeklyMeals(nextWeeklyMeals);
+    setTemplateMergePreference(pendingTemplateBridgePreview.templateName, pendingTemplateBridgePreview.mergeMode);
     recordRecentPinnedTemplateUse(pendingTemplateBridgePreview.templateName, pendingTemplateBridgePreview.mergeMode);
     toast({
       title: 'Template applied',
@@ -1358,10 +1403,19 @@ const NutritionMealPlanner = () => {
       targetWeekStart: getCurrentWeekAnchor(),
       source: 'planner-recent-pinned-strip',
       requestedAt: new Date().toISOString(),
-      mergeMode: 'replace',
+      mergeMode: getTemplateMergePreference(templateName),
     };
     localStorage.setItem('meal-planner-template-bridge-v1', JSON.stringify(request));
     setTemplateBridgeRequest(request);
+  };
+
+  const handleChangeRecentPinnedTemplateMergePreference = (templateName: string, mergeMode: TemplateMergeMode) => {
+    setTemplateMergePreference(templateName, mergeMode);
+    setRecentPinnedTemplates((prev) => {
+      const nextItems = prev.map((item) => (item.templateName === templateName ? { ...item, mergeMode } : item));
+      localStorage.setItem(RECENT_PINNED_TEMPLATE_STORAGE_KEY, JSON.stringify(nextItems));
+      return nextItems;
+    });
   };
 
   const formatRecentTemplateDate = (value: string) => {
@@ -2686,8 +2740,24 @@ const NutritionMealPlanner = () => {
                         <div>
                           <p className="text-sm font-medium text-gray-900">{template.templateName}</p>
                           <p className="text-xs text-gray-500">
-                            Last used {formatRecentTemplateDate(template.lastUsedAt)} • {template.mergeMode === 'append' ? 'Append' : 'Replace'} mode
+                            Last used {formatRecentTemplateDate(template.lastUsedAt)} • Default {template.mergeMode === 'append' ? 'Append' : 'Replace'} mode
                           </p>
+                          <div className="mt-2 inline-flex rounded-md border border-indigo-200 bg-indigo-50 p-1">
+                            <button
+                              type="button"
+                              className={`px-2 py-1 text-[11px] font-medium rounded ${template.mergeMode === 'replace' ? 'bg-white text-indigo-800 shadow-sm' : 'text-indigo-700/80'}`}
+                              onClick={() => handleChangeRecentPinnedTemplateMergePreference(template.templateName, 'replace')}
+                            >
+                              Replace
+                            </button>
+                            <button
+                              type="button"
+                              className={`px-2 py-1 text-[11px] font-medium rounded ${template.mergeMode === 'append' ? 'bg-white text-indigo-800 shadow-sm' : 'text-indigo-700/80'}`}
+                              onClick={() => handleChangeRecentPinnedTemplateMergePreference(template.templateName, 'append')}
+                            >
+                              Append
+                            </button>
+                          </div>
                         </div>
                         <Button size="sm" variant="outline" onClick={() => handleUseRecentPinnedTemplate(template.templateName)}>
                           Use
