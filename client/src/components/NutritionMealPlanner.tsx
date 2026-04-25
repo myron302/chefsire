@@ -286,9 +286,9 @@ const NutritionMealPlanner = () => {
       if (!raw) return [];
       const parsed = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
-      return parsed
+      return Array.from(new Set(parsed
         .map((name) => (typeof name === 'string' ? name.trim() : ''))
-        .filter((name) => Boolean(name));
+        .filter((name) => Boolean(name))));
     } catch {
       return [];
     }
@@ -1308,23 +1308,35 @@ const NutritionMealPlanner = () => {
   const loadTemplate = (templateName: string, mergeMode: TemplateMergeMode = 'replace') => {
     const saved = localStorage.getItem(`meal-template-${templateName}`);
     if (saved) {
-      const parsedTemplateMeals = JSON.parse(saved);
-      const appliedMealCount = countMealEntries(parsedTemplateMeals);
-      const addedMealCount = mergeMode === 'append' ? estimateAppendAddedMeals(weeklyMeals, parsedTemplateMeals) : undefined;
-      const nextWeeklyMeals = applyTemplateMeals(weeklyMeals, parsedTemplateMeals, mergeMode);
-      setWeeklyMeals(nextWeeklyMeals);
-      setTemplateMergePreference(templateName, mergeMode);
-      recordRecentPinnedTemplateUse(templateName, mergeMode, {
-        appliedMealCount,
-        addedMealCount,
-        targetWeekStart: getCurrentWeekAnchor(),
-      });
-      toast({
-        description: mergeMode === 'append'
-          ? `✅ Template "${templateName}" appended into open planner slots!`
-          : `✅ Template "${templateName}" loaded successfully!`,
-      });
-      setShowLoadTemplateModal(false);
+      try {
+        const parsedTemplateMeals = JSON.parse(saved);
+        if (!parsedTemplateMeals || typeof parsedTemplateMeals !== 'object') {
+          throw new Error('Invalid template payload');
+        }
+
+        const appliedMealCount = countMealEntries(parsedTemplateMeals);
+        const addedMealCount = mergeMode === 'append' ? estimateAppendAddedMeals(weeklyMeals, parsedTemplateMeals) : undefined;
+        const nextWeeklyMeals = applyTemplateMeals(weeklyMeals, parsedTemplateMeals, mergeMode);
+        setWeeklyMeals(nextWeeklyMeals);
+        setTemplateMergePreference(templateName, mergeMode);
+        recordRecentPinnedTemplateUse(templateName, mergeMode, {
+          appliedMealCount,
+          addedMealCount,
+          targetWeekStart: getCurrentWeekAnchor(),
+        });
+        toast({
+          description: mergeMode === 'append'
+            ? `✅ Template "${templateName}" appended into open planner slots!`
+            : `✅ Template "${templateName}" loaded successfully!`,
+        });
+        setShowLoadTemplateModal(false);
+      } catch (error) {
+        console.error('Error loading template from localStorage:', error);
+        toast({
+          variant: 'destructive',
+          description: `Template "${templateName}" is invalid or outdated. Re-save it and try again.`,
+        });
+      }
     }
   };
 

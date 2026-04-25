@@ -72,6 +72,7 @@ const savePinnedTemplateNames = (templateNames: string[]) => {
 };
 
 type CopyMergeMode = 'replace' | 'append' | 'skip-duplicates';
+type TemplateMergeMode = 'replace' | 'append';
 type CopyImpactSummary = {
   mergeMode: CopyMergeMode;
   targetWeekStart: string;
@@ -158,6 +159,7 @@ export default function MealPlannerSharedWeekPage() {
   const [templateNameDraft, setTemplateNameDraft] = useState('');
   const [templateSavedName, setTemplateSavedName] = useState<string | null>(null);
   const [templateBridgeTargetWeekStart, setTemplateBridgeTargetWeekStart] = useState(() => getWeekStartIso(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)));
+  const [templateBridgeMergeMode, setTemplateBridgeMergeMode] = useState<TemplateMergeMode>('replace');
   const [templateWasPinnedAtSave, setTemplateWasPinnedAtSave] = useState(false);
 
   const fetchCopyImpactSummary = async (opts?: { silent?: boolean; targetWeek?: string; mode?: CopyMergeMode }) => {
@@ -369,6 +371,7 @@ export default function MealPlannerSharedWeekPage() {
     const bridgePayload = {
       templateName: templateSavedName,
       targetWeekStart: normalizedTargetWeek,
+      mergeMode: templateBridgeMergeMode,
       requestedAt: new Date().toISOString(),
       source: 'shared-week-import-success',
     };
@@ -377,7 +380,7 @@ export default function MealPlannerSharedWeekPage() {
       localStorage.setItem('meal-planner-template-bridge-v1', JSON.stringify(bridgePayload));
       toast({
         title: 'Template ready to apply',
-        description: `Opening your planner to apply "${templateSavedName}" to week ${normalizedTargetWeek}.`,
+        description: `Opening your planner to preview "${templateSavedName}" for week ${normalizedTargetWeek} in ${templateBridgeMergeMode} mode.`,
       });
       window.location.href = '/nutrition';
     } catch (error) {
@@ -590,6 +593,17 @@ export default function MealPlannerSharedWeekPage() {
                         onChange={(event) => setTemplateBridgeTargetWeekStart(event.target.value || getWeekStartIso(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)))}
                         className="w-full rounded-md border bg-background px-3 py-2 text-sm sm:w-56"
                       />
+                    </label>
+                    <label className="space-y-1 text-xs">
+                      <div className="font-medium text-foreground">Merge mode</div>
+                      <select
+                        value={templateBridgeMergeMode}
+                        onChange={(event) => setTemplateBridgeMergeMode(event.target.value === 'append' ? 'append' : 'replace')}
+                        className="w-full rounded-md border bg-background px-3 py-2 text-sm sm:w-48"
+                      >
+                        <option value="replace">Replace</option>
+                        <option value="append">Append</option>
+                      </select>
                     </label>
                     <Button size="sm" onClick={handleUseSavedTemplateOnAnotherWeek}>
                       Use This Template on Another Week
