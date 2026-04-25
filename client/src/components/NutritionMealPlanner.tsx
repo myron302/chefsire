@@ -1416,6 +1416,17 @@ const NutritionMealPlanner = () => {
       className: 'bg-slate-100 text-slate-700 border-slate-200',
     };
   }, [pendingTemplateBridgePreview, pendingTemplateMealsCount, pendingTemplateAppendAddedMeals]);
+  const pendingTemplateAppendParityLine = useMemo(() => {
+    if (!pendingTemplateBridgePreview) return '';
+    if (pendingTemplateMealsCount === 0) {
+      return 'Append parity: this template currently has no meals to add.';
+    }
+    if (pendingTemplateAppendAddedMeals === 0) {
+      return 'Append parity: append mode would add 0 meals because this week has no open template slots.';
+    }
+    const estimatedAppendSkippedMeals = Math.max(pendingTemplateMealsCount - pendingTemplateAppendAddedMeals, 0);
+    return `Append parity: append mode would add ${pendingTemplateAppendAddedMeals} ${pendingTemplateAppendAddedMeals === 1 ? 'meal' : 'meals'} and skip ${estimatedAppendSkippedMeals} already-filled ${estimatedAppendSkippedMeals === 1 ? 'slot' : 'slots'}.`;
+  }, [pendingTemplateBridgePreview, pendingTemplateMealsCount, pendingTemplateAppendAddedMeals]);
 
   const handleApplyPendingTemplateBridge = () => {
     if (!pendingTemplateBridgePreview) return;
@@ -2702,6 +2713,7 @@ const NutritionMealPlanner = () => {
                       <Badge variant="outline" className={`mt-2 ${pendingTemplateImpactBadge.className}`}>
                         {pendingTemplateImpactBadge.label}
                       </Badge>
+                      <p className="mt-1 text-xs text-orange-900/80">{pendingTemplateAppendParityLine}</p>
                     </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
