@@ -166,6 +166,14 @@ type BlockerItemSuggestion = {
 type MealPlanVisibility = 'private' | 'friends' | 'public';
 type ShareMetadataSaveState = 'idle' | 'saving' | 'saved' | 'error';
 type TemplateMergeMode = 'replace' | 'append';
+type FixItIssueType = 'missing-meals' | 'low-protein' | 'missing-details' | 'calorie-balance';
+type ActiveFixItTarget = {
+  issueType: FixItIssueType;
+  targetDay: string | null;
+  targetDate: string | null;
+  reason: string;
+  suggestedNextStep: string;
+};
 
 type TemplateBridgePayload = {
   templateName: string;
@@ -243,6 +251,7 @@ const NutritionMealPlanner = () => {
   const [templateBridgeRequest, setTemplateBridgeRequest] = useState<TemplateBridgePayload | null>(null);
   const [pendingTemplateBridgePreview, setPendingTemplateBridgePreview] = useState<PendingTemplateBridgePreview | null>(null);
   const [recentPinnedTemplates, setRecentPinnedTemplates] = useState<RecentPinnedTemplateUsage[]>([]);
+  const [activeFixItTarget, setActiveFixItTarget] = useState<ActiveFixItTarget | null>(null);
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -2386,8 +2395,29 @@ const NutritionMealPlanner = () => {
     setSelectedDate(getDateForWeekday(day));
   };
 
+  const createFixItTarget = (
+    issueType: FixItIssueType,
+    targetDay: string | null,
+    reason: string,
+    suggestedNextStep: string,
+  ): ActiveFixItTarget => ({
+    issueType,
+    targetDay,
+    targetDate: targetDay ? getDateForWeekday(targetDay) : null,
+    reason,
+    suggestedNextStep,
+  });
+
   const handleFixMissingDay = () => {
     const targetDay = weeklyNutritionInsights.missingMealDaysList[0]?.day;
+    setActiveFixItTarget(createFixItTarget(
+      'missing-meals',
+      targetDay || null,
+      targetDay
+        ? `${targetDay} has no planned meals yet.`
+        : 'Your week has at least one day without meals planned.',
+      'Add at least one anchor meal, then fill the remaining slots for that day.',
+    ));
     if (!targetDay) {
       setActiveTab('planner');
       return;
@@ -2398,6 +2428,14 @@ const NutritionMealPlanner = () => {
 
   const handleFixLowProteinDay = () => {
     const targetDay = weeklyNutritionInsights.lowProteinDaysList[0]?.day;
+    setActiveFixItTarget(createFixItTarget(
+      'low-protein',
+      targetDay || null,
+      targetDay
+        ? `${targetDay} is below the 60g protein signal for this week.`
+        : 'A planned day is currently below the protein target signal.',
+      'Add or swap in a higher-protein meal on this day to improve coverage.',
+    ));
     if (!targetDay) {
       setActiveTab('planner');
       return;
@@ -2408,11 +2446,36 @@ const NutritionMealPlanner = () => {
   const handleFixMealDetails = () => {
     const targetDay = weeklyNutritionInsights.missingProteinDataDaysList[0]?.day
       || weeklyNutritionInsights.missingCalorieDataDaysList[0]?.day;
+    setActiveFixItTarget(createFixItTarget(
+      'missing-details',
+      targetDay || null,
+      targetDay
+        ? `${targetDay} has meal entries missing protein or calorie details.`
+        : 'Some planned meals are missing calorie or protein details.',
+      'Update meal nutrition details so weekly coverage and balance insights are more accurate.',
+    ));
     if (!targetDay) {
       setActiveTab('planner');
       return;
     }
     focusPlannerDay(targetDay);
+  };
+
+  const handleFixCalorieBalance = () => {
+    const targetDay = weeklyNutritionData.reduce<{ day: string; calories: number } | null>((best, day) => {
+      if (day.calories <= 0) return best;
+      if (!best || day.calories > best.calories) {
+        return { day: day.day, calories: day.calories };
+      }
+      return best;
+    }, null)?.day || null;
+    setActiveFixItTarget(createFixItTarget(
+      'calorie-balance',
+      targetDay,
+      'Calorie totals are swinging widely across tracked days this week.',
+      'Review high and low days in Analytics, then smooth portions or meal choices on outlier days.',
+    ));
+    setActiveTab('analytics');
   };
 
   const weeklyNutritionFixActions = useMemo(() => {
@@ -2442,7 +2505,7 @@ const NutritionMealPlanner = () => {
       actions.push({
         key: 'review-calorie-balance',
         label: 'Review calorie balance',
-        onClick: () => setActiveTab('analytics'),
+        onClick: handleFixCalorieBalance,
       });
     }
     if (actions.length > 0) {
@@ -3047,6 +3110,75 @@ const NutritionMealPlanner = () => {
                             {action.label}
                           </Button>
                         ))}
+                      </div>
+                    </div>
+                  ) : null}
+                  {activeFixItTarget ? (
+                    <div className="rounded-md border border-orange-200 bg-orange-50/70 px-3 py-3 space-y-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">Fix It Guidance</p>
+                        <p className="mt-1 text-sm font-medium text-orange-900">
+                          {activeFixItTarget.targetDay
+                            ? `${activeFixItTarget.targetDay} (${activeFixItTarget.targetDate})`
+                            : 'Weekly nutrition target'}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-700">{activeFixItTarget.reason}</p>
+                        <p className="mt-1 text-sm text-gray-700">{activeFixItTarget.suggestedNextStep}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="bg-orange-600 hover:bg-orange-700"
+                          onClick={() => {
+                            setActiveTab('planner');
+                            if (activeFixItTarget.targetDay) {
+                              focusPlannerDay(activeFixItTarget.targetDay);
+                              handleAddMeal(activeFixItTarget.targetDay, 'Dinner');
+                              return;
+                            }
+                            handleAddMeal();
+                          }}
+                        >
+                          Add Meal
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setActiveTab('planner');
+                            handleAIRecipe();
+                          }}
+                        >
+                          Open AI Suggestions
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            if (activeFixItTarget.issueType === 'calorie-balance') {
+                              setActiveTab('analytics');
+                              return;
+                            }
+                            if (activeFixItTarget.targetDay) {
+                              focusPlannerDay(activeFixItTarget.targetDay);
+                              return;
+                            }
+                            setActiveTab('planner');
+                          }}
+                        >
+                          {activeFixItTarget.issueType === 'calorie-balance' ? 'Review Analytics' : 'Review Planner'}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setActiveFixItTarget(null)}
+                        >
+                          Dismiss
+                        </Button>
                       </div>
                     </div>
                   ) : null}
