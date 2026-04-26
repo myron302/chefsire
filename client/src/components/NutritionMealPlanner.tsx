@@ -2315,11 +2315,15 @@ const NutritionMealPlanner = () => {
 
   const hasWeeklyNutritionData = weeklyNutritionData.some((day) => day.mealsLogged > 0 || day.calories > 0);
   const weeklyNutritionInsights = useMemo(() => {
-    const missingMealDays = weeklyNutritionData.filter((day) => day.mealsLogged === 0).length;
+    const missingMealDaysList = weeklyNutritionData.filter((day) => day.mealsLogged === 0);
+    const missingMealDays = missingMealDaysList.length;
     const plannedDays = weeklyNutritionData.filter((day) => day.mealsLogged > 0);
     const proteinTrackedDays = plannedDays.filter((day) => day.protein > 0);
     const calorieTrackedDays = plannedDays.filter((day) => day.calories > 0);
-    const lowProteinDays = proteinTrackedDays.filter((day) => day.protein < 60).length;
+    const lowProteinDaysList = proteinTrackedDays.filter((day) => day.protein < 60);
+    const lowProteinDays = lowProteinDaysList.length;
+    const missingProteinDataDaysList = plannedDays.filter((day) => day.protein <= 0);
+    const missingCalorieDataDaysList = plannedDays.filter((day) => day.calories <= 0);
 
     const caloriesVaryWidely = calorieTrackedDays.length >= 3
       ? (() => {
@@ -2368,8 +2372,91 @@ const NutritionMealPlanner = () => {
     return {
       insights,
       looksBalanced,
+      missingMealDaysList,
+      lowProteinDaysList,
+      missingProteinDataDaysList,
+      missingCalorieDataDaysList,
+      caloriesVaryWidely,
+      canCompareCalories: calorieTrackedDays.length >= 3,
     };
   }, [weeklyNutritionData]);
+
+  const focusPlannerDay = (day: string) => {
+    setActiveTab('planner');
+    setSelectedDate(getDateForWeekday(day));
+  };
+
+  const handleFixMissingDay = () => {
+    const targetDay = weeklyNutritionInsights.missingMealDaysList[0]?.day;
+    if (!targetDay) {
+      setActiveTab('planner');
+      return;
+    }
+    focusPlannerDay(targetDay);
+    handleAddMeal(targetDay, 'Dinner');
+  };
+
+  const handleFixLowProteinDay = () => {
+    const targetDay = weeklyNutritionInsights.lowProteinDaysList[0]?.day;
+    if (!targetDay) {
+      setActiveTab('planner');
+      return;
+    }
+    focusPlannerDay(targetDay);
+  };
+
+  const handleFixMealDetails = () => {
+    const targetDay = weeklyNutritionInsights.missingProteinDataDaysList[0]?.day
+      || weeklyNutritionInsights.missingCalorieDataDaysList[0]?.day;
+    if (!targetDay) {
+      setActiveTab('planner');
+      return;
+    }
+    focusPlannerDay(targetDay);
+  };
+
+  const weeklyNutritionFixActions = useMemo(() => {
+    const actions: Array<{ key: string; label: string; onClick: () => void }> = [];
+    if (weeklyNutritionInsights.missingMealDaysList.length > 0) {
+      actions.push({
+        key: 'fill-unplanned-day',
+        label: 'Fill unplanned day',
+        onClick: handleFixMissingDay,
+      });
+    }
+    if (weeklyNutritionInsights.lowProteinDaysList.length > 0) {
+      actions.push({
+        key: 'review-low-protein-day',
+        label: 'Review low-protein day',
+        onClick: handleFixLowProteinDay,
+      });
+    }
+    if (weeklyNutritionInsights.missingProteinDataDaysList.length > 0 || weeklyNutritionInsights.missingCalorieDataDaysList.length > 0) {
+      actions.push({
+        key: 'review-meal-details',
+        label: 'Add meal details',
+        onClick: handleFixMealDetails,
+      });
+    }
+    if (weeklyNutritionInsights.canCompareCalories && weeklyNutritionInsights.caloriesVaryWidely) {
+      actions.push({
+        key: 'review-calorie-balance',
+        label: 'Review calorie balance',
+        onClick: () => setActiveTab('analytics'),
+      });
+    }
+    if (actions.length > 0) {
+      actions.push({
+        key: 'open-ai-suggestions',
+        label: 'Open AI suggestions',
+        onClick: () => {
+          setActiveTab('planner');
+          handleAIRecipe();
+        },
+      });
+    }
+    return actions;
+  }, [weeklyNutritionInsights]);
 
   const weeklyMacroTotals = weeklyNutritionData.reduce((acc, day) => ({
     protein: acc.protein + day.protein,
@@ -2942,6 +3029,25 @@ const NutritionMealPlanner = () => {
                   {weeklyNutritionInsights.looksBalanced ? (
                     <div className="rounded-md border border-emerald-200 bg-white px-3 py-2 text-sm font-medium text-emerald-700">
                       Balanced week 👍
+                    </div>
+                  ) : null}
+                  {weeklyNutritionFixActions.length > 0 ? (
+                    <div className="rounded-md border border-emerald-200/70 bg-white px-3 py-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Fix It</p>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {weeklyNutritionFixActions.map((action) => (
+                          <Button
+                            key={action.key}
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="border-emerald-300 text-emerald-800 hover:bg-emerald-50"
+                            onClick={action.onClick}
+                          >
+                            {action.label}
+                          </Button>
+                        ))}
+                      </div>
                     </div>
                   ) : null}
                 </CardContent>
