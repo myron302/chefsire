@@ -185,6 +185,11 @@ type FixItProgressMiniState = {
   message: string;
   tone: 'warning' | 'success' | 'neutral';
 };
+type FixItDataCompletenessChipState = {
+  label: string;
+  detail: string;
+  tone: 'success' | 'warning' | 'neutral';
+};
 
 type TemplateBridgePayload = {
   templateName: string;
@@ -2556,6 +2561,59 @@ const NutritionMealPlanner = () => {
     });
   }, [activeFixItTarget?.targetDay, mealTypes, weeklyMeals]);
 
+  const activeFixItDataCompleteness = useMemo<FixItDataCompletenessChipState | null>(() => {
+    if (!activeFixItTarget?.targetDay) return null;
+
+    let plannedMealCount = 0;
+    let mealsWithNutritionCount = 0;
+    let missingNutritionCount = 0;
+
+    mealTypes.forEach((mealType) => {
+      const items = getMealSlotItems(weeklyMeals, activeFixItTarget.targetDay as string, mealType);
+      items.forEach((item) => {
+        plannedMealCount += 1;
+        const hasCalories = Number(item?.calories) > 0;
+        const hasProtein = Number(item?.protein) > 0;
+        const hasCoreNutrition = hasCalories && hasProtein;
+        if (hasCoreNutrition) {
+          mealsWithNutritionCount += 1;
+          return;
+        }
+        missingNutritionCount += 1;
+      });
+    });
+
+    if (plannedMealCount <= 0) {
+      return {
+        label: 'Needs more meal details',
+        detail: 'No meals planned yet for this day.',
+        tone: 'neutral',
+      };
+    }
+
+    if (missingNutritionCount <= 0) {
+      return {
+        label: 'Complete data',
+        detail: 'Guidance is based on complete calories and protein data.',
+        tone: 'success',
+      };
+    }
+
+    if (mealsWithNutritionCount <= 0) {
+      return {
+        label: 'Needs more meal details',
+        detail: `${missingNutritionCount} planned meal${missingNutritionCount === 1 ? '' : 's'} missing calories or protein.`,
+        tone: 'warning',
+      };
+    }
+
+    return {
+      label: 'Partial nutrition data',
+      detail: `${missingNutritionCount} meal${missingNutritionCount === 1 ? '' : 's'} missing calories or protein.`,
+      tone: 'warning',
+    };
+  }, [activeFixItTarget?.targetDay, mealTypes, weeklyMeals]);
+
   const activeFixItProgressMiniState = useMemo<FixItProgressMiniState | null>(() => {
     if (!activeFixItTarget || !activeFixItTarget.targetDay) return null;
 
@@ -3362,7 +3420,22 @@ const NutritionMealPlanner = () => {
                   {activeFixItTarget ? (
                     <div className="rounded-md border border-orange-200 bg-orange-50/70 px-3 py-3 space-y-3">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">Fix It Guidance</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">Fix It Guidance</p>
+                          {activeFixItDataCompleteness ? (
+                            <Badge
+                              className={
+                                activeFixItDataCompleteness.tone === 'success'
+                                  ? 'border border-emerald-300 bg-emerald-100 text-emerald-800'
+                                  : activeFixItDataCompleteness.tone === 'warning'
+                                    ? 'border border-orange-300 bg-orange-100 text-orange-900'
+                                    : 'border border-slate-300 bg-slate-100 text-slate-700'
+                              }
+                            >
+                              {activeFixItDataCompleteness.label}
+                            </Badge>
+                          ) : null}
+                        </div>
                         <p className="mt-1 text-sm font-medium text-orange-900">
                           {activeFixItTarget.targetDay
                             ? `${activeFixItTarget.targetDay} (${activeFixItTarget.targetDate})`
@@ -3370,6 +3443,9 @@ const NutritionMealPlanner = () => {
                         </p>
                         <p className="mt-1 text-sm text-gray-700">{activeFixItTarget.reason}</p>
                         <p className="mt-1 text-sm text-gray-700">{activeFixItTarget.suggestedNextStep}</p>
+                        {activeFixItDataCompleteness ? (
+                          <p className="mt-1 text-xs text-gray-600">{activeFixItDataCompleteness.detail}</p>
+                        ) : null}
                       </div>
                       {activeFixItProgressMiniState ? (
                         <div className={`rounded-md border px-3 py-2 text-sm ${
