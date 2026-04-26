@@ -2597,6 +2597,46 @@ const NutritionMealPlanner = () => {
     };
   }, [activeFixItSlotSignals, activeFixItTarget, calorieGoal, macroGoals.protein, mealTypes, weeklyMeals]);
 
+  const activeFixItUnresolvedHint = useMemo<string | null>(() => {
+    if (!activeFixItTarget || !activeFixItTarget.targetDay || !activeFixItProgressMiniState) return null;
+    if (activeFixItProgressMiniState.unresolvedCount <= 0) return null;
+
+    if (activeFixItTarget.issueType === 'missing-meals') {
+      const emptySlots = activeFixItSlotSignals.filter((slot) => !slot.hasMeals);
+      if (emptySlots.length === 0) return 'Some meal slots are still empty.';
+      const labels = emptySlots.map((slot) => slot.mealTypeLabel);
+      if (labels.length === 1) return `${labels[0]} is still empty.`;
+      if (labels.length === 2) return `${labels[0]} and ${labels[1]} are still empty.`;
+      return `${labels[0]}, ${labels[1]}, and ${labels.length - 2} other slots are still empty.`;
+    }
+
+    if (activeFixItTarget.issueType === 'low-protein') {
+      const dayProtein = activeFixItSlotSignals.reduce((sum, slot) => sum + slot.protein, 0);
+      const proteinGap = Math.max(0, Math.ceil(macroGoals.protein - dayProtein));
+      if (proteinGap <= 0) return null;
+      if (macroGoals.protein <= 0) return 'Protein is still below target.';
+      return `Protein is still ${proteinGap}g below target.`;
+    }
+
+    if (activeFixItTarget.issueType === 'missing-details') {
+      const firstMissingDetailsSlot = activeFixItSlotSignals.find((slot) => slot.missingDetails);
+      if (!firstMissingDetailsSlot) return 'Some meals are still missing calories or protein.';
+      return `${firstMissingDetailsSlot.mealTypeLabel} is missing calories or protein.`;
+    }
+
+    if (activeFixItTarget.issueType === 'calorie-balance') {
+      if (calorieGoal <= 0) return 'This day is still outside your calorie range.';
+      const dayTotals = calculateTodayNutritionTotals(weeklyMeals, activeFixItTarget.targetDay);
+      const lowerBound = calorieGoal * 0.9;
+      const upperBound = calorieGoal * 1.1;
+      if (dayTotals.calories < lowerBound || dayTotals.calories > upperBound) {
+        return 'This day is still outside the target calorie range.';
+      }
+    }
+
+    return null;
+  }, [activeFixItProgressMiniState, activeFixItSlotSignals, activeFixItTarget, calorieGoal, macroGoals.protein, weeklyMeals]);
+
   const activeFixItSlotRecommendations = useMemo<FixItSlotRecommendation[]>(() => {
     if (!activeFixItTarget?.targetDay) return [];
 
@@ -3341,6 +3381,11 @@ const NutritionMealPlanner = () => {
                         }`}>
                           <p className="text-xs font-semibold uppercase tracking-wide">Progress</p>
                           <p className="mt-1 font-medium">{activeFixItProgressMiniState.message}</p>
+                        </div>
+                      ) : null}
+                      {activeFixItUnresolvedHint ? (
+                        <div className="rounded-md border border-orange-200/80 bg-white/90 px-3 py-2 text-sm text-gray-700">
+                          <p className="truncate">{activeFixItUnresolvedHint}</p>
                         </div>
                       ) : null}
                       {activeFixItSlotRecommendations.length > 0 ? (
