@@ -2567,6 +2567,7 @@ const NutritionMealPlanner = () => {
     let plannedMealCount = 0;
     let mealsWithNutritionCount = 0;
     let missingNutritionCount = 0;
+    const emptySlotCount = activeFixItSlotSignals.filter((slot) => !slot.hasMeals).length;
 
     mealTypes.forEach((mealType) => {
       const items = getMealSlotItems(weeklyMeals, activeFixItTarget.targetDay as string, mealType);
@@ -2591,6 +2592,14 @@ const NutritionMealPlanner = () => {
       };
     }
 
+    if (activeFixItTarget.issueType === 'missing-meals' && emptySlotCount > 0) {
+      return {
+        label: 'Partial meal coverage',
+        detail: `${emptySlotCount} meal slot${emptySlotCount === 1 ? '' : 's'} still empty, so guidance is based on partial day data.`,
+        tone: 'neutral',
+      };
+    }
+
     if (missingNutritionCount <= 0) {
       return {
         label: 'Complete data',
@@ -2609,10 +2618,10 @@ const NutritionMealPlanner = () => {
 
     return {
       label: 'Partial nutrition data',
-      detail: `${missingNutritionCount} meal${missingNutritionCount === 1 ? '' : 's'} missing calories or protein.`,
+      detail: `${missingNutritionCount} meal${missingNutritionCount === 1 ? '' : 's'} missing calories or protein, so guidance may be directional.`,
       tone: 'warning',
     };
-  }, [activeFixItTarget?.targetDay, mealTypes, weeklyMeals]);
+  }, [activeFixItSlotSignals, activeFixItTarget?.issueType, activeFixItTarget?.targetDay, mealTypes, weeklyMeals]);
 
   const activeFixItProgressMiniState = useMemo<FixItProgressMiniState | null>(() => {
     if (!activeFixItTarget || !activeFixItTarget.targetDay) return null;
