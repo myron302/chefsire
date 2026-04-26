@@ -174,6 +174,12 @@ type ActiveFixItTarget = {
   reason: string;
   suggestedNextStep: string;
 };
+type FixItSlotRecommendation = {
+  key: string;
+  text: string;
+  cta: string;
+  onClick: () => void;
+};
 
 type TemplateBridgePayload = {
   templateName: string;
@@ -2521,6 +2527,155 @@ const NutritionMealPlanner = () => {
     return actions;
   }, [weeklyNutritionInsights]);
 
+  const formatMealTypeLabel = (mealType: string) => (
+    mealType.charAt(0).toUpperCase() + mealType.slice(1)
+  );
+
+  const activeFixItSlotRecommendations = useMemo<FixItSlotRecommendation[]>(() => {
+    if (!activeFixItTarget?.targetDay) return [];
+
+    const targetDay = activeFixItTarget.targetDay;
+    const slotSignals = mealTypes.map((mealType) => {
+      const items = getMealSlotItems(weeklyMeals, targetDay, mealType);
+      const totals = getMealSlotTotals(weeklyMeals, targetDay, mealType);
+      const hasMeals = items.length > 0;
+      const missingProtein = hasMeals && totals.protein <= 0;
+      const missingCalories = hasMeals && totals.calories <= 0;
+      const missingDetails = missingProtein || missingCalories;
+      return {
+        mealType,
+        mealTypeLabel: formatMealTypeLabel(mealType),
+        hasMeals,
+        protein: totals.protein,
+        calories: totals.calories,
+        missingDetails,
+      };
+    });
+
+    const addMealForSlot = (mealType: string) => {
+      focusPlannerDay(targetDay);
+      handleAddMeal(targetDay, formatMealTypeLabel(mealType));
+    };
+    const openTargetedAI = () => {
+      focusPlannerDay(targetDay);
+      handleAIRecipe();
+    };
+    const openAnalytics = () => setActiveTab('analytics');
+
+    const recommendations: FixItSlotRecommendation[] = [];
+    const pushRecommendation = (recommendation: FixItSlotRecommendation) => {
+      if (recommendations.some((existing) => existing.key === recommendation.key)) return;
+      if (recommendations.length >= 3) return;
+      recommendations.push(recommendation);
+    };
+
+    if (activeFixItTarget.issueType === 'missing-meals') {
+      const emptySlots = slotSignals.filter((slot) => !slot.hasMeals);
+      const preferredOrder = ['dinner', 'lunch', 'breakfast', 'snack'];
+      emptySlots
+        .sort((a, b) => preferredOrder.indexOf(a.mealType) - preferredOrder.indexOf(b.mealType))
+        .slice(0, 2)
+        .forEach((slot) => {
+          pushRecommendation({
+            key: `fill-${slot.mealType}`,
+            text: `Fill ${slot.mealTypeLabel}`,
+            cta: 'Add Meal',
+            onClick: () => addMealForSlot(slot.mealType),
+          });
+        });
+      pushRecommendation({
+        key: 'missing-meals-ai',
+        text: 'Need quick ideas for open slots?',
+        cta: 'Open AI Suggestions',
+        onClick: openTargetedAI,
+      });
+    }
+
+    if (activeFixItTarget.issueType === 'low-protein') {
+      const lowestProteinSlot = slotSignals
+        .filter((slot) => slot.hasMeals)
+        .sort((a, b) => a.protein - b.protein)[0];
+      const emptySlot = slotSignals.find((slot) => !slot.hasMeals);
+
+      if (lowestProteinSlot) {
+        pushRecommendation({
+          key: `protein-${lowestProteinSlot.mealType}`,
+          text: `Add protein to ${lowestProteinSlot.mealTypeLabel}`,
+          cta: 'Add Meal',
+          onClick: () => addMealForSlot(lowestProteinSlot.mealType),
+        });
+      }
+      if (emptySlot) {
+        pushRecommendation({
+          key: `protein-fill-${emptySlot.mealType}`,
+          text: `Fill ${emptySlot.mealTypeLabel} with a protein-forward meal`,
+          cta: 'Add Meal',
+          onClick: () => addMealForSlot(emptySlot.mealType),
+        });
+      }
+      pushRecommendation({
+        key: 'low-protein-ai',
+        text: 'Get protein-forward meal ideas for this day',
+        cta: 'Open AI Suggestions',
+        onClick: openTargetedAI,
+      });
+    }
+
+    if (activeFixItTarget.issueType === 'missing-details') {
+      const missingDetailSlots = slotSignals.filter((slot) => slot.missingDetails);
+      if (missingDetailSlots.length > 0) {
+        missingDetailSlots.slice(0, 2).forEach((slot) => {
+          pushRecommendation({
+            key: `details-${slot.mealType}`,
+            text: `Complete calories/protein for ${slot.mealTypeLabel}`,
+            cta: 'Add Meal',
+            onClick: () => addMealForSlot(slot.mealType),
+          });
+        });
+      }
+      pushRecommendation({
+        key: 'details-ai',
+        text: 'Use AI suggestions to replace meals with complete nutrition data',
+        cta: 'Open AI Suggestions',
+        onClick: openTargetedAI,
+      });
+    }
+
+    if (activeFixItTarget.issueType === 'calorie-balance') {
+      const highestCalorieSlot = slotSignals
+        .filter((slot) => slot.calories > 0)
+        .sort((a, b) => b.calories - a.calories)[0];
+      const lowestCalorieSlot = slotSignals
+        .filter((slot) => slot.hasMeals)
+        .sort((a, b) => a.calories - b.calories)[0];
+
+      if (highestCalorieSlot) {
+        pushRecommendation({
+          key: `calorie-heavy-${highestCalorieSlot.mealType}`,
+          text: `Review calorie-heavy ${highestCalorieSlot.mealTypeLabel}`,
+          cta: 'Review Analytics',
+          onClick: openAnalytics,
+        });
+      }
+      if (lowestCalorieSlot && lowestCalorieSlot.calories < calorieGoal * 0.2) {
+        pushRecommendation({
+          key: `calorie-complete-${lowestCalorieSlot.mealType}`,
+          text: `Complete calories for ${lowestCalorieSlot.mealTypeLabel}`,
+          cta: 'Add Meal',
+          onClick: () => addMealForSlot(lowestCalorieSlot.mealType),
+        });
+      }
+      pushRecommendation({
+        key: 'calorie-balance-analytics',
+        text: 'Compare high and low days before adjusting portions',
+        cta: 'Review Analytics',
+        onClick: openAnalytics,
+      });
+    }
+
+    return recommendations.slice(0, 3);
+  }, [activeFixItTarget, calorieGoal, mealTypes, weeklyMeals]);
+
   const weeklyMacroTotals = weeklyNutritionData.reduce((acc, day) => ({
     protein: acc.protein + day.protein,
     carbs: acc.carbs + day.carbs,
@@ -3125,6 +3280,32 @@ const NutritionMealPlanner = () => {
                         <p className="mt-1 text-sm text-gray-700">{activeFixItTarget.reason}</p>
                         <p className="mt-1 text-sm text-gray-700">{activeFixItTarget.suggestedNextStep}</p>
                       </div>
+                      {activeFixItSlotRecommendations.length > 0 ? (
+                        <div className="rounded-md border border-orange-200/80 bg-white/90 px-3 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
+                            Day-Slot Recommendations
+                          </p>
+                          <div className="mt-2 space-y-2">
+                            {activeFixItSlotRecommendations.map((recommendation) => (
+                              <div
+                                key={recommendation.key}
+                                className="flex flex-col gap-2 rounded-md border border-orange-100 bg-orange-50/40 p-2 sm:flex-row sm:items-center sm:justify-between"
+                              >
+                                <p className="text-sm text-gray-700">{recommendation.text}</p>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-orange-300 text-orange-900 hover:bg-orange-100"
+                                  onClick={recommendation.onClick}
+                                >
+                                  {recommendation.cta}
+                                </Button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
