@@ -180,6 +180,11 @@ type FixItSlotRecommendation = {
   cta: string;
   onClick: () => void;
 };
+type FixItProgressMiniState = {
+  unresolvedCount: number;
+  message: string;
+  tone: 'warning' | 'success' | 'neutral';
+};
 
 type TemplateBridgePayload = {
   templateName: string;
@@ -2531,13 +2536,11 @@ const NutritionMealPlanner = () => {
     mealType.charAt(0).toUpperCase() + mealType.slice(1)
   );
 
-  const activeFixItSlotRecommendations = useMemo<FixItSlotRecommendation[]>(() => {
+  const activeFixItSlotSignals = useMemo(() => {
     if (!activeFixItTarget?.targetDay) return [];
-
-    const targetDay = activeFixItTarget.targetDay;
-    const slotSignals = mealTypes.map((mealType) => {
-      const items = getMealSlotItems(weeklyMeals, targetDay, mealType);
-      const totals = getMealSlotTotals(weeklyMeals, targetDay, mealType);
+    return mealTypes.map((mealType) => {
+      const items = getMealSlotItems(weeklyMeals, activeFixItTarget.targetDay as string, mealType);
+      const totals = getMealSlotTotals(weeklyMeals, activeFixItTarget.targetDay as string, mealType);
       const hasMeals = items.length > 0;
       const missingProtein = hasMeals && totals.protein <= 0;
       const missingCalories = hasMeals && totals.calories <= 0;
@@ -2551,6 +2554,54 @@ const NutritionMealPlanner = () => {
         missingDetails,
       };
     });
+  }, [activeFixItTarget?.targetDay, mealTypes, weeklyMeals]);
+
+  const activeFixItProgressMiniState = useMemo<FixItProgressMiniState | null>(() => {
+    if (!activeFixItTarget || !activeFixItTarget.targetDay) return null;
+
+    let unresolvedCount = 0;
+    if (activeFixItTarget.issueType === 'missing-meals') {
+      unresolvedCount = activeFixItSlotSignals.filter((slot) => !slot.hasMeals).length;
+    } else if (activeFixItTarget.issueType === 'low-protein') {
+      const dayTotals = mealTypes.reduce((totals, mealType) => {
+        const slotTotals = getMealSlotTotals(weeklyMeals, activeFixItTarget.targetDay as string, mealType);
+        return {
+          protein: totals.protein + slotTotals.protein,
+        };
+      }, { protein: 0 });
+      const proteinGap = Math.max(0, Math.ceil(macroGoals.protein - dayTotals.protein));
+      unresolvedCount = proteinGap > 0 ? 1 : 0;
+    } else if (activeFixItTarget.issueType === 'missing-details') {
+      unresolvedCount = activeFixItSlotSignals.filter((slot) => slot.missingDetails).length;
+    } else if (activeFixItTarget.issueType === 'calorie-balance') {
+      const targetDayTotals = calculateTodayNutritionTotals(weeklyMeals, activeFixItTarget.targetDay as string);
+      const lowerBound = calorieGoal * 0.9;
+      const upperBound = calorieGoal * 1.1;
+      unresolvedCount = targetDayTotals.calories < lowerBound || targetDayTotals.calories > upperBound ? 1 : 0;
+    }
+
+    if (unresolvedCount <= 0) {
+      return {
+        unresolvedCount: 0,
+        message: 'All suggested fixes addressed.',
+        tone: 'success',
+      };
+    }
+
+    return {
+      unresolvedCount,
+      message: unresolvedCount === 1
+        ? '1 slot still needs attention.'
+        : `${unresolvedCount} slots still need attention.`,
+      tone: 'warning',
+    };
+  }, [activeFixItSlotSignals, activeFixItTarget, calorieGoal, macroGoals.protein, mealTypes, weeklyMeals]);
+
+  const activeFixItSlotRecommendations = useMemo<FixItSlotRecommendation[]>(() => {
+    if (!activeFixItTarget?.targetDay) return [];
+
+    const targetDay = activeFixItTarget.targetDay;
+    const slotSignals = activeFixItSlotSignals;
 
     const addMealForSlot = (mealType: string) => {
       focusPlannerDay(targetDay);
@@ -2674,7 +2725,7 @@ const NutritionMealPlanner = () => {
     }
 
     return recommendations.slice(0, 3);
-  }, [activeFixItTarget, calorieGoal, mealTypes, weeklyMeals]);
+  }, [activeFixItSlotSignals, activeFixItTarget, calorieGoal]);
 
   const weeklyMacroTotals = weeklyNutritionData.reduce((acc, day) => ({
     protein: acc.protein + day.protein,
@@ -3280,6 +3331,18 @@ const NutritionMealPlanner = () => {
                         <p className="mt-1 text-sm text-gray-700">{activeFixItTarget.reason}</p>
                         <p className="mt-1 text-sm text-gray-700">{activeFixItTarget.suggestedNextStep}</p>
                       </div>
+                      {activeFixItProgressMiniState ? (
+                        <div className={`rounded-md border px-3 py-2 text-sm ${
+                          activeFixItProgressMiniState.tone === 'success'
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : activeFixItProgressMiniState.tone === 'warning'
+                              ? 'border-orange-200 bg-white/90 text-orange-900'
+                              : 'border-orange-200/80 bg-white/90 text-gray-700'
+                        }`}>
+                          <p className="text-xs font-semibold uppercase tracking-wide">Progress</p>
+                          <p className="mt-1 font-medium">{activeFixItProgressMiniState.message}</p>
+                        </div>
+                      ) : null}
                       {activeFixItSlotRecommendations.length > 0 ? (
                         <div className="rounded-md border border-orange-200/80 bg-white/90 px-3 py-2">
                           <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
