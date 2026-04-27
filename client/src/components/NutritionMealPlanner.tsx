@@ -190,6 +190,11 @@ type FixItDataCompletenessChipState = {
   detail: string;
   tone: 'success' | 'warning' | 'neutral';
 };
+type FixItConfidenceQuickAction = {
+  label: string;
+  detail: string;
+  onClick: () => void;
+};
 
 type TemplateBridgePayload = {
   templateName: string;
@@ -2704,6 +2709,41 @@ const NutritionMealPlanner = () => {
     return null;
   }, [activeFixItProgressMiniState, activeFixItSlotSignals, activeFixItTarget, calorieGoal, macroGoals.protein, weeklyMeals]);
 
+  const activeFixItConfidenceQuickAction = useMemo<FixItConfidenceQuickAction | null>(() => {
+    if (!activeFixItTarget || !activeFixItDataCompleteness) return null;
+    if (activeFixItDataCompleteness.tone === 'success') return null;
+
+    const targetDay = activeFixItTarget.targetDay;
+    const firstMissingDetailsSlot = activeFixItSlotSignals.find((slot) => slot.missingDetails);
+    const firstEmptySlot = activeFixItSlotSignals.find((slot) => !slot.hasMeals);
+    const firstAffectedSlot = firstMissingDetailsSlot || firstEmptySlot;
+
+    if (!targetDay) {
+      return {
+        label: 'Fill missing nutrition fields first',
+        detail: 'Open Planner to complete missing meal details before applying deeper guidance.',
+        onClick: () => setActiveTab('planner'),
+      };
+    }
+
+    if (firstAffectedSlot) {
+      return {
+        label: `Complete ${firstAffectedSlot.mealTypeLabel} details`,
+        detail: 'Focus this day and add a meal with calories + protein to improve confidence.',
+        onClick: () => {
+          focusPlannerDay(targetDay);
+          handleAddMeal(targetDay, firstAffectedSlot.mealTypeLabel);
+        },
+      };
+    }
+
+    return {
+      label: 'Review Planner details',
+      detail: 'Go to Planner to complete missing fields before following deeper guidance.',
+      onClick: () => setActiveTab('planner'),
+    };
+  }, [activeFixItDataCompleteness, activeFixItSlotSignals, activeFixItTarget]);
+
   const activeFixItSlotRecommendations = useMemo<FixItSlotRecommendation[]>(() => {
     if (!activeFixItTarget?.targetDay) return [];
 
@@ -3466,6 +3506,23 @@ const NutritionMealPlanner = () => {
                         }`}>
                           <p className="text-xs font-semibold uppercase tracking-wide">Progress</p>
                           <p className="mt-1 font-medium">{activeFixItProgressMiniState.message}</p>
+                        </div>
+                      ) : null}
+                      {activeFixItConfidenceQuickAction ? (
+                        <div className="rounded-md border border-orange-200/80 bg-white/90 px-3 py-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
+                            Confidence Quick Action
+                          </p>
+                          <p className="mt-1 text-sm text-gray-700">{activeFixItConfidenceQuickAction.detail}</p>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="mt-2 border-orange-300 text-orange-900 hover:bg-orange-100"
+                            onClick={activeFixItConfidenceQuickAction.onClick}
+                          >
+                            {activeFixItConfidenceQuickAction.label}
+                          </Button>
                         </div>
                       ) : null}
                       {activeFixItUnresolvedHint ? (
