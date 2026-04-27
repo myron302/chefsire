@@ -195,6 +195,17 @@ type FixItConfidenceQuickAction = {
   detail: string;
   onClick: () => void;
 };
+type FixItDetailsQueueState = {
+  totalMissingCount: number;
+  remainingCount: number;
+  skippedCount: number;
+  completed: boolean;
+  currentSlot: {
+    key: string;
+    mealType: string;
+    mealTypeLabel: string;
+  } | null;
+};
 
 type TemplateBridgePayload = {
   templateName: string;
@@ -273,6 +284,8 @@ const NutritionMealPlanner = () => {
   const [pendingTemplateBridgePreview, setPendingTemplateBridgePreview] = useState<PendingTemplateBridgePreview | null>(null);
   const [recentPinnedTemplates, setRecentPinnedTemplates] = useState<RecentPinnedTemplateUsage[]>([]);
   const [activeFixItTarget, setActiveFixItTarget] = useState<ActiveFixItTarget | null>(null);
+  const [fixItDetailsQueueSkippedKeys, setFixItDetailsQueueSkippedKeys] = useState<string[]>([]);
+  const [fixItDetailsQueueDone, setFixItDetailsQueueDone] = useState(false);
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -2744,6 +2757,55 @@ const NutritionMealPlanner = () => {
     };
   }, [activeFixItDataCompleteness, activeFixItSlotSignals, activeFixItTarget]);
 
+  useEffect(() => {
+    setFixItDetailsQueueSkippedKeys([]);
+    setFixItDetailsQueueDone(false);
+  }, [activeFixItTarget?.issueType, activeFixItTarget?.targetDay]);
+
+  const activeFixItDetailsQueue = useMemo<FixItDetailsQueueState | null>(() => {
+    if (!activeFixItTarget?.targetDay) return null;
+
+    const missingDetailSlots = activeFixItSlotSignals
+      .filter((slot) => slot.missingDetails)
+      .map((slot) => ({
+        key: `${activeFixItTarget.targetDay}-${slot.mealType}`,
+        mealType: slot.mealType,
+        mealTypeLabel: slot.mealTypeLabel,
+      }));
+
+    if (missingDetailSlots.length <= 0) {
+      return {
+        totalMissingCount: 0,
+        remainingCount: 0,
+        skippedCount: 0,
+        completed: true,
+        currentSlot: null,
+      };
+    }
+
+    const remainingSlots = missingDetailSlots.filter((slot) => !fixItDetailsQueueSkippedKeys.includes(slot.key));
+
+    return {
+      totalMissingCount: missingDetailSlots.length,
+      remainingCount: remainingSlots.length,
+      skippedCount: missingDetailSlots.length - remainingSlots.length,
+      completed: remainingSlots.length <= 0,
+      currentSlot: remainingSlots[0] ?? null,
+    };
+  }, [activeFixItSlotSignals, activeFixItTarget?.targetDay, fixItDetailsQueueSkippedKeys]);
+
+  const handleQueueCompleteDetails = (mealType: string) => {
+    if (!activeFixItTarget?.targetDay) return;
+    focusPlannerDay(activeFixItTarget.targetDay);
+    handleAddMeal(activeFixItTarget.targetDay, formatMealTypeLabel(mealType));
+  };
+
+  const handleQueueSkipCurrent = (slotKey: string) => {
+    setFixItDetailsQueueSkippedKeys((prev) => (
+      prev.includes(slotKey) ? prev : [...prev, slotKey]
+    ));
+  };
+
   const activeFixItSlotRecommendations = useMemo<FixItSlotRecommendation[]>(() => {
     if (!activeFixItTarget?.targetDay) return [];
 
@@ -3523,6 +3585,72 @@ const NutritionMealPlanner = () => {
                           >
                             {activeFixItConfidenceQuickAction.label}
                           </Button>
+                        </div>
+                      ) : null}
+                      {activeFixItTarget?.issueType === 'missing-details' && activeFixItDetailsQueue && !fixItDetailsQueueDone ? (
+                        <div className={`rounded-md border px-3 py-2 ${
+                          activeFixItDetailsQueue.completed
+                            ? 'border-emerald-200 bg-emerald-50/80'
+                            : 'border-orange-200/80 bg-white/90'
+                        }`}>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
+                            Details Completion Queue
+                          </p>
+                          {activeFixItDetailsQueue.completed ? (
+                            <>
+                              <p className="mt-1 text-sm text-emerald-800">
+                                All detail gaps for this Fix It day are cleared.
+                              </p>
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                className="mt-2 border-emerald-300 text-emerald-900 hover:bg-emerald-100"
+                                onClick={() => setFixItDetailsQueueDone(true)}
+                              >
+                                Done
+                              </Button>
+                            </>
+                          ) : activeFixItDetailsQueue.currentSlot ? (
+                            <>
+                              <p className="mt-1 text-sm text-gray-700">
+                                Complete {activeFixItDetailsQueue.currentSlot.mealTypeLabel} details
+                              </p>
+                              <p className="mt-1 text-xs text-gray-600">
+                                {`${activeFixItDetailsQueue.totalMissingCount - activeFixItDetailsQueue.remainingCount + 1} of ${activeFixItDetailsQueue.totalMissingCount} detail gaps`}
+                                {activeFixItDetailsQueue.skippedCount > 0
+                                  ? ` • ${activeFixItDetailsQueue.skippedCount} skipped`
+                                  : ''}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-orange-300 text-orange-900 hover:bg-orange-100"
+                                  onClick={() => handleQueueCompleteDetails(activeFixItDetailsQueue.currentSlot!.mealType)}
+                                >
+                                  Complete details
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => handleQueueSkipCurrent(activeFixItDetailsQueue.currentSlot!.key)}
+                                >
+                                  Skip
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setFixItDetailsQueueDone(true)}
+                                >
+                                  Done
+                                </Button>
+                              </div>
+                            </>
+                          ) : null}
                         </div>
                       ) : null}
                       {activeFixItUnresolvedHint ? (
