@@ -207,6 +207,15 @@ type FixItDetailsQueueState = {
     reasonHint: string;
   } | null;
 };
+type FixItDetailsQueueSkipReasonId = 'protein-unknown' | 'label-unavailable' | 'add-later' | 'not-needed-today';
+
+const FIX_IT_DETAILS_QUEUE_SKIP_REASONS: Array<{ id: FixItDetailsQueueSkipReasonId; label: string }> = [
+  { id: 'protein-unknown', label: "Don't know protein yet" },
+  { id: 'label-unavailable', label: 'Label unavailable' },
+  { id: 'add-later', label: 'Will add later' },
+  { id: 'not-needed-today', label: 'Not needed today' },
+];
+const DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON: FixItDetailsQueueSkipReasonId = 'add-later';
 
 type TemplateBridgePayload = {
   templateName: string;
@@ -286,6 +295,8 @@ const NutritionMealPlanner = () => {
   const [recentPinnedTemplates, setRecentPinnedTemplates] = useState<RecentPinnedTemplateUsage[]>([]);
   const [activeFixItTarget, setActiveFixItTarget] = useState<ActiveFixItTarget | null>(null);
   const [fixItDetailsQueueSkippedKeys, setFixItDetailsQueueSkippedKeys] = useState<string[]>([]);
+  const [fixItDetailsQueueSkipReasonByKey, setFixItDetailsQueueSkipReasonByKey] = useState<Record<string, FixItDetailsQueueSkipReasonId>>({});
+  const [fixItDetailsQueuePendingSkipReason, setFixItDetailsQueuePendingSkipReason] = useState<FixItDetailsQueueSkipReasonId>(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
   const [fixItDetailsQueueDone, setFixItDetailsQueueDone] = useState(false);
 
   // Add Meal modal — controlled fields
@@ -2762,6 +2773,8 @@ const NutritionMealPlanner = () => {
 
   useEffect(() => {
     setFixItDetailsQueueSkippedKeys([]);
+    setFixItDetailsQueueSkipReasonByKey({});
+    setFixItDetailsQueuePendingSkipReason(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
     setFixItDetailsQueueDone(false);
   }, [activeFixItTarget?.issueType, activeFixItTarget?.targetDay]);
 
@@ -2822,11 +2835,39 @@ const NutritionMealPlanner = () => {
     handleAddMeal(activeFixItTarget.targetDay, formatMealTypeLabel(mealType));
   };
 
-  const handleQueueSkipCurrent = (slotKey: string) => {
+  const handleQueueSkipCurrent = (slotKey: string, reasonId: FixItDetailsQueueSkipReasonId = DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON) => {
     setFixItDetailsQueueSkippedKeys((prev) => (
       prev.includes(slotKey) ? prev : [...prev, slotKey]
     ));
+    setFixItDetailsQueueSkipReasonByKey((prev) => ({
+      ...prev,
+      [slotKey]: reasonId,
+    }));
+    setFixItDetailsQueuePendingSkipReason(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
   };
+
+  const handleQueueRevisitSkipped = () => {
+    setFixItDetailsQueueSkippedKeys([]);
+    setFixItDetailsQueueSkipReasonByKey({});
+    setFixItDetailsQueuePendingSkipReason(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
+    setFixItDetailsQueueDone(false);
+  };
+
+  const activeFixItSkippedReasonSummary = useMemo(() => {
+    if (fixItDetailsQueueSkippedKeys.length <= 0) return '';
+
+    const counts = fixItDetailsQueueSkippedKeys.reduce((acc, slotKey) => {
+      const reasonId = fixItDetailsQueueSkipReasonByKey[slotKey] ?? DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON;
+      acc[reasonId] = (acc[reasonId] ?? 0) + 1;
+      return acc;
+    }, {} as Record<FixItDetailsQueueSkipReasonId, number>);
+
+    const parts = FIX_IT_DETAILS_QUEUE_SKIP_REASONS
+      .filter((reason) => counts[reason.id])
+      .map((reason) => `${reason.label} (${counts[reason.id]})`);
+
+    return parts.join(' • ');
+  }, [fixItDetailsQueueSkipReasonByKey, fixItDetailsQueueSkippedKeys]);
 
   const activeFixItSlotRecommendations = useMemo<FixItSlotRecommendation[]>(() => {
     if (!activeFixItTarget?.targetDay) return [];
@@ -3621,17 +3662,35 @@ const NutritionMealPlanner = () => {
                           {activeFixItDetailsQueue.completed ? (
                             <>
                               <p className="mt-1 text-sm text-emerald-800">
-                                All detail gaps for this Fix It day are cleared.
+                                {activeFixItDetailsQueue.skippedCount > 0
+                                  ? `You skipped ${activeFixItDetailsQueue.skippedCount} ${activeFixItDetailsQueue.skippedCount === 1 ? 'item' : 'items'} for later.`
+                                  : 'All detail gaps for this Fix It day are cleared.'}
                               </p>
-                              <Button
-                                type="button"
-                                size="sm"
-                                variant="outline"
-                                className="mt-2 border-emerald-300 text-emerald-900 hover:bg-emerald-100"
-                                onClick={() => setFixItDetailsQueueDone(true)}
-                              >
-                                Done
-                              </Button>
+                              {activeFixItSkippedReasonSummary ? (
+                                <p className="mt-1 text-xs text-emerald-700">{activeFixItSkippedReasonSummary}</p>
+                              ) : null}
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {activeFixItDetailsQueue.skippedCount > 0 ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-orange-300 text-orange-900 hover:bg-orange-100"
+                                    onClick={handleQueueRevisitSkipped}
+                                  >
+                                    Revisit skipped
+                                  </Button>
+                                ) : null}
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="border-emerald-300 text-emerald-900 hover:bg-emerald-100"
+                                  onClick={() => setFixItDetailsQueueDone(true)}
+                                >
+                                  Done
+                                </Button>
+                              </div>
                             </>
                           ) : activeFixItDetailsQueue.currentSlot ? (
                             <>
@@ -3647,6 +3706,24 @@ const NutritionMealPlanner = () => {
                                   ? ` • ${activeFixItDetailsQueue.skippedCount} skipped`
                                   : ''}
                               </p>
+                              {activeFixItSkippedReasonSummary ? (
+                                <p className="mt-1 text-xs text-gray-600">{activeFixItSkippedReasonSummary}</p>
+                              ) : null}
+                              <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                                <span className="text-xs text-gray-600">Skip reason:</span>
+                                {FIX_IT_DETAILS_QUEUE_SKIP_REASONS.map((skipReason) => (
+                                  <Button
+                                    key={skipReason.id}
+                                    type="button"
+                                    size="sm"
+                                    variant={fixItDetailsQueuePendingSkipReason === skipReason.id ? 'default' : 'outline'}
+                                    className="h-7 px-2 text-[11px]"
+                                    onClick={() => setFixItDetailsQueuePendingSkipReason(skipReason.id)}
+                                  >
+                                    {skipReason.label}
+                                  </Button>
+                                ))}
+                              </div>
                               <div className="mt-2 flex flex-wrap gap-2">
                                 <Button
                                   type="button"
@@ -3661,10 +3738,20 @@ const NutritionMealPlanner = () => {
                                   type="button"
                                   size="sm"
                                   variant="outline"
-                                  onClick={() => handleQueueSkipCurrent(activeFixItDetailsQueue.currentSlot!.key)}
+                                  onClick={() => handleQueueSkipCurrent(activeFixItDetailsQueue.currentSlot!.key, fixItDetailsQueuePendingSkipReason)}
                                 >
                                   Skip
                                 </Button>
+                                {activeFixItDetailsQueue.skippedCount > 0 ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={handleQueueRevisitSkipped}
+                                  >
+                                    Revisit skipped
+                                  </Button>
+                                ) : null}
                                 <Button
                                   type="button"
                                   size="sm"
