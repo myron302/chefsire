@@ -204,6 +204,7 @@ type FixItDetailsQueueState = {
     key: string;
     mealType: string;
     mealTypeLabel: string;
+    reasonHint: string;
   } | null;
 };
 
@@ -2574,6 +2575,8 @@ const NutritionMealPlanner = () => {
         hasMeals,
         protein: totals.protein,
         calories: totals.calories,
+        missingProtein,
+        missingCalories,
         missingDetails,
       };
     });
@@ -2765,15 +2768,34 @@ const NutritionMealPlanner = () => {
   const activeFixItDetailsQueue = useMemo<FixItDetailsQueueState | null>(() => {
     if (!activeFixItTarget?.targetDay) return null;
 
-    const missingDetailSlots = activeFixItSlotSignals
-      .filter((slot) => slot.missingDetails)
-      .map((slot) => ({
-        key: `${activeFixItTarget.targetDay}-${slot.mealType}`,
-        mealType: slot.mealType,
-        mealTypeLabel: slot.mealTypeLabel,
-      }));
+    const queueSlots = activeFixItSlotSignals
+      .filter((slot) => slot.missingDetails || !slot.hasMeals)
+      .map((slot) => {
+        let priority = 4;
+        let reasonHint = 'This slot is empty, so details cannot be completed yet.';
 
-    if (missingDetailSlots.length <= 0) {
+        if (slot.hasMeals && slot.missingProtein) {
+          priority = 1;
+          reasonHint = 'Protein is missing here.';
+        } else if (slot.hasMeals && slot.missingCalories) {
+          priority = 2;
+          reasonHint = 'Calories are missing here.';
+        } else if (slot.hasMeals && slot.missingDetails) {
+          priority = 3;
+          reasonHint = 'This slot has food but incomplete details.';
+        }
+
+        return {
+          key: `${activeFixItTarget.targetDay}-${slot.mealType}`,
+          mealType: slot.mealType,
+          mealTypeLabel: slot.mealTypeLabel,
+          priority,
+          reasonHint,
+        };
+      })
+      .sort((a, b) => a.priority - b.priority);
+
+    if (queueSlots.length <= 0) {
       return {
         totalMissingCount: 0,
         remainingCount: 0,
@@ -2783,12 +2805,12 @@ const NutritionMealPlanner = () => {
       };
     }
 
-    const remainingSlots = missingDetailSlots.filter((slot) => !fixItDetailsQueueSkippedKeys.includes(slot.key));
+    const remainingSlots = queueSlots.filter((slot) => !fixItDetailsQueueSkippedKeys.includes(slot.key));
 
     return {
-      totalMissingCount: missingDetailSlots.length,
+      totalMissingCount: queueSlots.length,
       remainingCount: remainingSlots.length,
-      skippedCount: missingDetailSlots.length - remainingSlots.length,
+      skippedCount: queueSlots.length - remainingSlots.length,
       completed: remainingSlots.length <= 0,
       currentSlot: remainingSlots[0] ?? null,
     };
@@ -3615,6 +3637,9 @@ const NutritionMealPlanner = () => {
                             <>
                               <p className="mt-1 text-sm text-gray-700">
                                 Complete {activeFixItDetailsQueue.currentSlot.mealTypeLabel} details
+                              </p>
+                              <p className="mt-1 text-xs text-gray-600">
+                                {activeFixItDetailsQueue.currentSlot.reasonHint}
                               </p>
                               <p className="mt-1 text-xs text-gray-600">
                                 {`${activeFixItDetailsQueue.totalMissingCount - activeFixItDetailsQueue.remainingCount + 1} of ${activeFixItDetailsQueue.totalMissingCount} detail gaps`}
