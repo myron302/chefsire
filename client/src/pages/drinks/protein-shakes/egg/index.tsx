@@ -68,6 +68,7 @@ export default function EggProteinPage() {
 
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [filterTag, setFilterTag] = useState('All');
+  const [activeTab, setActiveTab] = useState<'browse' | 'types' | 'goals' | 'featured'>('browse');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'prepTime'>('rating');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
@@ -79,6 +80,14 @@ export default function EggProteinPage() {
   const kitRefs = useRef<Record<string, RecipeKitHandle | null>>({});
 
   const allTags = ['All', ...new Set(eggProteinRecipes.flatMap(r => r.tags))];
+  const topRatedRecipes = useMemo(
+    () => [...eggProteinRecipes].sort((a, b) => (b.rating || 0) - (a.rating || 0)).slice(0, 6),
+    [],
+  );
+  const flavorTypes = useMemo(
+    () => [...new Set(eggProteinRecipes.map((recipe) => recipe.flavor))].sort((a, b) => a.localeCompare(b)),
+    [],
+  );
 
   // Filter + sort
   const filteredRecipes = useMemo(() => {
@@ -343,48 +352,105 @@ export default function EggProteinPage() {
           </Card>
         </div>
 
-        {/* Filters */}
-        <Card className="mb-6">
-          <CardContent className="p-4">
-            <div className="flex flex-col md:flex-row gap-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
-                <Input
-                  placeholder="Search egg protein recipes..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 h-12 text-base"
-                />
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
-                <select
-                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
-                  value={filterTag}
-                  onChange={(e) => setFilterTag(e.target.value)}
-                >
-                  <option value="All">All Tags</option>
-                  {allTags.filter(t => t !== 'All').map(tag => (
-                    <option key={tag} value={tag}>{tag}</option>
-                  ))}
-                </select>
-                <select
-                  className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
-                  value={sortBy}
-                  onChange={(e) => setSortBy(e.target.value as any)}
-                >
-                  <option value="rating">Sort by Rating</option>
-                  <option value="protein">Sort by Protein</option>
-                  <option value="calories">Sort by Calories</option>
-                  <option value="prepTime">Sort by Prep Time</option>
-                </select>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1 mb-6">
+          {[
+            { id: 'browse', label: 'Browse All', icon: Search },
+            { id: 'types', label: 'Flavor Types', icon: Sparkles },
+            { id: 'goals', label: 'Goal Tags', icon: Target },
+            { id: 'featured', label: 'Top Rated', icon: Star },
+          ].map((tab) => {
+            const Icon = tab.icon as any;
+            return (
+              <Button
+                key={tab.id}
+                variant="ghost"
+                onClick={() => setActiveTab(tab.id as typeof activeTab)}
+                className={`flex-1 ${activeTab === tab.id ? 'bg-amber-500 shadow-sm !text-white hover:!text-white hover:bg-amber-600' : ''}`}
+              >
+                <Icon className="h-4 w-4 mr-2" />
+                {tab.label}
+              </Button>
+            );
+          })}
+        </div>
+
+        {activeTab === 'browse' && (
+          <>
+            {/* Filters */}
+            <Card className="mb-6">
+              <CardContent className="p-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  <div className="flex-1 relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-5 w-5" />
+                    <Input
+                      placeholder="Search egg protein recipes..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="pl-10 h-12 text-base"
+                    />
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-2">
+                    <select
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
+                      value={filterTag}
+                      onChange={(e) => setFilterTag(e.target.value)}
+                    >
+                      <option value="All">All Tags</option>
+                      {allTags.filter(t => t !== 'All').map(tag => (
+                        <option key={tag} value={tag}>{tag}</option>
+                      ))}
+                    </select>
+                    <select
+                      className="px-4 py-3 border border-gray-300 rounded-md text-base sm:text-sm whitespace-nowrap"
+                      value={sortBy}
+                      onChange={(e) => setSortBy(e.target.value as any)}
+                    >
+                      <option value="rating">Sort by Rating</option>
+                      <option value="protein">Sort by Protein</option>
+                      <option value="calories">Sort by Calories</option>
+                      <option value="prepTime">Sort by Prep Time</option>
+                    </select>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </>
+        )}
+
+        {activeTab === 'types' && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg">Egg Protein Flavor Types</CardTitle>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {flavorTypes.map((flavor) => (
+                <Button key={flavor} variant="outline" className="justify-start" onClick={() => { setSearchQuery(flavor); setActiveTab('browse'); }}>
+                  {flavor}
+                </Button>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === 'goals' && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="text-lg">Goal Tags</CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-wrap gap-2">
+              {allTags.filter((tag) => tag !== 'All').map((tag) => (
+                <Button key={tag} variant="outline" onClick={() => { setFilterTag(tag); setActiveTab('browse'); }}>
+                  {tag}
+                </Button>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Recipe Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredRecipes.map((recipe) => {
+        {(activeTab === 'browse' ? filteredRecipes : topRatedRecipes).length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {(activeTab === 'browse' ? filteredRecipes : topRatedRecipes).map((recipe) => {
             const useMetric = !!metricFlags[recipe.id];
               const canonicalSlug = resolveCanonicalDrinkSlug({ slug: recipe.slug, name: recipe.name, sourceRoute: '/drinks/protein-shakes/egg' });
             const servings = servingsById[recipe.id] ?? (recipe.recipe?.servings || 1);
@@ -643,8 +709,9 @@ export default function EggProteinPage() {
 </CardContent>
               </Card>
             );
-          })}
-        </div>
+            })}
+          </div>
+        )}
 
         {/* Your Progress */}
         <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 mt-8">

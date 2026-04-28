@@ -118,6 +118,16 @@ const otherDrinkHubs = [
   { id: "all-drinks", name: "All Drinks", icon: Flame, route: "/drinks", description: "Browse everything" },
 ];
 
+const sisterCaffeinatedSubcategories = [
+  { id: "cold-brew", name: "Cold Brew", icon: Droplets, path: "/drinks/caffeinated/cold-brew", description: "Smooth & chilled coffee" },
+  { id: "energy", name: "Energy", icon: Zap, path: "/drinks/caffeinated/energy", description: "Fast-acting caffeinated blends" },
+  { id: "espresso", name: "Espresso", icon: Coffee, path: "/drinks/caffeinated/espresso", description: "Concentrated coffee shots" },
+  { id: "iced", name: "Iced Coffee", icon: Sun, path: "/drinks/caffeinated/iced", description: "Refreshing cold coffee drinks" },
+  { id: "lattes", name: "Lattes", icon: Heart, path: "/drinks/caffeinated/lattes", description: "Milk-forward coffee classics" },
+  { id: "specialty", name: "Specialty", icon: Crown, path: "/drinks/caffeinated/specialty", description: "Chef-style caffeinated creations" },
+  { id: "tea", name: "Tea", icon: Leaf, path: "/drinks/caffeinated/tea", description: "Hot and iced tea recipes" },
+];
+
 export default function MatchaDrinksPage() {
   const { addToFavorites, isFavorite, addToRecentlyViewed, userProgress, incrementDrinksMade, addPoints } = useDrinks();
 
@@ -376,6 +386,29 @@ export default function MatchaDrinksPage() {
                       <div className="text-left flex-1">
                         <div className="font-medium text-sm">{hub.name}</div>
                         <div className="text-xs text-gray-500">{hub.description}</div>
+                      </div>
+                      <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
+                    </Button>
+                  </Link>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200">
+          <CardContent className="p-4">
+            <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Caffeinated Subcategories</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
+              {[...sisterCaffeinatedSubcategories].sort((a, b) => a.name.localeCompare(b.name)).map((subcategory) => {
+                const Icon = subcategory.icon as any;
+                return (
+                  <Link key={subcategory.id} href={subcategory.path}>
+                    <Button variant="outline" className="w-full justify-start hover:bg-emerald-50 hover:border-emerald-300">
+                      <Icon className="h-4 w-4 mr-2 text-emerald-600" />
+                      <div className="text-left flex-1">
+                        <div className="font-medium text-sm">{subcategory.name}</div>
+                        <div className="text-xs text-gray-500">{subcategory.description}</div>
                       </div>
                       <ArrowLeft className="h-3 w-3 ml-auto rotate-180" />
                     </Button>
