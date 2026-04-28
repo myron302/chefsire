@@ -236,7 +236,7 @@ export default function SeasonalCocktailsPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'seasonal-cocktails',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -271,7 +271,7 @@ export default function SeasonalCocktailsPage() {
     addToRecentlyViewed({
       id: cocktail.id,
       name: cocktail.name,
-      category: 'Seasonal Cocktails',
+      category: 'potent-potables',
       timestamp: Date.now()
     });
   };
@@ -493,7 +493,7 @@ export default function SeasonalCocktailsPage() {
                           addToFavorites({
                             id: cocktail.id,
                             name: cocktail.name,
-                            category: 'Seasonal Cocktails',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}

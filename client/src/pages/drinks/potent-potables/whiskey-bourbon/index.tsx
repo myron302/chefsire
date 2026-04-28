@@ -205,7 +205,7 @@ export default function WhiskeyBourbonPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'whiskey-bourbon',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -502,7 +502,7 @@ export default function WhiskeyBourbonPage() {
                           addToFavorites({
                             id: cocktail.id,
                             name: cocktail.name,
-                            category: 'Whiskey & Bourbon',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}

@@ -197,7 +197,7 @@ export default function GinCocktailsPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'gin-cocktails',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -493,7 +493,7 @@ export default function GinCocktailsPage() {
                           addToFavorites({
                             id: cocktail.id,
                             name: cocktail.name,
-                            category: 'Gin Cocktails',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}

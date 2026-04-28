@@ -199,7 +199,7 @@ export default function TequilaMezcalPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'tequila-mezcal',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -222,7 +222,7 @@ export default function TequilaMezcalPage() {
     addToRecentlyViewed({
       id: cocktail.id,
       name: cocktail.name,
-      category: 'tequila-mezcal',
+      category: 'potent-potables',
       timestamp: Date.now()
     });
   };
@@ -436,7 +436,7 @@ export default function TequilaMezcalPage() {
                           addToFavorites({
                             id: cocktail.id,
                             name: cocktail.name,
-                            category: 'Tequila & Mezcal',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}

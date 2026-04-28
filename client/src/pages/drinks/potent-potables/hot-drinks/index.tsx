@@ -199,7 +199,7 @@ export default function HotDrinksPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'hot-drinks',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -486,7 +486,7 @@ export default function HotDrinksPage() {
                           addToFavorites({
                             id: drink.id,
                             name: drink.name,
-                            category: 'Hot Drinks',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}

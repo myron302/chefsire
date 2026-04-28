@@ -197,7 +197,7 @@ export default function SpritzMimosasPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'spritz-mimosas',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -475,7 +475,7 @@ export default function SpritzMimosasPage() {
                           addToFavorites({
                             id: cocktail.id,
                             name: cocktail.name,
-                            category: 'Spritz & Mimosas',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}
