@@ -17,6 +17,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { otherDrinkHubs } from '../data/detoxes';
+import { sortByName } from '@/lib/sort-by-name';
 
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
@@ -264,8 +265,25 @@ const potentPotablesSubcategories = [
     avgCalories: 120,
     avgTime: '4 min',
     topBenefit: 'Guilt Free'
+  },
+  {
+    id: 'virgin-cocktails',
+    name: 'Virgin Cocktails',
+    icon: Sparkles,
+    count: 12,
+    route: '/drinks/potent-potables/virgin-cocktails',
+    description: 'Spirit-free classics',
+    image: 'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=600&h=400&fit=crop',
+    bgColor: 'bg-sky-50',
+    borderColor: 'border-sky-200',
+    textColor: 'text-sky-600',
+    avgCalories: 95,
+    avgTime: '4 min',
+    topBenefit: 'Party-Ready Zero Proof'
   }
 ];
+
+const sortedPotentPotablesSubcategories = sortByName(potentPotablesSubcategories);
 
 const featuredCocktails = [
   {
@@ -478,7 +496,7 @@ export default function PotentPotablesPage() {
               Browse Spirit Categories
             </h2>
             <div className="grid md:grid-cols-3 gap-6">
-              {potentPotablesSubcategories.map((category) => {
+              {sortedPotentPotablesSubcategories.map((category) => {
                 const Icon = category.icon;
                 return (
                   <Link key={category.id} href={category.route}>

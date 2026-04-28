@@ -17,6 +17,7 @@ import {
 import UniversalSearch from '@/components/UniversalSearch';
 import { useDrinks } from '@/contexts/DrinksContext';
 import { otherDrinkHubs } from '../data/detoxes';
+import { sortByName } from '@/lib/sort-by-name';
 
 type Params = { params?: Record<string, string> };
 
@@ -211,6 +212,8 @@ const proteinSubcategories = [
     topBenefit: 'Creatine Boost'
   }
 ];
+
+const sortedProteinSubcategories = sortByName(proteinSubcategories);
 
 export default function ProteinShakesPage({ params }: Params) {
   const { 
@@ -417,7 +420,7 @@ export default function ProteinShakesPage({ params }: Params) {
           Browse Protein Types
         </h2>
         <div className="grid md:grid-cols-3 gap-6">
-          {proteinSubcategories.map((category) => {
+          {sortedProteinSubcategories.map((category) => {
             const Icon = category.icon;
             return (
               <Link key={category.id} href={category.route}>

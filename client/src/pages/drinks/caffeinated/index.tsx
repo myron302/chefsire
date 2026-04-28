@@ -18,6 +18,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import { otherDrinkHubs } from '../data/detoxes';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { getCanonicalFirstPath } from '@/lib/recipe-interactions';
+import { sortByName } from '@/lib/sort-by-name';
 
 const caffeinatedSubcategories = [
   {
@@ -182,6 +183,8 @@ const caffeineGoals = [
   { id: 'social', name: 'Social Drink', icon: '🤝', color: 'bg-purple-500', focus: 'flavor' },
   { id: 'evening', name: 'Light Caffeine', icon: '🌙', color: 'bg-indigo-500', focus: 'low-caffeine' }
 ];
+
+const sortedCaffeinatedSubcategories = sortByName(caffeinatedSubcategories);
 
 const premadeRecipes = [
   {
@@ -609,7 +612,7 @@ export default function CaffeinatedDrinksPage() {
             Browse Caffeinated Drink Types
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
-            {caffeinatedSubcategories.map((category) => {
+            {sortedCaffeinatedSubcategories.map((category) => {
               const Icon = category.icon;
               return (
                 <Link key={category.id} href={category.route}>

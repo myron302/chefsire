@@ -19,6 +19,7 @@ import ForYouDrinks from "@/components/drinks/ForYouDrinks";
 import TopDrinkCreators from "@/components/drinks/TopDrinkCreators";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 import BecauseOfYourActivity from "@/components/drinks/BecauseOfYourActivity";
+import { sortByName } from '@/lib/sort-by-name';
 
 const drinkCategories = [
   {
@@ -191,6 +192,8 @@ const userStats = {
   streak: 7
 };
 
+const sortedDrinkCategories = sortByName(drinkCategories);
+
 export default function DrinksPage() {
   const [location, setLocation] = useLocation();
 
@@ -222,8 +225,8 @@ export default function DrinksPage() {
   const normalizedQ = searchQuery.trim().toLowerCase();
 
   const filteredCategories = useMemo(() => {
-    if (!normalizedQ) return drinkCategories;
-    return drinkCategories.filter((c) => {
+    if (!normalizedQ) return sortedDrinkCategories;
+    return sortedDrinkCategories.filter((c) => {
       const hay = [
         c.id,
         c.name,
