@@ -417,7 +417,7 @@ export default function ProteinShakesPage({ params }: Params) {
           Browse Protein Types
         </h2>
         <div className="grid md:grid-cols-3 gap-6">
-          {proteinSubcategories.map((category) => {
+          {[...proteinSubcategories].sort((a, b) => a.name.localeCompare(b.name)).map((category) => {
             const Icon = category.icon;
             return (
               <Link key={category.id} href={category.route}>

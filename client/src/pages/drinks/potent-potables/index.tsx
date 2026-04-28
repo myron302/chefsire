@@ -264,6 +264,21 @@ const potentPotablesSubcategories = [
     avgCalories: 120,
     avgTime: '4 min',
     topBenefit: 'Guilt Free'
+  },
+  {
+    id: 'virgin-cocktails',
+    name: 'Virgin Cocktails',
+    icon: Sparkles,
+    count: 12,
+    route: '/drinks/potent-potables/virgin-cocktails',
+    description: 'Spirit-free classics',
+    image: 'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=600&h=400&fit=crop',
+    bgColor: 'bg-sky-50',
+    borderColor: 'border-sky-200',
+    textColor: 'text-sky-600',
+    avgCalories: 95,
+    avgTime: '4 min',
+    topBenefit: 'Party-Ready Zero Proof'
   }
 ];
 
@@ -478,7 +493,7 @@ export default function PotentPotablesPage() {
               Browse Spirit Categories
             </h2>
             <div className="grid md:grid-cols-3 gap-6">
-              {potentPotablesSubcategories.map((category) => {
+              {[...potentPotablesSubcategories].sort((a, b) => a.name.localeCompare(b.name)).map((category) => {
                 const Icon = category.icon;
                 return (
                   <Link key={category.id} href={category.route}>

@@ -644,7 +644,7 @@ export default function SmoothiesPage() {
             Browse Smoothie Types
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
-            {smoothieSubcategories.map((category) => (
+            {[...smoothieSubcategories].sort((a, b) => a.name.localeCompare(b.name)).map((category) => (
               <Link key={category.id} href={category.route}>
                 <Card
                   className={`cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}

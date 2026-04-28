@@ -222,8 +222,9 @@ export default function DrinksPage() {
   const normalizedQ = searchQuery.trim().toLowerCase();
 
   const filteredCategories = useMemo(() => {
-    if (!normalizedQ) return drinkCategories;
-    return drinkCategories.filter((c) => {
+    const alphabeticalCategories = [...drinkCategories].sort((a, b) => a.name.localeCompare(b.name));
+    if (!normalizedQ) return alphabeticalCategories;
+    return alphabeticalCategories.filter((c) => {
       const hay = [
         c.id,
         c.name,
@@ -303,10 +304,10 @@ export default function DrinksPage() {
             <Link href="/drinks/collections/explore">
               <Button variant="outline">Collections</Button>
             </Link>
-            <Link href="/drinks/collections/explore">
+            <Link href="/drinks/collections">
               <Button variant="outline">Explore Public Collections</Button>
             </Link>
-            <Link href="/drinks/collections/explore">
+            <Link href="/drinks/purchased-collections">
               <Button variant="ghost">Browse Premium Collections</Button>
             </Link>
             <Link href="/drinks/creators/trending">

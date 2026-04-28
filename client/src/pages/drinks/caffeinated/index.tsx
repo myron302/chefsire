@@ -609,7 +609,7 @@ export default function CaffeinatedDrinksPage() {
             Browse Caffeinated Drink Types
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
-            {caffeinatedSubcategories.map((category) => {
+            {[...caffeinatedSubcategories].sort((a, b) => a.name.localeCompare(b.name)).map((category) => {
               const Icon = category.icon;
               return (
                 <Link key={category.id} href={category.route}>
