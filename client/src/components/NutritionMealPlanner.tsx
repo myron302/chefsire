@@ -2671,7 +2671,7 @@ const NutritionMealPlanner = () => {
       const proteinGap = Math.max(0, Math.ceil(macroGoals.protein - dayTotals.protein));
       unresolvedCount = proteinGap > 0 ? 1 : 0;
     } else if (activeFixItTarget.issueType === 'missing-details') {
-      unresolvedCount = activeFixItSlotSignals.filter((slot) => slot.missingDetails).length;
+      unresolvedCount = activeFixItSlotSignals.filter((slot) => slot.missingDetails || !slot.hasMeals).length;
     } else if (activeFixItTarget.issueType === 'calorie-balance') {
       const targetDayTotals = calculateTodayNutritionTotals(weeklyMeals, activeFixItTarget.targetDay as string);
       const lowerBound = calorieGoal * 0.9;
@@ -2719,8 +2719,14 @@ const NutritionMealPlanner = () => {
 
     if (activeFixItTarget.issueType === 'missing-details') {
       const firstMissingDetailsSlot = activeFixItSlotSignals.find((slot) => slot.missingDetails);
-      if (!firstMissingDetailsSlot) return 'Some meals are still missing calories or protein.';
-      return `${firstMissingDetailsSlot.mealTypeLabel} is missing calories or protein.`;
+      if (firstMissingDetailsSlot) {
+        return `${firstMissingDetailsSlot.mealTypeLabel} is missing calories or protein.`;
+      }
+      const firstEmptySlot = activeFixItSlotSignals.find((slot) => !slot.hasMeals);
+      if (firstEmptySlot) {
+        return `${firstEmptySlot.mealTypeLabel} is still empty.`;
+      }
+      return 'Some meals are still missing calories or protein.';
     }
 
     if (activeFixItTarget.issueType === 'calorie-balance') {
@@ -2951,6 +2957,17 @@ const NutritionMealPlanner = () => {
           pushRecommendation({
             key: `details-${slot.mealType}`,
             text: `Complete calories/protein for ${slot.mealTypeLabel}`,
+            cta: 'Add Meal',
+            onClick: () => addMealForSlot(slot.mealType),
+          });
+        });
+      }
+      const emptySlots = slotSignals.filter((slot) => !slot.hasMeals);
+      if (emptySlots.length > 0) {
+        emptySlots.slice(0, 1).forEach((slot) => {
+          pushRecommendation({
+            key: `details-fill-${slot.mealType}`,
+            text: `Fill ${slot.mealTypeLabel} so nutrition details can be tracked`,
             cta: 'Add Meal',
             onClick: () => addMealForSlot(slot.mealType),
           });
