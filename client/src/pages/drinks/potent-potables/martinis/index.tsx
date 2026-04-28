@@ -204,7 +204,7 @@ export default function MartinisPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'martinis',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -237,7 +237,7 @@ export default function MartinisPage() {
     addToRecentlyViewed({
       id: martini.id,
       name: martini.name,
-      category: 'Martinis',
+      category: 'potent-potables',
       timestamp: Date.now()
     });
   };
@@ -510,7 +510,7 @@ export default function MartinisPage() {
                           addToFavorites({
                             id: martini.id,
                             name: martini.name,
-                            category: 'Martinis',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}
@@ -681,7 +681,7 @@ export default function MartinisPage() {
                             e.stopPropagation();
                             handleShareMartini(martini, servings);
                           }}>
-                            <Share2 className="w-4 w-4 mr-1" /> Share
+                            <Share2 className="w-4 h-4 mr-1" /> Share
                           </Button>
                           <Button
                             variant="outline"

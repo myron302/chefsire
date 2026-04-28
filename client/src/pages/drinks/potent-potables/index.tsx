@@ -631,7 +631,7 @@ export default function PotentPotablesPage() {
                     </div>
                     <div className="absolute top-2 right-2">
                       <Button variant="ghost" size="sm" className="bg-white/80 hover:bg-white text-gray-600"
-                        onClick={(e) => { e.stopPropagation(); addToFavorites({ id: cocktail.id, name: cocktail.name, category: 'cocktails', timestamp: Date.now() }); }}>
+                        onClick={(e) => { e.stopPropagation(); addToFavorites({ id: cocktail.id, name: cocktail.name, category: 'potent-potables', timestamp: Date.now() }); }}>
                         <Heart className={`h-4 w-4 ${isFavorite(cocktail.id) ? 'fill-red-500 text-red-500' : ''}`} />
                       </Button>
                     </div>

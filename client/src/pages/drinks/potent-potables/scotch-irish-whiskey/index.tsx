@@ -194,7 +194,7 @@ export default function ScotchIrishWhiskeyPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'scotch-irish-whiskey',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -217,7 +217,7 @@ export default function ScotchIrishWhiskeyPage() {
     addToRecentlyViewed({
       id: cocktail.id,
       name: cocktail.name,
-      category: 'scotch-irish-whiskey',
+      category: 'potent-potables',
       timestamp: Date.now()
     });
   };
@@ -429,7 +429,7 @@ export default function ScotchIrishWhiskeyPage() {
                           addToFavorites({
                             id: cocktail.id,
                             name: cocktail.name,
-                            category: 'Scotch & Irish Whiskey',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}

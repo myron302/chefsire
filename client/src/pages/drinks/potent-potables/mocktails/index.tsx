@@ -214,7 +214,7 @@ export default function MocktailsPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'Mocktails',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -252,7 +252,7 @@ export default function MocktailsPage() {
     addToRecentlyViewed({
       id: mocktail.id,
       name: mocktail.name,
-      category: 'Mocktails',
+      category: 'potent-potables',
       timestamp: Date.now()
     });
   };
@@ -481,7 +481,7 @@ export default function MocktailsPage() {
                         addToFavorites({
                           id: mocktail.id,
                           name: mocktail.name,
-                          category: 'Mocktails',
+                          category: 'potent-potables',
                           timestamp: Date.now()
                         });
                       }}

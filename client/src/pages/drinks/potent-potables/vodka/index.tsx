@@ -208,7 +208,7 @@ export default function VodkaCocktailsPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'vodka-cocktails',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -496,7 +496,7 @@ export default function VodkaCocktailsPage() {
                           addToFavorites({
                             id: cocktail.id,
                             name: cocktail.name,
-                            category: 'Vodka Cocktails',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}

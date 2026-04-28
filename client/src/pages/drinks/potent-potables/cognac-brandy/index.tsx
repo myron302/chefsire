@@ -227,7 +227,7 @@ export default function CognacBrandyPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'cognac-brandy',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -259,7 +259,7 @@ export default function CognacBrandyPage() {
     addToRecentlyViewed({
       id: cocktail.id,
       name: cocktail.name,
-      category: 'cognac-brandy',
+      category: 'potent-potables',
       timestamp: Date.now()
     });
   };
@@ -488,7 +488,7 @@ export default function CognacBrandyPage() {
                               addToFavorites({
                                 id: cocktail.id,
                                 name: cocktail.name,
-                                category: 'cognac-brandy',
+                                category: 'potent-potables',
                                 timestamp: Date.now()
                               });
                             }}

@@ -199,7 +199,7 @@ export default function RumCocktailsPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'rum-cocktails',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -222,7 +222,7 @@ export default function RumCocktailsPage() {
     addToRecentlyViewed({
       id: cocktail.id,
       name: cocktail.name,
-      category: 'rum-cocktails',
+      category: 'potent-potables',
       timestamp: Date.now()
     });
   };
@@ -436,7 +436,7 @@ export default function RumCocktailsPage() {
                           addToFavorites({
                             id: cocktail.id,
                             name: cocktail.name,
-                            category: 'Rum Cocktails',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}

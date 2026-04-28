@@ -193,7 +193,7 @@ export default function LiqueursPage() {
       addToRecentlyViewed({
         id: selectedRecipe.id,
         name: selectedRecipe.name,
-        category: 'liqueurs',
+        category: 'potent-potables',
         timestamp: Date.now()
       });
       incrementDrinksMade();
@@ -484,7 +484,7 @@ export default function LiqueursPage() {
                           addToFavorites({
                             id: cocktail.id,
                             name: cocktail.name,
-                            category: 'Liqueurs',
+                            category: 'potent-potables',
                             timestamp: Date.now()
                           });
                         }}
