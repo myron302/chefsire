@@ -18,6 +18,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import { otherDrinkHubs } from '../data/detoxes';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { getCanonicalFirstPath } from '@/lib/recipe-interactions';
+import { sortByName } from '@/lib/sort-by-name';
 
 const smoothieSubcategories = [
   {
@@ -182,6 +183,8 @@ const workoutGoals = [
   { id: 'endurance', name: 'Endurance', icon: '🏃', color: 'bg-purple-500', focus: 'electrolytes' },
   { id: 'recovery', name: 'Recovery', icon: '😌', color: 'bg-pink-500', focus: 'antioxidants' }
 ];
+
+const sortedSmoothieSubcategories = sortByName(smoothieSubcategories);
 
 const premadeRecipes = [
   {
@@ -644,7 +647,7 @@ export default function SmoothiesPage() {
             Browse Smoothie Types
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
-            {[...smoothieSubcategories].sort((a, b) => a.name.localeCompare(b.name)).map((category) => (
+            {sortedSmoothieSubcategories.map((category) => (
               <Link key={category.id} href={category.route}>
                 <Card
                   className={`cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}
