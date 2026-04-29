@@ -307,6 +307,7 @@ const NutritionMealPlanner = () => {
   const [pendingTemplateBridgePreview, setPendingTemplateBridgePreview] = useState<PendingTemplateBridgePreview | null>(null);
   const [recentPinnedTemplates, setRecentPinnedTemplates] = useState<RecentPinnedTemplateUsage[]>([]);
   const [activeFixItTarget, setActiveFixItTarget] = useState<ActiveFixItTarget | null>(null);
+  const [activeFixItResolvedBaseline, setActiveFixItResolvedBaseline] = useState<number | null>(null);
   const [fixItDetailsQueueSkippedKeys, setFixItDetailsQueueSkippedKeys] = useState<string[]>([]);
   const [fixItDetailsQueueSkipReasonByKey, setFixItDetailsQueueSkipReasonByKey] = useState<Record<string, FixItDetailsQueueSkipReasonId>>({});
   const [fixItDetailsQueuePendingSkipReason, setFixItDetailsQueuePendingSkipReason] = useState<FixItDetailsQueueSkipReasonId>(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
@@ -2745,6 +2746,26 @@ const NutritionMealPlanner = () => {
     };
   }, [activeFixItSlotSignals, activeFixItTarget?.targetDay, calorieGoal, macroGoals.protein, mealTypes, weeklyMeals]);
 
+  const activeFixItBaselineKey = activeFixItTarget
+    ? `${activeFixItTarget.issueType}:${activeFixItTarget.targetDay ?? ''}:${activeFixItTarget.targetDate ?? ''}`
+    : null;
+
+  useEffect(() => {
+    if (!activeFixItBaselineKey) {
+      setActiveFixItResolvedBaseline(null);
+      return;
+    }
+    setActiveFixItResolvedBaseline(activeFixItDayCompletion?.resolvedIssues ?? null);
+  }, [activeFixItBaselineKey]);
+
+  const activeFixItCompletionDeltaText = useMemo<string | null>(() => {
+    if (!activeFixItDayCompletion || activeFixItResolvedBaseline === null) return null;
+    const delta = activeFixItDayCompletion.resolvedIssues - activeFixItResolvedBaseline;
+    if (delta > 0) return `+${delta} resolved since opening Fix It`;
+    if (delta < 0) return `${Math.abs(delta)} new issues appeared`;
+    return 'No change yet';
+  }, [activeFixItDayCompletion, activeFixItResolvedBaseline]);
+
   const activeFixItUnresolvedHint = useMemo<string | null>(() => {
     if (!activeFixItTarget || !activeFixItTarget.targetDay || !activeFixItProgressMiniState) return null;
     if (activeFixItProgressMiniState.unresolvedCount <= 0) return null;
@@ -3742,6 +3763,9 @@ const NutritionMealPlanner = () => {
                           ) : (
                             <p className="mt-1 text-xs text-gray-600">{activeFixItDayCompletion.remainingIssues} remaining for today.</p>
                           )}
+                          {activeFixItCompletionDeltaText ? (
+                            <p className="mt-1 text-xs text-gray-600">{activeFixItCompletionDeltaText}</p>
+                          ) : null}
                         </div>
                       ) : null}
                       {activeFixItConfidenceQuickAction ? (
