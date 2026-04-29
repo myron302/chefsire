@@ -4,9 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Martini, Clock, Heart, Star, Target, Sparkles, Leaf, Wine, Search, Share2, ArrowLeft, Plus, Zap, Cherry, Camera, Flame, GlassWater, Award, TrendingUp, Crown, Home, Droplets, Apple, Clipboard, RotateCcw, Check, Coffee } from "lucide-react";
+import { Martini, Clock, Heart, Star, Target, Sparkles, Leaf, Wine, Search, Share2, ArrowLeft, Plus, Zap, Cherry, Camera, Flame, GlassWater, Award, TrendingUp, Crown, Home, Droplets, Apple, Clipboard, RotateCcw, Check, Coffee, X } from "lucide-react";
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import UniversalSearch from '@/components/UniversalSearch';
 import { mocktails } from "@/data/drinks/potent-potables/mocktails";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
@@ -131,6 +132,7 @@ export default function MocktailsPage() {
     incrementDrinksMade
   } = useDrinks();
 
+  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedOccasion, setSelectedOccasion] = useState('All Occasions');
   const [sortBy, setSortBy] = useState('trending');
@@ -183,6 +185,29 @@ export default function MocktailsPage() {
       try {
         await navigator.clipboard.writeText(`${mocktail.name}\n${text}\n${url}`);
         alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Mocktails',
+      text: 'Enjoy sophisticated non-alcoholic mocktail recipes for any occasion.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -265,6 +290,23 @@ export default function MocktailsPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50">
+      {/* Universal Search Modal */}
+      {showUniversalSearch && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+              <h2 className="text-lg font-semibold">Search All Drinks</h2>
+              <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+            <div className="p-4">
+              <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* RecipeKit Modal */}
       {selectedRecipe && (
         <RecipeKit
@@ -302,9 +344,21 @@ export default function MocktailsPage() {
               </h1>
               <p className="text-purple-100 text-lg">Sophisticated non-alcoholic cocktails for every occasion</p>
             </div>
-            <div className="text-right">
-              <div className="text-3xl font-bold">{filteredMocktails.length}</div>
-              <div className="text-purple-100">Recipes</div>
+            <div className="flex flex-col items-end gap-3">
+              <div className="text-right">
+                <div className="text-3xl font-bold">{filteredMocktails.length}</div>
+                <div className="text-purple-100">Recipes</div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="text-white border-white/50 hover:bg-white/20" onClick={() => setShowUniversalSearch(true)}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Universal Search
+                </Button>
+                <Button size="sm" className="bg-white/20 hover:bg-white/30 text-white border border-white/50" onClick={handleSharePage}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share Page
+                </Button>
+              </div>
             </div>
           </div>
         </div>

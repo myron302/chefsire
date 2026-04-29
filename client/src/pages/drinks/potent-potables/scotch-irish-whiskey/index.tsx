@@ -5,9 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
-import { Castle, Clock, Heart, Star, Target, Sparkles, Mountain, Search, Share2, ArrowLeft, Plus, Camera, Flame, GlassWater, TrendingUp, Award, Crown, Zap, Droplets, BookOpen, Home, Apple, Leaf, Wine, Martini, Clipboard, RotateCcw, Check, Coffee } from "lucide-react";
+import { Castle, Clock, Heart, Star, Target, Sparkles, Mountain, Search, Share2, ArrowLeft, Plus, Camera, Flame, GlassWater, TrendingUp, Award, Crown, Zap, Droplets, BookOpen, Home, Apple, Leaf, Wine, Martini, Clipboard, RotateCcw, Check, Coffee, X } from "lucide-react";
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import UniversalSearch from '@/components/UniversalSearch';
 import { scotchIrishCocktails } from "@/data/drinks/potent-potables/scotch-irish-whiskey";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
@@ -119,6 +120,7 @@ export default function ScotchIrishWhiskeyPage() {
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
+  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
@@ -163,6 +165,29 @@ export default function ScotchIrishWhiskeyPage() {
       try {
         await navigator.clipboard.writeText(`${cocktail.name}\n${text}\n${url}`);
         alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Scotch & Irish Whiskey',
+      text: 'Discover the finest Scotch and Irish whiskey cocktails and serves.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -231,6 +256,23 @@ export default function ScotchIrishWhiskeyPage() {
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-green-50">
+        {/* Universal Search Modal */}
+        {showUniversalSearch && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+                <h2 className="text-lg font-semibold">Search All Drinks</h2>
+                <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="p-4">
+                <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* RecipeKit Modal */}
         {selectedRecipe && (
           <RecipeKit
@@ -254,7 +296,7 @@ export default function ScotchIrishWhiskeyPage() {
         {/* Hero Section */}
         <div className="bg-gradient-to-r from-amber-700 via-orange-700 to-green-700 text-white py-16 px-4">
           <div className="max-w-7xl mx-auto">
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center justify-between mb-4">
               <Link href="/drinks/potent-potables">
                 <Button
                   variant="ghost"
@@ -265,6 +307,16 @@ export default function ScotchIrishWhiskeyPage() {
                   Back to Potent Potables
                 </Button>
               </Link>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="text-white border-white/50 hover:bg-white/20" onClick={() => setShowUniversalSearch(true)}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Universal Search
+                </Button>
+                <Button size="sm" className="bg-white/20 hover:bg-white/30 text-white border border-white/50" onClick={handleSharePage}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share Page
+                </Button>
+              </div>
             </div>
             
             <div className="flex items-center gap-4 mb-6">

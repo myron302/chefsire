@@ -9,11 +9,12 @@ import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
   Wine, Clock, Heart, Target, Sparkles, Grape,
   Search, Share2, ArrowLeft, Plus, Camera, Flame, GlassWater,
-  TrendingUp, Award, Crown, Zap, Apple, Leaf, Martini,
+  TrendingUp, Award, Crown, Zap, Apple, Leaf, Martini, X,
   Clipboard, RotateCcw, Check, BookOpen, Home, Droplets, Cherry
 , Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import UniversalSearch from '@/components/UniversalSearch';
 import { cognacCocktails } from "@/data/drinks/potent-potables/cognac-brandy";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
@@ -152,6 +153,8 @@ export default function CognacBrandyPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCocktail, setSelectedCocktail] = useState<typeof cognacCocktails[0] | null>(null);
   
+  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
+
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
@@ -178,6 +181,29 @@ export default function CognacBrandyPage() {
       };
     });
   }, []);
+
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Cognac & Brandy',
+      text: 'Discover elegant cognac and brandy cocktails and sipping suggestions.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
 
   const handleShareCocktail = async (cocktail: any, servingsOverride?: number) => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
@@ -273,6 +299,23 @@ export default function CognacBrandyPage() {
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-red-50">
+        {/* Universal Search Modal */}
+        {showUniversalSearch && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+                <h2 className="text-lg font-semibold">Search All Drinks</h2>
+                <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="p-4">
+                <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* RecipeKit Modal */}
         {selectedRecipe && (
           <RecipeKit
@@ -313,15 +356,19 @@ export default function CognacBrandyPage() {
               </div>
               
               <div className="flex items-center gap-4">
+                <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Universal Search
+                </Button>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <GlassWater className="fill-orange-500 text-orange-500" />
                   <span>Level {userProgress.level}</span>
                   <div className="w-px h-4 bg-gray-300" />
                   <span>{userProgress.totalPoints} XP</span>
                 </div>
-                <Button size="sm" className="bg-orange-600 hover:bg-orange-700">
-                  <Camera className="h-4 w-4 mr-2" />
-                  Share Recipe
+                <Button size="sm" className="bg-orange-600 hover:bg-orange-700" onClick={handleSharePage}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share Page
                 </Button>
               </div>
             </div>

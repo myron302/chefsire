@@ -405,15 +405,19 @@ export default function ClassicCocktailsPage() {
               </div>
               
               <div className="flex items-center gap-4">
+                <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Universal Search
+                </Button>
                 <div className="flex items-center gap-2 text-sm text-gray-600">
                   <GlassWater className="fill-blue-500 text-blue-500" />
                   <span>Level {userProgress.level}</span>
                   <div className="w-px h-4 bg-gray-300" />
                   <span>{userProgress.totalPoints} XP</span>
                 </div>
-                <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                  <Camera className="h-4 w-4 mr-2" />
-                  Share Recipe
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleSharePage}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share Page
                 </Button>
               </div>
             </div>

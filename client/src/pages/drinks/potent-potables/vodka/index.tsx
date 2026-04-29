@@ -10,10 +10,11 @@ import {
   Droplets, Clock, Heart, Target, Sparkles, Wine, 
   Search, Share2, ArrowLeft, GlassWater, Flame,
   TrendingUp, Award, Zap, Crown, Apple, Leaf,
-  Clipboard, RotateCcw, Check, Home, Martini, Coffee
+  Clipboard, RotateCcw, Check, Home, Martini, Coffee, X
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import UniversalSearch from '@/components/UniversalSearch';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { vodkaCocktails } from "@/data/drinks/potent-potables/vodka";
 
@@ -136,6 +137,7 @@ export default function VodkaCocktailsPage() {
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
+  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
@@ -177,6 +179,29 @@ export default function VodkaCocktailsPage() {
       try {
         await navigator.clipboard.writeText(`${cocktail.name}\n${text}\n${url}`);
         alert('Recipe copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Vodka Cocktails',
+      text: 'Discover clean and versatile vodka cocktail recipes for every mood.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
       } catch {
         alert('Unable to share on this device.');
       }
@@ -246,6 +271,23 @@ export default function VodkaCocktailsPage() {
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-cyan-50 via-blue-50 to-purple-50">
+        {/* Universal Search Modal */}
+        {showUniversalSearch && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+                <h2 className="text-lg font-semibold">Search All Drinks</h2>
+                <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="p-4">
+                <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* RecipeKit Modal */}
         {selectedRecipe && (
           <RecipeKit
@@ -284,11 +326,21 @@ export default function VodkaCocktailsPage() {
                   <Badge className="bg-cyan-100 text-cyan-800">Clean & Versatile</Badge>
                 </div>
               </div>
-              <div className="flex items-center gap-4 text-sm text-gray-600">
-                <GlassWater className="fill-cyan-500 text-cyan-500" />
-                <span>Level {userProgress.level}</span>
-                <div className="w-px h-4 bg-gray-300" />
-                <span>{userProgress.totalPoints} XP</span>
+              <div className="flex items-center gap-4">
+                <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Universal Search
+                </Button>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <GlassWater className="fill-cyan-500 text-cyan-500" />
+                  <span>Level {userProgress.level}</span>
+                  <div className="w-px h-4 bg-gray-300" />
+                  <span>{userProgress.totalPoints} XP</span>
+                </div>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleSharePage}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share Page
+                </Button>
               </div>
             </div>
           </div>

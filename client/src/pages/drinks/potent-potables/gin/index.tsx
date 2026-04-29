@@ -7,13 +7,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
 import { 
-  Droplets, Clock, Heart, Target, Sparkles, Wine, 
-  Search, Share2, ArrowLeft, GlassWater, Flame,
+  Droplets, Clock, Heart, Target, Sparkles, Wine,
+  Search, Share2, ArrowLeft, GlassWater, Flame, X,
   TrendingUp, Award, Zap, Crown, Apple, Leaf,
   Clipboard, RotateCcw, Check, Home, Martini
 , Coffee} from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import UniversalSearch from '@/components/UniversalSearch';
 import TrendingDrinksByCategory from "@/components/drinks/TrendingDrinksByCategory";
 import { ginRecipes } from "@/data/drinks/potent-potables/gin";
 import { resolveCanonicalDrinkSlug } from "@/data/drinks/canonical";
@@ -114,6 +115,7 @@ export default function GinCocktailsPage() {
     incrementDrinksMade
   } = useDrinks();
 
+  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedMethod, setSelectedMethod] = useState('All Methods');
   const [sortBy, setSortBy] = useState('trending');
@@ -148,6 +150,29 @@ export default function GinCocktailsPage() {
       };
     });
   }, []);
+
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Gin Cocktails',
+      text: 'Explore botanical gin cocktails from classic to contemporary.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
 
   const handleShareCocktail = async (cocktail: any, servingsOverride?: number) => {
     const url = typeof window !== 'undefined' ? window.location.href : '';
@@ -233,6 +258,23 @@ export default function GinCocktailsPage() {
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-teal-50 to-cyan-50">
+        {/* Universal Search Modal */}
+        {showUniversalSearch && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+                <h2 className="text-lg font-semibold">Search All Drinks</h2>
+                <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="p-4">
+                <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* RecipeKit Modal */}
         {selectedRecipe && (
           <RecipeKit
@@ -271,11 +313,21 @@ export default function GinCocktailsPage() {
                   <Badge className="bg-blue-100 text-blue-800">Botanical Spirits</Badge>
                 </div>
               </div>
-              <div className="flex items-center gap-4 text-sm text-gray-600">
-                <GlassWater className="fill-blue-500 text-blue-500" />
-                <span>Level {userProgress.level}</span>
-                <div className="w-px h-4 bg-gray-300" />
-                <span>{userProgress.totalPoints} XP</span>
+              <div className="flex items-center gap-4">
+                <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Universal Search
+                </Button>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <GlassWater className="fill-blue-500 text-blue-500" />
+                  <span>Level {userProgress.level}</span>
+                  <div className="w-px h-4 bg-gray-300" />
+                  <span>{userProgress.totalPoints} XP</span>
+                </div>
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={handleSharePage}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share Page
+                </Button>
               </div>
             </div>
           </div>
