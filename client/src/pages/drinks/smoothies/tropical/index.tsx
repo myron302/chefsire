@@ -146,7 +146,7 @@ export default function TropicalSmoothiesPage() {
   const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
   const [sortBy, setSortBy] = useState<'rating' | 'fiber' | 'cost' | 'calories'>('rating');
-  const [activeTab, setActiveTab] = useState<'browse'|'flavors'|'benefits'|'featured'|'trending'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse'|'types'|'benefits'|'featured'|'trending'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // RecipeKit state
@@ -490,7 +490,7 @@ export default function TropicalSmoothiesPage() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'flavors', label: 'Tropical Flavors', icon: Palmtree },
+            { id: 'types', label: 'Tropical Flavors', icon: Palmtree },
             { id: 'benefits', label: 'Health Benefits', icon: Heart },
             { id: 'featured', label: 'Featured', icon: Star },
             { id: 'trending', label: 'Trending', icon: Zap }
@@ -806,7 +806,7 @@ export default function TropicalSmoothiesPage() {
         )}
 
         {/* Tropical Flavors Tab */}
-        {activeTab === 'flavors' && (
+        {activeTab === 'types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {tropicalFlavors.map(flavor => (
               <Card key={flavor.id} className="hover:shadow-lg transition-shadow">

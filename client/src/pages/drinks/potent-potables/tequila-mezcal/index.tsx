@@ -11,10 +11,11 @@ import {
   Search, Share2, ArrowLeft, Plus, Camera, GlassWater,
   TrendingUp, Award, Crown, Coffee, Leaf, Zap, Cherry, Citrus,
   Droplets, BookOpen, Home, Apple, Wine, Martini,
-  Clipboard, RotateCcw, Check
+  Clipboard, RotateCcw, Check, X
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
+import UniversalSearch from '@/components/UniversalSearch';
 import { tequilaMezcalCocktails } from "@/data/drinks/potent-potables/tequila-mezcal";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
@@ -124,6 +125,7 @@ export default function TequilaMezcalPage() {
   // RecipeKit state
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
   const [showKit, setShowKit] = useState(false);
+  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [servingsById, setServingsById] = useState<Record<string, number>>({});
   const [metricFlags, setMetricFlags] = useState<Record<string, boolean>>({});
 
@@ -174,6 +176,29 @@ export default function TequilaMezcalPage() {
     }
   };
 
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Tequila & Mezcal',
+      text: 'Explore smoky and vibrant tequila and mezcal cocktail recipes.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
   const openRecipeModal = (recipe: any) => {
     const canonicalSlug = resolveCanonicalDrinkSlug({
       slug: recipe?.slug,
@@ -203,7 +228,7 @@ export default function TequilaMezcalPage() {
         timestamp: Date.now()
       });
       incrementDrinksMade();
-      addPoints(40);
+      addPoints(35);
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -229,13 +254,30 @@ export default function TequilaMezcalPage() {
 
   const handleMakeCocktail = (cocktail: typeof tequilaMezcalCocktails[0]) => {
     incrementDrinksMade();
-    addPoints(40, 'Made a tequila/mezcal cocktail');
+    addPoints(35, 'Made a tequila/mezcal cocktail');
     setSelectedCocktail(null);
   };
 
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-lime-50 via-green-50 to-emerald-50">
+        {/* Universal Search Modal */}
+        {showUniversalSearch && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+                <h2 className="text-lg font-semibold">Search All Drinks</h2>
+                <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="p-4">
+                <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* RecipeKit Modal */}
         {selectedRecipe && (
           <RecipeKit
@@ -259,7 +301,7 @@ export default function TequilaMezcalPage() {
         {/* Hero Section */}
         <div className="bg-gradient-to-r from-lime-600 via-green-600 to-emerald-600 text-white py-16 px-4">
           <div className="max-w-7xl mx-auto">
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center justify-between mb-4">
               <Link href="/drinks/potent-potables">
                 <Button
                   variant="ghost"
@@ -270,6 +312,16 @@ export default function TequilaMezcalPage() {
                   Back to Potent Potables
                 </Button>
               </Link>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" size="sm" className="text-white border-white/50 hover:bg-white/20" onClick={() => setShowUniversalSearch(true)}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Universal Search
+                </Button>
+                <Button size="sm" className="bg-white/20 hover:bg-white/30 text-white border border-white/50" onClick={handleSharePage}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share Page
+                </Button>
+              </div>
             </div>
             
             <div className="flex items-center gap-4 mb-6">

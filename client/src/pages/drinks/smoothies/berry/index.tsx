@@ -150,7 +150,7 @@ export default function BerrySmoothiesPage() {
   const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
   const [sortBy, setSortBy] = useState<'rating' | 'fiber' | 'cost' | 'calories'>('rating');
-  const [activeTab, setActiveTab] = useState<'browse'|'berry-types'|'benefits'|'featured'|'trending'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse'|'types'|'benefits'|'featured'|'trending'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // RecipeKit state
@@ -500,7 +500,7 @@ export default function BerrySmoothiesPage() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'berry-types', label: 'Berry Types', icon: Heart },
+            { id: 'types', label: 'Berry Types', icon: Heart },
             { id: 'benefits', label: 'Health Benefits', icon: Star },
             { id: 'featured', label: 'Featured', icon: Zap },
             { id: 'trending', label: 'Trending', icon: Flame }
@@ -833,7 +833,7 @@ export default function BerrySmoothiesPage() {
         )}
 
         {/* Berry Types Tab */}
-        {activeTab === 'berry-types' && (
+        {activeTab === 'types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {berryTypes.map(type => (
               <Card key={type.id} className="hover:shadow-lg transition-shadow">

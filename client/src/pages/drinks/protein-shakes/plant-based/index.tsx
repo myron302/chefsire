@@ -83,7 +83,7 @@ export default function PlantBasedProteinPage() {
     incrementDrinksMade
   } = useDrinks();
 
-  const [activeTab, setActiveTab] = useState<'browse'|'protein-types'|'goals'|'featured'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse'|'types'|'goals'|'featured'>('browse');
   const [selectedProteinType, setSelectedProteinType] = useState('');
   const [selectedGoal, setSelectedGoal] = useState('');
   const [selectedAllergen, setSelectedAllergen] = useState('');
@@ -375,7 +375,7 @@ export default function PlantBasedProteinPage() {
         <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'protein-types', label: 'Protein Types', icon: Leaf },
+            { id: 'types', label: 'Protein Types', icon: Leaf },
             { id: 'goals', label: 'By Goal', icon: Target },
             { id: 'featured', label: 'Featured', icon: Star }
           ].map((tab: any) => {
@@ -660,7 +660,7 @@ export default function PlantBasedProteinPage() {
         )}
 
         {/* Protein Types */}
-        {activeTab === 'protein-types' && (
+        {activeTab === 'types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {proteinTypes.map(type => {
               const Icon = type.icon;

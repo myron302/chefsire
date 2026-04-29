@@ -5,9 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import RequireAgeGate from "@/components/RequireAgeGate";
-import { GlassWater, Search, Share2, ArrowLeft, Heart, Check, RotateCcw, Crown, Sparkles, Droplets, Apple, Snowflake, Flame, Martini, Wine, Zap, Leaf, Home, Clipboard, Coffee } from "lucide-react";
+import { GlassWater, Search, Share2, ArrowLeft, Heart, Check, RotateCcw, Crown, Sparkles, Droplets, Apple, Snowflake, Flame, Martini, Wine, Zap, Leaf, Home, Clipboard, Coffee, X } from "lucide-react";
 import { useDrinks } from "@/contexts/DrinksContext";
 import RecipeKit from "@/components/recipes/RecipeKit";
+import UniversalSearch from '@/components/UniversalSearch';
 import { daiquiris } from "@/data/drinks/potent-potables/daiquiri";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
@@ -99,6 +100,7 @@ const otherDrinkHubs = [
 export default function DaiquiriPage() {
   const { addToFavorites, isFavorite, addToRecentlyViewed, userProgress, incrementDrinksMade, addPoints } = useDrinks();
 
+  const [showUniversalSearch, setShowUniversalSearch] = useState(false);
   const [activeTab, setActiveTab] = useState<"browse" | "style" | "featured">("browse");
   const [selectedStyle, setSelectedStyle] = useState("all");
   const [sortBy, setSortBy] = useState("trending");
@@ -157,10 +159,33 @@ export default function DaiquiriPage() {
     if (selectedRecipe) {
       addToRecentlyViewed({ id: selectedRecipe.id, name: selectedRecipe.name, category: "daiquiri", timestamp: Date.now() });
       incrementDrinksMade();
-      addPoints(45);
+      addPoints(35);
     }
     setShowKit(false);
     setSelectedRecipe(null);
+  };
+
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Daiquiris',
+      text: 'Explore fresh and frozen daiquiri recipes with tropical flavors.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
   };
 
   const handleShare = async (cocktail: any, servingsOverride?: number) => {
@@ -190,6 +215,23 @@ export default function DaiquiriPage() {
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-teal-50 via-emerald-50 to-cyan-50">
+        {/* Universal Search Modal */}
+        {showUniversalSearch && (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-start justify-center pt-20" onClick={() => setShowUniversalSearch(false)}>
+            <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl mx-4 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+              <div className="sticky top-0 bg-white border-b border-gray-200 p-4 flex items-center justify-between z-10">
+                <h2 className="text-lg font-semibold">Search All Drinks</h2>
+                <Button variant="ghost" size="sm" onClick={() => setShowUniversalSearch(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="p-4">
+                <UniversalSearch onClose={() => setShowUniversalSearch(false)} />
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* RecipeKit Modal */}
         {selectedRecipe && (
           <RecipeKit
@@ -228,11 +270,21 @@ export default function DaiquiriPage() {
                   <Badge className="bg-teal-100 text-teal-800">Rum Classics</Badge>
                 </div>
               </div>
-              <div className="flex items-center gap-4 text-sm text-gray-600">
-                <Droplets className="fill-teal-500 text-teal-500" />
-                <span>Level {userProgress.level}</span>
-                <div className="w-px h-4 bg-gray-300" />
-                <span>{userProgress.totalPoints} XP</span>
+              <div className="flex items-center gap-4">
+                <Button variant="outline" size="sm" onClick={() => setShowUniversalSearch(true)}>
+                  <Search className="h-4 w-4 mr-2" />
+                  Universal Search
+                </Button>
+                <div className="flex items-center gap-2 text-sm text-gray-600">
+                  <Droplets className="fill-teal-500 text-teal-500" />
+                  <span>Level {userProgress.level}</span>
+                  <div className="w-px h-4 bg-gray-300" />
+                  <span>{userProgress.totalPoints} XP</span>
+                </div>
+                <Button size="sm" className="bg-teal-600 hover:bg-teal-700" onClick={handleSharePage}>
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share Page
+                </Button>
               </div>
             </div>
           </div>

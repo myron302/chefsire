@@ -107,7 +107,7 @@ export default function DessertSmoothiesPage() {
   const [maxCalories, setMaxCalories] = useState<number | 'all'>('all'); // FIXED: Now supports 'all'
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
-  const [activeTab, setActiveTab] = useState<'browse'|'dessert-types'|'categories'|'featured'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse'|'types'|'benefits'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // RecipeKit state
@@ -441,8 +441,8 @@ export default function DessertSmoothiesPage() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'dessert-types', label: 'Dessert Types', icon: Cookie },
-            { id: 'categories', label: 'Categories', icon: Cookie },
+            { id: 'types', label: 'Dessert Types', icon: Cookie },
+            { id: 'benefits', label: 'Categories', icon: Cookie },
             { id: 'featured', label: 'Featured', icon: Star }
           ].map(tab => {
             const Icon = tab.icon as any;
@@ -758,7 +758,7 @@ export default function DessertSmoothiesPage() {
         )}
 
         {/* Rest of the tabs remain the same structure */}
-        {activeTab === 'dessert-types' && (
+        {activeTab === 'types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {dessertTypes.map(type => {
               const Icon = type.icon as any;
@@ -800,7 +800,7 @@ export default function DessertSmoothiesPage() {
           </div>
         )}
 
-        {activeTab === 'categories' && (
+        {activeTab === 'benefits' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {dessertCategories.map(category => {
               const Icon = category.icon as any;

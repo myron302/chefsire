@@ -147,7 +147,7 @@ export default function GreenSmoothiesPage() {
   const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
   const [sortBy, setSortBy] = useState<'rating' | 'fiber' | 'calories' | 'cost'>('rating');
-  const [activeTab, setActiveTab] = useState<'browse'|'green-types'|'benefits'|'featured'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse'|'types'|'benefits'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // RecipeKit state
@@ -492,7 +492,7 @@ export default function GreenSmoothiesPage() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'green-types', label: 'Green Types', icon: Leaf },
+            { id: 'types', label: 'Green Types', icon: Leaf },
             { id: 'benefits', label: 'Health Benefits', icon: Heart },
             { id: 'featured', label: 'Featured', icon: Star }
           ].map(tab => {
@@ -807,7 +807,7 @@ export default function GreenSmoothiesPage() {
         )}
 
         {/* Green Types Tab */}
-        {activeTab === 'green-types' && (
+        {activeTab === 'types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {greenTypes.map(type => (
               <Card key={type.id} className="hover:shadow-lg transition-shadow">

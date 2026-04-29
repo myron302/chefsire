@@ -293,7 +293,7 @@ export default function CaseinProteinPage() {
       }
       addToRecentlyViewed(drinkData)
       incrementDrinksMade()
-      addPoints(30)
+      addPoints(25)
     }
     setShowKit(false)
     setSelectedRecipe(null)
