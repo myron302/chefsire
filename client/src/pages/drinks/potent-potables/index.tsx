@@ -17,6 +17,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { otherDrinkHubs } from '../data/detoxes';
+import { sortByName } from '@/lib/sort-by-name';
 
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
@@ -282,6 +283,8 @@ const potentPotablesSubcategories = [
   }
 ];
 
+const sortedPotentPotablesSubcategories = sortByName(potentPotablesSubcategories);
+
 const featuredCocktails = [
   {
     id: 'featured-1', name: "Old Fashioned", spirit: "Whiskey", difficulty: "Easy", rating: 4.9, reviews: 5234, time: "5 min", prepTime: 5,
@@ -493,7 +496,7 @@ export default function PotentPotablesPage() {
               Browse Spirit Categories
             </h2>
             <div className="grid md:grid-cols-3 gap-6">
-              {[...potentPotablesSubcategories].sort((a, b) => a.name.localeCompare(b.name)).map((category) => {
+              {sortedPotentPotablesSubcategories.map((category) => {
                 const Icon = category.icon;
                 return (
                   <Link key={category.id} href={category.route}>

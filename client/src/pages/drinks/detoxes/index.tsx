@@ -15,6 +15,9 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import { otherDrinkHubs, detoxSubcategories } from '../data/detoxes';
 import UniversalSearch from '@/components/UniversalSearch';
+import { sortByName } from '@/lib/sort-by-name';
+
+const sortedDetoxSubcategories = sortByName(detoxSubcategories);
 
 export default function DetoxesHub() {
   const { userProgress, addDrinkToJournal, incrementDrinksMade, addPoints, addToRecentlyViewed } = useDrinks();
@@ -372,7 +375,7 @@ export default function DetoxesHub() {
             Browse Detox Types
           </h2>
           <div className="grid md:grid-cols-3 gap-6">
-            {[...detoxSubcategories].sort((a, b) => a.name.localeCompare(b.name)).map((category) => (
+            {sortedDetoxSubcategories.map((category) => (
               <Link key={category.id} href={category.path}>
                 <Card 
                   className={`cursor-pointer transition-all duration-300 hover:shadow-2xl hover:-translate-y-1 ${category.borderColor} overflow-hidden`}

@@ -19,6 +19,7 @@ import ForYouDrinks from "@/components/drinks/ForYouDrinks";
 import TopDrinkCreators from "@/components/drinks/TopDrinkCreators";
 import RemixStreakBadge from "@/components/drinks/RemixStreakBadge";
 import BecauseOfYourActivity from "@/components/drinks/BecauseOfYourActivity";
+import { sortByName } from '@/lib/sort-by-name';
 
 const drinkCategories = [
   {
@@ -184,6 +185,8 @@ const featuredRecipes = [
   }
 ];
 
+const sortedDrinkCategories = sortByName(drinkCategories);
+
 const userStats = {
   recipesCreated: 23,
   favoritesSaved: 89,
@@ -222,9 +225,8 @@ export default function DrinksPage() {
   const normalizedQ = searchQuery.trim().toLowerCase();
 
   const filteredCategories = useMemo(() => {
-    const alphabeticalCategories = [...drinkCategories].sort((a, b) => a.name.localeCompare(b.name));
-    if (!normalizedQ) return alphabeticalCategories;
-    return alphabeticalCategories.filter((c) => {
+    if (!normalizedQ) return sortedDrinkCategories;
+    return sortedDrinkCategories.filter((c) => {
       const hay = [
         c.id,
         c.name,
