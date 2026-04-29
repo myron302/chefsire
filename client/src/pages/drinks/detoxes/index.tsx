@@ -25,7 +25,14 @@ export default function DetoxesHub() {
   const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [startedPrograms, setStartedPrograms] = useState<Set<string>>(new Set());
+  const [startedPrograms, setStartedPrograms] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('detox-started-programs');
+      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
 
   const popularDetoxes = [
     { name: 'Lemon Ginger Detox', type: 'Water', time: '5 min', rating: 4.9, route: '/drinks/recipe/lemon-ginger-detox' },
@@ -105,7 +112,11 @@ export default function DetoxesHub() {
     const points = selectedProgram === '1-day' ? 100 : selectedProgram === '3-day' ? 250 : 500;
     addPoints(points);
     incrementDrinksMade();
-    setStartedPrograms(prev => new Set(prev).add(selectedProgram));
+    setStartedPrograms(prev => {
+      const next = new Set(prev).add(selectedProgram);
+      localStorage.setItem('detox-started-programs', JSON.stringify([...next]));
+      return next;
+    });
 
     setShowProgramModal(false);
     setShowSuccess(true);
