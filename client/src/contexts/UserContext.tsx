@@ -49,7 +49,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  // Load user from localStorage on mount, or fetch from server if OAuth login
+  // Load user from localStorage on mount, then verify session with server
   useEffect(() => {
     const loadUser = async () => {
       try {
@@ -87,14 +87,29 @@ export function UserProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        // Fall back to localStorage
+        // If localStorage has a user, verify the server session is still valid
         const raw = localStorage.getItem("user");
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === "object") {
             if (parsed.id && typeof parsed.id !== "string") parsed.id = String(parsed.id);
             delete parsed.password;
-            setUser(parsed as User);
+
+            // Verify the cookie/session is still valid before trusting localStorage
+            try {
+              const verifyRes = await fetch('/api/auth/me', { credentials: 'include' });
+              if (verifyRes.ok) {
+                // Session valid — use localStorage user (already up to date)
+                setUser(parsed as User);
+              } else {
+                // Cookie expired or missing — clear stale localStorage
+                localStorage.removeItem("user");
+                setUser(null);
+              }
+            } catch {
+              // Network error — optimistically use localStorage so offline works
+              setUser(parsed as User);
+            }
           }
         }
       } catch (e) {
