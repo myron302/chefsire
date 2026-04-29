@@ -25,12 +25,13 @@ export default function DetoxesHub() {
   const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [startedPrograms, setStartedPrograms] = useState<Set<string>>(new Set());
 
   const popularDetoxes = [
-    { name: 'Lemon Ginger Blast', type: 'Morning', time: '5 min', rating: 4.9, route: '/drinks/detoxes/juice' },
-    { name: 'Green Machine', type: 'Juice', time: '10 min', rating: 4.8, route: '/drinks/detoxes/juice' },
-    { name: 'Cucumber Mint Water', type: 'Water', time: '2 min', rating: 4.9, route: '/drinks/detoxes/water' },
-    { name: 'Dandelion Tea', type: 'Tea', time: '8 min', rating: 4.7, route: '/drinks/detoxes/tea' }
+    { name: 'Lemon Ginger Detox', type: 'Water', time: '5 min', rating: 4.9, route: '/drinks/recipe/lemon-ginger-detox' },
+    { name: 'Green Cleanse Elixir', type: 'Juice', time: '10 min', rating: 4.8, route: '/drinks/recipe/green-cleanse-elixir' },
+    { name: 'Cucumber Mint Refresher', type: 'Water', time: '2 min', rating: 4.9, route: '/drinks/recipe/cucumber-mint-refresher' },
+    { name: 'Dandelion Root Cleanse', type: 'Tea', time: '8 min', rating: 4.7, route: '/drinks/recipe/dandelion-root-cleanse' }
   ];
 
   const cleanseBenefits = [
@@ -104,6 +105,7 @@ export default function DetoxesHub() {
     const points = selectedProgram === '1-day' ? 100 : selectedProgram === '3-day' ? 250 : 500;
     addPoints(points);
     incrementDrinksMade();
+    setStartedPrograms(prev => new Set(prev).add(selectedProgram));
 
     setShowProgramModal(false);
     setShowSuccess(true);
@@ -514,10 +516,10 @@ export default function DetoxesHub() {
                   </li>
                 </ul>
                 <Button
-                  className="w-full mt-4 bg-green-600 hover:bg-green-700"
-                  onClick={() => startCleanse('1-day')}
+                  className={`w-full mt-4 ${startedPrograms.has('1-day') ? 'bg-gray-400 cursor-default' : 'bg-green-600 hover:bg-green-700'}`}
+                  onClick={() => !startedPrograms.has('1-day') && startCleanse('1-day')}
                 >
-                  Start 1-Day Cleanse
+                  {startedPrograms.has('1-day') ? <><CheckCircle className="h-4 w-4 mr-2" />Program Active</> : 'Start 1-Day Cleanse'}
                 </Button>
               </div>
 
@@ -544,10 +546,10 @@ export default function DetoxesHub() {
                   </li>
                 </ul>
                 <Button
-                  className="w-full mt-4 bg-blue-600 hover:bg-blue-700"
-                  onClick={() => startCleanse('3-day')}
+                  className={`w-full mt-4 ${startedPrograms.has('3-day') ? 'bg-gray-400 cursor-default' : 'bg-blue-600 hover:bg-blue-700'}`}
+                  onClick={() => !startedPrograms.has('3-day') && startCleanse('3-day')}
                 >
-                  Start 3-Day Cleanse
+                  {startedPrograms.has('3-day') ? <><CheckCircle className="h-4 w-4 mr-2" />Program Active</> : 'Start 3-Day Cleanse'}
                 </Button>
               </div>
 
@@ -571,10 +573,10 @@ export default function DetoxesHub() {
                   </li>
                 </ul>
                 <Button
-                  className="w-full mt-4 bg-purple-600 hover:bg-purple-700"
-                  onClick={() => startCleanse('7-day')}
+                  className={`w-full mt-4 ${startedPrograms.has('7-day') ? 'bg-gray-400 cursor-default' : 'bg-purple-600 hover:bg-purple-700'}`}
+                  onClick={() => !startedPrograms.has('7-day') && startCleanse('7-day')}
                 >
-                  Start 7-Day Cleanse
+                  {startedPrograms.has('7-day') ? <><CheckCircle className="h-4 w-4 mr-2" />Program Active</> : 'Start 7-Day Cleanse'}
                 </Button>
               </div>
             </div>
