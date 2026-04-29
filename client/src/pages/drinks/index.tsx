@@ -194,6 +194,8 @@ const userStats = {
   streak: 7
 };
 
+const sortedDrinkCategories = sortByName(drinkCategories);
+
 export default function DrinksPage() {
   const [location, setLocation] = useLocation();
 
