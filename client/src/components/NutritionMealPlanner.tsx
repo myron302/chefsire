@@ -191,6 +191,10 @@ type FixItDayCompletionState = {
   remainingIssues: number;
   allResolved: boolean;
 };
+type FixItCompletionTrendChipState = {
+  label: string;
+  className: string;
+};
 type FixItDataCompletenessChipState = {
   label: string;
   detail: string;
@@ -2766,6 +2770,27 @@ const NutritionMealPlanner = () => {
     return 'No change yet';
   }, [activeFixItDayCompletion, activeFixItResolvedBaseline]);
 
+  const activeFixItCompletionTrendChip = useMemo<FixItCompletionTrendChipState | null>(() => {
+    if (!activeFixItDayCompletion || activeFixItResolvedBaseline === null) return null;
+    const delta = activeFixItDayCompletion.resolvedIssues - activeFixItResolvedBaseline;
+    if (delta > 0) {
+      return {
+        label: 'Improving',
+        className: 'border border-emerald-300 bg-emerald-100 text-emerald-800',
+      };
+    }
+    if (delta < 0) {
+      return {
+        label: 'Needs attention',
+        className: 'border border-rose-300 bg-rose-100 text-rose-800',
+      };
+    }
+    return {
+      label: 'No change',
+      className: 'border border-slate-300 bg-slate-100 text-slate-700',
+    };
+  }, [activeFixItDayCompletion, activeFixItResolvedBaseline]);
+
   const activeFixItUnresolvedHint = useMemo<string | null>(() => {
     if (!activeFixItTarget || !activeFixItTarget.targetDay || !activeFixItProgressMiniState) return null;
     if (activeFixItProgressMiniState.unresolvedCount <= 0) return null;
@@ -3752,7 +3777,14 @@ const NutritionMealPlanner = () => {
                             ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
                             : 'border-orange-200 bg-white/90 text-orange-900'
                         }`}>
-                          <p className="text-xs font-semibold uppercase tracking-wide">Day completion</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide">Day completion</p>
+                            {activeFixItCompletionTrendChip ? (
+                              <Badge className={activeFixItCompletionTrendChip.className}>
+                                {activeFixItCompletionTrendChip.label}
+                              </Badge>
+                            ) : null}
+                          </div>
                           <p className="mt-1 font-medium">
                             {activeFixItDayCompletion.allResolved
                               ? 'All issues resolved ✅'
