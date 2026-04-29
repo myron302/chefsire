@@ -2878,7 +2878,7 @@ const NutritionMealPlanner = () => {
     setFixItDetailsQueuePendingSkipReason(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
     setFixItDetailsQueueDone(false);
     setFixItDetailsQueueSnoozedByKey({});
-  }, [activeFixItTarget?.issueType, activeFixItTarget?.targetDay]);
+  }, [activeFixItTarget?.issueType, activeFixItTarget?.targetDay, activeFixItTarget?.targetDate]);
 
   const activeFixItDetailsQueue = useMemo<FixItDetailsQueueState | null>(() => {
     if (!activeFixItTarget?.targetDay) return null;
