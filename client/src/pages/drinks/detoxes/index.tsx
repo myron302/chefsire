@@ -20,17 +20,17 @@ import { sortByName } from '@/lib/sort-by-name';
 const sortedDetoxSubcategories = sortByName(detoxSubcategories);
 
 export default function DetoxesHub() {
-  const { userProgress, addDrinkToJournal, incrementDrinksMade, addPoints, addToRecentlyViewed } = useDrinks();
+  const { userProgress, incrementDrinksMade, addPoints, addToRecentlyViewed } = useDrinks();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
 
   const popularDetoxes = [
-    { name: 'Lemon Ginger Blast', type: 'Morning', time: '5 min', rating: 4.9 },
-    { name: 'Green Machine', type: 'Juice', time: '10 min', rating: 4.8 },
-    { name: 'Cucumber Mint Water', type: 'Water', time: '2 min', rating: 4.9 },
-    { name: 'Dandelion Tea', type: 'Tea', time: '8 min', rating: 4.7 }
+    { name: 'Lemon Ginger Blast', type: 'Morning', time: '5 min', rating: 4.9, route: '/drinks/detoxes/juice' },
+    { name: 'Green Machine', type: 'Juice', time: '10 min', rating: 4.8, route: '/drinks/detoxes/juice' },
+    { name: 'Cucumber Mint Water', type: 'Water', time: '2 min', rating: 4.9, route: '/drinks/detoxes/water' },
+    { name: 'Dandelion Tea', type: 'Tea', time: '8 min', rating: 4.7, route: '/drinks/detoxes/tea' }
   ];
 
   const cleanseBenefits = [
@@ -98,49 +98,19 @@ export default function DetoxesHub() {
     setShowProgramModal(true);
   };
 
-  const confirmCleanse = async () => {
-    const program = cleanseProgramsData.find(p => p.id === selectedProgram);
-    if (!program) return;
+  const confirmCleanse = () => {
+    if (!selectedProgram) return;
 
-    try {
-      // Save cleanse program to backend
-      const response = await fetch('/api/custom-drinks', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: `${program.duration} ${program.title} Program`,
-          category: 'detox-program',
-          drinkType: 'cleanse-program',
-          duration: program.duration,
-          servings: program.servings,
-          schedule: program.schedule,
-          benefits: program.benefits,
-          description: program.description,
-          isPublic: false,
-          isProgramActive: true,
-          startDate: new Date().toISOString()
-        })
-      });
+    const points = selectedProgram === '1-day' ? 100 : selectedProgram === '3-day' ? 250 : 500;
+    addPoints(points);
+    incrementDrinksMade();
 
-      if (!response.ok) {
-        throw new Error('Failed to start cleanse program');
-      }
-
-      // Award points based on program duration
-      const points = programId === '1-day' ? 100 : programId === '3-day' ? 250 : 500;
-      addPoints(points);
-      incrementDrinksMade();
-
-      setShowProgramModal(false);
-      setShowSuccess(true);
-      setTimeout(() => {
-        setShowSuccess(false);
-        setSelectedProgram(null);
-      }, 3000);
-    } catch (error) {
-      console.error('Failed to start cleanse:', error);
-      alert('Failed to start cleanse program. Please try again.');
-    }
+    setShowProgramModal(false);
+    setShowSuccess(true);
+    setTimeout(() => {
+      setShowSuccess(false);
+      setSelectedProgram(null);
+    }, 3000);
   };
 
   return (
@@ -462,26 +432,28 @@ export default function DetoxesHub() {
           <CardContent>
             <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
               {popularDetoxes.map((detox, index) => (
-                <div key={index} className="p-4 bg-gradient-to-br from-green-50 to-blue-50 rounded-lg border border-green-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <Badge className="bg-green-500 text-white">#{index + 1}</Badge>
-                    <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                      <span className="font-medium">{detox.rating}</span>
+                <Link key={index} href={detox.route}>
+                  <div className="p-4 bg-gradient-to-br from-green-50 to-blue-50 rounded-lg border border-green-200 cursor-pointer hover:shadow-md hover:-translate-y-0.5 transition-all">
+                    <div className="flex items-center justify-between mb-2">
+                      <Badge className="bg-green-500 text-white">#{index + 1}</Badge>
+                      <div className="flex items-center gap-1">
+                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
+                        <span className="font-medium">{detox.rating}</span>
+                      </div>
+                    </div>
+                    <h3 className="font-bold mb-2">{detox.name}</h3>
+                    <div className="flex items-center justify-between text-sm text-gray-600">
+                      <span className="flex items-center gap-1">
+                        <Leaf className="h-3 w-3" />
+                        {detox.type}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {detox.time}
+                      </span>
                     </div>
                   </div>
-                  <h3 className="font-bold mb-2">{detox.name}</h3>
-                  <div className="flex items-center justify-between text-sm text-gray-600">
-                    <span className="flex items-center gap-1">
-                      <Leaf className="h-3 w-3" />
-                      {detox.type}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {detox.time}
-                    </span>
-                  </div>
-                </div>
+                </Link>
               ))}
             </div>
           </CardContent>
