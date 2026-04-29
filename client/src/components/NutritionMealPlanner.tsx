@@ -2859,6 +2859,12 @@ const NutritionMealPlanner = () => {
       ...prev,
       [slotKey]: reasonId,
     }));
+    setFixItDetailsQueueSnoozedByKey((prev) => {
+      if (!prev[slotKey]) return prev;
+      const next = { ...prev };
+      delete next[slotKey];
+      return next;
+    });
     setFixItDetailsQueuePendingSkipReason(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
   };
 
@@ -2868,6 +2874,13 @@ const NutritionMealPlanner = () => {
       ...prev,
       [slotKey]: snoozeId,
     }));
+    setFixItDetailsQueueSkippedKeys((prev) => prev.filter((key) => key !== slotKey));
+    setFixItDetailsQueueSkipReasonByKey((prev) => {
+      if (!prev[slotKey]) return prev;
+      const next = { ...prev };
+      delete next[slotKey];
+      return next;
+    });
   };
 
   const handleQueueRevisitSnoozed = () => {
