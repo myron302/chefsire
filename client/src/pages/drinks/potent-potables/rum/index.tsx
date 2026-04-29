@@ -203,7 +203,7 @@ export default function RumCocktailsPage() {
         timestamp: Date.now()
       });
       incrementDrinksMade();
-      addPoints(40);
+      addPoints(35);
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -229,7 +229,7 @@ export default function RumCocktailsPage() {
 
   const handleMakeCocktail = (cocktail: typeof rumCocktails[0]) => {
     incrementDrinksMade();
-    addPoints(40, 'Made a rum cocktail');
+    addPoints(35, 'Made a rum cocktail');
     setSelectedCocktail(null);
   };
 

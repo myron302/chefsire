@@ -207,7 +207,7 @@ export default function EggProteinPage() {
       };
       addToRecentlyViewed(drinkData);
       incrementDrinksMade();
-      addPoints(100);
+      addPoints(25);
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -699,7 +699,7 @@ export default function EggProteinPage() {
                         bestTime: 'Post-Workout'
                       });
                       incrementDrinksMade();
-                      addPoints(100);
+                      addPoints(25);
                       kitRefs.current[recipe.id]?.open?.();
                     }}
                   >

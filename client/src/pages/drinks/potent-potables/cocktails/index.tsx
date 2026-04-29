@@ -267,7 +267,7 @@ export default function ClassicCocktailsPage() {
         timestamp: Date.now()
       });
       incrementDrinksMade();
-      addPoints(40);
+      addPoints(35);
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -315,7 +315,7 @@ export default function ClassicCocktailsPage() {
 
   const handleMakeCocktail = (cocktail: typeof classicCocktails[0]) => {
     incrementDrinksMade();
-    addPoints(40, 'Made a classic cocktail');
+    addPoints(35, 'Made a classic cocktail');
     setSelectedCocktail(null);
   };
 

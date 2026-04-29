@@ -186,7 +186,7 @@ export default function TeaPage() {
   const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
   const [onlyNaturalSweetener, setOnlyNaturalSweetener] = useState(false);
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'cost' | 'calories'>('rating');
-  const [activeTab, setActiveTab] = useState<'browse'|'drink-types'|'benefits'|'featured'|'trending'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse'|'types'|'benefits'|'featured'|'trending'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // RecipeKit state
@@ -282,7 +282,7 @@ export default function TeaPage() {
       };
       addToRecentlyViewed(drinkData);
       incrementDrinksMade();
-      addPoints(20);
+      addPoints(25);
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -527,7 +527,7 @@ export default function TeaPage() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'drink-types', label: 'Tea Types', icon: Leaf },
+            { id: 'types', label: 'Drink Types', icon: Leaf },
             { id: 'benefits', label: 'Benefits', icon: Heart },
             { id: 'featured', label: 'Featured', icon: Star },
             { id: 'trending', label: 'Trending', icon: Zap }
@@ -842,7 +842,7 @@ export default function TeaPage() {
         )}
 
         {/* Tea Types Tab */}
-        {activeTab === 'drink-types' && (
+        {activeTab === 'types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {teaTypes.map(type => {
               const Icon = type.icon;

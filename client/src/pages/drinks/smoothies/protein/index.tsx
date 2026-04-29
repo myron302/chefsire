@@ -143,7 +143,7 @@ export default function ProteinSmoothiesPage() {
   const [minProtein, setMinProtein] = useState<number | 'all'>('all');
   const [maxCalories, setMaxCalories] = useState<number | 'all'>('all');
   const [sortBy, setSortBy] = useState<'rating' | 'protein' | 'calories' | 'fiber'>('rating');
-  const [activeTab, setActiveTab] = useState<'browse'|'protein-types'|'goals'|'featured'>('browse');
+  const [activeTab, setActiveTab] = useState<'browse'|'types'|'goals'|'featured'>('browse');
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   // RecipeKit state
@@ -242,7 +242,7 @@ export default function ProteinSmoothiesPage() {
       };
       addToRecentlyViewed(drinkData);
       incrementDrinksMade();
-      addPoints(35); // XP for protein smoothies
+      addPoints(25); // XP for protein smoothies
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -488,7 +488,7 @@ export default function ProteinSmoothiesPage() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'protein-types', label: 'Protein Types', icon: Zap },
+            { id: 'types', label: 'Protein Types', icon: Zap },
             { id: 'goals', label: 'Fitness Goals', icon: Dumbbell },
             { id: 'featured', label: 'Featured', icon: Star }
           ].map(tab => {
@@ -809,7 +809,7 @@ export default function ProteinSmoothiesPage() {
         )}
 
         {/* Protein Types Tab */}
-        {activeTab === 'protein-types' && (
+        {activeTab === 'types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {proteinTypes.map(type => (
               <Card key={type.id} className="hover:shadow-lg transition-shadow">

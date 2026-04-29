@@ -240,7 +240,7 @@ export default function SeasonalCocktailsPage() {
         timestamp: Date.now()
       });
       incrementDrinksMade();
-      addPoints(30);
+      addPoints(35);
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -278,7 +278,7 @@ export default function SeasonalCocktailsPage() {
 
   const handleMakeCocktail = (cocktail: typeof seasonalCocktails[0]) => {
     incrementDrinksMade();
-    addPoints(30, 'Made a seasonal cocktail');
+    addPoints(35, 'Made a seasonal cocktail');
     setSelectedCocktail(null);
   };
 

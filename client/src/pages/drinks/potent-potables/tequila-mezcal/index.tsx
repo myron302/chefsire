@@ -203,7 +203,7 @@ export default function TequilaMezcalPage() {
         timestamp: Date.now()
       });
       incrementDrinksMade();
-      addPoints(40);
+      addPoints(35);
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -229,7 +229,7 @@ export default function TequilaMezcalPage() {
 
   const handleMakeCocktail = (cocktail: typeof tequilaMezcalCocktails[0]) => {
     incrementDrinksMade();
-    addPoints(40, 'Made a tequila/mezcal cocktail');
+    addPoints(35, 'Made a tequila/mezcal cocktail');
     setSelectedCocktail(null);
   };
 

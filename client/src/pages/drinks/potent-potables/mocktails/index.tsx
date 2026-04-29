@@ -218,7 +218,7 @@ export default function MocktailsPage() {
         timestamp: Date.now()
       });
       incrementDrinksMade();
-      addPoints(20);
+      addPoints(25);
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -259,7 +259,7 @@ export default function MocktailsPage() {
 
   const handleMakeMocktail = (mocktail: typeof mocktails[0]) => {
     incrementDrinksMade();
-    addPoints(20, 'Made a mocktail');
+    addPoints(25, 'Made a mocktail');
     setSelectedMocktail(null);
   };
 
