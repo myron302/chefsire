@@ -185,6 +185,12 @@ type FixItProgressMiniState = {
   message: string;
   tone: 'warning' | 'success' | 'neutral';
 };
+type FixItDayCompletionState = {
+  totalIssues: number;
+  resolvedIssues: number;
+  remainingIssues: number;
+  allResolved: boolean;
+};
 type FixItDataCompletenessChipState = {
   label: string;
   detail: string;
@@ -2704,6 +2710,41 @@ const NutritionMealPlanner = () => {
     };
   }, [activeFixItSlotSignals, activeFixItTarget, calorieGoal, macroGoals.protein, mealTypes, weeklyMeals]);
 
+  const activeFixItDayCompletion = useMemo<FixItDayCompletionState | null>(() => {
+    if (!activeFixItTarget?.targetDay) return null;
+
+    const slotCount = mealTypes.length;
+    if (slotCount <= 0) return null;
+
+    const missingMealsRemaining = activeFixItSlotSignals.filter((slot) => !slot.hasMeals).length;
+    const missingMealsResolved = Math.max(0, slotCount - missingMealsRemaining);
+
+    const missingDetailsRemaining = activeFixItSlotSignals.filter((slot) => slot.missingDetails || !slot.hasMeals).length;
+    const missingDetailsResolved = Math.max(0, slotCount - missingDetailsRemaining);
+
+    const dayProtein = activeFixItSlotSignals.reduce((sum, slot) => sum + slot.protein, 0);
+    const proteinGap = Math.max(0, Math.ceil(macroGoals.protein - dayProtein));
+    const lowProteinRemaining = proteinGap > 0 ? 1 : 0;
+    const lowProteinResolved = lowProteinRemaining === 0 ? 1 : 0;
+
+    const dayTotals = calculateTodayNutritionTotals(weeklyMeals, activeFixItTarget.targetDay);
+    const lowerBound = calorieGoal * 0.9;
+    const upperBound = calorieGoal * 1.1;
+    const calorieBalanceRemaining = calorieGoal > 0 && (dayTotals.calories < lowerBound || dayTotals.calories > upperBound) ? 1 : 0;
+    const calorieBalanceResolved = calorieBalanceRemaining === 0 ? 1 : 0;
+
+    const totalIssues = (slotCount * 2) + 2;
+    const resolvedIssues = missingMealsResolved + missingDetailsResolved + lowProteinResolved + calorieBalanceResolved;
+    const remainingIssues = Math.max(0, totalIssues - resolvedIssues);
+
+    return {
+      totalIssues,
+      resolvedIssues,
+      remainingIssues,
+      allResolved: remainingIssues === 0,
+    };
+  }, [activeFixItSlotSignals, activeFixItTarget?.targetDay, calorieGoal, macroGoals.protein, mealTypes, weeklyMeals]);
+
   const activeFixItUnresolvedHint = useMemo<string | null>(() => {
     if (!activeFixItTarget || !activeFixItTarget.targetDay || !activeFixItProgressMiniState) return null;
     if (activeFixItProgressMiniState.unresolvedCount <= 0) return null;
@@ -3682,6 +3723,25 @@ const NutritionMealPlanner = () => {
                         }`}>
                           <p className="text-xs font-semibold uppercase tracking-wide">Progress</p>
                           <p className="mt-1 font-medium">{activeFixItProgressMiniState.message}</p>
+                        </div>
+                      ) : null}
+                      {activeFixItDayCompletion ? (
+                        <div className={`rounded-md border px-3 py-2 text-sm ${
+                          activeFixItDayCompletion.allResolved
+                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                            : 'border-orange-200 bg-white/90 text-orange-900'
+                        }`}>
+                          <p className="text-xs font-semibold uppercase tracking-wide">Day completion</p>
+                          <p className="mt-1 font-medium">
+                            {activeFixItDayCompletion.allResolved
+                              ? 'All issues resolved ✅'
+                              : `${activeFixItDayCompletion.resolvedIssues} of ${activeFixItDayCompletion.totalIssues} issues resolved`}
+                          </p>
+                          {activeFixItDayCompletion.allResolved ? (
+                            <p className="mt-1 text-xs text-emerald-700">Nice — this day looks balanced 👍</p>
+                          ) : (
+                            <p className="mt-1 text-xs text-gray-600">{activeFixItDayCompletion.remainingIssues} remaining for today.</p>
+                          )}
                         </div>
                       ) : null}
                       {activeFixItConfidenceQuickAction ? (
