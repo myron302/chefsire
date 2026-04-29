@@ -137,7 +137,7 @@ export default function MatchaDrinksPage() {
   const [maxCalories, setMaxCalories] = useState<number | "all">("all");
   const [onlyZeroSugar, setOnlyZeroSugar] = useState(false);
   const [sortBy, setSortBy] = useState<"rating" | "caffeine" | "cost" | "calories">("rating");
-  const [activeTab, setActiveTab] = useState<"browse" | "drink-types" | "benefits" | "featured" | "trending">("browse");
+  const [activeTab, setActiveTab] = useState<"browse" | "types" | "benefits" | "featured" | "trending">("browse");
   const [showUniversalSearch, setShowUniversalSearch] = useState(false);
 
   const [selectedRecipe, setSelectedRecipe] = useState<any | null>(null);
@@ -423,7 +423,7 @@ export default function MatchaDrinksPage() {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-1 bg-gray-100 rounded-lg p-1">
           {[
             { id: "browse", label: "Browse All", icon: Search },
-            { id: "drink-types", label: "Drink Types", icon: Leaf },
+            { id: "types", label: "Drink Types", icon: Leaf },
             { id: "benefits", label: "Benefits", icon: Heart },
             { id: "featured", label: "Featured", icon: Star },
             { id: "trending", label: "Trending", icon: Zap },

@@ -157,7 +157,7 @@ export default function DaiquiriPage() {
     if (selectedRecipe) {
       addToRecentlyViewed({ id: selectedRecipe.id, name: selectedRecipe.name, category: "daiquiri", timestamp: Date.now() });
       incrementDrinksMade();
-      addPoints(45);
+      addPoints(35);
     }
     setShowKit(false);
     setSelectedRecipe(null);

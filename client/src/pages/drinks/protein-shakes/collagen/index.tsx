@@ -325,7 +325,7 @@ export default function CollagenProteinPage() {
       tags: shake.tags
     });
     incrementDrinksMade();
-    addPoints(35);
+    addPoints(25);
   };
 
   return (
@@ -512,9 +512,9 @@ export default function CollagenProteinPage() {
         <div className="flex items-center gap-1 mb-6 bg-gray-100 rounded-lg p-1">
           {[
             { id: 'browse', label: 'Browse All', icon: Search },
-            { id: 'collagen-types', label: 'Collagen Types', icon: Sparkles },
-            { id: 'sources', label: 'Sources', icon: Droplets },
-            { id: 'beauty-goals', label: 'Beauty Goals', icon: Eye },
+            { id: 'types', label: 'Collagen Types', icon: Sparkles },
+            { id: 'benefits', label: 'Sources', icon: Droplets },
+            { id: 'trending', label: 'Beauty Goals', icon: Eye },
             { id: 'featured', label: 'Featured', icon: Star }
           ].map(tab => {
             const Icon = tab.icon;
@@ -766,7 +766,7 @@ export default function CollagenProteinPage() {
         )}
 
         {/* Collagen Types Tab */}
-        {activeTab === 'collagen-types' && (
+        {activeTab === 'types' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {collagenTypes.map(type => {
               const Icon = type.icon;
@@ -837,7 +837,7 @@ export default function CollagenProteinPage() {
         )}
 
         {/* Sources Tab */}
-        {activeTab === 'sources' && (
+        {activeTab === 'benefits' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {collagenSources.map(source => {
               const Icon = source.icon;
@@ -908,7 +908,7 @@ export default function CollagenProteinPage() {
         )}
 
         {/* Beauty Goals Tab */}
-        {activeTab === 'beauty-goals' && (
+        {activeTab === 'trending' && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {beautyGoals.map(goal => {
               const Icon = goal.icon;

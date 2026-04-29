@@ -198,7 +198,7 @@ export default function ScotchIrishWhiskeyPage() {
         timestamp: Date.now()
       });
       incrementDrinksMade();
-      addPoints(40);
+      addPoints(35);
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -224,7 +224,7 @@ export default function ScotchIrishWhiskeyPage() {
 
   const handleMakeCocktail = (cocktail: typeof scotchIrishCocktails[0]) => {
     incrementDrinksMade();
-    addPoints(40, 'Made a Scotch/Irish cocktail');
+    addPoints(35, 'Made a Scotch/Irish cocktail');
     setSelectedCocktail(null);
   };
 

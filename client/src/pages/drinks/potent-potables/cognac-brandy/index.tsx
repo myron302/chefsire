@@ -231,7 +231,7 @@ export default function CognacBrandyPage() {
         timestamp: Date.now()
       });
       incrementDrinksMade();
-      addPoints(45);
+      addPoints(35);
     }
     setShowKit(false);
     setSelectedRecipe(null);
@@ -266,7 +266,7 @@ export default function CognacBrandyPage() {
 
   const handleMakeCocktail = (cocktail: typeof cognacCocktails[0]) => {
     incrementDrinksMade();
-    addPoints(45, 'Made a cognac/brandy cocktail');
+    addPoints(35, 'Made a cognac/brandy cocktail');
     setSelectedCocktail(null);
   };
 
