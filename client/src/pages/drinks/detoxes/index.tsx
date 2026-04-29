@@ -1,5 +1,5 @@
 // client/src/pages/drinks/detoxes/index.tsx
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import {
   X, CheckCircle
 } from 'lucide-react';
 import { useDrinks } from '@/contexts/DrinksContext';
+import { useUser } from '@/contexts/UserContext';
 import { otherDrinkHubs, detoxSubcategories } from '../data/detoxes';
 import UniversalSearch from '@/components/UniversalSearch';
 import { sortByName } from '@/lib/sort-by-name';
@@ -21,18 +22,30 @@ const sortedDetoxSubcategories = sortByName(detoxSubcategories);
 
 export default function DetoxesHub() {
   const { userProgress, incrementDrinksMade, addPoints, addToRecentlyViewed } = useDrinks();
+  const { user } = useUser();
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
   const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [startedPrograms, setStartedPrograms] = useState<Set<string>>(() => {
-    try {
-      const saved = localStorage.getItem('detox-started-programs');
-      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
-    } catch {
-      return new Set<string>();
+  const [startedPrograms, setStartedPrograms] = useState<Set<string>>(new Set());
+
+  // Load started programs from Neon (logged-in) or localStorage (guest)
+  useEffect(() => {
+    if (user?.id) {
+      fetch(`/api/drinks/user-drink-stats/${encodeURIComponent(user.id)}`, { credentials: 'include' })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          const ids: string[] = data?.stats?.activeCleanseProgramIds ?? [];
+          if (ids.length) setStartedPrograms(new Set(ids));
+        })
+        .catch(() => {});
+    } else {
+      try {
+        const saved = localStorage.getItem('detox-started-programs');
+        if (saved) setStartedPrograms(new Set<string>(JSON.parse(saved)));
+      } catch {}
     }
-  });
+  }, [user?.id]);
 
   const popularDetoxes = [
     { name: 'Lemon Ginger Detox', type: 'Water', time: '5 min', rating: 4.9, route: '/drinks/recipe/lemon-ginger-detox' },
@@ -112,9 +125,19 @@ export default function DetoxesHub() {
     const points = selectedProgram === '1-day' ? 100 : selectedProgram === '3-day' ? 250 : 500;
     addPoints(points);
     incrementDrinksMade();
+
     setStartedPrograms(prev => {
-      const next = new Set(prev).add(selectedProgram);
-      localStorage.setItem('detox-started-programs', JSON.stringify([...next]));
+      const next = new Set(prev).add(selectedProgram!);
+      if (user?.id) {
+        fetch(`/api/drinks/user-drink-stats/${encodeURIComponent(user.id)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ activeCleanseProgramIds: [...next] }),
+        }).catch(() => {});
+      } else {
+        localStorage.setItem('detox-started-programs', JSON.stringify([...next]));
+      }
       return next;
     });
 

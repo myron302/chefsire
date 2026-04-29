@@ -495,5 +495,6 @@ export const userDrinkStats = pgTable("user_drink_stats", {
       earnedAt: string;
     }>
   >().default(sql`'[]'::jsonb`),
+  activeCleanseProgramIds: jsonb("active_cleanse_programs").$type<string[]>().default(sql`'[]'::jsonb`),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
