@@ -199,6 +199,7 @@ type FixItDetailsQueueState = {
   totalMissingCount: number;
   remainingCount: number;
   skippedCount: number;
+  snoozedCount?: number;
   completed: boolean;
   currentSlot: {
     key: string;
@@ -208,6 +209,7 @@ type FixItDetailsQueueState = {
   } | null;
 };
 type FixItDetailsQueueSkipReasonId = 'protein-unknown' | 'label-unavailable' | 'add-later' | 'not-needed-today';
+type FixItDetailsQueueSnoozeOptionId = 'later-today' | 'tomorrow' | 'next-week';
 
 const FIX_IT_DETAILS_QUEUE_SKIP_REASONS: Array<{ id: FixItDetailsQueueSkipReasonId; label: string }> = [
   { id: 'protein-unknown', label: "Don't know protein yet" },
@@ -216,6 +218,11 @@ const FIX_IT_DETAILS_QUEUE_SKIP_REASONS: Array<{ id: FixItDetailsQueueSkipReason
   { id: 'not-needed-today', label: 'Not needed today' },
 ];
 const DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON: FixItDetailsQueueSkipReasonId = 'add-later';
+const FIX_IT_DETAILS_QUEUE_SNOOZE_OPTIONS: Array<{ id: FixItDetailsQueueSnoozeOptionId; label: string }> = [
+  { id: 'later-today', label: 'Later today' },
+  { id: 'tomorrow', label: 'Tomorrow' },
+  { id: 'next-week', label: 'Next week' },
+];
 
 type TemplateBridgePayload = {
   templateName: string;
@@ -298,6 +305,7 @@ const NutritionMealPlanner = () => {
   const [fixItDetailsQueueSkipReasonByKey, setFixItDetailsQueueSkipReasonByKey] = useState<Record<string, FixItDetailsQueueSkipReasonId>>({});
   const [fixItDetailsQueuePendingSkipReason, setFixItDetailsQueuePendingSkipReason] = useState<FixItDetailsQueueSkipReasonId>(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
   const [fixItDetailsQueueDone, setFixItDetailsQueueDone] = useState(false);
+  const [fixItDetailsQueueSnoozedByKey, setFixItDetailsQueueSnoozedByKey] = useState<Record<string, FixItDetailsQueueSnoozeOptionId>>({});
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -2782,6 +2790,7 @@ const NutritionMealPlanner = () => {
     setFixItDetailsQueueSkipReasonByKey({});
     setFixItDetailsQueuePendingSkipReason(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
     setFixItDetailsQueueDone(false);
+    setFixItDetailsQueueSnoozedByKey({});
   }, [activeFixItTarget?.issueType, activeFixItTarget?.targetDay]);
 
   const activeFixItDetailsQueue = useMemo<FixItDetailsQueueState | null>(() => {
@@ -2824,16 +2833,17 @@ const NutritionMealPlanner = () => {
       };
     }
 
-    const remainingSlots = queueSlots.filter((slot) => !fixItDetailsQueueSkippedKeys.includes(slot.key));
+    const remainingSlots = queueSlots.filter((slot) => !fixItDetailsQueueSkippedKeys.includes(slot.key) && !fixItDetailsQueueSnoozedByKey[slot.key]);
 
     return {
       totalMissingCount: queueSlots.length,
       remainingCount: remainingSlots.length,
-      skippedCount: queueSlots.length - remainingSlots.length,
+      skippedCount: fixItDetailsQueueSkippedKeys.filter((slotKey) => queueSlots.some((slot) => slot.key === slotKey)).length,
+      snoozedCount: Object.keys(fixItDetailsQueueSnoozedByKey).filter((slotKey) => queueSlots.some((slot) => slot.key === slotKey)).length,
       completed: remainingSlots.length <= 0,
       currentSlot: remainingSlots[0] ?? null,
     };
-  }, [activeFixItSlotSignals, activeFixItTarget?.targetDay, fixItDetailsQueueSkippedKeys]);
+  }, [activeFixItSlotSignals, activeFixItTarget?.targetDay, fixItDetailsQueueSkippedKeys, fixItDetailsQueueSnoozedByKey]);
 
   const handleQueueCompleteDetails = (mealType: string) => {
     if (!activeFixItTarget?.targetDay) return;
@@ -2852,6 +2862,17 @@ const NutritionMealPlanner = () => {
     setFixItDetailsQueuePendingSkipReason(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
   };
 
+
+  const handleQueueSnoozeCurrent = (slotKey: string, snoozeId: FixItDetailsQueueSnoozeOptionId) => {
+    setFixItDetailsQueueSnoozedByKey((prev) => ({
+      ...prev,
+      [slotKey]: snoozeId,
+    }));
+  };
+
+  const handleQueueRevisitSnoozed = () => {
+    setFixItDetailsQueueSnoozedByKey({});
+  };
   const handleQueueRevisitSkipped = () => {
     setFixItDetailsQueueSkippedKeys([]);
     setFixItDetailsQueueSkipReasonByKey({});
@@ -3681,7 +3702,9 @@ const NutritionMealPlanner = () => {
                               <p className="mt-1 text-sm text-emerald-800">
                                 {activeFixItDetailsQueue.skippedCount > 0
                                   ? `You skipped ${activeFixItDetailsQueue.skippedCount} ${activeFixItDetailsQueue.skippedCount === 1 ? 'item' : 'items'} for later.`
-                                  : 'All detail gaps for this Fix It day are cleared.'}
+                                  : activeFixItDetailsQueue.snoozedCount && activeFixItDetailsQueue.snoozedCount > 0
+                                    ? `You snoozed ${activeFixItDetailsQueue.snoozedCount} ${activeFixItDetailsQueue.snoozedCount === 1 ? 'item' : 'items'} for later.`
+                                    : 'All detail gaps for this Fix It day are cleared.'}
                               </p>
                               {activeFixItSkippedReasonSummary ? (
                                 <p className="mt-1 text-xs text-emerald-700">{activeFixItSkippedReasonSummary}</p>
@@ -3696,6 +3719,17 @@ const NutritionMealPlanner = () => {
                                     onClick={handleQueueRevisitSkipped}
                                   >
                                     Revisit skipped
+                                  </Button>
+                                ) : null}
+                                {activeFixItDetailsQueue.snoozedCount && activeFixItDetailsQueue.snoozedCount > 0 ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="border-orange-300 text-orange-900 hover:bg-orange-100"
+                                    onClick={handleQueueRevisitSnoozed}
+                                  >
+                                    Revisit snoozed
                                   </Button>
                                 ) : null}
                                 <Button
@@ -3721,6 +3755,9 @@ const NutritionMealPlanner = () => {
                                 {`${activeFixItDetailsQueue.totalMissingCount - activeFixItDetailsQueue.remainingCount + 1} of ${activeFixItDetailsQueue.totalMissingCount} detail gaps`}
                                 {activeFixItDetailsQueue.skippedCount > 0
                                   ? ` • ${activeFixItDetailsQueue.skippedCount} skipped`
+                                  : ''}
+                                {activeFixItDetailsQueue.snoozedCount && activeFixItDetailsQueue.snoozedCount > 0
+                                  ? ` • ${activeFixItDetailsQueue.snoozedCount} snoozed`
                                   : ''}
                               </p>
                               {activeFixItSkippedReasonSummary ? (
@@ -3759,6 +3796,21 @@ const NutritionMealPlanner = () => {
                                 >
                                   Skip
                                 </Button>
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <span className="text-xs text-gray-600">Snooze:</span>
+                                  {FIX_IT_DETAILS_QUEUE_SNOOZE_OPTIONS.map((snoozeOption) => (
+                                    <Button
+                                      key={snoozeOption.id}
+                                      type="button"
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 px-2 text-[11px]"
+                                      onClick={() => handleQueueSnoozeCurrent(activeFixItDetailsQueue.currentSlot!.key, snoozeOption.id)}
+                                    >
+                                      {snoozeOption.label}
+                                    </Button>
+                                  ))}
+                                </div>
                                 {activeFixItDetailsQueue.skippedCount > 0 ? (
                                   <Button
                                     type="button"
@@ -3767,6 +3819,16 @@ const NutritionMealPlanner = () => {
                                     onClick={handleQueueRevisitSkipped}
                                   >
                                     Revisit skipped
+                                  </Button>
+                                ) : null}
+                                {activeFixItDetailsQueue.snoozedCount && activeFixItDetailsQueue.snoozedCount > 0 ? (
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={handleQueueRevisitSnoozed}
+                                  >
+                                    Revisit snoozed
                                   </Button>
                                 ) : null}
                                 <Button
