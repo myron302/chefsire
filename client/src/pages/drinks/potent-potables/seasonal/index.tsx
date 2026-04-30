@@ -422,7 +422,7 @@ export default function SeasonalCocktailsPage() {
             <CardContent className="p-4">
               <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Potent Potables</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {sisterPotentPotablesPages.map((page) => {
+                {[...sisterPotentPotablesPages].sort((a,b) => a.name.localeCompare(b.name)).map((page) => {
                   const Icon = page.icon;
                   return (
                     <Link key={page.id} href={page.path}>
