@@ -377,7 +377,7 @@ export default function ProteinShakesPage({ params }: Params) {
             Explore Other Drink Categories
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {otherDrinkHubs.filter(hub => hub.id !== 'protein-shakes').map((hub) => {
+            {[...otherDrinkHubs].filter((hub) => hub.id !== 'protein-shakes').sort((a,b) => a.name.localeCompare(b.name)).map((hub) => {
               const Icon = hub.icon;
               return (
                 <Link key={hub.id} href={hub.route}>
