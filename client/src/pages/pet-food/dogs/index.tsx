@@ -434,6 +434,29 @@ export default function DogsPage() {
     }
   };
 
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Dog Food Recipes',
+      text: 'Nutritious homemade meals for your best friend — browse dog food recipes on ChefSire.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-amber-50 via-orange-50 to-yellow-50">
       {/* RecipeKit Modal */}
@@ -467,7 +490,7 @@ export default function DogsPage() {
               </Button>
             </Link>
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20" onClick={handleSharePage}>
                 <Share2 className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
@@ -523,7 +546,7 @@ export default function DogsPage() {
           <CardContent className="p-6">
             <h3 className="text-lg font-bold text-gray-800 mb-4">Other Pet Food Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {sisterPetFoodPages.map((page) => {
+              {[...sisterPetFoodPages].sort((a,b) => a.name.localeCompare(b.name)).map((page) => {
                 const Icon = page.icon;
                 return (
                   <Link key={page.id} href={page.path}>

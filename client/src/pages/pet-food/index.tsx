@@ -142,6 +142,29 @@ export default function PetFoodHub() {
   const [searchQuery, setSearchQuery] = useState('');
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
 
+  const handleSharePage = async () => {
+    const shareData = {
+      title: 'Pet Food Recipes',
+      text: 'Homemade pet food recipes for dogs, cats, birds & small pets — browse on ChefSire.',
+      url: typeof window !== 'undefined' ? window.location.href : ''
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(`${shareData.title}\n${shareData.text}\n${shareData.url}`);
+        alert('Link copied to clipboard!');
+      } catch {
+        alert('Unable to share on this device.');
+      }
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-purple-50 to-emerald-50">
       {/* HEADER */}
@@ -155,7 +178,7 @@ export default function PetFoodHub() {
               </Button>
             </Link>
             <div className="flex gap-2">
-              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
+              <Button variant="ghost" size="sm" className="text-white hover:bg-white/20" onClick={handleSharePage}>
                 <Share2 className="h-4 w-4" />
               </Button>
               <Button variant="ghost" size="sm" className="text-white hover:bg-white/20">
@@ -249,7 +272,7 @@ export default function PetFoodHub() {
             Browse Pet Food Categories
           </h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {petCategories.map((category) => {
+            {[...petCategories].sort((a,b) => a.name.localeCompare(b.name)).map((category) => {
               const Icon = category.icon;
               return (
                 <Card
