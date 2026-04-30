@@ -569,7 +569,7 @@ export default function CaffeinatedDrinksPage() {
               Explore Other Drink Categories
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              {otherDrinkHubs.filter(hub => hub.id !== 'caffeinated').map((hub) => {
+              {[...otherDrinkHubs].filter((hub) => hub.id !== 'caffeinated').sort((a,b) => a.name.localeCompare(b.name)).map((hub) => {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
