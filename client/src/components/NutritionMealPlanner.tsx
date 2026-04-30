@@ -3730,7 +3730,7 @@ const NutritionMealPlanner = () => {
                     </div>
                   ) : null}
                   {activeFixItTarget ? (
-                    <div className="rounded-md border border-orange-200 bg-orange-50/70 px-3 py-3 space-y-3">
+                    <div className="rounded-md border border-orange-200 bg-orange-50/70 px-3 py-3 space-y-4">
                       <div>
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">Fix It Guidance</p>
@@ -3759,47 +3759,50 @@ const NutritionMealPlanner = () => {
                           <p className="mt-1 text-xs text-gray-600">{activeFixItDataCompleteness.detail}</p>
                         ) : null}
                       </div>
-                      {activeFixItProgressMiniState ? (
-                        <div className={`rounded-md border px-3 py-2 text-sm ${
-                          activeFixItProgressMiniState.tone === 'success'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                            : activeFixItProgressMiniState.tone === 'warning'
-                              ? 'border-orange-200 bg-white/90 text-orange-900'
-                              : 'border-orange-200/80 bg-white/90 text-gray-700'
-                        }`}>
-                          <p className="text-xs font-semibold uppercase tracking-wide">Progress</p>
-                          <p className="mt-1 font-medium">{activeFixItProgressMiniState.message}</p>
-                        </div>
-                      ) : null}
-                      {activeFixItDayCompletion ? (
-                        <div className={`rounded-md border px-3 py-2 text-sm ${
-                          activeFixItDayCompletion.allResolved
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                            : 'border-orange-200 bg-white/90 text-orange-900'
-                        }`}>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-xs font-semibold uppercase tracking-wide">Day completion</p>
-                            {activeFixItCompletionTrendChip ? (
-                              <Badge className={activeFixItCompletionTrendChip.className}>
-                                {activeFixItCompletionTrendChip.label}
-                              </Badge>
+                      <div className="space-y-2 border-t border-orange-200/70 pt-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">Progress & completion</p>
+                        {activeFixItProgressMiniState ? (
+                          <div className={`rounded-md border px-3 py-2 text-sm ${
+                            activeFixItProgressMiniState.tone === 'success'
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                              : activeFixItProgressMiniState.tone === 'warning'
+                                ? 'border-orange-200 bg-white/90 text-orange-900'
+                                : 'border-orange-200/80 bg-white/90 text-gray-700'
+                          }`}>
+                            <p className="text-xs font-semibold uppercase tracking-wide">Progress</p>
+                            <p className="mt-1 font-medium">{activeFixItProgressMiniState.message}</p>
+                          </div>
+                        ) : null}
+                        {activeFixItDayCompletion ? (
+                          <div className={`rounded-md border px-3 py-2 text-sm ${
+                            activeFixItDayCompletion.allResolved
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                              : 'border-orange-200 bg-white/90 text-orange-900'
+                          }`}>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-xs font-semibold uppercase tracking-wide">Day completion</p>
+                              {activeFixItCompletionTrendChip ? (
+                                <Badge className={activeFixItCompletionTrendChip.className}>
+                                  {activeFixItCompletionTrendChip.label}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 font-medium">
+                              {activeFixItDayCompletion.allResolved
+                                ? 'All issues resolved ✅'
+                                : `${activeFixItDayCompletion.resolvedIssues} of ${activeFixItDayCompletion.totalIssues} issues resolved`}
+                            </p>
+                            {activeFixItDayCompletion.allResolved ? (
+                              <p className="mt-1 text-xs text-emerald-700">Nice — this day looks balanced 👍</p>
+                            ) : (
+                              <p className="mt-1 text-xs text-gray-600">{activeFixItDayCompletion.remainingIssues} remaining for today.</p>
+                            )}
+                            {activeFixItCompletionDeltaText ? (
+                              <p className="mt-1 text-xs text-gray-600">{activeFixItCompletionDeltaText}</p>
                             ) : null}
                           </div>
-                          <p className="mt-1 font-medium">
-                            {activeFixItDayCompletion.allResolved
-                              ? 'All issues resolved ✅'
-                              : `${activeFixItDayCompletion.resolvedIssues} of ${activeFixItDayCompletion.totalIssues} issues resolved`}
-                          </p>
-                          {activeFixItDayCompletion.allResolved ? (
-                            <p className="mt-1 text-xs text-emerald-700">Nice — this day looks balanced 👍</p>
-                          ) : (
-                            <p className="mt-1 text-xs text-gray-600">{activeFixItDayCompletion.remainingIssues} remaining for today.</p>
-                          )}
-                          {activeFixItCompletionDeltaText ? (
-                            <p className="mt-1 text-xs text-gray-600">{activeFixItCompletionDeltaText}</p>
-                          ) : null}
-                        </div>
-                      ) : null}
+                        ) : null}
+                      </div>
                       {activeFixItConfidenceQuickAction ? (
                         <div className="rounded-md border border-orange-200/80 bg-white/90 px-3 py-2">
                           <p className="text-xs font-semibold uppercase tracking-wide text-orange-800">
@@ -3874,7 +3877,7 @@ const NutritionMealPlanner = () => {
                             </>
                           ) : activeFixItDetailsQueue.currentSlot ? (
                             <>
-                              <p className="mt-1 text-sm text-gray-700">
+                              <p className="mt-1 text-sm font-medium text-gray-800">
                                 Complete {activeFixItDetailsQueue.currentSlot.mealTypeLabel} details
                               </p>
                               <p className="mt-1 text-xs text-gray-600">
@@ -3911,8 +3914,7 @@ const NutritionMealPlanner = () => {
                                 <Button
                                   type="button"
                                   size="sm"
-                                  variant="outline"
-                                  className="border-orange-300 text-orange-900 hover:bg-orange-100"
+                                  className="bg-orange-600 hover:bg-orange-700 text-white"
                                   onClick={() => handleQueueCompleteDetails(activeFixItDetailsQueue.currentSlot!.mealType)}
                                 >
                                   Complete details
@@ -4005,22 +4007,22 @@ const NutritionMealPlanner = () => {
                         </div>
                       ) : null}
                       <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="bg-orange-600 hover:bg-orange-700"
-                          onClick={() => {
-                            setActiveTab('planner');
-                            if (activeFixItTarget.targetDay) {
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setActiveTab('planner');
+                                    if (activeFixItTarget.targetDay) {
                               focusPlannerDay(activeFixItTarget.targetDay);
                               handleAddMeal(activeFixItTarget.targetDay, 'Dinner');
                               return;
                             }
                             handleAddMeal();
                           }}
-                        >
-                          Add Meal
-                        </Button>
+                                >
+                                  Add Meal
+                                </Button>
                         <Button
                           type="button"
                           size="sm"
