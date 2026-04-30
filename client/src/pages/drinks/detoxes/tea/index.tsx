@@ -289,7 +289,7 @@ export default function DetoxTeasPage() {
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Explore Other Drink Categories</h3>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-              {otherDrinkHubs.map((hub) => {
+              {[...otherDrinkHubs].sort((a,b) => a.name.localeCompare(b.name)).map((hub) => {
                 const Icon = hub.icon;
                 return (
                   <Link key={hub.id} href={hub.route}>
