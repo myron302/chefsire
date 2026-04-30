@@ -360,7 +360,7 @@ export default function MartinisPage() {
                 <span className="text-sm text-gray-600">Explore Other Drink Categories</span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                {otherDrinkHubs.map((hub) => {
+                {[...otherDrinkHubs].sort((a,b) => a.name.localeCompare(b.name)).map((hub) => {
                   const Icon = hub.icon;
                   return (
                     <Link key={hub.id} href={hub.route}>
