@@ -452,7 +452,7 @@ export default function CaseinProteinPage() {
           <CardContent className="p-4">
             <h3 className="text-sm font-semibold text-gray-700 mb-3">Other Protein Types</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-              {proteinSubcategories.map((subcategory) => {
+              {[...proteinSubcategories].sort((a,b) => a.name.localeCompare(b.name)).map((subcategory) => {
                 const Icon = subcategory.icon
                 return (
                   <Link key={subcategory.id} href={subcategory.path}>
