@@ -406,6 +406,89 @@ router.post("/meal-plans/:id/review", requireAuth, async (req: Request, res: Res
   }
 });
 
+// Update meal plan blueprint (draft only)
+router.patch("/meal-plans/:id", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const planId = req.params.id;
+
+    const [existing] = await db
+      .select()
+      .from(mealPlanBlueprints)
+      .where(and(eq(mealPlanBlueprints.id, planId), eq(mealPlanBlueprints.creatorId, userId)))
+      .limit(1);
+
+    if (!existing) return res.status(404).json({ message: "Meal plan not found" });
+    if (existing.status === "published") {
+      return res.status(400).json({ message: "Published plans cannot be edited. Unpublish first." });
+    }
+
+    const {
+      title, description, priceInCents, duration, durationUnit,
+      category, difficulty, servings, dietaryLabels, tags,
+    } = req.body;
+
+    const [updated] = await db
+      .update(mealPlanBlueprints)
+      .set({
+        ...(title !== undefined && { title: title.trim() }),
+        ...(description !== undefined && { description: description || null }),
+        ...(priceInCents !== undefined && { priceInCents }),
+        ...(duration !== undefined && { duration }),
+        ...(durationUnit !== undefined && { durationUnit }),
+        ...(category !== undefined && { category }),
+        ...(difficulty !== undefined && { difficulty }),
+        ...(servings !== undefined && { servings }),
+        ...(dietaryLabels !== undefined && { dietaryLabels }),
+        ...(tags !== undefined && { tags }),
+      })
+      .where(eq(mealPlanBlueprints.id, planId))
+      .returning();
+
+    res.json({ blueprint: updated });
+  } catch (error) {
+    console.error("Error updating meal plan:", error);
+    res.status(500).json({ message: "Failed to update meal plan" });
+  }
+});
+
+// Delete meal plan blueprint (draft only, no purchases)
+router.delete("/meal-plans/:id", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const planId = req.params.id;
+
+    const [existing] = await db
+      .select()
+      .from(mealPlanBlueprints)
+      .where(and(eq(mealPlanBlueprints.id, planId), eq(mealPlanBlueprints.creatorId, userId)))
+      .limit(1);
+
+    if (!existing) return res.status(404).json({ message: "Meal plan not found" });
+    if (existing.status === "published") {
+      return res.status(400).json({ message: "Published plans cannot be deleted." });
+    }
+
+    const [hasPurchase] = await db
+      .select()
+      .from(mealPlanPurchases)
+      .where(eq(mealPlanPurchases.blueprintId, planId))
+      .limit(1);
+
+    if (hasPurchase) {
+      return res.status(400).json({ message: "Plans with purchases cannot be deleted." });
+    }
+
+    await db.delete(blueprintVersions).where(eq(blueprintVersions.blueprintId, planId));
+    await db.delete(mealPlanBlueprints).where(eq(mealPlanBlueprints.id, planId));
+
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error deleting meal plan:", error);
+    res.status(500).json({ message: "Failed to delete meal plan" });
+  }
+});
+
 // Get creator analytics
 router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
   try {
