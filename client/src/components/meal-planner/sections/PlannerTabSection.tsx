@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, ChefHat, Clock, Package, Plus, Save, ShoppingCart, Sparkles, Target, Zap } from 'lucide-react';
+import { BarChart3, ChefHat, Clock, Package, Plus, Save, ShoppingCart, Sparkles, Target, TrendingUp, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,10 @@ type PlannerTabSectionProps = {
   proteinCurrent: number;
   carbsCurrent: number;
   fatCurrent: number;
+  proteinGoal: number;
+  carbsGoal: number;
+  fatGoal: number;
+  today: string;
   viewMode: ViewMode;
   setViewMode: React.Dispatch<React.SetStateAction<ViewMode>>;
   generateWeekPlan: () => void;
@@ -58,6 +62,10 @@ const PlannerTabSection = ({
   proteinCurrent,
   carbsCurrent,
   fatCurrent,
+  proteinGoal,
+  carbsGoal,
+  fatGoal,
+  today,
   viewMode,
   setViewMode,
   generateWeekPlan,
@@ -99,6 +107,77 @@ const PlannerTabSection = ({
       ? 'Week fully planned'
       : `${plannedSlots}/${totalSlots} slots filled`;
 
+  // Compute weekly totals (all 7 days, planned + logged)
+  const weeklyTotals = weekDays.reduce(
+    (acc, day) => {
+      const dayDate = getDateForWeekday(day);
+      const isPast = dayDate < today;
+      const isToday = dayDate === today;
+      const isFuture = dayDate > today;
+      let dayCal = 0, dayProt = 0, dayCarbs = 0, dayFat = 0;
+      mealTypes.forEach((mt) => {
+        const t = getMealSlotTotals(weeklyMeals, day, mt);
+        dayCal += t.calories; dayProt += t.protein; dayCarbs += t.carbs; dayFat += t.fat;
+      });
+      return {
+        calories: acc.calories + dayCal,
+        protein: acc.protein + dayProt,
+        carbs: acc.carbs + dayCarbs,
+        fat: acc.fat + dayFat,
+        loggedCalories: acc.loggedCalories + (isPast || isToday ? dayCal : 0),
+        plannedCalories: acc.plannedCalories + (isFuture ? dayCal : 0),
+        daysWithMeals: acc.daysWithMeals + (dayCal > 0 ? 1 : 0),
+        futureDaysWithMeals: acc.futureDaysWithMeals + (isFuture && dayCal > 0 ? 1 : 0),
+      };
+    },
+    { calories: 0, protein: 0, carbs: 0, fat: 0, loggedCalories: 0, plannedCalories: 0, daysWithMeals: 0, futureDaysWithMeals: 0 }
+  );
+
+  const weeklyCalorieGoal = calorieGoal * 7;
+  const weeklyCaloriePct = weeklyCalorieGoal > 0 ? Math.min(100, Math.round((weeklyTotals.calories / weeklyCalorieGoal) * 100)) : 0;
+  const weeklyProteinPct = proteinGoal * 7 > 0 ? Math.min(100, Math.round((weeklyTotals.protein / (proteinGoal * 7)) * 100)) : 0;
+
+  // Slot type helpers
+  const getDayStatus = (day: string): 'past' | 'today' | 'future' => {
+    const d = getDateForWeekday(day);
+    if (d > today) return 'future';
+    if (d === today) return 'today';
+    return 'past';
+  };
+
+  const slotAction = (day: string, hasItems: boolean) => {
+    const status = getDayStatus(day);
+    if (status === 'future') return hasItems ? 'Add more' : 'Plan';
+    if (status === 'today') return hasItems ? 'Add more' : 'Log';
+    return hasItems ? 'Add more' : 'Log';
+  };
+
+  const emptySlotLabel = (day: string) => {
+    const status = getDayStatus(day);
+    return status === 'future' ? 'Nothing planned — click to plan' : 'Nothing logged yet — tap to add';
+  };
+
+  const dayHeaderClass = (day: string) => {
+    const status = getDayStatus(day);
+    if (status === 'future') return 'bg-blue-50';
+    if (status === 'today') return 'bg-orange-50';
+    return 'bg-gray-50';
+  };
+
+  const slotCellClass = (day: string) => {
+    const status = getDayStatus(day);
+    if (status === 'future') return 'bg-blue-50/30';
+    return '';
+  };
+
+  const addButtonClass = (day: string) => {
+    const status = getDayStatus(day);
+    if (status === 'future') return 'text-blue-500 hover:text-blue-700';
+    return 'text-gray-400 hover:text-orange-500';
+  };
+
+  const futureDayCount = weekDays.filter((d) => getDayStatus(d) === 'future').length;
+
   return (
     <div className="space-y-6">
       <Card className="bg-gradient-to-r from-orange-500 to-pink-500 text-white shadow-lg">
@@ -127,6 +206,54 @@ const PlannerTabSection = ({
           </div>
         </CardContent>
       </Card>
+
+      {/* Weekly projection card */}
+      {weeklyTotals.calories > 0 && (
+        <Card className="border-blue-200 bg-gradient-to-r from-blue-50 via-white to-indigo-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-blue-600" />
+              This Week's Projection
+            </CardTitle>
+            <CardDescription>
+              {weeklyTotals.loggedCalories > 0 && weeklyTotals.plannedCalories > 0
+                ? `${weeklyTotals.loggedCalories.toLocaleString()} kcal logged · ${weeklyTotals.plannedCalories.toLocaleString()} kcal planned ahead`
+                : weeklyTotals.plannedCalories > 0
+                  ? `${weeklyTotals.plannedCalories.toLocaleString()} kcal planned for ${weeklyTotals.futureDaysWithMeals} future day${weeklyTotals.futureDaysWithMeals !== 1 ? 's' : ''}`
+                  : `${weeklyTotals.loggedCalories.toLocaleString()} kcal logged so far`}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="text-gray-600">Weekly calories ({weeklyTotals.calories.toLocaleString()} / {weeklyCalorieGoal.toLocaleString()} kcal)</span>
+                <span className="font-semibold text-blue-700">{weeklyCaloriePct}%</span>
+              </div>
+              <Progress value={weeklyCaloriePct} className="h-1.5 bg-blue-100 [&>div]:bg-blue-500" />
+            </div>
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <div className="rounded-md border bg-white p-2 text-center">
+                <div className="font-semibold text-blue-700">{weeklyTotals.protein}g</div>
+                <div className="text-gray-500">/ {proteinGoal * 7}g protein</div>
+                <div className="text-[10px] text-gray-400">{weeklyProteinPct}% of goal</div>
+              </div>
+              <div className="rounded-md border bg-white p-2 text-center">
+                <div className="font-semibold text-orange-600">{weeklyTotals.carbs}g</div>
+                <div className="text-gray-500">/ {carbsGoal * 7}g carbs</div>
+              </div>
+              <div className="rounded-md border bg-white p-2 text-center">
+                <div className="font-semibold text-purple-600">{weeklyTotals.fat}g</div>
+                <div className="text-gray-500">/ {fatGoal * 7}g fat</div>
+              </div>
+            </div>
+            {futureDayCount > 0 && weeklyTotals.futureDaysWithMeals < futureDayCount && (
+              <p className="text-xs text-blue-700 bg-blue-100 rounded px-2 py-1">
+                {futureDayCount - weeklyTotals.futureDaysWithMeals} future day{futureDayCount - weeklyTotals.futureDaysWithMeals !== 1 ? 's' : ''} still need meals planned — blue slots below are waiting.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card className="border-orange-200 bg-gradient-to-r from-orange-50 via-white to-amber-50">
         <CardHeader className="pb-4">
@@ -226,9 +353,9 @@ const PlannerTabSection = ({
             <Card className="border-dashed border-orange-200 bg-orange-50/40">
               <CardContent className="p-6 text-center">
                 <Target className="w-8 h-8 text-orange-500 mx-auto mb-2" />
-                <h3 className="font-semibold text-gray-900">Start your week plan</h3>
+                <h3 className="font-semibold text-gray-900">Start planning your week</h3>
                 <p className="text-sm text-gray-600 mt-1 mb-4">
-                  Plan your first meals, auto-generate a week, or load a template to skip blank days.
+                  Plan meals ahead in the blue future slots, auto-generate a week, or load a template. Blue = planned ahead. Orange = today. Gray = already logged.
                 </p>
                 <div className="flex flex-wrap justify-center gap-2">
                   <Button size="sm" onClick={generateWeekPlan} disabled={isGeneratingWeek}>
@@ -248,15 +375,33 @@ const PlannerTabSection = ({
             </Card>
           )}
 
+          {/* Legend */}
+          <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 px-1">
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-100 border border-blue-300 inline-block" />Planned (future)</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-orange-100 border border-orange-300 inline-block" />Today</span>
+            <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-gray-100 border border-gray-200 inline-block" />Logged (past)</span>
+          </div>
+
           <div className="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden overflow-x-auto">
             <div className="grid grid-cols-8 border-b min-w-[800px]">
               <div className="p-4 bg-gray-50 border-r"><span className="text-sm font-medium text-gray-500">Meal</span></div>
-              {weekDays.map((day) => (
-                <div key={day} className="p-4 bg-gray-50 border-r last:border-r-0">
-                  <div className="text-sm font-medium text-gray-900">{day}</div>
-                  <div className={`text-xs ${getDateForWeekday(day) === formatLocalDate(new Date()) ? 'text-orange-600 font-semibold' : 'text-gray-500'}`}>{new Date(getDateForWeekday(day) + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
-                </div>
-              ))}
+              {weekDays.map((day) => {
+                const dayDate = getDateForWeekday(day);
+                const isToday = dayDate === today;
+                const isFuture = dayDate > today;
+                return (
+                  <div key={day} className={`p-4 border-r last:border-r-0 ${isFuture ? 'bg-blue-50' : isToday ? 'bg-orange-50' : 'bg-gray-50'}`}>
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-sm font-medium text-gray-900">{day}</div>
+                      {isFuture && <Badge variant="outline" className="text-[9px] py-0 px-1 border-blue-300 text-blue-600 leading-4">Plan</Badge>}
+                      {isToday && <Badge variant="outline" className="text-[9px] py-0 px-1 border-orange-300 text-orange-600 leading-4">Today</Badge>}
+                    </div>
+                    <div className={`text-xs ${isToday ? 'text-orange-600 font-semibold' : isFuture ? 'text-blue-500' : 'text-gray-500'}`}>
+                      {new Date(dayDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
             {mealTypes.map((mealType) => (
               <div key={mealType} className="grid grid-cols-8 border-b last:border-b-0 min-w-[800px]">
@@ -264,14 +409,19 @@ const PlannerTabSection = ({
                 {weekDays.map((day) => {
                   const items = getMealSlotItems(weeklyMeals, day, mealType);
                   const totals = getMealSlotTotals(weeklyMeals, day, mealType);
+                  const isFuture = getDateForWeekday(day) > today;
                   return (
-                    <div key={`${day}-${mealType}`} className="p-2 border-r last:border-r-0 min-h-[72px]">
+                    <div key={`${day}-${mealType}`} className={`p-2 border-r last:border-r-0 min-h-[72px] ${isFuture ? 'bg-blue-50/30' : ''}`}>
                       {items.length > 0 && (
                         <div className="space-y-1 mb-1">
                           {items.map((item: any, idx: number) => (
                             <div key={idx} className="flex items-start justify-between gap-1 group">
                               <div className="flex-1 min-w-0">
-                                <div className="text-xs font-medium text-gray-900 truncate flex items-center gap-1">{item.name} {item.source === 'recipe' && <ChefHat className="w-3 h-3 text-orange-500" />} <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span></div>
+                                <div className="text-xs font-medium text-gray-900 truncate flex items-center gap-1">
+                                  {item.name}
+                                  {item.source === 'recipe' && <ChefHat className="w-3 h-3 text-orange-500" />}
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span>
+                                </div>
                                 <div className="text-xs text-gray-400">{item.calories} cal · P:{item.protein}g</div>
                               </div>
                               <button className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs leading-none mt-0.5 shrink-0" onClick={(e) => { e.stopPropagation(); removeMealItem(day, mealType, idx); }} title="Remove">✕</button>
@@ -280,7 +430,13 @@ const PlannerTabSection = ({
                           {items.length > 1 && <div className="text-xs text-orange-600 font-medium border-t border-gray-100 pt-1">Total: {totals.calories} cal</div>}
                         </div>
                       )}
-                      <button className="flex items-center gap-1 text-xs text-gray-400 hover:text-orange-500 w-full mt-1" onClick={() => handleAddMeal(day, mealType)}><Plus className="w-3.5 h-3.5" /><span>{items.length > 0 ? 'Add more' : 'Add'}</span></button>
+                      <button
+                        className={`flex items-center gap-1 text-xs w-full mt-1 ${addButtonClass(day)}`}
+                        onClick={() => handleAddMeal(day, mealType)}
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>{slotAction(day, items.length > 0)}</span>
+                      </button>
                     </div>
                   );
                 })}
@@ -289,85 +445,130 @@ const PlannerTabSection = ({
           </div>
 
           <div className="md:hidden space-y-4">
-            {weekDays.map((day) => (
-              <Card key={day}>
-                <CardHeader className="pb-3">
-                  <CardTitle className="text-lg">{day}</CardTitle>
-                  <CardDescription className={getDateForWeekday(day) === formatLocalDate(new Date()) ? 'text-orange-600 font-semibold' : ''}>{new Date(getDateForWeekday(day) + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  {mealTypes.map((mealType) => (
-                    <div key={`${day}-${mealType}`} className="p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm font-medium text-gray-700 capitalize">{mealType}</span>
-                        <button className="flex items-center gap-1 text-xs text-orange-500 hover:text-orange-700" onClick={() => handleAddMeal(day, mealType)}><Plus className="w-3.5 h-3.5" />{getMealSlotItems(weeklyMeals, day, mealType).length > 0 ? 'Add more' : 'Add'}</button>
-                      </div>
-                      {getMealSlotItems(weeklyMeals, day, mealType).length > 0 ? (
-                        <div className="space-y-2">
-                          {getMealSlotItems(weeklyMeals, day, mealType).map((item: any, idx: number) => (
-                            <div key={idx} className="flex items-start justify-between gap-2 bg-white rounded p-2">
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
-                                <div className="flex gap-1 mt-1 flex-wrap"><Badge variant="secondary" className="text-xs">{item.calories} cal</Badge><Badge variant="secondary" className="text-xs">P: {item.protein}g</Badge></div>
-                              </div>
-                              <button className="text-red-400 hover:text-red-600 text-xs mt-0.5 shrink-0" onClick={() => removeMealItem(day, mealType, idx)}>✕</button>
-                            </div>
-                          ))}
-                          {getMealSlotItems(weeklyMeals, day, mealType).length > 1 && <div className="text-xs text-orange-600 font-semibold text-right">Total: {getMealSlotTotals(weeklyMeals, day, mealType).calories} cal · P: {getMealSlotTotals(weeklyMeals, day, mealType).protein}g</div>}
-                        </div>
-                      ) : <p className="text-xs text-gray-500">Tap Add to log meals</p>}
+            {weekDays.map((day) => {
+              const dayDate = getDateForWeekday(day);
+              const isToday = dayDate === today;
+              const isFuture = dayDate > today;
+              return (
+                <Card key={day} className={isFuture ? 'border-blue-200' : isToday ? 'border-orange-200' : ''}>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="text-lg">{day}</CardTitle>
+                      {isFuture && <Badge variant="outline" className="border-blue-300 text-blue-600">Plan ahead</Badge>}
+                      {isToday && <Badge variant="outline" className="border-orange-300 text-orange-600">Today</Badge>}
                     </div>
-                  ))}
-                </CardContent>
-              </Card>
-            ))}
+                    <CardDescription className={isToday ? 'text-orange-600 font-semibold' : isFuture ? 'text-blue-500' : ''}>
+                      {new Date(dayDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {mealTypes.map((mealType) => (
+                      <div key={`${day}-${mealType}`} className={`p-3 rounded-lg ${isFuture ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium text-gray-700 capitalize">{mealType}</span>
+                          <button
+                            className={`flex items-center gap-1 text-xs ${isFuture ? 'text-blue-500 hover:text-blue-700' : 'text-orange-500 hover:text-orange-700'}`}
+                            onClick={() => handleAddMeal(day, mealType)}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            {slotAction(day, getMealSlotItems(weeklyMeals, day, mealType).length > 0)}
+                          </button>
+                        </div>
+                        {getMealSlotItems(weeklyMeals, day, mealType).length > 0 ? (
+                          <div className="space-y-2">
+                            {getMealSlotItems(weeklyMeals, day, mealType).map((item: any, idx: number) => (
+                              <div key={idx} className="flex items-start justify-between gap-2 bg-white rounded p-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
+                                  <div className="flex gap-1 mt-1 flex-wrap"><Badge variant="secondary" className="text-xs">{item.calories} cal</Badge><Badge variant="secondary" className="text-xs">P: {item.protein}g</Badge></div>
+                                </div>
+                                <button className="text-red-400 hover:text-red-600 text-xs mt-0.5 shrink-0" onClick={() => removeMealItem(day, mealType, idx)}>✕</button>
+                              </div>
+                            ))}
+                            {getMealSlotItems(weeklyMeals, day, mealType).length > 1 && <div className="text-xs text-orange-600 font-semibold text-right">Total: {getMealSlotTotals(weeklyMeals, day, mealType).calories} cal · P: {getMealSlotTotals(weeklyMeals, day, mealType).protein}g</div>}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-500">
+                            {isFuture ? 'Tap Plan to schedule this meal' : 'Tap Log to record this meal'}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </>
       )}
 
       {viewMode === 'day' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-lg shadow-sm overflow-hidden">
-            {selectedDate === formatLocalDate(new Date()) && <div className="bg-orange-50 border-b border-orange-100 px-4 py-2 flex items-center gap-2"><span className="w-2 h-2 bg-orange-500 rounded-full inline-block"></span><span className="text-xs font-medium text-orange-700">Today</span></div>}
-            <div className="divide-y">
-              {mealTypes.map((mealType) => {
-                const dayName = dayNames[parseDateOnly(selectedDate).getDay()];
-                const items = getMealSlotItems(weeklyMeals, dayName, mealType);
-                const totals = getMealSlotTotals(weeklyMeals, dayName, mealType);
-                return (
-                  <div key={mealType} className="p-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2"><span className="text-sm font-semibold text-gray-800 capitalize">{mealType}</span>{items.length > 0 && <span className="text-xs text-gray-400">{totals.calories} cal total</span>}</div>
-                      <button className="flex items-center gap-1 text-xs text-orange-500 hover:text-orange-700 font-medium" onClick={() => handleAddMeal(dayName, mealType)}><Plus className="w-3.5 h-3.5" />{items.length > 0 ? 'Add more' : 'Add meal'}</button>
-                    </div>
-                    {items.length > 0 ? (
-                      <div className="space-y-2">
-                        {items.map((item: any, idx: number) => (
-                          <div key={idx} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-medium text-gray-900 flex items-center gap-1">{item.name} {item.source === 'recipe' && <ChefHat className="w-3.5 h-3.5 text-orange-500" />} <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span></div>
-                              <div className="flex gap-3 mt-0.5"><span className="text-xs text-gray-500">{item.calories} cal</span><span className="text-xs text-blue-500">P: {item.protein}g</span><span className="text-xs text-orange-500">C: {item.carbs}g</span><span className="text-xs text-purple-500">F: {item.fat}g</span></div>
-                            </div>
-                            <button className="text-red-400 hover:text-red-600 text-xs ml-2 shrink-0" onClick={() => removeMealItem(dayName, mealType, idx)}>✕</button>
+          {(() => {
+            const isFutureDay = selectedDate > today;
+            const isTodayDay = selectedDate === today;
+            return (
+              <div className="bg-white rounded-lg shadow-sm overflow-hidden">
+                {isTodayDay && <div className="bg-orange-50 border-b border-orange-100 px-4 py-2 flex items-center gap-2"><span className="w-2 h-2 bg-orange-500 rounded-full inline-block"></span><span className="text-xs font-medium text-orange-700">Today — log what you eat</span></div>}
+                {isFutureDay && <div className="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center gap-2"><span className="w-2 h-2 bg-blue-500 rounded-full inline-block"></span><span className="text-xs font-medium text-blue-700">Future day — plan your meals ahead. Items added here will be saved to your grocery list.</span></div>}
+                {!isTodayDay && !isFutureDay && <div className="bg-gray-50 border-b border-gray-100 px-4 py-2 flex items-center gap-2"><span className="w-2 h-2 bg-gray-400 rounded-full inline-block"></span><span className="text-xs font-medium text-gray-500">Past day</span></div>}
+                <div className="divide-y">
+                  {mealTypes.map((mealType) => {
+                    const dayName = dayNames[parseDateOnly(selectedDate).getDay()];
+                    const items = getMealSlotItems(weeklyMeals, dayName, mealType);
+                    const totals = getMealSlotTotals(weeklyMeals, dayName, mealType);
+                    return (
+                      <div key={mealType} className="p-4">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-gray-800 capitalize">{mealType}</span>
+                            {items.length > 0 && <span className="text-xs text-gray-400">{totals.calories} cal total</span>}
                           </div>
-                        ))}
-                        {items.length > 1 && <div className="flex gap-4 text-xs font-semibold text-gray-600 px-1 pt-1 border-t"><span>{totals.calories} cal</span><span className="text-blue-500">P: {totals.protein}g</span><span className="text-orange-500">C: {totals.carbs}g</span><span className="text-purple-500">F: {totals.fat}g</span></div>}
+                          <button
+                            className={`flex items-center gap-1 text-xs font-medium ${isFutureDay ? 'text-blue-500 hover:text-blue-700' : 'text-orange-500 hover:text-orange-700'}`}
+                            onClick={() => handleAddMeal(dayName, mealType)}
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            {items.length > 0 ? 'Add more' : isFutureDay ? 'Plan meal' : 'Log meal'}
+                          </button>
+                        </div>
+                        {items.length > 0 ? (
+                          <div className="space-y-2">
+                            {items.map((item: any, idx: number) => (
+                              <div key={idx} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-gray-900 flex items-center gap-1">{item.name} {item.source === 'recipe' && <ChefHat className="w-3.5 h-3.5 text-orange-500" />} <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span></div>
+                                  <div className="flex gap-3 mt-0.5"><span className="text-xs text-gray-500">{item.calories} cal</span><span className="text-xs text-blue-500">P: {item.protein}g</span><span className="text-xs text-orange-500">C: {item.carbs}g</span><span className="text-xs text-purple-500">F: {item.fat}g</span></div>
+                                </div>
+                                <button className="text-red-400 hover:text-red-600 text-xs ml-2 shrink-0" onClick={() => removeMealItem(dayName, mealType, idx)}>✕</button>
+                              </div>
+                            ))}
+                            {items.length > 1 && <div className="flex gap-4 text-xs font-semibold text-gray-600 px-1 pt-1 border-t"><span>{totals.calories} cal</span><span className="text-blue-500">P: {totals.protein}g</span><span className="text-orange-500">C: {totals.carbs}g</span><span className="text-purple-500">F: {totals.fat}g</span></div>}
+                          </div>
+                        ) : (
+                          <div
+                            className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${isFutureDay ? 'border-blue-200 hover:border-blue-400 hover:bg-blue-50' : 'border-gray-200 hover:border-orange-300 hover:bg-orange-50'}`}
+                            onClick={() => handleAddMeal(dayName, mealType)}
+                          >
+                            <p className="text-xs text-gray-400">{isFutureDay ? 'Nothing planned yet — click to plan' : 'Nothing logged yet — tap to add'}</p>
+                          </div>
+                        )}
                       </div>
-                    ) : <div className="border-2 border-dashed border-gray-200 rounded-lg p-4 text-center cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-colors" onClick={() => handleAddMeal(dayName, mealType)}><p className="text-xs text-gray-400">Nothing logged yet — tap to add</p></div>}
-                  </div>
-                );
-              })}
-            </div>
-            {(() => {
-              const dayName = dayNames[parseDateOnly(selectedDate).getDay()];
-              const dayTotal = mealTypes.reduce((acc, mt) => {
-                const t = getMealSlotTotals(weeklyMeals, dayName, mt);
-                return { calories: acc.calories + t.calories, protein: acc.protein + t.protein, carbs: acc.carbs + t.carbs, fat: acc.fat + t.fat };
-              }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
-              if (dayTotal.calories === 0) return null;
-              return <div className="bg-gray-50 border-t px-4 py-3 grid grid-cols-4 gap-2 text-center"><div><div className="text-lg font-bold text-gray-900">{dayTotal.calories}</div><div className="text-xs text-gray-500">Calories</div></div><div><div className="text-lg font-bold text-blue-600">{dayTotal.protein}g</div><div className="text-xs text-gray-500">Protein</div></div><div><div className="text-lg font-bold text-orange-500">{dayTotal.carbs}g</div><div className="text-xs text-gray-500">Carbs</div></div><div><div className="text-lg font-bold text-purple-600">{dayTotal.fat}g</div><div className="text-xs text-gray-500">Fat</div></div></div>;
-            })()}
-          </div>
+                    );
+                  })}
+                </div>
+                {(() => {
+                  const dayName = dayNames[parseDateOnly(selectedDate).getDay()];
+                  const dayTotal = mealTypes.reduce((acc, mt) => {
+                    const t = getMealSlotTotals(weeklyMeals, dayName, mt);
+                    return { calories: acc.calories + t.calories, protein: acc.protein + t.protein, carbs: acc.carbs + t.carbs, fat: acc.fat + t.fat };
+                  }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+                  if (dayTotal.calories === 0) return null;
+                  return <div className="bg-gray-50 border-t px-4 py-3 grid grid-cols-4 gap-2 text-center"><div><div className="text-lg font-bold text-gray-900">{dayTotal.calories}</div><div className="text-xs text-gray-500">Calories</div></div><div><div className="text-lg font-bold text-blue-600">{dayTotal.protein}g</div><div className="text-xs text-gray-500">Protein</div></div><div><div className="text-lg font-bold text-orange-500">{dayTotal.carbs}g</div><div className="text-xs text-gray-500">Carbs</div></div><div><div className="text-lg font-bold text-purple-600">{dayTotal.fat}g</div><div className="text-xs text-gray-500">Fat</div></div></div>;
+                })()}
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -378,7 +579,6 @@ const PlannerTabSection = ({
             const anchor = parseDateOnly(selectedDate);
             const year = anchor.getFullYear();
             const month = anchor.getMonth();
-            const today = formatLocalDate(new Date());
             const firstDay = new Date(year, month, 1);
             const startOffset = (firstDay.getDay() + 6) % 7;
             const daysInMonth = new Date(year, month + 1, 0).getDate();
@@ -389,14 +589,24 @@ const PlannerTabSection = ({
               const cellStr = formatLocalDate(cellDate);
               const inMonth = cellDate.getMonth() === month;
               const isToday = cellStr === today;
+              const isFuture = cellStr > today;
               const isSelected = cellStr === selectedDate;
               const dayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][cellDate.getDay()];
               const hasAnyMeal = inMonth && mealTypes.some((mt) => getMealSlotItems(weeklyMeals, dayName, mt).length > 0);
               const dayTotalCal = inMonth ? mealTypes.reduce((acc, mt) => acc + getMealSlotTotals(weeklyMeals, dayName, mt).calories, 0) : 0;
               cells.push(
-                <div key={cellStr} className={`min-h-[80px] p-1.5 border-r border-b last:border-r-0 cursor-pointer transition-colors ${!inMonth ? 'bg-gray-50' : isSelected ? 'bg-orange-50' : 'bg-white hover:bg-gray-50'}`} onClick={() => { if (inMonth) { setSelectedDate(cellStr); setViewMode('day'); } }}>
-                  <div className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-orange-500 text-white' : inMonth ? 'text-gray-900' : 'text-gray-300'}`}>{cellDate.getDate()}</div>
-                  {inMonth && hasAnyMeal && <div className="space-y-0.5"><div className="text-xs text-orange-600 font-medium">{dayTotalCal} cal</div><div className="flex gap-0.5 flex-wrap">{mealTypes.filter((mt) => getMealSlotItems(weeklyMeals, dayName, mt).length > 0).map((mt) => <span key={mt} className="text-xs bg-orange-100 text-orange-700 rounded px-1 leading-4">{mt[0].toUpperCase()}</span>)}</div></div>}
+                <div key={cellStr} className={`min-h-[80px] p-1.5 border-r border-b last:border-r-0 cursor-pointer transition-colors ${!inMonth ? 'bg-gray-50' : isSelected ? 'bg-orange-50' : isFuture ? 'bg-blue-50/40 hover:bg-blue-50' : 'bg-white hover:bg-gray-50'}`} onClick={() => { if (inMonth) { setSelectedDate(cellStr); setViewMode('day'); } }}>
+                  <div className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full mb-1 ${isToday ? 'bg-orange-500 text-white' : inMonth ? isFuture ? 'text-blue-700' : 'text-gray-900' : 'text-gray-300'}`}>{cellDate.getDate()}</div>
+                  {inMonth && hasAnyMeal && (
+                    <div className="space-y-0.5">
+                      <div className={`text-xs font-medium ${isFuture ? 'text-blue-600' : 'text-orange-600'}`}>{dayTotalCal} cal</div>
+                      <div className="flex gap-0.5 flex-wrap">
+                        {mealTypes.filter((mt) => getMealSlotItems(weeklyMeals, dayName, mt).length > 0).map((mt) => (
+                          <span key={mt} className={`text-xs rounded px-1 leading-4 ${isFuture ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>{mt[0].toUpperCase()}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   {inMonth && !hasAnyMeal && <div className="flex items-center justify-center h-8 opacity-0 hover:opacity-100 transition-opacity"><Plus className="w-3.5 h-3.5 text-gray-300" /></div>}
                 </div>
               );
@@ -405,7 +615,12 @@ const PlannerTabSection = ({
             for (let r = 0; r < totalCells / 7; r++) rows.push(<div key={r} className="grid grid-cols-7">{cells.slice(r * 7, r * 7 + 7)}</div>);
             return rows;
           })()}
-          <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-500 flex gap-4"><span><span className="inline-block w-4 h-4 bg-orange-500 rounded-full text-white text-center leading-4 mr-1">·</span> Today</span><span><span className="inline-block bg-orange-100 text-orange-700 rounded px-1 mr-1">B</span> Breakfast logged</span><span>Click any day to view/add meals</span></div>
+          <div className="px-4 py-2 border-t bg-gray-50 text-xs text-gray-500 flex gap-4 flex-wrap">
+            <span><span className="inline-block w-4 h-4 bg-orange-500 rounded-full text-white text-center leading-4 mr-1">·</span> Today</span>
+            <span><span className="inline-block bg-orange-100 text-orange-700 rounded px-1 mr-1">B</span> Logged</span>
+            <span><span className="inline-block bg-blue-100 text-blue-700 rounded px-1 mr-1">B</span> Planned ahead</span>
+            <span>Click any day to view/add meals</span>
+          </div>
         </div>
       )}
 
