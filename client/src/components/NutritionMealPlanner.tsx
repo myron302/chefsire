@@ -1293,7 +1293,17 @@ const NutritionMealPlanner = () => {
           }
         };
       });
-      toast({ description: "✅ Meal item added!" });
+
+      const savedDate = getDateForWeekday(selectedMealSlot.day);
+      const isFutureMeal = savedDate > formatLocalDate(new Date());
+      if (isFutureMeal) {
+        toast({
+          title: `📅 Planned for ${selectedMealSlot.day}`,
+          description: `"${mealData.name}" is scheduled. Head to the Grocery tab to add what you'll need.`,
+        });
+      } else {
+        toast({ description: "✅ Meal item added!" });
+      }
     } catch (error) {
       console.error('Error saving meal item:', error);
       toast({ variant: 'destructive', description: 'Failed to save meal item' });
@@ -2152,6 +2162,7 @@ const NutritionMealPlanner = () => {
 
   const calorieGoal = nutritionGoals?.dailyCalorieGoal || 2000;
   const macroGoals = nutritionGoals?.macroGoals || { protein: 150, carbs: 200, fat: 65 };
+  const today = formatLocalDate(new Date());
   const caloriesCurrent = dailyNutrition?.calories || 0;
   const proteinCurrent = dailyNutrition?.protein || 0;
   const carbsCurrent = dailyNutrition?.carbs || 0;
@@ -4094,6 +4105,10 @@ const NutritionMealPlanner = () => {
                 proteinCurrent={proteinCurrent}
                 carbsCurrent={carbsCurrent}
                 fatCurrent={fatCurrent}
+                proteinGoal={macroGoals.protein}
+                carbsGoal={macroGoals.carbs}
+                fatGoal={macroGoals.fat}
+                today={today}
                 viewMode={viewMode}
                 setViewMode={setViewMode}
                 generateWeekPlan={generateWeekPlan}
