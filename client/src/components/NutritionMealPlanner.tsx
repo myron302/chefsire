@@ -2802,6 +2802,37 @@ const NutritionMealPlanner = () => {
     };
   }, [activeFixItDayCompletion, activeFixItResolvedBaseline]);
 
+  const activeFixItTrendReasonText = useMemo<string | null>(() => {
+    if (!activeFixItTarget?.issueType || !activeFixItDayCompletion || activeFixItResolvedBaseline === null) return null;
+    const delta = activeFixItDayCompletion.resolvedIssues - activeFixItResolvedBaseline;
+
+    if (activeFixItTarget.issueType === 'missing-meals') {
+      if (delta > 0) return 'You filled empty meal slots.';
+      if (delta < 0) return 'New empty meal slots appeared.';
+      return 'No changes to meal coverage.';
+    }
+
+    if (activeFixItTarget.issueType === 'missing-details') {
+      if (delta > 0) return 'You completed missing nutrition details.';
+      if (delta < 0) return 'More meals are missing details.';
+      return 'No changes to nutrition details.';
+    }
+
+    if (activeFixItTarget.issueType === 'low-protein') {
+      if (delta > 0) return 'Protein is closer to your target.';
+      if (delta < 0) return 'Protein dropped further from target.';
+      return 'No change in protein levels.';
+    }
+
+    if (activeFixItTarget.issueType === 'calorie-balance') {
+      if (delta > 0) return 'Calories are more balanced.';
+      if (delta < 0) return 'Calories moved further from target range.';
+      return 'No change in calorie balance.';
+    }
+
+    return null;
+  }, [activeFixItDayCompletion, activeFixItResolvedBaseline, activeFixItTarget?.issueType]);
+
   const activeFixItUnresolvedHint = useMemo<string | null>(() => {
     if (!activeFixItTarget || !activeFixItTarget.targetDay || !activeFixItProgressMiniState) return null;
     if (activeFixItProgressMiniState.unresolvedCount <= 0) return null;
@@ -3810,6 +3841,9 @@ const NutritionMealPlanner = () => {
                             )}
                             {activeFixItCompletionDeltaText ? (
                               <p className="mt-1 text-xs text-gray-600">{activeFixItCompletionDeltaText}</p>
+                            ) : null}
+                            {activeFixItTrendReasonText ? (
+                              <p className="mt-1 text-xs text-gray-500">{activeFixItTrendReasonText}</p>
                             ) : null}
                           </div>
                         ) : null}
