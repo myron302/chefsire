@@ -3512,17 +3512,17 @@ const NutritionMealPlanner = () => {
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Nutrition & Meal Planning</h1>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-8">
+          <div className="min-w-0">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">Nutrition & Meal Planning</h1>
             <p className="text-gray-600">Plan smarter, eat better, reach your goals</p>
             <p className="text-sm text-orange-600 mt-1 font-medium">
               <Flame className="w-4 h-4 inline mr-1" />
               {streak.currentStreak > 0 ? `🔥 ${streak.currentStreak} day streak` : 'Start your streak today.'}
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            <Badge variant="secondary" className="bg-orange-100 text-orange-800 px-3 py-1">
+          <div className="flex items-center gap-2 shrink-0">
+            <Badge variant="secondary" className="bg-orange-100 text-orange-800 px-3 py-1 whitespace-nowrap">
               <Crown className="w-4 h-4 mr-1 inline" />
               Premium Active
             </Badge>

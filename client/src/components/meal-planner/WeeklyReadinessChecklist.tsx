@@ -97,7 +97,7 @@ const WeeklyReadinessChecklist = ({
               See what is still missing across Planner, Grocery, and Prep before the week starts.
             </CardDescription>
           </div>
-          <Badge variant={weekReadyNow ? 'default' : 'secondary'} className={weekReadyNow ? 'bg-green-600 hover:bg-green-600' : ''}>
+          <Badge variant={weekReadyNow ? 'default' : 'secondary'} className={`shrink-0 whitespace-nowrap ${weekReadyNow ? 'bg-green-600 hover:bg-green-600' : ''}`}>
             {weekReadyNow ? 'Week Ready' : 'In Progress'}
           </Badge>
         </div>
