@@ -4206,11 +4206,11 @@ const NutritionMealPlanner = () => {
                             onClick={() => setShareVisibility(option.value)}
                             className={`text-left border rounded-lg p-3 transition ${active ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300'}`}
                           >
-                            <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+                            <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
                               {option.icon}
                               {option.label}
-                            </div>
-                            <p className="text-xs text-gray-600 mt-1">{option.help}</p>
+                            </span>
+                            <span className="block text-xs text-gray-600 mt-1">{option.help}</span>
                           </button>
                         );
                       })}
@@ -4231,9 +4231,9 @@ const NutritionMealPlanner = () => {
                       <p className="text-sm font-medium text-gray-900">Weekly Share Preview</p>
                       <Badge variant="outline">{visibilitySummaryLabel}</Badge>
                     </div>
-                    <pre className="text-xs text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">
+                    <div className="text-xs text-gray-700 whitespace-pre-wrap break-words font-sans leading-relaxed">
                       {weeklyShareSummaryText}
-                    </pre>
+                    </div>
                   </div>
 
                   <div className="flex flex-wrap gap-2">
