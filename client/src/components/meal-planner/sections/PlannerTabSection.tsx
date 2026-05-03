@@ -315,9 +315,17 @@ const PlannerTabSection = ({
           <Button variant={viewMode === 'month' ? 'default' : 'outline'} size="sm" className="flex-1 md:flex-none" onClick={() => setViewMode('month')}>Month</Button>
         </div>
         <div className="flex items-center gap-2 flex-1 md:flex-none">
-          <Button variant="outline" size="sm" className="flex-1 md:flex-none" onClick={generateWeekPlan} disabled={isGeneratingWeek}><Zap className="w-4 h-4 mr-2" />{isGeneratingWeek ? 'Generating...' : 'Auto-Plan Week'}</Button>
-          <Button variant="outline" size="sm" className="flex-1 md:flex-none" onClick={saveTemplate}><Save className="w-4 h-4 mr-2" />Save Template</Button>
-          <Button size="sm" className="flex-1 md:flex-none" onClick={() => handleAddMeal()}><Plus className="w-4 h-4 mr-2" />Add Meal</Button>
+          <Button variant="outline" size="sm" className="flex-1 md:flex-none" onClick={generateWeekPlan} disabled={isGeneratingWeek} title="Auto-Plan Week">
+            <Zap className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">{isGeneratingWeek ? 'Generating...' : 'Auto-Plan Week'}</span>
+          </Button>
+          <Button variant="outline" size="sm" className="flex-1 md:flex-none" onClick={saveTemplate} title="Save Template">
+            <Save className="w-4 h-4 sm:mr-2" />
+            <span className="hidden sm:inline">Save Template</span>
+          </Button>
+          <Button size="sm" className="flex-1 md:flex-none" onClick={() => handleAddMeal()}>
+            <Plus className="w-4 h-4 mr-1.5" />Add Meal
+          </Button>
         </div>
       </div>
 
