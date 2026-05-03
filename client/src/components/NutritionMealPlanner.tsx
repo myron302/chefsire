@@ -2104,22 +2104,22 @@ const NutritionMealPlanner = () => {
 
   const PremiumUpgrade = () => (
     <div className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white rounded-xl shadow-2xl overflow-hidden">
-      <div className="p-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
+      <div className="p-5 sm:p-8">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
+          <div className="min-w-0">
             <div className="flex items-center mb-2">
-              <Crown className="w-8 h-8 mr-3" />
-              <h2 className="text-3xl font-bold">Nutrition Premium</h2>
+              <Crown className="w-6 h-6 sm:w-8 sm:h-8 mr-2 sm:mr-3 shrink-0" />
+              <h2 className="text-xl sm:text-3xl font-bold leading-tight">Nutrition Premium</h2>
             </div>
-            <p className="text-orange-100 text-lg">Unlock advanced meal planning & nutrition tracking</p>
+            <p className="text-orange-100 text-sm sm:text-lg">Unlock advanced meal planning & nutrition tracking</p>
           </div>
-          <div className="text-right">
-            <div className="text-4xl font-bold">$9.99</div>
+          <div className="sm:text-right shrink-0">
+            <div className="text-3xl sm:text-4xl font-bold">$9.99</div>
             <div className="text-sm text-orange-100">per month</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-6">
           <FeatureItem icon={<CalendarDays />} text="Weekly & Monthly Meal Planning" />
           <FeatureItem icon={<ShoppingCart />} text="Auto-Generate Grocery Lists" />
           <FeatureItem icon={<BarChart3 />} text="Advanced Macro Tracking & Charts" />
@@ -2132,10 +2132,10 @@ const NutritionMealPlanner = () => {
           <FeatureItem icon={<Target />} text="Personalized Nutrition Goals" />
         </div>
 
-        <div className="flex flex-col md:flex-row gap-4">
+        <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <Button
             size="lg"
-            className="flex-1 bg-white text-orange-600 hover:bg-orange-50 font-semibold text-lg h-14"
+            className="flex-1 bg-white text-orange-600 hover:bg-orange-50 font-semibold text-base sm:text-lg h-12 sm:h-14"
             onClick={startNutritionTrial}
           >
             Start 30-Day Free Trial
@@ -2143,7 +2143,7 @@ const NutritionMealPlanner = () => {
           <Button
             size="lg"
             variant="outline"
-            className="flex-1 border-2 border-white bg-white/20 text-white hover:bg-white hover:text-orange-600 font-semibold text-lg h-14"
+            className="flex-1 border-2 border-white bg-white/20 text-white hover:bg-white hover:text-orange-600 font-semibold text-base sm:text-lg h-12 sm:h-14"
           >
             Learn More
           </Button>
@@ -2154,9 +2154,9 @@ const NutritionMealPlanner = () => {
   );
 
   const FeatureItem = ({ icon, text }) => (
-    <div className="flex items-center space-x-2 text-white">
-      <div className="w-5 h-5">{icon}</div>
-      <span className="text-sm font-medium">{text}</span>
+    <div className="flex items-center gap-2 text-white min-w-0">
+      <div className="w-5 h-5 shrink-0">{icon}</div>
+      <span className="text-sm font-medium leading-snug">{text}</span>
     </div>
   );
 
