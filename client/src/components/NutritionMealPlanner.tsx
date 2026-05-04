@@ -4204,7 +4204,7 @@ const NutritionMealPlanner = () => {
                             key={option.value}
                             type="button"
                             onClick={() => setShareVisibility(option.value)}
-                            className={`text-left border rounded-lg p-3 transition ${active ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300'}`}
+                            className={`block w-full text-left border rounded-lg p-3 transition ${active ? 'border-orange-500 bg-orange-50' : 'border-gray-200 hover:border-orange-300'}`}
                           >
                             <span className="flex items-center gap-2 text-sm font-medium text-gray-900">
                               {option.icon}
