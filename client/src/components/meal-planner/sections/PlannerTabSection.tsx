@@ -100,6 +100,7 @@ const PlannerTabSection = ({
   switchToPrepTab,
   switchToAnalyticsTab,
 }: PlannerTabSectionProps) => {
+  const [showQuickGroceryList, setShowQuickGroceryList] = React.useState(false);
   const planningProgress = totalSlots > 0 ? Math.round((plannedSlots / totalSlots) * 100) : 0;
   const completionLabel = plannedSlots === 0
     ? 'No meals planned yet'
@@ -177,6 +178,43 @@ const PlannerTabSection = ({
   };
 
   const futureDayCount = weekDays.filter((d) => getDayStatus(d) === 'future').length;
+
+  const extractIngredientNames = (ingredients: any): string[] => {
+    if (!ingredients) return [];
+    if (Array.isArray(ingredients)) {
+      return ingredients
+        .flatMap((ingredient) => {
+          if (!ingredient) return [];
+          if (typeof ingredient === 'string') return [ingredient.trim()];
+          if (typeof ingredient?.name === 'string') return [ingredient.name.trim()];
+          if (typeof ingredient?.ingredient === 'string') return [ingredient.ingredient.trim()];
+          if (typeof ingredient?.item === 'string') return [ingredient.item.trim()];
+          return [];
+        })
+        .filter(Boolean);
+    }
+    if (typeof ingredients === 'string') {
+      return ingredients
+        .split(/,|\n/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+    }
+    return [];
+  };
+
+  const allPlannedMeals = weekDays.flatMap((day) =>
+    mealTypes.flatMap((mealType) => getMealSlotItems(weeklyMeals, day, mealType).filter(Boolean))
+  );
+  const mealsWithIngredients = allPlannedMeals.filter((meal) => extractIngredientNames(meal?.ingredients).length > 0);
+  const missingIngredientMealsCount = allPlannedMeals.length - mealsWithIngredients.length;
+  const hasAnyIngredientData = mealsWithIngredients.length > 0;
+
+  const quickGroceryListItems = Array.from(new Set(
+    allPlannedMeals
+      .flatMap((meal) => extractIngredientNames(meal?.ingredients))
+      .map((name) => name.trim())
+      .filter(Boolean)
+  ));
 
   return (
     <div className="space-y-6">
@@ -637,6 +675,46 @@ const PlannerTabSection = ({
         <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={handleUsePantry}><CardContent className="p-6 text-center"><Package className="w-8 h-8 mx-auto mb-3 text-green-500" /><h3 className="font-medium mb-2">Use Pantry Items</h3><p className="text-sm text-gray-600">Plan meals with what you have</p></CardContent></Card>
         <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={handleLoadTemplate}><CardContent className="p-6 text-center"><Save className="w-8 h-8 mx-auto mb-3 text-blue-500" /><h3 className="font-medium mb-2">Load Template</h3><p className="text-sm text-gray-600">Use a saved meal plan template</p></CardContent></Card>
       </div>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2"><ShoppingCart className="w-4 h-4 text-orange-500" />Grocery Readiness</CardTitle>
+          <CardDescription>
+            {allPlannedMeals.length === 0
+              ? 'Plan meals to build a quick grocery list.'
+              : !hasAnyIngredientData
+                ? 'Add ingredients to unlock grocery list'
+                : missingIngredientMealsCount > 0
+                  ? `${missingIngredientMealsCount} meals missing ingredients`
+                  : 'Ready for grocery run 🛒'}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowQuickGroceryList((prev) => !prev)}
+            disabled={!hasAnyIngredientData}
+          >
+            View Grocery List
+          </Button>
+
+          {showQuickGroceryList && hasAnyIngredientData && (
+            <div className="border rounded-md p-3 bg-gray-50">
+              <p className="text-xs text-gray-500 mb-2">Deduplicated ingredients from this week&apos;s planned meals.</p>
+              {quickGroceryListItems.length > 0 ? (
+                <ul className="space-y-1 list-disc list-inside text-sm text-gray-700">
+                  {quickGroceryListItems.map((ingredient) => (
+                    <li key={ingredient}>{ingredient}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-500">No ingredients found yet.</p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
