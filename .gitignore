@@ -15,3 +15,12 @@ server/.env
 /uploads
 /tmp
 server/generated/drink-index.json
+
+# build/test artifacts
+*.tsbuildinfo
+coverage/
+.nyc_output/
+.cache/
+.vite/
+.eslintcache
+*.log
