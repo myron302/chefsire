@@ -1,9 +1,26 @@
 // client/src/main.tsx
 import React from "react";
 import ReactDOM from "react-dom/client";
+import * as Sentry from "@sentry/react";
 import App from "./App";
 import "./index.css";
 import { clearChunkReloadGuard, isChunkLoadError, reloadForChunkError } from "@/lib/chunkLoadError";
+
+const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN as string | undefined;
+
+if (SENTRY_DSN) {
+  Sentry.init({
+    dsn: SENTRY_DSN,
+    environment: import.meta.env.MODE,
+    integrations: [Sentry.browserTracingIntegration()],
+    tracesSampleRate: 0.2,
+    // Don't send chunk-load errors — we reload for those automatically
+    beforeSend(event, hint) {
+      if (isChunkLoadError(hint?.originalException)) return null;
+      return event;
+    },
+  });
+}
 
 /** A minimal, production-safe error boundary so the app never shows a dead white page */
 class GlobalErrorBoundary extends React.Component<
@@ -18,12 +35,14 @@ class GlobalErrorBoundary extends React.Component<
     return { hasError: true, message: err?.message || "App crashed" };
   }
   componentDidCatch(error: any, info: any) {
-    // You can POST this to your server for logging if you want
     console.error("GlobalErrorBoundary caught:", error, info);
 
     if (isChunkLoadError(error)) {
       reloadForChunkError();
+      return;
     }
+
+    Sentry.captureException(error, { extra: { componentStack: info?.componentStack } });
   }
   render() {
     if (this.state.hasError) {
