@@ -279,12 +279,6 @@ export class RecipeService {
 
     const identity = await this.resolveExternalRecipeIdentity(db, externalRecipeId, { createIfMissing: false });
     if (identity?.recipe) {
-      console.log(
-        "Recipe already exists in DB:",
-        identity.recipe.id,
-        "matches:",
-        identity.linkedRecipeIds.length
-      );
       return identity.recipe;
     }
 
@@ -377,7 +371,6 @@ export class RecipeService {
     mealId: string
   ): Promise<Recipe | null> {
     try {
-      console.log("Fetching recipe from MealDB:", mealId);
       const url = `https://www.themealdb.com/api/json/v1/1/lookup.php?i=${mealId}`;
       const response = await fetch(url);
 
@@ -449,9 +442,7 @@ export class RecipeService {
         fiber: null,
       };
 
-      console.log("Saving MealDB recipe to database:", recipeData.title);
       const savedRecipe = await this.createRecipe(db, recipeData);
-      console.log("Recipe saved with ID:", savedRecipe.id);
 
       return savedRecipe;
     } catch (error) {

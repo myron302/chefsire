@@ -130,7 +130,6 @@ router.post("/auth/signup", signupLimiter, avatarUpload.single('avatar'), async 
     const result = await AuthService.createAndSendVerification(newUser.id, email);
 
     if (result.success) {
-      console.log('✅ Verification email sent to:', email);
       res.status(201).json({
         message: "Account created! Please check your email to verify your account.",
         userId: newUser.id,
@@ -155,43 +154,29 @@ router.post("/auth/signup", signupLimiter, avatarUpload.single('avatar'), async 
  */
 router.post("/auth/login", loginLimiter, async (req, res) => {
   try {
-    console.log("🔐 Login attempt started");
     const { email, password } = req.body;
 
     if (!email || !password) {
-      console.log("❌ Login failed: Missing email or password");
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    console.log("🔍 Looking up user:", email);
     const user = await storage.findByEmail(email);
     if (!user) {
-      console.log("❌ Login failed: User not found");
       return res.status(401).json({ error: "Invalid email or password" });
     }
-
-    console.log("✓ User found:", user.id);
 
     // Check if email verified
     if (!user.emailVerifiedAt) {
-      console.log("❌ Login failed: Email not verified");
       return res.status(403).json({ error: "Please verify your email to log in." });
     }
 
-    console.log("✓ Email verified");
-
     // Verify password
-    console.log("🔑 Verifying password...");
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
-      console.log("❌ Login failed: Invalid password");
       return res.status(401).json({ error: "Invalid email or password" });
     }
 
-    console.log("✓ Password valid");
-
     // Create JWT token
-    console.log("🎟️ Creating JWT token...");
     const token = jwt.sign(
       {
         id: user.id,
@@ -202,10 +187,7 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
       { expiresIn: "7d" } // Token expires in 7 days
     );
 
-    console.log("✓ JWT token created");
-
     // Set token as HTTP-only cookie
-    console.log("🍪 Setting auth cookie...");
     res.cookie("auth_token", token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -213,8 +195,6 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
       path: "/",
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in milliseconds
     });
-
-    console.log("✅ Login successful for user:", user.id);
 
     res.json({
       success: true,
@@ -256,7 +236,6 @@ router.get("/auth/verify-email", verifyEmailLimiter, async (req, res) => {
       return res.status(400).send(result.error);
     }
 
-    console.log('✅ Email verified for user:', result.userId);
     res.redirect("/verify/success");
   } catch (error) {
     console.error("Error verifying email:", error);
@@ -308,7 +287,6 @@ router.post("/auth/resend-verification", emailSendLimiter, async (req, res) => {
     const result = await AuthService.createAndSendVerification(user.id, email);
 
     if (result.success) {
-      console.log('✅ Verification email resent to:', email);
       res.json({ message: "Verification email sent" });
     } else {
       console.error('⚠️ Failed to resend email:', result.error);
@@ -369,8 +347,6 @@ router.post("/auth/change-password", passwordChangeLimiter, async (req, res) => 
 
     // Update password in database
     await storage.updateUser(userId, { password: hashedPassword });
-
-    console.log("✅ Password changed successfully for user:", userId);
 
     res.json({ message: "Password changed successfully" });
   } catch (error) {
@@ -477,8 +453,6 @@ router.get("/auth/google/callback",
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
-      console.log("✅ Google OAuth login successful for user:", user.id);
-
       // Redirect to home page
       res.redirect("/?google-login=success");
     } catch (error) {
@@ -530,8 +504,6 @@ router.get("/auth/facebook/callback",
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
-      console.log("✅ Facebook OAuth login successful for user:", user.id);
-
       // Redirect to home page
       res.redirect("/?facebook-login=success");
     } catch (error) {
@@ -582,8 +554,6 @@ router.get("/auth/tiktok/callback",
         path: "/",
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
-
-      console.log("✅ TikTok OAuth login successful for user:", user.id);
 
       // Redirect to home page
       res.redirect("/?tiktok-login=success");

@@ -11,7 +11,6 @@ import { sendPantryExpiringNotification, sendPantryLowStockNotification } from "
  */
 export async function checkExpiringPantryItems() {
   try {
-    console.log("🔔 Running pantry expiring items check...");
 
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -35,7 +34,6 @@ export async function checkExpiringPantryItems() {
     `);
 
     const items = (expiringItems as any)?.rows || [];
-    console.log(`📦 Found ${items.length} items expiring soon`);
 
     // Track which users we've already notified today (to avoid spam)
     const notifiedToday = new Set<string>();
@@ -63,15 +61,12 @@ export async function checkExpiringPantryItems() {
       `);
 
       if ((existingNotification as any)?.rows?.length > 0) {
-        console.log(`⏭️  Skipping ${item.name} - already notified today`);
         continue;
       }
 
       // Send notification
       await sendPantryExpiringNotification(userId, item.name, daysUntil);
       notifiedToday.add(notificationKey);
-
-      console.log(`✅ Notified user ${userId}: ${item.name} expires in ${daysUntil} day(s)`);
 
       // If it's a household item, notify all household members
       if (item.household_id) {
@@ -91,13 +86,11 @@ export async function checkExpiringPantryItems() {
               daysUntil
             );
             notifiedToday.add(memberKey);
-            console.log(`✅ Notified household member ${member.user_id}`);
           }
         }
       }
     }
 
-    console.log(`🔔 Pantry expiring check complete. Sent ${notifiedToday.size} notifications`);
     return { success: true, notificationsSent: notifiedToday.size };
   } catch (error) {
     console.error("❌ Error checking expiring pantry items:", error);
@@ -111,7 +104,6 @@ export async function checkExpiringPantryItems() {
  */
 export async function checkLowStockItems() {
   try {
-    console.log("🔔 Running pantry low stock check...");
 
     // Get items with low quantity (less than 2 units)
     const lowStockItems = await db.execute(sql`
@@ -129,7 +121,6 @@ export async function checkLowStockItems() {
     `);
 
     const items = (lowStockItems as any)?.rows || [];
-    console.log(`📦 Found ${items.length} low stock items`);
 
     const notifiedToday = new Set<string>();
 
@@ -160,8 +151,6 @@ export async function checkLowStockItems() {
       );
       notifiedToday.add(notificationKey);
 
-      console.log(`✅ Notified user ${userId}: ${item.name} is low (${item.quantity})`);
-
       // Notify household members
       if (item.household_id) {
         const householdMembers = await db.execute(sql`
@@ -185,7 +174,6 @@ export async function checkLowStockItems() {
       }
     }
 
-    console.log(`🔔 Low stock check complete. Sent ${notifiedToday.size} notifications`);
     return { success: true, notificationsSent: notifiedToday.size };
   } catch (error) {
     console.error("❌ Error checking low stock items:", error);

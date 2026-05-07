@@ -22,11 +22,6 @@ function generateUsername(displayName: string, id: string): string {
 }
 
 export function setupTikTokOAuth() {
-  console.log("🔧 Setting up TikTok OAuth...");
-  console.log("📋 TIKTOK_CLIENT_KEY:", TIKTOK_CLIENT_KEY ? `${TIKTOK_CLIENT_KEY.substring(0, 20)}...` : "MISSING");
-  console.log("📋 TIKTOK_CLIENT_SECRET:", TIKTOK_CLIENT_SECRET ? "SET" : "MISSING");
-  console.log("📋 TIKTOK_CALLBACK_URL:", TIKTOK_CALLBACK_URL);
-
   if (!TIKTOK_CLIENT_KEY || !TIKTOK_CLIENT_SECRET) {
     console.warn("⚠️  TikTok OAuth not configured. Set TIKTOK_CLIENT_KEY and TIKTOK_CLIENT_SECRET in .env");
     console.warn("⚠️  TikTok login will not be available.");
@@ -45,7 +40,6 @@ export function setupTikTokOAuth() {
         async (accessToken: string, refreshToken: string, profile: any, done: any) => {
           try {
             logToFile("🔍 TikTok OAuth callback started", { profileId: profile.id });
-            console.log("🔍 TikTok OAuth callback started for profile:", profile.id);
 
             // Extract user info from TikTok profile
             const tiktokId = profile.id;
@@ -58,18 +52,13 @@ export function setupTikTokOAuth() {
             const isPlaceholderEmail = !profile.emails?.[0]?.value;
 
             logToFile("📧 Email extracted", { email, isPlaceholder: isPlaceholderEmail });
-            console.log("📧 Email:", email, isPlaceholderEmail ? "(placeholder)" : "(real)");
 
-            console.log("🔍 Checking for existing user with TikTok ID:", tiktokId);
             // Check if user exists with this TikTok ID
             const existingUser = await db.query.users.findFirst({
               where: (users, { eq }) => eq(users.tiktokId, tiktokId),
             });
 
-            console.log("✅ Existing user query completed:", existingUser ? "found" : "not found");
-
             if (existingUser) {
-              console.log("✅ Existing user found, logging in");
               // Update avatar if they have a new one
               if (avatar && avatar !== existingUser.avatar) {
                 await db
@@ -82,11 +71,9 @@ export function setupTikTokOAuth() {
 
             // If email is real, check if email is already registered
             if (!isPlaceholderEmail) {
-              console.log("🔍 Checking for existing email:", email);
               const emailUser = await storage.findByEmail(email);
 
               if (emailUser) {
-                console.log("🔗 Email exists, linking TikTok account");
                 // Email exists but no TikTok ID - link accounts
                 const updated = await db
                   .update(users)
@@ -100,12 +87,10 @@ export function setupTikTokOAuth() {
                   .where(eq(users.id, emailUser.id))
                   .returning();
 
-                console.log("✅ Account linked successfully");
                 return done(null, updated[0]);
               }
             }
 
-            console.log("🆕 Creating new user");
             // Create new user
             const username = generateUsername(displayName, tiktokId);
 
@@ -125,7 +110,6 @@ export function setupTikTokOAuth() {
               showFullName: false,
             });
 
-            console.log("✅ New TikTok user created:", newUser.id);
             return done(null, newUser);
           } catch (error) {
             const errorDetails = {
@@ -150,7 +134,6 @@ export function setupTikTokOAuth() {
       )
     );
 
-    console.log("✅ TikTok OAuth configured successfully");
     return true;
   } catch (error) {
     console.error("❌ Failed to setup TikTok OAuth:", error);

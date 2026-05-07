@@ -22,11 +22,6 @@ function generateUsername(email: string, name: string): string {
 }
 
 export function setupFacebookOAuth() {
-  console.log("🔧 Setting up Facebook OAuth...");
-  console.log("📋 FACEBOOK_CLIENT_ID:", FACEBOOK_CLIENT_ID ? `${FACEBOOK_CLIENT_ID.substring(0, 20)}...` : "MISSING");
-  console.log("📋 FACEBOOK_CLIENT_SECRET:", FACEBOOK_CLIENT_SECRET ? "SET" : "MISSING");
-  console.log("📋 FACEBOOK_CALLBACK_URL:", FACEBOOK_CALLBACK_URL);
-
   if (!FACEBOOK_CLIENT_ID || !FACEBOOK_CLIENT_SECRET) {
     console.warn("⚠️  Facebook OAuth not configured. Set FACEBOOK_CLIENT_ID and FACEBOOK_CLIENT_SECRET in .env");
     console.warn("⚠️  Facebook login will not be available.");
@@ -45,7 +40,6 @@ export function setupFacebookOAuth() {
         async (accessToken, refreshToken, profile, done) => {
           try {
             logToFile("🔍 Facebook OAuth callback started", { profileId: profile.id });
-            console.log("🔍 Facebook OAuth callback started for profile:", profile.id);
 
             // Extract user info from Facebook profile
             const email = profile.emails?.[0]?.value;
@@ -56,32 +50,25 @@ export function setupFacebookOAuth() {
             const displayName = profile.displayName || `${firstName} ${lastName}`.trim();
 
             logToFile("📧 Email extracted", { email });
-            console.log("📧 Email extracted:", email);
 
             if (!email) {
               console.error("❌ No email in Facebook profile");
               return done(new Error("No email found in Facebook profile. Please grant email permission."), undefined);
             }
 
-            console.log("🔍 Checking for existing user with Facebook ID:", facebookId);
             // Check if user exists with this Facebook ID
             const existingUser = await db.query.users.findFirst({
               where: (users, { eq }) => eq(users.facebookId, facebookId),
             });
 
-            console.log("✅ Existing user query completed:", existingUser ? "found" : "not found");
-
             if (existingUser) {
-              console.log("✅ Existing user found, logging in");
               return done(null, existingUser);
             }
 
-            console.log("🔍 Checking for existing email:", email);
             // Check if email is already registered
             const emailUser = await storage.findByEmail(email);
 
             if (emailUser) {
-              console.log("🔗 Email exists, linking Facebook account");
               // Email exists but no Facebook ID - link accounts
               const updated = await db
                 .update(users)
@@ -95,11 +82,9 @@ export function setupFacebookOAuth() {
                 .where(eq(users.id, emailUser.id))
                 .returning();
 
-              console.log("✅ Account linked successfully");
               return done(null, updated[0]);
             }
 
-            console.log("🆕 Creating new user");
             // Create new user
             const username = generateUsername(email, displayName);
 
@@ -118,7 +103,6 @@ export function setupFacebookOAuth() {
               showFullName: false,
             });
 
-            console.log("✅ New Facebook user created:", newUser.id);
             return done(null, newUser);
           } catch (error) {
             const errorDetails = {
@@ -143,7 +127,6 @@ export function setupFacebookOAuth() {
       )
     );
 
-    console.log("✅ Facebook OAuth configured successfully");
     return true;
   } catch (error) {
     console.error("❌ Failed to setup Facebook OAuth:", error);

@@ -472,25 +472,18 @@ export class DrizzleStorage implements IStorage {
     const db = getDb();
 
     try {
-      console.log("deletePost: Starting delete for post ID:", id);
-
       // First, get the post to know the userId
       const [post] = await db.select().from(posts).where(eq(posts.id, id)).limit(1);
       if (!post) {
-        console.log("deletePost: Post not found");
         return false;
       }
-
-      console.log("deletePost: Found post, deleting related records...");
 
       // Delete all related records first (to avoid foreign key constraint violations)
       // Delete comments
       const deletedComments = await db.delete(comments).where(eq(comments.postId, id));
-      console.log("deletePost: Deleted comments");
 
       // Delete likes
       const deletedLikes = await db.delete(likes).where(eq(likes.postId, id));
-      console.log("deletePost: Deleted likes");
 
       // Delete any recipe saves associated with this post's recipe.  Posts
       // themselves do not have a standalone saves table, but recipes can be
@@ -500,30 +493,24 @@ export class DrizzleStorage implements IStorage {
       const [postRecipe] = await db.select().from(recipes).where(eq(recipes.postId, id)).limit(1);
       if (postRecipe) {
         await db.delete(recipeSaves).where(eq(recipeSaves.recipeId, postRecipe.id));
-        console.log("deletePost: Deleted recipe saves");
       }
 
       // Delete recipe if this is a recipe post
       const deletedRecipes = await db.delete(recipes).where(eq(recipes.postId, id));
-      console.log("deletePost: Deleted recipe (if any)");
 
       // Now delete the post itself
-      console.log("deletePost: Deleting post...");
       const result = await db.delete(posts).where(eq(posts.id, id)).returning();
 
       if (result[0]) {
-        console.log("deletePost: Post deleted, updating user post count...");
         // Decrement user's post count
         await db
           .update(users)
           .set({ postsCount: sql`${users.postsCount} - 1` })
           .where(eq(users.id, result[0].userId));
 
-        console.log("deletePost: ✅ Delete successful");
         return true;
       }
 
-      console.log("deletePost: ❌ Delete failed - no result");
       return false;
     } catch (err: any) {
       console.error("deletePost: ❌ Error:", err);

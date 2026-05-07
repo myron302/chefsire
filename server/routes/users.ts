@@ -495,8 +495,6 @@ r.delete("/:id", requireAuth, async (req, res) => {
       sameSite: "lax",
     });
 
-    console.log("✅ Account deleted successfully for user:", userId);
-
     res.json({
       message: "Account deleted successfully",
       deleted: true
