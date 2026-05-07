@@ -5,10 +5,14 @@ import { Card } from "@/components/ui/card";
 import { useUser } from "@/contexts/UserContext";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
+import StoreReadinessPanel from "@/pages/store/components/StoreReadinessPanel";
+import type { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
 
 // ── Draggable building-block components ────────────────────────────────────────
 const Container = ({ children }: { children?: React.ReactNode }) => (
-  <div className="p-4 border border-gray-200 rounded min-h-[60px]">{children}</div>
+  <div className="p-4 border border-gray-200 rounded min-h-[60px]">
+    {children}
+  </div>
 );
 
 const TextBlock = ({ text }: { text: string }) => (
@@ -21,7 +25,11 @@ const Banner = () => (
   </div>
 );
 
-const ProductCardBlock = ({ product }: { product: { name: string; price: number } }) => (
+const ProductCardBlock = ({
+  product,
+}: {
+  product: { name: string; price: number };
+}) => (
   <Card className="w-64">
     <div className="p-4 font-semibold">{product.name}</div>
     <div className="px-4 pb-4 text-gray-700">${product.price}</div>
@@ -36,7 +44,9 @@ const EditOverlay = ({ render }: { render: React.ReactElement }) => (
   <div className="relative group">
     {render}
     <div className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity">
-      <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded shadow">drag</span>
+      <span className="bg-orange-500 text-white text-xs px-2 py-0.5 rounded shadow">
+        drag
+      </span>
     </div>
   </div>
 );
@@ -64,10 +74,29 @@ const SaveButton = ({
 // ── Main StoreBuilder component ────────────────────────────────────────────────
 interface StoreBuilderProps {
   storeId: string;
+  store?: any;
+  products?: MarketplaceProduct[];
+  productsLoaded?: boolean;
   onBack: () => void;
+  onReadinessAction?: (
+    action:
+      | "description"
+      | "banner"
+      | "featured"
+      | "category"
+      | "product"
+      | "publish",
+  ) => void;
 }
 
-export default function StoreBuilder({ storeId, onBack }: StoreBuilderProps) {
+export default function StoreBuilder({
+  storeId,
+  store,
+  products,
+  productsLoaded = false,
+  onBack,
+  onReadinessAction,
+}: StoreBuilderProps) {
   const { user } = useUser();
   const { toast } = useToast();
   const [initialLayout, setInitialLayout] = useState<string | null>(null);
@@ -78,7 +107,9 @@ export default function StoreBuilder({ storeId, onBack }: StoreBuilderProps) {
     if (!storeId) return;
     (async () => {
       try {
-        const res = await fetch(`/api/stores-crud/${storeId}`, { credentials: "include" });
+        const res = await fetch(`/api/stores-crud/${storeId}`, {
+          credentials: "include",
+        });
         if (res.ok) {
           const data = await res.json();
           if (data.store?.layout) setInitialLayout(data.store.layout);
@@ -91,7 +122,11 @@ export default function StoreBuilder({ storeId, onBack }: StoreBuilderProps) {
 
   const handleSave = async (editorState: string) => {
     if (!storeId || !user) {
-      toast({ title: "No store found", description: "Please create a store first.", variant: "destructive" });
+      toast({
+        title: "No store found",
+        description: "Please create a store first.",
+        variant: "destructive",
+      });
       return;
     }
     setSaving(true);
@@ -106,11 +141,19 @@ export default function StoreBuilder({ storeId, onBack }: StoreBuilderProps) {
         toast({ description: "Store layout saved!" });
       } else {
         const err = await res.json();
-        toast({ title: "Save failed", description: err.error || "Please try again.", variant: "destructive" });
+        toast({
+          title: "Save failed",
+          description: err.error || "Please try again.",
+          variant: "destructive",
+        });
       }
     } catch (err) {
       console.error("Save error:", err);
-      toast({ title: "Save failed", description: "An error occurred.", variant: "destructive" });
+      toast({
+        title: "Save failed",
+        description: "An error occurred.",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
@@ -130,13 +173,26 @@ export default function StoreBuilder({ storeId, onBack }: StoreBuilderProps) {
                 <ArrowLeft className="w-4 h-4" />
                 Back to Dashboard
               </button>
-              <h1 className="text-2xl font-bold text-gray-900">Store Builder</h1>
+              <h1 className="text-2xl font-bold text-gray-900">
+                Store Builder
+              </h1>
               <p className="text-gray-500 text-sm mt-1">
                 Drag and drop elements to customise your storefront layout
               </p>
             </div>
             <SaveButton onSave={handleSave} saving={saving} />
           </div>
+
+          {store && onReadinessAction && (
+            <div className="mb-6">
+              <StoreReadinessPanel
+                store={store}
+                products={products}
+                productsLoaded={productsLoaded}
+                onAction={onReadinessAction}
+              />
+            </div>
+          )}
 
           <div className="flex gap-5">
             {/* Element Palette */}
@@ -146,22 +202,38 @@ export default function StoreBuilder({ storeId, onBack }: StoreBuilderProps) {
               </h2>
               <div className="space-y-2">
                 <Element is={Container} canvas>
-                  <Button variant="outline" className="w-full justify-start text-sm">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-sm"
+                  >
                     📦 Container
                   </Button>
                 </Element>
                 <Element is={TextBlock} text="Your text here" canvas>
-                  <Button variant="outline" className="w-full justify-start text-sm">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-sm"
+                  >
                     📝 Text Block
                   </Button>
                 </Element>
                 <Element is={Banner} canvas>
-                  <Button variant="outline" className="w-full justify-start text-sm">
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-sm"
+                  >
                     🎨 Banner
                   </Button>
                 </Element>
-                <Element is={ProductCardBlock} product={{ name: "Sample Product", price: 9.99 }} canvas>
-                  <Button variant="outline" className="w-full justify-start text-sm">
+                <Element
+                  is={ProductCardBlock}
+                  product={{ name: "Sample Product", price: 9.99 }}
+                  canvas
+                >
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start text-sm"
+                  >
                     🛍 Product Card
                   </Button>
                 </Element>
