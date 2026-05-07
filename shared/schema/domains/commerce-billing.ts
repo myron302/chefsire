@@ -70,6 +70,7 @@ export const orders = pgTable(
     fulfillmentMethod: text("fulfillment_method").notNull(),
     status: text("status").default("pending"),
     trackingNumber: text("tracking_number"),
+    squarePaymentId: text("square_payment_id"),
     createdAt: timestamp("created_at").defaultNow(),
   },
   (table) => ({
