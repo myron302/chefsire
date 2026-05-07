@@ -175,14 +175,8 @@ export default function LoginPage() {
               className="flex justify-center items-center gap-2 py-3 px-4 bg-white text-gray-700 rounded-2xl font-semibold hover:bg-gray-100 transition-all duration-200 shadow-md hover:shadow-lg"
             >
               <FaFacebook className="w-5 h-5 text-blue-600" />
-              <span className="hidden sm:inline">Facebook</span>
-            </a>
-            <a
-              href="/api/auth/instagram"
-              className="flex justify-center items-center gap-2 py-3 px-4 bg-white text-gray-700 rounded-2xl font-semibold hover:bg-gray-100 transition-all duration-200 shadow-md hover:shadow-lg"
-            >
-              <FaInstagram className="w-5 h-5 text-pink-600" />
-              <span className="hidden sm:inline">Instagram</span>
+              <FaInstagram className="w-4 h-4 text-pink-600" />
+              <span className="hidden sm:inline">Facebook / Instagram</span>
             </a>
             <a
               href="/api/auth/tiktok"
