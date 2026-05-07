@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
-  Package, ShoppingCart, Edit, Sparkles, Palette, BarChart3, Crown,
+  Package,
+  ShoppingCart,
+  Edit,
+  Sparkles,
+  Palette,
+  BarChart3,
+  Crown,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/contexts/UserContext";
@@ -20,6 +26,8 @@ import StoreDashboardHeader from "./components/StoreDashboardHeader";
 import StoreDashboardProductsTab from "./components/StoreDashboardProductsTab";
 import StoreDashboardOrdersTab from "./components/StoreDashboardOrdersTab";
 import StoreDashboardCustomizeTab from "./components/StoreDashboardCustomizeTab";
+import StoreReadinessPanel from "./components/StoreReadinessPanel";
+import type { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
 import StoreDashboardThemeTab from "./components/StoreDashboardThemeTab";
 import {
   buildSubscriptionCheckoutPayload,
@@ -40,11 +48,15 @@ export default function StoreDashboard() {
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_DASHBOARD_STATS);
   const [tier, setTier] = useState<any>(null);
   const [recentSales, setRecentSales] = useState<any[]>([]);
+  const [products, setProducts] = useState<MarketplaceProduct[]>([]);
+  const [productsLoaded, setProductsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState("modern");
   const [showPlansModal, setShowPlansModal] = useState(false);
   const [showBuilder, setShowBuilder] = useState(false);
+  const [activeTab, setActiveTab] = useState("products");
+  const [customizeInitialTab, setCustomizeInitialTab] = useState("branding");
 
   useEffect(() => {
     if (user?.id) loadDashboard();
@@ -54,7 +66,9 @@ export default function StoreDashboard() {
     setLoading(true);
     try {
       // Load store
-      const storeRes = await fetch(`/api/stores/user/${user!.id}`, { credentials: "include" });
+      const storeRes = await fetch(`/api/stores/user/${user!.id}`, {
+        credentials: "include",
+      });
       if (storeRes.ok) {
         const storeData = await storeRes.json();
         const s = storeData.store;
@@ -65,36 +79,56 @@ export default function StoreDashboard() {
           // Products
           let productStats = getInitialProductStats();
           try {
-            const products = await getSellerMarketplaceProducts(user!.id, { credentials: "include" });
+            const sellerProducts = await getSellerMarketplaceProducts(
+              user!.id,
+              { credentials: "include" },
+            );
+            setProducts(sellerProducts);
+            setProductsLoaded(true);
             productStats = {
-              totalProducts: products.length,
-              publishedProducts: products.filter((p: any) => p.isActive).length,
+              totalProducts: sellerProducts.length,
+              publishedProducts: sellerProducts.filter((p: any) => p.isActive)
+                .length,
             };
           } catch {
+            setProducts([]);
+            setProductsLoaded(false);
             productStats = getInitialProductStats();
           }
 
           // Store stats
-          const statsRes = await fetch(`/api/stores/${s.id}/stats`, { credentials: "include" });
+          const statsRes = await fetch(`/api/stores/${s.id}/stats`, {
+            credentials: "include",
+          });
           let storeStats = getInitialStoreStats();
           if (statsRes.ok) {
             const sd = await statsRes.json();
             storeStats = sd.stats || storeStats;
           }
 
-          setStats({ ...productStats, totalViews: storeStats.totalViews, totalSales: storeStats.totalSales, revenue: storeStats.totalRevenue, monthlyRevenue: 0 });
+          setStats({
+            ...productStats,
+            totalViews: storeStats.totalViews,
+            totalSales: storeStats.totalSales,
+            revenue: storeStats.totalRevenue,
+            monthlyRevenue: 0,
+          });
         }
       }
 
       // Subscription tier
-      const tierRes = await fetch("/api/subscriptions/my-tier", { credentials: "include" });
+      const tierRes = await fetch("/api/subscriptions/my-tier", {
+        credentials: "include",
+      });
       if (tierRes.ok) {
         const td = await tierRes.json();
         setTier(td);
       }
 
       // Recent sales
-      const salesRes = await fetch("/api/orders/my-sales?limit=10", { credentials: "include" });
+      const salesRes = await fetch("/api/orders/my-sales?limit=10", {
+        credentials: "include",
+      });
       if (salesRes.ok) {
         const sd = await salesRes.json();
         setRecentSales(sd.sales || []);
@@ -126,10 +160,18 @@ export default function StoreDashboard() {
             : "Your store is now hidden from the public",
         });
       } else {
-        toast({ title: "Error", description: "Failed to update store status", variant: "destructive" });
+        toast({
+          title: "Error",
+          description: "Failed to update store status",
+          variant: "destructive",
+        });
       }
     } catch {
-      toast({ title: "Error", description: "An error occurred", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "An error occurred",
+        variant: "destructive",
+      });
     } finally {
       setPublishing(false);
     }
@@ -148,10 +190,18 @@ export default function StoreDashboard() {
       if (res.ok) {
         toast({ description: "Theme updated!" });
       } else {
-        toast({ title: "Error", description: "Failed to update theme", variant: "destructive" });
+        toast({
+          title: "Error",
+          description: "Failed to update theme",
+          variant: "destructive",
+        });
       }
     } catch {
-      toast({ title: "Error", description: "Failed to update theme", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Failed to update theme",
+        variant: "destructive",
+      });
     }
   };
 
@@ -169,16 +219,72 @@ export default function StoreDashboard() {
         setStore(data.store);
         toast({ description: "Store customization saved!" });
       } else {
-        toast({ title: "Error", description: "Failed to save customization", variant: "destructive" });
+        toast({
+          title: "Error",
+          description: "Failed to save customization",
+          variant: "destructive",
+        });
       }
     } catch {
-      toast({ title: "Error", description: "Failed to save customization", variant: "destructive" });
+      toast({
+        title: "Error",
+        description: "Failed to save customization",
+        variant: "destructive",
+      });
     }
   };
 
-  const handleSubscriptionUpgrade = async (tierName: string, isTrial = false) => {
+  const handleReadinessAction = (
+    action:
+      | "description"
+      | "banner"
+      | "featured"
+      | "category"
+      | "product"
+      | "publish",
+  ) => {
+    if (action === "product" || action === "category") {
+      setLocation("/store/products/new");
+      return;
+    }
+
+    if (action === "description") {
+      setCustomizeInitialTab("branding");
+      setActiveTab("customize");
+      return;
+    }
+
+    if (action === "banner") {
+      setCustomizeInitialTab("sections");
+      setActiveTab("customize");
+      return;
+    }
+
+    if (action === "featured") {
+      setActiveTab("products");
+      toast({
+        title: "Choose a product",
+        description:
+          "Open a product and use the existing product controls to feature it, if available.",
+      });
+      return;
+    }
+
+    if (action === "publish") {
+      handleTogglePublish();
+    }
+  };
+
+  const handleSubscriptionUpgrade = async (
+    tierName: string,
+    isTrial = false,
+  ) => {
     if (!user) {
-      toast({ title: "Not logged in", description: "Please log in to upgrade.", variant: "destructive" });
+      toast({
+        title: "Not logged in",
+        description: "Please log in to upgrade.",
+        variant: "destructive",
+      });
       return;
     }
     try {
@@ -187,32 +293,59 @@ export default function StoreDashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...buildSubscriptionCheckoutPayload(tierName, isTrial, user),
-        })
+        }),
       });
       const data = await resp.json();
       if (!resp.ok || !data?.url) {
         const errorMsg = data?.error || "Could not start checkout";
         if (isMissingPlanVariationError(errorMsg)) {
-          toast({ title: "Coming soon", description: "Subscription service is being configured. Please check back later.", variant: "destructive" });
+          toast({
+            title: "Coming soon",
+            description:
+              "Subscription service is being configured. Please check back later.",
+            variant: "destructive",
+          });
         } else {
-          toast({ title: "Checkout error", description: errorMsg, variant: "destructive" });
+          toast({
+            title: "Checkout error",
+            description: errorMsg,
+            variant: "destructive",
+          });
         }
         return;
       }
       // Optimistically update local trial state before redirect
       if (isTrial) {
-        const trialEnds = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        const trialEnds = new Date(
+          Date.now() + 30 * 24 * 60 * 60 * 1000,
+        ).toISOString();
         updateUser({ subscription: tierName as any, trialEndDate: trialEnds });
       }
       window.location.href = data.url; // Redirect to Square-hosted checkout
     } catch (e) {
       console.error("Square upgrade error:", e);
-      toast({ title: "Checkout error", description: "There was a problem starting checkout. Please try again.", variant: "destructive" });
+      toast({
+        title: "Checkout error",
+        description: "There was a problem starting checkout. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
   if (showBuilder && store) {
-    return <StoreBuilder storeId={store.id} onBack={() => setShowBuilder(false)} />;
+    return (
+      <StoreBuilder
+        storeId={store.id}
+        store={store}
+        products={products}
+        productsLoaded={productsLoaded}
+        onBack={() => setShowBuilder(false)}
+        onReadinessAction={(action) => {
+          setShowBuilder(false);
+          handleReadinessAction(action);
+        }}
+      />
+    );
   }
 
   if (loading) {
@@ -221,7 +354,11 @@ export default function StoreDashboard() {
 
   // No store yet
   if (!store) {
-    return <StoreDashboardEmptyState onCreateStore={() => setLocation("/store/create")} />;
+    return (
+      <StoreDashboardEmptyState
+        onCreateStore={() => setLocation("/store/create")}
+      />
+    );
   }
 
   const currentTier = tier?.currentTier || user?.subscription || "free";
@@ -231,7 +368,6 @@ export default function StoreDashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-
         <StoreDashboardHeader
           storeName={store.name}
           storeHandle={store.handle}
@@ -242,38 +378,59 @@ export default function StoreDashboard() {
           onTogglePublish={handleTogglePublish}
         />
 
+        <StoreReadinessPanel
+          store={store}
+          products={products}
+          productsLoaded={productsLoaded}
+          onAction={handleReadinessAction}
+        />
+
         {/* Stats Grid */}
         <StoreDashboardStatsGrid stats={stats} />
 
         {/* Main Tabs */}
-        <Tabs defaultValue="products" className="space-y-6">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="space-y-6"
+        >
           <TabsList className="flex-wrap h-auto gap-1">
             <TabsTrigger value="products">
-              <Package className="w-4 h-4 mr-1.5" />Products
+              <Package className="w-4 h-4 mr-1.5" />
+              Products
             </TabsTrigger>
             <TabsTrigger value="orders">
-              <ShoppingCart className="w-4 h-4 mr-1.5" />Orders
+              <ShoppingCart className="w-4 h-4 mr-1.5" />
+              Orders
             </TabsTrigger>
             <TabsTrigger value="builder">
-              <Edit className="w-4 h-4 mr-1.5" />Store Builder
+              <Edit className="w-4 h-4 mr-1.5" />
+              Store Builder
             </TabsTrigger>
             <TabsTrigger value="customize">
-              <Sparkles className="w-4 h-4 mr-1.5" />Customize
+              <Sparkles className="w-4 h-4 mr-1.5" />
+              Customize
             </TabsTrigger>
             <TabsTrigger value="theme">
-              <Palette className="w-4 h-4 mr-1.5" />Theme
+              <Palette className="w-4 h-4 mr-1.5" />
+              Theme
             </TabsTrigger>
             <TabsTrigger value="analytics">
-              <BarChart3 className="w-4 h-4 mr-1.5" />Analytics
+              <BarChart3 className="w-4 h-4 mr-1.5" />
+              Analytics
             </TabsTrigger>
             <TabsTrigger value="subscription">
-              <Crown className="w-4 h-4 mr-1.5" />Subscription
+              <Crown className="w-4 h-4 mr-1.5" />
+              Subscription
             </TabsTrigger>
           </TabsList>
 
           {/* Products Tab */}
           <TabsContent value="products">
-            <StoreDashboardProductsTab sellerId={user!.id} totalProducts={stats.totalProducts} />
+            <StoreDashboardProductsTab
+              sellerId={user!.id}
+              totalProducts={stats.totalProducts}
+            />
           </TabsContent>
 
           {/* Orders Tab */}
@@ -283,17 +440,26 @@ export default function StoreDashboard() {
 
           {/* Store Builder Tab */}
           <TabsContent value="builder">
-            <StoreDashboardBuilderTab onOpenBuilder={() => setShowBuilder(true)} />
+            <StoreDashboardBuilderTab
+              onOpenBuilder={() => setShowBuilder(true)}
+            />
           </TabsContent>
 
           {/* Customize Tab */}
           <TabsContent value="customize">
-            <StoreDashboardCustomizeTab store={store} onUpdate={handleCustomizationUpdate} />
+            <StoreDashboardCustomizeTab
+              store={store}
+              onUpdate={handleCustomizationUpdate}
+              defaultTab={customizeInitialTab}
+            />
           </TabsContent>
 
           {/* Theme Tab */}
           <TabsContent value="theme">
-            <StoreDashboardThemeTab selectedTheme={selectedTheme} onSelectTheme={handleThemeChange} />
+            <StoreDashboardThemeTab
+              selectedTheme={selectedTheme}
+              onSelectTheme={handleThemeChange}
+            />
           </TabsContent>
 
           {/* Analytics Tab */}
@@ -316,7 +482,11 @@ export default function StoreDashboard() {
         <StoreDashboardQuickActions
           storeHandle={store.handle}
           onCustomerInsightsClick={() =>
-            toast({ title: "Coming Soon", description: "Customer insights will be available in a future update" })
+            toast({
+              title: "Coming Soon",
+              description:
+                "Customer insights will be available in a future update",
+            })
           }
         />
       </div>

@@ -1,20 +1,37 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import StoreCustomization from "@/components/store/StoreCustomization";
 
 type StoreDashboardCustomizeTabProps = {
   store: any;
   onUpdate: (updates: any) => void;
+  defaultTab?: string;
 };
 
-export default function StoreDashboardCustomizeTab({ store, onUpdate }: StoreDashboardCustomizeTabProps) {
+export default function StoreDashboardCustomizeTab({
+  store,
+  onUpdate,
+  defaultTab,
+}: StoreDashboardCustomizeTabProps) {
   return (
     <Card>
       <CardHeader>
         <CardTitle>Store Customization</CardTitle>
-        <CardDescription>Branding, banner, about section, social links, and layout</CardDescription>
+        <CardDescription>
+          Branding, banner, about section, social links, and layout
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <StoreCustomization store={store} onUpdate={onUpdate} />
+        <StoreCustomization
+          store={store}
+          onUpdate={onUpdate}
+          defaultTab={defaultTab}
+        />
       </CardContent>
     </Card>
   );
