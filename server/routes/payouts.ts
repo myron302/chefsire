@@ -397,31 +397,125 @@ router.get("/pending-balance", requireAuth, async (req, res) => {
 });
 
 /**
- * POST /api/payouts/connect-square
- * Connect seller's Square account for receiving payouts
+ * GET /api/payouts/connect-square
+ * Initiate Square OAuth flow — returns the auth URL for the seller to visit
  */
-router.post("/connect-square", requireAuth, async (req, res) => {
+router.get("/connect-square", requireAuth, async (req, res) => {
   try {
     const sellerId = req.user!.id;
 
-    // TODO: Implement Square OAuth flow
-    // 1. Redirect seller to Square OAuth
-    // 2. Square redirects back with auth code
-    // 3. Exchange code for access token
-    // 4. Store seller's Square account ID
+    if (!process.env.SQUARE_APPLICATION_ID) {
+      return res.status(503).json({ ok: false, error: "Square not configured" });
+    }
 
     const authUrl = `https://connect.squareup.com/oauth2/authorize?client_id=${
-      process.env.SQUARE_APPLICATION_ID
-    }&scope=MERCHANT_PROFILE_READ PAYMENTS_WRITE&session=false&state=${sellerId}`;
+      encodeURIComponent(process.env.SQUARE_APPLICATION_ID)
+    }&scope=MERCHANT_PROFILE_READ+PAYMENTS_WRITE&session=false&state=${encodeURIComponent(sellerId)}`;
 
-    res.json({
-      ok: true,
-      message: "Redirect seller to Square OAuth",
-      authUrl,
-    });
+    res.json({ ok: true, authUrl });
   } catch (error) {
     console.error("Square connect error:", error);
-    res.status(500).json({ ok: false, error: "Failed to connect Square account" });
+    res.status(500).json({ ok: false, error: "Failed to initiate Square connection" });
+  }
+});
+
+/**
+ * GET /api/payouts/square-callback
+ * Square OAuth callback — exchanges auth code for access token and stores it
+ */
+router.get("/square-callback", async (req, res) => {
+  try {
+    const { code, state: sellerId, error: oauthError } = req.query as Record<string, string>;
+
+    if (oauthError) {
+      return res.redirect(`/settings/payouts?error=${encodeURIComponent(oauthError)}`);
+    }
+
+    if (!code || !sellerId) {
+      return res.status(400).json({ ok: false, error: "Missing code or state" });
+    }
+
+    if (!process.env.SQUARE_APPLICATION_ID || !process.env.SQUARE_APPLICATION_SECRET) {
+      return res.status(503).json({ ok: false, error: "Square not fully configured" });
+    }
+
+    // Exchange auth code for access token
+    const tokenResponse = await fetch("https://connect.squareup.com/oauth2/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Square-Version": "2024-01-18" },
+      body: JSON.stringify({
+        client_id: process.env.SQUARE_APPLICATION_ID,
+        client_secret: process.env.SQUARE_APPLICATION_SECRET,
+        code,
+        grant_type: "authorization_code",
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      const tokenError = await tokenResponse.text();
+      console.error("Square token exchange failed:", tokenError);
+      return res.redirect("/settings/payouts?error=square_auth_failed");
+    }
+
+    const tokenData = await tokenResponse.json() as {
+      access_token: string;
+      refresh_token: string;
+      expires_at: string;
+      merchant_id: string;
+    };
+
+    // Fetch merchant profile to get location ID
+    const squareClient = new Client({
+      accessToken: tokenData.access_token,
+      environment: process.env.NODE_ENV === "production" ? Environment.Production : Environment.Sandbox,
+    });
+    const { result: merchantResult } = await squareClient.merchantsApi.retrieveMerchant("me");
+    const locationId = merchantResult.merchant?.mainLocationId || undefined;
+
+    // Upsert payment method record for this seller
+    const existing = await db
+      .select()
+      .from(paymentMethods)
+      .where(and(eq(paymentMethods.userId, sellerId), eq(paymentMethods.provider, "square")))
+      .limit(1);
+
+    const accountDetails = {
+      merchantId: tokenData.merchant_id,
+      locationId,
+      accessToken: tokenData.access_token,
+      refreshToken: tokenData.refresh_token,
+      tokenExpiresAt: tokenData.expires_at,
+    };
+
+    if (existing.length > 0) {
+      await db
+        .update(paymentMethods)
+        .set({
+          accountStatus: "active",
+          accountDetails,
+          providerId: tokenData.merchant_id,
+          verifiedAt: new Date(),
+          lastVerifiedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(paymentMethods.id, existing[0].id));
+    } else {
+      await db.insert(paymentMethods).values({
+        userId: sellerId,
+        provider: "square",
+        providerId: tokenData.merchant_id,
+        accountStatus: "active",
+        accountDetails,
+        isDefault: true,
+        verifiedAt: new Date(),
+        lastVerifiedAt: new Date(),
+      });
+    }
+
+    res.redirect("/settings/payouts?connected=true");
+  } catch (error) {
+    console.error("Square callback error:", error);
+    res.redirect("/settings/payouts?error=callback_failed");
   }
 });
 
