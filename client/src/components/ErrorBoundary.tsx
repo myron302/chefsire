@@ -1,4 +1,5 @@
 import React from "react";
+import * as Sentry from "@sentry/react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { AlertCircle, RefreshCw, Home } from "lucide-react";
@@ -26,11 +27,8 @@ export default class ErrorBoundary extends React.Component<Props, State> {
       return;
     }
 
-    // Call custom error handler if provided
     this.props.onError?.(error, info);
-
-    // TODO: Send to error tracking service (Sentry, etc.)
-    // sendToErrorTracking(error, info);
+    Sentry.captureException(error, { extra: { componentStack: info?.componentStack } });
   }
 
   resetError = () => {
@@ -120,7 +118,12 @@ export class SectionErrorBoundary extends React.Component<
 
     if (isChunkLoadError(error)) {
       reloadForChunkError();
+      return;
     }
+
+    Sentry.captureException(error, {
+      extra: { sectionName: this.props.sectionName, componentStack: info?.componentStack },
+    });
   }
 
   resetError = () => {
