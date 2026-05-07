@@ -130,6 +130,20 @@ export async function requireAuth(req: Request, res: Response, next: NextFunctio
   }
 }
 
+/** Admin gate — must run after requireAuth. Checks INTERNAL_ADMIN_EMAILS env var. */
+export function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const email = req.user?.email ?? "";
+  const adminEmails = (process.env.INTERNAL_ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+
+  if (!email || !adminEmails.includes(email.toLowerCase())) {
+    return res.status(403).json({ ok: false, error: "Admin only" });
+  }
+  next();
+}
+
 /** Optional auth - populates req.user if logged in, but doesn't fail if not */
 export async function optionalAuth(req: Request, res: Response, next: NextFunction) {
   try {

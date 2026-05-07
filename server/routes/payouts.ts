@@ -4,7 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { orders, users, payouts, commissions, paymentMethods } from "../../shared/schema";
 import { eq, and, inArray, isNull } from "drizzle-orm";
-import { requireAuth } from "../middleware";
+import { requireAuth, requireAdmin } from "../middleware";
 // Square is a CommonJS module - import it properly
 import square from "square";
 const { Client, Environment } = square;
@@ -70,7 +70,7 @@ const getSquareClient = () => {
  * Process payout to a seller for completed orders
  * (Admin only or automated cron job)
  */
-router.post("/process-seller-payout", requireAuth, async (req, res) => {
+router.post("/process-seller-payout", requireAuth, requireAdmin, async (req, res) => {
   try {
     const schema = z.object({
       sellerId: z.string(),
@@ -78,11 +78,6 @@ router.post("/process-seller-payout", requireAuth, async (req, res) => {
     });
 
     const { sellerId, orderIds } = schema.parse(req.body);
-
-    // TODO: Add admin check
-    // if (!req.user!.isAdmin) {
-    //   return res.status(403).json({ ok: false, error: "Admin only" });
-    // }
 
     // Get seller info
     const [seller] = await db
