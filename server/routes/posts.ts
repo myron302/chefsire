@@ -95,8 +95,6 @@ r.get(
 
 r.post("/", async (req, res) => {
   try {
-    console.log("📝 Create post attempt with body:", req.body);
-
     const recipeSchema = z.object({
       title: z.string().min(1, "Recipe title is required"),
       imageUrl: z.string().optional(),
@@ -124,8 +122,6 @@ r.post("/", async (req, res) => {
       return res.status(400).json({ message: "Recipe details are required for recipe posts" });
     }
 
-    console.log("✅ Validation passed, creating post:", body);
-
     const created = await storage.createPost({
       userId: body.userId,
       caption: body.caption,
@@ -149,7 +145,6 @@ r.post("/", async (req, res) => {
       } as any);
     }
 
-    console.log("✅ Post created successfully:", created.id);
     res.status(201).json(created);
   } catch (err: any) {
     console.error("❌ Post creation error:", err);
@@ -184,39 +179,27 @@ r.patch("/:id", async (req, res) => {
 
 r.delete("/:id", requireAuth, async (req, res) => {
   try {
-    console.log("DELETE /api/posts/:id - Request params:", req.params);
-    console.log("DELETE /api/posts/:id - User:", req.user);
-
     const postId = req.params.id;
     const userId = req.user!.id; // requireAuth ensures user exists
 
     // Get the post first to check ownership
     const post = await storage.getPost(postId);
-    console.log("DELETE /api/posts/:id - Found post:", post);
 
     if (!post) {
-      console.log("DELETE /api/posts/:id - Post not found");
       return res.status(404).json({ message: "Post not found" });
     }
 
     // Check if user owns the post
     if (post.userId !== userId) {
-      console.log("DELETE /api/posts/:id - User does not own post", {
-        postUserId: post.userId,
-        requestUserId: userId
-      });
       return res.status(403).json({ message: "You can only delete your own posts" });
     }
 
-    console.log("DELETE /api/posts/:id - Attempting to delete post");
     const ok = await storage.deletePost(postId);
 
     if (!ok) {
-      console.log("DELETE /api/posts/:id - Delete failed (storage returned false)");
       return res.status(500).json({ message: "Failed to delete post" });
     }
 
-    console.log("DELETE /api/posts/:id - Post deleted successfully");
     res.json({ message: "Post deleted", postId });
   } catch (err: any) {
     console.error("DELETE /api/posts/:id - Error:", err);
@@ -282,7 +265,6 @@ r.post("/comments", async (req, res) => {
       text: z.string().min(1),
     });
     const body = schema.parse(req.body);
-    console.log("Creating comment:", body);
     // Map 'text' to 'content' for database
     const created = await storage.createComment({
       userId: body.userId,

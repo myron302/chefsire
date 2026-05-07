@@ -39,7 +39,6 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
     // Join user's personal notification room
     socket.join(`user-${userId}`);
 
-    console.log(`[Notifications] User ${userId} connected`);
 
     // Send initial unread count
     socket.on("get_unread_count", async () => {
@@ -109,7 +108,6 @@ export function attachNotificationRealtime(httpServer: HttpServer) {
     });
 
     socket.on("disconnect", () => {
-      console.log(`[Notifications] User ${userId} disconnected`);
     });
   });
 

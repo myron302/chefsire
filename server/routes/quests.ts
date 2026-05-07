@@ -3,7 +3,7 @@ import { Router } from "express";
 import { and, eq, desc, gte, sql } from "drizzle-orm";
 import { db } from "../db";
 import { dailyQuests, questProgress, userDrinkStats, notifications } from "../../shared/schema";
-import { requireAuth } from "../middleware";
+import { requireAuth, requireAdmin } from "../middleware";
 
 const router = Router();
 
@@ -164,9 +164,8 @@ router.post("/:questId/progress", requireAuth, async (req, res) => {
 });
 
 // POST /api/quests/create - Create a new quest (admin)
-router.post("/create", requireAuth, async (req, res) => {
+router.post("/create", requireAuth, requireAdmin, async (req, res) => {
   try {
-    // TODO: Add admin role check here
     const questData = req.body;
 
     const [quest] = await db
@@ -241,7 +240,7 @@ async function assignDailyQuests(userId: string) {
 }
 
 // POST /api/quests/seed - Seed initial quests (admin/setup only)
-router.post("/seed", async (req, res) => {
+router.post("/seed", requireAuth, requireAdmin, async (req, res) => {
   try {
     // Check if quests already exist
     const existingQuests = await db.select().from(dailyQuests).limit(1);

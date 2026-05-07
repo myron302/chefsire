@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useLocation } from 'wouter';
 import { ChefHat, Sparkles, Timer, Users, Lock, Globe, Zap, Star, Trophy, Flame, ArrowRight, Wand2 } from 'lucide-react';
 
 const THEMES = [
@@ -37,6 +38,7 @@ const THEMES = [
 const DURATIONS = [30, 45, 60, 90, 120];
 
 export default function CreateCompetitionPage() {
+  const [, navigate] = useLocation();
   const [title, setTitle] = useState('');
   const [selectedTheme, setSelectedTheme] = useState(null);
   const [duration, setDuration] = useState(60);
@@ -44,11 +46,36 @@ export default function CreateCompetitionPage() {
   const [minVoters, setMinVoters] = useState(3);
   const [step, setStep] = useState(1);
   const [hoveredTheme, setHoveredTheme] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
-  const handleCreate = () => {
-    console.log('Creating competition:', { title, theme: selectedTheme, duration, isPrivate, minVoters });
-    // TODO: Call API to create competition
-    alert('Competition created! (API integration needed)');
+  const handleCreate = async () => {
+    setIsSubmitting(true);
+    setCreateError(null);
+    try {
+      const res = await fetch('/api/competitions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          title,
+          themeName: selectedTheme?.name ?? null,
+          isPrivate,
+          timeLimitMinutes: duration,
+          minOfficialVoters: minVoters,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to create competition');
+      }
+      const { id } = await res.json();
+      navigate(`/competitions/${id}`);
+    } catch (err: any) {
+      setCreateError(err.message || 'Something went wrong');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const totalSteps = 3;
@@ -413,22 +440,27 @@ export default function CreateCompetitionPage() {
               </div>
             </div>
 
+            {createError && (
+              <p className="text-center text-red-600 font-semibold mt-4">{createError}</p>
+            )}
             <div className="flex justify-center gap-4 mt-8">
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="flex items-center gap-2 px-8 py-4 bg-white hover:bg-gray-50 rounded-full text-gray-900 font-semibold border-2 border-gray-300 transition-all duration-300 hover:scale-105 shadow-md"
+                disabled={isSubmitting}
+                className="flex items-center gap-2 px-8 py-4 bg-white hover:bg-gray-50 rounded-full text-gray-900 font-semibold border-2 border-gray-300 transition-all duration-300 hover:scale-105 shadow-md disabled:opacity-50"
               >
                 Back
               </button>
               <button
                 type="button"
                 onClick={handleCreate}
-                className="relative group flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-xl transition-all duration-300 hover:scale-110 shadow-2xl overflow-hidden"
+                disabled={isSubmitting}
+                className="relative group flex items-center gap-3 px-12 py-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 rounded-full text-white font-bold text-xl transition-all duration-300 hover:scale-110 shadow-2xl overflow-hidden disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 <div className="absolute inset-0 shimmer-effect"></div>
                 <Trophy className="w-7 h-7 relative z-10" />
-                <span className="relative z-10">Launch Competition!</span>
+                <span className="relative z-10">{isSubmitting ? 'Launching…' : 'Launch Competition!'}</span>
               </button>
             </div>
           </div>

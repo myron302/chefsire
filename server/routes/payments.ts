@@ -150,6 +150,7 @@ router.post("/create-payment", requireAuth, async (req, res) => {
       .update(orders)
       .set({
         status: "paid",
+        squarePaymentId: paymentResult.id,
         updatedAt: new Date(),
       })
       .where(eq(orders.id, orderId))
@@ -247,16 +248,38 @@ router.post("/refund", requireAuth, async (req, res) => {
     const refundAmount = amount || parseFloat(order.totalAmount);
     const refundAmountCents = Math.round(refundAmount * 100);
 
-    // TODO: Process refund via Square
-    // const { result } = await squareClient.refundsApi.refundPayment({
-    //   idempotencyKey: `refund_${orderId}_${Date.now()}`,
-    //   amountMoney: {
-    //     amount: BigInt(refundAmountCents),
-    //     currency: 'USD'
-    //   },
-    //   paymentId: order.squarePaymentId,
-    //   reason: reason || 'Customer requested refund'
-    // });
+    let squareRefundId: string | undefined;
+    const useSquare = process.env.SQUARE_ACCESS_TOKEN && order.squarePaymentId;
+
+    if (useSquare) {
+      try {
+        const squareClient = getSquareClient();
+        const { result } = await squareClient.refundsApi.refundPayment({
+          idempotencyKey: `refund_${orderId}_${Date.now()}`,
+          amountMoney: {
+            amount: BigInt(refundAmountCents),
+            currency: 'USD',
+          },
+          paymentId: order.squarePaymentId!,
+          reason: reason || 'Customer requested refund',
+        });
+        squareRefundId = result.refund?.id;
+      } catch (squareError: any) {
+        console.error("Square refund error:", squareError);
+        if (process.env.NODE_ENV === 'production') {
+          return res.status(502).json({
+            ok: false,
+            error: "Payment processor refund failed",
+            details: squareError?.errors || squareError?.message,
+          });
+        }
+        // In development, fall through to DB-only update
+        console.warn("Square refund failed in dev, updating DB only");
+      }
+    } else if (!order.squarePaymentId) {
+      // Simulated/dev payment — no Square payment to refund
+      console.warn(`Refund for order ${orderId}: no squarePaymentId, updating DB only`);
+    }
 
     // Update order status
     const [updatedOrder] = await db
@@ -268,15 +291,12 @@ router.post("/refund", requireAuth, async (req, res) => {
       .where(eq(orders.id, orderId))
       .returning();
 
-    // TODO: If seller was already paid, deduct from their balance
-    // or request repayment via Square Connect
-
     res.json({
       ok: true,
       message: "Refund processed successfully",
       refund: {
         amount: refundAmount,
-        // id: result.refund.id,
+        id: squareRefundId,
         status: "completed",
       },
       order: updatedOrder,

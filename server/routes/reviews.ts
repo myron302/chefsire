@@ -161,7 +161,6 @@ function createReviewDiagnostics(req: Request) {
     try {
       if (level === "error") console.error(prefix, message, data ?? "");
       else if (level === "warn") console.warn(prefix, message, data ?? "");
-      else console.log(prefix, message, data ?? "");
     } catch {
       // Diagnostics must never throw.
     }
@@ -812,7 +811,6 @@ async function updateRecipeRating(recipeId: string) {
         .where(eq(recipes.id, recipeId));
     } catch (updateError) {
       // Columns might not exist in database yet - that's ok, review still created
-      console.log("Note: Could not update recipe rating stats (columns may not exist yet)");
     }
   } catch (error) {
     console.error("Error in updateRecipeRating:", error);

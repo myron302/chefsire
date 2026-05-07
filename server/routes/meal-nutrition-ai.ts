@@ -39,7 +39,6 @@ router.post("/ai/nutrition-lookup", requireAuth, async (req: Request, res: Respo
 
   if (!client) {
     const fallback = buildFallbackNutrition(mealName);
-    console.log(`[meal-nutrition-ai] fallback for "${mealName}":`, JSON.stringify(fallback));
     return res.json(fallback);
   }
 
@@ -49,7 +48,6 @@ Return ONLY a JSON object, no markdown, no extra text:
 {"calories":number,"protein":number,"carbs":number,"fat":number,"fiber":number,"sugar":number,"servingSize":string}`;
 
   try {
-    console.log(`[meal-nutrition-ai] OpenAI lookup for: "${mealName}"`);
     const completion = await client.chat.completions.create({
       model: "gpt-4o-mini",
       temperature: 0.2,
@@ -61,7 +59,6 @@ Return ONLY a JSON object, no markdown, no extra text:
     });
 
     const raw = completion.choices?.[0]?.message?.content?.trim() || "{}";
-    console.log(`[meal-nutrition-ai] raw response: ${raw}`);
     const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
     const parsed = JSON.parse(cleaned);
 
@@ -75,7 +72,6 @@ Return ONLY a JSON object, no markdown, no extra text:
       servingSize: String(parsed.servingSize || serving),
     };
 
-    console.log(`[meal-nutrition-ai] sending nutrition:`, JSON.stringify(nutrition));
     return res.json(nutrition);
   } catch (err: any) {
     console.error("[meal-nutrition-ai] OpenAI error:", err?.message || String(err));

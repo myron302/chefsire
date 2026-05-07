@@ -15,19 +15,16 @@ export function initializeCronJobs() {
 
   // Run pantry expiring check daily at 9 AM
   cron.schedule("0 9 * * *", async () => {
-    console.log("⏰ [CRON] Running daily pantry expiring check (9 AM)");
     await checkExpiringPantryItems();
   });
 
   // Run low stock check daily at 10 AM
   cron.schedule("0 10 * * *", async () => {
-    console.log("⏰ [CRON] Running daily low stock check (10 AM)");
     await checkLowStockItems();
   });
 
   // Run pantry checks again in evening at 6 PM (for items added during the day)
   cron.schedule("0 18 * * *", async () => {
-    console.log("⏰ [CRON] Running evening pantry check (6 PM)");
     await checkExpiringPantryItems();
   });
 
@@ -40,8 +37,6 @@ export function initializeCronJobs() {
  * Run all checks immediately (for testing/manual trigger)
  */
 export async function runAllChecksNow() {
-  console.log("🔄 Running all pantry checks immediately...");
   await checkExpiringPantryItems();
   await checkLowStockItems();
-  console.log("✅ All checks complete");
 }

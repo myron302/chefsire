@@ -97,7 +97,6 @@ for (const dir of possibleClientDirs) {
   if (fs.existsSync(dir)) {
     clientDir = dir;
     hasClient = true;
-    console.log('[INFO] Found client bundle at:', dir);
     break;
   }
 }
