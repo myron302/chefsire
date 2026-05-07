@@ -25,6 +25,7 @@ import { usePlaceDetails } from "@/hooks/usePlaceDetails";
 
 import MapView from "./components/MapView";
 import RestaurantCard from "./components/RestaurantCard";
+import { SectionErrorBoundary } from "@/components/ErrorBoundary";
 
 /* -----------------------------
    Minimal local modal
@@ -290,7 +291,9 @@ export default function BiteMapPage() {
       {/* Map */}
       {mapOpen && (
         <>
-          <MapView center={center} markers={markers} />
+          <SectionErrorBoundary sectionName="BiteMap">
+            <MapView center={center} markers={markers} />
+          </SectionErrorBoundary>
           <Separator className="my-2" />
         </>
       )}
