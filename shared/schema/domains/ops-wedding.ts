@@ -216,8 +216,7 @@ export const emailVerificationTokens = pgTable(
     // email being verified
     email: varchar("email", { length: 255 }).notNull(),
 
-    // 30 minute default expiry
-    expiresAt: timestamp("expires_at").notNull().default(sql`now() + interval '30 minutes'`),
+    expiresAt: timestamp("expires_at").notNull().default(sql`now() + interval '24 hours'`),
 
     // set once used
     consumedAt: timestamp("consumed_at"),
