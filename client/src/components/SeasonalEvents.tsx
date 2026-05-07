@@ -115,7 +115,7 @@ export function SeasonalEventsList() {
         <section>
           <div className="flex items-center gap-2 mb-4">
             <Calendar className="h-6 w-6 text-muted-foreground" />
-            <h2 className="text-2xl font-bold">Coming Soon</h2>
+            <h2 className="text-2xl font-bold">Upcoming Events</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {upcoming.map((event) => (
