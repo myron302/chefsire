@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import type { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
+import { getProductQualityActions } from "./ProductQualityReadinessPanel";
 
 type ReadinessAction =
   | "description"
@@ -26,6 +27,7 @@ type ReadinessAction =
   | "featured"
   | "category"
   | "product"
+  | "productQuality"
   | "publish";
 
 type StoreReadinessPanelProps = {
@@ -147,6 +149,18 @@ export function getStoreReadinessSignals(
           "Feature one strong product to give new shoppers a clear starting point.",
         status: "attention",
         action: { label: "Add Featured Product", type: "featured" },
+      });
+    }
+
+    const productQualityActions = getProductQualityActions(productList);
+    if (productQualityActions.length > 0) {
+      signals.push({
+        key: "product-quality",
+        label: `${productQualityActions.length} product${productQualityActions.length === 1 ? "" : "s"} need polish`,
+        description:
+          "Review product photos, descriptions, categories, inventory, and active status before sharing the store.",
+        status: "attention",
+        action: { label: "Review Products", type: "productQuality" },
       });
     }
   }

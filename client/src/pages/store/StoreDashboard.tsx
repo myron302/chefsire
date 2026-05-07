@@ -241,6 +241,7 @@ export default function StoreDashboard() {
       | "featured"
       | "category"
       | "product"
+      | "productQuality"
       | "publish",
   ) => {
     if (action === "product" || action === "category") {
@@ -251,6 +252,11 @@ export default function StoreDashboard() {
     if (action === "description") {
       setCustomizeInitialTab("branding");
       setActiveTab("customize");
+      return;
+    }
+
+    if (action === "productQuality") {
+      setActiveTab("products");
       return;
     }
 
@@ -430,6 +436,8 @@ export default function StoreDashboard() {
             <StoreDashboardProductsTab
               sellerId={user!.id}
               totalProducts={stats.totalProducts}
+              products={products}
+              productsLoaded={productsLoaded}
             />
           </TabsContent>
 

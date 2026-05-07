@@ -85,6 +85,7 @@ interface StoreBuilderProps {
       | "featured"
       | "category"
       | "product"
+      | "productQuality"
       | "publish",
   ) => void;
 }
