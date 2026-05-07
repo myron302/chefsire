@@ -5,7 +5,7 @@ import { Product } from '../../types/store';
 import { getStoreProducts, deleteProduct } from '../../lib/store/products';
 
 interface ProductManagerProps {
-  sellerId: string;
+  sellerId: string | number;
 }
 
 export const ProductManager: React.FC<ProductManagerProps> = ({ sellerId }) => {
