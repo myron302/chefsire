@@ -4,6 +4,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { eq, desc, and, or, sql } from "drizzle-orm";
 import { requireAuth } from "../middleware";
+import { userDrinkStats, userBadges, notifications } from "../../shared/schema";
 
 const router = Router();
 
@@ -357,11 +358,62 @@ router.post("/:eventId/complete", requireAuth, async (req, res) => {
       WHERE event_id = ${eventId} AND user_id = ${userId}
     `);
 
-    // Award rewards based on rank (implement reward logic)
-    const rewards = eventData.rewards || {};
-    // TODO: Award XP, badges, etc. based on rank
+    // Fetch user's final rank from leaderboard
+    const rankResult = await db.execute(sql`
+      SELECT rank
+      FROM event_leaderboard
+      WHERE event_id = ${eventId} AND user_id = ${userId}
+      LIMIT 1
+    `);
+    const userRank: number = rankResult.rows[0]?.rank ?? 999;
 
-    res.json({ success: true, rewards });
+    // XP tiers: 1st=500, 2nd=350, 3rd=200, top10=100, everyone else=50
+    const xpByRank = (rank: number) => {
+      if (rank === 1) return 500;
+      if (rank === 2) return 350;
+      if (rank === 3) return 200;
+      if (rank <= 10) return 100;
+      return 50;
+    };
+    const xpAwarded = xpByRank(userRank);
+
+    // Award XP — upsert into user_drink_stats
+    await db
+      .insert(userDrinkStats)
+      .values({ userId, totalPoints: xpAwarded })
+      .onConflictDoUpdate({
+        target: userDrinkStats.userId,
+        set: { totalPoints: sql`${userDrinkStats.totalPoints} + ${xpAwarded}` },
+      });
+
+    // Award badge if event defines one for this rank tier
+    const rewards = (eventData.rewards ?? {}) as Record<string, any>;
+    const badgeId: string | undefined =
+      userRank === 1 ? rewards.badge_1st :
+      userRank === 2 ? rewards.badge_2nd :
+      userRank === 3 ? rewards.badge_3rd :
+      userRank <= 10 ? rewards.badge_top10 :
+      rewards.badge_participant;
+
+    if (badgeId) {
+      await db
+        .insert(userBadges)
+        .values({ userId, badgeId, earnedAt: new Date() })
+        .onConflictDoNothing();
+    }
+
+    // Notify user
+    const rankLabel = userRank <= 3 ? `#${userRank}` : `top ${userRank <= 10 ? '10' : 'finisher'}`;
+    await db.insert(notifications).values({
+      userId,
+      type: "event_complete",
+      title: `Event complete — ${rankLabel}!`,
+      message: `You earned ${xpAwarded} XP${badgeId ? ' and a badge' : ''} for finishing ${String(eventData.title ?? 'the event')}.`,
+      linkUrl: `/events/${eventId}`,
+      metadata: { eventId, rank: userRank, xpAwarded, badgeId: badgeId ?? null },
+    });
+
+    res.json({ success: true, rank: userRank, xpAwarded, badgeId: badgeId ?? null, rewards });
   } catch (error: any) {
     console.error("Error completing event:", error);
     res.status(500).json({ error: "Failed to complete event" });
