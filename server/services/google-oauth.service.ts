@@ -21,10 +21,6 @@ function generateUsername(email: string): string {
 }
 
 export function setupGoogleOAuth() {
-  console.log("🔧 Setting up Google OAuth...");
-  console.log("📋 GOOGLE_CLIENT_ID:", GOOGLE_CLIENT_ID ? `${GOOGLE_CLIENT_ID.substring(0, 20)}...` : "MISSING");
-  console.log("📋 GOOGLE_CLIENT_SECRET:", GOOGLE_CLIENT_SECRET ? "SET" : "MISSING");
-  console.log("📋 GOOGLE_CALLBACK_URL:", GOOGLE_CALLBACK_URL);
 
   if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
     console.error("❌ Google OAuth not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in .env");
@@ -42,7 +38,6 @@ export function setupGoogleOAuth() {
       async (accessToken, refreshToken, profile, done) => {
         try {
           logToFile("🔍 OAuth callback started", { profileId: profile.id });
-          console.log("🔍 OAuth callback started for profile:", profile.id);
 
           // Extract user info from Google profile
           const email = profile.emails?.[0]?.value;
@@ -52,32 +47,25 @@ export function setupGoogleOAuth() {
           const avatar = profile.photos?.[0]?.value || "";
 
           logToFile("📧 Email extracted", { email });
-          console.log("📧 Email extracted:", email);
 
           if (!email) {
             console.error("❌ No email in profile");
             return done(new Error("No email found in Google profile"), undefined);
           }
 
-          console.log("🔍 Checking for existing user with Google ID:", googleId);
           // Check if user exists with this Google ID
           const existingUser = await db.query.users.findFirst({
             where: (users, { eq }) => eq(users.googleId, googleId),
           });
 
-          console.log("✅ Existing user query completed:", existingUser ? "found" : "not found");
-
           if (existingUser) {
-            console.log("✅ Existing user found, logging in");
             return done(null, existingUser);
           }
 
-          console.log("🔍 Checking for existing email:", email);
           // Check if email is already registered
           const emailUser = await storage.findByEmail(email);
 
           if (emailUser) {
-            console.log("🔗 Email exists, linking Google account");
             // Email exists but no Google ID - link accounts
             const updated = await db
               .update(users)
@@ -91,11 +79,9 @@ export function setupGoogleOAuth() {
               .where(eq(users.id, emailUser.id))
               .returning();
 
-            console.log("✅ Account linked successfully");
             return done(null, updated[0]);
           }
 
-          console.log("🆕 Creating new user");
           // Create new user
           const username = generateUsername(email);
           const displayName = `${firstName} ${lastName}`.trim() || username;
@@ -115,7 +101,6 @@ export function setupGoogleOAuth() {
             showFullName: false,
           });
 
-          console.log("✅ New Google user created:", newUser.id);
           return done(null, newUser);
         } catch (error) {
           const errorDetails = {
@@ -140,7 +125,6 @@ export function setupGoogleOAuth() {
     )
   );
 
-    console.log("✅ Google OAuth configured successfully");
     return true;
   } catch (error) {
     console.error("❌ Failed to setup Google OAuth:", error);
