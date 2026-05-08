@@ -42,6 +42,36 @@ type CanonicalDrinkFile = {
 
 type DrinkRecipeLike = { name?: string; image?: unknown; imageUrl?: unknown };
 
+const POTENT_POTABLES_ASSET_BASE = '/images/drinks/potent-potables';
+
+const POTENT_POTABLES_ROUTE_ASSET_PATHS: Record<string, string> = {
+  '/drinks/potent-potables': `${POTENT_POTABLES_ASSET_BASE}/cocktails.svg`,
+  '/drinks/potent-potables/cocktails': `${POTENT_POTABLES_ASSET_BASE}/cocktails.svg`,
+  '/drinks/potent-potables/cognac-brandy': `${POTENT_POTABLES_ASSET_BASE}/cognac-brandy.svg`,
+  '/drinks/potent-potables/daiquiri': `${POTENT_POTABLES_ASSET_BASE}/daiquiri.svg`,
+  '/drinks/potent-potables/gin': `${POTENT_POTABLES_ASSET_BASE}/gin.svg`,
+  '/drinks/potent-potables/hot-drinks': `${POTENT_POTABLES_ASSET_BASE}/hot-drinks.svg`,
+  '/drinks/potent-potables/liqueurs': `${POTENT_POTABLES_ASSET_BASE}/liqueurs.svg`,
+  '/drinks/potent-potables/martinis': `${POTENT_POTABLES_ASSET_BASE}/martinis.svg`,
+  '/drinks/potent-potables/mocktails': `${POTENT_POTABLES_ASSET_BASE}/mocktails.svg`,
+  '/drinks/potent-potables/rum': `${POTENT_POTABLES_ASSET_BASE}/rum.svg`,
+  '/drinks/potent-potables/scotch-irish-whiskey': `${POTENT_POTABLES_ASSET_BASE}/scotch-irish-whiskey.svg`,
+  '/drinks/potent-potables/seasonal': `${POTENT_POTABLES_ASSET_BASE}/seasonal.svg`,
+  '/drinks/potent-potables/spritz': `${POTENT_POTABLES_ASSET_BASE}/spritz.svg`,
+  '/drinks/potent-potables/tequila-mezcal': `${POTENT_POTABLES_ASSET_BASE}/tequila-mezcal.svg`,
+  '/drinks/potent-potables/virgin-cocktails': `${POTENT_POTABLES_ASSET_BASE}/virgin-cocktails.svg`,
+  '/drinks/potent-potables/vodka': `${POTENT_POTABLES_ASSET_BASE}/vodka.svg`,
+  '/drinks/potent-potables/whiskey-bourbon': `${POTENT_POTABLES_ASSET_BASE}/whiskey-bourbon.svg`,
+};
+
+function getRecipeImage(recipe: DrinkRecipeLike, sourceRoute: string): string | null {
+  const localPotentPotablesImage = POTENT_POTABLES_ROUTE_ASSET_PATHS[sourceRoute];
+  if (localPotentPotablesImage) return localPotentPotablesImage;
+  if (typeof recipe.image === 'string' && recipe.image.trim()) return recipe.image;
+  if (typeof recipe.imageUrl === 'string' && recipe.imageUrl.trim()) return recipe.imageUrl;
+  return null;
+}
+
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, "..");
 const drinksDataDirPath = path.join(repoRoot, "client", "src", "data", "drinks");
@@ -128,7 +158,7 @@ function asStringList(value: unknown): string[] {
   return [];
 }
 
-function normalizeRecipe(recipe: Record<string, unknown>, sourceTitle: string): Record<string, unknown> {
+function normalizeRecipe(recipe: Record<string, unknown>, sourceTitle: string, sourceRoute: string): Record<string, unknown> {
   const nestedRecipe = recipe?.recipe as { measurements?: unknown[]; directions?: unknown } | undefined;
   const nestedMeasurements = Array.isArray(nestedRecipe?.measurements)
     ? nestedRecipe.measurements
@@ -153,8 +183,11 @@ function normalizeRecipe(recipe: Record<string, unknown>, sourceTitle: string): 
   );
   const defaultInstruction = `Follow the preparation method shown on the ${sourceTitle} card and serve immediately.`;
 
+  const fallbackImage = getRecipeImage(recipe as DrinkRecipeLike, sourceRoute);
+
   return {
     ...recipe,
+    image: fallbackImage,
     ingredients: normalizedIngredients.length > 0 ? normalizedIngredients : fallbackIngredients,
     instructions:
       normalizedInstructions.length > 0
@@ -211,12 +244,7 @@ async function main() {
           slug,
           sourceRoute: routeEntry.route,
           sourceTitle: routeEntry.title,
-          image:
-            typeof recipe.image === "string"
-              ? recipe.image
-              : typeof recipe.imageUrl === "string"
-                ? recipe.imageUrl
-                : null,
+          image: getRecipeImage(recipe, routeEntry.route),
           route: `/drinks/recipe/${slug}`
         };
         bySlug[slug] = recipes[key];
@@ -225,7 +253,7 @@ async function main() {
           name,
           sourceRoute: routeEntry.route,
           sourceTitle: routeEntry.title,
-          recipe: normalizeRecipe(recipe as Record<string, unknown>, routeEntry.title),
+          recipe: normalizeRecipe(recipe as Record<string, unknown>, routeEntry.title, routeEntry.route),
         };
         canonicalEntries.push(canonicalEntry);
         canonicalBySlug[slug] = canonicalEntry;
@@ -246,17 +274,13 @@ async function main() {
           existing.sourceRoute = routeEntry.route;
           existing.sourceTitle = routeEntry.title;
           existing.image =
-            typeof recipe.image === "string"
-              ? recipe.image
-              : typeof recipe.imageUrl === "string"
-                ? recipe.imageUrl
-                : existing.image;
+            getRecipeImage(recipe, routeEntry.route) ?? existing.image;
 
           const canonicalEntry = canonicalEntryByKey[key];
           if (canonicalEntry) {
             canonicalEntry.sourceRoute = routeEntry.route;
             canonicalEntry.sourceTitle = routeEntry.title;
-            canonicalEntry.recipe = normalizeRecipe(recipe as Record<string, unknown>, routeEntry.title);
+            canonicalEntry.recipe = normalizeRecipe(recipe as Record<string, unknown>, routeEntry.title, routeEntry.route);
           }
         } else {
           duplicates.push({

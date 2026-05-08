@@ -388,6 +388,7 @@
         "trending": true,
         "bestTime": "Pre-Workout",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -432,6 +433,7 @@
         "trending": true,
         "bestTime": "Pre-Workout",
         "estimatedCost": 3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -476,6 +478,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -520,6 +523,7 @@
         "trending": true,
         "bestTime": "Pre-Workout",
         "estimatedCost": 2.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -565,6 +569,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 3.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -609,6 +614,7 @@
         "trending": false,
         "bestTime": "Post-Workout",
         "estimatedCost": 3.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -653,6 +659,7 @@
         "trending": true,
         "bestTime": "Early Morning",
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -697,6 +704,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 2.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -780,6 +788,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 1,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -821,6 +830,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 1.25,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -862,6 +872,7 @@
         "trending": true,
         "bestTime": "Anytime",
         "estimatedCost": 1.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -903,6 +914,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 0.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -944,6 +956,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 0.75,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -985,6 +998,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -1026,6 +1040,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 3.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -1070,6 +1085,7 @@
         "trending": true,
         "bestTime": "Anytime",
         "estimatedCost": 1.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -1114,6 +1130,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -1158,6 +1175,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 2.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -1203,6 +1221,7 @@
         "trending": false,
         "bestTime": "Anytime",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -1247,6 +1266,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -1291,6 +1311,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 2.7,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -1336,6 +1357,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -1381,6 +1403,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -1424,6 +1447,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -1467,6 +1491,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -1511,6 +1536,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -1554,6 +1580,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -1598,6 +1625,7 @@
         "trending": true,
         "bestTime": "Anytime",
         "estimatedCost": 3.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -1641,6 +1669,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -1685,6 +1714,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 3.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -1728,6 +1758,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -1902,6 +1933,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 1.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Specialty Coffee card and serve immediately."
         ]
@@ -1946,6 +1978,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 2.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Specialty Coffee card and serve immediately."
         ]
@@ -1988,6 +2021,7 @@
         "trending": false,
         "bestTime": "Early Morning",
         "estimatedCost": 2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Specialty Coffee card and serve immediately."
         ]
@@ -2033,6 +2067,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 1.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Specialty Coffee card and serve immediately."
         ]
@@ -2078,6 +2113,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Specialty Coffee card and serve immediately."
         ]
@@ -2122,6 +2158,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 0.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -2166,6 +2203,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 0.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -2210,6 +2248,7 @@
         "trending": false,
         "bestTime": "Evening",
         "estimatedCost": 0.7,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -2254,6 +2293,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 0.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -2299,6 +2339,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 1.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -2343,6 +2384,7 @@
         "trending": false,
         "bestTime": "Evening",
         "estimatedCost": 0.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -2386,6 +2428,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 0.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -2430,6 +2473,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 0.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -2478,6 +2522,7 @@
           "Skin clarity"
         ],
         "specialInstructions": "Drink immediately after juicing for maximum enzyme activity",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2525,6 +2570,7 @@
           "Inflammation reduction"
         ],
         "specialInstructions": "Best consumed 2 hours after meals",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2572,6 +2618,7 @@
           "Digestive enzyme support"
         ],
         "specialInstructions": "Sip slowly 20 minutes before main meals",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2619,6 +2666,7 @@
           "Energy enhancement"
         ],
         "specialInstructions": "Consume daily during cold/flu season",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2666,6 +2714,7 @@
           "Circulation boost"
         ],
         "specialInstructions": "Stain alert: beet juice can temporarily color urine",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2714,6 +2763,7 @@
           "Electrolyte balance"
         ],
         "specialInstructions": "Drink 2-3 times daily during cleanse period",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2762,6 +2812,7 @@
           "Vitamin A & C boost"
         ],
         "specialInstructions": "Add chia seeds after juicing for fiber benefits",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2809,6 +2860,7 @@
           "Hormone regulation"
         ],
         "specialInstructions": "Best consumed before stressful events or in the morning",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2857,6 +2909,7 @@
           "Cellular detox"
         ],
         "specialInstructions": "CONSULT HEALTHCARE PROVIDER - Intensive detox protocol",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2904,6 +2957,7 @@
           "Mental clarity"
         ],
         "specialInstructions": "Best consumed on empty stomach for maximum absorption",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2951,6 +3005,7 @@
           "Blood sugar balance"
         ],
         "specialInstructions": "Consume 1-2 hours before bedtime for best results",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -2999,6 +3054,7 @@
           "Digestive healing"
         ],
         "specialInstructions": "Add kefir after juicing for probiotic benefits",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -3048,6 +3104,7 @@
           "Energy enhancement"
         ],
         "specialInstructions": "Do not oversteep to avoid bitterness",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -3097,6 +3154,7 @@
           "Skin health"
         ],
         "specialInstructions": "Best consumed warm for maximum liver benefits",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -3147,6 +3205,7 @@
           "Pain relief"
         ],
         "specialInstructions": "Add black pepper to enhance turmeric absorption",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -3195,6 +3254,7 @@
           "Fresh breath"
         ],
         "specialInstructions": "Steep covered to preserve volatile oils",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -3244,6 +3304,7 @@
           "Gentle energy"
         ],
         "specialInstructions": "Use lower temperature to preserve delicate flavors",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -3294,6 +3355,7 @@
           "Diuretic properties"
         ],
         "specialInstructions": "Can be served hot or iced",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -3343,6 +3405,7 @@
           "Anti-anxiety"
         ],
         "specialInstructions": "Steep longer for stronger sedative effects",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -3392,6 +3455,7 @@
           "Antioxidant rich"
         ],
         "specialInstructions": "Whisk vigorously to prevent clumping and create froth",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -3442,6 +3506,7 @@
           "Anti-inflammatory"
         ],
         "specialInstructions": "Can withstand longer steeping without bitterness",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -3489,6 +3554,7 @@
         "temperature": "Cold",
         "category": "Classic Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -3536,6 +3602,7 @@
         "temperature": "Cold",
         "category": "Fruity Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -3583,6 +3650,7 @@
         "temperature": "Warm",
         "category": "Detox Waters",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -3631,6 +3699,7 @@
         "temperature": "Cold",
         "category": "Fruity Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -3679,6 +3748,7 @@
         "temperature": "Cold",
         "category": "Citrus Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -3727,6 +3797,7 @@
         "temperature": "Cold",
         "category": "Tropical Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -3775,6 +3846,7 @@
         "temperature": "Warm",
         "category": "Warm Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -3822,6 +3894,7 @@
         "temperature": "Cold",
         "category": "Summer Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -3869,6 +3942,7 @@
         "temperature": "Warm",
         "category": "Herbal Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -3917,6 +3991,7 @@
         "temperature": "Cold",
         "category": "Tea Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -4006,6 +4081,7 @@
             "Add ice for colder, thicker consistency"
           ]
         },
+        "image": null,
         "instructions": [
           "Add liquid first, then slowly add beef protein while blending",
           "Blend for 45-60 seconds until completely smooth",
@@ -4098,6 +4174,7 @@
             "Blend until rich and chocolatey"
           ]
         },
+        "image": null,
         "instructions": [
           "Mix protein with small amount of liquid first to create paste",
           "Gradually add remaining liquid while blending",
@@ -4189,6 +4266,7 @@
             "Enjoy as morning energy boost"
           ]
         },
+        "image": null,
         "instructions": [
           "Combine all ingredients in blender",
           "Blend until smooth and frothy",
@@ -4287,6 +4365,7 @@
             "Blend until smooth, stir in chia seeds last"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend beef protein with almond milk first",
           "Add frozen berries and acai powder",
@@ -4379,6 +4458,7 @@
             "Add cream and blend until frothy"
           ]
         },
+        "image": null,
         "instructions": [
           "Brew coffee and let cool completely",
           "Blend coffee with beef protein and cocoa",
@@ -4471,6 +4551,7 @@
             "Blend until tropical smoothie consistency"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend beef protein with coconut water",
           "Add frozen pineapple and coconut cream",
@@ -4698,6 +4779,7 @@
             "Blend until rich and chocolatey smooth"
           ]
         },
+        "image": null,
         "instructions": [
           "Mix casein with small amount of liquid first to create paste",
           "Gradually add remaining liquid while blending",
@@ -4807,6 +4889,7 @@
             "Blend until creamy pink consistency"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend casein with liquid until smooth",
           "Add frozen strawberries and honey",
@@ -4916,6 +4999,7 @@
             "Add more milk if too thick"
           ]
         },
+        "image": null,
         "instructions": [
           "Combine all ingredients in blender",
           "Blend until thick and creamy",
@@ -5025,6 +5109,7 @@
             "Blend until smooth and frothy"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend casein with coconut water",
           "Add banana and honey",
@@ -5134,6 +5219,7 @@
             "Add cream and blend until frothy"
           ]
         },
+        "image": null,
         "instructions": [
           "Brew coffee and let cool completely",
           "Blend coffee with casein and cocoa",
@@ -5243,6 +5329,7 @@
             "Blend until vibrant purple and creamy"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend casein with almond milk until smooth",
           "Add frozen blueberries and vanilla",
@@ -5352,6 +5439,7 @@
             "Enjoy as comforting evening treat"
           ]
         },
+        "image": null,
         "instructions": [
           "Combine all ingredients in blender",
           "Blend until warm cinnamon aroma develops",
@@ -5461,6 +5549,7 @@
             "Blend until rich and creamy like peanut butter cup"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend casein with milk until smooth",
           "Add peanut butter and cocoa",
@@ -5678,6 +5767,7 @@
             "Add cinnamon and ice; blend until frothy."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend liquids with collagen and supplements first.",
           "Add cinnamon and ice; blend until frothy."
@@ -5779,6 +5869,7 @@
             "Blend for 30 seconds until tropical and smooth."
           ]
         },
+        "image": null,
         "instructions": [
           "Combine juice and collagen, then add fruit.",
           "Blend for 30 seconds until tropical and smooth."
@@ -5884,6 +5975,7 @@
             "Add fruit and blend smooth."
           ]
         },
+        "image": null,
         "instructions": [
           "Stir collagen into liquid until dissolved.",
           "Add fruit and blend smooth."
@@ -5994,6 +6086,7 @@
             "Add builder and blend with lime and ice."
           ]
         },
+        "image": null,
         "instructions": [
           "Infuse water with cucumber and mint.",
           "Add builder and blend with lime and ice."
@@ -6102,6 +6195,7 @@
             "Blend briefly for golden latte texture."
           ]
         },
+        "image": null,
         "instructions": [
           "Warm milk gently, stir in collagen and spices.",
           "Blend briefly for golden latte texture."
@@ -6201,6 +6295,7 @@
             "Blend 40–60 seconds until creamy."
           ]
         },
+        "image": null,
         "instructions": [
           "Add milk, then protein and dry ingredients, then fruit.",
           "Blend 40–60 seconds until creamy."
@@ -6300,6 +6395,7 @@
             "Add yogurt and sweetener; blend smooth."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend liquids + protein 10 seconds.",
           "Add yogurt and sweetener; blend smooth."
@@ -6398,6 +6494,7 @@
             "Blend all until smooth; pulse to keep berry texture if preferred."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend all until smooth; pulse to keep berry texture if preferred."
         ]
@@ -6495,6 +6592,7 @@
             "Blend all 45–60 seconds until silky; add milk to thin as needed."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend all 45–60 seconds until silky; add milk to thin as needed."
         ]
@@ -6592,6 +6690,7 @@
             "Blend until bright and smooth; adjust lemon to taste."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend until bright and smooth; adjust lemon to taste."
         ]
@@ -6689,6 +6788,7 @@
             "Blend all ingredients until smooth; add milk for thinner texture."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend all ingredients until smooth; add milk for thinner texture."
         ]
@@ -6787,6 +6887,7 @@
             "Add milk and sweetener; blend until frothy"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend coffee with protein and cocoa until smooth",
           "Add milk and sweetener; blend until frothy"
@@ -6886,6 +6987,7 @@
             "Blend until smooth and creamy like pumpkin pie"
           ]
         },
+        "image": null,
         "instructions": [
           "Combine all ingredients in blender",
           "Blend until smooth and creamy like pumpkin pie"
@@ -6985,6 +7087,7 @@
             "Add remaining ingredients and blend until vibrant green"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend matcha with liquid first to dissolve",
           "Add remaining ingredients and blend until vibrant green"
@@ -7198,6 +7301,7 @@
             "Pulse to desired texture."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (30g) hemp protein",
           "1 cup oat milk",
@@ -7308,6 +7412,7 @@
             "Add extra cacao or sweetener to taste."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (32g) rice–quinoa protein",
           "1 cup unsweetened almond milk",
@@ -7409,6 +7514,7 @@
             "Add strawberries, vanilla, sweetener; blend smooth."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (28g) soy protein isolate",
           "1 cup soy milk or almond milk",
@@ -7512,6 +7618,7 @@
             "Great warm: gently heat milk first, then blend briefly."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (30g) pumpkin seed protein",
           "1 cup cashew milk or water",
@@ -7615,6 +7722,7 @@
             "Add extra pineapple if you prefer sweeter."
           ]
         },
+        "image": null,
         "ingredients": [
           "2 tbsp (~25g) algae protein blend (spirulina/chlorella)",
           "0.75 cup coconut water",
@@ -7716,6 +7824,7 @@
             "Add remaining, blend until smooth."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (30g) pea protein",
           "1 tsp matcha powder",
@@ -7821,6 +7930,7 @@
             "Top with oat crumble or cacao nibs (optional)."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (30–35g) plant protein (neutral)",
           "1 cup oat milk",
@@ -7921,6 +8031,7 @@
             "Pulse to keep texture or blend fully smooth."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (32g) rice–quinoa protein",
           "0.75 cup almond milk",
@@ -8028,6 +8139,7 @@
             "Adjust sweetness/spice to taste."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (30g) hemp protein",
           "1 cup coconut milk (light)",
@@ -8310,7 +8422,8 @@
           "directions": [
             "Blend all ingredients 30–45 seconds; adjust sweetness to taste."
           ]
-        }
+        },
+        "image": null
       }
     },
     {
@@ -8405,7 +8518,8 @@
           "directions": [
             "Blend coffee + powder first; add banana, oats, cinnamon, ice; blend smooth."
           ]
-        }
+        },
+        "image": null
       }
     },
     {
@@ -8487,7 +8601,8 @@
           "directions": [
             "Shake in a bottle 10–15 seconds; no blender required."
           ]
-        }
+        },
+        "image": null
       }
     },
     {
@@ -8583,7 +8698,8 @@
             "Blend liquids + proteins 15 seconds.",
             "Add yogurt, vanilla, ice; blend silky."
           ]
-        }
+        },
+        "image": null
       }
     },
     {
@@ -8757,6 +8873,7 @@
         "berryType": "Raspberry",
         "bestTime": "Afternoon",
         "estimatedCost": 3.1,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
         ]
@@ -8799,6 +8916,7 @@
         "berryType": "Blackberry",
         "bestTime": "Morning",
         "estimatedCost": 3.3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
         ]
@@ -8843,6 +8961,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 4.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
         ]
@@ -8887,6 +9006,7 @@
         "trending": true,
         "bestTime": "Any Time",
         "estimatedCost": 3.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -8929,6 +9049,7 @@
         "berryType": "Strawberry",
         "bestTime": "Anytime",
         "estimatedCost": 2.7,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
         ]
@@ -8971,6 +9092,7 @@
         "berryType": "Cranberry",
         "bestTime": "Morning",
         "estimatedCost": 3.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
         ]
@@ -9066,6 +9188,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 3.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -9112,6 +9235,7 @@
         "bestTime": "Morning",
         "caffeineFree": false,
         "estimatedCost": 3.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -9158,6 +9282,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -9205,6 +9330,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -9252,6 +9378,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 2.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -9299,6 +9426,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -9346,6 +9474,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 2.7,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -9918,6 +10047,7 @@
         "featured": true,
         "bestTime": "Morning",
         "estimatedCost": 3.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -9962,6 +10092,7 @@
         "trending": true,
         "bestTime": "Morning/Afternoon",
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -10005,6 +10136,7 @@
         "smoothieType": "Tea Detox",
         "bestTime": "Morning",
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -10049,6 +10181,7 @@
         "trending": true,
         "bestTime": "Morning/Afternoon",
         "estimatedCost": 3.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -10092,6 +10225,7 @@
         "smoothieType": "Green Detox",
         "bestTime": "Morning",
         "estimatedCost": 3.3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -10136,6 +10270,7 @@
         "featured": true,
         "bestTime": "Morning",
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -10179,6 +10314,7 @@
         "smoothieType": "Green Detox",
         "bestTime": "Morning",
         "estimatedCost": 3.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -10315,6 +10451,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -10358,6 +10495,7 @@
         "greenType": "Creamy Greens",
         "bestTime": "Breakfast",
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -10402,6 +10540,7 @@
         "featured": true,
         "bestTime": "Morning",
         "estimatedCost": 2.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -10445,6 +10584,7 @@
         "greenType": "Protein Greens",
         "bestTime": "Post-Workout",
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -10489,6 +10629,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 2.7,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -10624,6 +10765,7 @@
         "trending": true,
         "bestTime": "Breakfast",
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -10667,6 +10809,7 @@
         "proteinType": "Plant Protein",
         "bestTime": "Morning",
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -10711,6 +10854,7 @@
         "trending": true,
         "bestTime": "Pre-Workout",
         "estimatedCost": 3.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -10755,6 +10899,7 @@
         "featured": true,
         "bestTime": "Morning",
         "estimatedCost": 2.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -10798,6 +10943,7 @@
         "proteinType": "Casein Protein",
         "bestTime": "Breakfast",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -10842,6 +10988,7 @@
         "trending": true,
         "bestTime": "Any Time",
         "estimatedCost": 3.1,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -11017,6 +11164,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Tropical Smoothies card and serve immediately."
         ]
@@ -11059,6 +11207,7 @@
         "flavor": "Citrus Tropical",
         "bestTime": "Morning",
         "estimatedCost": 3.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Tropical Smoothies card and serve immediately."
         ]
@@ -11102,6 +11251,7 @@
         "featured": true,
         "bestTime": "Afternoon",
         "estimatedCost": 3.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Tropical Smoothies card and serve immediately."
         ]
@@ -11145,6 +11295,7 @@
         "trending": true,
         "bestTime": "Morning/Afternoon",
         "estimatedCost": 4.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Tropical Smoothies card and serve immediately."
         ]
@@ -11187,6 +11338,7 @@
         "flavor": "Tropical Green",
         "bestTime": "Morning",
         "estimatedCost": 3.3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Tropical Smoothies card and serve immediately."
         ]
@@ -11279,6 +11431,7 @@
         "featured": true,
         "bestTime": "Within 30 min after workout",
         "estimatedCost": 4.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -11324,6 +11477,7 @@
         "trending": true,
         "bestTime": "15-30 min before workout",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -11368,6 +11522,7 @@
         "energyLevel": "Sustained",
         "bestTime": "1 hour before workout",
         "estimatedCost": 3.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -11413,6 +11568,7 @@
         "featured": true,
         "bestTime": "45 min before workout",
         "estimatedCost": 4.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -11457,6 +11613,7 @@
         "energyLevel": "Medium",
         "bestTime": "30 min before cardio",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -11502,6 +11659,7 @@
         "energyLevel": "Recovery",
         "bestTime": "After workout",
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -11547,6 +11705,7 @@
         "trending": true,
         "bestTime": "30-60 min before practice",
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -13432,7 +13591,8 @@
           "Add bourbon and large ice cube",
           "Stir gently",
           "Express orange peel over drink and garnish with cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     {
@@ -13482,7 +13642,8 @@
           "Stir gin and dry vermouth with ice until chilled",
           "Strain into a chilled martini glass",
           "Garnish with a lemon twist or olive"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -13534,7 +13695,8 @@
           "Stir for 30 seconds until very cold",
           "Strain into chilled coupe",
           "Garnish with cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     {
@@ -13586,7 +13748,8 @@
           "Stir for 30 seconds",
           "Strain into old fashioned glass with large ice cube",
           "Express orange peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -13639,7 +13802,8 @@
           "Add ice and shake hard for 15 seconds",
           "Strain into coupe",
           "Add bitters design on foam"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     {
@@ -13692,7 +13856,8 @@
           "Shake all ingredients vigorously with ice",
           "Double strain into chilled coupe glass",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -13746,7 +13911,8 @@
           "Add rye and ice, stir",
           "Strain into prepared glass",
           "Express lemon peel and discard"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     {
@@ -13801,7 +13967,8 @@
           "Stir until cup is frosted",
           "Top with more crushed ice",
           "Garnish with mint sprig and powdered sugar"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     {
@@ -13846,7 +14013,8 @@
           "Shake cognac, triple sec, and lemon juice with ice",
           "Strain into glass",
           "Garnish with orange peel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -13886,7 +14054,8 @@
         "instructions": [
           "Add cognac and amaretto to rocks glass with large ice cube",
           "Stir gently"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -13931,7 +14100,8 @@
           "Stir all ingredients with ice",
           "Strain into rocks glass with ice",
           "Express lemon peel over drink"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -13976,7 +14146,8 @@
           "Stir cognac, syrup, and bitters with ice",
           "Strain into glass",
           "Express lemon peel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -14021,7 +14192,8 @@
           "Add cognac and large ice cube",
           "Stir until chilled",
           "Express orange peel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -14066,7 +14238,8 @@
           "Strain into flute",
           "Top with champagne",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -14109,7 +14282,8 @@
           "Shake all ingredients with ice",
           "Strain into coupe glass",
           "Garnish with grated nutmeg"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -14153,7 +14327,8 @@
           "Shake all ingredients with ice",
           "Strain into martini glass",
           "Garnish with lime twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -14196,7 +14371,8 @@
           "Shake apple brandy, lime juice, and grenadine with ice",
           "Strain into coupe",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -14240,7 +14416,8 @@
           "Shake all ingredients with ice",
           "Strain into coupe glass",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -14287,7 +14464,8 @@
           "Shake hard",
           "Strain into rocks glass",
           "Garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -14330,7 +14508,8 @@
           "Shake all ingredients with ice",
           "Strain into coupe glass",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     {
@@ -14364,7 +14543,8 @@
           "Shake rum, lime, and syrup with ice",
           "Fine strain into a chilled coupe",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     {
@@ -14399,7 +14579,8 @@
           "Shake all with ice",
           "Fine strain into coupe",
           "Express grapefruit peel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     {
@@ -14433,7 +14614,8 @@
           "Add rum, lime, ice",
           "Shake hard",
           "Fine strain into coupe"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     {
@@ -14465,7 +14647,8 @@
           "Blend all until smooth",
           "Pour into chilled hurricane or coupe",
           "Garnish with strawberry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     {
@@ -14497,7 +14680,8 @@
           "Blend until smooth",
           "Pour into glass",
           "Optional nutmeg dust"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     {
@@ -14529,7 +14713,8 @@
           "Shake all with ice",
           "Fine strain into coupe",
           "Garnish with pineapple leaf"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     {
@@ -14561,7 +14746,8 @@
           "Shake hard with plenty of ice",
           "Fine strain into coupe",
           "Lime wheel garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     {
@@ -14595,7 +14781,8 @@
           "Shake all with ice",
           "Fine strain into coupe",
           "Optional cocoa dust"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     {
@@ -14627,7 +14814,8 @@
           "Blend until smooth",
           "Pour into chilled glass",
           "Mango slice garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     {
@@ -14659,7 +14847,8 @@
           "Shake hard with ice",
           "Fine strain into coupe",
           "Express lime"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     {
@@ -14711,7 +14900,8 @@
           "Top with tonic water",
           "Stir gently",
           "Garnish with lime wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -14766,7 +14956,8 @@
           "Top with soda water",
           "Stir gently",
           "Garnish with lemon wheel and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -14819,7 +15010,8 @@
           "Strain into champagne flute",
           "Top with champagne",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -14872,7 +15064,8 @@
           "Shake for 10 seconds",
           "Strain into chilled coupe glass",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -14924,7 +15117,8 @@
           "Shake hard for 10 seconds",
           "Strain into chilled coupe glass",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -14974,7 +15168,8 @@
         "instructions": [
           "Shake gin, lime juice, and syrup with ice",
           "Strain into a chilled coupe and garnish with a lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15029,7 +15224,8 @@
           "Shake all ingredients except soda with ice",
           "Strain into an ice-filled hurricane glass and top with soda water",
           "Garnish with pineapple and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15084,7 +15280,8 @@
           "Dry shake ingredients except soda",
           "Add ice and shake again until frothy and cold",
           "Strain into a chilled highball and top with soda to raise the foam cap"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15134,7 +15331,8 @@
         "instructions": [
           "Dry shake ingredients, then shake again with ice",
           "Fine strain into a chilled coupe and garnish with a raspberry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15188,7 +15386,8 @@
           "Shake gin, Cointreau, Lillet, and lemon juice with ice",
           "Strain into prepared glass",
           "Express orange peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15241,7 +15440,8 @@
           "Shake for 10 seconds",
           "Strain into chilled coupe glass",
           "Garnish with lime twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15296,7 +15496,8 @@
           "Stir",
           "Drizzle crème de mure over top",
           "Garnish with blackberries and lemon slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15350,7 +15551,8 @@
           "Shake for 10 seconds",
           "Strain into chilled coupe glass",
           "Garnish with mint sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15400,7 +15602,8 @@
         "instructions": [
           "Shake gin, rhubarb syrup, lemon juice, and bitters with ice",
           "Fine strain into a chilled coupe and garnish with a rhubarb ribbon"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15451,7 +15654,8 @@
         "instructions": [
           "Build over ice in a wine glass: gin, aperitivo, and lemon juice",
           "Top with sparkling wine and a splash of soda water, then stir gently"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15501,7 +15705,8 @@
         "instructions": [
           "Build gin, herbal liqueur, and lime over ice in a highball",
           "Top with chilled soda and stir once"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15552,7 +15757,8 @@
         "instructions": [
           "Dry shake ingredients, then shake again with ice",
           "Fine strain into a chilled coupe and garnish with orange zest"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15602,7 +15808,8 @@
         "instructions": [
           "Shake all ingredients with ice and strain into a chilled Nick & Nora glass",
           "Garnish with an edible flower"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15652,7 +15859,8 @@
         "instructions": [
           "Shake ingredients with ice, then fine strain into a chilled coupe",
           "Garnish with a lemon coin"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15701,7 +15909,8 @@
         "iba_official": false,
         "instructions": [
           "Build over ice in a wine glass and stir gently to combine"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15752,7 +15961,8 @@
         "instructions": [
           "Lightly muddle cucumber and basil with syrup",
           "Add gin, lemon, and ice; shake and strain over crushed ice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15802,7 +16012,8 @@
         "instructions": [
           "Shake gin, lemon, and lavender syrup with ice",
           "Strain into a highball with fresh ice, then top with soda water"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15852,7 +16063,8 @@
         "instructions": [
           "Shake gin, lemon juice, and peppercorn syrup with ice",
           "Strain into a Collins glass over fresh ice and top with soda"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15902,7 +16114,8 @@
         "instructions": [
           "Stir ingredients with ice and strain over a large cube in an old fashioned glass",
           "Express and add blood orange peel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -15953,7 +16166,8 @@
         "instructions": [
           "Muddle strawberry and thyme, then add gin, lemon, syrup, and ice",
           "Shake and strain over crushed ice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -16003,7 +16217,8 @@
         "instructions": [
           "Build gin, yuzu juice, and syrup over clear ice in a highball",
           "Top with soda and give one gentle stir"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -16052,7 +16267,8 @@
         "instructions": [
           "Build over ice in a highball glass and stir to chill",
           "Express rosemary oils over top before serving"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     {
@@ -16105,7 +16321,8 @@
           "Add Irish whiskey, stir",
           "Float whipped cream on top by pouring over back of spoon",
           "Garnish with coffee beans"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     {
@@ -16161,7 +16378,8 @@
           "Add bourbon, cinnamon stick, and cloves",
           "Stir gently",
           "Garnish with lemon wheel and star anise"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     {
@@ -16217,7 +16435,8 @@
           "Heat gently (do not boil) for 15-20 minutes",
           "Strain and serve warm in mugs",
           "Garnish each serving with orange slice and cinnamon stick"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     {
@@ -16273,7 +16492,8 @@
           "Add rum and stir",
           "Grate fresh nutmeg on top",
           "Garnish with cinnamon stick"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     {
@@ -16332,7 +16552,8 @@
           "Fill with hot milk",
           "Stir well",
           "Grate nutmeg on top"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     {
@@ -16386,7 +16607,8 @@
           "Add brandy and carefully ignite",
           "Ladle flaming mixture while slowly adding hot coffee to extinguish flames",
           "Serve in demitasse cups"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     {
@@ -16442,7 +16664,8 @@
           "Stir",
           "Garnish with apple slice and cinnamon stick",
           "Optional caramel drizzle on top"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     {
@@ -16497,7 +16720,8 @@
           "Stir well",
           "Top with whipped cream",
           "Garnish with chocolate shavings and pinch of cinnamon and sea salt"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     {
@@ -16551,7 +16775,8 @@
           "Add ice and shake hard for 15 seconds",
           "Strain into glass with ice",
           "Garnish with lemon wheel and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -16603,7 +16828,8 @@
           "Shake for 15 seconds",
           "Strain into chilled coupe glass",
           "Garnish with mint leaf"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -16651,7 +16877,8 @@
         "instructions": [
           "Layer ingredients carefully in order: First Kahlúa, then Baileys (pour over back of spoon), then Grand Marnier on top",
           "Do not mix"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -16705,7 +16932,8 @@
           "Strain into highball glass with ice",
           "Top with soda water",
           "Garnish with lemon wheel and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -16754,7 +16982,8 @@
           "Pour Chambord into champagne flute",
           "Top with champagne",
           "Drop fresh raspberry into glass"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -16807,7 +17036,8 @@
           "Shake for 15 seconds",
           "Strain into glass with ice",
           "Top with chocolate shavings"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -16860,7 +17090,8 @@
           "Add prosecco, limoncello, and soda",
           "Stir gently",
           "Garnish with lemon and mint"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     {
@@ -16913,7 +17144,8 @@
           "Strain into highball glass with ice",
           "Top with soda water",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -16966,7 +17198,8 @@
         "instructions": [
           "Pour scotch and amaretto over ice in rocks glass",
           "Stir briefly and serve"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -17019,7 +17252,8 @@
           "Shake tequila, Cointreau, and lime juice with ice for 10 seconds",
           "Strain into prepared glass with fresh ice",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -17070,7 +17304,8 @@
           "Top with champagne",
           "Stir gently",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -17122,7 +17357,8 @@
           "Add prosecco, Aperol, and soda water",
           "Stir gently",
           "Garnish with orange slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     {
@@ -17173,7 +17409,8 @@
           "Add scotch and Drambuie",
           "Stir gently",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -17226,7 +17463,8 @@
           "Shake cognac, Grand Marnier, and lemon juice with ice",
           "Strain into prepared glass",
           "Garnish with orange twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -17274,7 +17512,8 @@
           "Fill pint glass halfway with energy drink",
           "Pour Jägermeister into shot glass",
           "Drop shot glass into pint glass and drink immediately"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     {
@@ -17327,7 +17566,8 @@
           "Stir for 30 seconds until very cold",
           "Strain into chilled martini glass",
           "Garnish with lemon twist or olives"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     {
@@ -17380,7 +17620,8 @@
           "Stir for 30 seconds until very cold",
           "Strain into chilled martini glass",
           "Garnish with lemon twist or olives"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     {
@@ -17434,7 +17675,8 @@
           "Stir for 30 seconds",
           "Strain into chilled martini glass",
           "Garnish with 3 olives on a pick"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     {
@@ -17489,7 +17731,8 @@
           "Shake vigorously for 15 seconds",
           "Strain into chilled martini glass",
           "Garnish with 3 coffee beans"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     {
@@ -17546,7 +17789,8 @@
           "Strain into chilled martini glass",
           "Serve with prosecco shot on side",
           "Garnish with passion fruit half"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     {
@@ -17601,7 +17845,8 @@
           "Shake for 10 seconds",
           "Strain into chilled martini glass",
           "Garnish with lychee fruit"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     {
@@ -17655,7 +17900,8 @@
           "Shake for 10 seconds",
           "Strain into chilled martini glass",
           "Garnish with pineapple wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     {
@@ -17709,7 +17955,8 @@
           "Shake hard for 10 seconds (Bond style)",
           "Strain into chilled martini glass",
           "Express lemon peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     {
@@ -17760,6 +18007,7 @@
         "method": "Muddle & Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Muddle & Build"
         ]
@@ -17813,6 +18061,7 @@
         "method": "Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build"
         ]
@@ -17870,7 +18119,8 @@
           "Strain into coupe glass",
           "Top with tonic water",
           "Garnish with cucumber ribbon and basil"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     {
@@ -17921,6 +18171,7 @@
         "method": "Build & Layer",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build & Layer"
         ]
@@ -17976,7 +18227,8 @@
           "Top with club soda",
           "Stir gently",
           "Garnish with lavender sprig and lemon wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     {
@@ -18031,7 +18283,8 @@
           "Strain into rocks glass over ice",
           "Top with club soda",
           "Garnish with watermelon triangle and mint"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     {
@@ -18085,7 +18338,8 @@
           "Top with ginger beer",
           "Stir gently",
           "Garnish with lime wheel, mint sprig, and candied ginger"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     {
@@ -18140,7 +18394,8 @@
           "Strain into rocks glass over ice",
           "Top with club soda",
           "Garnish with berry skewer and basil leaf"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     {
@@ -18194,7 +18449,8 @@
           "Gently stir",
           "Add pomegranate seeds",
           "Garnish with rosemary sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     {
@@ -18249,7 +18505,8 @@
           "Pour into prepared glass",
           "Top with lime sparkling water",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     {
@@ -18301,7 +18558,8 @@
           "Blend pineapple, cilantro, lime juice, coconut water, and agave with ice until smooth",
           "Pour into highball glass",
           "Garnish with pineapple wedge and cilantro sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     {
@@ -18356,7 +18614,8 @@
           "Shake vigorously until frothy",
           "Strain into chilled martini glass",
           "Garnish with 3 coffee beans"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     {
@@ -18412,7 +18671,8 @@
           "Add rum and ice",
           "Top with soda water",
           "Stir gently and garnish with mint sprig and lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -18468,7 +18728,8 @@
           "Blend all ingredients with crushed ice until smooth",
           "Pour into hurricane glass",
           "Garnish with pineapple wedge and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -18525,7 +18786,8 @@
           "Shake all ingredients with ice",
           "Strain over crushed ice in rocks glass",
           "Garnish elaborately with mint sprig, spent lime shell, and pineapple"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -18580,7 +18842,8 @@
           "Add rum and lime juice",
           "Top with ginger beer",
           "Stir gently and garnish with lime wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -18638,7 +18901,8 @@
           "Shake all three rums, juices, syrups, and bitters with ice",
           "Strain over crushed ice in tiki mug",
           "Garnish elaborately with mint, cherry, and pineapple"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -18693,7 +18957,8 @@
           "Squeeze lime wedge and drop in",
           "Add rum and top with Coca-Cola",
           "Stir gently"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -18751,7 +19016,8 @@
           "Strain into hurricane glass over ice",
           "Float grenadine",
           "Garnish with orange slice and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -18806,7 +19072,8 @@
           "Add rhum agricole",
           "Stir",
           "Add ice if desired"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -18863,7 +19130,8 @@
           "Strain into hurricane glass over crushed ice",
           "Top with freshly grated nutmeg",
           "Garnish with orange slice and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -18918,7 +19186,8 @@
           "Shake all ingredients with ice",
           "Strain over fresh ice in rocks glass",
           "Garnish with pineapple wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -18974,7 +19243,8 @@
           "Add large ice cube and rum",
           "Stir until well chilled",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     {
@@ -19030,7 +19300,8 @@
           "Strain over fresh ice in rocks glass",
           "Float Islay scotch on top",
           "Garnish with candied ginger"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19084,7 +19355,8 @@
           "Stir scotch, sweet vermouth, and bitters with ice until well chilled",
           "Strain into chilled coupe glass",
           "Garnish with lemon peel or cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19139,7 +19411,8 @@
           "Shake all equal parts with ice vigorously",
           "Double strain into chilled coupe glass",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19192,7 +19465,8 @@
           "Add scotch and Drambuie to rocks glass with ice",
           "Stir gently",
           "Express lemon peel over drink and drop in"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19248,7 +19522,8 @@
           "Top with ginger beer",
           "Stir gently",
           "Garnish with lime wedge and mint sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19304,7 +19579,8 @@
           "Add large ice cube and Irish whiskey",
           "Stir until well chilled",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19359,7 +19635,8 @@
           "Stir all ingredients with ice until well chilled",
           "Strain into chilled coupe glass",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19414,7 +19691,8 @@
           "Stir gin and vermouth with ice until very cold",
           "Strain into rinsed glass",
           "Express lemon peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19474,7 +19752,8 @@
           "Shake vigorously",
           "Double strain into coupe",
           "Garnish with lemon wheel and drops of bitters"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19531,7 +19810,8 @@
           "Shake all ingredients with ice until well chilled and frothy",
           "Strain into coupe glass",
           "Garnish with fresh mint sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19588,7 +19868,8 @@
           "Shake both whiskies, lemon juice, orgeat, and bitters with ice vigorously",
           "Double strain into chilled coupe",
           "Express lemon peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     {
@@ -19649,7 +19930,8 @@
           "Add vodka and coffee liqueur to glass with ice",
           "Float cream on top",
           "Drizzle peppermint schnapps"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     {
@@ -19710,7 +19992,8 @@
           "Strain into highball glass over ice",
           "Top with club soda",
           "Garnish with cucumber and mint"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     {
@@ -19770,7 +20053,8 @@
           "Shake vodka, lavender syrup, and lemon juice with ice",
           "Strain into glass",
           "Garnish with lavender sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     {
@@ -19833,7 +20117,8 @@
           "Strain over ice",
           "Top with club soda",
           "Garnish with strawberry and basil"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     {
@@ -19894,7 +20179,8 @@
           "Blend all ingredients with ice until smooth",
           "Pour into margarita glass",
           "Garnish with watermelon triangle"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     {
@@ -19954,7 +20240,8 @@
           "Blend all ingredients until smooth and slushy",
           "Pour into hurricane glass",
           "Garnish with pineapple wedge and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     {
@@ -20016,7 +20303,8 @@
           "Top with tonic water",
           "Stir gently",
           "Garnish with cucumber ribbon and mint"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     {
@@ -20076,7 +20364,8 @@
           "Shake bourbon, apple cider, lemon juice, and maple syrup with ice",
           "Strain over fresh ice",
           "Garnish with apple slice and cinnamon stick"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     {
@@ -20136,7 +20425,8 @@
           "Strain into martini glass",
           "Dust with pumpkin spice",
           "Garnish with coffee beans"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     {
@@ -20198,7 +20488,8 @@
           "Top with ginger beer",
           "Stir gently",
           "Garnish with cranberries, rosemary sprig, and lime"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     {
@@ -20248,7 +20539,8 @@
           "Top with fresh orange juice",
           "Garnish with orange twist",
           "Serve immediately"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     {
@@ -20298,7 +20590,8 @@
           "Top with prosecco",
           "Stir gently",
           "Garnish with peach slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     {
@@ -20350,7 +20643,8 @@
           "Top with champagne",
           "Stir gently",
           "Garnish with strawberry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     {
@@ -20404,7 +20698,8 @@
           "Add elderflower syrup, prosecco, and soda",
           "Stir gently",
           "Garnish with mint and lime"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     {
@@ -20456,7 +20751,8 @@
           "Top with champagne",
           "Stir gently",
           "Garnish with orange wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     {
@@ -20508,7 +20804,8 @@
           "Add prosecco, Campari, and soda",
           "Stir gently",
           "Garnish with orange slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     {
@@ -20557,7 +20854,8 @@
           "Pour champagne into flute",
           "Top with pineapple juice",
           "Garnish with pineapple wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     {
@@ -20607,7 +20905,8 @@
           "Top with prosecco",
           "Stir gently",
           "Garnish with strawberry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     {
@@ -20663,7 +20962,8 @@
           "Shake tequila, lime juice, and triple sec with ice",
           "Strain into prepared glass over fresh ice",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     {
@@ -20719,7 +21019,8 @@
           "Add tequila and lime juice",
           "Top with grapefruit soda",
           "Stir gently and garnish with grapefruit slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     {
@@ -20775,7 +21076,8 @@
           "Add tequila and orange juice, stir",
           "Slowly pour grenadine down the side to create sunrise effect",
           "Garnish with orange slice and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     {
@@ -20831,7 +21133,8 @@
           "Shake tequila, lime juice, and agave nectar with ice",
           "Strain over fresh ice",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     {
@@ -20887,7 +21190,8 @@
           "Shake mezcal, lime juice, and agave nectar with ice",
           "Strain over fresh ice",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     {
@@ -20943,7 +21247,8 @@
           "Add large ice cube, tequila, and mezcal",
           "Stir until chilled",
           "Flame orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     {
@@ -21001,7 +21306,8 @@
           "Shake vigorously",
           "Strain over fresh ice in salt-rimmed glass",
           "Garnish with jalapeño slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     {
@@ -21057,7 +21363,8 @@
           "Add large ice cube and tequila",
           "Stir until well chilled",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     {
@@ -21110,6 +21417,7 @@
         "method": "Build & Stir",
         "vegan": false,
         "glutenFree": false,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build & Stir"
         ]
@@ -21162,6 +21470,7 @@
         "method": "Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build"
         ]
@@ -21215,6 +21524,7 @@
         "method": "Muddle & Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Muddle & Build"
         ]
@@ -21268,6 +21578,7 @@
         "method": "Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build"
         ]
@@ -21321,6 +21632,7 @@
         "method": "Build & Stir",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build & Stir"
         ]
@@ -21374,6 +21686,7 @@
         "method": "Muddle & Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Muddle & Build"
         ]
@@ -21427,6 +21740,7 @@
         "method": "Blend",
         "vegan": false,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Blend"
         ]
@@ -21480,6 +21794,7 @@
         "method": "Muddle & Build",
         "vegan": false,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Muddle & Build"
         ]
@@ -21533,6 +21848,7 @@
         "method": "Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build"
         ]
@@ -21586,6 +21902,7 @@
         "method": "Whisk & Build",
         "vegan": false,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Whisk & Build"
         ]
@@ -21639,6 +21956,7 @@
         "method": "Heat & Steep",
         "vegan": false,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Heat & Steep"
         ]
@@ -21695,7 +22013,8 @@
           "Top with ginger beer",
           "Stir gently",
           "Garnish with lime wedge and mint sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     {
@@ -21754,7 +22073,8 @@
           "Add vodka, tomato juice, lemon juice, Worcestershire, hot sauce, celery salt, pepper, and horseradish",
           "Stir well",
           "Garnish elaborately"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     {
@@ -21807,7 +22127,8 @@
           "Shake for 10 seconds",
           "Strain into chilled martini glass",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     {
@@ -21859,7 +22180,8 @@
           "Stir",
           "Float heavy cream on top",
           "Serve unstirred for layered effect"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     {
@@ -21911,7 +22233,8 @@
           "Top with tonic water",
           "Stir gently",
           "Garnish with lime wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     {
@@ -21966,7 +22289,8 @@
           "Shake hard",
           "Strain into prepared glass",
           "Garnish with lemon wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     {
@@ -22018,7 +22342,8 @@
           "Add vodka, cranberry juice, and grapefruit juice",
           "Stir well",
           "Garnish with lime wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     {
@@ -22068,7 +22393,8 @@
           "Add vodka and coffee liqueur",
           "Stir gently",
           "Serve"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     {
@@ -22119,7 +22445,8 @@
           "Add vodka and cranberry juice",
           "Stir",
           "Garnish with lime wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     {
@@ -22171,7 +22498,8 @@
           "Stir until well-chilled",
           "Strain into old fashioned glass with large ice cube",
           "Express orange peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     {
@@ -22223,7 +22551,8 @@
           "Top with cold soda water",
           "Stir gently once",
           "Express lemon peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     {
@@ -22275,7 +22604,8 @@
           "Shake hard for 10 seconds",
           "Strain into old fashioned glass with fresh ice",
           "Garnish with lemon wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     {
@@ -22329,7 +22659,8 @@
           "Strain into glass with ice",
           "Carefully float red wine on top using spoon",
           "Garnish with lemon"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     {
@@ -22383,7 +22714,8 @@
           "Shake hard",
           "Strain into glass with fresh ice",
           "Garnish with mint sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     {
@@ -22434,7 +22766,8 @@
           "Add all ingredients to shaker with ice",
           "Shake for 10 seconds until well-chilled",
           "Strain into chilled coupe glass"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     }
   ],
@@ -22827,6 +23160,7 @@
         "trending": true,
         "bestTime": "Pre-Workout",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -22871,6 +23205,7 @@
         "trending": true,
         "bestTime": "Pre-Workout",
         "estimatedCost": 3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -22915,6 +23250,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -22959,6 +23295,7 @@
         "trending": true,
         "bestTime": "Pre-Workout",
         "estimatedCost": 2.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -23004,6 +23341,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 3.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -23048,6 +23386,7 @@
         "trending": false,
         "bestTime": "Post-Workout",
         "estimatedCost": 3.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -23092,6 +23431,7 @@
         "trending": true,
         "bestTime": "Early Morning",
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -23136,6 +23476,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 2.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Energy Drinks card and serve immediately."
         ]
@@ -23219,6 +23560,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 1,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -23260,6 +23602,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 1.25,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -23301,6 +23644,7 @@
         "trending": true,
         "bestTime": "Anytime",
         "estimatedCost": 1.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -23342,6 +23686,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 0.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -23383,6 +23728,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 0.75,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -23424,6 +23770,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -23465,6 +23812,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 3.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Espresso Drinks card and serve immediately."
         ]
@@ -23509,6 +23857,7 @@
         "trending": true,
         "bestTime": "Anytime",
         "estimatedCost": 1.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -23553,6 +23902,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -23597,6 +23947,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 2.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -23642,6 +23993,7 @@
         "trending": false,
         "bestTime": "Anytime",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -23686,6 +24038,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -23730,6 +24083,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 2.7,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -23775,6 +24129,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -23820,6 +24175,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Iced Coffee card and serve immediately."
         ]
@@ -23863,6 +24219,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -23906,6 +24263,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -23950,6 +24308,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -23993,6 +24352,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -24037,6 +24397,7 @@
         "trending": true,
         "bestTime": "Anytime",
         "estimatedCost": 3.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -24080,6 +24441,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -24124,6 +24486,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 3.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -24167,6 +24530,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Lattes card and serve immediately."
         ]
@@ -24341,6 +24705,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 1.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Specialty Coffee card and serve immediately."
         ]
@@ -24385,6 +24750,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 2.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Specialty Coffee card and serve immediately."
         ]
@@ -24427,6 +24793,7 @@
         "trending": false,
         "bestTime": "Early Morning",
         "estimatedCost": 2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Specialty Coffee card and serve immediately."
         ]
@@ -24472,6 +24839,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 1.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Specialty Coffee card and serve immediately."
         ]
@@ -24517,6 +24885,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Specialty Coffee card and serve immediately."
         ]
@@ -24561,6 +24930,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 0.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -24605,6 +24975,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 0.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -24649,6 +25020,7 @@
         "trending": false,
         "bestTime": "Evening",
         "estimatedCost": 0.7,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -24693,6 +25065,7 @@
         "trending": false,
         "bestTime": "Afternoon",
         "estimatedCost": 0.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -24738,6 +25111,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 1.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -24782,6 +25156,7 @@
         "trending": false,
         "bestTime": "Evening",
         "estimatedCost": 0.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -24825,6 +25200,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 0.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -24869,6 +25245,7 @@
         "trending": false,
         "bestTime": "Morning",
         "estimatedCost": 0.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Caffeinated Tea card and serve immediately."
         ]
@@ -24917,6 +25294,7 @@
           "Skin clarity"
         ],
         "specialInstructions": "Drink immediately after juicing for maximum enzyme activity",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -24964,6 +25342,7 @@
           "Inflammation reduction"
         ],
         "specialInstructions": "Best consumed 2 hours after meals",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25011,6 +25390,7 @@
           "Digestive enzyme support"
         ],
         "specialInstructions": "Sip slowly 20 minutes before main meals",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25058,6 +25438,7 @@
           "Energy enhancement"
         ],
         "specialInstructions": "Consume daily during cold/flu season",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25105,6 +25486,7 @@
           "Circulation boost"
         ],
         "specialInstructions": "Stain alert: beet juice can temporarily color urine",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25153,6 +25535,7 @@
           "Electrolyte balance"
         ],
         "specialInstructions": "Drink 2-3 times daily during cleanse period",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25201,6 +25584,7 @@
           "Vitamin A & C boost"
         ],
         "specialInstructions": "Add chia seeds after juicing for fiber benefits",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25248,6 +25632,7 @@
           "Hormone regulation"
         ],
         "specialInstructions": "Best consumed before stressful events or in the morning",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25296,6 +25681,7 @@
           "Cellular detox"
         ],
         "specialInstructions": "CONSULT HEALTHCARE PROVIDER - Intensive detox protocol",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25343,6 +25729,7 @@
           "Mental clarity"
         ],
         "specialInstructions": "Best consumed on empty stomach for maximum absorption",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25390,6 +25777,7 @@
           "Blood sugar balance"
         ],
         "specialInstructions": "Consume 1-2 hours before bedtime for best results",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25438,6 +25826,7 @@
           "Digestive healing"
         ],
         "specialInstructions": "Add kefir after juicing for probiotic benefits",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Juices card and serve immediately."
         ]
@@ -25487,6 +25876,7 @@
           "Energy enhancement"
         ],
         "specialInstructions": "Do not oversteep to avoid bitterness",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -25536,6 +25926,7 @@
           "Skin health"
         ],
         "specialInstructions": "Best consumed warm for maximum liver benefits",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -25586,6 +25977,7 @@
           "Pain relief"
         ],
         "specialInstructions": "Add black pepper to enhance turmeric absorption",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -25634,6 +26026,7 @@
           "Fresh breath"
         ],
         "specialInstructions": "Steep covered to preserve volatile oils",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -25683,6 +26076,7 @@
           "Gentle energy"
         ],
         "specialInstructions": "Use lower temperature to preserve delicate flavors",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -25733,6 +26127,7 @@
           "Diuretic properties"
         ],
         "specialInstructions": "Can be served hot or iced",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -25782,6 +26177,7 @@
           "Anti-anxiety"
         ],
         "specialInstructions": "Steep longer for stronger sedative effects",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -25831,6 +26227,7 @@
           "Antioxidant rich"
         ],
         "specialInstructions": "Whisk vigorously to prevent clumping and create froth",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -25881,6 +26278,7 @@
           "Anti-inflammatory"
         ],
         "specialInstructions": "Can withstand longer steeping without bitterness",
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Teas card and serve immediately."
         ]
@@ -25928,6 +26326,7 @@
         "temperature": "Cold",
         "category": "Classic Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -25975,6 +26374,7 @@
         "temperature": "Cold",
         "category": "Fruity Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -26022,6 +26422,7 @@
         "temperature": "Warm",
         "category": "Detox Waters",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -26070,6 +26471,7 @@
         "temperature": "Cold",
         "category": "Fruity Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -26118,6 +26520,7 @@
         "temperature": "Cold",
         "category": "Citrus Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -26166,6 +26569,7 @@
         "temperature": "Cold",
         "category": "Tropical Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -26214,6 +26618,7 @@
         "temperature": "Warm",
         "category": "Warm Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -26261,6 +26666,7 @@
         "temperature": "Cold",
         "category": "Summer Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -26308,6 +26714,7 @@
         "temperature": "Warm",
         "category": "Herbal Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -26356,6 +26763,7 @@
         "temperature": "Cold",
         "category": "Tea Infusions",
         "allergens": [],
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Infused Waters card and serve immediately."
         ]
@@ -26445,6 +26853,7 @@
             "Add ice for colder, thicker consistency"
           ]
         },
+        "image": null,
         "instructions": [
           "Add liquid first, then slowly add beef protein while blending",
           "Blend for 45-60 seconds until completely smooth",
@@ -26537,6 +26946,7 @@
             "Blend until rich and chocolatey"
           ]
         },
+        "image": null,
         "instructions": [
           "Mix protein with small amount of liquid first to create paste",
           "Gradually add remaining liquid while blending",
@@ -26628,6 +27038,7 @@
             "Enjoy as morning energy boost"
           ]
         },
+        "image": null,
         "instructions": [
           "Combine all ingredients in blender",
           "Blend until smooth and frothy",
@@ -26726,6 +27137,7 @@
             "Blend until smooth, stir in chia seeds last"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend beef protein with almond milk first",
           "Add frozen berries and acai powder",
@@ -26818,6 +27230,7 @@
             "Add cream and blend until frothy"
           ]
         },
+        "image": null,
         "instructions": [
           "Brew coffee and let cool completely",
           "Blend coffee with beef protein and cocoa",
@@ -26910,6 +27323,7 @@
             "Blend until tropical smoothie consistency"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend beef protein with coconut water",
           "Add frozen pineapple and coconut cream",
@@ -27137,6 +27551,7 @@
             "Blend until rich and chocolatey smooth"
           ]
         },
+        "image": null,
         "instructions": [
           "Mix casein with small amount of liquid first to create paste",
           "Gradually add remaining liquid while blending",
@@ -27246,6 +27661,7 @@
             "Blend until creamy pink consistency"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend casein with liquid until smooth",
           "Add frozen strawberries and honey",
@@ -27355,6 +27771,7 @@
             "Add more milk if too thick"
           ]
         },
+        "image": null,
         "instructions": [
           "Combine all ingredients in blender",
           "Blend until thick and creamy",
@@ -27464,6 +27881,7 @@
             "Blend until smooth and frothy"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend casein with coconut water",
           "Add banana and honey",
@@ -27573,6 +27991,7 @@
             "Add cream and blend until frothy"
           ]
         },
+        "image": null,
         "instructions": [
           "Brew coffee and let cool completely",
           "Blend coffee with casein and cocoa",
@@ -27682,6 +28101,7 @@
             "Blend until vibrant purple and creamy"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend casein with almond milk until smooth",
           "Add frozen blueberries and vanilla",
@@ -27791,6 +28211,7 @@
             "Enjoy as comforting evening treat"
           ]
         },
+        "image": null,
         "instructions": [
           "Combine all ingredients in blender",
           "Blend until warm cinnamon aroma develops",
@@ -27900,6 +28321,7 @@
             "Blend until rich and creamy like peanut butter cup"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend casein with milk until smooth",
           "Add peanut butter and cocoa",
@@ -28117,6 +28539,7 @@
             "Add cinnamon and ice; blend until frothy."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend liquids with collagen and supplements first.",
           "Add cinnamon and ice; blend until frothy."
@@ -28218,6 +28641,7 @@
             "Blend for 30 seconds until tropical and smooth."
           ]
         },
+        "image": null,
         "instructions": [
           "Combine juice and collagen, then add fruit.",
           "Blend for 30 seconds until tropical and smooth."
@@ -28323,6 +28747,7 @@
             "Add fruit and blend smooth."
           ]
         },
+        "image": null,
         "instructions": [
           "Stir collagen into liquid until dissolved.",
           "Add fruit and blend smooth."
@@ -28433,6 +28858,7 @@
             "Add builder and blend with lime and ice."
           ]
         },
+        "image": null,
         "instructions": [
           "Infuse water with cucumber and mint.",
           "Add builder and blend with lime and ice."
@@ -28541,6 +28967,7 @@
             "Blend briefly for golden latte texture."
           ]
         },
+        "image": null,
         "instructions": [
           "Warm milk gently, stir in collagen and spices.",
           "Blend briefly for golden latte texture."
@@ -28640,6 +29067,7 @@
             "Blend 40–60 seconds until creamy."
           ]
         },
+        "image": null,
         "instructions": [
           "Add milk, then protein and dry ingredients, then fruit.",
           "Blend 40–60 seconds until creamy."
@@ -28739,6 +29167,7 @@
             "Add yogurt and sweetener; blend smooth."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend liquids + protein 10 seconds.",
           "Add yogurt and sweetener; blend smooth."
@@ -28837,6 +29266,7 @@
             "Blend all until smooth; pulse to keep berry texture if preferred."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend all until smooth; pulse to keep berry texture if preferred."
         ]
@@ -28934,6 +29364,7 @@
             "Blend all 45–60 seconds until silky; add milk to thin as needed."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend all 45–60 seconds until silky; add milk to thin as needed."
         ]
@@ -29031,6 +29462,7 @@
             "Blend until bright and smooth; adjust lemon to taste."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend until bright and smooth; adjust lemon to taste."
         ]
@@ -29128,6 +29560,7 @@
             "Blend all ingredients until smooth; add milk for thinner texture."
           ]
         },
+        "image": null,
         "instructions": [
           "Blend all ingredients until smooth; add milk for thinner texture."
         ]
@@ -29226,6 +29659,7 @@
             "Add milk and sweetener; blend until frothy"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend coffee with protein and cocoa until smooth",
           "Add milk and sweetener; blend until frothy"
@@ -29325,6 +29759,7 @@
             "Blend until smooth and creamy like pumpkin pie"
           ]
         },
+        "image": null,
         "instructions": [
           "Combine all ingredients in blender",
           "Blend until smooth and creamy like pumpkin pie"
@@ -29424,6 +29859,7 @@
             "Add remaining ingredients and blend until vibrant green"
           ]
         },
+        "image": null,
         "instructions": [
           "Blend matcha with liquid first to dissolve",
           "Add remaining ingredients and blend until vibrant green"
@@ -29637,6 +30073,7 @@
             "Pulse to desired texture."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (30g) hemp protein",
           "1 cup oat milk",
@@ -29747,6 +30184,7 @@
             "Add extra cacao or sweetener to taste."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (32g) rice–quinoa protein",
           "1 cup unsweetened almond milk",
@@ -29848,6 +30286,7 @@
             "Add strawberries, vanilla, sweetener; blend smooth."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (28g) soy protein isolate",
           "1 cup soy milk or almond milk",
@@ -29951,6 +30390,7 @@
             "Great warm: gently heat milk first, then blend briefly."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (30g) pumpkin seed protein",
           "1 cup cashew milk or water",
@@ -30054,6 +30494,7 @@
             "Add extra pineapple if you prefer sweeter."
           ]
         },
+        "image": null,
         "ingredients": [
           "2 tbsp (~25g) algae protein blend (spirulina/chlorella)",
           "0.75 cup coconut water",
@@ -30155,6 +30596,7 @@
             "Add remaining, blend until smooth."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (30g) pea protein",
           "1 tsp matcha powder",
@@ -30260,6 +30702,7 @@
             "Top with oat crumble or cacao nibs (optional)."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (30–35g) plant protein (neutral)",
           "1 cup oat milk",
@@ -30360,6 +30803,7 @@
             "Pulse to keep texture or blend fully smooth."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (32g) rice–quinoa protein",
           "0.75 cup almond milk",
@@ -30467,6 +30911,7 @@
             "Adjust sweetness/spice to taste."
           ]
         },
+        "image": null,
         "ingredients": [
           "1 scoop (30g) hemp protein",
           "1 cup coconut milk (light)",
@@ -30749,7 +31194,8 @@
           "directions": [
             "Blend all ingredients 30–45 seconds; adjust sweetness to taste."
           ]
-        }
+        },
+        "image": null
       }
     },
     "pre-workout-energy-blast": {
@@ -30844,7 +31290,8 @@
           "directions": [
             "Blend coffee + powder first; add banana, oats, cinnamon, ice; blend smooth."
           ]
-        }
+        },
+        "image": null
       }
     },
     "hydrolyzed-recovery-formula": {
@@ -30926,7 +31373,8 @@
           "directions": [
             "Shake in a bottle 10–15 seconds; no blender required."
           ]
-        }
+        },
+        "image": null
       }
     },
     "bedtime-casein-whey-blend": {
@@ -31022,7 +31470,8 @@
             "Blend liquids + proteins 15 seconds.",
             "Add yogurt, vanilla, ice; blend silky."
           ]
-        }
+        },
+        "image": null
       }
     },
     "triple-berry-blast": {
@@ -31196,6 +31645,7 @@
         "berryType": "Raspberry",
         "bestTime": "Afternoon",
         "estimatedCost": 3.1,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
         ]
@@ -31238,6 +31688,7 @@
         "berryType": "Blackberry",
         "bestTime": "Morning",
         "estimatedCost": 3.3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
         ]
@@ -31282,6 +31733,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 4.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
         ]
@@ -31326,6 +31778,7 @@
         "trending": true,
         "bestTime": "Any Time",
         "estimatedCost": 3.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -31368,6 +31821,7 @@
         "berryType": "Strawberry",
         "bestTime": "Anytime",
         "estimatedCost": 2.7,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
         ]
@@ -31410,6 +31864,7 @@
         "berryType": "Cranberry",
         "bestTime": "Morning",
         "estimatedCost": 3.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Berry Smoothies card and serve immediately."
         ]
@@ -31505,6 +31960,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 3.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -31551,6 +32007,7 @@
         "bestTime": "Morning",
         "caffeineFree": false,
         "estimatedCost": 3.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -31597,6 +32054,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -31644,6 +32102,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -31691,6 +32150,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 2.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -31738,6 +32198,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -31785,6 +32246,7 @@
         "bestTime": "Morning",
         "caffeineFree": true,
         "estimatedCost": 2.7,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Breakfast Smoothies card and serve immediately."
         ]
@@ -32357,6 +32819,7 @@
         "featured": true,
         "bestTime": "Morning",
         "estimatedCost": 3.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -32401,6 +32864,7 @@
         "trending": true,
         "bestTime": "Morning/Afternoon",
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -32444,6 +32908,7 @@
         "smoothieType": "Tea Detox",
         "bestTime": "Morning",
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -32488,6 +32953,7 @@
         "trending": true,
         "bestTime": "Morning/Afternoon",
         "estimatedCost": 3.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -32531,6 +32997,7 @@
         "smoothieType": "Green Detox",
         "bestTime": "Morning",
         "estimatedCost": 3.3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -32575,6 +33042,7 @@
         "featured": true,
         "bestTime": "Morning",
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -32618,6 +33086,7 @@
         "smoothieType": "Green Detox",
         "bestTime": "Morning",
         "estimatedCost": 3.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Detox Smoothies card and serve immediately."
         ]
@@ -32754,6 +33223,7 @@
         "trending": true,
         "bestTime": "Morning",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -32797,6 +33267,7 @@
         "greenType": "Creamy Greens",
         "bestTime": "Breakfast",
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -32841,6 +33312,7 @@
         "featured": true,
         "bestTime": "Morning",
         "estimatedCost": 2.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -32884,6 +33356,7 @@
         "greenType": "Protein Greens",
         "bestTime": "Post-Workout",
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -32928,6 +33401,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 2.7,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Green Smoothies card and serve immediately."
         ]
@@ -33063,6 +33537,7 @@
         "trending": true,
         "bestTime": "Breakfast",
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -33106,6 +33581,7 @@
         "proteinType": "Plant Protein",
         "bestTime": "Morning",
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -33150,6 +33626,7 @@
         "trending": true,
         "bestTime": "Pre-Workout",
         "estimatedCost": 3.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -33194,6 +33671,7 @@
         "featured": true,
         "bestTime": "Morning",
         "estimatedCost": 2.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -33237,6 +33715,7 @@
         "proteinType": "Casein Protein",
         "bestTime": "Breakfast",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -33281,6 +33760,7 @@
         "trending": true,
         "bestTime": "Any Time",
         "estimatedCost": 3.1,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Protein Smoothies card and serve immediately."
         ]
@@ -33456,6 +33936,7 @@
         "trending": true,
         "bestTime": "Afternoon",
         "estimatedCost": 4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Tropical Smoothies card and serve immediately."
         ]
@@ -33498,6 +33979,7 @@
         "flavor": "Citrus Tropical",
         "bestTime": "Morning",
         "estimatedCost": 3.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Tropical Smoothies card and serve immediately."
         ]
@@ -33541,6 +34023,7 @@
         "featured": true,
         "bestTime": "Afternoon",
         "estimatedCost": 3.9,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Tropical Smoothies card and serve immediately."
         ]
@@ -33584,6 +34067,7 @@
         "trending": true,
         "bestTime": "Morning/Afternoon",
         "estimatedCost": 4.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Tropical Smoothies card and serve immediately."
         ]
@@ -33626,6 +34110,7 @@
         "flavor": "Tropical Green",
         "bestTime": "Morning",
         "estimatedCost": 3.3,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Tropical Smoothies card and serve immediately."
         ]
@@ -33718,6 +34203,7 @@
         "featured": true,
         "bestTime": "Within 30 min after workout",
         "estimatedCost": 4.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -33763,6 +34249,7 @@
         "trending": true,
         "bestTime": "15-30 min before workout",
         "estimatedCost": 2.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -33807,6 +34294,7 @@
         "energyLevel": "Sustained",
         "bestTime": "1 hour before workout",
         "estimatedCost": 3.6,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -33852,6 +34340,7 @@
         "featured": true,
         "bestTime": "45 min before workout",
         "estimatedCost": 4.2,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -33896,6 +34385,7 @@
         "energyLevel": "Medium",
         "bestTime": "30 min before cardio",
         "estimatedCost": 2.5,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -33941,6 +34431,7 @@
         "energyLevel": "Recovery",
         "bestTime": "After workout",
         "estimatedCost": 3.8,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -33986,6 +34477,7 @@
         "trending": true,
         "bestTime": "30-60 min before practice",
         "estimatedCost": 3.4,
+        "image": null,
         "instructions": [
           "Follow the preparation method shown on the Workout Smoothies card and serve immediately."
         ]
@@ -35871,7 +36363,8 @@
           "Add bourbon and large ice cube",
           "Stir gently",
           "Express orange peel over drink and garnish with cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     "martini": {
@@ -35921,7 +36414,8 @@
           "Stir gin and dry vermouth with ice until chilled",
           "Strain into a chilled martini glass",
           "Garnish with a lemon twist or olive"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "manhattan": {
@@ -35973,7 +36467,8 @@
           "Stir for 30 seconds until very cold",
           "Strain into chilled coupe",
           "Garnish with cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     "negroni": {
@@ -36025,7 +36520,8 @@
           "Stir for 30 seconds",
           "Strain into old fashioned glass with large ice cube",
           "Express orange peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "whiskey-sour": {
@@ -36078,7 +36574,8 @@
           "Add ice and shake hard for 15 seconds",
           "Strain into coupe",
           "Add bitters design on foam"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     "daiquiri": {
@@ -36131,7 +36628,8 @@
           "Shake all ingredients vigorously with ice",
           "Double strain into chilled coupe glass",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "sazerac": {
@@ -36185,7 +36683,8 @@
           "Add rye and ice, stir",
           "Strain into prepared glass",
           "Express lemon peel and discard"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     "mint-julep": {
@@ -36240,7 +36739,8 @@
           "Stir until cup is frosted",
           "Top with more crushed ice",
           "Garnish with mint sprig and powdered sugar"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     "sidecar": {
@@ -36285,7 +36785,8 @@
           "Shake cognac, triple sec, and lemon juice with ice",
           "Strain into glass",
           "Garnish with orange peel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "french-connection": {
@@ -36325,7 +36826,8 @@
         "instructions": [
           "Add cognac and amaretto to rocks glass with large ice cube",
           "Stir gently"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "vieux-carr": {
@@ -36370,7 +36872,8 @@
           "Stir all ingredients with ice",
           "Strain into rocks glass with ice",
           "Express lemon peel over drink"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "sazerac-cognac": {
@@ -36415,7 +36918,8 @@
           "Stir cognac, syrup, and bitters with ice",
           "Strain into glass",
           "Express lemon peel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "cognac-old-fashioned": {
@@ -36460,7 +36964,8 @@
           "Add cognac and large ice cube",
           "Stir until chilled",
           "Express orange peel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "french-75-cognac": {
@@ -36505,7 +37010,8 @@
           "Strain into flute",
           "Top with champagne",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "brandy-alexander": {
@@ -36548,7 +37054,8 @@
           "Shake all ingredients with ice",
           "Strain into coupe glass",
           "Garnish with grated nutmeg"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "metropolitan": {
@@ -36592,7 +37099,8 @@
           "Shake all ingredients with ice",
           "Strain into martini glass",
           "Garnish with lime twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "jack-rose": {
@@ -36635,7 +37143,8 @@
           "Shake apple brandy, lime juice, and grenadine with ice",
           "Strain into coupe",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "between-the-sheets": {
@@ -36679,7 +37188,8 @@
           "Shake all ingredients with ice",
           "Strain into coupe glass",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "cognac-sour": {
@@ -36726,7 +37236,8 @@
           "Shake hard",
           "Strain into rocks glass",
           "Garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "corpse-reviver-no-1": {
@@ -36769,7 +37280,8 @@
           "Shake all ingredients with ice",
           "Strain into coupe glass",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/cognac-brandy.svg"
       }
     },
     "classic-daiquiri": {
@@ -36803,7 +37315,8 @@
           "Shake rum, lime, and syrup with ice",
           "Fine strain into a chilled coupe",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     "hemingway-daiquiri": {
@@ -36838,7 +37351,8 @@
           "Shake all with ice",
           "Fine strain into coupe",
           "Express grapefruit peel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     "strawberry-daiquiri-shaken": {
@@ -36872,7 +37386,8 @@
           "Add rum, lime, ice",
           "Shake hard",
           "Fine strain into coupe"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     "frozen-strawberry-daiquiri": {
@@ -36904,7 +37419,8 @@
           "Blend all until smooth",
           "Pour into chilled hurricane or coupe",
           "Garnish with strawberry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     "banana-daiquiri": {
@@ -36936,7 +37452,8 @@
           "Blend until smooth",
           "Pour into glass",
           "Optional nutmeg dust"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     "pineapple-daiquiri": {
@@ -36968,7 +37485,8 @@
           "Shake all with ice",
           "Fine strain into coupe",
           "Garnish with pineapple leaf"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     "coconut-daiquiri": {
@@ -37000,7 +37518,8 @@
           "Shake hard with plenty of ice",
           "Fine strain into coupe",
           "Lime wheel garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     "mulata-daiquiri": {
@@ -37034,7 +37553,8 @@
           "Shake all with ice",
           "Fine strain into coupe",
           "Optional cocoa dust"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     "frozen-mango-daiquiri": {
@@ -37066,7 +37586,8 @@
           "Blend until smooth",
           "Pour into chilled glass",
           "Mango slice garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     "chartreuse-daiquiri": {
@@ -37098,7 +37619,8 @@
           "Shake hard with ice",
           "Fine strain into coupe",
           "Express lime"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/daiquiri.svg"
       }
     },
     "gin--tonic": {
@@ -37150,7 +37672,8 @@
           "Top with tonic water",
           "Stir gently",
           "Garnish with lime wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "tom-collins": {
@@ -37205,7 +37728,8 @@
           "Top with soda water",
           "Stir gently",
           "Garnish with lemon wheel and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "french-75": {
@@ -37258,7 +37782,8 @@
           "Strain into champagne flute",
           "Top with champagne",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "aviation": {
@@ -37311,7 +37836,8 @@
           "Shake for 10 seconds",
           "Strain into chilled coupe glass",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "bees-knees": {
@@ -37363,7 +37889,8 @@
           "Shake hard for 10 seconds",
           "Strain into chilled coupe glass",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "gimlet": {
@@ -37413,7 +37940,8 @@
         "instructions": [
           "Shake gin, lime juice, and syrup with ice",
           "Strain into a chilled coupe and garnish with a lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "singapore-sling": {
@@ -37468,7 +37996,8 @@
           "Shake all ingredients except soda with ice",
           "Strain into an ice-filled hurricane glass and top with soda water",
           "Garnish with pineapple and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "ramos-gin-fizz": {
@@ -37523,7 +38052,8 @@
           "Dry shake ingredients except soda",
           "Add ice and shake again until frothy and cold",
           "Strain into a chilled highball and top with soda to raise the foam cap"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "clover-club": {
@@ -37573,7 +38103,8 @@
         "instructions": [
           "Dry shake ingredients, then shake again with ice",
           "Fine strain into a chilled coupe and garnish with a raspberry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "corpse-reviver-no-2": {
@@ -37627,7 +38158,8 @@
           "Shake gin, Cointreau, Lillet, and lemon juice with ice",
           "Strain into prepared glass",
           "Express orange peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "last-word": {
@@ -37680,7 +38212,8 @@
           "Shake for 10 seconds",
           "Strain into chilled coupe glass",
           "Garnish with lime twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "bramble": {
@@ -37735,7 +38268,8 @@
           "Stir",
           "Drizzle crème de mure over top",
           "Garnish with blackberries and lemon slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "southside": {
@@ -37789,7 +38323,8 @@
           "Shake for 10 seconds",
           "Strain into chilled coupe glass",
           "Garnish with mint sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "ode-to-rhubarb": {
@@ -37839,7 +38374,8 @@
         "instructions": [
           "Shake gin, rhubarb syrup, lemon juice, and bitters with ice",
           "Fine strain into a chilled coupe and garnish with a rhubarb ribbon"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "second-ave-spritz": {
@@ -37890,7 +38426,8 @@
         "instructions": [
           "Build over ice in a wine glass: gin, aperitivo, and lemon juice",
           "Top with sparkling wine and a splash of soda water, then stir gently"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "glacier-peak": {
@@ -37940,7 +38477,8 @@
         "instructions": [
           "Build gin, herbal liqueur, and lime over ice in a highball",
           "Top with chilled soda and stir once"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "israeli-sour-20": {
@@ -37991,7 +38529,8 @@
         "instructions": [
           "Dry shake ingredients, then shake again with ice",
           "Fine strain into a chilled coupe and garnish with orange zest"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "sweet-promise": {
@@ -38041,7 +38580,8 @@
         "instructions": [
           "Shake all ingredients with ice and strain into a chilled Nick & Nora glass",
           "Garnish with an edible flower"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "tiny-dancer": {
@@ -38091,7 +38631,8 @@
         "instructions": [
           "Shake ingredients with ice, then fine strain into a chilled coupe",
           "Garnish with a lemon coin"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "elderflower-spritz": {
@@ -38140,7 +38681,8 @@
         "iba_official": false,
         "instructions": [
           "Build over ice in a wine glass and stir gently to combine"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "cucumber-basil-smash": {
@@ -38191,7 +38733,8 @@
         "instructions": [
           "Lightly muddle cucumber and basil with syrup",
           "Add gin, lemon, and ice; shake and strain over crushed ice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "lavender-gin-fizz": {
@@ -38241,7 +38784,8 @@
         "instructions": [
           "Shake gin, lemon, and lavender syrup with ice",
           "Strain into a highball with fresh ice, then top with soda water"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "pink-peppercorn-collins": {
@@ -38291,7 +38835,8 @@
         "instructions": [
           "Shake gin, lemon juice, and peppercorn syrup with ice",
           "Strain into a Collins glass over fresh ice and top with soda"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "blood-orange-negroni": {
@@ -38341,7 +38886,8 @@
         "instructions": [
           "Stir ingredients with ice and strain over a large cube in an old fashioned glass",
           "Express and add blood orange peel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "strawberry-thyme-smash": {
@@ -38392,7 +38938,8 @@
         "instructions": [
           "Muddle strawberry and thyme, then add gin, lemon, syrup, and ice",
           "Shake and strain over crushed ice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "yuzu-gin-highball": {
@@ -38442,7 +38989,8 @@
         "instructions": [
           "Build gin, yuzu juice, and syrup over clear ice in a highball",
           "Top with soda and give one gentle stir"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "rosemary-greyhound": {
@@ -38491,7 +39039,8 @@
         "instructions": [
           "Build over ice in a highball glass and stir to chill",
           "Express rosemary oils over top before serving"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/gin.svg"
       }
     },
     "irish-coffee": {
@@ -38544,7 +39093,8 @@
           "Add Irish whiskey, stir",
           "Float whipped cream on top by pouring over back of spoon",
           "Garnish with coffee beans"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     "hot-toddy": {
@@ -38600,7 +39150,8 @@
           "Add bourbon, cinnamon stick, and cloves",
           "Stir gently",
           "Garnish with lemon wheel and star anise"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     "mulled-wine": {
@@ -38656,7 +39207,8 @@
           "Heat gently (do not boil) for 15-20 minutes",
           "Strain and serve warm in mugs",
           "Garnish each serving with orange slice and cinnamon stick"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     "hot-buttered-rum": {
@@ -38712,7 +39264,8 @@
           "Add rum and stir",
           "Grate fresh nutmeg on top",
           "Garnish with cinnamon stick"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     "tom-and-jerry": {
@@ -38771,7 +39324,8 @@
           "Fill with hot milk",
           "Stir well",
           "Grate nutmeg on top"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     "caf-brulot": {
@@ -38825,7 +39379,8 @@
           "Add brandy and carefully ignite",
           "Ladle flaming mixture while slowly adding hot coffee to extinguish flames",
           "Serve in demitasse cups"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     "hot-apple-cider": {
@@ -38881,7 +39436,8 @@
           "Stir",
           "Garnish with apple slice and cinnamon stick",
           "Optional caramel drizzle on top"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     "hot-chocolate-with-rum": {
@@ -38936,7 +39492,8 @@
           "Stir well",
           "Top with whipped cream",
           "Garnish with chocolate shavings and pinch of cinnamon and sea salt"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/hot-drinks.svg"
       }
     },
     "amaretto-sour": {
@@ -38990,7 +39547,8 @@
           "Add ice and shake hard for 15 seconds",
           "Strain into glass with ice",
           "Garnish with lemon wheel and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "grasshopper": {
@@ -39042,7 +39600,8 @@
           "Shake for 15 seconds",
           "Strain into chilled coupe glass",
           "Garnish with mint leaf"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "b-52": {
@@ -39090,7 +39649,8 @@
         "instructions": [
           "Layer ingredients carefully in order: First Kahlúa, then Baileys (pour over back of spoon), then Grand Marnier on top",
           "Do not mix"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "midori-sour": {
@@ -39144,7 +39704,8 @@
           "Strain into highball glass with ice",
           "Top with soda water",
           "Garnish with lemon wheel and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "chambord-royale": {
@@ -39193,7 +39754,8 @@
           "Pour Chambord into champagne flute",
           "Top with champagne",
           "Drop fresh raspberry into glass"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "baileys-mudslide": {
@@ -39246,7 +39808,8 @@
           "Shake for 15 seconds",
           "Strain into glass with ice",
           "Top with chocolate shavings"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "limoncello-spritz": {
@@ -39299,7 +39862,8 @@
           "Add prosecco, limoncello, and soda",
           "Stir gently",
           "Garnish with lemon and mint"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     "frangelico-fizz": {
@@ -39352,7 +39916,8 @@
           "Strain into highball glass with ice",
           "Top with soda water",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "godfather": {
@@ -39405,7 +39970,8 @@
         "instructions": [
           "Pour scotch and amaretto over ice in rocks glass",
           "Stir briefly and serve"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "cointreau-margarita": {
@@ -39458,7 +40024,8 @@
           "Shake tequila, Cointreau, and lime juice with ice for 10 seconds",
           "Strain into prepared glass with fresh ice",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "st-germain-cocktail": {
@@ -39509,7 +40076,8 @@
           "Top with champagne",
           "Stir gently",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "aperol-spritz": {
@@ -39561,7 +40129,8 @@
           "Add prosecco, Aperol, and soda water",
           "Stir gently",
           "Garnish with orange slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     "drambuie-rusty-nail": {
@@ -39612,7 +40181,8 @@
           "Add scotch and Drambuie",
           "Stir gently",
           "Garnish with lemon twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "grand-marnier-sidecar": {
@@ -39665,7 +40235,8 @@
           "Shake cognac, Grand Marnier, and lemon juice with ice",
           "Strain into prepared glass",
           "Garnish with orange twist"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "jgermeister-bomb": {
@@ -39713,7 +40284,8 @@
           "Fill pint glass halfway with energy drink",
           "Pour Jägermeister into shot glass",
           "Drop shot glass into pint glass and drink immediately"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/liqueurs.svg"
       }
     },
     "classic-gin-martini": {
@@ -39766,7 +40338,8 @@
           "Stir for 30 seconds until very cold",
           "Strain into chilled martini glass",
           "Garnish with lemon twist or olives"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     "vodka-martini": {
@@ -39819,7 +40392,8 @@
           "Stir for 30 seconds until very cold",
           "Strain into chilled martini glass",
           "Garnish with lemon twist or olives"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     "dirty-martini": {
@@ -39873,7 +40447,8 @@
           "Stir for 30 seconds",
           "Strain into chilled martini glass",
           "Garnish with 3 olives on a pick"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     "espresso-martini": {
@@ -39928,7 +40503,8 @@
           "Shake vigorously for 15 seconds",
           "Strain into chilled martini glass",
           "Garnish with 3 coffee beans"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     "pornstar-martini": {
@@ -39985,7 +40561,8 @@
           "Strain into chilled martini glass",
           "Serve with prosecco shot on side",
           "Garnish with passion fruit half"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     "lychee-martini": {
@@ -40040,7 +40617,8 @@
           "Shake for 10 seconds",
           "Strain into chilled martini glass",
           "Garnish with lychee fruit"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     "french-martini": {
@@ -40094,7 +40672,8 @@
           "Shake for 10 seconds",
           "Strain into chilled martini glass",
           "Garnish with pineapple wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     "vesper-martini": {
@@ -40148,7 +40727,8 @@
           "Shake hard for 10 seconds (Bond style)",
           "Strain into chilled martini glass",
           "Express lemon peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/martinis.svg"
       }
     },
     "virgin-mojito": {
@@ -40199,6 +40779,7 @@
         "method": "Muddle & Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Muddle & Build"
         ]
@@ -40252,6 +40833,7 @@
         "method": "Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build"
         ]
@@ -40309,7 +40891,8 @@
           "Strain into coupe glass",
           "Top with tonic water",
           "Garnish with cucumber ribbon and basil"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     "tropical-sunrise": {
@@ -40360,6 +40943,7 @@
         "method": "Build & Layer",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build & Layer"
         ]
@@ -40415,7 +40999,8 @@
           "Top with club soda",
           "Stir gently",
           "Garnish with lavender sprig and lemon wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     "watermelon-mint-smash": {
@@ -40470,7 +41055,8 @@
           "Strain into rocks glass over ice",
           "Top with club soda",
           "Garnish with watermelon triangle and mint"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     "ginger-spice-mule": {
@@ -40524,7 +41110,8 @@
           "Top with ginger beer",
           "Stir gently",
           "Garnish with lime wheel, mint sprig, and candied ginger"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     "berry-basil-smash": {
@@ -40579,7 +41166,8 @@
           "Strain into rocks glass over ice",
           "Top with club soda",
           "Garnish with berry skewer and basil leaf"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     "pomegranate-sparkler": {
@@ -40633,7 +41221,8 @@
           "Gently stir",
           "Add pomegranate seeds",
           "Garnish with rosemary sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     "mango-chili-margarita": {
@@ -40688,7 +41277,8 @@
           "Pour into prepared glass",
           "Top with lime sparkling water",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     "pineapple-cilantro-refresher": {
@@ -40740,7 +41330,8 @@
           "Blend pineapple, cilantro, lime juice, coconut water, and agave with ice until smooth",
           "Pour into highball glass",
           "Garnish with pineapple wedge and cilantro sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     "espresso-martini-mocktail": {
@@ -40795,7 +41386,8 @@
           "Shake vigorously until frothy",
           "Strain into chilled martini glass",
           "Garnish with 3 coffee beans"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/mocktails.svg"
       }
     },
     "mojito": {
@@ -40851,7 +41443,8 @@
           "Add rum and ice",
           "Top with soda water",
           "Stir gently and garnish with mint sprig and lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "pia-colada": {
@@ -40907,7 +41500,8 @@
           "Blend all ingredients with crushed ice until smooth",
           "Pour into hurricane glass",
           "Garnish with pineapple wedge and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "mai-tai": {
@@ -40964,7 +41558,8 @@
           "Shake all ingredients with ice",
           "Strain over crushed ice in rocks glass",
           "Garnish elaborately with mint sprig, spent lime shell, and pineapple"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "dark-and-stormy": {
@@ -41019,7 +41614,8 @@
           "Add rum and lime juice",
           "Top with ginger beer",
           "Stir gently and garnish with lime wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "zombie": {
@@ -41077,7 +41673,8 @@
           "Shake all three rums, juices, syrups, and bitters with ice",
           "Strain over crushed ice in tiki mug",
           "Garnish elaborately with mint, cherry, and pineapple"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "cuba-libre": {
@@ -41132,7 +41729,8 @@
           "Squeeze lime wedge and drop in",
           "Add rum and top with Coca-Cola",
           "Stir gently"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "hurricane": {
@@ -41190,7 +41788,8 @@
           "Strain into hurricane glass over ice",
           "Float grenadine",
           "Garnish with orange slice and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "ti-punch": {
@@ -41245,7 +41844,8 @@
           "Add rhum agricole",
           "Stir",
           "Add ice if desired"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "painkiller": {
@@ -41302,7 +41902,8 @@
           "Strain into hurricane glass over crushed ice",
           "Top with freshly grated nutmeg",
           "Garnish with orange slice and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "jungle-bird": {
@@ -41357,7 +41958,8 @@
           "Shake all ingredients with ice",
           "Strain over fresh ice in rocks glass",
           "Garnish with pineapple wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "rum-old-fashioned": {
@@ -41413,7 +42015,8 @@
           "Add large ice cube and rum",
           "Stir until well chilled",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/rum.svg"
       }
     },
     "penicillin": {
@@ -41469,7 +42072,8 @@
           "Strain over fresh ice in rocks glass",
           "Float Islay scotch on top",
           "Garnish with candied ginger"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "rob-roy": {
@@ -41523,7 +42127,8 @@
           "Stir scotch, sweet vermouth, and bitters with ice until well chilled",
           "Strain into chilled coupe glass",
           "Garnish with lemon peel or cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "blood-and-sand": {
@@ -41578,7 +42183,8 @@
           "Shake all equal parts with ice vigorously",
           "Double strain into chilled coupe glass",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "rusty-nail": {
@@ -41631,7 +42237,8 @@
           "Add scotch and Drambuie to rocks glass with ice",
           "Stir gently",
           "Express lemon peel over drink and drop in"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "irish-mule": {
@@ -41687,7 +42294,8 @@
           "Top with ginger beer",
           "Stir gently",
           "Garnish with lime wedge and mint sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "irish-old-fashioned": {
@@ -41743,7 +42351,8 @@
           "Add large ice cube and Irish whiskey",
           "Stir until well chilled",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "tipperary": {
@@ -41798,7 +42407,8 @@
           "Stir all ingredients with ice until well chilled",
           "Strain into chilled coupe glass",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "smoky-martini": {
@@ -41853,7 +42463,8 @@
           "Stir gin and vermouth with ice until very cold",
           "Strain into rinsed glass",
           "Express lemon peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "highland-sour": {
@@ -41913,7 +42524,8 @@
           "Shake vigorously",
           "Double strain into coupe",
           "Garnish with lemon wheel and drops of bitters"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "emerald-isle": {
@@ -41970,7 +42582,8 @@
           "Shake all ingredients with ice until well chilled and frothy",
           "Strain into coupe glass",
           "Garnish with fresh mint sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "camerons-kick": {
@@ -42027,7 +42640,8 @@
           "Shake both whiskies, lemon juice, orgeat, and bitters with ice vigorously",
           "Double strain into chilled coupe",
           "Express lemon peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg"
       }
     },
     "peppermint-white-russian": {
@@ -42088,7 +42702,8 @@
           "Add vodka and coffee liqueur to glass with ice",
           "Float cream on top",
           "Drizzle peppermint schnapps"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     "elderflower-gin-fizz": {
@@ -42149,7 +42764,8 @@
           "Strain into highball glass over ice",
           "Top with club soda",
           "Garnish with cucumber and mint"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     "lavender-lemon-drop": {
@@ -42209,7 +42825,8 @@
           "Shake vodka, lavender syrup, and lemon juice with ice",
           "Strain into glass",
           "Garnish with lavender sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     "strawberry-basil-smash": {
@@ -42272,7 +42889,8 @@
           "Strain over ice",
           "Top with club soda",
           "Garnish with strawberry and basil"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     "watermelon-margarita": {
@@ -42333,7 +42951,8 @@
           "Blend all ingredients with ice until smooth",
           "Pour into margarita glass",
           "Garnish with watermelon triangle"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     "frozen-pia-colada": {
@@ -42393,7 +43012,8 @@
           "Blend all ingredients until smooth and slushy",
           "Pour into hurricane glass",
           "Garnish with pineapple wedge and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     "cucumber-gin--tonic": {
@@ -42455,7 +43075,8 @@
           "Top with tonic water",
           "Stir gently",
           "Garnish with cucumber ribbon and mint"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     "apple-cider-bourbon-smash": {
@@ -42515,7 +43136,8 @@
           "Shake bourbon, apple cider, lemon juice, and maple syrup with ice",
           "Strain over fresh ice",
           "Garnish with apple slice and cinnamon stick"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     "pumpkin-spice-espresso-martini": {
@@ -42575,7 +43197,8 @@
           "Strain into martini glass",
           "Dust with pumpkin spice",
           "Garnish with coffee beans"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     "cranberry-moscow-mule": {
@@ -42637,7 +43260,8 @@
           "Top with ginger beer",
           "Stir gently",
           "Garnish with cranberries, rosemary sprig, and lime"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/seasonal.svg"
       }
     },
     "classic-mimosa": {
@@ -42687,7 +43311,8 @@
           "Top with fresh orange juice",
           "Garnish with orange twist",
           "Serve immediately"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     "bellini": {
@@ -42737,7 +43362,8 @@
           "Top with prosecco",
           "Stir gently",
           "Garnish with peach slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     "strawberry-mimosa": {
@@ -42789,7 +43415,8 @@
           "Top with champagne",
           "Stir gently",
           "Garnish with strawberry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     "hugo-spritz": {
@@ -42843,7 +43470,8 @@
           "Add elderflower syrup, prosecco, and soda",
           "Stir gently",
           "Garnish with mint and lime"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     "mimosa-royale": {
@@ -42895,7 +43523,8 @@
           "Top with champagne",
           "Stir gently",
           "Garnish with orange wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     "campari-spritz": {
@@ -42947,7 +43576,8 @@
           "Add prosecco, Campari, and soda",
           "Stir gently",
           "Garnish with orange slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     "pineapple-mimosa": {
@@ -42996,7 +43626,8 @@
           "Pour champagne into flute",
           "Top with pineapple juice",
           "Garnish with pineapple wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     "rossini": {
@@ -43046,7 +43677,8 @@
           "Top with prosecco",
           "Stir gently",
           "Garnish with strawberry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/spritz.svg"
       }
     },
     "classic-margarita": {
@@ -43102,7 +43734,8 @@
           "Shake tequila, lime juice, and triple sec with ice",
           "Strain into prepared glass over fresh ice",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     "paloma": {
@@ -43158,7 +43791,8 @@
           "Add tequila and lime juice",
           "Top with grapefruit soda",
           "Stir gently and garnish with grapefruit slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     "tequila-sunrise": {
@@ -43214,7 +43848,8 @@
           "Add tequila and orange juice, stir",
           "Slowly pour grenadine down the side to create sunrise effect",
           "Garnish with orange slice and cherry"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     "tommys-margarita": {
@@ -43270,7 +43905,8 @@
           "Shake tequila, lime juice, and agave nectar with ice",
           "Strain over fresh ice",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     "mezcal-margarita": {
@@ -43326,7 +43962,8 @@
           "Shake mezcal, lime juice, and agave nectar with ice",
           "Strain over fresh ice",
           "Garnish with lime wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     "oaxaca-old-fashioned": {
@@ -43382,7 +44019,8 @@
           "Add large ice cube, tequila, and mezcal",
           "Stir until chilled",
           "Flame orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     "spicy-margarita": {
@@ -43440,7 +44078,8 @@
           "Shake vigorously",
           "Strain over fresh ice in salt-rimmed glass",
           "Garnish with jalapeño slice"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     "tequila-old-fashioned": {
@@ -43496,7 +44135,8 @@
           "Add large ice cube and tequila",
           "Stir until well chilled",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
       }
     },
     "virgin-mary": {
@@ -43549,6 +44189,7 @@
         "method": "Build & Stir",
         "vegan": false,
         "glutenFree": false,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build & Stir"
         ]
@@ -43601,6 +44242,7 @@
         "method": "Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build"
         ]
@@ -43654,6 +44296,7 @@
         "method": "Muddle & Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Muddle & Build"
         ]
@@ -43707,6 +44350,7 @@
         "method": "Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build"
         ]
@@ -43760,6 +44404,7 @@
         "method": "Build & Stir",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build & Stir"
         ]
@@ -43813,6 +44458,7 @@
         "method": "Muddle & Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Muddle & Build"
         ]
@@ -43866,6 +44512,7 @@
         "method": "Blend",
         "vegan": false,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Blend"
         ]
@@ -43919,6 +44566,7 @@
         "method": "Muddle & Build",
         "vegan": false,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Muddle & Build"
         ]
@@ -43972,6 +44620,7 @@
         "method": "Build",
         "vegan": true,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Build"
         ]
@@ -44025,6 +44674,7 @@
         "method": "Whisk & Build",
         "vegan": false,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Whisk & Build"
         ]
@@ -44078,6 +44728,7 @@
         "method": "Heat & Steep",
         "vegan": false,
         "glutenFree": true,
+        "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
         "instructions": [
           "Heat & Steep"
         ]
@@ -44134,7 +44785,8 @@
           "Top with ginger beer",
           "Stir gently",
           "Garnish with lime wedge and mint sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     "bloody-mary": {
@@ -44193,7 +44845,8 @@
           "Add vodka, tomato juice, lemon juice, Worcestershire, hot sauce, celery salt, pepper, and horseradish",
           "Stir well",
           "Garnish elaborately"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     "cosmopolitan": {
@@ -44246,7 +44899,8 @@
           "Shake for 10 seconds",
           "Strain into chilled martini glass",
           "Express orange peel over drink and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     "white-russian": {
@@ -44298,7 +44952,8 @@
           "Stir",
           "Float heavy cream on top",
           "Serve unstirred for layered effect"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     "vodka-tonic": {
@@ -44350,7 +45005,8 @@
           "Top with tonic water",
           "Stir gently",
           "Garnish with lime wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     "lemon-drop": {
@@ -44405,7 +45061,8 @@
           "Shake hard",
           "Strain into prepared glass",
           "Garnish with lemon wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     "sea-breeze": {
@@ -44457,7 +45114,8 @@
           "Add vodka, cranberry juice, and grapefruit juice",
           "Stir well",
           "Garnish with lime wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     "black-russian": {
@@ -44507,7 +45165,8 @@
           "Add vodka and coffee liqueur",
           "Stir gently",
           "Serve"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     "vodka-cranberry": {
@@ -44558,7 +45217,8 @@
           "Add vodka and cranberry juice",
           "Stir",
           "Garnish with lime wedge"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/vodka.svg"
       }
     },
     "boulevardier": {
@@ -44610,7 +45270,8 @@
           "Stir until well-chilled",
           "Strain into old fashioned glass with large ice cube",
           "Express orange peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     "whiskey-highball": {
@@ -44662,7 +45323,8 @@
           "Top with cold soda water",
           "Stir gently once",
           "Express lemon peel and garnish"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     "gold-rush": {
@@ -44714,7 +45376,8 @@
           "Shake hard for 10 seconds",
           "Strain into old fashioned glass with fresh ice",
           "Garnish with lemon wheel"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     "new-york-sour": {
@@ -44768,7 +45431,8 @@
           "Strain into glass with ice",
           "Carefully float red wine on top using spoon",
           "Garnish with lemon"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     "whiskey-smash": {
@@ -44822,7 +45486,8 @@
           "Shake hard",
           "Strain into glass with fresh ice",
           "Garnish with mint sprig"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     },
     "paper-plane": {
@@ -44873,9 +45538,10 @@
           "Add all ingredients to shaker with ice",
           "Shake for 10 seconds until well-chilled",
           "Strain into chilled coupe glass"
-        ]
+        ],
+        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
       }
     }
   },
-  "generatedAt": "2026-05-04T17:32:50.314Z"
+  "generatedAt": "2026-05-08T00:40:50.720Z"
 }

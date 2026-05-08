@@ -1805,7 +1805,7 @@
       "slug": "old-fashioned",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop",
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/old-fashioned"
     },
     "martini": {
@@ -1813,7 +1813,7 @@
       "slug": "martini",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/martini"
     },
     "manhattan": {
@@ -1821,7 +1821,7 @@
       "slug": "manhattan",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/manhattan"
     },
     "negroni": {
@@ -1829,7 +1829,7 @@
       "slug": "negroni",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/negroni"
     },
     "whiskey sour": {
@@ -1837,7 +1837,7 @@
       "slug": "whiskey-sour",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/whiskey-sour"
     },
     "daiquiri": {
@@ -1845,7 +1845,7 @@
       "slug": "daiquiri",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/daiquiri"
     },
     "sazerac": {
@@ -1853,7 +1853,7 @@
       "slug": "sazerac",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/sazerac"
     },
     "mint julep": {
@@ -1861,7 +1861,7 @@
       "slug": "mint-julep",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/mint-julep"
     },
     "sidecar": {
@@ -1869,7 +1869,7 @@
       "slug": "sidecar",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/sidecar"
     },
     "french connection": {
@@ -1877,7 +1877,7 @@
       "slug": "french-connection",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/french-connection"
     },
     "vieux carré": {
@@ -1885,7 +1885,7 @@
       "slug": "vieux-carr",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/vieux-carr"
     },
     "sazerac (cognac)": {
@@ -1893,7 +1893,7 @@
       "slug": "sazerac-cognac",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/sazerac-cognac"
     },
     "cognac old fashioned": {
@@ -1901,7 +1901,7 @@
       "slug": "cognac-old-fashioned",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/cognac-old-fashioned"
     },
     "french 75 (cognac)": {
@@ -1909,7 +1909,7 @@
       "slug": "french-75-cognac",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/french-75-cognac"
     },
     "brandy alexander": {
@@ -1917,7 +1917,7 @@
       "slug": "brandy-alexander",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/brandy-alexander"
     },
     "metropolitan": {
@@ -1925,7 +1925,7 @@
       "slug": "metropolitan",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/metropolitan"
     },
     "jack rose": {
@@ -1933,7 +1933,7 @@
       "slug": "jack-rose",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/jack-rose"
     },
     "between the sheets": {
@@ -1941,7 +1941,7 @@
       "slug": "between-the-sheets",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/between-the-sheets"
     },
     "cognac sour": {
@@ -1949,7 +1949,7 @@
       "slug": "cognac-sour",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/cognac-sour"
     },
     "corpse reviver no. 1": {
@@ -1957,7 +1957,7 @@
       "slug": "corpse-reviver-no-1",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/corpse-reviver-no-1"
     },
     "classic daiquiri": {
@@ -1965,7 +1965,7 @@
       "slug": "classic-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/classic-daiquiri"
     },
     "hemingway daiquiri": {
@@ -1973,7 +1973,7 @@
       "slug": "hemingway-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/hemingway-daiquiri"
     },
     "strawberry daiquiri (shaken)": {
@@ -1981,7 +1981,7 @@
       "slug": "strawberry-daiquiri-shaken",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/strawberry-daiquiri-shaken"
     },
     "frozen strawberry daiquiri": {
@@ -1989,7 +1989,7 @@
       "slug": "frozen-strawberry-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/frozen-strawberry-daiquiri"
     },
     "banana daiquiri": {
@@ -1997,7 +1997,7 @@
       "slug": "banana-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/banana-daiquiri"
     },
     "pineapple daiquiri": {
@@ -2005,7 +2005,7 @@
       "slug": "pineapple-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/pineapple-daiquiri"
     },
     "coconut daiquiri": {
@@ -2013,7 +2013,7 @@
       "slug": "coconut-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/coconut-daiquiri"
     },
     "mulata daiquiri": {
@@ -2021,7 +2021,7 @@
       "slug": "mulata-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/mulata-daiquiri"
     },
     "frozen mango daiquiri": {
@@ -2029,7 +2029,7 @@
       "slug": "frozen-mango-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/frozen-mango-daiquiri"
     },
     "chartreuse daiquiri": {
@@ -2037,7 +2037,7 @@
       "slug": "chartreuse-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/chartreuse-daiquiri"
     },
     "gin & tonic": {
@@ -2045,7 +2045,7 @@
       "slug": "gin--tonic",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/gin--tonic"
     },
     "tom collins": {
@@ -2053,7 +2053,7 @@
       "slug": "tom-collins",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/tom-collins"
     },
     "french 75": {
@@ -2061,7 +2061,7 @@
       "slug": "french-75",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/french-75"
     },
     "aviation": {
@@ -2069,7 +2069,7 @@
       "slug": "aviation",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/aviation"
     },
     "bee's knees": {
@@ -2077,7 +2077,7 @@
       "slug": "bees-knees",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/bees-knees"
     },
     "gimlet": {
@@ -2085,7 +2085,7 @@
       "slug": "gimlet",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/gimlet"
     },
     "singapore sling": {
@@ -2093,7 +2093,7 @@
       "slug": "singapore-sling",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/singapore-sling"
     },
     "ramos gin fizz": {
@@ -2101,7 +2101,7 @@
       "slug": "ramos-gin-fizz",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/ramos-gin-fizz"
     },
     "clover club": {
@@ -2109,7 +2109,7 @@
       "slug": "clover-club",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/clover-club"
     },
     "corpse reviver no. 2": {
@@ -2117,7 +2117,7 @@
       "slug": "corpse-reviver-no-2",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/corpse-reviver-no-2"
     },
     "last word": {
@@ -2125,7 +2125,7 @@
       "slug": "last-word",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/last-word"
     },
     "bramble": {
@@ -2133,7 +2133,7 @@
       "slug": "bramble",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/bramble"
     },
     "southside": {
@@ -2141,7 +2141,7 @@
       "slug": "southside",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/southside"
     },
     "ode to rhubarb": {
@@ -2149,7 +2149,7 @@
       "slug": "ode-to-rhubarb",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/ode-to-rhubarb"
     },
     "second ave spritz": {
@@ -2157,7 +2157,7 @@
       "slug": "second-ave-spritz",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/second-ave-spritz"
     },
     "glacier peak": {
@@ -2165,7 +2165,7 @@
       "slug": "glacier-peak",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/glacier-peak"
     },
     "israeli sour 2.0": {
@@ -2173,7 +2173,7 @@
       "slug": "israeli-sour-20",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/israeli-sour-20"
     },
     "sweet promise": {
@@ -2181,7 +2181,7 @@
       "slug": "sweet-promise",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/sweet-promise"
     },
     "tiny dancer": {
@@ -2189,7 +2189,7 @@
       "slug": "tiny-dancer",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/tiny-dancer"
     },
     "elderflower spritz": {
@@ -2197,7 +2197,7 @@
       "slug": "elderflower-spritz",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/elderflower-spritz"
     },
     "cucumber basil smash": {
@@ -2205,7 +2205,7 @@
       "slug": "cucumber-basil-smash",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/cucumber-basil-smash"
     },
     "lavender gin fizz": {
@@ -2213,7 +2213,7 @@
       "slug": "lavender-gin-fizz",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/lavender-gin-fizz"
     },
     "pink peppercorn collins": {
@@ -2221,7 +2221,7 @@
       "slug": "pink-peppercorn-collins",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/pink-peppercorn-collins"
     },
     "blood orange negroni": {
@@ -2229,7 +2229,7 @@
       "slug": "blood-orange-negroni",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/blood-orange-negroni"
     },
     "strawberry thyme smash": {
@@ -2237,7 +2237,7 @@
       "slug": "strawberry-thyme-smash",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/strawberry-thyme-smash"
     },
     "yuzu gin highball": {
@@ -2245,7 +2245,7 @@
       "slug": "yuzu-gin-highball",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/yuzu-gin-highball"
     },
     "rosemary greyhound": {
@@ -2253,7 +2253,7 @@
       "slug": "rosemary-greyhound",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/rosemary-greyhound"
     },
     "irish coffee": {
@@ -2261,7 +2261,7 @@
       "slug": "irish-coffee",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/irish-coffee"
     },
     "hot toddy": {
@@ -2269,7 +2269,7 @@
       "slug": "hot-toddy",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/hot-toddy"
     },
     "mulled wine": {
@@ -2277,7 +2277,7 @@
       "slug": "mulled-wine",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/mulled-wine"
     },
     "hot buttered rum": {
@@ -2285,7 +2285,7 @@
       "slug": "hot-buttered-rum",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/hot-buttered-rum"
     },
     "tom and jerry": {
@@ -2293,7 +2293,7 @@
       "slug": "tom-and-jerry",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/tom-and-jerry"
     },
     "café brulot": {
@@ -2301,7 +2301,7 @@
       "slug": "caf-brulot",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/caf-brulot"
     },
     "hot apple cider": {
@@ -2309,7 +2309,7 @@
       "slug": "hot-apple-cider",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/hot-apple-cider"
     },
     "hot chocolate with rum": {
@@ -2317,7 +2317,7 @@
       "slug": "hot-chocolate-with-rum",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/hot-chocolate-with-rum"
     },
     "amaretto sour": {
@@ -2325,7 +2325,7 @@
       "slug": "amaretto-sour",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/amaretto-sour"
     },
     "grasshopper": {
@@ -2333,7 +2333,7 @@
       "slug": "grasshopper",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/grasshopper"
     },
     "b-52": {
@@ -2341,7 +2341,7 @@
       "slug": "b-52",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/b-52"
     },
     "midori sour": {
@@ -2349,7 +2349,7 @@
       "slug": "midori-sour",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/midori-sour"
     },
     "chambord royale": {
@@ -2357,7 +2357,7 @@
       "slug": "chambord-royale",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/chambord-royale"
     },
     "baileys mudslide": {
@@ -2365,7 +2365,7 @@
       "slug": "baileys-mudslide",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/baileys-mudslide"
     },
     "limoncello spritz": {
@@ -2373,7 +2373,7 @@
       "slug": "limoncello-spritz",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/limoncello-spritz"
     },
     "frangelico fizz": {
@@ -2381,7 +2381,7 @@
       "slug": "frangelico-fizz",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/frangelico-fizz"
     },
     "godfather": {
@@ -2389,7 +2389,7 @@
       "slug": "godfather",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/godfather"
     },
     "cointreau margarita": {
@@ -2397,7 +2397,7 @@
       "slug": "cointreau-margarita",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/cointreau-margarita"
     },
     "st. germain cocktail": {
@@ -2405,7 +2405,7 @@
       "slug": "st-germain-cocktail",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/st-germain-cocktail"
     },
     "aperol spritz": {
@@ -2413,7 +2413,7 @@
       "slug": "aperol-spritz",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/aperol-spritz"
     },
     "drambuie rusty nail": {
@@ -2421,7 +2421,7 @@
       "slug": "drambuie-rusty-nail",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/drambuie-rusty-nail"
     },
     "grand marnier sidecar": {
@@ -2429,7 +2429,7 @@
       "slug": "grand-marnier-sidecar",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/grand-marnier-sidecar"
     },
     "jägermeister bomb": {
@@ -2437,7 +2437,7 @@
       "slug": "jgermeister-bomb",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/jgermeister-bomb"
     },
     "classic gin martini": {
@@ -2445,7 +2445,7 @@
       "slug": "classic-gin-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/classic-gin-martini"
     },
     "vodka martini": {
@@ -2453,7 +2453,7 @@
       "slug": "vodka-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/vodka-martini"
     },
     "dirty martini": {
@@ -2461,7 +2461,7 @@
       "slug": "dirty-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/dirty-martini"
     },
     "espresso martini": {
@@ -2469,7 +2469,7 @@
       "slug": "espresso-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/espresso-martini"
     },
     "pornstar martini": {
@@ -2477,7 +2477,7 @@
       "slug": "pornstar-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/pornstar-martini"
     },
     "lychee martini": {
@@ -2485,7 +2485,7 @@
       "slug": "lychee-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/lychee-martini"
     },
     "french martini": {
@@ -2493,7 +2493,7 @@
       "slug": "french-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/french-martini"
     },
     "vesper martini": {
@@ -2501,7 +2501,7 @@
       "slug": "vesper-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/vesper-martini"
     },
     "virgin mojito": {
@@ -2509,7 +2509,7 @@
       "slug": "virgin-mojito",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/virgin-mojito"
     },
     "shirley temple": {
@@ -2517,7 +2517,7 @@
       "slug": "shirley-temple",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/shirley-temple"
     },
     "cucumber cooler": {
@@ -2525,7 +2525,7 @@
       "slug": "cucumber-cooler",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/cucumber-cooler"
     },
     "tropical sunrise": {
@@ -2533,7 +2533,7 @@
       "slug": "tropical-sunrise",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/tropical-sunrise"
     },
     "lavender lemonade fizz": {
@@ -2541,7 +2541,7 @@
       "slug": "lavender-lemonade-fizz",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/lavender-lemonade-fizz"
     },
     "watermelon mint smash": {
@@ -2549,7 +2549,7 @@
       "slug": "watermelon-mint-smash",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/watermelon-mint-smash"
     },
     "ginger spice mule": {
@@ -2557,7 +2557,7 @@
       "slug": "ginger-spice-mule",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/ginger-spice-mule"
     },
     "berry basil smash": {
@@ -2565,7 +2565,7 @@
       "slug": "berry-basil-smash",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/berry-basil-smash"
     },
     "pomegranate sparkler": {
@@ -2573,7 +2573,7 @@
       "slug": "pomegranate-sparkler",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/pomegranate-sparkler"
     },
     "mango chili margarita": {
@@ -2581,7 +2581,7 @@
       "slug": "mango-chili-margarita",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/mango-chili-margarita"
     },
     "pineapple cilantro refresher": {
@@ -2589,7 +2589,7 @@
       "slug": "pineapple-cilantro-refresher",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/pineapple-cilantro-refresher"
     },
     "espresso martini (mocktail)": {
@@ -2597,7 +2597,7 @@
       "slug": "espresso-martini-mocktail",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/espresso-martini-mocktail"
     },
     "mojito": {
@@ -2605,7 +2605,7 @@
       "slug": "mojito",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/mojito"
     },
     "piña colada": {
@@ -2613,7 +2613,7 @@
       "slug": "pia-colada",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/pia-colada"
     },
     "mai tai": {
@@ -2621,7 +2621,7 @@
       "slug": "mai-tai",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/mai-tai"
     },
     "dark and stormy": {
@@ -2629,7 +2629,7 @@
       "slug": "dark-and-stormy",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/dark-and-stormy"
     },
     "zombie": {
@@ -2637,7 +2637,7 @@
       "slug": "zombie",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/zombie"
     },
     "cuba libre": {
@@ -2645,7 +2645,7 @@
       "slug": "cuba-libre",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/cuba-libre"
     },
     "hurricane": {
@@ -2653,7 +2653,7 @@
       "slug": "hurricane",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/hurricane"
     },
     "ti' punch": {
@@ -2661,7 +2661,7 @@
       "slug": "ti-punch",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/ti-punch"
     },
     "painkiller": {
@@ -2669,7 +2669,7 @@
       "slug": "painkiller",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/painkiller"
     },
     "jungle bird": {
@@ -2677,7 +2677,7 @@
       "slug": "jungle-bird",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/jungle-bird"
     },
     "rum old fashioned": {
@@ -2685,7 +2685,7 @@
       "slug": "rum-old-fashioned",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/rum-old-fashioned"
     },
     "penicillin": {
@@ -2693,7 +2693,7 @@
       "slug": "penicillin",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/penicillin"
     },
     "rob roy": {
@@ -2701,7 +2701,7 @@
       "slug": "rob-roy",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/rob-roy"
     },
     "blood and sand": {
@@ -2709,7 +2709,7 @@
       "slug": "blood-and-sand",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/blood-and-sand"
     },
     "rusty nail": {
@@ -2717,7 +2717,7 @@
       "slug": "rusty-nail",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/rusty-nail"
     },
     "irish mule": {
@@ -2725,7 +2725,7 @@
       "slug": "irish-mule",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/irish-mule"
     },
     "irish old fashioned": {
@@ -2733,7 +2733,7 @@
       "slug": "irish-old-fashioned",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/irish-old-fashioned"
     },
     "tipperary": {
@@ -2741,7 +2741,7 @@
       "slug": "tipperary",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/tipperary"
     },
     "smoky martini": {
@@ -2749,7 +2749,7 @@
       "slug": "smoky-martini",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/smoky-martini"
     },
     "highland sour": {
@@ -2757,7 +2757,7 @@
       "slug": "highland-sour",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/highland-sour"
     },
     "emerald isle": {
@@ -2765,7 +2765,7 @@
       "slug": "emerald-isle",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/emerald-isle"
     },
     "cameron's kick": {
@@ -2773,7 +2773,7 @@
       "slug": "camerons-kick",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/camerons-kick"
     },
     "peppermint white russian": {
@@ -2781,7 +2781,7 @@
       "slug": "peppermint-white-russian",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/peppermint-white-russian"
     },
     "elderflower gin fizz": {
@@ -2789,7 +2789,7 @@
       "slug": "elderflower-gin-fizz",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/elderflower-gin-fizz"
     },
     "lavender lemon drop": {
@@ -2797,7 +2797,7 @@
       "slug": "lavender-lemon-drop",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/lavender-lemon-drop"
     },
     "strawberry basil smash": {
@@ -2805,7 +2805,7 @@
       "slug": "strawberry-basil-smash",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/strawberry-basil-smash"
     },
     "watermelon margarita": {
@@ -2813,7 +2813,7 @@
       "slug": "watermelon-margarita",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/watermelon-margarita"
     },
     "frozen piña colada": {
@@ -2821,7 +2821,7 @@
       "slug": "frozen-pia-colada",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/frozen-pia-colada"
     },
     "cucumber gin & tonic": {
@@ -2829,7 +2829,7 @@
       "slug": "cucumber-gin--tonic",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/cucumber-gin--tonic"
     },
     "apple cider bourbon smash": {
@@ -2837,7 +2837,7 @@
       "slug": "apple-cider-bourbon-smash",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/apple-cider-bourbon-smash"
     },
     "pumpkin spice espresso martini": {
@@ -2845,7 +2845,7 @@
       "slug": "pumpkin-spice-espresso-martini",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/pumpkin-spice-espresso-martini"
     },
     "cranberry moscow mule": {
@@ -2853,7 +2853,7 @@
       "slug": "cranberry-moscow-mule",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/cranberry-moscow-mule"
     },
     "classic mimosa": {
@@ -2861,7 +2861,7 @@
       "slug": "classic-mimosa",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/classic-mimosa"
     },
     "bellini": {
@@ -2869,7 +2869,7 @@
       "slug": "bellini",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/bellini"
     },
     "strawberry mimosa": {
@@ -2877,7 +2877,7 @@
       "slug": "strawberry-mimosa",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/strawberry-mimosa"
     },
     "hugo spritz": {
@@ -2885,7 +2885,7 @@
       "slug": "hugo-spritz",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/hugo-spritz"
     },
     "mimosa royale": {
@@ -2893,7 +2893,7 @@
       "slug": "mimosa-royale",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/mimosa-royale"
     },
     "campari spritz": {
@@ -2901,7 +2901,7 @@
       "slug": "campari-spritz",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/campari-spritz"
     },
     "pineapple mimosa": {
@@ -2909,7 +2909,7 @@
       "slug": "pineapple-mimosa",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/pineapple-mimosa"
     },
     "rossini": {
@@ -2917,7 +2917,7 @@
       "slug": "rossini",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/rossini"
     },
     "classic margarita": {
@@ -2925,7 +2925,7 @@
       "slug": "classic-margarita",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/classic-margarita"
     },
     "paloma": {
@@ -2933,7 +2933,7 @@
       "slug": "paloma",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/paloma"
     },
     "tequila sunrise": {
@@ -2941,7 +2941,7 @@
       "slug": "tequila-sunrise",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/tequila-sunrise"
     },
     "tommy's margarita": {
@@ -2949,7 +2949,7 @@
       "slug": "tommys-margarita",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/tommys-margarita"
     },
     "mezcal margarita": {
@@ -2957,7 +2957,7 @@
       "slug": "mezcal-margarita",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/mezcal-margarita"
     },
     "oaxaca old fashioned": {
@@ -2965,7 +2965,7 @@
       "slug": "oaxaca-old-fashioned",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/oaxaca-old-fashioned"
     },
     "spicy margarita": {
@@ -2973,7 +2973,7 @@
       "slug": "spicy-margarita",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/spicy-margarita"
     },
     "tequila old fashioned": {
@@ -2981,7 +2981,7 @@
       "slug": "tequila-old-fashioned",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/tequila-old-fashioned"
     },
     "virgin mary": {
@@ -2989,7 +2989,7 @@
       "slug": "virgin-mary",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/virgin-mary"
     },
     "roy rogers": {
@@ -2997,7 +2997,7 @@
       "slug": "roy-rogers",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/roy-rogers"
     },
     "cucumber mint cooler": {
@@ -3005,7 +3005,7 @@
       "slug": "cucumber-mint-cooler",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/cucumber-mint-cooler"
     },
     "grapefruit rosemary spritz": {
@@ -3013,7 +3013,7 @@
       "slug": "grapefruit-rosemary-spritz",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/grapefruit-rosemary-spritz"
     },
     "lavender lemonade": {
@@ -3021,7 +3021,7 @@
       "slug": "lavender-lemonade",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/lavender-lemonade"
     },
     "watermelon basil refresher": {
@@ -3029,7 +3029,7 @@
       "slug": "watermelon-basil-refresher",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/watermelon-basil-refresher"
     },
     "berry blast": {
@@ -3037,7 +3037,7 @@
       "slug": "berry-blast",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/berry-blast"
     },
     "pineapple ginger fizz": {
@@ -3045,7 +3045,7 @@
       "slug": "pineapple-ginger-fizz",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/pineapple-ginger-fizz"
     },
     "iced hibiscus tea spritzer": {
@@ -3053,7 +3053,7 @@
       "slug": "iced-hibiscus-tea-spritzer",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/iced-hibiscus-tea-spritzer"
     },
     "matcha mint cooler": {
@@ -3061,7 +3061,7 @@
       "slug": "matcha-mint-cooler",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/matcha-mint-cooler"
     },
     "spiced apple cider mocktail": {
@@ -3069,7 +3069,7 @@
       "slug": "spiced-apple-cider-mocktail",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/spiced-apple-cider-mocktail"
     },
     "moscow mule": {
@@ -3077,7 +3077,7 @@
       "slug": "moscow-mule",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/moscow-mule"
     },
     "bloody mary": {
@@ -3085,7 +3085,7 @@
       "slug": "bloody-mary",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/bloody-mary"
     },
     "cosmopolitan": {
@@ -3093,7 +3093,7 @@
       "slug": "cosmopolitan",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/cosmopolitan"
     },
     "white russian": {
@@ -3101,7 +3101,7 @@
       "slug": "white-russian",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/white-russian"
     },
     "vodka tonic": {
@@ -3109,7 +3109,7 @@
       "slug": "vodka-tonic",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/vodka-tonic"
     },
     "lemon drop": {
@@ -3117,7 +3117,7 @@
       "slug": "lemon-drop",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/lemon-drop"
     },
     "sea breeze": {
@@ -3125,7 +3125,7 @@
       "slug": "sea-breeze",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/sea-breeze"
     },
     "black russian": {
@@ -3133,7 +3133,7 @@
       "slug": "black-russian",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/black-russian"
     },
     "vodka cranberry": {
@@ -3141,7 +3141,7 @@
       "slug": "vodka-cranberry",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/vodka-cranberry"
     },
     "boulevardier": {
@@ -3149,7 +3149,7 @@
       "slug": "boulevardier",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/boulevardier"
     },
     "whiskey highball": {
@@ -3157,7 +3157,7 @@
       "slug": "whiskey-highball",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/whiskey-highball"
     },
     "gold rush": {
@@ -3165,7 +3165,7 @@
       "slug": "gold-rush",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/gold-rush"
     },
     "new york sour": {
@@ -3173,7 +3173,7 @@
       "slug": "new-york-sour",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/new-york-sour"
     },
     "whiskey smash": {
@@ -3181,7 +3181,7 @@
       "slug": "whiskey-smash",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/whiskey-smash"
     },
     "paper plane": {
@@ -3189,7 +3189,7 @@
       "slug": "paper-plane",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/paper-plane"
     }
   },
@@ -4999,7 +4999,7 @@
       "slug": "old-fashioned",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop",
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/old-fashioned"
     },
     "martini": {
@@ -5007,7 +5007,7 @@
       "slug": "martini",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/martini"
     },
     "manhattan": {
@@ -5015,7 +5015,7 @@
       "slug": "manhattan",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/manhattan"
     },
     "negroni": {
@@ -5023,7 +5023,7 @@
       "slug": "negroni",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/negroni"
     },
     "whiskey-sour": {
@@ -5031,7 +5031,7 @@
       "slug": "whiskey-sour",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/whiskey-sour"
     },
     "daiquiri": {
@@ -5039,7 +5039,7 @@
       "slug": "daiquiri",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/daiquiri"
     },
     "sazerac": {
@@ -5047,7 +5047,7 @@
       "slug": "sazerac",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/sazerac"
     },
     "mint-julep": {
@@ -5055,7 +5055,7 @@
       "slug": "mint-julep",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/mint-julep"
     },
     "sidecar": {
@@ -5063,7 +5063,7 @@
       "slug": "sidecar",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/sidecar"
     },
     "french-connection": {
@@ -5071,7 +5071,7 @@
       "slug": "french-connection",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/french-connection"
     },
     "vieux-carr": {
@@ -5079,7 +5079,7 @@
       "slug": "vieux-carr",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/vieux-carr"
     },
     "sazerac-cognac": {
@@ -5087,7 +5087,7 @@
       "slug": "sazerac-cognac",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/sazerac-cognac"
     },
     "cognac-old-fashioned": {
@@ -5095,7 +5095,7 @@
       "slug": "cognac-old-fashioned",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/cognac-old-fashioned"
     },
     "french-75-cognac": {
@@ -5103,7 +5103,7 @@
       "slug": "french-75-cognac",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/french-75-cognac"
     },
     "brandy-alexander": {
@@ -5111,7 +5111,7 @@
       "slug": "brandy-alexander",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/brandy-alexander"
     },
     "metropolitan": {
@@ -5119,7 +5119,7 @@
       "slug": "metropolitan",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/metropolitan"
     },
     "jack-rose": {
@@ -5127,7 +5127,7 @@
       "slug": "jack-rose",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/jack-rose"
     },
     "between-the-sheets": {
@@ -5135,7 +5135,7 @@
       "slug": "between-the-sheets",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/between-the-sheets"
     },
     "cognac-sour": {
@@ -5143,7 +5143,7 @@
       "slug": "cognac-sour",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/cognac-sour"
     },
     "corpse-reviver-no-1": {
@@ -5151,7 +5151,7 @@
       "slug": "corpse-reviver-no-1",
       "sourceRoute": "/drinks/potent-potables/cognac-brandy",
       "sourceTitle": "Cognac & Brandy",
-      "image": null,
+      "image": "/images/drinks/potent-potables/cognac-brandy.svg",
       "route": "/drinks/recipe/corpse-reviver-no-1"
     },
     "classic-daiquiri": {
@@ -5159,7 +5159,7 @@
       "slug": "classic-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/classic-daiquiri"
     },
     "hemingway-daiquiri": {
@@ -5167,7 +5167,7 @@
       "slug": "hemingway-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/hemingway-daiquiri"
     },
     "strawberry-daiquiri-shaken": {
@@ -5175,7 +5175,7 @@
       "slug": "strawberry-daiquiri-shaken",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/strawberry-daiquiri-shaken"
     },
     "frozen-strawberry-daiquiri": {
@@ -5183,7 +5183,7 @@
       "slug": "frozen-strawberry-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/frozen-strawberry-daiquiri"
     },
     "banana-daiquiri": {
@@ -5191,7 +5191,7 @@
       "slug": "banana-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/banana-daiquiri"
     },
     "pineapple-daiquiri": {
@@ -5199,7 +5199,7 @@
       "slug": "pineapple-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/pineapple-daiquiri"
     },
     "coconut-daiquiri": {
@@ -5207,7 +5207,7 @@
       "slug": "coconut-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/coconut-daiquiri"
     },
     "mulata-daiquiri": {
@@ -5215,7 +5215,7 @@
       "slug": "mulata-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/mulata-daiquiri"
     },
     "frozen-mango-daiquiri": {
@@ -5223,7 +5223,7 @@
       "slug": "frozen-mango-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/frozen-mango-daiquiri"
     },
     "chartreuse-daiquiri": {
@@ -5231,7 +5231,7 @@
       "slug": "chartreuse-daiquiri",
       "sourceRoute": "/drinks/potent-potables/daiquiri",
       "sourceTitle": "Daiquiri",
-      "image": null,
+      "image": "/images/drinks/potent-potables/daiquiri.svg",
       "route": "/drinks/recipe/chartreuse-daiquiri"
     },
     "gin--tonic": {
@@ -5239,7 +5239,7 @@
       "slug": "gin--tonic",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/gin--tonic"
     },
     "tom-collins": {
@@ -5247,7 +5247,7 @@
       "slug": "tom-collins",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/tom-collins"
     },
     "french-75": {
@@ -5255,7 +5255,7 @@
       "slug": "french-75",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/french-75"
     },
     "aviation": {
@@ -5263,7 +5263,7 @@
       "slug": "aviation",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/aviation"
     },
     "bees-knees": {
@@ -5271,7 +5271,7 @@
       "slug": "bees-knees",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/bees-knees"
     },
     "gimlet": {
@@ -5279,7 +5279,7 @@
       "slug": "gimlet",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/gimlet"
     },
     "singapore-sling": {
@@ -5287,7 +5287,7 @@
       "slug": "singapore-sling",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/singapore-sling"
     },
     "ramos-gin-fizz": {
@@ -5295,7 +5295,7 @@
       "slug": "ramos-gin-fizz",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/ramos-gin-fizz"
     },
     "clover-club": {
@@ -5303,7 +5303,7 @@
       "slug": "clover-club",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/clover-club"
     },
     "corpse-reviver-no-2": {
@@ -5311,7 +5311,7 @@
       "slug": "corpse-reviver-no-2",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/corpse-reviver-no-2"
     },
     "last-word": {
@@ -5319,7 +5319,7 @@
       "slug": "last-word",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/last-word"
     },
     "bramble": {
@@ -5327,7 +5327,7 @@
       "slug": "bramble",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/bramble"
     },
     "southside": {
@@ -5335,7 +5335,7 @@
       "slug": "southside",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/southside"
     },
     "ode-to-rhubarb": {
@@ -5343,7 +5343,7 @@
       "slug": "ode-to-rhubarb",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/ode-to-rhubarb"
     },
     "second-ave-spritz": {
@@ -5351,7 +5351,7 @@
       "slug": "second-ave-spritz",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/second-ave-spritz"
     },
     "glacier-peak": {
@@ -5359,7 +5359,7 @@
       "slug": "glacier-peak",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/glacier-peak"
     },
     "israeli-sour-20": {
@@ -5367,7 +5367,7 @@
       "slug": "israeli-sour-20",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/israeli-sour-20"
     },
     "sweet-promise": {
@@ -5375,7 +5375,7 @@
       "slug": "sweet-promise",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/sweet-promise"
     },
     "tiny-dancer": {
@@ -5383,7 +5383,7 @@
       "slug": "tiny-dancer",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/tiny-dancer"
     },
     "elderflower-spritz": {
@@ -5391,7 +5391,7 @@
       "slug": "elderflower-spritz",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/elderflower-spritz"
     },
     "cucumber-basil-smash": {
@@ -5399,7 +5399,7 @@
       "slug": "cucumber-basil-smash",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/cucumber-basil-smash"
     },
     "lavender-gin-fizz": {
@@ -5407,7 +5407,7 @@
       "slug": "lavender-gin-fizz",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/lavender-gin-fizz"
     },
     "pink-peppercorn-collins": {
@@ -5415,7 +5415,7 @@
       "slug": "pink-peppercorn-collins",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/pink-peppercorn-collins"
     },
     "blood-orange-negroni": {
@@ -5423,7 +5423,7 @@
       "slug": "blood-orange-negroni",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/blood-orange-negroni"
     },
     "strawberry-thyme-smash": {
@@ -5431,7 +5431,7 @@
       "slug": "strawberry-thyme-smash",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/strawberry-thyme-smash"
     },
     "yuzu-gin-highball": {
@@ -5439,7 +5439,7 @@
       "slug": "yuzu-gin-highball",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/yuzu-gin-highball"
     },
     "rosemary-greyhound": {
@@ -5447,7 +5447,7 @@
       "slug": "rosemary-greyhound",
       "sourceRoute": "/drinks/potent-potables/gin",
       "sourceTitle": "Gin",
-      "image": null,
+      "image": "/images/drinks/potent-potables/gin.svg",
       "route": "/drinks/recipe/rosemary-greyhound"
     },
     "irish-coffee": {
@@ -5455,7 +5455,7 @@
       "slug": "irish-coffee",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/irish-coffee"
     },
     "hot-toddy": {
@@ -5463,7 +5463,7 @@
       "slug": "hot-toddy",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/hot-toddy"
     },
     "mulled-wine": {
@@ -5471,7 +5471,7 @@
       "slug": "mulled-wine",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/mulled-wine"
     },
     "hot-buttered-rum": {
@@ -5479,7 +5479,7 @@
       "slug": "hot-buttered-rum",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/hot-buttered-rum"
     },
     "tom-and-jerry": {
@@ -5487,7 +5487,7 @@
       "slug": "tom-and-jerry",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/tom-and-jerry"
     },
     "caf-brulot": {
@@ -5495,7 +5495,7 @@
       "slug": "caf-brulot",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/caf-brulot"
     },
     "hot-apple-cider": {
@@ -5503,7 +5503,7 @@
       "slug": "hot-apple-cider",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/hot-apple-cider"
     },
     "hot-chocolate-with-rum": {
@@ -5511,7 +5511,7 @@
       "slug": "hot-chocolate-with-rum",
       "sourceRoute": "/drinks/potent-potables/hot-drinks",
       "sourceTitle": "Hot Drinks",
-      "image": null,
+      "image": "/images/drinks/potent-potables/hot-drinks.svg",
       "route": "/drinks/recipe/hot-chocolate-with-rum"
     },
     "amaretto-sour": {
@@ -5519,7 +5519,7 @@
       "slug": "amaretto-sour",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/amaretto-sour"
     },
     "grasshopper": {
@@ -5527,7 +5527,7 @@
       "slug": "grasshopper",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/grasshopper"
     },
     "b-52": {
@@ -5535,7 +5535,7 @@
       "slug": "b-52",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/b-52"
     },
     "midori-sour": {
@@ -5543,7 +5543,7 @@
       "slug": "midori-sour",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/midori-sour"
     },
     "chambord-royale": {
@@ -5551,7 +5551,7 @@
       "slug": "chambord-royale",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/chambord-royale"
     },
     "baileys-mudslide": {
@@ -5559,7 +5559,7 @@
       "slug": "baileys-mudslide",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/baileys-mudslide"
     },
     "limoncello-spritz": {
@@ -5567,7 +5567,7 @@
       "slug": "limoncello-spritz",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/limoncello-spritz"
     },
     "frangelico-fizz": {
@@ -5575,7 +5575,7 @@
       "slug": "frangelico-fizz",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/frangelico-fizz"
     },
     "godfather": {
@@ -5583,7 +5583,7 @@
       "slug": "godfather",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/godfather"
     },
     "cointreau-margarita": {
@@ -5591,7 +5591,7 @@
       "slug": "cointreau-margarita",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/cointreau-margarita"
     },
     "st-germain-cocktail": {
@@ -5599,7 +5599,7 @@
       "slug": "st-germain-cocktail",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/st-germain-cocktail"
     },
     "aperol-spritz": {
@@ -5607,7 +5607,7 @@
       "slug": "aperol-spritz",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/aperol-spritz"
     },
     "drambuie-rusty-nail": {
@@ -5615,7 +5615,7 @@
       "slug": "drambuie-rusty-nail",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/drambuie-rusty-nail"
     },
     "grand-marnier-sidecar": {
@@ -5623,7 +5623,7 @@
       "slug": "grand-marnier-sidecar",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/grand-marnier-sidecar"
     },
     "jgermeister-bomb": {
@@ -5631,7 +5631,7 @@
       "slug": "jgermeister-bomb",
       "sourceRoute": "/drinks/potent-potables/liqueurs",
       "sourceTitle": "Liqueurs",
-      "image": null,
+      "image": "/images/drinks/potent-potables/liqueurs.svg",
       "route": "/drinks/recipe/jgermeister-bomb"
     },
     "classic-gin-martini": {
@@ -5639,7 +5639,7 @@
       "slug": "classic-gin-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/classic-gin-martini"
     },
     "vodka-martini": {
@@ -5647,7 +5647,7 @@
       "slug": "vodka-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/vodka-martini"
     },
     "dirty-martini": {
@@ -5655,7 +5655,7 @@
       "slug": "dirty-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/dirty-martini"
     },
     "espresso-martini": {
@@ -5663,7 +5663,7 @@
       "slug": "espresso-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/espresso-martini"
     },
     "pornstar-martini": {
@@ -5671,7 +5671,7 @@
       "slug": "pornstar-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/pornstar-martini"
     },
     "lychee-martini": {
@@ -5679,7 +5679,7 @@
       "slug": "lychee-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/lychee-martini"
     },
     "french-martini": {
@@ -5687,7 +5687,7 @@
       "slug": "french-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/french-martini"
     },
     "vesper-martini": {
@@ -5695,7 +5695,7 @@
       "slug": "vesper-martini",
       "sourceRoute": "/drinks/potent-potables/martinis",
       "sourceTitle": "Martinis",
-      "image": null,
+      "image": "/images/drinks/potent-potables/martinis.svg",
       "route": "/drinks/recipe/vesper-martini"
     },
     "virgin-mojito": {
@@ -5703,7 +5703,7 @@
       "slug": "virgin-mojito",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/virgin-mojito"
     },
     "shirley-temple": {
@@ -5711,7 +5711,7 @@
       "slug": "shirley-temple",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/shirley-temple"
     },
     "cucumber-cooler": {
@@ -5719,7 +5719,7 @@
       "slug": "cucumber-cooler",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/cucumber-cooler"
     },
     "tropical-sunrise": {
@@ -5727,7 +5727,7 @@
       "slug": "tropical-sunrise",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/tropical-sunrise"
     },
     "lavender-lemonade-fizz": {
@@ -5735,7 +5735,7 @@
       "slug": "lavender-lemonade-fizz",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/lavender-lemonade-fizz"
     },
     "watermelon-mint-smash": {
@@ -5743,7 +5743,7 @@
       "slug": "watermelon-mint-smash",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/watermelon-mint-smash"
     },
     "ginger-spice-mule": {
@@ -5751,7 +5751,7 @@
       "slug": "ginger-spice-mule",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/ginger-spice-mule"
     },
     "berry-basil-smash": {
@@ -5759,7 +5759,7 @@
       "slug": "berry-basil-smash",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/berry-basil-smash"
     },
     "pomegranate-sparkler": {
@@ -5767,7 +5767,7 @@
       "slug": "pomegranate-sparkler",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/pomegranate-sparkler"
     },
     "mango-chili-margarita": {
@@ -5775,7 +5775,7 @@
       "slug": "mango-chili-margarita",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/mango-chili-margarita"
     },
     "pineapple-cilantro-refresher": {
@@ -5783,7 +5783,7 @@
       "slug": "pineapple-cilantro-refresher",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/pineapple-cilantro-refresher"
     },
     "espresso-martini-mocktail": {
@@ -5791,7 +5791,7 @@
       "slug": "espresso-martini-mocktail",
       "sourceRoute": "/drinks/potent-potables/mocktails",
       "sourceTitle": "Mocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/mocktails.svg",
       "route": "/drinks/recipe/espresso-martini-mocktail"
     },
     "mojito": {
@@ -5799,7 +5799,7 @@
       "slug": "mojito",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/mojito"
     },
     "pia-colada": {
@@ -5807,7 +5807,7 @@
       "slug": "pia-colada",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/pia-colada"
     },
     "mai-tai": {
@@ -5815,7 +5815,7 @@
       "slug": "mai-tai",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/mai-tai"
     },
     "dark-and-stormy": {
@@ -5823,7 +5823,7 @@
       "slug": "dark-and-stormy",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/dark-and-stormy"
     },
     "zombie": {
@@ -5831,7 +5831,7 @@
       "slug": "zombie",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/zombie"
     },
     "cuba-libre": {
@@ -5839,7 +5839,7 @@
       "slug": "cuba-libre",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/cuba-libre"
     },
     "hurricane": {
@@ -5847,7 +5847,7 @@
       "slug": "hurricane",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/hurricane"
     },
     "ti-punch": {
@@ -5855,7 +5855,7 @@
       "slug": "ti-punch",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/ti-punch"
     },
     "painkiller": {
@@ -5863,7 +5863,7 @@
       "slug": "painkiller",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/painkiller"
     },
     "jungle-bird": {
@@ -5871,7 +5871,7 @@
       "slug": "jungle-bird",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/jungle-bird"
     },
     "rum-old-fashioned": {
@@ -5879,7 +5879,7 @@
       "slug": "rum-old-fashioned",
       "sourceRoute": "/drinks/potent-potables/rum",
       "sourceTitle": "Rum",
-      "image": null,
+      "image": "/images/drinks/potent-potables/rum.svg",
       "route": "/drinks/recipe/rum-old-fashioned"
     },
     "penicillin": {
@@ -5887,7 +5887,7 @@
       "slug": "penicillin",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/penicillin"
     },
     "rob-roy": {
@@ -5895,7 +5895,7 @@
       "slug": "rob-roy",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/rob-roy"
     },
     "blood-and-sand": {
@@ -5903,7 +5903,7 @@
       "slug": "blood-and-sand",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/blood-and-sand"
     },
     "rusty-nail": {
@@ -5911,7 +5911,7 @@
       "slug": "rusty-nail",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/rusty-nail"
     },
     "irish-mule": {
@@ -5919,7 +5919,7 @@
       "slug": "irish-mule",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/irish-mule"
     },
     "irish-old-fashioned": {
@@ -5927,7 +5927,7 @@
       "slug": "irish-old-fashioned",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/irish-old-fashioned"
     },
     "tipperary": {
@@ -5935,7 +5935,7 @@
       "slug": "tipperary",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/tipperary"
     },
     "smoky-martini": {
@@ -5943,7 +5943,7 @@
       "slug": "smoky-martini",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/smoky-martini"
     },
     "highland-sour": {
@@ -5951,7 +5951,7 @@
       "slug": "highland-sour",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/highland-sour"
     },
     "emerald-isle": {
@@ -5959,7 +5959,7 @@
       "slug": "emerald-isle",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/emerald-isle"
     },
     "camerons-kick": {
@@ -5967,7 +5967,7 @@
       "slug": "camerons-kick",
       "sourceRoute": "/drinks/potent-potables/scotch-irish-whiskey",
       "sourceTitle": "Scotch & Irish Whiskey",
-      "image": null,
+      "image": "/images/drinks/potent-potables/scotch-irish-whiskey.svg",
       "route": "/drinks/recipe/camerons-kick"
     },
     "peppermint-white-russian": {
@@ -5975,7 +5975,7 @@
       "slug": "peppermint-white-russian",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/peppermint-white-russian"
     },
     "elderflower-gin-fizz": {
@@ -5983,7 +5983,7 @@
       "slug": "elderflower-gin-fizz",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/elderflower-gin-fizz"
     },
     "lavender-lemon-drop": {
@@ -5991,7 +5991,7 @@
       "slug": "lavender-lemon-drop",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/lavender-lemon-drop"
     },
     "strawberry-basil-smash": {
@@ -5999,7 +5999,7 @@
       "slug": "strawberry-basil-smash",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/strawberry-basil-smash"
     },
     "watermelon-margarita": {
@@ -6007,7 +6007,7 @@
       "slug": "watermelon-margarita",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/watermelon-margarita"
     },
     "frozen-pia-colada": {
@@ -6015,7 +6015,7 @@
       "slug": "frozen-pia-colada",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/frozen-pia-colada"
     },
     "cucumber-gin--tonic": {
@@ -6023,7 +6023,7 @@
       "slug": "cucumber-gin--tonic",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/cucumber-gin--tonic"
     },
     "apple-cider-bourbon-smash": {
@@ -6031,7 +6031,7 @@
       "slug": "apple-cider-bourbon-smash",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/apple-cider-bourbon-smash"
     },
     "pumpkin-spice-espresso-martini": {
@@ -6039,7 +6039,7 @@
       "slug": "pumpkin-spice-espresso-martini",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/pumpkin-spice-espresso-martini"
     },
     "cranberry-moscow-mule": {
@@ -6047,7 +6047,7 @@
       "slug": "cranberry-moscow-mule",
       "sourceRoute": "/drinks/potent-potables/seasonal",
       "sourceTitle": "Seasonal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/seasonal.svg",
       "route": "/drinks/recipe/cranberry-moscow-mule"
     },
     "classic-mimosa": {
@@ -6055,7 +6055,7 @@
       "slug": "classic-mimosa",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/classic-mimosa"
     },
     "bellini": {
@@ -6063,7 +6063,7 @@
       "slug": "bellini",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/bellini"
     },
     "strawberry-mimosa": {
@@ -6071,7 +6071,7 @@
       "slug": "strawberry-mimosa",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/strawberry-mimosa"
     },
     "hugo-spritz": {
@@ -6079,7 +6079,7 @@
       "slug": "hugo-spritz",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/hugo-spritz"
     },
     "mimosa-royale": {
@@ -6087,7 +6087,7 @@
       "slug": "mimosa-royale",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/mimosa-royale"
     },
     "campari-spritz": {
@@ -6095,7 +6095,7 @@
       "slug": "campari-spritz",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/campari-spritz"
     },
     "pineapple-mimosa": {
@@ -6103,7 +6103,7 @@
       "slug": "pineapple-mimosa",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/pineapple-mimosa"
     },
     "rossini": {
@@ -6111,7 +6111,7 @@
       "slug": "rossini",
       "sourceRoute": "/drinks/potent-potables/spritz",
       "sourceTitle": "Spritz & Mimosas",
-      "image": null,
+      "image": "/images/drinks/potent-potables/spritz.svg",
       "route": "/drinks/recipe/rossini"
     },
     "classic-margarita": {
@@ -6119,7 +6119,7 @@
       "slug": "classic-margarita",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/classic-margarita"
     },
     "paloma": {
@@ -6127,7 +6127,7 @@
       "slug": "paloma",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/paloma"
     },
     "tequila-sunrise": {
@@ -6135,7 +6135,7 @@
       "slug": "tequila-sunrise",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/tequila-sunrise"
     },
     "tommys-margarita": {
@@ -6143,7 +6143,7 @@
       "slug": "tommys-margarita",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/tommys-margarita"
     },
     "mezcal-margarita": {
@@ -6151,7 +6151,7 @@
       "slug": "mezcal-margarita",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/mezcal-margarita"
     },
     "oaxaca-old-fashioned": {
@@ -6159,7 +6159,7 @@
       "slug": "oaxaca-old-fashioned",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/oaxaca-old-fashioned"
     },
     "spicy-margarita": {
@@ -6167,7 +6167,7 @@
       "slug": "spicy-margarita",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/spicy-margarita"
     },
     "tequila-old-fashioned": {
@@ -6175,7 +6175,7 @@
       "slug": "tequila-old-fashioned",
       "sourceRoute": "/drinks/potent-potables/tequila-mezcal",
       "sourceTitle": "Tequila & Mezcal",
-      "image": null,
+      "image": "/images/drinks/potent-potables/tequila-mezcal.svg",
       "route": "/drinks/recipe/tequila-old-fashioned"
     },
     "virgin-mary": {
@@ -6183,7 +6183,7 @@
       "slug": "virgin-mary",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/virgin-mary"
     },
     "roy-rogers": {
@@ -6191,7 +6191,7 @@
       "slug": "roy-rogers",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/roy-rogers"
     },
     "cucumber-mint-cooler": {
@@ -6199,7 +6199,7 @@
       "slug": "cucumber-mint-cooler",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/cucumber-mint-cooler"
     },
     "grapefruit-rosemary-spritz": {
@@ -6207,7 +6207,7 @@
       "slug": "grapefruit-rosemary-spritz",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/grapefruit-rosemary-spritz"
     },
     "lavender-lemonade": {
@@ -6215,7 +6215,7 @@
       "slug": "lavender-lemonade",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/lavender-lemonade"
     },
     "watermelon-basil-refresher": {
@@ -6223,7 +6223,7 @@
       "slug": "watermelon-basil-refresher",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/watermelon-basil-refresher"
     },
     "berry-blast": {
@@ -6231,7 +6231,7 @@
       "slug": "berry-blast",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/berry-blast"
     },
     "pineapple-ginger-fizz": {
@@ -6239,7 +6239,7 @@
       "slug": "pineapple-ginger-fizz",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/pineapple-ginger-fizz"
     },
     "iced-hibiscus-tea-spritzer": {
@@ -6247,7 +6247,7 @@
       "slug": "iced-hibiscus-tea-spritzer",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/iced-hibiscus-tea-spritzer"
     },
     "matcha-mint-cooler": {
@@ -6255,7 +6255,7 @@
       "slug": "matcha-mint-cooler",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/matcha-mint-cooler"
     },
     "spiced-apple-cider-mocktail": {
@@ -6263,7 +6263,7 @@
       "slug": "spiced-apple-cider-mocktail",
       "sourceRoute": "/drinks/potent-potables/virgin-cocktails",
       "sourceTitle": "Virgin Cocktails",
-      "image": null,
+      "image": "/images/drinks/potent-potables/virgin-cocktails.svg",
       "route": "/drinks/recipe/spiced-apple-cider-mocktail"
     },
     "moscow-mule": {
@@ -6271,7 +6271,7 @@
       "slug": "moscow-mule",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/moscow-mule"
     },
     "bloody-mary": {
@@ -6279,7 +6279,7 @@
       "slug": "bloody-mary",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/bloody-mary"
     },
     "cosmopolitan": {
@@ -6287,7 +6287,7 @@
       "slug": "cosmopolitan",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/cosmopolitan"
     },
     "white-russian": {
@@ -6295,7 +6295,7 @@
       "slug": "white-russian",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/white-russian"
     },
     "vodka-tonic": {
@@ -6303,7 +6303,7 @@
       "slug": "vodka-tonic",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/vodka-tonic"
     },
     "lemon-drop": {
@@ -6311,7 +6311,7 @@
       "slug": "lemon-drop",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/lemon-drop"
     },
     "sea-breeze": {
@@ -6319,7 +6319,7 @@
       "slug": "sea-breeze",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/sea-breeze"
     },
     "black-russian": {
@@ -6327,7 +6327,7 @@
       "slug": "black-russian",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/black-russian"
     },
     "vodka-cranberry": {
@@ -6335,7 +6335,7 @@
       "slug": "vodka-cranberry",
       "sourceRoute": "/drinks/potent-potables/vodka",
       "sourceTitle": "Vodka",
-      "image": null,
+      "image": "/images/drinks/potent-potables/vodka.svg",
       "route": "/drinks/recipe/vodka-cranberry"
     },
     "boulevardier": {
@@ -6343,7 +6343,7 @@
       "slug": "boulevardier",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/boulevardier"
     },
     "whiskey-highball": {
@@ -6351,7 +6351,7 @@
       "slug": "whiskey-highball",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/whiskey-highball"
     },
     "gold-rush": {
@@ -6359,7 +6359,7 @@
       "slug": "gold-rush",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/gold-rush"
     },
     "new-york-sour": {
@@ -6367,7 +6367,7 @@
       "slug": "new-york-sour",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/new-york-sour"
     },
     "whiskey-smash": {
@@ -6375,7 +6375,7 @@
       "slug": "whiskey-smash",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/whiskey-smash"
     },
     "paper-plane": {
@@ -6383,7 +6383,7 @@
       "slug": "paper-plane",
       "sourceRoute": "/drinks/potent-potables/whiskey-bourbon",
       "sourceTitle": "Whiskey & Bourbon",
-      "image": null,
+      "image": "/images/drinks/potent-potables/whiskey-bourbon.svg",
       "route": "/drinks/recipe/paper-plane"
     }
   },
@@ -6721,5 +6721,5 @@
       "duplicateRoute": "/drinks/potent-potables/whiskey-bourbon"
     }
   ],
-  "generatedAt": "2026-05-04T17:32:50.314Z"
+  "generatedAt": "2026-05-08T00:40:50.720Z"
 }
