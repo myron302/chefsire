@@ -11,6 +11,7 @@ import { addRecentlyViewedDrinkSlug } from "@/components/drinks/RecentlyViewedDr
 import { recordDrinkViewActivity } from "@/lib/drinks-activity";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
+import { getPotentPotablesAssetByRoute } from "@/constants/drink-images";
 import { postEngagementEvent } from "@/lib/engagement-events";
 import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
 import SaveToCollectionDialog from "@/components/drinks/SaveToCollectionDialog";
@@ -249,7 +250,8 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   }
 
   const recipe = canonicalRecipe?.recipe;
-  const imageUrl = (typeof recipe?.image === "string" ? recipe.image : typeof recipe?.imageUrl === "string" ? recipe.imageUrl : "") || userRecipe?.image || "";
+  const categoryFallbackImage = canonicalRecipe ? getPotentPotablesAssetByRoute(canonicalRecipe.sourceRoute) : "";
+  const imageUrl = (typeof recipe?.image === "string" ? recipe.image : typeof recipe?.imageUrl === "string" ? recipe.imageUrl : "") || userRecipe?.image || categoryFallbackImage;
   const ingredients = asList(recipe?.ingredients ?? userRecipe?.ingredients ?? []);
   const instructionSteps = asList(recipe?.instructions ?? userRecipe?.instructions ?? []);
   const description = recipe?.description ?? userRecipe?.description;
@@ -352,6 +354,11 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
               alt={displayName}
               className="w-full max-h-[360px] object-cover rounded-lg border"
               loading="lazy"
+              onError={(event) => {
+                if (categoryFallbackImage && !event.currentTarget.src.endsWith(categoryFallbackImage)) {
+                  event.currentTarget.src = categoryFallbackImage;
+                }
+              }}
             />
           ) : null}
 

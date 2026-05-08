@@ -1,14 +1,64 @@
 /**
- * Comprehensive drink image mappings using curated Unsplash URLs
- * This file provides high-quality images for all drink categories
+ * Comprehensive drink image mappings.
+ *
+ * Potent potables use local ChefSire-owned generated artwork so category and
+ * recipe-card fallbacks do not depend on third-party stock URLs that can 404.
  */
+
+const POTENT_POTABLES_ASSET_BASE = '/images/drinks/potent-potables';
+
+export const POTENT_POTABLES_CATEGORY_ASSET_PATHS = {
+  cocktails: `${POTENT_POTABLES_ASSET_BASE}/cocktails.svg`,
+  gin: `${POTENT_POTABLES_ASSET_BASE}/gin.svg`,
+  rum: `${POTENT_POTABLES_ASSET_BASE}/rum.svg`,
+  vodka: `${POTENT_POTABLES_ASSET_BASE}/vodka.svg`,
+  whiskey: `${POTENT_POTABLES_ASSET_BASE}/whiskey-bourbon.svg`,
+  whiskeyBourbon: `${POTENT_POTABLES_ASSET_BASE}/whiskey-bourbon.svg`,
+  martinis: `${POTENT_POTABLES_ASSET_BASE}/martinis.svg`,
+  mocktails: `${POTENT_POTABLES_ASSET_BASE}/mocktails.svg`,
+  tequila: `${POTENT_POTABLES_ASSET_BASE}/tequila-mezcal.svg`,
+  tequilaMezcal: `${POTENT_POTABLES_ASSET_BASE}/tequila-mezcal.svg`,
+  cognac: `${POTENT_POTABLES_ASSET_BASE}/cognac-brandy.svg`,
+  cognacBrandy: `${POTENT_POTABLES_ASSET_BASE}/cognac-brandy.svg`,
+  daiquiri: `${POTENT_POTABLES_ASSET_BASE}/daiquiri.svg`,
+  scotchIrishWhiskey: `${POTENT_POTABLES_ASSET_BASE}/scotch-irish-whiskey.svg`,
+  seasonal: `${POTENT_POTABLES_ASSET_BASE}/seasonal.svg`,
+  spritz: `${POTENT_POTABLES_ASSET_BASE}/spritz.svg`,
+  liqueurs: `${POTENT_POTABLES_ASSET_BASE}/liqueurs.svg`,
+  virginCocktails: `${POTENT_POTABLES_ASSET_BASE}/virgin-cocktails.svg`,
+  hotDrinks: `${POTENT_POTABLES_ASSET_BASE}/hot-drinks.svg`,
+} as const;
+
+export const POTENT_POTABLES_ROUTE_ASSET_PATHS: Record<string, string> = {
+  '/drinks/potent-potables': POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
+  '/drinks/potent-potables/cocktails': POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
+  '/drinks/potent-potables/gin': POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin,
+  '/drinks/potent-potables/rum': POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum,
+  '/drinks/potent-potables/vodka': POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka,
+  '/drinks/potent-potables/whiskey-bourbon': POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon,
+  '/drinks/potent-potables/scotch-irish-whiskey': POTENT_POTABLES_CATEGORY_ASSET_PATHS.scotchIrishWhiskey,
+  '/drinks/potent-potables/tequila-mezcal': POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal,
+  '/drinks/potent-potables/cognac-brandy': POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy,
+  '/drinks/potent-potables/daiquiri': POTENT_POTABLES_CATEGORY_ASSET_PATHS.daiquiri,
+  '/drinks/potent-potables/martinis': POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis,
+  '/drinks/potent-potables/mocktails': POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails,
+  '/drinks/potent-potables/liqueurs': POTENT_POTABLES_CATEGORY_ASSET_PATHS.liqueurs,
+  '/drinks/potent-potables/spritz': POTENT_POTABLES_CATEGORY_ASSET_PATHS.spritz,
+  '/drinks/potent-potables/virgin-cocktails': POTENT_POTABLES_CATEGORY_ASSET_PATHS.virginCocktails,
+  '/drinks/potent-potables/seasonal': POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal,
+  '/drinks/potent-potables/hot-drinks': POTENT_POTABLES_CATEGORY_ASSET_PATHS.hotDrinks,
+};
+
+export function getPotentPotablesAssetByRoute(route: string): string {
+  return POTENT_POTABLES_ROUTE_ASSET_PATHS[route] ?? '';
+}
 
 // Fallback images for when specific images are not available
 export const DRINK_FALLBACK_IMAGES = {
-  default: 'https://images.unsplash.com/photo-1544145945-f90425340c7e?w=600&h=400&fit=crop',
+  default: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
   smoothie: 'https://images.unsplash.com/photo-1553530979-451d0aa3ad9f?w=600&h=400&fit=crop',
   coffee: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=600&h=400&fit=crop',
-  cocktail: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=600&h=400&fit=crop',
+  cocktail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
   protein: 'https://images.unsplash.com/photo-1571019613454-1cb2f99b2d8b?w=600&h=400&fit=crop',
   detox: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=600&h=400&fit=crop',
 } as const;
@@ -33,9 +83,9 @@ export const DRINK_HUB_IMAGES = {
     card: 'https://images.unsplash.com/photo-1622597467836-f3285f2131b8?w=600&h=400&fit=crop',
   },
   potentPotables: {
-    hero: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
   },
   caffeinated: {
     hero: 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=1200&h=600&fit=crop',
@@ -284,102 +334,102 @@ export const PROTEIN_SHAKE_IMAGES = {
 // =============================================================================
 export const POTENT_POTABLES_IMAGES = {
   cocktails: {
-    hero: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
     recipes: {
-      margarita: 'https://images.unsplash.com/photo-1556855810-ac404aa91e85?w=400&h=300&fit=crop',
-      mojito: 'https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=400&h=300&fit=crop',
-      cosmopolitan: 'https://images.unsplash.com/photo-1560963689-02ac7c0f2e2a?w=400&h=300&fit=crop',
+      margarita: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
+      mojito: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
+      cosmopolitan: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
     },
   },
   gin: {
-    hero: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin,
     recipes: {
-      ginTonic: 'https://images.unsplash.com/photo-1608270586620-248524c67de9?w=400&h=300&fit=crop',
-      negroni: 'https://images.unsplash.com/photo-1575023782549-62ca0d244b39?w=400&h=300&fit=crop',
-      gimlet: 'https://images.unsplash.com/photo-1560963689-02ac7c0f2e2a?w=400&h=300&fit=crop',
+      ginTonic: POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin,
+      negroni: POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin,
+      gimlet: POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin,
     },
   },
   rum: {
-    hero: 'https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum,
     recipes: {
-      daiquiri: 'https://images.unsplash.com/photo-1551538827-9c037cb4f32a?w=400&h=300&fit=crop',
-      pinaColada: 'https://images.unsplash.com/photo-1546171753-97d7676e4602?w=400&h=300&fit=crop',
-      darkNStormy: 'https://images.unsplash.com/photo-1536935338788-846bb9981813?w=400&h=300&fit=crop',
+      daiquiri: POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum,
+      pinaColada: POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum,
+      darkNStormy: POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum,
     },
   },
   vodka: {
-    hero: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka,
     recipes: {
-      vodkaMartini: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop',
-      espressoMartini: 'https://images.unsplash.com/photo-1560963689-02ac7c0f2e2a?w=400&h=300&fit=crop',
-      bloodyMary: 'https://images.unsplash.com/photo-1541546006121-5c3bc5e8c7b9?w=400&h=300&fit=crop',
+      vodkaMartini: POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka,
+      espressoMartini: POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka,
+      bloodyMary: POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka,
     },
   },
   whiskey: {
-    hero: 'https://images.unsplash.com/photo-1527281400683-1aae777175f8?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1527281400683-1aae777175f8?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1527281400683-1aae777175f8?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon,
     recipes: {
-      oldFashioned: 'https://images.unsplash.com/photo-1527281400683-1aae777175f8?w=400&h=300&fit=crop',
-      manhattan: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=400&h=300&fit=crop',
-      whiskeySour: 'https://images.unsplash.com/photo-1536935338788-846bb9981813?w=400&h=300&fit=crop',
+      oldFashioned: POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon,
+      manhattan: POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon,
+      whiskeySour: POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon,
     },
   },
   martinis: {
-    hero: 'https://images.unsplash.com/photo-1575023782549-62ca0d244b39?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1575023782549-62ca0d244b39?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1575023782549-62ca0d244b39?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis,
     recipes: {
-      classic: 'https://images.unsplash.com/photo-1575023782549-62ca0d244b39?w=400&h=300&fit=crop',
-      dirty: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop',
-      lemon: 'https://images.unsplash.com/photo-1560963689-02ac7c0f2e2a?w=400&h=300&fit=crop',
+      classic: POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis,
+      dirty: POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis,
+      lemon: POTENT_POTABLES_CATEGORY_ASSET_PATHS.martinis,
     },
   },
   mocktails: {
-    hero: 'https://images.unsplash.com/photo-1536935338788-846bb9981813?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1536935338788-846bb9981813?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1536935338788-846bb9981813?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails,
     recipes: {
-      virginMojito: 'https://images.unsplash.com/photo-1536935338788-846bb9981813?w=400&h=300&fit=crop',
-      shirleyTemple: 'https://images.unsplash.com/photo-1560963689-02ac7c0f2e2a?w=400&h=300&fit=crop',
-      sparklingLemonade: 'https://images.unsplash.com/photo-1556679343-c7306c1976bc?w=400&h=300&fit=crop',
+      virginMojito: POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails,
+      shirleyTemple: POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails,
+      sparklingLemonade: POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails,
     },
   },
   tequila: {
-    hero: 'https://images.unsplash.com/photo-1556855810-ac404aa91e85?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1556855810-ac404aa91e85?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1556855810-ac404aa91e85?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal,
     recipes: {
-      margarita: 'https://images.unsplash.com/photo-1556855810-ac404aa91e85?w=400&h=300&fit=crop',
-      paloma: 'https://images.unsplash.com/photo-1536935338788-846bb9981813?w=400&h=300&fit=crop',
-      sunrise: 'https://images.unsplash.com/photo-1560963689-02ac7c0f2e2a?w=400&h=300&fit=crop',
+      margarita: POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal,
+      paloma: POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal,
+      sunrise: POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal,
     },
   },
   cognac: {
-    hero: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy,
     recipes: {
-      sidecar: 'https://images.unsplash.com/photo-1470337458703-46ad1756a187?w=400&h=300&fit=crop',
-      frenchConnection: 'https://images.unsplash.com/photo-1527281400683-1aae777175f8?w=400&h=300&fit=crop',
+      sidecar: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy,
+      frenchConnection: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy,
     },
   },
   seasonal: {
-    hero: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=1200&h=600&fit=crop',
-    thumbnail: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=300&h=200&fit=crop',
-    card: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=600&h=400&fit=crop',
+    hero: POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal,
+    thumbnail: POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal,
+    card: POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal,
     recipes: {
-      eggnog: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?w=400&h=300&fit=crop',
-      hotToddy: 'https://images.unsplash.com/photo-1571934811356-5cc061b6821f?w=400&h=300&fit=crop',
-      mulledWine: 'https://images.unsplash.com/photo-1482275548304-a58859dc31b7?w=400&h=300&fit=crop',
+      eggnog: POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal,
+      hotToddy: POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal,
+      mulledWine: POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal,
     },
   },
 } as const;

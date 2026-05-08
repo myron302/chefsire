@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">ChefSire Virgin Cocktails drink artwork</title>
+  <desc id="desc">Original vector artwork for the Virgin Cocktails drink category.</desc>
+  <defs>
+    <radialGradient id="spot" cx="62%" cy="36%" r="70%">
+      <stop offset="0" stop-color="#f7db6f" />
+      <stop offset="48%" stop-color="#52bec7" />
+      <stop offset="100%" stop-color="#12585b" />
+    </radialGradient>
+    <linearGradient id="bar" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="rgba(20,12,14,.25)" />
+      <stop offset="1" stop-color="rgba(12,8,13,.85)" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#spot)" />
+  <circle cx="120" cy="110" r="18" fill="rgba(255,255,255,.08)" />
+<circle cx="237" cy="177" r="29" fill="rgba(255,255,255,.08)" />
+<circle cx="354" cy="244" r="40" fill="rgba(255,255,255,.08)" />
+<circle cx="471" cy="311" r="51" fill="rgba(255,255,255,.08)" />
+<circle cx="588" cy="378" r="62" fill="rgba(255,255,255,.08)" />
+<circle cx="705" cy="445" r="19" fill="rgba(255,255,255,.08)" />
+<circle cx="822" cy="512" r="30" fill="rgba(255,255,255,.08)" />
+<circle cx="939" cy="579" r="41" fill="rgba(255,255,255,.08)" />
+<circle cx="1056" cy="646" r="52" fill="rgba(255,255,255,.08)" />
+<circle cx="193" cy="153" r="63" fill="rgba(255,255,255,.08)" />
+<circle cx="310" cy="220" r="20" fill="rgba(255,255,255,.08)" />
+<circle cx="427" cy="287" r="31" fill="rgba(255,255,255,.08)" />
+<circle cx="544" cy="354" r="42" fill="rgba(255,255,255,.08)" />
+<circle cx="661" cy="421" r="53" fill="rgba(255,255,255,.08)" />
+<circle cx="778" cy="488" r="64" fill="rgba(255,255,255,.08)" />
+<circle cx="895" cy="555" r="21" fill="rgba(255,255,255,.08)" />
+<circle cx="1012" cy="622" r="32" fill="rgba(255,255,255,.08)" />
+<circle cx="149" cy="129" r="43" fill="rgba(255,255,255,.08)" />
+  <ellipse cx="600" cy="405" rx="280" ry="320" fill="rgba(255,255,255,.12)" />
+  <ellipse cx="600" cy="660" rx="340" ry="76" fill="rgba(0,0,0,.25)" />
+  <rect y="650" width="1200" height="150" fill="url(#bar)" />
+  
+        <path d="M470 220 L730 220 L690 385 L730 650 L470 650 L510 385 Z" fill="rgba(255,255,255,.14)" stroke="rgba(255,255,255,.72)" stroke-width="7" />
+        <path d="M505 365 C555 395 645 395 695 365 L715 625 L485 625 Z" fill="#61cdc9" opacity=".78" />
+  <circle cx="760" cy="265" r="56" fill="#ffc54a" stroke="rgba(255,255,255,.75)" stroke-width="6" />
+        <path d="M760 209 L760 321 M704 265 L816 265 M720 225 L800 305 M800 225 L720 305" stroke="rgba(255,255,255,.38)" stroke-width="3" />
+  <path d="M505 245 C485 365 480 490 475 605" stroke="rgba(255,255,255,.34)" stroke-width="7" fill="none" stroke-linecap="round" />
+  <path d="M710 260 C728 380 735 500 735 610" stroke="rgba(255,255,255,.2)" stroke-width="5" fill="none" stroke-linecap="round" />
+</svg>

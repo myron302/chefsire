@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" role="img" aria-labelledby="title desc">
+  <title id="title">ChefSire Spritz drink artwork</title>
+  <desc id="desc">Original vector artwork for the Spritz drink category.</desc>
+  <defs>
+    <radialGradient id="spot" cx="62%" cy="36%" r="70%">
+      <stop offset="0" stop-color="#ffcd7e" />
+      <stop offset="48%" stop-color="#ec672d" />
+      <stop offset="100%" stop-color="#72210e" />
+    </radialGradient>
+    <linearGradient id="bar" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0" stop-color="rgba(20,12,14,.25)" />
+      <stop offset="1" stop-color="rgba(12,8,13,.85)" />
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="800" fill="url(#spot)" />
+  <circle cx="120" cy="110" r="18" fill="rgba(255,255,255,.08)" />
+<circle cx="237" cy="177" r="29" fill="rgba(255,255,255,.08)" />
+<circle cx="354" cy="244" r="40" fill="rgba(255,255,255,.08)" />
+<circle cx="471" cy="311" r="51" fill="rgba(255,255,255,.08)" />
+<circle cx="588" cy="378" r="62" fill="rgba(255,255,255,.08)" />
+<circle cx="705" cy="445" r="19" fill="rgba(255,255,255,.08)" />
+<circle cx="822" cy="512" r="30" fill="rgba(255,255,255,.08)" />
+<circle cx="939" cy="579" r="41" fill="rgba(255,255,255,.08)" />
+<circle cx="1056" cy="646" r="52" fill="rgba(255,255,255,.08)" />
+<circle cx="193" cy="153" r="63" fill="rgba(255,255,255,.08)" />
+<circle cx="310" cy="220" r="20" fill="rgba(255,255,255,.08)" />
+<circle cx="427" cy="287" r="31" fill="rgba(255,255,255,.08)" />
+<circle cx="544" cy="354" r="42" fill="rgba(255,255,255,.08)" />
+<circle cx="661" cy="421" r="53" fill="rgba(255,255,255,.08)" />
+<circle cx="778" cy="488" r="64" fill="rgba(255,255,255,.08)" />
+<circle cx="895" cy="555" r="21" fill="rgba(255,255,255,.08)" />
+<circle cx="1012" cy="622" r="32" fill="rgba(255,255,255,.08)" />
+<circle cx="149" cy="129" r="43" fill="rgba(255,255,255,.08)" />
+  <ellipse cx="600" cy="405" rx="280" ry="320" fill="rgba(255,255,255,.12)" />
+  <ellipse cx="600" cy="660" rx="340" ry="76" fill="rgba(0,0,0,.25)" />
+  <rect y="650" width="1200" height="150" fill="url(#bar)" />
+  
+        <path d="M465 225 C455 420 490 565 600 570 C710 565 745 420 735 225 Z" fill="rgba(255,255,255,.14)" stroke="rgba(255,255,255,.72)" stroke-width="7" />
+        <path d="M490 370 C545 410 655 410 710 370 L700 535 C650 560 550 560 500 535 Z" fill="#f47730" opacity=".78" />
+        <path d="M600 570 L600 655 M520 660 L680 660" stroke="rgba(255,255,255,.72)" stroke-width="8" stroke-linecap="round" />
+  <circle cx="770" cy="310" r="62" fill="#f58531" stroke="rgba(255,239,181,.75)" stroke-width="6" /><circle cx="770" cy="310" r="36" fill="#fcbd49" opacity=".65" />
+  <path d="M505 245 C485 365 480 490 475 605" stroke="rgba(255,255,255,.34)" stroke-width="7" fill="none" stroke-linecap="round" />
+  <path d="M710 260 C728 380 735 500 735 610" stroke="rgba(255,255,255,.2)" stroke-width="5" fill="none" stroke-linecap="round" />
+</svg>
