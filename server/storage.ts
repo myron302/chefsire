@@ -522,20 +522,23 @@ export class DrizzleStorage implements IStorage {
 
   async getFeedPosts(_userId: string, offset = 0, limit = 10): Promise<PostWithUser[]> {
     const db = getDb();
-    const result = await db
+    const base = db
       .select({
         post: posts,
         user: users,
         recipe: recipes,
-        isLiked: sql<boolean>`CASE WHEN ${likes.userId} IS NOT NULL THEN true ELSE false END`.as('isLiked')
+        isLiked: _userId
+          ? sql<boolean>`CASE WHEN ${likes.userId} IS NOT NULL THEN true ELSE false END`.as('isLiked')
+          : sql<boolean>`false`.as('isLiked'),
       })
       .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
-      .leftJoin(recipes, eq(recipes.postId, posts.id))
-      .leftJoin(likes, and(
-        eq(likes.postId, posts.id),
-        eq(likes.userId, _userId)
-      ))
+      .leftJoin(recipes, eq(recipes.postId, posts.id));
+
+    const result = await (_userId
+      ? base.leftJoin(likes, and(eq(likes.postId, posts.id), eq(likes.userId, _userId)))
+      : base
+    )
       .orderBy(desc(posts.createdAt))
       .offset(offset)
       .limit(limit);
@@ -544,7 +547,7 @@ export class DrizzleStorage implements IStorage {
       ...row.post,
       user: row.user,
       recipe: row.recipe || undefined,
-      isLiked: row.isLiked
+      isLiked: row.isLiked,
     }));
   }
 
