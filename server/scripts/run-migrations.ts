@@ -133,9 +133,17 @@ async function runMigrations() {
       const sql = await readFile(filePath, "utf-8");
 
       try {
-        // Single-shot execution of the file.
-        // If the DB already has the objects, we catch + mark applied.
-        await pool.query(sql);
+        // Split into individual statements so CONCURRENTLY indexes can run
+        // outside a transaction block (sending the whole file at once triggers
+        // an implicit transaction in the Neon serverless driver).
+        const statements = sql
+          .split(/;/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && !s.startsWith("--"));
+
+        for (const stmt of statements) {
+          await pool.query(stmt);
+        }
         await markApplied(file.ledgerKey);
         console.log(`✅ Completed: ${file.ledgerKey}\n`);
       } catch (err: any) {
