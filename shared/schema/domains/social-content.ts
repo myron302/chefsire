@@ -33,11 +33,14 @@ export const posts = pgTable("posts", {
   commentsCount: integer("comments_count").default(0),
   isRecipe: boolean("is_recipe").default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (t) => ({
+  createdAtIdx: index("posts_created_at_idx").on(t.createdAt),
+  userIdIdx: index("posts_user_id_idx").on(t.userId),
+}));
 
 export const recipes = pgTable("recipes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  postId: varchar("post_id").references(() => posts.id),
+  postId: varchar("post_id").references(() => posts.id).unique(),
   title: text("title").notNull(),
   imageUrl: text("image_url"),
   ingredients: jsonb("ingredients").$type<string[]>().notNull(),
@@ -100,7 +103,10 @@ export const likes = pgTable("likes", {
   userId: varchar("user_id").references(() => users.id).notNull(),
   postId: varchar("post_id").references(() => posts.id).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (t) => ({
+  postIdIdx: index("likes_post_id_idx").on(t.postId),
+  userPostIdx: uniqueIndex("likes_user_post_idx").on(t.userId, t.postId),
+}));
 
 export const comments = pgTable(
   "comments",
