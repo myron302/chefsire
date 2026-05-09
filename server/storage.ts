@@ -1,8 +1,8 @@
 // server/storage.ts — COMPLETE FILE WITH DRINKS
 import "./lib/load-env";
 import { drizzle } from "drizzle-orm/neon-serverless";
-import { Pool } from "@neondatabase/serverless";
 import { eq, desc, and, or, sql, asc, ilike } from "drizzle-orm";
+import { pool as sharedPool } from "./db/index";
 
 import {
   users,
@@ -68,17 +68,8 @@ import {
   type InsertCommentLike,
 } from "@shared/schema";
 
-const DATABASE_URL = process.env.DATABASE_URL;
-let _db: ReturnType<typeof drizzle> | null = null;
-
-if (DATABASE_URL) {
-  const pool = new Pool({ connectionString: DATABASE_URL });
-  _db = drizzle(pool);
-} else {
-  console.warn(
-    "[storage] DATABASE_URL not set – API can run, but DB-backed endpoints will return 503"
-  );
-}
+// Reuse the shared pool so there's only one connection pool in the process
+const _db = sharedPool ? drizzle(sharedPool) : null;
 
 function getDb() {
   if (!_db) {

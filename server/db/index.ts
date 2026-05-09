@@ -20,7 +20,8 @@ if (DATABASE_URL && !/[?&]sslmode=/.test(DATABASE_URL)) {
 }
 
 // Only create pool/db if DATABASE_URL is provided
-export const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL }) : (null as any);
+// max:5 keeps us under Neon free-tier's connection limit (was 2 pools × default 10 = 20 connections)
+export const pool = DATABASE_URL ? new Pool({ connectionString: DATABASE_URL, max: 5 }) : (null as any);
 export const db = pool ? drizzle(pool, { schema }) : (null as any);
 
 // Gracefully end pool only when it's present
@@ -29,6 +30,3 @@ process.on("beforeExit", () => {
     if (pool && typeof (pool as any).end === "function") (pool as any).end();
   } catch {}
 });
-
-// NOTE: keep exports compatible with the rest of your codebase
-export * from "./";
