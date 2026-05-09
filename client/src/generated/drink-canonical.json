@@ -13592,7 +13592,7 @@
           "Stir gently",
           "Express orange peel over drink and garnish with cherry"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop"
       }
     },
     {
@@ -36364,7 +36364,7 @@
           "Stir gently",
           "Express orange peel over drink and garnish with cherry"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop"
       }
     },
     "martini": {
@@ -45543,5 +45543,5 @@
       }
     }
   },
-  "generatedAt": "2026-05-08T00:40:50.720Z"
+  "generatedAt": "2026-05-09T12:49:49.355Z"
 }
