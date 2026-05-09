@@ -64,12 +64,22 @@ const POTENT_POTABLES_ROUTE_ASSET_PATHS: Record<string, string> = {
   '/drinks/potent-potables/whiskey-bourbon': `${POTENT_POTABLES_ASSET_BASE}/whiskey-bourbon.svg`,
 };
 
-function getRecipeImage(recipe: DrinkRecipeLike, sourceRoute: string): string | null {
-  const localPotentPotablesImage = POTENT_POTABLES_ROUTE_ASSET_PATHS[sourceRoute];
-  if (localPotentPotablesImage) return localPotentPotablesImage;
+function getExplicitRecipeImage(recipe: DrinkRecipeLike): string | null {
   if (typeof recipe.image === 'string' && recipe.image.trim()) return recipe.image;
   if (typeof recipe.imageUrl === 'string' && recipe.imageUrl.trim()) return recipe.imageUrl;
   return null;
+}
+
+function getRouteFallbackImage(sourceRoute: string): string | null {
+  return POTENT_POTABLES_ROUTE_ASSET_PATHS[sourceRoute] ?? null;
+}
+
+function getRecipeImage(recipe: DrinkRecipeLike, sourceRoute: string): string | null {
+  return getExplicitRecipeImage(recipe) ?? getRouteFallbackImage(sourceRoute);
+}
+
+function isPotentPotablesLocalAsset(image: string | null | undefined): boolean {
+  return typeof image === 'string' && image.startsWith(`${POTENT_POTABLES_ASSET_BASE}/`);
 }
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
@@ -158,7 +168,7 @@ function asStringList(value: unknown): string[] {
   return [];
 }
 
-function normalizeRecipe(recipe: Record<string, unknown>, sourceTitle: string, sourceRoute: string): Record<string, unknown> {
+function normalizeRecipe(recipe: Record<string, unknown>, sourceTitle: string, sourceRoute: string, imageOverride?: string | null): Record<string, unknown> {
   const nestedRecipe = recipe?.recipe as { measurements?: unknown[]; directions?: unknown } | undefined;
   const nestedMeasurements = Array.isArray(nestedRecipe?.measurements)
     ? nestedRecipe.measurements
@@ -183,7 +193,7 @@ function normalizeRecipe(recipe: Record<string, unknown>, sourceTitle: string, s
   );
   const defaultInstruction = `Follow the preparation method shown on the ${sourceTitle} card and serve immediately.`;
 
-  const fallbackImage = getRecipeImage(recipe as DrinkRecipeLike, sourceRoute);
+  const fallbackImage = imageOverride ?? getRecipeImage(recipe as DrinkRecipeLike, sourceRoute);
 
   return {
     ...recipe,
@@ -271,16 +281,23 @@ async function main() {
             duplicateRoute: existing.sourceRoute,
           });
 
+          const nextExplicitImage = getExplicitRecipeImage(recipe);
+          const resolvedImage =
+            nextExplicitImage ??
+            (isPotentPotablesLocalAsset(existing.image)
+              ? getRouteFallbackImage(routeEntry.route)
+              : existing.image) ??
+            getRouteFallbackImage(routeEntry.route);
+
           existing.sourceRoute = routeEntry.route;
           existing.sourceTitle = routeEntry.title;
-          existing.image =
-            getRecipeImage(recipe, routeEntry.route) ?? existing.image;
+          existing.image = resolvedImage;
 
           const canonicalEntry = canonicalEntryByKey[key];
           if (canonicalEntry) {
             canonicalEntry.sourceRoute = routeEntry.route;
             canonicalEntry.sourceTitle = routeEntry.title;
-            canonicalEntry.recipe = normalizeRecipe(recipe as Record<string, unknown>, routeEntry.title, routeEntry.route);
+            canonicalEntry.recipe = normalizeRecipe(recipe as Record<string, unknown>, routeEntry.title, routeEntry.route, resolvedImage);
           }
         } else {
           duplicates.push({
