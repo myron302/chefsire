@@ -10,6 +10,7 @@
     "build": "npm run generate:drink-index && npm run generate:pet-food-index && npm run build:client && npm run build:server",
     "build:client": "vite build",
     "build:server": "esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --target=node22 --outfile=server/dist/index.js",
+    "diagnose": "node -e \"const fs=require('fs'),path=require('path');const locs=['dist/public','../dist/public'].map(p=>path.resolve(process.cwd(),p));locs.forEach(p=>{const exists=fs.existsSync(p);console.log('CHECK',p,exists?'EXISTS':'MISSING');if(exists){const idx=path.join(p,'index.html');if(fs.existsSync(idx)){const c=fs.readFileSync(idx,'utf8');const m=c.match(/assets\\/index-[^.]+\\.js/);console.log('index.html found, main bundle:',m?m[0]:'not found');console.log('index.html mtime:',fs.statSync(idx).mtime);}else{console.log('index.html MISSING in',p);}}});console.log('cwd:',process.cwd());\"",
     "prestart": "tsx scripts/prestart.ts",
     "start": "NODE_ENV=production node server/dist/index.js",
     "check": "tsc",
