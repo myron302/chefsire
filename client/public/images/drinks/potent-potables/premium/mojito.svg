@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">ChefSire Mojito premium drink artwork</title>
+  <desc id="desc">Tall mojito with mint, lime, crushed ice, and sparkling bubbles.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#083b2c"/><stop offset="1" stop-color="#20a36b"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffffff" stop-opacity=".52"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".15"/><stop offset="1" stop-color="#ffffff" stop-opacity=".36"/></linearGradient>
+    <radialGradient id="halo" cx="50%" cy="42%" r="58%"><stop stop-color="#72ef9c" stop-opacity=".55"/><stop offset="1" stop-color="#72ef9c" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="960" height="540" rx="0" fill="url(#bg)"/>
+  <circle cx="480" cy="256" r="280" fill="url(#halo)"/>
+  <path d="M70 428c110-74 186-74 296 0s188 74 304 0 162-74 220-26v138H70z" fill="#fff" opacity=".10"/>
+  <g opacity=".38" fill="#fff"><circle cx="154" cy="126" r="7"/><circle cx="220" cy="206" r="4"/><circle cx="784" cy="116" r="6"/><circle cx="812" cy="286" r="4"/><circle cx="692" cy="374" r="5"/></g>
+  <g filter="none"><path d="M372 122h216l-20 330H392z" fill="url(#glass)" stroke="#fff" stroke-width="6" opacity=".88"/><path d="M394 248h172l-12 176H406z" fill="#c7f3df" opacity=".86"/><g opacity=".34" fill="#fff"><circle cx="426" cy="182" r="20"/><circle cx="482" cy="166" r="18"/><circle cx="532" cy="205" r="24"/><circle cx="452" cy="236" r="16"/></g><path d="M568 142c-58 0-78 48-58 86 54 0 82-42 58-86zM610 172c-46-10-74 24-66 58 42 10 76-18 66-58z" fill="#54e682"/><path d="M536 232c16-42 30-66 56-92" stroke="#1d7d4f" stroke-width="7" stroke-linecap="round"/></g>
+  <path d="M290 472h380" stroke="#fff" stroke-opacity=".26" stroke-width="18" stroke-linecap="round"/>
+</svg>

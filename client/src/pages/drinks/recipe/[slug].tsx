@@ -11,7 +11,7 @@ import { addRecentlyViewedDrinkSlug } from "@/components/drinks/RecentlyViewedDr
 import { recordDrinkViewActivity } from "@/lib/drinks-activity";
 import DrinksPlatformNav from "@/components/drinks/DrinksPlatformNav";
 import { getCanonicalDrinkRecipeBySlug } from "@/data/drinks/canonical";
-import { getPotentPotablesAssetByRoute } from "@/constants/drink-images";
+import { DRINK_FALLBACK_IMAGES, getPotentPotablesAssetByRoute, getPotentPotablesRichAssetByRoute } from "@/constants/drink-images";
 import { postEngagementEvent } from "@/lib/engagement-events";
 import CreatorFollowButton from "@/components/drinks/CreatorFollowButton";
 import SaveToCollectionDialog from "@/components/drinks/SaveToCollectionDialog";
@@ -250,8 +250,10 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
   }
 
   const recipe = canonicalRecipe?.recipe;
+  const categoryRicherImage = canonicalRecipe ? getPotentPotablesRichAssetByRoute(canonicalRecipe.sourceRoute) : "";
   const categoryFallbackImage = canonicalRecipe ? getPotentPotablesAssetByRoute(canonicalRecipe.sourceRoute) : "";
-  const imageUrl = (typeof recipe?.image === "string" ? recipe.image : typeof recipe?.imageUrl === "string" ? recipe.imageUrl : "") || userRecipe?.image || categoryFallbackImage;
+  const genericCocktailFallbackImage = DRINK_FALLBACK_IMAGES.cocktail;
+  const imageUrl = (typeof recipe?.image === "string" ? recipe.image : typeof recipe?.imageUrl === "string" ? recipe.imageUrl : "") || userRecipe?.image || categoryRicherImage || categoryFallbackImage || genericCocktailFallbackImage;
   const ingredients = asList(recipe?.ingredients ?? userRecipe?.ingredients ?? []);
   const instructionSteps = asList(recipe?.instructions ?? userRecipe?.instructions ?? []);
   const description = recipe?.description ?? userRecipe?.description;
@@ -355,8 +357,18 @@ function CanonicalDrinkRecipeContent({ slug }: { slug: string }) {
               className="w-full max-h-[360px] object-cover rounded-lg border"
               loading="lazy"
               onError={(event) => {
+                if (categoryRicherImage && !event.currentTarget.src.endsWith(categoryRicherImage)) {
+                  event.currentTarget.src = categoryRicherImage;
+                  return;
+                }
+
                 if (categoryFallbackImage && !event.currentTarget.src.endsWith(categoryFallbackImage)) {
                   event.currentTarget.src = categoryFallbackImage;
+                  return;
+                }
+
+                if (!event.currentTarget.src.endsWith(genericCocktailFallbackImage)) {
+                  event.currentTarget.src = genericCocktailFallbackImage;
                 }
               }}
             />

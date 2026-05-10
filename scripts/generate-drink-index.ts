@@ -43,6 +43,7 @@ type CanonicalDrinkFile = {
 type DrinkRecipeLike = { name?: string; image?: unknown; imageUrl?: unknown };
 
 const POTENT_POTABLES_ASSET_BASE = '/images/drinks/potent-potables';
+const POTENT_POTABLES_PREMIUM_ASSET_BASE = `${POTENT_POTABLES_ASSET_BASE}/premium`;
 
 const POTENT_POTABLES_ROUTE_ASSET_PATHS: Record<string, string> = {
   '/drinks/potent-potables': `${POTENT_POTABLES_ASSET_BASE}/cocktails.svg`,
@@ -64,10 +65,21 @@ const POTENT_POTABLES_ROUTE_ASSET_PATHS: Record<string, string> = {
   '/drinks/potent-potables/whiskey-bourbon': `${POTENT_POTABLES_ASSET_BASE}/whiskey-bourbon.svg`,
 };
 
+
+const POTENT_POTABLES_RICH_ROUTE_ASSET_PATHS: Record<string, string> = {
+  '/drinks/potent-potables/rum': `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/rum-rich.svg`,
+  '/drinks/potent-potables/whiskey-bourbon': `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/whiskey-bourbon-rich.svg`,
+  '/drinks/potent-potables/mocktails': `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/mocktails-rich.svg`,
+};
+
 function getExplicitRecipeImage(recipe: DrinkRecipeLike): string | null {
   if (typeof recipe.image === 'string' && recipe.image.trim()) return recipe.image;
   if (typeof recipe.imageUrl === 'string' && recipe.imageUrl.trim()) return recipe.imageUrl;
   return null;
+}
+
+function getRouteRicherImage(sourceRoute: string): string | null {
+  return POTENT_POTABLES_RICH_ROUTE_ASSET_PATHS[sourceRoute] ?? null;
 }
 
 function getRouteFallbackImage(sourceRoute: string): string | null {
@@ -75,7 +87,7 @@ function getRouteFallbackImage(sourceRoute: string): string | null {
 }
 
 function getRecipeImage(recipe: DrinkRecipeLike, sourceRoute: string): string | null {
-  return getExplicitRecipeImage(recipe) ?? getRouteFallbackImage(sourceRoute);
+  return getExplicitRecipeImage(recipe) ?? getRouteRicherImage(sourceRoute) ?? getRouteFallbackImage(sourceRoute);
 }
 
 function isPotentPotablesLocalAsset(image: string | null | undefined): boolean {
@@ -285,8 +297,9 @@ async function main() {
           const resolvedImage =
             nextExplicitImage ??
             (isPotentPotablesLocalAsset(existing.image)
-              ? getRouteFallbackImage(routeEntry.route)
+              ? getRouteRicherImage(routeEntry.route) ?? getRouteFallbackImage(routeEntry.route)
               : existing.image) ??
+            getRouteRicherImage(routeEntry.route) ??
             getRouteFallbackImage(routeEntry.route);
 
           existing.sourceRoute = routeEntry.route;

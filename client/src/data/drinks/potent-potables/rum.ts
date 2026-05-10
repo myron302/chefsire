@@ -1,10 +1,12 @@
 import { DrinkRecipe } from "@/data/drinks/types";
+import { POTENT_POTABLES_RECIPE_ASSET_PATHS } from "@/constants/drink-images";
 
 export const rumCocktails: DrinkRecipe[] = [
   {
     id: 'rum-1',
     name: 'Mojito',
     description: 'Refreshing Cuban classic with mint and lime',
+    image: POTENT_POTABLES_RECIPE_ASSET_PATHS.mojito,
     spiritType: 'White Rum',
     origin: 'Havana, Cuba',
     glassware: 'Highball Glass',
@@ -45,6 +47,7 @@ export const rumCocktails: DrinkRecipe[] = [
     id: 'rum-2',
     name: 'Daiquiri',
     description: 'Perfect balance of rum, lime, and sugar',
+    image: POTENT_POTABLES_RECIPE_ASSET_PATHS.daiquiri,
     spiritType: 'White Rum',
     origin: 'Santiago de Cuba',
     glassware: 'Coupe Glass',

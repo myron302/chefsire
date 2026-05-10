@@ -1,10 +1,12 @@
 import { DrinkRecipe } from "@/data/drinks/types";
+import { POTENT_POTABLES_RECIPE_ASSET_PATHS } from "@/constants/drink-images";
 
 export const whiskeyCocktails: DrinkRecipe[] = [
   {
     id: 'whiskey-1',
     name: 'Old Fashioned',
     description: 'The grandfather of cocktails - bourbon, sugar, bitters',
+    image: POTENT_POTABLES_RECIPE_ASSET_PATHS.oldFashioned,
     spiritType: 'Bourbon',
     origin: 'Louisville, Kentucky',
     glassware: 'Old Fashioned Glass',
