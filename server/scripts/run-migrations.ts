@@ -35,13 +35,34 @@ const DUPLICATE_CODES = new Set([
   "23505", // unique_violation (e.g., creating unique index that exists)
 ]);
 
+async function withRetry<T>(fn: () => Promise<T>, label: string, maxAttempts = 5): Promise<T> {
+  let lastErr: unknown;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastErr = err;
+      // XX000 = Neon control-plane not ready (project waking up). Retry with backoff.
+      const isNeonWakeup = err?.code === "XX000" || /control plane request failed/i.test(err?.message ?? "");
+      if (!isNeonWakeup || attempt === maxAttempts) throw err;
+      const delay = Math.pow(2, attempt) * 1000; // 2s, 4s, 8s, 16s
+      console.warn(`⚠️  ${label}: Neon not ready (attempt ${attempt}/${maxAttempts}), retrying in ${delay / 1000}s…`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw lastErr;
+}
+
 async function ensureLedger() {
-  await pool.query(`
-    create table if not exists _app_migrations (
-      filename text primary key,
-      applied_at timestamptz not null default now()
-    );
-  `);
+  await withRetry(
+    () => pool.query(`
+      create table if not exists _app_migrations (
+        filename text primary key,
+        applied_at timestamptz not null default now()
+      );
+    `),
+    "ensureLedger"
+  );
 }
 
 async function hasApplied(filename: string) {
@@ -112,9 +133,17 @@ async function runMigrations() {
       const sql = await readFile(filePath, "utf-8");
 
       try {
-        // Single-shot execution of the file.
-        // If the DB already has the objects, we catch + mark applied.
-        await pool.query(sql);
+        // Split into individual statements so CONCURRENTLY indexes can run
+        // outside a transaction block (sending the whole file at once triggers
+        // an implicit transaction in the Neon serverless driver).
+        const statements = sql
+          .split(/;/)
+          .map((s) => s.trim())
+          .filter((s) => s.length > 0 && !s.startsWith("--"));
+
+        for (const stmt of statements) {
+          await pool.query(stmt);
+        }
         await markApplied(file.ledgerKey);
         console.log(`✅ Completed: ${file.ledgerKey}\n`);
       } catch (err: any) {
