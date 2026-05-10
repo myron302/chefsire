@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import { Martini, Clock, Heart, Star, Target, Sparkles, Leaf, Wine, Search, Shar
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import UniversalSearch from '@/components/UniversalSearch';
+import DrinkCategoryHeroImage from '@/components/drinks/DrinkCategoryHeroImage';
 import { mocktails } from "@/data/drinks/potent-potables/mocktails";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
@@ -123,6 +124,8 @@ const otherDrinkHubs = [
 ];
 
 export default function MocktailsPage() {
+  const [location] = useLocation();
+  const heroRoute = location === '/drinks/potent-potables/virgin-cocktails' ? '/drinks/potent-potables/virgin-cocktails' : '/drinks/potent-potables/mocktails';
   const { 
     addToFavorites, 
     isFavorite,
@@ -365,6 +368,7 @@ export default function MocktailsPage() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
+        <DrinkCategoryHeroImage route={heroRoute} />
         {/* CROSS-HUB NAVIGATION */}
         <Card className="bg-gradient-to-r from-pink-50 to-purple-50 border-pink-200 mb-6">
           <CardContent className="p-4">

@@ -9,6 +9,7 @@ import { GlassWater, Search, Share2, ArrowLeft, Heart, Check, RotateCcw, Crown, 
 import { useDrinks } from "@/contexts/DrinksContext";
 import RecipeKit from "@/components/recipes/RecipeKit";
 import UniversalSearch from '@/components/UniversalSearch';
+import DrinkCategoryHeroImage from '@/components/drinks/DrinkCategoryHeroImage';
 import { daiquiris } from "@/data/drinks/potent-potables/daiquiri";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
@@ -292,6 +293,7 @@ export default function DaiquiriPage() {
 
         {/* Main */}
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <DrinkCategoryHeroImage route="/drinks/potent-potables/daiquiri" />
           {/* CROSS-HUB NAVIGATION */}
           <Card className="bg-gradient-to-r from-teal-50 to-emerald-50 border-teal-200 mb-6">
             <CardContent className="p-4">

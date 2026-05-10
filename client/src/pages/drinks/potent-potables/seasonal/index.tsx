@@ -9,6 +9,7 @@ import { Snowflake, Sun, Leaf, Flower2, Clock, Heart, Target, Sparkles, Wine, Se
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import UniversalSearch from '@/components/UniversalSearch';
+import DrinkCategoryHeroImage from '@/components/drinks/DrinkCategoryHeroImage';
 import { seasonalCocktails } from "@/data/drinks/potent-potables/seasonal";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
@@ -390,6 +391,7 @@ export default function SeasonalCocktailsPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 py-8">
+          <DrinkCategoryHeroImage route="/drinks/potent-potables/seasonal" />
           {/* CROSS-HUB NAVIGATION */}
           <Card className="bg-gradient-to-r from-blue-50 to-pink-50 border-blue-300 mb-6">
             <CardContent className="p-4">
