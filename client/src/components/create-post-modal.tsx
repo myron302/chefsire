@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import GoLiveModal from "@/components/GoLiveModal";
 
-type PostType = "post" | "recipe" | "review" | "bite" | "clip";
+type PostType = "post" | "recipe" | "review" | "bite" | "reel";
 
 type IngredientRow = {
   name: string;
@@ -79,7 +79,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
   const [reviewCons, setReviewCons] = useState("");
   const [reviewVerdict, setReviewVerdict] = useState("");
 
-  // Bite / Clip fields
+  // Bite / Reel fields
   const [biteExpiry, setBiteExpiry] = useState<"24h" | "permanent">("24h");
   const [showGoLive, setShowGoLive] = useState(false);
   const biteFileRef = useRef<HTMLInputElement>(null);
@@ -207,7 +207,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
       return false;
     }
 
-    if (postType === "bite" || postType === "clip") {
+    if (postType === "bite" || postType === "reel") {
       if (!biteMediaUrl) {
         toast({ variant: "destructive", description: "Please pick a video or photo" });
         return false;
@@ -251,7 +251,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
     if (!validate()) return;
 
     // Bite → POST /api/bites
-    if (postType === "bite" || postType === "clip") {
+    if (postType === "bite" || postType === "reel") {
       try {
         const expiresAt = biteExpiry === "permanent"
           ? new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString() // ~100 years
@@ -268,7 +268,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
           }),
         });
         if (!res.ok) throw new Error("Failed to create bite");
-        toast({ description: postType === "clip" ? "Clip shared!" : "Bite shared!" });
+        toast({ description: postType === "reel" ? "Reel shared!" : "Bite shared!" });
         onOpenChange(false);
         resetForm();
       } catch (err: any) {
@@ -322,8 +322,8 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Image Upload — hidden for bite/clip which have their own picker */}
-          <div className={`border-2 border-dashed border-border rounded-lg p-6 text-center ${postType === "bite" || postType === "clip" ? "hidden" : ""}`}>
+          {/* Image Upload — hidden for bite/reel which have their own picker */}
+          <div className={`border-2 border-dashed border-border rounded-lg p-6 text-center ${postType === "bite" || postType === "reel" ? "hidden" : ""}`}>
             <Camera className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
 
             {imagePreview ? (
@@ -412,15 +412,15 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
                 <SelectItem value="recipe">Recipe</SelectItem>
                 <SelectItem value="review">Review</SelectItem>
                 <SelectItem value="bite">Bite (24h story)</SelectItem>
-                <SelectItem value="clip">Clip (video)</SelectItem>
+                <SelectItem value="reel">Reel (video)</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <Separator />
 
-          {/* Bite / Clip media picker */}
-          {(postType === "bite" || postType === "clip") && (
+          {/* Bite / Reel media picker */}
+          {(postType === "bite" || postType === "reel") && (
             <div className="space-y-3">
               <input
                 ref={biteFileRef}
@@ -450,10 +450,10 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
               <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg">
                 <div className="flex-1 space-y-0.5">
                   <p className="text-sm font-medium">
-                    {biteExpiry === "permanent" ? "Add to Bites profile tab (permanent)" : "Show in Bites row for 24 hours only"}
+                    {biteExpiry === "permanent" ? "Add to Reels profile tab (permanent)" : "Show in Bites row for 24 hours only"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {biteExpiry === "permanent" ? "Stays on your profile Bites tab forever" : "Disappears automatically after 24 hours"}
+                    {biteExpiry === "permanent" ? "Stays on your profile Reels tab forever" : "Disappears automatically after 24 hours"}
                   </p>
                 </div>
                 <button
@@ -467,8 +467,8 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
                 </button>
               </div>
 
-              {/* Go Live button for clips */}
-              {postType === "clip" && (
+              {/* Go Live button for reels */}
+              {postType === "reel" && (
                 <Button
                   type="button"
                   variant="outline"
@@ -664,8 +664,8 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
             </div>
           )}
 
-          {/* Tags — not shown for bites/clips */}
-          {postType !== "bite" && postType !== "clip" && (
+          {/* Tags — not shown for bites/reels */}
+          {postType !== "bite" && postType !== "reel" && (
             <div className="space-y-2">
               <Label className="text-sm">Tags (comma separated)</Label>
               <Input
@@ -682,7 +682,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
             className="w-full bg-primary text-primary-foreground hover:opacity-90"
             disabled={createPostMutation.isPending}
           >
-            {createPostMutation.isPending ? "Sharing..." : postType === "recipe" ? "Share Recipe" : postType === "review" ? "Share Review" : postType === "bite" ? "Share Bite" : postType === "clip" ? "Share Clip" : "Share Post"}
+            {createPostMutation.isPending ? "Sharing..." : postType === "recipe" ? "Share Recipe" : postType === "review" ? "Share Review" : postType === "bite" ? "Share Bite" : postType === "reel" ? "Share Reel" : "Share Post"}
           </Button>
         </form>
       </DialogContent>
