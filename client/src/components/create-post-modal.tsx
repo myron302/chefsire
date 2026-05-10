@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
@@ -12,12 +12,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Camera, X, Plus, Star } from "lucide-react";
+import { Camera, X, Plus, Star, Video, Radio } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
+import GoLiveModal from "@/components/GoLiveModal";
 
-type PostType = "post" | "recipe" | "review";
+type PostType = "post" | "recipe" | "review" | "bite" | "reel";
 
 type IngredientRow = {
   name: string;
@@ -78,6 +79,13 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
   const [reviewCons, setReviewCons] = useState("");
   const [reviewVerdict, setReviewVerdict] = useState("");
 
+  // Bite / Reel fields
+  const [biteExpiry, setBiteExpiry] = useState<"24h" | "permanent">("24h");
+  const [showGoLive, setShowGoLive] = useState(false);
+  const biteFileRef = useRef<HTMLInputElement>(null);
+  const [biteMediaUrl, setBiteMediaUrl] = useState<string>("");
+  const [biteMediaType, setBiteMediaType] = useState<"image" | "video">("video");
+
   const cleanedTags = useMemo(
     () => tags.split(",").map((t) => t.trim()).filter(Boolean),
     [tags]
@@ -123,6 +131,10 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
 
     setImageFile(null);
     setImagePreview("");
+
+    setBiteExpiry("24h");
+    setBiteMediaUrl("");
+    setBiteMediaType("video");
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,6 +150,16 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
       // NOTE: demo uses base64 as imageUrl; in production upload to storage/CDN
       setImageUrl(result);
     };
+    reader.readAsDataURL(file);
+  };
+
+  const handleBiteFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isVideo = file.type.startsWith("video/");
+    setBiteMediaType(isVideo ? "video" : "image");
+    const reader = new FileReader();
+    reader.onloadend = () => setBiteMediaUrl(reader.result as string);
     reader.readAsDataURL(file);
   };
 
@@ -184,6 +206,15 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
       toast({ variant: "destructive", description: "You must be logged in to create a post" });
       return false;
     }
+
+    if (postType === "bite" || postType === "reel") {
+      if (!biteMediaUrl) {
+        toast({ variant: "destructive", description: "Please pick a video or photo" });
+        return false;
+      }
+      return true;
+    }
+
     if (!imageUrl) {
       toast({ variant: "destructive", description: "Please add an image (upload or paste URL)" });
       return false;
@@ -215,9 +246,36 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
     return true;
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!validate()) return;
+
+    // Bite → POST /api/bites
+    if (postType === "bite" || postType === "reel") {
+      try {
+        const expiresAt = biteExpiry === "permanent"
+          ? new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString() // ~100 years
+          : undefined;
+        const res = await fetch("/api/bites", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: user!.id,
+            imageUrl: biteMediaUrl,
+            caption: caption.trim() || undefined,
+            expiresAt,
+          }),
+        });
+        if (!res.ok) throw new Error("Failed to create bite");
+        toast({ description: postType === "reel" ? "Reel shared!" : "Bite shared!" });
+        onOpenChange(false);
+        resetForm();
+      } catch (err: any) {
+        toast({ variant: "destructive", description: err.message });
+      }
+      return;
+    }
 
     const baseTags = [...cleanedTags];
     const payload: any = {
@@ -230,7 +288,6 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
 
     if (postType === "recipe") {
       payload.recipe = buildRecipePayload();
-      // Helpful tags
       if (!payload.tags.includes("Recipe")) payload.tags.push("Recipe");
     }
 
@@ -265,8 +322,8 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Image Upload */}
-          <div className="border-2 border-dashed border-border rounded-lg p-6 text-center">
+          {/* Image Upload — hidden for bite/reel which have their own picker */}
+          <div className={`border-2 border-dashed border-border rounded-lg p-6 text-center ${postType === "bite" || postType === "reel" ? "hidden" : ""}`}>
             <Camera className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
 
             {imagePreview ? (
@@ -354,11 +411,76 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
                 <SelectItem value="post">Post</SelectItem>
                 <SelectItem value="recipe">Recipe</SelectItem>
                 <SelectItem value="review">Review</SelectItem>
+                <SelectItem value="bite">Bite (24h story)</SelectItem>
+                <SelectItem value="reel">Reel (video)</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <Separator />
+
+          {/* Bite / Reel media picker */}
+          {(postType === "bite" || postType === "reel") && (
+            <div className="space-y-3">
+              <input
+                ref={biteFileRef}
+                type="file"
+                accept="video/*,image/*"
+                className="hidden"
+                onChange={handleBiteFileSelect}
+              />
+              <div
+                className="w-full aspect-video bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center cursor-pointer overflow-hidden border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary transition-colors"
+                onClick={() => biteFileRef.current?.click()}
+              >
+                {biteMediaUrl && biteMediaType === "video" ? (
+                  <video src={biteMediaUrl} className="w-full h-full object-cover rounded-xl" controls muted playsInline />
+                ) : biteMediaUrl ? (
+                  <img src={biteMediaUrl} alt="Preview" className="w-full h-full object-cover rounded-xl" />
+                ) : (
+                  <div className="flex flex-col items-center gap-2 text-gray-400">
+                    <Video className="w-8 h-8" />
+                    <span className="text-sm font-medium">Tap to pick video or photo</span>
+                    <span className="text-xs text-gray-400">Video recommended</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Expiry / Permanent toggle */}
+              <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg">
+                <div className="flex-1 space-y-0.5">
+                  <p className="text-sm font-medium">
+                    {biteExpiry === "permanent" ? "Add to Reels profile tab (permanent)" : "Show in Bites row for 24 hours only"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {biteExpiry === "permanent" ? "Stays on your profile Reels tab forever" : "Disappears automatically after 24 hours"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={biteExpiry === "permanent"}
+                  onClick={() => setBiteExpiry(biteExpiry === "24h" ? "permanent" : "24h")}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none ${biteExpiry === "permanent" ? "bg-primary" : "bg-input"}`}
+                >
+                  <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${biteExpiry === "permanent" ? "translate-x-5" : "translate-x-0"}`} />
+                </button>
+              </div>
+
+              {/* Go Live button for reels */}
+              {postType === "reel" && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-950"
+                  onClick={() => setShowGoLive(true)}
+                >
+                  <Radio className="w-4 h-4 mr-2" />
+                  Go Live Instead
+                </Button>
+              )}
+            </div>
+          )}
 
           {/* Caption / Notes */}
           <div className="space-y-2">
@@ -542,15 +664,17 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
             </div>
           )}
 
-          {/* Tags */}
-          <div className="space-y-2">
-            <Label className="text-sm">Tags (comma separated)</Label>
-            <Input
-              placeholder="e.g., italian, pasta, homemade"
-              value={tags}
-              onChange={(e) => setTags(e.target.value)}
-            />
-          </div>
+          {/* Tags — not shown for bites/reels */}
+          {postType !== "bite" && postType !== "reel" && (
+            <div className="space-y-2">
+              <Label className="text-sm">Tags (comma separated)</Label>
+              <Input
+                placeholder="e.g., italian, pasta, homemade"
+                value={tags}
+                onChange={(e) => setTags(e.target.value)}
+              />
+            </div>
+          )}
 
           {/* Submit */}
           <Button
@@ -558,10 +682,11 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
             className="w-full bg-primary text-primary-foreground hover:opacity-90"
             disabled={createPostMutation.isPending}
           >
-            {createPostMutation.isPending ? "Sharing..." : postType === "recipe" ? "Share Recipe" : postType === "review" ? "Share Review" : "Share Post"}
+            {createPostMutation.isPending ? "Sharing..." : postType === "recipe" ? "Share Recipe" : postType === "review" ? "Share Review" : postType === "bite" ? "Share Bite" : postType === "reel" ? "Share Reel" : "Share Post"}
           </Button>
         </form>
       </DialogContent>
+      <GoLiveModal open={showGoLive} onOpenChange={setShowGoLive} />
     </Dialog>
   );
 }
