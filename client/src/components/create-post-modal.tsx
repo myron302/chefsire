@@ -11,20 +11,14 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Camera, X, Plus, Star, Video, Radio } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import GoLiveModal from "@/components/GoLiveModal";
 
-type PostType = "post" | "recipe" | "review" | "bite" | "clip";
+type PostType = "post" | "recipe" | "review" | "bite" | "reel";
 
 type IngredientRow = {
   name: string;
@@ -54,10 +48,7 @@ interface CreatePostModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
-export default function CreatePostModal({
-  open,
-  onOpenChange,
-}: CreatePostModalProps) {
+export default function CreatePostModal({ open, onOpenChange }: CreatePostModalProps) {
   const { toast } = useToast();
   const { user } = useUser();
   const queryClient = useQueryClient();
@@ -88,22 +79,16 @@ export default function CreatePostModal({
   const [reviewCons, setReviewCons] = useState("");
   const [reviewVerdict, setReviewVerdict] = useState("");
 
-  // Bite / Clip fields
+  // Bite / Reel fields
   const [biteExpiry, setBiteExpiry] = useState<"24h" | "permanent">("24h");
   const [showGoLive, setShowGoLive] = useState(false);
   const biteFileRef = useRef<HTMLInputElement>(null);
   const [biteMediaUrl, setBiteMediaUrl] = useState<string>("");
-  const [biteMediaType, setBiteMediaType] = useState<"image" | "video">(
-    "video",
-  );
+  const [biteMediaType, setBiteMediaType] = useState<"image" | "video">("video");
 
   const cleanedTags = useMemo(
-    () =>
-      tags
-        .split(",")
-        .map((t) => t.trim())
-        .filter(Boolean),
-    [tags],
+    () => tags.split(",").map((t) => t.trim()).filter(Boolean),
+    [tags]
   );
 
   const createPostMutation = useMutation({
@@ -205,9 +190,7 @@ export default function CreatePostModal({
 
   const buildReviewCaption = () => {
     const rating = Number(reviewRating || "0");
-    const stars =
-      "★★★★★".slice(0, Math.max(0, Math.min(5, rating))) +
-      "☆☆☆☆☆".slice(0, 5 - Math.max(0, Math.min(5, rating)));
+    const stars = "★★★★★".slice(0, Math.max(0, Math.min(5, rating))) + "☆☆☆☆☆".slice(0, 5 - Math.max(0, Math.min(5, rating)));
     const parts: string[] = [];
     parts.push(`REVIEW • ${reviewSubject.trim() || "Untitled"}`);
     parts.push(`${stars} (${rating}/5)`);
@@ -220,63 +203,42 @@ export default function CreatePostModal({
 
   const validate = () => {
     if (!user?.id) {
-      toast({
-        variant: "destructive",
-        description: "You must be logged in to create a post",
-      });
+      toast({ variant: "destructive", description: "You must be logged in to create a post" });
       return false;
     }
 
-    if (postType === "bite" || postType === "clip") {
+    if (postType === "bite" || postType === "reel") {
       if (!biteMediaUrl) {
-        toast({
-          variant: "destructive",
-          description: "Please pick a video or photo",
-        });
+        toast({ variant: "destructive", description: "Please pick a video or photo" });
         return false;
       }
       return true;
     }
 
     if (!imageUrl) {
-      toast({
-        variant: "destructive",
-        description: "Please add an image (upload or paste URL)",
-      });
+      toast({ variant: "destructive", description: "Please add an image (upload or paste URL)" });
       return false;
     }
 
     if (postType === "recipe") {
       if (!recipeTitle.trim()) {
-        toast({
-          variant: "destructive",
-          description: "Please add a recipe title",
-        });
+        toast({ variant: "destructive", description: "Please add a recipe title" });
         return false;
       }
       const payload = buildRecipePayload();
       if (!payload.ingredients.length) {
-        toast({
-          variant: "destructive",
-          description: "Please add at least 1 ingredient",
-        });
+        toast({ variant: "destructive", description: "Please add at least 1 ingredient" });
         return false;
       }
       if (!payload.instructions.length) {
-        toast({
-          variant: "destructive",
-          description: "Please add at least 1 instruction step",
-        });
+        toast({ variant: "destructive", description: "Please add at least 1 instruction step" });
         return false;
       }
     }
 
     if (postType === "review") {
       if (!reviewSubject.trim()) {
-        toast({
-          variant: "destructive",
-          description: "Please add what you're reviewing (subject)",
-        });
+        toast({ variant: "destructive", description: "Please add what you're reviewing (subject)" });
         return false;
       }
     }
@@ -289,14 +251,11 @@ export default function CreatePostModal({
     if (!validate()) return;
 
     // Bite → POST /api/bites
-    if (postType === "bite" || postType === "clip") {
+    if (postType === "bite" || postType === "reel") {
       try {
-        const expiresAt =
-          biteExpiry === "permanent"
-            ? new Date(
-                Date.now() + 100 * 365 * 24 * 60 * 60 * 1000,
-              ).toISOString() // ~100 years
-            : undefined;
+        const expiresAt = biteExpiry === "permanent"
+          ? new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString() // ~100 years
+          : undefined;
         const res = await fetch("/api/bites", {
           method: "POST",
           credentials: "include",
@@ -304,18 +263,12 @@ export default function CreatePostModal({
           body: JSON.stringify({
             userId: user!.id,
             imageUrl: biteMediaUrl,
-            mediaType: biteMediaType,
             caption: caption.trim() || undefined,
             expiresAt,
           }),
         });
         if (!res.ok) throw new Error("Failed to create bite");
-        await queryClient.invalidateQueries({
-          queryKey: ["/api/bites/active"],
-        });
-        toast({
-          description: postType === "clip" ? "Clip shared!" : "Bite shared!",
-        });
+        toast({ description: postType === "reel" ? "Reel shared!" : "Bite shared!" });
         onOpenChange(false);
         resetForm();
       } catch (err: any) {
@@ -347,26 +300,19 @@ export default function CreatePostModal({
   };
 
   const updateIngredient = (idx: number, patch: Partial<IngredientRow>) => {
-    setIngredients((prev) =>
-      prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)),
-    );
+    setIngredients((prev) => prev.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
   };
 
-  const addIngredient = () =>
-    setIngredients((prev) => [...prev, { name: "", amount: "", unit: "tbsp" }]);
+  const addIngredient = () => setIngredients((prev) => [...prev, { name: "", amount: "", unit: "tbsp" }]);
   const removeIngredient = (idx: number) =>
-    setIngredients((prev) =>
-      prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx),
-    );
+    setIngredients((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
 
   const updateInstruction = (idx: number, value: string) => {
     setInstructions((prev) => prev.map((s, i) => (i === idx ? value : s)));
   };
   const addInstruction = () => setInstructions((prev) => [...prev, ""]);
   const removeInstruction = (idx: number) =>
-    setInstructions((prev) =>
-      prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx),
-    );
+    setInstructions((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -376,10 +322,8 @@ export default function CreatePostModal({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Image Upload — hidden for bite/clip which have their own picker */}
-          <div
-            className={`border-2 border-dashed border-border rounded-lg p-6 text-center ${postType === "bite" || postType === "clip" ? "hidden" : ""}`}
-          >
+          {/* Image Upload — hidden for bite/reel which have their own picker */}
+          <div className={`border-2 border-dashed border-border rounded-lg p-6 text-center ${postType === "bite" || postType === "reel" ? "hidden" : ""}`}>
             <Camera className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
 
             {imagePreview ? (
@@ -405,16 +349,12 @@ export default function CreatePostModal({
               </div>
             ) : (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">
-                  Take a photo or choose from library
-                </p>
+                <p className="text-sm text-muted-foreground">Take a photo or choose from library</p>
                 <div className="flex flex-col sm:flex-row gap-2">
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() =>
-                      document.getElementById("camera-input")?.click()
-                    }
+                    onClick={() => document.getElementById("camera-input")?.click()}
                     className="flex-1"
                   >
                     <Camera className="h-4 w-4 mr-2" />
@@ -423,9 +363,7 @@ export default function CreatePostModal({
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() =>
-                      document.getElementById("file-input")?.click()
-                    }
+                    onClick={() => document.getElementById("file-input")?.click()}
                     className="flex-1"
                   >
                     Upload
@@ -465,10 +403,7 @@ export default function CreatePostModal({
           {/* Post Type */}
           <div className="space-y-2">
             <Label className="text-sm">Post Type</Label>
-            <Select
-              value={postType}
-              onValueChange={(v) => setPostType(v as PostType)}
-            >
+            <Select value={postType} onValueChange={(v) => setPostType(v as PostType)}>
               <SelectTrigger>
                 <SelectValue placeholder="Choose type" />
               </SelectTrigger>
@@ -477,15 +412,15 @@ export default function CreatePostModal({
                 <SelectItem value="recipe">Recipe</SelectItem>
                 <SelectItem value="review">Review</SelectItem>
                 <SelectItem value="bite">Bite (24h story)</SelectItem>
-                <SelectItem value="clip">Clip (video)</SelectItem>
+                <SelectItem value="reel">Reel (video)</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
           <Separator />
 
-          {/* Bite / Clip media picker */}
-          {(postType === "bite" || postType === "clip") && (
+          {/* Bite / Reel media picker */}
+          {(postType === "bite" || postType === "reel") && (
             <div className="space-y-3">
               <input
                 ref={biteFileRef}
@@ -499,28 +434,14 @@ export default function CreatePostModal({
                 onClick={() => biteFileRef.current?.click()}
               >
                 {biteMediaUrl && biteMediaType === "video" ? (
-                  <video
-                    src={biteMediaUrl}
-                    className="w-full h-full object-cover rounded-xl"
-                    controls
-                    muted
-                    playsInline
-                  />
+                  <video src={biteMediaUrl} className="w-full h-full object-cover rounded-xl" controls muted playsInline />
                 ) : biteMediaUrl ? (
-                  <img
-                    src={biteMediaUrl}
-                    alt="Preview"
-                    className="w-full h-full object-cover rounded-xl"
-                  />
+                  <img src={biteMediaUrl} alt="Preview" className="w-full h-full object-cover rounded-xl" />
                 ) : (
                   <div className="flex flex-col items-center gap-2 text-gray-400">
                     <Video className="w-8 h-8" />
-                    <span className="text-sm font-medium">
-                      Tap to pick video or photo
-                    </span>
-                    <span className="text-xs text-gray-400">
-                      Video recommended
-                    </span>
+                    <span className="text-sm font-medium">Tap to pick video or photo</span>
+                    <span className="text-xs text-gray-400">Video recommended</span>
                   </div>
                 )}
               </div>
@@ -529,33 +450,25 @@ export default function CreatePostModal({
               <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg">
                 <div className="flex-1 space-y-0.5">
                   <p className="text-sm font-medium">
-                    {biteExpiry === "permanent"
-                      ? "Add to Bites profile tab (permanent)"
-                      : "Show in Bites row for 24 hours only"}
+                    {biteExpiry === "permanent" ? "Add to Reels profile tab (permanent)" : "Show in Bites row for 24 hours only"}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {biteExpiry === "permanent"
-                      ? "Stays on your profile Bites tab forever"
-                      : "Disappears automatically after 24 hours"}
+                    {biteExpiry === "permanent" ? "Stays on your profile Reels tab forever" : "Disappears automatically after 24 hours"}
                   </p>
                 </div>
                 <button
                   type="button"
                   role="switch"
                   aria-checked={biteExpiry === "permanent"}
-                  onClick={() =>
-                    setBiteExpiry(biteExpiry === "24h" ? "permanent" : "24h")
-                  }
+                  onClick={() => setBiteExpiry(biteExpiry === "24h" ? "permanent" : "24h")}
                   className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none ${biteExpiry === "permanent" ? "bg-primary" : "bg-input"}`}
                 >
-                  <span
-                    className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${biteExpiry === "permanent" ? "translate-x-5" : "translate-x-0"}`}
-                  />
+                  <span className={`pointer-events-none block h-5 w-5 rounded-full bg-white shadow-lg ring-0 transition-transform ${biteExpiry === "permanent" ? "translate-x-5" : "translate-x-0"}`} />
                 </button>
               </div>
 
-              {/* Go Live button for clips */}
-              {postType === "clip" && (
+              {/* Go Live button for reels */}
+              {postType === "reel" && (
                 <Button
                   type="button"
                   variant="outline"
@@ -572,18 +485,10 @@ export default function CreatePostModal({
           {/* Caption / Notes */}
           <div className="space-y-2">
             <Label className="text-sm">
-              {postType === "review"
-                ? "Notes (optional)"
-                : postType === "recipe"
-                  ? "Story / Notes (optional)"
-                  : "Caption (optional)"}
+              {postType === "review" ? "Notes (optional)" : postType === "recipe" ? "Story / Notes (optional)" : "Caption (optional)"}
             </Label>
             <Textarea
-              placeholder={
-                postType === "review"
-                  ? "Add any details you'd like to include..."
-                  : "Write something..."
-              }
+              placeholder={postType === "review" ? "Add any details you'd like to include..." : "Write something..."}
               value={caption}
               onChange={(e) => setCaption(e.target.value)}
               rows={3}
@@ -596,31 +501,17 @@ export default function CreatePostModal({
             <div className="space-y-4 p-4 bg-muted/30 rounded-xl border">
               <div className="space-y-2">
                 <Label className="text-sm">Recipe Title</Label>
-                <Input
-                  value={recipeTitle}
-                  onChange={(e) => setRecipeTitle(e.target.value)}
-                  placeholder="e.g., Lemon Garlic Pasta"
-                />
+                <Input value={recipeTitle} onChange={(e) => setRecipeTitle(e.target.value)} placeholder="e.g., Lemon Garlic Pasta" />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-2">
                   <Label className="text-sm">Cook Time (min)</Label>
-                  <Input
-                    type="number"
-                    value={cookTime}
-                    onChange={(e) => setCookTime(e.target.value)}
-                    placeholder="30"
-                  />
+                  <Input type="number" value={cookTime} onChange={(e) => setCookTime(e.target.value)} placeholder="30" />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm">Servings</Label>
-                  <Input
-                    type="number"
-                    value={servings}
-                    onChange={(e) => setServings(e.target.value)}
-                    placeholder="4"
-                  />
+                  <Input type="number" value={servings} onChange={(e) => setServings(e.target.value)} placeholder="4" />
                 </div>
               </div>
 
@@ -641,12 +532,7 @@ export default function CreatePostModal({
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <Label className="text-sm">Ingredients</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addIngredient}
-                  >
+                  <Button type="button" variant="outline" size="sm" onClick={addIngredient}>
                     <Plus className="h-4 w-4 mr-1" />
                     Add
                   </Button>
@@ -654,33 +540,21 @@ export default function CreatePostModal({
 
                 <div className="space-y-2">
                   {ingredients.map((row, idx) => (
-                    <div
-                      key={idx}
-                      className="grid grid-cols-12 gap-2 items-center"
-                    >
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center">
                       <Input
                         className="col-span-6"
                         placeholder="Ingredient"
                         value={row.name}
-                        onChange={(e) =>
-                          updateIngredient(idx, { name: e.target.value })
-                        }
+                        onChange={(e) => updateIngredient(idx, { name: e.target.value })}
                       />
                       <Input
                         className="col-span-3"
                         placeholder="Amt"
                         value={row.amount}
-                        onChange={(e) =>
-                          updateIngredient(idx, { amount: e.target.value })
-                        }
+                        onChange={(e) => updateIngredient(idx, { amount: e.target.value })}
                       />
                       <div className="col-span-3 flex items-center gap-2">
-                        <Select
-                          value={row.unit}
-                          onValueChange={(v) =>
-                            updateIngredient(idx, { unit: v })
-                          }
-                        >
+                        <Select value={row.unit} onValueChange={(v) => updateIngredient(idx, { unit: v })}>
                           <SelectTrigger className="w-full">
                             <SelectValue placeholder="Unit" />
                           </SelectTrigger>
@@ -711,12 +585,7 @@ export default function CreatePostModal({
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <Label className="text-sm">Instructions</Label>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addInstruction}
-                  >
+                  <Button type="button" variant="outline" size="sm" onClick={addInstruction}>
                     <Plus className="h-4 w-4 mr-1" />
                     Add step
                   </Button>
@@ -756,11 +625,7 @@ export default function CreatePostModal({
             <div className="space-y-4 p-4 bg-muted/30 rounded-xl border">
               <div className="space-y-2">
                 <Label className="text-sm">What are you reviewing?</Label>
-                <Input
-                  value={reviewSubject}
-                  onChange={(e) => setReviewSubject(e.target.value)}
-                  placeholder="e.g., Mario's Pizza (NYC)"
-                />
+                <Input value={reviewSubject} onChange={(e) => setReviewSubject(e.target.value)} placeholder="e.g., Mario's Pizza (NYC)" />
               </div>
 
               <div className="space-y-2">
@@ -785,37 +650,22 @@ export default function CreatePostModal({
               <div className="grid grid-cols-1 gap-2">
                 <div className="space-y-2">
                   <Label className="text-sm">Pros</Label>
-                  <Textarea
-                    value={reviewPros}
-                    onChange={(e) => setReviewPros(e.target.value)}
-                    rows={2}
-                    placeholder="What did you like?"
-                  />
+                  <Textarea value={reviewPros} onChange={(e) => setReviewPros(e.target.value)} rows={2} placeholder="What did you like?" />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm">Cons</Label>
-                  <Textarea
-                    value={reviewCons}
-                    onChange={(e) => setReviewCons(e.target.value)}
-                    rows={2}
-                    placeholder="What could be better?"
-                  />
+                  <Textarea value={reviewCons} onChange={(e) => setReviewCons(e.target.value)} rows={2} placeholder="What could be better?" />
                 </div>
                 <div className="space-y-2">
                   <Label className="text-sm">Verdict</Label>
-                  <Textarea
-                    value={reviewVerdict}
-                    onChange={(e) => setReviewVerdict(e.target.value)}
-                    rows={2}
-                    placeholder="Would you recommend it?"
-                  />
+                  <Textarea value={reviewVerdict} onChange={(e) => setReviewVerdict(e.target.value)} rows={2} placeholder="Would you recommend it?" />
                 </div>
               </div>
             </div>
           )}
 
-          {/* Tags — not shown for bites/clips */}
-          {postType !== "bite" && postType !== "clip" && (
+          {/* Tags — not shown for bites/reels */}
+          {postType !== "bite" && postType !== "reel" && (
             <div className="space-y-2">
               <Label className="text-sm">Tags (comma separated)</Label>
               <Input
@@ -832,17 +682,7 @@ export default function CreatePostModal({
             className="w-full bg-primary text-primary-foreground hover:opacity-90"
             disabled={createPostMutation.isPending}
           >
-            {createPostMutation.isPending
-              ? "Sharing..."
-              : postType === "recipe"
-                ? "Share Recipe"
-                : postType === "review"
-                  ? "Share Review"
-                  : postType === "bite"
-                    ? "Share Bite"
-                    : postType === "clip"
-                      ? "Share Clip"
-                      : "Share Post"}
+            {createPostMutation.isPending ? "Sharing..." : postType === "recipe" ? "Share Recipe" : postType === "review" ? "Share Review" : postType === "bite" ? "Share Bite" : postType === "reel" ? "Share Reel" : "Share Post"}
           </Button>
         </form>
       </DialogContent>
