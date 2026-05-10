@@ -9,6 +9,7 @@ import { Castle, Clock, Heart, Star, Target, Sparkles, Mountain, Search, Share2,
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import UniversalSearch from '@/components/UniversalSearch';
+import DrinkCategoryHeroImage from '@/components/drinks/DrinkCategoryHeroImage';
 import { scotchIrishCocktails } from "@/data/drinks/potent-potables/scotch-irish-whiskey";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
@@ -362,6 +363,7 @@ export default function ScotchIrishWhiskeyPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 py-8">
+          <DrinkCategoryHeroImage route="/drinks/potent-potables/scotch-irish-whiskey" />
           {/* CROSS-HUB NAVIGATION */}
           <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300 mb-6">
             <CardContent className="p-4">

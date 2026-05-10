@@ -15,6 +15,7 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import UniversalSearch from '@/components/UniversalSearch';
+import DrinkCategoryHeroImage from '@/components/drinks/DrinkCategoryHeroImage';
 import { spritzCocktails } from "@/data/drinks/potent-potables/spritz";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
@@ -335,6 +336,7 @@ export default function SpritzMimosasPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <DrinkCategoryHeroImage route="/drinks/potent-potables/spritz" />
           {/* CROSS-HUB NAVIGATION */}
           <Card className="bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200 mb-6">
             <CardContent className="p-4">
