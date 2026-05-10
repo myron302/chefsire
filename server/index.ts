@@ -4,6 +4,7 @@ import app from "./app";
 import { attachDmRealtime } from "./realtime/dmSocket";
 import { attachNotificationRealtime } from "./realtime/notificationSocket";
 import { initializeCronJobs } from "./cron";
+import { pool } from "./db/index";
 
 const HAS_PASSENGER_PORT = !!process.env.PORT;
 const PORT = Number(process.env.PORT || 3001);
@@ -36,6 +37,11 @@ if (!process.env.OPENAI_API_KEY) {
 
 const server = app.listen(PORT, HOST, () => {
   console.log(`[ChefSire] Listening on http://${HOST}:${PORT}`);
+  // Wake up Neon (free tier suspends after inactivity — warm it now so the
+  // first real user request isn't delayed by a cold-start).
+  if (pool) {
+    pool.query("SELECT 1").catch(() => {/* non-fatal */});
+  }
 });
 
 // Attach WebSocket handlers
