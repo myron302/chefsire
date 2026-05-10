@@ -127,7 +127,7 @@ export interface IStorage {
   // Stories/Bites, Likes, Comments, Follows
   getStory(id: string): Promise<Story | undefined>;
   createStory(story: InsertStory): Promise<Story>;
-  getActiveStories(userId: string): Promise<StoryWithUser[]>;
+  getActiveStories(userId?: string): Promise<StoryWithUser[]>;
   getUserStories(userId: string): Promise<Story[]>;
   likePost(userId: string, postId: string): Promise<Like>;
   unlikePost(userId: string, postId: string): Promise<boolean>;
@@ -722,7 +722,7 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async getActiveStories(_userId: string): Promise<StoryWithUser[]> {
+  async getActiveStories(_userId?: string): Promise<StoryWithUser[]> {
     const db = getDb();
     const result = await db
       .select({ story: stories, user: users })
