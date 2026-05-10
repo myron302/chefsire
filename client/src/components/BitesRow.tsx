@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Heart, MessageCircle, Share, ChevronLeft, ChevronRight, X, Plus, Camera } from 'lucide-react';
+import { Heart, MessageCircle, Share, ChevronLeft, ChevronRight, X, Plus, Camera, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -99,7 +99,8 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   // Create bite state
   const [isCreating, setIsCreating] = useState(false);
   const [createCaption, setCreateCaption] = useState("");
-  const [createImageDataUrl, setCreateImageDataUrl] = useState<string | null>(null);
+  const [createMediaUrl, setCreateMediaUrl] = useState<string | null>(null);
+  const [createMediaType, setCreateMediaType] = useState<"image" | "video">("video");
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -118,7 +119,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           userId: item.userId,
           username,
           avatar,
-          content: { type: "image", url: item.imageUrl },
+          content: { type: item.imageUrl.startsWith("data:video/") || item.imageUrl.match(/\.(mp4|webm|mov|avi)(\?|$)/i) ? "video" : "image", url: item.imageUrl },
           caption: item.caption || "",
           timestamp: item.createdAt ? new Date(item.createdAt) : new Date(),
           duration: 5,
@@ -272,13 +273,23 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const isVideo = file.type.startsWith("video/");
+    setCreateMediaType(isVideo ? "video" : "image");
     const reader = new FileReader();
-    reader.onload = () => setCreateImageDataUrl(reader.result as string);
+    reader.onload = () => setCreateMediaUrl(reader.result as string);
     reader.readAsDataURL(file);
   };
 
+  const resetCreate = () => {
+    setIsCreating(false);
+    setCreateCaption("");
+    setCreateMediaUrl(null);
+    setCreateMediaType("video");
+    setCreateError("");
+  };
+
   const handleCreateBite = async () => {
-    if (!user?.id || !createImageDataUrl) return;
+    if (!user?.id || !createMediaUrl) return;
     setCreateSubmitting(true);
     setCreateError("");
     try {
@@ -288,7 +299,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user.id,
-          imageUrl: createImageDataUrl,
+          imageUrl: createMediaUrl,
           caption: createCaption.trim() || undefined,
         }),
       });
@@ -296,9 +307,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
         const payload = await res.json().catch(() => null);
         throw new Error(payload?.message || "Failed to create bite");
       }
-      setIsCreating(false);
-      setCreateCaption("");
-      setCreateImageDataUrl(null);
+      resetCreate();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -395,23 +404,26 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-semibold">New Bite</h3>
-              <Button variant="ghost" size="icon" onClick={() => { setIsCreating(false); setCreateImageDataUrl(null); setCreateCaption(""); setCreateError(""); }}>
+              <Button variant="ghost" size="icon" onClick={resetCreate}>
                 <X className="w-5 h-5" />
               </Button>
             </div>
 
-            {/* Image picker */}
-            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+            {/* Media picker */}
+            <input ref={fileInputRef} type="file" accept="video/*,image/*" className="hidden" onChange={handleFileChange} />
             <div
               className="w-full aspect-[9/16] max-h-64 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center cursor-pointer overflow-hidden border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary transition-colors"
               onClick={() => fileInputRef.current?.click()}
             >
-              {createImageDataUrl ? (
-                <img src={createImageDataUrl} alt="Preview" className="w-full h-full object-cover rounded-xl" />
+              {createMediaUrl && createMediaType === "video" ? (
+                <video src={createMediaUrl} className="w-full h-full object-cover rounded-xl" controls muted playsInline />
+              ) : createMediaUrl ? (
+                <img src={createMediaUrl} alt="Preview" className="w-full h-full object-cover rounded-xl" />
               ) : (
                 <div className="flex flex-col items-center gap-2 text-gray-400">
-                  <Camera className="w-8 h-8" />
-                  <span className="text-sm">Tap to pick photo</span>
+                  <Video className="w-8 h-8" />
+                  <span className="text-sm font-medium">Tap to pick video or photo</span>
+                  <span className="text-xs">Video recommended</span>
                 </div>
               )}
             </div>
@@ -430,7 +442,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
 
             <Button
               className="w-full"
-              disabled={!createImageDataUrl || createSubmitting}
+              disabled={!createMediaUrl || createSubmitting}
               onClick={handleCreateBite}
             >
               {createSubmitting ? "Posting…" : "Share Bite"}
@@ -517,11 +529,23 @@ export function BitesRow({ className = "" }: BitesRowProps) {
 
           {/* Bite Content */}
           <div className="relative w-full max-w-md mx-auto aspect-[9/16]">
-            <img 
-              src={currentBite.content.url}
-              alt={currentBite.caption}
-              className="w-full h-full object-cover rounded-lg"
-            />
+            {currentBite.content.type === "video" ? (
+              <video
+                key={currentBite.id}
+                src={currentBite.content.url}
+                className="w-full h-full object-cover rounded-lg"
+                autoPlay
+                loop
+                muted={false}
+                playsInline
+              />
+            ) : (
+              <img
+                src={currentBite.content.url}
+                alt={currentBite.caption}
+                className="w-full h-full object-cover rounded-lg"
+              />
+            )}
             
             {/* Caption and actions */}
             <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
