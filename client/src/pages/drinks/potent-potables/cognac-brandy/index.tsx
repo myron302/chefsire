@@ -15,6 +15,7 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import UniversalSearch from '@/components/UniversalSearch';
+import DrinkCategoryHeroImage from '@/components/drinks/DrinkCategoryHeroImage';
 import { cognacCocktails } from "@/data/drinks/potent-potables/cognac-brandy";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
@@ -376,6 +377,8 @@ export default function CognacBrandyPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <DrinkCategoryHeroImage route="/drinks/potent-potables/cognac-brandy" />
+
           {/* CROSS-HUB NAVIGATION */}
           <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-orange-300 mb-6">
             <CardContent className="p-4">

@@ -18,7 +18,7 @@ import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { otherDrinkHubs } from '../data/detoxes';
 import { sortByName } from '@/lib/sort-by-name';
-import { POTENT_POTABLES_CATEGORY_ASSET_PATHS, POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS } from '@/constants/drink-images';
+import { getDrinkCategoryHeroVisual, POTENT_POTABLES_CATEGORY_ASSET_PATHS, POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS } from '@/constants/drink-images';
 
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
@@ -42,7 +42,8 @@ const potentPotablesSubcategories = [
     count: 12,
     route: '/drinks/potent-potables/vodka',
     description: 'Clean & versatile',
-    image: POTENT_POTABLES_CATEGORY_ASSET_PATHS.vodka,
+    image: getDrinkCategoryHeroVisual('/drinks/potent-potables/vodka').image,
+    fallbackImage: getDrinkCategoryHeroVisual('/drinks/potent-potables/vodka').fallbackImage,
     bgColor: 'bg-cyan-50',
     borderColor: 'border-cyan-200',
     textColor: 'text-cyan-600',
@@ -58,7 +59,8 @@ const potentPotablesSubcategories = [
     count: 10,
     route: '/drinks/potent-potables/gin',
     description: 'Botanical spirits',
-    image: POTENT_POTABLES_CATEGORY_ASSET_PATHS.gin,
+    image: getDrinkCategoryHeroVisual('/drinks/potent-potables/gin').image,
+    fallbackImage: getDrinkCategoryHeroVisual('/drinks/potent-potables/gin').fallbackImage,
     bgColor: 'bg-teal-50',
     borderColor: 'border-teal-200',
     textColor: 'text-teal-600',
@@ -74,8 +76,8 @@ const potentPotablesSubcategories = [
     count: 12,
     route: '/drinks/potent-potables/whiskey-bourbon',
     description: 'Kentucky classics',
-    image: POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.whiskeyBourbon,
-    fallbackImage: POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon,
+    image: getDrinkCategoryHeroVisual('/drinks/potent-potables/whiskey-bourbon').image,
+    fallbackImage: getDrinkCategoryHeroVisual('/drinks/potent-potables/whiskey-bourbon').fallbackImage,
     bgColor: 'bg-amber-50',
     borderColor: 'border-amber-200',
     textColor: 'text-amber-600',
@@ -91,7 +93,8 @@ const potentPotablesSubcategories = [
     count: 12,
     route: '/drinks/potent-potables/tequila-mezcal',
     description: 'Agave spirits',
-    image: POTENT_POTABLES_CATEGORY_ASSET_PATHS.tequilaMezcal,
+    image: getDrinkCategoryHeroVisual('/drinks/potent-potables/tequila-mezcal').image,
+    fallbackImage: getDrinkCategoryHeroVisual('/drinks/potent-potables/tequila-mezcal').fallbackImage,
     bgColor: 'bg-lime-50',
     borderColor: 'border-lime-200',
     textColor: 'text-lime-600',
@@ -106,8 +109,8 @@ const potentPotablesSubcategories = [
     count: 12,
     route: '/drinks/potent-potables/rum',
     description: 'Caribbean vibes',
-    image: POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.rum,
-    fallbackImage: POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum,
+    image: getDrinkCategoryHeroVisual('/drinks/potent-potables/rum').image,
+    fallbackImage: getDrinkCategoryHeroVisual('/drinks/potent-potables/rum').fallbackImage,
     bgColor: 'bg-orange-50',
     borderColor: 'border-orange-200',
     textColor: 'text-orange-600',
@@ -123,7 +126,8 @@ const potentPotablesSubcategories = [
     count: 12,
     route: '/drinks/potent-potables/cognac-brandy',
     description: 'French elegance',
-    image: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cognacBrandy,
+    image: getDrinkCategoryHeroVisual('/drinks/potent-potables/cognac-brandy').image,
+    fallbackImage: getDrinkCategoryHeroVisual('/drinks/potent-potables/cognac-brandy').fallbackImage,
     bgColor: 'bg-red-50',
     borderColor: 'border-red-200',
     textColor: 'text-red-600',
@@ -184,7 +188,8 @@ const potentPotablesSubcategories = [
     count: 15,
     route: '/drinks/potent-potables/liqueurs',
     description: 'Sweet spirits',
-    image: POTENT_POTABLES_CATEGORY_ASSET_PATHS.liqueurs,
+    image: getDrinkCategoryHeroVisual('/drinks/potent-potables/liqueurs').image,
+    fallbackImage: getDrinkCategoryHeroVisual('/drinks/potent-potables/liqueurs').fallbackImage,
     bgColor: 'bg-pink-50',
     borderColor: 'border-pink-200',
     textColor: 'text-pink-600',

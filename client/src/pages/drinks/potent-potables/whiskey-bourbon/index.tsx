@@ -9,6 +9,7 @@ import { Wine, Clock, Heart, Target, Sparkles, Flame, Search, Share2, ArrowLeft,
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import UniversalSearch from '@/components/UniversalSearch';
+import DrinkCategoryHeroImage from '@/components/drinks/DrinkCategoryHeroImage';
 import { whiskeyCocktails } from "@/data/drinks/potent-potables/whiskey-bourbon";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
@@ -344,6 +345,8 @@ export default function WhiskeyBourbonPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <DrinkCategoryHeroImage route="/drinks/potent-potables/whiskey-bourbon" />
+
           {/* CROSS-HUB NAVIGATION */}
           <Card className="bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200 mb-6">
             <CardContent className="p-4">

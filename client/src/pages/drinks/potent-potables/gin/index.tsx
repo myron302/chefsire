@@ -16,6 +16,7 @@ import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import UniversalSearch from '@/components/UniversalSearch';
 import TrendingDrinksByCategory from "@/components/drinks/TrendingDrinksByCategory";
+import DrinkCategoryHeroImage from '@/components/drinks/DrinkCategoryHeroImage';
 import { ginRecipes } from "@/data/drinks/potent-potables/gin";
 import { resolveCanonicalDrinkSlug } from "@/data/drinks/canonical";
 
@@ -334,6 +335,8 @@ export default function GinCocktailsPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <DrinkCategoryHeroImage route="/drinks/potent-potables/gin" />
+
           {/* CROSS-HUB NAVIGATION */}
           <Card className="bg-gradient-to-r from-blue-50 to-teal-50 border-blue-200 mb-6">
             <CardContent className="p-4">

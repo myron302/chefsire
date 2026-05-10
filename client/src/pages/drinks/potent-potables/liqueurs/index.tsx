@@ -9,6 +9,7 @@ import { Wine, Clock, Heart, Target, Sparkles, Droplets, Search, Share2, ArrowLe
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import UniversalSearch from '@/components/UniversalSearch';
+import DrinkCategoryHeroImage from '@/components/drinks/DrinkCategoryHeroImage';
 import { liqueurCocktails } from "@/data/drinks/potent-potables/liqueurs";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { redirectToCanonicalRecipe } from '@/lib/canonical-routing';
@@ -335,6 +336,8 @@ export default function LiqueursPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <DrinkCategoryHeroImage route="/drinks/potent-potables/liqueurs" />
+
           {/* CROSS-HUB NAVIGATION */}
           <Card className="bg-gradient-to-r from-purple-50 to-pink-50 border-purple-200 mb-6">
             <CardContent className="p-4">
