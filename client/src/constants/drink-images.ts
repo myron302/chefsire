@@ -80,6 +80,108 @@ export function getPotentPotablesAssetByRoute(route: string): string {
   return POTENT_POTABLES_ROUTE_ASSET_PATHS[route] ?? '';
 }
 
+
+export type DrinkCategoryHeroVisual = {
+  image: string;
+  fallbackImage: string;
+  alt: string;
+  displayName: string;
+  mood: string;
+  description: string;
+  overlayClass: string;
+  positionClass?: string;
+};
+
+const PREMIUM_DRINK_HERO_BASE_PARAMS = 'w=1600&h=900&fit=crop&crop=entropy&auto=format&q=85';
+
+export const NEUTRAL_PREMIUM_DRINK_HERO_IMAGE = `https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?${PREMIUM_DRINK_HERO_BASE_PARAMS}`;
+
+export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> = {
+  '/drinks/potent-potables/gin': {
+    image: `https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
+    alt: 'Premium gin cocktail with botanical garnish in an upscale bar setting',
+    displayName: 'Gin Cocktails',
+    mood: 'Botanical clarity',
+    description: 'Crisp glassware, fresh herbs, juniper-green highlights, and an upscale cocktail-hour finish.',
+    overlayClass: 'bg-gradient-to-r from-slate-950/80 via-emerald-950/55 to-teal-700/25',
+    positionClass: 'object-center',
+  },
+  '/drinks/potent-potables/rum': {
+    image: `https://images.unsplash.com/photo-1536935338788-846bb9981813?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
+    alt: 'Premium rum cocktail with tropical warmth and bar lighting',
+    displayName: 'Rum Cocktails',
+    mood: 'Tropical warmth',
+    description: 'Golden bar light, citrus garnish, tiki energy, and a sun-warmed Caribbean cocktail mood.',
+    overlayClass: 'bg-gradient-to-r from-stone-950/80 via-amber-900/60 to-orange-500/30',
+    positionClass: 'object-center',
+  },
+  '/drinks/potent-potables/vodka': {
+    image: `https://images.unsplash.com/photo-1551024709-8f23befc6f87?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
+    alt: 'Premium vodka cocktail with crystal-clear ice and modern nightlife lighting',
+    displayName: 'Vodka Cocktails',
+    mood: 'Crystal nightlife',
+    description: 'Clean glass, cool highlights, sharp ice, and a polished late-night lounge aesthetic.',
+    overlayClass: 'bg-gradient-to-r from-slate-950/80 via-cyan-950/55 to-blue-500/25',
+    positionClass: 'object-center',
+  },
+  '/drinks/potent-potables/whiskey-bourbon': {
+    image: `https://images.unsplash.com/photo-1527281400683-1aae777175f8?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
+    alt: 'Premium whiskey glass with cinematic amber lounge lighting',
+    displayName: 'Whiskey & Bourbon',
+    mood: 'Amber lounge',
+    description: 'Deep oak tones, low cinematic light, heavy glassware, and classic bourbon-bar confidence.',
+    overlayClass: 'bg-gradient-to-r from-stone-950/85 via-amber-950/60 to-orange-700/25',
+    positionClass: 'object-center',
+  },
+  '/drinks/potent-potables/tequila-mezcal': {
+    image: `https://images.unsplash.com/photo-1556855810-ac404aa91e85?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
+    alt: 'Premium tequila cocktail with citrus and agave-inspired warmth',
+    displayName: 'Tequila & Mezcal',
+    mood: 'Agave citrus',
+    description: 'Bright lime, mineral green tones, sunlit agave warmth, and a polished cantina feel.',
+    overlayClass: 'bg-gradient-to-r from-stone-950/75 via-lime-950/55 to-emerald-500/25',
+    positionClass: 'object-center',
+  },
+  '/drinks/potent-potables/cognac-brandy': {
+    image: `https://images.unsplash.com/photo-1569529465841-dfecdab7503b?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
+    alt: 'Premium brandy and cognac glass with refined amber lighting',
+    displayName: 'Cognac & Brandy',
+    mood: 'French elegance',
+    description: 'Refined amber glow, snifter-style richness, polished wood, and after-dinner luxury.',
+    overlayClass: 'bg-gradient-to-r from-stone-950/85 via-orange-950/60 to-red-700/25',
+    positionClass: 'object-center',
+  },
+  '/drinks/potent-potables/liqueurs': {
+    image: `https://images.unsplash.com/photo-1470337458703-46ad1756a187?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
+    alt: 'Premium cocktail bar with colorful liqueur bottles and polished glassware',
+    displayName: 'Liqueurs',
+    mood: 'Sweet afterglow',
+    description: 'Jewel-tone bottles, dessert-bar polish, layered sweetness, and a sophisticated digestif mood.',
+    overlayClass: 'bg-gradient-to-r from-slate-950/80 via-purple-950/55 to-pink-600/25',
+    positionClass: 'object-center',
+  },
+};
+
+export function getDrinkCategoryHeroVisual(route: string): DrinkCategoryHeroVisual {
+  return drinkCategoryHeroVisuals[route] ?? {
+    image: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
+    fallbackImage: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
+    alt: 'Premium cocktail in a polished bar setting',
+    displayName: 'Premium Drink Category',
+    mood: 'Premium bar',
+    description: 'A neutral upscale drink visual that keeps category hero layouts polished when specific imagery is unavailable.',
+    overlayClass: 'bg-gradient-to-r from-slate-950/80 via-slate-900/55 to-amber-700/20',
+    positionClass: 'object-center',
+  };
+}
+
 // Fallback images for when specific images are not available
 export const DRINK_FALLBACK_IMAGES = {
   default: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,

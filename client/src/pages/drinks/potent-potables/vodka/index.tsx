@@ -15,6 +15,7 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import UniversalSearch from '@/components/UniversalSearch';
+import DrinkCategoryHeroImage from '@/components/drinks/DrinkCategoryHeroImage';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { vodkaCocktails } from "@/data/drinks/potent-potables/vodka";
 
@@ -347,6 +348,8 @@ export default function VodkaCocktailsPage() {
         </div>
 
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <DrinkCategoryHeroImage route="/drinks/potent-potables/vodka" />
+
           {/* CROSS-HUB NAVIGATION */}
           <Card className="bg-gradient-to-r from-cyan-50 to-blue-50 border-cyan-200 mb-6">
             <CardContent className="p-4">

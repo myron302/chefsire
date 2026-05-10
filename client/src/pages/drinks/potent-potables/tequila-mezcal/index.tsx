@@ -16,6 +16,7 @@ import {
 import { useDrinks } from '@/contexts/DrinksContext';
 import RecipeKit from '@/components/recipes/RecipeKit';
 import UniversalSearch from '@/components/UniversalSearch';
+import { getDrinkCategoryHeroVisual } from '@/constants/drink-images';
 import { tequilaMezcalCocktails } from "@/data/drinks/potent-potables/tequila-mezcal";
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 
@@ -258,6 +259,8 @@ export default function TequilaMezcalPage() {
     setSelectedCocktail(null);
   };
 
+  const heroVisual = getDrinkCategoryHeroVisual('/drinks/potent-potables/tequila-mezcal');
+
   return (
     <RequireAgeGate>
       <div className="min-h-screen bg-gradient-to-br from-lime-50 via-green-50 to-emerald-50">
@@ -299,8 +302,21 @@ export default function TequilaMezcalPage() {
         )}
 
         {/* Hero Section */}
-        <div className="bg-gradient-to-r from-lime-600 via-green-600 to-emerald-600 text-white py-16 px-4">
-          <div className="max-w-7xl mx-auto">
+        <div className="relative overflow-hidden bg-slate-950 text-white py-16 px-4">
+          <img
+            src={heroVisual.image}
+            alt={heroVisual.alt}
+            className={`absolute inset-0 h-full w-full object-cover ${heroVisual.positionClass ?? 'object-center'}`}
+            onError={(event) => {
+              if (event.currentTarget.dataset.fallbackApplied !== 'true') {
+                event.currentTarget.dataset.fallbackApplied = 'true';
+                event.currentTarget.src = heroVisual.fallbackImage;
+              }
+            }}
+          />
+          <div className={`absolute inset-0 ${heroVisual.overlayClass}`} />
+          <div className="absolute inset-0 bg-black/20" />
+          <div className="relative max-w-7xl mx-auto">
             <div className="flex items-center justify-between mb-4">
               <Link href="/drinks/potent-potables">
                 <Button
