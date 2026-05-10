@@ -300,7 +300,7 @@ export default function Feed() {
     queryKey: ["/api/posts/feed", currentUserId],
     queryFn: () =>
       fetchJSON<PostWithUser[]>(
-        `/api/posts/feed?offset=0&limit=25${currentUserId ? `&userId=${encodeURIComponent(currentUserId)}` : ""}`
+        `/api/posts/feed?offset=0&limit=10${currentUserId ? `&userId=${encodeURIComponent(currentUserId)}` : ""}`
       ),
     retry: false,
   });

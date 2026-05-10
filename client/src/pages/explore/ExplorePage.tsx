@@ -118,7 +118,7 @@ export default function ExplorePage() {
   } = useQuery<Post[]>({
     queryKey: ["/api/posts/explore"],
     queryFn: async () => {
-      const response = await fetch("/api/posts/explore?offset=0&limit=24", { credentials: "include" });
+      const response = await fetch("/api/posts/explore?offset=0&limit=12", { credentials: "include" });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(payload?.message || `Failed to load explore posts (${response.status})`);
