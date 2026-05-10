@@ -125,6 +125,8 @@ app.get("*", (req, res, next) => {
       .status(200)
       .send("Client bundle not found. Build UI with `npm run build` to populate dist/public.");
   }
+  // Never cache index.html so browsers always get the latest asset hashes
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
   res.sendFile(path.join(clientDir, "index.html"));
 });
 
