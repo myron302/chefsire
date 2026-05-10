@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Heart, MessageCircle, Share, ChevronLeft, ChevronRight, X, Plus } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Heart, MessageCircle, Share, ChevronLeft, ChevronRight, X, Plus, Camera } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
@@ -95,6 +95,14 @@ export function BitesRow({ className = "" }: BitesRowProps) {
 
   const currentUser = userBites[currentUserIndex];
   const currentBite = currentUser?.bites[currentBiteIndex];
+
+  // Create bite state
+  const [isCreating, setIsCreating] = useState(false);
+  const [createCaption, setCreateCaption] = useState("");
+  const [createImageDataUrl, setCreateImageDataUrl] = useState<string | null>(null);
+  const [createSubmitting, setCreateSubmitting] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let active = true;
@@ -261,6 +269,43 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     })));
   };
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setCreateImageDataUrl(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleCreateBite = async () => {
+    if (!user?.id || !createImageDataUrl) return;
+    setCreateSubmitting(true);
+    setCreateError("");
+    try {
+      const res = await fetch("/api/bites", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: user.id,
+          imageUrl: createImageDataUrl,
+          caption: createCaption.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        throw new Error(payload?.message || "Failed to create bite");
+      }
+      setIsCreating(false);
+      setCreateCaption("");
+      setCreateImageDataUrl(null);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Something went wrong");
+    } finally {
+      setCreateSubmitting(false);
+    }
+  };
+
   const formatTimeAgo = (date: Date) => {
     const now = new Date();
     const diff = Math.floor((now.getTime() - date.getTime()) / 1000);
@@ -292,7 +337,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           ) : null}
           <div className="flex items-center space-x-4 overflow-x-auto pb-2 scrollbar-hide">
             {/* Your Bite (Create) */}
-            <div className="flex-shrink-0 cursor-pointer group">
+            <div className="flex-shrink-0 cursor-pointer group" onClick={() => user ? setIsCreating(true) : null}>
               <div className="relative">
                 <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-full flex items-center justify-center group-hover:border-primary transition-colors">
                   <Plus className="w-6 h-6 text-gray-400 group-hover:text-primary" />
@@ -343,6 +388,56 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           )}
         </div>
       </div>
+
+      {/* Create Bite Modal */}
+      {isCreating && (
+        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold">New Bite</h3>
+              <Button variant="ghost" size="icon" onClick={() => { setIsCreating(false); setCreateImageDataUrl(null); setCreateCaption(""); setCreateError(""); }}>
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+
+            {/* Image picker */}
+            <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleFileChange} />
+            <div
+              className="w-full aspect-[9/16] max-h-64 bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center cursor-pointer overflow-hidden border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary transition-colors"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              {createImageDataUrl ? (
+                <img src={createImageDataUrl} alt="Preview" className="w-full h-full object-cover rounded-xl" />
+              ) : (
+                <div className="flex flex-col items-center gap-2 text-gray-400">
+                  <Camera className="w-8 h-8" />
+                  <span className="text-sm">Tap to pick photo</span>
+                </div>
+              )}
+            </div>
+
+            {/* Caption */}
+            <textarea
+              className="w-full border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm resize-none bg-transparent focus:outline-none focus:ring-2 focus:ring-primary"
+              rows={2}
+              placeholder="Add a caption…"
+              value={createCaption}
+              onChange={(e) => setCreateCaption(e.target.value)}
+              maxLength={500}
+            />
+
+            {createError && <p className="text-red-500 text-sm">{createError}</p>}
+
+            <Button
+              className="w-full"
+              disabled={!createImageDataUrl || createSubmitting}
+              onClick={handleCreateBite}
+            >
+              {createSubmitting ? "Posting…" : "Share Bite"}
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* Bite Viewer Modal */}
       {isViewing && currentBite && (

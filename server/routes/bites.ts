@@ -59,18 +59,21 @@ r.post("/", async (req, res) => {
   try {
     const schema = z.object({
       userId: z.string(),
-      mediaUrl: z.string().url().optional(),
-      text: z.string().max(500).optional(),
-      // If not provided, the DB default (e.g., NOW() + 24h) should handle expiry
+      imageUrl: z.string().min(1),
+      caption: z.string().max(500).optional(),
       expiresAt: z.string().datetime().optional(),
     });
 
     const data = schema.parse(req.body);
+    const expiresAt = data.expiresAt
+      ? new Date(data.expiresAt)
+      : new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h default
+
     const created = await storage.createStory({
       userId: data.userId,
-      mediaUrl: data.mediaUrl ?? null,
-      text: data.text ?? null,
-      expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+      imageUrl: data.imageUrl,
+      caption: data.caption ?? null,
+      expiresAt,
     } as any);
 
     res.status(201).json({ message: "Bite created", bite: created });
