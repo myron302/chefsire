@@ -6,6 +6,7 @@
  */
 
 const POTENT_POTABLES_ASSET_BASE = '/images/drinks/potent-potables';
+const POTENT_POTABLES_PREMIUM_ASSET_BASE = `${POTENT_POTABLES_ASSET_BASE}/premium`;
 
 export const POTENT_POTABLES_CATEGORY_ASSET_PATHS = {
   cocktails: `${POTENT_POTABLES_ASSET_BASE}/cocktails.svg`,
@@ -29,6 +30,21 @@ export const POTENT_POTABLES_CATEGORY_ASSET_PATHS = {
   hotDrinks: `${POTENT_POTABLES_ASSET_BASE}/hot-drinks.svg`,
 } as const;
 
+
+export const POTENT_POTABLES_RECIPE_ASSET_PATHS = {
+  oldFashioned: `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/old-fashioned.svg`,
+  mojito: `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/mojito.svg`,
+  margarita: `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/margarita.svg`,
+  martini: `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/martini.svg`,
+  daiquiri: `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/daiquiri.svg`,
+} as const;
+
+export const POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS = {
+  rum: `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/rum-rich.svg`,
+  whiskeyBourbon: `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/whiskey-bourbon-rich.svg`,
+  mocktails: `${POTENT_POTABLES_PREMIUM_ASSET_BASE}/mocktails-rich.svg`,
+} as const;
+
 export const POTENT_POTABLES_ROUTE_ASSET_PATHS: Record<string, string> = {
   '/drinks/potent-potables': POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
   '/drinks/potent-potables/cocktails': POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
@@ -48,6 +64,17 @@ export const POTENT_POTABLES_ROUTE_ASSET_PATHS: Record<string, string> = {
   '/drinks/potent-potables/seasonal': POTENT_POTABLES_CATEGORY_ASSET_PATHS.seasonal,
   '/drinks/potent-potables/hot-drinks': POTENT_POTABLES_CATEGORY_ASSET_PATHS.hotDrinks,
 };
+
+
+export const POTENT_POTABLES_RICH_ROUTE_ASSET_PATHS: Record<string, string> = {
+  '/drinks/potent-potables/rum': POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.rum,
+  '/drinks/potent-potables/whiskey-bourbon': POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.whiskeyBourbon,
+  '/drinks/potent-potables/mocktails': POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.mocktails,
+};
+
+export function getPotentPotablesRichAssetByRoute(route: string): string {
+  return POTENT_POTABLES_RICH_ROUTE_ASSET_PATHS[route] ?? '';
+}
 
 export function getPotentPotablesAssetByRoute(route: string): string {
   return POTENT_POTABLES_ROUTE_ASSET_PATHS[route] ?? '';

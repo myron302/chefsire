@@ -1,4 +1,5 @@
 import { DrinkRecipe, slugifyDrinkName } from "@/data/drinks/types";
+import { POTENT_POTABLES_RECIPE_ASSET_PATHS } from "@/constants/drink-images";
 
 export const ginRecipes: DrinkRecipe[] = [
   {
@@ -80,6 +81,7 @@ export const ginRecipes: DrinkRecipe[] = [
     id: slugifyDrinkName("Martini"),
     name: "Martini",
     description: "Clean and spirit-forward gin cocktail",
+    image: POTENT_POTABLES_RECIPE_ASSET_PATHS.martini,
     spiritType: "London Dry Gin",
     origin: "United States",
     glassware: "Martini Glass",

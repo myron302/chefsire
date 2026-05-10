@@ -13550,6 +13550,7 @@
         "id": "whiskey-1",
         "name": "Old Fashioned",
         "description": "The grandfather of cocktails - bourbon, sugar, bitters",
+        "image": "/images/drinks/potent-potables/premium/old-fashioned.svg",
         "spiritType": "Bourbon",
         "origin": "Louisville, Kentucky",
         "glassware": "Old Fashioned Glass",
@@ -13591,8 +13592,7 @@
           "Add bourbon and large ice cube",
           "Stir gently",
           "Express orange peel over drink and garnish with cherry"
-        ],
-        "image": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop"
+        ]
       }
     },
     {
@@ -13604,6 +13604,7 @@
         "id": "martini",
         "name": "Martini",
         "description": "Clean and spirit-forward gin cocktail",
+        "image": "/images/drinks/potent-potables/premium/martini.svg",
         "spiritType": "London Dry Gin",
         "origin": "United States",
         "glassware": "Martini Glass",
@@ -13642,8 +13643,7 @@
           "Stir gin and dry vermouth with ice until chilled",
           "Strain into a chilled martini glass",
           "Garnish with a lemon twist or olive"
-        ],
-        "image": "/images/drinks/potent-potables/gin.svg"
+        ]
       }
     },
     {
@@ -13696,7 +13696,7 @@
           "Strain into chilled coupe",
           "Garnish with cherry"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     {
@@ -13803,7 +13803,7 @@
           "Strain into coupe",
           "Add bitters design on foam"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     {
@@ -13815,6 +13815,7 @@
         "id": "rum-2",
         "name": "Daiquiri",
         "description": "Perfect balance of rum, lime, and sugar",
+        "image": "/images/drinks/potent-potables/premium/daiquiri.svg",
         "spiritType": "White Rum",
         "origin": "Santiago de Cuba",
         "glassware": "Coupe Glass",
@@ -13856,8 +13857,7 @@
           "Shake all ingredients vigorously with ice",
           "Double strain into chilled coupe glass",
           "Garnish with lime wheel"
-        ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        ]
       }
     },
     {
@@ -13912,7 +13912,7 @@
           "Strain into prepared glass",
           "Express lemon peel and discard"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     {
@@ -13968,7 +13968,7 @@
           "Top with more crushed ice",
           "Garnish with mint sprig and powdered sugar"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     {
@@ -14521,6 +14521,7 @@
         "id": "daiquiri-1",
         "name": "Classic Daiquiri",
         "description": "Rum, lime, and sugar—perfectly balanced.",
+        "image": "/images/drinks/potent-potables/premium/daiquiri.svg",
         "category": "classic",
         "era": "1900s",
         "method": "Shake",
@@ -14543,8 +14544,7 @@
           "Shake rum, lime, and syrup with ice",
           "Fine strain into a chilled coupe",
           "Garnish with lime wheel"
-        ],
-        "image": "/images/drinks/potent-potables/daiquiri.svg"
+        ]
       }
     },
     {
@@ -17525,6 +17525,7 @@
         "id": "martini-1",
         "name": "Classic Gin Martini",
         "description": "The original - gin and dry vermouth, stirred to perfection",
+        "image": "/images/drinks/potent-potables/premium/martini.svg",
         "baseSpirit": "Gin",
         "style": "Classic",
         "glassware": "Martini Glass",
@@ -17566,8 +17567,7 @@
           "Stir for 30 seconds until very cold",
           "Strain into chilled martini glass",
           "Garnish with lemon twist or olives"
-        ],
-        "image": "/images/drinks/potent-potables/martinis.svg"
+        ]
       }
     },
     {
@@ -18120,7 +18120,7 @@
           "Top with tonic water",
           "Garnish with cucumber ribbon and basil"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     {
@@ -18228,7 +18228,7 @@
           "Stir gently",
           "Garnish with lavender sprig and lemon wheel"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     {
@@ -18284,7 +18284,7 @@
           "Top with club soda",
           "Garnish with watermelon triangle and mint"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     {
@@ -18339,7 +18339,7 @@
           "Stir gently",
           "Garnish with lime wheel, mint sprig, and candied ginger"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     {
@@ -18395,7 +18395,7 @@
           "Top with club soda",
           "Garnish with berry skewer and basil leaf"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     {
@@ -18450,7 +18450,7 @@
           "Add pomegranate seeds",
           "Garnish with rosemary sprig"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     {
@@ -18506,7 +18506,7 @@
           "Top with lime sparkling water",
           "Garnish with lime wheel"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     {
@@ -18559,7 +18559,7 @@
           "Pour into highball glass",
           "Garnish with pineapple wedge and cilantro sprig"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     {
@@ -18615,7 +18615,7 @@
           "Strain into chilled martini glass",
           "Garnish with 3 coffee beans"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     {
@@ -18627,6 +18627,7 @@
         "id": "rum-1",
         "name": "Mojito",
         "description": "Refreshing Cuban classic with mint and lime",
+        "image": "/images/drinks/potent-potables/premium/mojito.svg",
         "spiritType": "White Rum",
         "origin": "Havana, Cuba",
         "glassware": "Highball Glass",
@@ -18671,8 +18672,7 @@
           "Add rum and ice",
           "Top with soda water",
           "Stir gently and garnish with mint sprig and lime wheel"
-        ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        ]
       }
     },
     {
@@ -18729,7 +18729,7 @@
           "Pour into hurricane glass",
           "Garnish with pineapple wedge and cherry"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     {
@@ -18787,7 +18787,7 @@
           "Strain over crushed ice in rocks glass",
           "Garnish elaborately with mint sprig, spent lime shell, and pineapple"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     {
@@ -18843,7 +18843,7 @@
           "Top with ginger beer",
           "Stir gently and garnish with lime wedge"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     {
@@ -18902,7 +18902,7 @@
           "Strain over crushed ice in tiki mug",
           "Garnish elaborately with mint, cherry, and pineapple"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     {
@@ -18958,7 +18958,7 @@
           "Add rum and top with Coca-Cola",
           "Stir gently"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     {
@@ -19017,7 +19017,7 @@
           "Float grenadine",
           "Garnish with orange slice and cherry"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     {
@@ -19073,7 +19073,7 @@
           "Stir",
           "Add ice if desired"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     {
@@ -19131,7 +19131,7 @@
           "Top with freshly grated nutmeg",
           "Garnish with orange slice and cherry"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     {
@@ -19187,7 +19187,7 @@
           "Strain over fresh ice in rocks glass",
           "Garnish with pineapple wedge"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     {
@@ -19244,7 +19244,7 @@
           "Stir until well chilled",
           "Express orange peel over drink and garnish"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     {
@@ -20918,6 +20918,7 @@
         "id": "tequila-1",
         "name": "Classic Margarita",
         "description": "The perfect balance of tequila, lime, and orange liqueur",
+        "image": "/images/drinks/potent-potables/premium/margarita.svg",
         "spiritType": "Blanco Tequila",
         "origin": "Mexico",
         "glassware": "Margarita Glass",
@@ -20962,8 +20963,7 @@
           "Shake tequila, lime juice, and triple sec with ice",
           "Strain into prepared glass over fresh ice",
           "Garnish with lime wheel"
-        ],
-        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
+        ]
       }
     },
     {
@@ -22499,7 +22499,7 @@
           "Strain into old fashioned glass with large ice cube",
           "Express orange peel and garnish"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     {
@@ -22552,7 +22552,7 @@
           "Stir gently once",
           "Express lemon peel and garnish"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     {
@@ -22605,7 +22605,7 @@
           "Strain into old fashioned glass with fresh ice",
           "Garnish with lemon wheel"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     {
@@ -22660,7 +22660,7 @@
           "Carefully float red wine on top using spoon",
           "Garnish with lemon"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     {
@@ -22715,7 +22715,7 @@
           "Strain into glass with fresh ice",
           "Garnish with mint sprig"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     {
@@ -22767,7 +22767,7 @@
           "Shake for 10 seconds until well-chilled",
           "Strain into chilled coupe glass"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     }
   ],
@@ -36322,6 +36322,7 @@
         "id": "whiskey-1",
         "name": "Old Fashioned",
         "description": "The grandfather of cocktails - bourbon, sugar, bitters",
+        "image": "/images/drinks/potent-potables/premium/old-fashioned.svg",
         "spiritType": "Bourbon",
         "origin": "Louisville, Kentucky",
         "glassware": "Old Fashioned Glass",
@@ -36363,8 +36364,7 @@
           "Add bourbon and large ice cube",
           "Stir gently",
           "Express orange peel over drink and garnish with cherry"
-        ],
-        "image": "https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=400&h=300&fit=crop"
+        ]
       }
     },
     "martini": {
@@ -36376,6 +36376,7 @@
         "id": "martini",
         "name": "Martini",
         "description": "Clean and spirit-forward gin cocktail",
+        "image": "/images/drinks/potent-potables/premium/martini.svg",
         "spiritType": "London Dry Gin",
         "origin": "United States",
         "glassware": "Martini Glass",
@@ -36414,8 +36415,7 @@
           "Stir gin and dry vermouth with ice until chilled",
           "Strain into a chilled martini glass",
           "Garnish with a lemon twist or olive"
-        ],
-        "image": "/images/drinks/potent-potables/gin.svg"
+        ]
       }
     },
     "manhattan": {
@@ -36468,7 +36468,7 @@
           "Strain into chilled coupe",
           "Garnish with cherry"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     "negroni": {
@@ -36575,7 +36575,7 @@
           "Strain into coupe",
           "Add bitters design on foam"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     "daiquiri": {
@@ -36587,6 +36587,7 @@
         "id": "rum-2",
         "name": "Daiquiri",
         "description": "Perfect balance of rum, lime, and sugar",
+        "image": "/images/drinks/potent-potables/premium/daiquiri.svg",
         "spiritType": "White Rum",
         "origin": "Santiago de Cuba",
         "glassware": "Coupe Glass",
@@ -36628,8 +36629,7 @@
           "Shake all ingredients vigorously with ice",
           "Double strain into chilled coupe glass",
           "Garnish with lime wheel"
-        ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        ]
       }
     },
     "sazerac": {
@@ -36684,7 +36684,7 @@
           "Strain into prepared glass",
           "Express lemon peel and discard"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     "mint-julep": {
@@ -36740,7 +36740,7 @@
           "Top with more crushed ice",
           "Garnish with mint sprig and powdered sugar"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     "sidecar": {
@@ -37293,6 +37293,7 @@
         "id": "daiquiri-1",
         "name": "Classic Daiquiri",
         "description": "Rum, lime, and sugar—perfectly balanced.",
+        "image": "/images/drinks/potent-potables/premium/daiquiri.svg",
         "category": "classic",
         "era": "1900s",
         "method": "Shake",
@@ -37315,8 +37316,7 @@
           "Shake rum, lime, and syrup with ice",
           "Fine strain into a chilled coupe",
           "Garnish with lime wheel"
-        ],
-        "image": "/images/drinks/potent-potables/daiquiri.svg"
+        ]
       }
     },
     "hemingway-daiquiri": {
@@ -40297,6 +40297,7 @@
         "id": "martini-1",
         "name": "Classic Gin Martini",
         "description": "The original - gin and dry vermouth, stirred to perfection",
+        "image": "/images/drinks/potent-potables/premium/martini.svg",
         "baseSpirit": "Gin",
         "style": "Classic",
         "glassware": "Martini Glass",
@@ -40338,8 +40339,7 @@
           "Stir for 30 seconds until very cold",
           "Strain into chilled martini glass",
           "Garnish with lemon twist or olives"
-        ],
-        "image": "/images/drinks/potent-potables/martinis.svg"
+        ]
       }
     },
     "vodka-martini": {
@@ -40892,7 +40892,7 @@
           "Top with tonic water",
           "Garnish with cucumber ribbon and basil"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     "tropical-sunrise": {
@@ -41000,7 +41000,7 @@
           "Stir gently",
           "Garnish with lavender sprig and lemon wheel"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     "watermelon-mint-smash": {
@@ -41056,7 +41056,7 @@
           "Top with club soda",
           "Garnish with watermelon triangle and mint"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     "ginger-spice-mule": {
@@ -41111,7 +41111,7 @@
           "Stir gently",
           "Garnish with lime wheel, mint sprig, and candied ginger"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     "berry-basil-smash": {
@@ -41167,7 +41167,7 @@
           "Top with club soda",
           "Garnish with berry skewer and basil leaf"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     "pomegranate-sparkler": {
@@ -41222,7 +41222,7 @@
           "Add pomegranate seeds",
           "Garnish with rosemary sprig"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     "mango-chili-margarita": {
@@ -41278,7 +41278,7 @@
           "Top with lime sparkling water",
           "Garnish with lime wheel"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     "pineapple-cilantro-refresher": {
@@ -41331,7 +41331,7 @@
           "Pour into highball glass",
           "Garnish with pineapple wedge and cilantro sprig"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     "espresso-martini-mocktail": {
@@ -41387,7 +41387,7 @@
           "Strain into chilled martini glass",
           "Garnish with 3 coffee beans"
         ],
-        "image": "/images/drinks/potent-potables/mocktails.svg"
+        "image": "/images/drinks/potent-potables/premium/mocktails-rich.svg"
       }
     },
     "mojito": {
@@ -41399,6 +41399,7 @@
         "id": "rum-1",
         "name": "Mojito",
         "description": "Refreshing Cuban classic with mint and lime",
+        "image": "/images/drinks/potent-potables/premium/mojito.svg",
         "spiritType": "White Rum",
         "origin": "Havana, Cuba",
         "glassware": "Highball Glass",
@@ -41443,8 +41444,7 @@
           "Add rum and ice",
           "Top with soda water",
           "Stir gently and garnish with mint sprig and lime wheel"
-        ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        ]
       }
     },
     "pia-colada": {
@@ -41501,7 +41501,7 @@
           "Pour into hurricane glass",
           "Garnish with pineapple wedge and cherry"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     "mai-tai": {
@@ -41559,7 +41559,7 @@
           "Strain over crushed ice in rocks glass",
           "Garnish elaborately with mint sprig, spent lime shell, and pineapple"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     "dark-and-stormy": {
@@ -41615,7 +41615,7 @@
           "Top with ginger beer",
           "Stir gently and garnish with lime wedge"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     "zombie": {
@@ -41674,7 +41674,7 @@
           "Strain over crushed ice in tiki mug",
           "Garnish elaborately with mint, cherry, and pineapple"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     "cuba-libre": {
@@ -41730,7 +41730,7 @@
           "Add rum and top with Coca-Cola",
           "Stir gently"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     "hurricane": {
@@ -41789,7 +41789,7 @@
           "Float grenadine",
           "Garnish with orange slice and cherry"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     "ti-punch": {
@@ -41845,7 +41845,7 @@
           "Stir",
           "Add ice if desired"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     "painkiller": {
@@ -41903,7 +41903,7 @@
           "Top with freshly grated nutmeg",
           "Garnish with orange slice and cherry"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     "jungle-bird": {
@@ -41959,7 +41959,7 @@
           "Strain over fresh ice in rocks glass",
           "Garnish with pineapple wedge"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     "rum-old-fashioned": {
@@ -42016,7 +42016,7 @@
           "Stir until well chilled",
           "Express orange peel over drink and garnish"
         ],
-        "image": "/images/drinks/potent-potables/rum.svg"
+        "image": "/images/drinks/potent-potables/premium/rum-rich.svg"
       }
     },
     "penicillin": {
@@ -43690,6 +43690,7 @@
         "id": "tequila-1",
         "name": "Classic Margarita",
         "description": "The perfect balance of tequila, lime, and orange liqueur",
+        "image": "/images/drinks/potent-potables/premium/margarita.svg",
         "spiritType": "Blanco Tequila",
         "origin": "Mexico",
         "glassware": "Margarita Glass",
@@ -43734,8 +43735,7 @@
           "Shake tequila, lime juice, and triple sec with ice",
           "Strain into prepared glass over fresh ice",
           "Garnish with lime wheel"
-        ],
-        "image": "/images/drinks/potent-potables/tequila-mezcal.svg"
+        ]
       }
     },
     "paloma": {
@@ -45271,7 +45271,7 @@
           "Strain into old fashioned glass with large ice cube",
           "Express orange peel and garnish"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     "whiskey-highball": {
@@ -45324,7 +45324,7 @@
           "Stir gently once",
           "Express lemon peel and garnish"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     "gold-rush": {
@@ -45377,7 +45377,7 @@
           "Strain into old fashioned glass with fresh ice",
           "Garnish with lemon wheel"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     "new-york-sour": {
@@ -45432,7 +45432,7 @@
           "Carefully float red wine on top using spoon",
           "Garnish with lemon"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     "whiskey-smash": {
@@ -45487,7 +45487,7 @@
           "Strain into glass with fresh ice",
           "Garnish with mint sprig"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     },
     "paper-plane": {
@@ -45539,9 +45539,9 @@
           "Shake for 10 seconds until well-chilled",
           "Strain into chilled coupe glass"
         ],
-        "image": "/images/drinks/potent-potables/whiskey-bourbon.svg"
+        "image": "/images/drinks/potent-potables/premium/whiskey-bourbon-rich.svg"
       }
     }
   },
-  "generatedAt": "2026-05-09T12:49:49.355Z"
+  "generatedAt": "2026-05-09T16:43:22.570Z"
 }

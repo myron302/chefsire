@@ -1,10 +1,12 @@
 import { DrinkRecipe } from "@/data/drinks/types";
+import { POTENT_POTABLES_RECIPE_ASSET_PATHS } from "@/constants/drink-images";
 
 export const martinis: DrinkRecipe[] = [
   {
     id: 'martini-1',
     name: 'Classic Gin Martini',
     description: 'The original - gin and dry vermouth, stirred to perfection',
+    image: POTENT_POTABLES_RECIPE_ASSET_PATHS.martini,
     baseSpirit: 'Gin',
     style: 'Classic',
     glassware: 'Martini Glass',

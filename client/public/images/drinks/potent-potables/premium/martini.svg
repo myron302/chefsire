@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">ChefSire Martini premium drink artwork</title>
+  <desc id="desc">Chilled martini glass with clear spirit, vermouth, olive, and lemon highlights.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#1d2540"/><stop offset="1" stop-color="#8996b8"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffffff" stop-opacity=".52"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".15"/><stop offset="1" stop-color="#ffffff" stop-opacity=".36"/></linearGradient>
+    <radialGradient id="halo" cx="50%" cy="42%" r="58%"><stop stop-color="#b7d7ff" stop-opacity=".55"/><stop offset="1" stop-color="#b7d7ff" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="960" height="540" rx="0" fill="url(#bg)"/>
+  <circle cx="480" cy="256" r="280" fill="url(#halo)"/>
+  <path d="M70 428c110-74 186-74 296 0s188 74 304 0 162-74 220-26v138H70z" fill="#fff" opacity=".10"/>
+  <g opacity=".38" fill="#fff"><circle cx="154" cy="126" r="7"/><circle cx="220" cy="206" r="4"/><circle cx="784" cy="116" r="6"/><circle cx="812" cy="286" r="4"/><circle cx="692" cy="374" r="5"/></g>
+  <g filter="none"><path d="M334 126h292L506 286h-52z" fill="url(#glass)" stroke="#fff" stroke-width="6" opacity=".9"/><path d="M374 154h212l-86 102h-40z" fill="#e9f3ff" opacity=".82"/><path d="M480 286v112" stroke="#fff" stroke-width="10" opacity=".8"/><path d="M420 430h120" stroke="#fff" stroke-width="12" stroke-linecap="round" opacity=".82"/><path d="M570 154l-120 94" stroke="#d9c28d" stroke-width="7" stroke-linecap="round"/><circle cx="560" cy="162" r="24" fill="#8cac3f"/><circle cx="566" cy="160" r="8" fill="#d8433e"/><circle cx="524" cy="192" r="22" fill="#9bbd47"/><circle cx="530" cy="190" r="7" fill="#d8433e"/></g>
+  <path d="M290 472h380" stroke="#fff" stroke-opacity=".26" stroke-width="18" stroke-linecap="round"/>
+</svg>

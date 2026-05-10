@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">ChefSire Rum Cocktails premium drink artwork</title>
+  <desc id="desc">Premium rum category artwork with tropical rum cocktail, lime, and sugar-cane warmth.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#3b1508"/><stop offset="1" stop-color="#e66e28"/></linearGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffffff" stop-opacity=".52"/><stop offset=".5" stop-color="#ffffff" stop-opacity=".15"/><stop offset="1" stop-color="#ffffff" stop-opacity=".36"/></linearGradient>
+    <radialGradient id="halo" cx="50%" cy="42%" r="58%"><stop stop-color="#ffd36c" stop-opacity=".55"/><stop offset="1" stop-color="#ffd36c" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="960" height="540" rx="0" fill="url(#bg)"/>
+  <circle cx="480" cy="256" r="280" fill="url(#halo)"/>
+  <path d="M70 428c110-74 186-74 296 0s188 74 304 0 162-74 220-26v138H70z" fill="#fff" opacity=".10"/>
+  <g opacity=".38" fill="#fff"><circle cx="154" cy="126" r="7"/><circle cx="220" cy="206" r="4"/><circle cx="784" cy="116" r="6"/><circle cx="812" cy="286" r="4"/><circle cx="692" cy="374" r="5"/></g>
+  <g filter="none"><path d="M386 120c70 28 170 28 188 0-42 96-24 202 4 276 18 46-26 70-98 70s-116-24-98-70c28-74 46-180 4-276z" fill="url(#glass)" stroke="#fff" stroke-width="6" opacity=".88"/><path d="M402 252h156c-2 52 12 98 24 138 12 38-26 54-102 54s-114-16-102-54c12-40 26-86 24-138z" fill="#f0a02d" opacity=".86"/><path d="M574 130c42 14 60 48 48 90-45-4-72-38-48-90z" fill="#5fe38f"/><path d="M606 154c34 28 40 64 12 96-38-22-48-62-12-96z" fill="#36c978"/><circle cx="565" cy="214" r="35" fill="#ffcb54"/><path d="M565 179v70M530 214h70" stroke="#fff" stroke-width="4" opacity=".55"/></g>
+  <path d="M290 472h380" stroke="#fff" stroke-opacity=".26" stroke-width="18" stroke-linecap="round"/>
+</svg>

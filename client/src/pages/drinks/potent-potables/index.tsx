@@ -18,7 +18,7 @@ import RecipeKit from '@/components/recipes/RecipeKit';
 import { resolveCanonicalDrinkSlug } from '@/data/drinks/canonical';
 import { otherDrinkHubs } from '../data/detoxes';
 import { sortByName } from '@/lib/sort-by-name';
-import { POTENT_POTABLES_CATEGORY_ASSET_PATHS } from '@/constants/drink-images';
+import { POTENT_POTABLES_CATEGORY_ASSET_PATHS, POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS } from '@/constants/drink-images';
 
 type Measured = { amount: number | string; unit: string; item: string; note?: string };
 const m = (amount: number | string, unit: string, item: string, note: string = ''): Measured => ({ amount, unit, item, note });
@@ -74,7 +74,8 @@ const potentPotablesSubcategories = [
     count: 12,
     route: '/drinks/potent-potables/whiskey-bourbon',
     description: 'Kentucky classics',
-    image: POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon,
+    image: POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.whiskeyBourbon,
+    fallbackImage: POTENT_POTABLES_CATEGORY_ASSET_PATHS.whiskeyBourbon,
     bgColor: 'bg-amber-50',
     borderColor: 'border-amber-200',
     textColor: 'text-amber-600',
@@ -105,7 +106,8 @@ const potentPotablesSubcategories = [
     count: 12,
     route: '/drinks/potent-potables/rum',
     description: 'Caribbean vibes',
-    image: POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum,
+    image: POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.rum,
+    fallbackImage: POTENT_POTABLES_CATEGORY_ASSET_PATHS.rum,
     bgColor: 'bg-orange-50',
     borderColor: 'border-orange-200',
     textColor: 'text-orange-600',
@@ -258,7 +260,8 @@ const potentPotablesSubcategories = [
     count: 12,
     route: '/drinks/potent-potables/mocktails',
     description: 'Zero-proof',
-    image: POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails,
+    image: POTENT_POTABLES_RICH_CATEGORY_ASSET_PATHS.mocktails,
+    fallbackImage: POTENT_POTABLES_CATEGORY_ASSET_PATHS.mocktails,
     bgColor: 'bg-emerald-50',
     borderColor: 'border-emerald-200',
     textColor: 'text-emerald-600',
@@ -514,6 +517,12 @@ export default function PotentPotablesPage() {
                             className={`w-full h-full object-cover transition-transform duration-300 ${
                               hoveredCard === category.id ? 'scale-110' : 'scale-100'
                             }`}
+                            onError={(event) => {
+                              const fallbackImage = 'fallbackImage' in category ? category.fallbackImage : undefined;
+                              if (fallbackImage && !event.currentTarget.src.endsWith(fallbackImage)) {
+                                event.currentTarget.src = fallbackImage;
+                              }
+                            }}
                           />
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />

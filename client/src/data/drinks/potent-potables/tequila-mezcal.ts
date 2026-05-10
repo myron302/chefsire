@@ -1,10 +1,12 @@
 import { DrinkRecipe } from "@/data/drinks/types";
+import { POTENT_POTABLES_RECIPE_ASSET_PATHS } from "@/constants/drink-images";
 
 export const tequilaMezcalCocktails: DrinkRecipe[] = [
   {
     id: 'tequila-1',
     name: 'Classic Margarita',
     description: 'The perfect balance of tequila, lime, and orange liqueur',
+    image: POTENT_POTABLES_RECIPE_ASSET_PATHS.margarita,
     spiritType: 'Blanco Tequila',
     origin: 'Mexico',
     glassware: 'Margarita Glass',

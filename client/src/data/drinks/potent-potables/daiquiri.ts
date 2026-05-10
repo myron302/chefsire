@@ -1,10 +1,12 @@
 import { DrinkRecipe } from "@/data/drinks/types";
+import { POTENT_POTABLES_RECIPE_ASSET_PATHS } from "@/constants/drink-images";
 
 export const daiquiris: DrinkRecipe[] = [
   {
     id: "daiquiri-1",
     name: "Classic Daiquiri",
     description: "Rum, lime, and sugar—perfectly balanced.",
+    image: POTENT_POTABLES_RECIPE_ASSET_PATHS.daiquiri,
     category: "classic",
     era: "1900s",
     method: "Shake",
