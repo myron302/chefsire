@@ -15,11 +15,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Upload, Plus, Minus, X, Video, GripVertical, ChevronLeft, ChevronRight } from "lucide-react";
+import { Camera, Upload, Plus, Minus, X, Video, GripVertical, ChevronLeft, ChevronRight, Radio } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import { useGoogleMaps } from "@/hooks/useGoogleMaps";
+import GoLiveModal from "@/components/GoLiveModal";
 
 const EMPTY_SELECT = "__empty__";
 
@@ -58,7 +59,7 @@ const UNIT_OPTIONS = [
   "piece",
 ];
 
-type PostType = "post" | "recipe" | "review";
+type PostType = "post" | "recipe" | "review" | "bite" | "clip";
 type IngredientRow = { amount: string; unit: string; name: string };
 type MediaKind = "image" | "video" | "";
 type PostImage = { id: string; url: string };
@@ -203,6 +204,46 @@ export default function CreatePost() {
     reviewNotes: "",
   });
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
+
+  // Bite / Clip state
+  const [biteExpiry, setBiteExpiry] = useState<"24h" | "permanent">("24h");
+  const [showGoLive, setShowGoLive] = useState(false);
+  const biteFileRef = useRef<HTMLInputElement>(null);
+  const [biteMediaUrl, setBiteMediaUrl] = useState("");
+  const [biteMediaType, setBiteMediaType] = useState<"image" | "video">("video");
+  const [biteSubmitting, setBiteSubmitting] = useState(false);
+
+  const handleBiteFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBiteMediaType(file.type.startsWith("video/") ? "video" : "image");
+    const reader = new FileReader();
+    reader.onloadend = () => setBiteMediaUrl(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleBiteSubmit = async () => {
+    if (!user?.id || !biteMediaUrl) return;
+    setBiteSubmitting(true);
+    try {
+      const expiresAt = biteExpiry === "permanent"
+        ? new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString()
+        : undefined;
+      const res = await fetch("/api/bites", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, imageUrl: biteMediaUrl, caption: formData.caption || undefined, expiresAt }),
+      });
+      if (!res.ok) throw new Error("Failed to create bite");
+      toast({ description: formData.postType === "clip" ? "Clip shared!" : "Bite shared!" });
+      setLocation("/feed");
+    } catch (err: any) {
+      toast({ variant: "destructive", description: err.message });
+    } finally {
+      setBiteSubmitting(false);
+    }
+  };
 
   const reviewCaptionPreview = useMemo(() => {
     if (formData.postType !== "review") return "";
@@ -362,6 +403,15 @@ export default function CreatePost() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (formData.postType === "bite" || formData.postType === "clip") {
+      if (!biteMediaUrl) {
+        toast({ variant: "destructive", description: "Please pick a video or photo" });
+        return;
+      }
+      handleBiteSubmit();
+      return;
+    }
 
     if (!formData.imageUrl.trim()) {
       toast({
@@ -622,12 +672,71 @@ export default function CreatePost() {
                   <SelectItem value="post">Post</SelectItem>
                   <SelectItem value="recipe">Recipe</SelectItem>
                   <SelectItem value="review">Review</SelectItem>
+                  <SelectItem value="bite">Bite (24h story)</SelectItem>
+                  <SelectItem value="clip">Clip (video)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Media Upload */}
-            <div className="space-y-2">
+            {/* Bite / Clip media picker */}
+            {(formData.postType === "bite" || formData.postType === "clip") && (
+              <div className="space-y-3">
+                <input ref={biteFileRef} type="file" accept="video/*,image/*" className="hidden" onChange={handleBiteFileSelect} />
+                <div
+                  className="w-full aspect-video bg-muted rounded-xl flex items-center justify-center cursor-pointer overflow-hidden border-2 border-dashed border-border hover:border-primary transition-colors"
+                  onClick={() => biteFileRef.current?.click()}
+                >
+                  {biteMediaUrl && biteMediaType === "video" ? (
+                    <video src={biteMediaUrl} className="w-full h-full object-cover" controls muted playsInline />
+                  ) : biteMediaUrl ? (
+                    <img src={biteMediaUrl} alt="Preview" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                      <Video className="w-10 h-10" />
+                      <span className="text-sm font-medium">Tap to pick video or photo</span>
+                      <span className="text-xs">Video recommended</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Expiry toggle */}
+                <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">
+                      {biteExpiry === "permanent" ? "Add to Bites profile tab (permanent)" : "Show in Bites row for 24 hours only"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {biteExpiry === "permanent" ? "Stays on your profile Bites tab forever" : "Disappears after 24 hours"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={biteExpiry === "permanent"}
+                    onClick={() => setBiteExpiry(biteExpiry === "24h" ? "permanent" : "24h")}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${biteExpiry === "permanent" ? "bg-primary" : "bg-input"}`}
+                  >
+                    <span className={`block h-5 w-5 rounded-full bg-white shadow-lg transition-transform ${biteExpiry === "permanent" ? "translate-x-5" : "translate-x-0"}`} />
+                  </button>
+                </div>
+
+                {/* Go Live — clips only */}
+                {formData.postType === "clip" && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-red-500 text-red-500 hover:bg-red-50 dark:hover:bg-red-950"
+                    onClick={() => setShowGoLive(true)}
+                  >
+                    <Radio className="w-4 h-4 mr-2" />
+                    Go Live Instead
+                  </Button>
+                )}
+              </div>
+            )}
+
+            {/* Media Upload — hidden for bite/clip */}
+            <div className={`space-y-2 ${formData.postType === "bite" || formData.postType === "clip" ? "hidden" : ""}`}>
               <Label htmlFor="imageUrl">Photo/Video *</Label>
               <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
                 {mediaPreview ? (
@@ -1006,7 +1115,7 @@ export default function CreatePost() {
             )}
 
             {/* Tags */}
-            <div className="space-y-2">
+            <div className={`space-y-2 ${formData.postType === "bite" || formData.postType === "clip" ? "hidden" : ""}`}>
               <Label>Tags</Label>
               <div className="space-y-2">
                 {formData.tags.map((tag, index) => (
@@ -1256,14 +1365,22 @@ export default function CreatePost() {
             <Button
               type="submit"
               className="w-full"
-              disabled={createPostMutation.isPending}
+              disabled={createPostMutation.isPending || biteSubmitting}
               data-testid="button-submit-post"
             >
-              {createPostMutation.isPending ? "Posting..." : "Post"}
+              {createPostMutation.isPending || biteSubmitting
+                ? "Posting..."
+                : formData.postType === "bite"
+                ? "Share Bite"
+                : formData.postType === "clip"
+                ? "Share Clip"
+                : "Post"}
             </Button>
           </form>
         </CardContent>
       </Card>
+
+      <GoLiveModal open={showGoLive} onOpenChange={setShowGoLive} />
     </div>
   );
 }
