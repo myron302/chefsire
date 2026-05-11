@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import { useGoogleMaps } from "@/hooks/useGoogleMaps";
 import GoLiveModal from "@/components/GoLiveModal";
+import CameraModal from "@/components/CameraModal";
 
 const EMPTY_SELECT = "__empty__";
 
@@ -59,7 +60,7 @@ const UNIT_OPTIONS = [
   "piece",
 ];
 
-type PostType = "post" | "recipe" | "review" | "bite" | "clip";
+type PostType = "post" | "recipe" | "review" | "bite" | "clip" | "live";
 type IngredientRow = { amount: string; unit: string; name: string };
 type MediaKind = "image" | "video" | "";
 type PostImage = { id: string; url: string };
@@ -204,6 +205,19 @@ export default function CreatePost() {
     reviewNotes: "",
   });
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
+
+  const [showCamera, setShowCamera] = useState(false);
+
+  const handleCameraCapture = (dataUrl: string, type: "image" | "video") => {
+    const kind: MediaKind = type;
+    setMediaPreview(dataUrl);
+    setMediaKind(kind);
+    if (kind === "video") {
+      setFormData((prev) => ({ ...prev, imageUrl: dataUrl, additionalImages: [] }));
+    } else {
+      setFormData((prev) => ({ ...prev, imageUrl: dataUrl, additionalImages: [] }));
+    }
+  };
 
   // Bite / Clip state
   const [biteExpiry, setBiteExpiry] = useState<"24h" | "permanent">("24h");
@@ -403,6 +417,11 @@ export default function CreatePost() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (formData.postType === "live") {
+      setShowGoLive(true);
+      return;
+    }
 
     if (formData.postType === "bite" || formData.postType === "clip") {
       if (!biteMediaUrl) {
@@ -663,7 +682,10 @@ export default function CreatePost() {
               <Label>Post type</Label>
               <Select
                 value={formData.postType}
-                onValueChange={(v) => handleChange("postType", v as PostType)}
+                onValueChange={(v) => {
+                  handleChange("postType", v as PostType);
+                  if (v === "live") setShowGoLive(true);
+                }}
               >
                 <SelectTrigger data-testid="select-post-type">
                   <SelectValue placeholder="Choose type" />
@@ -674,9 +696,30 @@ export default function CreatePost() {
                   <SelectItem value="review">Review</SelectItem>
                   <SelectItem value="bite">Bite (24h story)</SelectItem>
                   <SelectItem value="clip">Clip (video)</SelectItem>
+                  <SelectItem value="live">Go Live</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+
+            {/* Go Live — direct launch */}
+            {formData.postType === "live" && (
+              <div className="flex flex-col items-center gap-4 py-8">
+                <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-950 flex items-center justify-center">
+                  <Radio className="w-8 h-8 text-red-500" />
+                </div>
+                <p className="text-sm text-muted-foreground text-center">
+                  Your camera preview will open. Start streaming when you're ready.
+                </p>
+                <Button
+                  type="button"
+                  className="w-48 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-full"
+                  onClick={() => setShowGoLive(true)}
+                >
+                  <Radio className="w-4 h-4 mr-2" />
+                  Open Camera
+                </Button>
+              </div>
+            )}
 
             {/* Bite / Clip media picker */}
             {(formData.postType === "bite" || formData.postType === "clip") && (
@@ -735,8 +778,8 @@ export default function CreatePost() {
               </div>
             )}
 
-            {/* Media Upload — hidden for bite/clip */}
-            <div className={`space-y-2 ${formData.postType === "bite" || formData.postType === "clip" ? "hidden" : ""}`}>
+            {/* Media Upload — hidden for bite/clip/live */}
+            <div className={`space-y-2 ${formData.postType === "bite" || formData.postType === "clip" || formData.postType === "live" ? "hidden" : ""}`}>
               <Label htmlFor="imageUrl">Photo/Video *</Label>
               <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
                 {mediaPreview ? (
@@ -861,7 +904,7 @@ export default function CreatePost() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => document.getElementById("camera-input")?.click()}
+                        onClick={() => setShowCamera(true)}
                         className="flex-1"
                       >
                         <Camera className="h-4 w-4 mr-2" />
@@ -879,15 +922,6 @@ export default function CreatePost() {
                       </Button>
                     </div>
 
-                    <input
-                      id="camera-input"
-                      type="file"
-                      accept="image/*,video/*"
-                      capture="environment"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      data-testid="input-camera"
-                    />
                     <input
                       id="file-input"
                       type="file"
@@ -1098,8 +1132,8 @@ export default function CreatePost() {
               </>
             )}
 
-            {/* Caption (Post/Recipe only) */}
-            {formData.postType !== "review" && (
+            {/* Caption (Post/Recipe/Bite/Clip only) */}
+            {formData.postType !== "review" && formData.postType !== "live" && (
               <div className="space-y-2">
                 <Label htmlFor="caption">Caption</Label>
                 <Textarea
@@ -1115,7 +1149,7 @@ export default function CreatePost() {
             )}
 
             {/* Tags */}
-            <div className={`space-y-2 ${formData.postType === "bite" || formData.postType === "clip" ? "hidden" : ""}`}>
+            <div className={`space-y-2 ${formData.postType === "bite" || formData.postType === "clip" || formData.postType === "live" ? "hidden" : ""}`}>
               <Label>Tags</Label>
               <div className="space-y-2">
                 {formData.tags.map((tag, index) => (
@@ -1361,26 +1395,29 @@ export default function CreatePost() {
               </>
             )}
 
-            {/* Submit */}
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={createPostMutation.isPending || biteSubmitting}
-              data-testid="button-submit-post"
-            >
-              {createPostMutation.isPending || biteSubmitting
-                ? "Posting..."
-                : formData.postType === "bite"
-                ? "Share Bite"
-                : formData.postType === "clip"
-                ? "Share Clip"
-                : "Post"}
-            </Button>
+            {/* Submit — hidden for Go Live (camera opens directly) */}
+            {formData.postType !== "live" && (
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={createPostMutation.isPending || biteSubmitting}
+                data-testid="button-submit-post"
+              >
+                {createPostMutation.isPending || biteSubmitting
+                  ? "Posting..."
+                  : formData.postType === "bite"
+                  ? "Share Bite"
+                  : formData.postType === "clip"
+                  ? "Share Clip"
+                  : "Post"}
+              </Button>
+            )}
           </form>
         </CardContent>
       </Card>
 
       <GoLiveModal open={showGoLive} onOpenChange={setShowGoLive} />
+      <CameraModal open={showCamera} onOpenChange={setShowCamera} onCapture={handleCameraCapture} />
     </div>
   );
 }
