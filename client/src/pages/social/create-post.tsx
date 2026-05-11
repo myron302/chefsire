@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import { useGoogleMaps } from "@/hooks/useGoogleMaps";
 import GoLiveModal from "@/components/GoLiveModal";
+import CameraModal from "@/components/CameraModal";
 
 const EMPTY_SELECT = "__empty__";
 
@@ -204,6 +205,19 @@ export default function CreatePost() {
     reviewNotes: "",
   });
   const [galleryUrlInput, setGalleryUrlInput] = useState("");
+
+  const [showCamera, setShowCamera] = useState(false);
+
+  const handleCameraCapture = (dataUrl: string, type: "image" | "video") => {
+    const kind: MediaKind = type;
+    setMediaPreview(dataUrl);
+    setMediaKind(kind);
+    if (kind === "video") {
+      setFormData((prev) => ({ ...prev, imageUrl: dataUrl, additionalImages: [] }));
+    } else {
+      setFormData((prev) => ({ ...prev, imageUrl: dataUrl, additionalImages: [] }));
+    }
+  };
 
   // Bite / Clip state
   const [biteExpiry, setBiteExpiry] = useState<"24h" | "permanent">("24h");
@@ -890,7 +904,7 @@ export default function CreatePost() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => document.getElementById("camera-input")?.click()}
+                        onClick={() => setShowCamera(true)}
                         className="flex-1"
                       >
                         <Camera className="h-4 w-4 mr-2" />
@@ -908,15 +922,6 @@ export default function CreatePost() {
                       </Button>
                     </div>
 
-                    <input
-                      id="camera-input"
-                      type="file"
-                      accept="image/*,video/*"
-                      capture="environment"
-                      onChange={handleFileSelect}
-                      className="hidden"
-                      data-testid="input-camera"
-                    />
                     <input
                       id="file-input"
                       type="file"
@@ -1412,6 +1417,7 @@ export default function CreatePost() {
       </Card>
 
       <GoLiveModal open={showGoLive} onOpenChange={setShowGoLive} />
+      <CameraModal open={showCamera} onOpenChange={setShowCamera} onCapture={handleCameraCapture} />
     </div>
   );
 }
