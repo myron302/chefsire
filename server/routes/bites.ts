@@ -35,7 +35,10 @@ function normalizeViewerId(rawUserId: string | undefined): string | undefined {
  * drift), the whole query 500s and the bites row never shows new bites.
  *
  * By selecting only the 3 user fields the client actually needs, we make
- * this route robust to drift in unrelated user columns.
+ * this route robust to drift in unrelated user columns. We also left-join users:
+ * if a bite was created for an auth/session id before the matching users row
+ * existed (or the live DB is missing the FK), the story should still appear
+ * instead of being silently filtered out of the feed.
  */
 
 type ActiveBitePayload = {
@@ -71,7 +74,7 @@ async function fetchActiveBites(): Promise<ActiveBitePayload[]> {
       avatar: users.avatar,
     })
     .from(stories)
-    .innerJoin(users, eq(stories.userId, users.id))
+    .leftJoin(users, eq(stories.userId, users.id))
     .where(sql`${stories.expiresAt} > NOW()`)
     .orderBy(desc(stories.createdAt));
 
@@ -83,7 +86,7 @@ async function fetchActiveBites(): Promise<ActiveBitePayload[]> {
     createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
     expiresAt: row.expiresAt ? new Date(row.expiresAt).toISOString() : null,
     user: {
-      username: row.username ?? null,
+      username: row.username ?? "Chef",
       displayName: row.displayName ?? null,
       avatar: row.avatar ?? null,
     },
