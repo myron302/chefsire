@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Heart, MessageCircle, Share, ChevronLeft, ChevronRight, X, Plus, Camera, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -81,6 +81,51 @@ interface BitesRowProps {
   className?: string;
 }
 
+const mapItemsToUserBites = (items: ActiveBiteApiItem[]): UserBites[] => {
+  const grouped = new Map<string, UserBites>();
+  for (const item of items) {
+    if (!item?.id || !item?.userId || !item?.imageUrl) continue;
+    const username = item.user?.username || item.user?.displayName || "Chef";
+    const avatar = item.user?.avatar || "";
+    const bite: Bite = {
+      id: item.id,
+      userId: item.userId,
+      username,
+      avatar,
+      content: {
+        type:
+          item.imageUrl.startsWith("data:video/") ||
+          item.imageUrl.match(/\.(mp4|webm|mov|avi)(\?|$)/i)
+            ? "video"
+            : "image",
+        url: item.imageUrl,
+      },
+      caption: item.caption || "",
+      timestamp: item.createdAt ? new Date(item.createdAt) : new Date(),
+      duration: 5,
+      views: 0,
+      likes: 0,
+      isLiked: false,
+      tags: [],
+    };
+
+    const existing = grouped.get(item.userId);
+    if (existing) {
+      existing.bites.push(bite);
+    } else {
+      grouped.set(item.userId, {
+        userId: item.userId,
+        username,
+        avatar,
+        bites: [bite],
+        hasNewBites: true,
+        isViewed: false,
+      });
+    }
+  }
+  return Array.from(grouped.values());
+};
+
 export function BitesRow({ className = "" }: BitesRowProps) {
   const { user } = useUser();
   const [userBites, setUserBites] = useState<UserBites[]>([]);
@@ -105,85 +150,54 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const [createError, setCreateError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    let active = true;
-
-    const mapItemsToUserBites = (items: ActiveBiteApiItem[]) => {
-      const grouped = new Map<string, UserBites>();
-      for (const item of items) {
-        if (!item?.id || !item?.userId || !item?.imageUrl) continue;
-        const username = item.user?.username || item.user?.displayName || "Chef";
-        const avatar = item.user?.avatar || "";
-        const bite: Bite = {
-          id: item.id,
-          userId: item.userId,
-          username,
-          avatar,
-          content: { type: item.imageUrl.startsWith("data:video/") || item.imageUrl.match(/\.(mp4|webm|mov|avi)(\?|$)/i) ? "video" : "image", url: item.imageUrl },
-          caption: item.caption || "",
-          timestamp: item.createdAt ? new Date(item.createdAt) : new Date(),
-          duration: 5,
-          views: 0,
-          likes: 0,
-          isLiked: false,
-          tags: [],
-        };
-
-        const existing = grouped.get(item.userId);
-        if (existing) {
-          existing.bites.push(bite);
-        } else {
-          grouped.set(item.userId, {
-            userId: item.userId,
-            username,
-            avatar,
-            bites: [bite],
-            hasNewBites: true,
-            isViewed: false,
-          });
-        }
-      }
-      return Array.from(grouped.values());
-    };
-
-    const loadBites = async () => {
+  // Extracted so we can refetch after creating a bite (instead of only running once on mount)
+  const loadBites = useCallback(
+    async (signal?: AbortSignal) => {
       setLoading(true);
       setLoadError("");
-      setUsingSampleBites(false);
       try {
         const endpoint = user?.id
           ? `/api/bites/active/${encodeURIComponent(user.id)}`
           : "/api/bites/active";
-        const response = await fetch(endpoint, { credentials: "include" });
+        const response = await fetch(endpoint, {
+          credentials: "include",
+          signal,
+        });
         const payload = await response.json().catch(() => null);
         if (!response.ok) throw new Error(payload?.message || "Failed to load bites");
 
         const items = Array.isArray(payload) ? (payload as ActiveBiteApiItem[]) : [];
         const mapped = mapItemsToUserBites(items);
 
-        if (!active) return;
+        if (signal?.aborted) return;
         if (mapped.length > 0) {
           setUserBites(mapped);
+          setUsingSampleBites(false);
           return;
         }
 
         setUserBites(mapItemsToUserBites(SAMPLE_BITES));
         setUsingSampleBites(true);
       } catch (error) {
-        if (!active) return;
+        if (signal?.aborted) return;
+        // AbortError isn't a real error from the user's perspective
+        if (error instanceof DOMException && error.name === "AbortError") return;
         setLoadError(error instanceof Error ? error.message : "Unable to load bites right now.");
         setUserBites(mapItemsToUserBites(SAMPLE_BITES));
         setUsingSampleBites(true);
       } finally {
-        if (active) setLoading(false);
+        if (!signal?.aborted) setLoading(false);
       }
-    };
+    },
+    [user?.id],
+  );
 
-    void loadBites();
-    return () => {
-      active = false;
-    };
-  }, [user?.id]);
+  // Initial load + refetch when the signed-in user changes
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadBites(controller.signal);
+    return () => controller.abort();
+  }, [loadBites]);
 
   // Auto-advance bites
   useEffect(() => {
@@ -308,6 +322,11 @@ export function BitesRow({ className = "" }: BitesRowProps) {
         throw new Error(payload?.message || "Failed to create bite");
       }
       resetCreate();
+      // Pull the freshly-created bite (and anyone else's recent activity) back
+      // into the row. Without this the new bite would only show after a page
+      // refresh, and clicking its tile would do nothing because the bite
+      // wouldn't be in local state.
+      await loadBites();
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
