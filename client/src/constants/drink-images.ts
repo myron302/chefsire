@@ -92,13 +92,38 @@ export type DrinkCategoryHeroVisual = {
   positionClass?: string;
 };
 
-const PREMIUM_DRINK_HERO_BASE_PARAMS = 'w=1600&h=900&fit=crop&crop=entropy&auto=format&q=85';
+const POTENT_POTABLES_HERO_ASSET_BASE = '/images/drinks/heroes';
 
-export const NEUTRAL_PREMIUM_DRINK_HERO_IMAGE = `https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?${PREMIUM_DRINK_HERO_BASE_PARAMS}`;
+export const POTENT_POTABLES_HERO_ASSET_PATHS = {
+  gin: `${POTENT_POTABLES_HERO_ASSET_BASE}/gin-hero.webp`,
+  rum: `${POTENT_POTABLES_HERO_ASSET_BASE}/rum-hero.webp`,
+  vodka: `${POTENT_POTABLES_HERO_ASSET_BASE}/vodka-hero.webp`,
+  whiskeyBourbon: `${POTENT_POTABLES_HERO_ASSET_BASE}/whiskey-bourbon-hero.webp`,
+  scotchIrishWhiskey: `${POTENT_POTABLES_HERO_ASSET_BASE}/scotch-irish-whiskey-hero.webp`,
+  tequilaMezcal: `${POTENT_POTABLES_HERO_ASSET_BASE}/tequila-mezcal-hero.webp`,
+  cognacBrandy: `${POTENT_POTABLES_HERO_ASSET_BASE}/cognac-brandy-hero.webp`,
+  liqueurs: `${POTENT_POTABLES_HERO_ASSET_BASE}/liqueurs-hero.webp`,
+  cocktails: `${POTENT_POTABLES_HERO_ASSET_BASE}/cocktails-hero.webp`,
+  daiquiri: `${POTENT_POTABLES_HERO_ASSET_BASE}/daiquiri-hero.webp`,
+  hotDrinks: `${POTENT_POTABLES_HERO_ASSET_BASE}/hot-drinks-hero.webp`,
+  mocktails: `${POTENT_POTABLES_HERO_ASSET_BASE}/mocktails-hero.webp`,
+  martinis: `${POTENT_POTABLES_HERO_ASSET_BASE}/martinis-hero.webp`,
+  seasonal: `${POTENT_POTABLES_HERO_ASSET_BASE}/seasonal-hero.webp`,
+  spritz: `${POTENT_POTABLES_HERO_ASSET_BASE}/spritz-hero.webp`,
+  virginCocktails: `${POTENT_POTABLES_HERO_ASSET_BASE}/virgin-cocktails-hero.webp`,
+  neutralPremiumDrink: `${POTENT_POTABLES_HERO_ASSET_BASE}/neutral-premium-drink-hero.webp`,
+} as const;
+
+export const NEUTRAL_PREMIUM_DRINK_HERO_IMAGE = POTENT_POTABLES_HERO_ASSET_PATHS.neutralPremiumDrink;
+
+// TODO(owned-assets): Supply/generate these ChefSire-owned, non-branded hero
+// assets separately. These are intentionally local-only placeholder paths; do
+// not replace them with remote, branded, or third-party category imagery.
+export const POTENT_POTABLES_HERO_ASSET_TODOS = Object.values(POTENT_POTABLES_HERO_ASSET_PATHS);
 
 export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> = {
   '/drinks/potent-potables/cocktails': {
-    image: `https://images.unsplash.com/photo-1544145945-f90425340c7e?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.cocktails,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Classic cocktails served in polished glassware inside an elegant cocktail lounge',
     displayName: 'Classic Cocktails',
@@ -108,7 +133,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/daiquiri': {
-    image: `https://images.unsplash.com/photo-1527761939622-933c83d34544?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.daiquiri,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Bright daiquiri cocktail with citrus and rum in refined coupe glass styling',
     displayName: 'Daiquiri',
@@ -118,7 +143,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/hot-drinks': {
-    image: `https://images.unsplash.com/photo-1517578239113-b03992dcdd25?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.hotDrinks,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Steaming hot cocktail in cozy winter bar and cafe lighting',
     displayName: 'Hot Drinks',
@@ -128,7 +153,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/mocktails': {
-    image: `https://images.unsplash.com/photo-1621263764928-df1444c5e859?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.mocktails,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Fresh premium mocktail with vibrant fruit herbs and bright zero-proof styling',
     displayName: 'Mocktails',
@@ -138,7 +163,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/martinis': {
-    image: `https://images.unsplash.com/photo-1575023782549-62ca0d244b39?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.martinis,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Elegant martini glass with olive and lemon twist in a minimalist upscale bar',
     displayName: 'Martinis',
@@ -148,7 +173,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/scotch-irish-whiskey': {
-    image: `https://images.unsplash.com/photo-1527281400683-1aae777175f8?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.scotchIrishWhiskey,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Smoky amber scotch in a rocks glass with wood and leather lounge atmosphere',
     displayName: 'Scotch & Irish Whiskey',
@@ -158,7 +183,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/seasonal': {
-    image: `https://images.unsplash.com/photo-1543253687-c931c8e01820?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.seasonal,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Festive seasonal cocktail with warm and cool holiday styling accents',
     displayName: 'Seasonal Cocktails',
@@ -168,7 +193,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/spritz': {
-    image: `https://images.unsplash.com/photo-1560512823-829485b8bf24?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.spritz,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Bright orange spritz cocktail with bubbles on a sunny aperitivo terrace',
     displayName: 'Spritz & Mimosas',
@@ -178,7 +203,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/virgin-cocktails': {
-    image: `https://images.unsplash.com/photo-1546171753-97d7676e4602?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.virginCocktails,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Colorful virgin cocktail with fruit garnish and clean refreshing zero-proof realism',
     displayName: 'Virgin Cocktails',
@@ -188,7 +213,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/gin': {
-    image: `https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.gin,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium gin cocktail with botanical garnish in an upscale bar setting',
     displayName: 'Gin Cocktails',
@@ -198,7 +223,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/rum': {
-    image: `https://images.unsplash.com/photo-1536935338788-846bb9981813?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.rum,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium rum cocktail with tropical warmth and bar lighting',
     displayName: 'Rum Cocktails',
@@ -208,7 +233,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/vodka': {
-    image: `https://images.unsplash.com/photo-1551024709-8f23befc6f87?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.vodka,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium vodka cocktail with crystal-clear ice and modern nightlife lighting',
     displayName: 'Vodka Cocktails',
@@ -218,7 +243,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/whiskey-bourbon': {
-    image: `https://images.unsplash.com/photo-1527281400683-1aae777175f8?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.whiskeyBourbon,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium whiskey glass with cinematic amber lounge lighting',
     displayName: 'Whiskey & Bourbon',
@@ -228,7 +253,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/tequila-mezcal': {
-    image: `https://images.unsplash.com/photo-1556855810-ac404aa91e85?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.tequilaMezcal,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium tequila cocktail with citrus and agave-inspired warmth',
     displayName: 'Tequila & Mezcal',
@@ -238,7 +263,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/cognac-brandy': {
-    image: `https://images.unsplash.com/photo-1569529465841-dfecdab7503b?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.cognacBrandy,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium brandy and cognac glass with refined amber lighting',
     displayName: 'Cognac & Brandy',
@@ -248,7 +273,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
     positionClass: 'object-center',
   },
   '/drinks/potent-potables/liqueurs': {
-    image: `https://images.unsplash.com/photo-1470337458703-46ad1756a187?${PREMIUM_DRINK_HERO_BASE_PARAMS}`,
+    image: POTENT_POTABLES_HERO_ASSET_PATHS.liqueurs,
     fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium cocktail bar with colorful liqueur bottles and polished glassware',
     displayName: 'Liqueurs',
@@ -262,7 +287,7 @@ export const drinkCategoryHeroVisuals: Record<string, DrinkCategoryHeroVisual> =
 export function getDrinkCategoryHeroVisual(route: string): DrinkCategoryHeroVisual {
   return drinkCategoryHeroVisuals[route] ?? {
     image: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
-    fallbackImage: POTENT_POTABLES_CATEGORY_ASSET_PATHS.cocktails,
+    fallbackImage: NEUTRAL_PREMIUM_DRINK_HERO_IMAGE,
     alt: 'Premium cocktail in a polished bar setting',
     displayName: 'Premium Drink Category',
     mood: 'Premium bar',
