@@ -505,8 +505,13 @@ export default function PostCard({
     setMenuOpen((s) => !s);
   };
 
-  const isVideo =
-    post.imageUrl?.includes("video") || post.imageUrl?.includes(".mp4");
+  const isVideo = (() => {
+    const url = post.imageUrl ?? "";
+    if (!url) return false;
+    if (url.startsWith("data:video/")) return true;
+    const clean = url.toLowerCase().split("?")[0];
+    return /\.(mp4|webm|mov|avi|m4v|ogg|mkv)$/.test(clean);
+  })();
   const hasGallery = !isVideo && galleryImages.length > 1;
 
   const showPreviousImage = (e?: React.MouseEvent) => {
@@ -643,6 +648,9 @@ export default function PostCard({
           <video
             src={post.imageUrl}
             controls
+            muted
+            playsInline
+            preload="metadata"
             className="w-full h-96 object-cover"
           />
         ) : (
