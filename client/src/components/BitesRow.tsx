@@ -5,6 +5,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useUser } from '@/contexts/UserContext';
 import CameraModal from '@/components/CameraModal';
+import { uploadMediaUrl } from '@/lib/uploadMedia';
 import chefLogo from '../asset/logo.jpg'; // Add import to match layout
 
 interface Bite {
@@ -300,13 +301,14 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     setCreateSubmitting(true);
     setCreateError("");
     try {
+      const storedUrl = await uploadMediaUrl(createMediaUrl);
       const res = await fetch("/api/bites", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user.id,
-          imageUrl: createMediaUrl,
+          imageUrl: storedUrl,
           caption: createCaption.trim() || undefined,
         }),
       });

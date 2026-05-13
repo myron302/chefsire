@@ -727,11 +727,11 @@ export class DrizzleStorage implements IStorage {
     const result = await db
       .select({ story: stories, user: users })
       .from(stories)
-      .innerJoin(users, eq(stories.userId, users.id))
+      .leftJoin(users, eq(stories.userId, users.id))
       .where(sql`${stories.expiresAt} > NOW()`)
       .orderBy(desc(stories.createdAt));
 
-    return result.map((row) => ({ ...row.story, user: row.user }));
+    return result.map((row) => ({ ...row.story, user: row.user ?? null }));
   }
 
   async getUserStories(userId: string): Promise<Story[]> {
