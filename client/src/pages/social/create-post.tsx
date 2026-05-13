@@ -15,7 +15,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Camera, Upload, Plus, Minus, X, Video, GripVertical, ChevronLeft, ChevronRight, Radio } from "lucide-react";
+import {
+  Camera,
+  Upload,
+  Plus,
+  Minus,
+  X,
+  Video,
+  GripVertical,
+  ChevronLeft,
+  ChevronRight,
+  Radio,
+} from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
@@ -66,9 +77,15 @@ type IngredientRow = { amount: string; unit: string; name: string };
 type MediaKind = "image" | "video" | "";
 type PostImage = { id: string; url: string };
 
-function buildPostImages(imageUrl: string, additionalImages: string[] = []): PostImage[] {
+function buildPostImages(
+  imageUrl: string,
+  additionalImages: string[] = [],
+): PostImage[] {
   return [imageUrl, ...additionalImages]
-    .map((url, index) => ({ id: `${index}-${url}`, url: String(url ?? "").trim() }))
+    .map((url, index) => ({
+      id: `${index}-${url}`,
+      url: String(url ?? "").trim(),
+    }))
     .filter((image) => image.url);
 }
 
@@ -87,7 +104,7 @@ function ingredientRowsToStrings(rows: IngredientRow[]): string[] {
         .map((x) => String(x ?? "").trim())
         .filter(Boolean)
         .join(" ")
-        .trim()
+        .trim(),
     )
     .filter(Boolean);
 }
@@ -108,10 +125,10 @@ function isVideoUrl(url: string) {
   );
 }
 
-function getCityStateLabelFromPlace(place: google.maps.places.PlaceResult) {
+function getCityStateLabelFromPlace(place: any) {
   const comps = place.address_components || [];
   const find = (type: string) =>
-    comps.find((c) => c.types?.includes(type))?.long_name || "";
+    comps.find((c: any) => c.types?.includes(type))?.long_name || "";
   const city =
     find("locality") ||
     find("sublocality") ||
@@ -219,7 +236,11 @@ export default function CreatePost() {
     }
     setMediaPreview(dataUrl);
     setMediaKind(kind);
-    setFormData((prev) => ({ ...prev, imageUrl: dataUrl, additionalImages: [] }));
+    setFormData((prev) => ({
+      ...prev,
+      imageUrl: dataUrl,
+      additionalImages: [],
+    }));
   };
 
   // Bite / Clip state
@@ -227,7 +248,9 @@ export default function CreatePost() {
   const [showGoLive, setShowGoLive] = useState(false);
   const biteFileRef = useRef<HTMLInputElement>(null);
   const [biteMediaUrl, setBiteMediaUrl] = useState("");
-  const [biteMediaType, setBiteMediaType] = useState<"image" | "video">("video");
+  const [biteMediaType, setBiteMediaType] = useState<"image" | "video">(
+    "video",
+  );
   const [biteSubmitting, setBiteSubmitting] = useState(false);
 
   const handleBiteFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -245,17 +268,28 @@ export default function CreatePost() {
     try {
       toast({ description: "Uploading media…" });
       const storedUrl = await uploadMediaUrl(biteMediaUrl);
-      const expiresAt = biteExpiry === "permanent"
-        ? new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString()
-        : undefined;
+      const expiresAt =
+        biteExpiry === "permanent"
+          ? new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString()
+          : undefined;
       const res = await fetch("/api/bites", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, imageUrl: storedUrl, caption: formData.caption || undefined, expiresAt }),
+        body: JSON.stringify({
+          userId: user.id,
+          imageUrl: storedUrl,
+          mediaType: biteMediaType,
+          caption: formData.caption || undefined,
+          expiresAt,
+        }),
       });
       if (!res.ok) throw new Error("Failed to create bite");
-      toast({ description: formData.postType === "clip" ? "Clip shared!" : "Bite shared!" });
+      await queryClient.invalidateQueries({ queryKey: ["/api/bites/active"] });
+      toast({
+        description:
+          formData.postType === "clip" ? "Clip shared!" : "Bite shared!",
+      });
       setLocation("/feed");
     } catch (err: any) {
       toast({ variant: "destructive", description: err.message });
@@ -311,10 +345,18 @@ export default function CreatePost() {
 
     // Location autocomplete (cities / regions)
     if (locationInputRef.current) {
-      const lac = new google.maps.places.Autocomplete(locationInputRef.current, {
-        types: ["(cities)"],
-        fields: ["name", "formatted_address", "address_components", "geometry"],
-      });
+      const lac = new google.maps.places.Autocomplete(
+        locationInputRef.current,
+        {
+          types: ["(cities)"],
+          fields: [
+            "name",
+            "formatted_address",
+            "address_components",
+            "geometry",
+          ],
+        },
+      );
 
       lac.addListener("place_changed", () => {
         const place = lac.getPlace();
@@ -407,8 +449,8 @@ export default function CreatePost() {
           formData.postType === "recipe"
             ? "Recipe shared successfully!"
             : formData.postType === "review"
-            ? "Review posted successfully!"
-            : "Post created successfully!",
+              ? "Review posted successfully!"
+              : "Post created successfully!",
       });
       setLocation("/feed");
     },
@@ -430,7 +472,10 @@ export default function CreatePost() {
 
     if (formData.postType === "bite" || formData.postType === "clip") {
       if (!biteMediaUrl) {
-        toast({ variant: "destructive", description: "Please pick a video or photo" });
+        toast({
+          variant: "destructive",
+          description: "Please pick a video or photo",
+        });
         return;
       }
       handleBiteSubmit();
@@ -447,7 +492,10 @@ export default function CreatePost() {
 
     if (formData.postType === "recipe") {
       if (!formData.recipeTitle.trim()) {
-        toast({ variant: "destructive", description: "Please add a recipe title" });
+        toast({
+          variant: "destructive",
+          description: "Please add a recipe title",
+        });
         return;
       }
 
@@ -455,22 +503,34 @@ export default function CreatePost() {
       const instructions = normalizeSteps(formData.instructions);
 
       if (ingredients.length === 0) {
-        toast({ variant: "destructive", description: "Please add at least one ingredient" });
+        toast({
+          variant: "destructive",
+          description: "Please add at least one ingredient",
+        });
         return;
       }
       if (instructions.length === 0) {
-        toast({ variant: "destructive", description: "Please add at least one instruction step" });
+        toast({
+          variant: "destructive",
+          description: "Please add at least one instruction step",
+        });
         return;
       }
     }
 
     if (formData.postType === "review") {
       if (!formData.reviewBusinessName.trim()) {
-        toast({ variant: "destructive", description: "Please choose a business" });
+        toast({
+          variant: "destructive",
+          description: "Please choose a business",
+        });
         return;
       }
       if (!formData.reviewRating.trim()) {
-        toast({ variant: "destructive", description: "Please select a rating" });
+        toast({
+          variant: "destructive",
+          description: "Please select a rating",
+        });
         return;
       }
     }
@@ -487,10 +547,14 @@ export default function CreatePost() {
     if (!files.length) return;
 
     const invalidFile = files.find(
-      (file) => !file.type.startsWith("image/") && !file.type.startsWith("video/")
+      (file) =>
+        !file.type.startsWith("image/") && !file.type.startsWith("video/"),
     );
     if (invalidFile) {
-      toast({ variant: "destructive", description: "Please select image or video files only" });
+      toast({
+        variant: "destructive",
+        description: "Please select image or video files only",
+      });
       return;
     }
 
@@ -498,7 +562,8 @@ export default function CreatePost() {
     if (containsVideo && files.length > 1) {
       toast({
         variant: "destructive",
-        description: "Videos can only be uploaded one at a time. Use images for multi-photo posts.",
+        description:
+          "Videos can only be uploaded one at a time. Use images for multi-photo posts.",
       });
       return;
     }
@@ -514,7 +579,9 @@ export default function CreatePost() {
     Promise.all(files.map(readFileAsDataUrl))
       .then((results) => {
         const firstFile = files[0];
-        const kind: MediaKind = firstFile.type.startsWith("video/") ? "video" : "image";
+        const kind: MediaKind = firstFile.type.startsWith("video/")
+          ? "video"
+          : "image";
 
         setMediaFile(firstFile);
         setMediaPreview(results[0] ?? "");
@@ -529,9 +596,11 @@ export default function CreatePost() {
           return;
         }
 
-        const [{ imageUrl, additionalImages }] = [splitPostImages(
-          results.map((url, index) => ({ id: `${index}-${url}`, url }))
-        )];
+        const [{ imageUrl, additionalImages }] = [
+          splitPostImages(
+            results.map((url, index) => ({ id: `${index}-${url}`, url })),
+          ),
+        ];
 
         setFormData((prev) => ({
           ...prev,
@@ -559,7 +628,10 @@ export default function CreatePost() {
     handleChange("additionalImages", []);
   };
 
-  const orderedImages = buildPostImages(formData.imageUrl, formData.additionalImages);
+  const orderedImages = buildPostImages(
+    formData.imageUrl,
+    formData.additionalImages,
+  );
 
   const syncImages = (images: PostImage[]) => {
     const { imageUrl, additionalImages } = splitPostImages(images);
@@ -589,7 +661,10 @@ export default function CreatePost() {
     if (nextIndex < 0 || nextIndex >= orderedImages.length) return;
 
     const nextImages = [...orderedImages];
-    [nextImages[index], nextImages[nextIndex]] = [nextImages[nextIndex], nextImages[index]];
+    [nextImages[index], nextImages[nextIndex]] = [
+      nextImages[nextIndex],
+      nextImages[index],
+    ];
     syncImages(nextImages);
   };
 
@@ -604,11 +679,15 @@ export default function CreatePost() {
       return;
     }
 
-    syncImages([...orderedImages, { id: `${Date.now()}-${nextUrl}`, url: nextUrl }]);
+    syncImages([
+      ...orderedImages,
+      { id: `${Date.now()}-${nextUrl}`, url: nextUrl },
+    ]);
     setGalleryUrlInput("");
   };
 
-  const addTag = () => setFormData((prev) => ({ ...prev, tags: [...prev.tags, ""] }));
+  const addTag = () =>
+    setFormData((prev) => ({ ...prev, tags: [...prev.tags, ""] }));
 
   const removeTag = (index: number) => {
     setFormData((prev) => ({
@@ -645,13 +724,16 @@ export default function CreatePost() {
     setFormData((prev) => ({
       ...prev,
       ingredients: prev.ingredients.map((row, i) =>
-        i === index ? { ...row, ...patch } : row
+        i === index ? { ...row, ...patch } : row,
       ),
     }));
   };
 
   const addInstruction = () => {
-    setFormData((prev) => ({ ...prev, instructions: [...prev.instructions, ""] }));
+    setFormData((prev) => ({
+      ...prev,
+      instructions: [...prev.instructions, ""],
+    }));
   };
 
   const removeInstruction = (index: number) => {
@@ -668,7 +750,7 @@ export default function CreatePost() {
     setFormData((prev) => ({
       ...prev,
       instructions: prev.instructions.map((instruction, i) =>
-        i === index ? value : instruction
+        i === index ? value : instruction,
       ),
     }));
   };
@@ -713,7 +795,8 @@ export default function CreatePost() {
                   <Radio className="w-8 h-8 text-red-500" />
                 </div>
                 <p className="text-sm text-muted-foreground text-center">
-                  Your camera preview will open. Start streaming when you're ready.
+                  Your camera preview will open. Start streaming when you're
+                  ready.
                 </p>
                 <Button
                   type="button"
@@ -729,22 +812,50 @@ export default function CreatePost() {
             {/* Bite / Clip media picker */}
             {(formData.postType === "bite" || formData.postType === "clip") && (
               <div className="space-y-3">
-                <input ref={biteFileRef} type="file" accept="video/*,image/*" className="hidden" onChange={handleBiteFileSelect} />
+                <input
+                  ref={biteFileRef}
+                  type="file"
+                  accept="video/*,image/*"
+                  className="hidden"
+                  onChange={handleBiteFileSelect}
+                />
                 <div className="w-full aspect-video bg-muted rounded-xl overflow-hidden border-2 border-dashed border-border">
                   {biteMediaUrl && biteMediaType === "video" ? (
-                    <video src={biteMediaUrl} className="w-full h-full object-cover" controls muted playsInline />
+                    <video
+                      src={biteMediaUrl}
+                      className="w-full h-full object-cover"
+                      controls
+                      muted
+                      playsInline
+                    />
                   ) : biteMediaUrl ? (
-                    <img src={biteMediaUrl} alt="Preview" className="w-full h-full object-cover" />
+                    <img
+                      src={biteMediaUrl}
+                      alt="Preview"
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
                       <Video className="w-10 h-10" />
-                      <span className="text-sm font-medium">Add video or photo</span>
+                      <span className="text-sm font-medium">
+                        Add video or photo
+                      </span>
                       <div className="flex gap-2">
-                        <Button type="button" size="sm" variant="outline" onClick={() => setShowCamera(true)}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowCamera(true)}
+                        >
                           <Camera className="w-4 h-4 mr-1" />
                           Camera
                         </Button>
-                        <Button type="button" size="sm" variant="outline" onClick={() => biteFileRef.current?.click()}>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => biteFileRef.current?.click()}
+                        >
                           <Upload className="w-4 h-4 mr-1" />
                           Upload
                         </Button>
@@ -757,20 +868,28 @@ export default function CreatePost() {
                 <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg">
                   <div className="flex-1">
                     <p className="text-sm font-medium">
-                      {biteExpiry === "permanent" ? "Add to Bites profile tab (permanent)" : "Show in Bites row for 24 hours only"}
+                      {biteExpiry === "permanent"
+                        ? "Add to Bites profile tab (permanent)"
+                        : "Show in Bites row for 24 hours only"}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      {biteExpiry === "permanent" ? "Stays on your profile Bites tab forever" : "Disappears after 24 hours"}
+                      {biteExpiry === "permanent"
+                        ? "Stays on your profile Bites tab forever"
+                        : "Disappears after 24 hours"}
                     </p>
                   </div>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={biteExpiry === "permanent"}
-                    onClick={() => setBiteExpiry(biteExpiry === "24h" ? "permanent" : "24h")}
+                    onClick={() =>
+                      setBiteExpiry(biteExpiry === "24h" ? "permanent" : "24h")
+                    }
                     className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${biteExpiry === "permanent" ? "bg-primary" : "bg-input"}`}
                   >
-                    <span className={`block h-5 w-5 rounded-full bg-white shadow-lg transition-transform ${biteExpiry === "permanent" ? "translate-x-5" : "translate-x-0"}`} />
+                    <span
+                      className={`block h-5 w-5 rounded-full bg-white shadow-lg transition-transform ${biteExpiry === "permanent" ? "translate-x-5" : "translate-x-0"}`}
+                    />
                   </button>
                 </div>
 
@@ -790,7 +909,9 @@ export default function CreatePost() {
             )}
 
             {/* Media Upload — hidden for bite/clip/live */}
-            <div className={`space-y-2 ${formData.postType === "bite" || formData.postType === "clip" || formData.postType === "live" ? "hidden" : ""}`}>
+            <div
+              className={`space-y-2 ${formData.postType === "bite" || formData.postType === "clip" || formData.postType === "live" ? "hidden" : ""}`}
+            >
               <Label htmlFor="imageUrl">Photo/Video *</Label>
               <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
                 {mediaPreview ? (
@@ -817,7 +938,8 @@ export default function CreatePost() {
                         <div className="flex items-center justify-between">
                           <p className="text-sm font-medium">Photo order</p>
                           <p className="text-xs text-muted-foreground">
-                            The first image is the cover photo shown in the feed.
+                            The first image is the cover photo shown in the
+                            feed.
                           </p>
                         </div>
 
@@ -835,7 +957,9 @@ export default function CreatePost() {
                               />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-medium">
-                                  {index === 0 ? "Cover image" : `Image ${index + 1}`}
+                                  {index === 0
+                                    ? "Cover image"
+                                    : `Image ${index + 1}`}
                                 </p>
                                 <p className="truncate text-xs text-muted-foreground">
                                   {image.url}
@@ -883,7 +1007,11 @@ export default function CreatePost() {
                             value={galleryUrlInput}
                             onChange={(e) => setGalleryUrlInput(e.target.value)}
                           />
-                          <Button type="button" variant="outline" onClick={addImageUrlToGallery}>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={addImageUrlToGallery}
+                          >
                             <Plus className="mr-2 h-4 w-4" />
                             Add image
                           </Button>
@@ -925,7 +1053,9 @@ export default function CreatePost() {
                       <Button
                         type="button"
                         variant="outline"
-                        onClick={() => document.getElementById("file-input")?.click()}
+                        onClick={() =>
+                          document.getElementById("file-input")?.click()
+                        }
                         className="flex-1"
                       >
                         <Upload className="h-4 w-4 mr-2" />
@@ -985,7 +1115,9 @@ export default function CreatePost() {
                       ref={businessInputRef}
                       placeholder="Search a business (Google Places)…"
                       value={formData.reviewBusinessName}
-                      onChange={(e) => handleChange("reviewBusinessName", e.target.value)}
+                      onChange={(e) =>
+                        handleChange("reviewBusinessName", e.target.value)
+                      }
                     />
                     <p className="text-xs text-muted-foreground">
                       Start typing to use Google Places suggestions.
@@ -999,18 +1131,24 @@ export default function CreatePost() {
                         id="reviewFullAddress"
                         placeholder="Auto-filled from selection"
                         value={formData.reviewFullAddress}
-                        onChange={(e) => handleChange("reviewFullAddress", e.target.value)}
+                        onChange={(e) =>
+                          handleChange("reviewFullAddress", e.target.value)
+                        }
                       />
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="reviewLocationLabel">Location (City/State)</Label>
+                      <Label htmlFor="reviewLocationLabel">
+                        Location (City/State)
+                      </Label>
                       <Input
                         id="reviewLocationLabel"
                         ref={locationInputRef}
                         placeholder="City, State (Google Places)…"
                         value={formData.reviewLocationLabel}
-                        onChange={(e) => handleChange("reviewLocationLabel", e.target.value)}
+                        onChange={(e) =>
+                          handleChange("reviewLocationLabel", e.target.value)
+                        }
                       />
                     </div>
                   </div>
@@ -1051,7 +1189,9 @@ export default function CreatePost() {
                             onClick={() =>
                               handleChange(
                                 "reviewPriceLevel",
-                                formData.reviewPriceLevel === value ? "" : value
+                                formData.reviewPriceLevel === value
+                                  ? ""
+                                  : value,
                               )
                             }
                             className={`px-3 py-1.5 rounded border text-sm font-semibold transition-colors ${
@@ -1074,7 +1214,9 @@ export default function CreatePost() {
                       id="reviewVerdict"
                       placeholder="e.g., Def recommend"
                       value={formData.reviewVerdict}
-                      onChange={(e) => handleChange("reviewVerdict", e.target.value)}
+                      onChange={(e) =>
+                        handleChange("reviewVerdict", e.target.value)
+                      }
                     />
                   </div>
 
@@ -1085,7 +1227,9 @@ export default function CreatePost() {
                         id="reviewPros"
                         placeholder="e.g., Great flavor; friendly staff"
                         value={formData.reviewPros}
-                        onChange={(e) => handleChange("reviewPros", e.target.value)}
+                        onChange={(e) =>
+                          handleChange("reviewPros", e.target.value)
+                        }
                       />
                       <p className="text-xs text-muted-foreground">
                         Separate multiple with a semicolon (;)
@@ -1097,7 +1241,9 @@ export default function CreatePost() {
                         id="reviewCons"
                         placeholder="e.g., Parking; long wait"
                         value={formData.reviewCons}
-                        onChange={(e) => handleChange("reviewCons", e.target.value)}
+                        onChange={(e) =>
+                          handleChange("reviewCons", e.target.value)
+                        }
                       />
                       <p className="text-xs text-muted-foreground">
                         Separate multiple with a semicolon (;)
@@ -1111,7 +1257,9 @@ export default function CreatePost() {
                       id="reviewNotes"
                       placeholder="e.g., Try the stewed chicken"
                       value={formData.reviewNotes}
-                      onChange={(e) => handleChange("reviewNotes", e.target.value)}
+                      onChange={(e) =>
+                        handleChange("reviewNotes", e.target.value)
+                      }
                     />
                   </div>
 
@@ -1160,7 +1308,9 @@ export default function CreatePost() {
             )}
 
             {/* Tags */}
-            <div className={`space-y-2 ${formData.postType === "bite" || formData.postType === "clip" || formData.postType === "live" ? "hidden" : ""}`}>
+            <div
+              className={`space-y-2 ${formData.postType === "bite" || formData.postType === "clip" || formData.postType === "live" ? "hidden" : ""}`}
+            >
               <Label>Tags</Label>
               <div className="space-y-2">
                 {formData.tags.map((tag, index) => (
@@ -1212,7 +1362,9 @@ export default function CreatePost() {
                       id="recipeTitle"
                       placeholder="Enter the recipe name"
                       value={formData.recipeTitle}
-                      onChange={(e) => handleChange("recipeTitle", e.target.value)}
+                      onChange={(e) =>
+                        handleChange("recipeTitle", e.target.value)
+                      }
                       data-testid="input-recipe-title"
                     />
                   </div>
@@ -1226,7 +1378,9 @@ export default function CreatePost() {
                         inputMode="numeric"
                         placeholder="30"
                         value={formData.cookTime}
-                        onChange={(e) => handleChange("cookTime", e.target.value)}
+                        onChange={(e) =>
+                          handleChange("cookTime", e.target.value)
+                        }
                         data-testid="input-cook-time"
                       />
                     </div>
@@ -1238,7 +1392,9 @@ export default function CreatePost() {
                         inputMode="numeric"
                         placeholder="4"
                         value={formData.servings}
-                        onChange={(e) => handleChange("servings", e.target.value)}
+                        onChange={(e) =>
+                          handleChange("servings", e.target.value)
+                        }
                         data-testid="input-servings"
                       />
                     </div>
@@ -1246,7 +1402,9 @@ export default function CreatePost() {
                       <Label htmlFor="difficulty">Difficulty</Label>
                       <Select
                         value={formData.difficulty}
-                        onValueChange={(value) => handleChange("difficulty", value)}
+                        onValueChange={(value) =>
+                          handleChange("difficulty", value)
+                        }
                       >
                         <SelectTrigger data-testid="select-difficulty">
                           <SelectValue />
@@ -1338,7 +1496,9 @@ export default function CreatePost() {
                               placeholder="Ingredient"
                               value={row.name}
                               onChange={(e) =>
-                                updateIngredient(index, { name: e.target.value })
+                                updateIngredient(index, {
+                                  name: e.target.value,
+                                })
                               }
                               className="h-9"
                               data-testid={`input-ingredient-name-${index}`}
@@ -1379,7 +1539,10 @@ export default function CreatePost() {
 
                     <div className="space-y-2">
                       {formData.instructions.map((instruction, index) => (
-                        <div key={index} className="flex items-center space-x-2">
+                        <div
+                          key={index}
+                          className="flex items-center space-x-2"
+                        >
                           <Input
                             placeholder={`Step ${index + 1}`}
                             value={instruction}
@@ -1417,10 +1580,10 @@ export default function CreatePost() {
                 {createPostMutation.isPending || biteSubmitting
                   ? "Posting..."
                   : formData.postType === "bite"
-                  ? "Share Bite"
-                  : formData.postType === "clip"
-                  ? "Share Clip"
-                  : "Post"}
+                    ? "Share Bite"
+                    : formData.postType === "clip"
+                      ? "Share Clip"
+                      : "Post"}
               </Button>
             )}
           </form>
@@ -1428,7 +1591,11 @@ export default function CreatePost() {
       </Card>
 
       <GoLiveModal open={showGoLive} onOpenChange={setShowGoLive} />
-      <CameraModal open={showCamera} onOpenChange={setShowCamera} onCapture={handleCameraCapture} />
+      <CameraModal
+        open={showCamera}
+        onOpenChange={setShowCamera}
+        onCapture={handleCameraCapture}
+      />
     </div>
   );
 }

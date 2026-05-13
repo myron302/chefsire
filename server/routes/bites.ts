@@ -45,6 +45,7 @@ type ActiveBitePayload = {
   id: string;
   userId: string;
   imageUrl: string;
+  mediaType: "image" | "video";
   caption: string | null;
   createdAt: string | null;
   expiresAt: string | null;
@@ -57,15 +58,19 @@ type ActiveBitePayload = {
 
 async function fetchActiveBites(): Promise<ActiveBitePayload[]> {
   if (!db) {
-    throw Object.assign(new Error("Database not configured (set DATABASE_URL)."), {
-      status: 503,
-    });
+    throw Object.assign(
+      new Error("Database not configured (set DATABASE_URL)."),
+      {
+        status: 503,
+      },
+    );
   }
   const rows = await db
     .select({
       id: stories.id,
       userId: stories.userId,
       imageUrl: stories.imageUrl,
+      mediaType: stories.mediaType,
       caption: stories.caption,
       createdAt: stories.createdAt,
       expiresAt: stories.expiresAt,
@@ -78,19 +83,33 @@ async function fetchActiveBites(): Promise<ActiveBitePayload[]> {
     .where(sql`${stories.expiresAt} > NOW()`)
     .orderBy(desc(stories.createdAt));
 
-  return rows.map((row) => ({
-    id: row.id,
-    userId: row.userId,
-    imageUrl: row.imageUrl,
-    caption: row.caption ?? null,
-    createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
-    expiresAt: row.expiresAt ? new Date(row.expiresAt).toISOString() : null,
-    user: {
-      username: row.username ?? "Chef",
-      displayName: row.displayName ?? null,
-      avatar: row.avatar ?? null,
-    },
-  }));
+  return rows.map(
+    (row: {
+      id: string;
+      userId: string;
+      imageUrl: string;
+      mediaType: "image" | "video";
+      caption: string | null;
+      createdAt: Date | string | null;
+      expiresAt: Date | string | null;
+      username: string | null;
+      displayName: string | null;
+      avatar: string | null;
+    }) => ({
+      id: row.id,
+      userId: row.userId,
+      imageUrl: row.imageUrl,
+      mediaType: row.mediaType,
+      caption: row.caption ?? null,
+      createdAt: row.createdAt ? new Date(row.createdAt).toISOString() : null,
+      expiresAt: row.expiresAt ? new Date(row.expiresAt).toISOString() : null,
+      user: {
+        username: row.username ?? "Chef",
+        displayName: row.displayName ?? null,
+        avatar: row.avatar ?? null,
+      },
+    }),
+  );
 }
 
 // List currently-active bites across network (optionally scoped by viewer)
@@ -139,6 +158,7 @@ r.post("/", async (req, res) => {
     const schema = z.object({
       userId: z.string(),
       imageUrl: z.string().min(1),
+      mediaType: z.enum(["image", "video"]),
       caption: z.string().max(500).optional(),
       expiresAt: z.string().datetime().optional(),
     });
@@ -151,6 +171,7 @@ r.post("/", async (req, res) => {
     const created = await storage.createStory({
       userId: data.userId,
       imageUrl: data.imageUrl,
+      mediaType: data.mediaType,
       caption: data.caption ?? null,
       expiresAt,
     } as any);
@@ -162,7 +183,9 @@ r.post("/", async (req, res) => {
   } catch (e: any) {
     if (e?.issues) {
       console.warn("[bites] POST / validation failed", e.issues);
-      return res.status(400).json({ message: "Invalid bite", errors: e.issues });
+      return res
+        .status(400)
+        .json({ message: "Invalid bite", errors: e.issues });
     }
     console.error("[bites] POST / error", e);
     res.status(500).json({ message: "Failed to create bite" });
