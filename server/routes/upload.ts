@@ -45,11 +45,14 @@ const upload = multer({
       'video/mp4',
       'video/quicktime',
       'video/x-msvideo',
+      'video/webm',
+      'video/ogg',
       'application/zip',
       'application/epub+zip',
       'image/jpeg',
       'image/png',
-      'image/gif'
+      'image/gif',
+      'image/webp',
     ];
 
     if (allowedTypes.includes(file.mimetype)) {

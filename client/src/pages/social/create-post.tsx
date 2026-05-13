@@ -22,6 +22,7 @@ import { useUser } from "@/contexts/UserContext";
 import { useGoogleMaps } from "@/hooks/useGoogleMaps";
 import GoLiveModal from "@/components/GoLiveModal";
 import CameraModal from "@/components/CameraModal";
+import { uploadMediaUrl } from "@/lib/uploadMedia";
 
 const EMPTY_SELECT = "__empty__";
 
@@ -210,13 +211,15 @@ export default function CreatePost() {
 
   const handleCameraCapture = (dataUrl: string, type: "image" | "video") => {
     const kind: MediaKind = type;
+    // For bite/clip, feed the capture into the bite media state
+    if (formData.postType === "bite" || formData.postType === "clip") {
+      setBiteMediaType(type);
+      setBiteMediaUrl(dataUrl);
+      return;
+    }
     setMediaPreview(dataUrl);
     setMediaKind(kind);
-    if (kind === "video") {
-      setFormData((prev) => ({ ...prev, imageUrl: dataUrl, additionalImages: [] }));
-    } else {
-      setFormData((prev) => ({ ...prev, imageUrl: dataUrl, additionalImages: [] }));
-    }
+    setFormData((prev) => ({ ...prev, imageUrl: dataUrl, additionalImages: [] }));
   };
 
   // Bite / Clip state
@@ -240,6 +243,8 @@ export default function CreatePost() {
     if (!user?.id || !biteMediaUrl) return;
     setBiteSubmitting(true);
     try {
+      toast({ description: "Uploading media…" });
+      const storedUrl = await uploadMediaUrl(biteMediaUrl);
       const expiresAt = biteExpiry === "permanent"
         ? new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString()
         : undefined;
@@ -247,7 +252,7 @@ export default function CreatePost() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: user.id, imageUrl: biteMediaUrl, caption: formData.caption || undefined, expiresAt }),
+        body: JSON.stringify({ userId: user.id, imageUrl: storedUrl, caption: formData.caption || undefined, expiresAt }),
       });
       if (!res.ok) throw new Error("Failed to create bite");
       toast({ description: formData.postType === "clip" ? "Clip shared!" : "Bite shared!" });
@@ -725,19 +730,25 @@ export default function CreatePost() {
             {(formData.postType === "bite" || formData.postType === "clip") && (
               <div className="space-y-3">
                 <input ref={biteFileRef} type="file" accept="video/*,image/*" className="hidden" onChange={handleBiteFileSelect} />
-                <div
-                  className="w-full aspect-video bg-muted rounded-xl flex items-center justify-center cursor-pointer overflow-hidden border-2 border-dashed border-border hover:border-primary transition-colors"
-                  onClick={() => biteFileRef.current?.click()}
-                >
+                <div className="w-full aspect-video bg-muted rounded-xl overflow-hidden border-2 border-dashed border-border">
                   {biteMediaUrl && biteMediaType === "video" ? (
                     <video src={biteMediaUrl} className="w-full h-full object-cover" controls muted playsInline />
                   ) : biteMediaUrl ? (
                     <img src={biteMediaUrl} alt="Preview" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-muted-foreground">
                       <Video className="w-10 h-10" />
-                      <span className="text-sm font-medium">Tap to pick video or photo</span>
-                      <span className="text-xs">Video recommended</span>
+                      <span className="text-sm font-medium">Add video or photo</span>
+                      <div className="flex gap-2">
+                        <Button type="button" size="sm" variant="outline" onClick={() => setShowCamera(true)}>
+                          <Camera className="w-4 h-4 mr-1" />
+                          Camera
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={() => biteFileRef.current?.click()}>
+                          <Upload className="w-4 h-4 mr-1" />
+                          Upload
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>
