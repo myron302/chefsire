@@ -20,7 +20,13 @@ export async function uploadMediaUrl(dataOrBlobUrl: string): Promise<string> {
     return dataOrBlobUrl; // already a real URL, nothing to do
   }
 
-  const ext = blob.type.split("/")[1]?.split(";")[0] ?? "bin";
+  const mimeSubtype = blob.type.split("/")[1]?.split(";")[0] ?? "bin";
+  const extByMimeSubtype: Record<string, string> = {
+    mp4: "mp4",
+    quicktime: "mov",
+    webm: "webm",
+  };
+  const ext = extByMimeSubtype[mimeSubtype] ?? mimeSubtype;
   const form = new FormData();
   form.append("file", blob, `media.${ext}`);
 
