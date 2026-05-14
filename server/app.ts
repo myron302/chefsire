@@ -80,7 +80,23 @@ const uploadsDir = path.resolve(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
-app.use("/uploads", express.static(uploadsDir));
+const uploadContentTypes: Record<string, string> = {
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+  ".webm": "video/webm",
+};
+
+app.use(
+  "/uploads",
+  express.static(uploadsDir, {
+    setHeaders: (res, filePath) => {
+      const contentType = uploadContentTypes[path.extname(filePath).toLowerCase()];
+      if (contentType) {
+        res.setHeader("Content-Type", contentType);
+      }
+    },
+  }),
+);
 
 // Serve built client at dist/public
 // Try multiple possible locations for the client build

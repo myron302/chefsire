@@ -73,6 +73,34 @@ const CustomLogo = () => (
   </div>
 );
 
+const isMovVideoUrl = (url?: string) =>
+  Boolean(url && /\.mov(?:[?#].*)?$/i.test(url));
+
+const isQuickTimeVideo = (url?: string | null, mimeType?: string | null) =>
+  isMovVideoUrl(url ?? undefined) || mimeType === "video/quicktime";
+
+const logVideoLoadedMetadata = (label: string, video: HTMLVideoElement) => {
+  console.info(`[BitesRow video] ${label} loadedmetadata`, {
+    videoWidth: video.videoWidth,
+    videoHeight: video.videoHeight,
+    duration: video.duration,
+    readyState: video.readyState,
+  });
+};
+
+const logVideoCanPlay = (label: string, video: HTMLVideoElement) => {
+  console.info(`[BitesRow video] ${label} canplay`, {
+    readyState: video.readyState,
+  });
+};
+
+const logVideoError = (label: string, video: HTMLVideoElement) => {
+  console.error(`[BitesRow video] ${label} error`, {
+    code: video.error?.code,
+    message: video.error?.message,
+  });
+};
+
 interface BitesRowProps {
   className?: string;
 }
@@ -95,6 +123,9 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const [createMediaType, setCreateMediaType] = useState<"image" | "video">(
     "video",
   );
+  const [createMediaMimeType, setCreateMediaMimeType] = useState<string | null>(
+    null,
+  );
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState("");
   const [showCamera, setShowCamera] = useState(false);
@@ -102,6 +133,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
 
   const handleCameraCapture = (dataUrl: string, type: "image" | "video") => {
     setCreateMediaType(type);
+    setCreateMediaMimeType(null);
     setCreateMediaUrl(dataUrl);
   };
 
@@ -252,6 +284,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     if (!file) return;
     const isVideo = file.type.startsWith("video/");
     setCreateMediaType(isVideo ? "video" : "image");
+    setCreateMediaMimeType(file.type || null);
     const reader = new FileReader();
     reader.onload = () => setCreateMediaUrl(reader.result as string);
     reader.readAsDataURL(file);
@@ -262,6 +295,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     setCreateCaption("");
     setCreateMediaUrl(null);
     setCreateMediaType("video");
+    setCreateMediaMimeType(null);
     setCreateError("");
   };
 
@@ -419,10 +453,20 @@ export function BitesRow({ className = "" }: BitesRowProps) {
               {createMediaUrl && createMediaType === "video" ? (
                 <video
                   src={createMediaUrl}
-                  className="w-full h-full object-cover rounded-xl"
+                  className="w-full h-full object-contain rounded-xl bg-black"
                   controls
                   muted
                   playsInline
+                  preload="metadata"
+                  onLoadedMetadata={(event) =>
+                    logVideoLoadedMetadata("create-preview", event.currentTarget)
+                  }
+                  onCanPlay={(event) =>
+                    logVideoCanPlay("create-preview", event.currentTarget)
+                  }
+                  onError={(event) =>
+                    logVideoError("create-preview", event.currentTarget)
+                  }
                 />
               ) : createMediaUrl ? (
                 <img
@@ -459,6 +503,15 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                 </div>
               )}
             </div>
+
+            {isQuickTimeVideo(createMediaUrl, createMediaMimeType) && (
+              <p className="rounded-lg bg-amber-50 p-3 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+                MOV files from iPhone can render as black in Chrome when they
+                use HEVC. This is a browser compatibility issue, not a BiteRow
+                API issue. For reliable playback, upload browser-safe MP4
+                (H.264) or WebM; server-side transcoding can be added later.
+              </p>
+            )}
 
             {/* Caption */}
             <textarea
@@ -542,18 +595,6 @@ export function BitesRow({ className = "" }: BitesRowProps) {
             </Button>
           </div>
 
-          {/* Navigation areas */}
-          <div className="absolute inset-0 flex">
-            <div className="flex-1 cursor-pointer" onClick={handlePrevBite} />
-            <div
-              className="flex-1 cursor-pointer"
-              onClick={handleNextBite}
-              onMouseDown={() => setIsPaused(true)}
-              onMouseUp={() => setIsPaused(false)}
-              onMouseLeave={() => setIsPaused(false)}
-            />
-          </div>
-
           {/* Navigation arrows (desktop) */}
           {(currentUserIndex > 0 || currentBiteIndex > 0) && (
             <Button
@@ -576,90 +617,107 @@ export function BitesRow({ className = "" }: BitesRowProps) {
           </Button>
 
           {/* Bite Content */}
-          <div className="relative w-full max-w-md mx-auto aspect-[9/16]">
-            {currentBite.content.type === "video" ? (
-              <video
-                key={currentBite.id}
-                src={currentBite.content.url}
-                className="w-full h-full object-cover rounded-lg"
-                controls
-                autoPlay
-                muted
-                playsInline
-                preload="metadata"
-                onLoadedMetadata={(event) =>
-                  event.currentTarget.play().catch(() => undefined)
-                }
-                onCanPlay={(event) =>
-                  event.currentTarget.play().catch(() => undefined)
-                }
-              />
-            ) : (
-              <img
-                src={currentBite.content.url}
-                alt={currentBite.caption}
-                className="w-full h-full object-cover rounded-lg"
-              />
-            )}
-
-            {/* Caption and actions */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
-              <div className="flex items-start justify-between mb-2">
-                <p className="text-white text-sm flex-1 mr-4">
-                  {currentBite.caption}
-                </p>
-                <div className="flex flex-col items-center space-y-3">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:bg-white/20"
-                    onClick={() => handleLike(currentBite.id)}
-                  >
-                    <Heart
-                      className={`w-6 h-6 ${
-                        currentBite.isLiked
-                          ? "fill-red-500 text-red-500"
-                          : "text-white"
-                      }`}
-                    />
-                  </Button>
-                  <span className="text-white text-xs">
-                    {currentBite.likes}
-                  </span>
-
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:bg-white/20"
-                  >
-                    <MessageCircle className="w-6 h-6" />
-                  </Button>
-
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="text-white hover:bg-white/20"
-                  >
-                    <Share className="w-6 h-6" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Tags */}
-              {currentBite.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {currentBite.tags.map((tag) => (
-                    <Badge
-                      key={tag}
-                      variant="secondary"
-                      className="text-xs bg-white/20 text-white border-none"
-                    >
-                      #{tag}
-                    </Badge>
-                  ))}
-                </div>
+          <div className="flex w-full max-w-md flex-col items-center gap-2 mx-auto">
+            <div className="relative w-full min-h-[300px] aspect-[9/16]">
+              {currentBite.content.type === "video" ? (
+                <video
+                  key={currentBite.id}
+                  src={currentBite.content.url}
+                  className="w-full h-full min-h-[300px] object-contain rounded-lg bg-black"
+                  controls
+                  autoPlay
+                  muted
+                  playsInline
+                  preload="metadata"
+                  onLoadedMetadata={(event) => {
+                    logVideoLoadedMetadata("modal-viewer", event.currentTarget);
+                    event.currentTarget.play().catch(() => undefined);
+                  }}
+                  onCanPlay={(event) => {
+                    logVideoCanPlay("modal-viewer", event.currentTarget);
+                    event.currentTarget.play().catch(() => undefined);
+                  }}
+                  onError={(event) =>
+                    logVideoError("modal-viewer", event.currentTarget)
+                  }
+                  onPlay={() => setIsPaused(false)}
+                  onPause={() => setIsPaused(true)}
+                />
+              ) : (
+                <img
+                  src={currentBite.content.url}
+                  alt={currentBite.caption}
+                  className="w-full h-full object-cover rounded-lg"
+                />
               )}
+
+              {/* Caption and actions */}
+              <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
+                <div className="flex items-start justify-between mb-2">
+                  <p className="text-white text-sm flex-1 mr-4">
+                    {currentBite.caption}
+                  </p>
+                  <div className="flex flex-col items-center space-y-3">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-white hover:bg-white/20"
+                      onClick={() => handleLike(currentBite.id)}
+                    >
+                      <Heart
+                        className={`w-6 h-6 ${
+                          currentBite.isLiked
+                            ? "fill-red-500 text-red-500"
+                            : "text-white"
+                        }`}
+                      />
+                    </Button>
+                    <span className="text-white text-xs">
+                      {currentBite.likes}
+                    </span>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-white hover:bg-white/20"
+                    >
+                      <MessageCircle className="w-6 h-6" />
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-white hover:bg-white/20"
+                    >
+                      <Share className="w-6 h-6" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Tags */}
+                {currentBite.tags.length > 0 && (
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {currentBite.tags.map((tag) => (
+                      <Badge
+                        key={tag}
+                        variant="secondary"
+                        className="text-xs bg-white/20 text-white border-none"
+                      >
+                        #{tag}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
+
+            {isMovVideoUrl(currentBite.content.url) && (
+              <p className="rounded-lg bg-amber-500/90 p-3 text-xs text-black shadow-lg">
+                MOV/iPhone HEVC videos may render as black in Chrome. This is a
+                browser compatibility issue, not a BiteRow API issue. Use
+                browser-safe MP4 (H.264) or WebM until transcoding is added.
+              </p>
+            )}
           </div>
         </div>
       )}
