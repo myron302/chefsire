@@ -11,7 +11,10 @@ import {
   Video,
   Upload,
   Camera,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -114,7 +117,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const [currentUserIndex, setCurrentUserIndex] = useState(0);
   const [currentBiteIndex, setCurrentBiteIndex] = useState(0);
   const [progress, setProgress] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isBiteMuted, setIsBiteMuted] = useState(true);
 
   // Create bite state
   const [isCreating, setIsCreating] = useState(false);
@@ -129,14 +132,18 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState("");
   const [showCamera, setShowCamera] = useState(false);
+  const [, setLocation] = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const activeBiteVideoRef = useRef<HTMLVideoElement | null>(null);
   const biteVideoMutedRef = useRef(true);
 
   const initializeBiteVideoAudio = useCallback(
     (video: HTMLVideoElement | null) => {
+      activeBiteVideoRef.current = video;
       if (!video) return;
       video.defaultMuted = true;
       video.muted = biteVideoMutedRef.current;
+      if (!video.muted) video.volume = 1;
     },
     [],
   );
@@ -206,25 +213,31 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const currentUser = userBites[currentUserIndex];
   const currentBite = currentUser?.bites[currentBiteIndex];
 
-  // Auto-advance bites
-  useEffect(() => {
-    if (!isViewing || isPaused || !currentBite) return;
+  const playActiveBiteVideo = useCallback((unmute = false) => {
+    const video = activeBiteVideoRef.current;
+    if (!video) return;
 
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const increment = 100 / (currentBite.duration * 10);
-        const newProgress = prev + increment;
+    if (unmute) {
+      video.muted = false;
+      video.volume = 1;
+      biteVideoMutedRef.current = false;
+      setIsBiteMuted(false);
+    }
 
-        if (newProgress >= 100) {
-          handleNextBite();
-          return 0;
-        }
-        return newProgress;
-      });
-    }, 100);
+    video.play().catch(() => undefined);
+  }, []);
 
-    return () => clearInterval(interval);
-  }, [isViewing, currentUserIndex, currentBiteIndex, isPaused, currentBite]);
+  const canGoPreviousBite = useCallback(() => {
+    return currentBiteIndex > 0 || currentUserIndex > 0;
+  }, [currentBiteIndex, currentUserIndex]);
+
+  const canGoNextBite = useCallback(() => {
+    if (!currentUser) return false;
+    return (
+      currentBiteIndex < currentUser.bites.length - 1 ||
+      currentUserIndex < userBites.length - 1
+    );
+  }, [currentBiteIndex, currentUser, currentUserIndex, userBites.length]);
 
   const openUserBites = (userBite: UserBites) => {
     const userIndex = userBites.findIndex(
@@ -233,6 +246,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     setCurrentUserIndex(userIndex);
     setCurrentBiteIndex(0);
     biteVideoMutedRef.current = true;
+    setIsBiteMuted(true);
     setIsViewing(true);
     setProgress(0);
 
@@ -246,36 +260,59 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     setProgress(0);
   };
 
-  const handleNextBite = () => {
-    if (!currentUser) return;
+  const handleNextBite = useCallback(() => {
+    if (!currentUser || !canGoNextBite()) return;
 
     if (currentBiteIndex < currentUser.bites.length - 1) {
       setCurrentBiteIndex((prev) => prev + 1);
       setProgress(0);
-    } else if (currentUserIndex < userBites.length - 1) {
-      const nextUserIndex = currentUserIndex + 1;
-      setCurrentUserIndex(nextUserIndex);
-      setCurrentBiteIndex(0);
-      setProgress(0);
-
-      markUserAsViewed(userBites[nextUserIndex].userId);
-    } else {
-      closeBites();
+      return;
     }
-  };
 
-  const handlePrevBite = () => {
+    const nextUserIndex = currentUserIndex + 1;
+    setCurrentUserIndex(nextUserIndex);
+    setCurrentBiteIndex(0);
+    setProgress(0);
+    markUserAsViewed(userBites[nextUserIndex].userId);
+  }, [
+    canGoNextBite,
+    currentBiteIndex,
+    currentUser,
+    currentUserIndex,
+    userBites,
+  ]);
+
+  const handlePrevBite = useCallback(() => {
+    if (!canGoPreviousBite()) return;
+
     if (currentBiteIndex > 0) {
       setCurrentBiteIndex((prev) => prev - 1);
       setProgress(0);
-    } else if (currentUserIndex > 0) {
-      const prevUserIndex = currentUserIndex - 1;
-      const prevUser = userBites[prevUserIndex];
-      setCurrentUserIndex(prevUserIndex);
-      setCurrentBiteIndex(prevUser.bites.length - 1);
-      setProgress(0);
+      return;
     }
-  };
+
+    const prevUserIndex = currentUserIndex - 1;
+    const prevUser = userBites[prevUserIndex];
+    setCurrentUserIndex(prevUserIndex);
+    setCurrentBiteIndex(prevUser.bites.length - 1);
+    setProgress(0);
+  }, [canGoPreviousBite, currentBiteIndex, currentUserIndex, userBites]);
+
+  useEffect(() => {
+    if (!isViewing || currentBite?.content.type !== "video") return;
+
+    setProgress(0);
+    const animationFrame = window.requestAnimationFrame(() => {
+      playActiveBiteVideo(false);
+    });
+
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [
+    currentBite?.id,
+    currentBite?.content.type,
+    isViewing,
+    playActiveBiteVideo,
+  ]);
 
   const markUserAsViewed = (userId: string) => {
     setViewedUserIds((prev) => new Set(prev).add(userId));
@@ -288,6 +325,46 @@ export function BitesRow({ className = "" }: BitesRowProps) {
       else next.add(biteId);
       return next;
     });
+  };
+
+  const handleSoundToggle = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const video = activeBiteVideoRef.current;
+    if (!video) return;
+
+    if (isBiteMuted) {
+      video.muted = false;
+      video.volume = 1;
+      biteVideoMutedRef.current = false;
+      setIsBiteMuted(false);
+      video.play().catch(() => undefined);
+    } else {
+      video.muted = true;
+      biteVideoMutedRef.current = true;
+      setIsBiteMuted(true);
+    }
+  };
+
+  const handleViewerTap = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+    playActiveBiteVideo(currentBite?.content.type === "video");
+
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const clickX = event.clientX - bounds.left;
+    if (clickX < bounds.width / 2) {
+      handlePrevBite();
+    } else {
+      handleNextBite();
+    }
+  };
+
+  const handleMessageBiteOwner = (
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => {
+    event.stopPropagation();
+    if (!currentBite) return;
+    closeBites();
+    setLocation(`/messages?new=${encodeURIComponent(currentBite.username)}`);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -470,7 +547,10 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                   playsInline
                   preload="metadata"
                   onLoadedMetadata={(event) =>
-                    logVideoLoadedMetadata("create-preview", event.currentTarget)
+                    logVideoLoadedMetadata(
+                      "create-preview",
+                      event.currentTarget,
+                    )
                   }
                   onCanPlay={(event) =>
                     logVideoCanPlay("create-preview", event.currentTarget)
@@ -599,50 +679,67 @@ export function BitesRow({ className = "" }: BitesRowProps) {
             <Button
               variant="ghost"
               size="icon"
-              className="text-white hover:bg-white/20"
-              onClick={closeBites}
+              className="min-h-11 min-w-11 text-white hover:bg-white/20"
+              onClick={(event) => {
+                event.stopPropagation();
+                closeBites();
+              }}
             >
               <X className="w-5 h-5" />
             </Button>
           </div>
 
-          {/* Navigation arrows (desktop) */}
-          {(currentUserIndex > 0 || currentBiteIndex > 0) && (
+          {/* Navigation arrows */}
+          {canGoPreviousBite() && (
             <Button
               variant="ghost"
               size="icon"
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 hidden md:flex z-20"
-              onClick={handlePrevBite}
+              className="absolute left-3 top-1/2 z-20 flex min-h-12 min-w-12 -translate-y-1/2 rounded-full bg-black/30 text-white hover:bg-white/20"
+              onClick={(event) => {
+                event.stopPropagation();
+                handlePrevBite();
+              }}
             >
-              <ChevronLeft className="w-6 h-6" />
+              <ChevronLeft className="w-7 h-7" />
             </Button>
           )}
 
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 hidden md:flex z-20"
-            onClick={handleNextBite}
-          >
-            <ChevronRight className="w-6 h-6" />
-          </Button>
+          {canGoNextBite() && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-3 top-1/2 z-20 flex min-h-12 min-w-12 -translate-y-1/2 rounded-full bg-black/30 text-white hover:bg-white/20"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleNextBite();
+              }}
+            >
+              <ChevronRight className="w-7 h-7" />
+            </Button>
+          )}
 
           {/* Bite Content */}
-          <div className="flex w-full max-w-md flex-col items-center gap-2 mx-auto">
-            <div className="relative w-full min-h-[300px] aspect-[9/16]">
+          <div className="flex w-full max-w-md flex-col items-center gap-2 mx-auto px-3">
+            <div
+              className="relative w-full min-h-[300px] aspect-[9/16] cursor-pointer touch-manipulation"
+              onClick={handleViewerTap}
+            >
               {currentBite.content.type === "video" ? (
                 <video
                   key={currentBite.id}
                   src={currentBite.content.url}
                   className="w-full h-full min-h-[300px] object-contain rounded-lg bg-black"
                   ref={initializeBiteVideoAudio}
-                  controls
                   autoPlay
+                  muted={isBiteMuted}
                   playsInline
                   preload="metadata"
                   onLoadedMetadata={(event) => {
                     logVideoLoadedMetadata("modal-viewer", event.currentTarget);
-                    event.currentTarget.play().catch(() => undefined);
+                    const duration = event.currentTarget.duration;
+                    setProgress(
+                      Number.isFinite(duration) && duration > 0 ? 0 : 100,
+                    );
                   }}
                   onCanPlay={(event) =>
                     logVideoCanPlay("modal-viewer", event.currentTarget)
@@ -650,18 +747,45 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                   onError={(event) =>
                     logVideoError("modal-viewer", event.currentTarget)
                   }
-                  onPlay={() => setIsPaused(false)}
-                  onPause={() => setIsPaused(true)}
+                  onTimeUpdate={(event) => {
+                    const video = event.currentTarget;
+                    setProgress(
+                      Number.isFinite(video.duration) && video.duration > 0
+                        ? Math.min(
+                            100,
+                            (video.currentTime / video.duration) * 100,
+                          )
+                        : 0,
+                    );
+                  }}
+                  onEnded={handleNextBite}
                   onVolumeChange={(event) => {
                     biteVideoMutedRef.current = event.currentTarget.muted;
+                    setIsBiteMuted(event.currentTarget.muted);
                   }}
                 />
               ) : (
                 <img
                   src={currentBite.content.url}
                   alt={currentBite.caption}
-                  className="w-full h-full object-cover rounded-lg"
+                  className="w-full h-full object-contain rounded-lg bg-black"
                 />
+              )}
+
+              {currentBite.content.type === "video" && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="absolute right-4 top-4 z-20 min-h-12 min-w-12 rounded-full bg-black/50 text-white hover:bg-black/70"
+                  aria-label={isBiteMuted ? "Unmute Bite" : "Mute Bite"}
+                  onClick={handleSoundToggle}
+                >
+                  {isBiteMuted ? (
+                    <VolumeX className="w-6 h-6" />
+                  ) : (
+                    <Volume2 className="w-6 h-6" />
+                  )}
+                </Button>
               )}
 
               {/* Caption and actions */}
@@ -674,8 +798,11 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="text-white hover:bg-white/20"
-                      onClick={() => handleLike(currentBite.id)}
+                      className="min-h-11 min-w-11 text-white hover:bg-white/20"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleLike(currentBite.id);
+                      }}
                     >
                       <Heart
                         className={`w-6 h-6 ${
@@ -692,7 +819,8 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="text-white hover:bg-white/20"
+                      className="min-h-11 min-w-11 text-white hover:bg-white/20"
+                      onClick={handleMessageBiteOwner}
                     >
                       <MessageCircle className="w-6 h-6" />
                     </Button>
@@ -700,7 +828,8 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="text-white hover:bg-white/20"
+                      className="min-h-11 min-w-11 text-white hover:bg-white/20"
+                      onClick={(event) => event.stopPropagation()}
                     >
                       <Share className="w-6 h-6" />
                     </Button>
