@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Heart,
@@ -130,6 +130,16 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const [createError, setCreateError] = useState("");
   const [showCamera, setShowCamera] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const biteVideoMutedRef = useRef(true);
+
+  const initializeBiteVideoAudio = useCallback(
+    (video: HTMLVideoElement | null) => {
+      if (!video) return;
+      video.defaultMuted = true;
+      video.muted = biteVideoMutedRef.current;
+    },
+    [],
+  );
 
   const handleCameraCapture = (dataUrl: string, type: "image" | "video") => {
     setCreateMediaType(type);
@@ -222,6 +232,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     );
     setCurrentUserIndex(userIndex);
     setCurrentBiteIndex(0);
+    biteVideoMutedRef.current = true;
     setIsViewing(true);
     setProgress(0);
 
@@ -624,24 +635,26 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                   key={currentBite.id}
                   src={currentBite.content.url}
                   className="w-full h-full min-h-[300px] object-contain rounded-lg bg-black"
+                  ref={initializeBiteVideoAudio}
                   controls
                   autoPlay
-                  muted
                   playsInline
                   preload="metadata"
                   onLoadedMetadata={(event) => {
                     logVideoLoadedMetadata("modal-viewer", event.currentTarget);
                     event.currentTarget.play().catch(() => undefined);
                   }}
-                  onCanPlay={(event) => {
-                    logVideoCanPlay("modal-viewer", event.currentTarget);
-                    event.currentTarget.play().catch(() => undefined);
-                  }}
+                  onCanPlay={(event) =>
+                    logVideoCanPlay("modal-viewer", event.currentTarget)
+                  }
                   onError={(event) =>
                     logVideoError("modal-viewer", event.currentTarget)
                   }
                   onPlay={() => setIsPaused(false)}
                   onPause={() => setIsPaused(true)}
+                  onVolumeChange={(event) => {
+                    biteVideoMutedRef.current = event.currentTarget.muted;
+                  }}
                 />
               ) : (
                 <img
