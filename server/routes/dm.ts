@@ -9,6 +9,7 @@ import {
   dmParticipants,
   dmMessages,
 } from "../../shared/schema.dm.ts";
+import { notifications } from "../../shared/schema";
 
 const r = Router();
 
@@ -319,6 +320,37 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
     .update(dmParticipants)
     .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
+
+  // Notify all other participants
+  try {
+    const { users } = await import("../../shared/schema");
+    const [sender] = await db
+      .select({ displayName: users.displayName, username: users.username })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const senderName = sender?.displayName || sender?.username || "Someone";
+
+    const others = await db
+      .select({ userId: dmParticipants.userId })
+      .from(dmParticipants)
+      .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId).not()));
+
+    if (others.length > 0) {
+      await db.insert(notifications).values(
+        others.map((p) => ({
+          userId: p.userId,
+          type: "message",
+          title: `New message from ${senderName}`,
+          message: body.text.length > 80 ? body.text.slice(0, 80) + "…" : body.text,
+          linkUrl: `/messages`,
+          priority: "normal",
+        }))
+      );
+    }
+  } catch {
+    // Notification failure must never break message delivery
+  }
 
   res.json({ ok: true, message: msg });
 });
