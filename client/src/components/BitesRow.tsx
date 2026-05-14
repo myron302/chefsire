@@ -13,15 +13,20 @@ import {
   Camera,
   Volume2,
   VolumeX,
+  SmilePlus,
+  Send,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useUser } from "@/contexts/UserContext";
+import { useToast } from "@/hooks/use-toast";
 import CameraModal from "@/components/CameraModal";
 import { uploadMediaUrl } from "@/lib/uploadMedia";
 import chefLogo from "../asset/logo.jpg"; // Add import to match layout
+
+const QUICK_EMOJIS = ["❤️", "😂", "😮", "😢", "🔥", "👏", "🎉", "🤤"];
 
 interface Bite {
   id: string;
@@ -110,6 +115,7 @@ interface BitesRowProps {
 
 export function BitesRow({ className = "" }: BitesRowProps) {
   const { user } = useUser();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [viewedUserIds, setViewedUserIds] = useState<Set<string>>(new Set());
   const [likedBiteIds, setLikedBiteIds] = useState<Set<string>>(new Set());
@@ -136,6 +142,13 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeBiteVideoRef = useRef<HTMLVideoElement | null>(null);
   const biteVideoMutedRef = useRef(true);
+
+  // Reply + emoji state
+  const [replyText, setReplyText] = useState("");
+  const [replySending, setReplySending] = useState(false);
+  const [showEmojiTray, setShowEmojiTray] = useState(false);
+  const [emojiFloats, setEmojiFloats] = useState<{ id: number; emoji: string }[]>([]);
+  const replyInputRef = useRef<HTMLInputElement>(null);
 
   const initializeBiteVideoAudio = useCallback(
     (video: HTMLVideoElement | null) => {
@@ -258,6 +271,9 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     setCurrentUserIndex(0);
     setCurrentBiteIndex(0);
     setProgress(0);
+    setReplyText("");
+    setShowEmojiTray(false);
+    setEmojiFloats([]);
   };
 
   const handleNextBite = useCallback(() => {
@@ -365,6 +381,47 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     if (!currentBite) return;
     closeBites();
     setLocation(`/messages?new=${encodeURIComponent(currentBite.username)}`);
+  };
+
+  const handleEmojiReact = (emoji: string) => {
+    const id = Date.now();
+    setEmojiFloats((prev) => [...prev, { id, emoji }]);
+    setTimeout(() => setEmojiFloats((prev) => prev.filter((e) => e.id !== id)), 1400);
+    setShowEmojiTray(false);
+  };
+
+  const handleSendReply = async () => {
+    const text = replyText.trim();
+    if (!user?.id || !text || !currentBite) return;
+    if (currentBite.userId === user.id) return;
+    setReplySending(true);
+    try {
+      const threadRes = await fetch("/api/dm/threads", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ participantIds: [currentBite.userId] }),
+      });
+      if (!threadRes.ok) throw new Error("Could not open DM thread");
+      const { threadId } = await threadRes.json();
+
+      const msgRes = await fetch(`/api/dm/threads/${threadId}/messages`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      if (!msgRes.ok) throw new Error("Failed to send message");
+      setReplyText("");
+      toast({ description: `Message sent to ${currentBite.username}` });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        description: err instanceof Error ? err.message : "Failed to send",
+      });
+    } finally {
+      setReplySending(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -820,6 +877,18 @@ export function BitesRow({ className = "" }: BitesRowProps) {
                       variant="ghost"
                       size="icon"
                       className="min-h-11 min-w-11 text-white hover:bg-white/20"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setShowEmojiTray((p) => !p);
+                      }}
+                    >
+                      <SmilePlus className="w-6 h-6" />
+                    </Button>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="min-h-11 min-w-11 text-white hover:bg-white/20"
                       onClick={handleMessageBiteOwner}
                     >
                       <MessageCircle className="w-6 h-6" />
@@ -861,8 +930,74 @@ export function BitesRow({ className = "" }: BitesRowProps) {
               </p>
             )}
           </div>
+
+          {/* Floating emoji reactions */}
+          {emojiFloats.map(({ id, emoji }) => (
+            <div
+              key={id}
+              className="pointer-events-none absolute right-16 bottom-24 z-40 text-3xl"
+              style={{ animation: "biteEmojiFloat 1.4s ease-out forwards" }}
+            >
+              {emoji}
+            </div>
+          ))}
+
+          {/* Emoji tray + reply bar */}
+          <div
+            className="absolute bottom-0 left-0 right-0 z-30 max-w-md mx-auto w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {showEmojiTray && (
+              <div className="flex justify-center gap-3 px-4 py-2 bg-black/70 backdrop-blur-sm">
+                {QUICK_EMOJIS.map((emoji) => (
+                  <button
+                    key={emoji}
+                    className="text-2xl transition-transform hover:scale-125 active:scale-125"
+                    onClick={() => handleEmojiReact(emoji)}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {currentBite.userId !== user?.id && (
+              <div className="flex items-center gap-2 px-3 py-3 bg-black/60 backdrop-blur-sm">
+                <input
+                  ref={replyInputRef}
+                  type="text"
+                  value={replyText}
+                  onChange={(e) => setReplyText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      handleSendReply();
+                    }
+                  }}
+                  placeholder={`Reply to ${currentBite.username}…`}
+                  className="flex-1 rounded-full bg-white/15 px-4 py-2 text-sm text-white placeholder-white/50 outline-none transition-colors focus:bg-white/25"
+                />
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={!replyText.trim() || replySending}
+                  onClick={handleSendReply}
+                  className="flex-shrink-0 text-white hover:bg-white/20"
+                >
+                  <Send className="w-5 h-5" />
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes biteEmojiFloat {
+          0%   { opacity: 1; transform: translateY(0) scale(1); }
+          100% { opacity: 0; transform: translateY(-80px) scale(1.5); }
+        }
+      `}</style>
     </>
   );
 }
