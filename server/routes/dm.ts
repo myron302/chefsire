@@ -1,7 +1,7 @@
 // server/routes/dm.ts
 import { Router } from "express";
 import { z } from "zod";
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne } from "drizzle-orm";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import {
@@ -334,7 +334,7 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
     const others = await db
       .select({ userId: dmParticipants.userId })
       .from(dmParticipants)
-      .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId).not()));
+      .where(and(eq(dmParticipants.threadId, id), ne(dmParticipants.userId, userId)));
 
     if (others.length > 0) {
       await db.insert(notifications).values(
