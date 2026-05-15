@@ -16,7 +16,6 @@ import {
   SmilePlus,
   Send,
 } from "lucide-react";
-import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -138,7 +137,6 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState("");
   const [showCamera, setShowCamera] = useState(false);
-  const [, setLocation] = useLocation();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeBiteVideoRef = useRef<HTMLVideoElement | null>(null);
   const biteVideoMutedRef = useRef(true);
@@ -337,8 +335,13 @@ export function BitesRow({ className = "" }: BitesRowProps) {
   const handleLike = (biteId: string) => {
     setLikedBiteIds((prev) => {
       const next = new Set(prev);
-      if (next.has(biteId)) next.delete(biteId);
-      else next.add(biteId);
+      const wasLiked = next.has(biteId);
+      if (wasLiked) {
+        next.delete(biteId);
+      } else {
+        next.add(biteId);
+        fetch(`/api/bites/${biteId}/like`, { method: "POST", credentials: "include" }).catch(() => undefined);
+      }
       return next;
     });
   };
@@ -378,9 +381,7 @@ export function BitesRow({ className = "" }: BitesRowProps) {
     event: React.MouseEvent<HTMLButtonElement>,
   ) => {
     event.stopPropagation();
-    if (!currentBite) return;
-    closeBites();
-    setLocation(`/messages?new=${encodeURIComponent(currentBite.username)}`);
+    replyInputRef.current?.focus();
   };
 
   const handleEmojiReact = (emoji: string) => {

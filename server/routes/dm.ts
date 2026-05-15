@@ -1,7 +1,7 @@
 // server/routes/dm.ts
 import { Router } from "express";
 import { z } from "zod";
-import { and, desc, eq, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, inArray, lt, ne } from "drizzle-orm";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import {
@@ -319,6 +319,38 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
     .update(dmParticipants)
     .set({ lastReadMessageId: msg.id, lastReadAt: new Date() })
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)));
+
+  // Notify other participants
+  try {
+    const { users } = await import("../../shared/schema");
+    const { notifications } = await import("../../shared/schema");
+    const [sender] = await db
+      .select({ displayName: users.displayName, username: users.username })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    const senderName = sender?.displayName || sender?.username || "Someone";
+
+    const others = await db
+      .select({ userId: dmParticipants.userId })
+      .from(dmParticipants)
+      .where(and(eq(dmParticipants.threadId, id), ne(dmParticipants.userId, userId)));
+
+    if (others.length > 0) {
+      await db.insert(notifications).values(
+        others.map((p) => ({
+          userId: p.userId,
+          type: "message",
+          title: `New message from ${senderName}`,
+          message: body.text.length > 80 ? body.text.slice(0, 80) + "…" : body.text,
+          linkUrl: `/messages`,
+          priority: "normal",
+        }))
+      );
+    }
+  } catch {
+    // never break message delivery
+  }
 
   res.json({ ok: true, message: msg });
 });

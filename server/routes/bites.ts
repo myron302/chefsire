@@ -4,7 +4,8 @@ import { z } from "zod";
 import { eq, desc, sql } from "drizzle-orm";
 import { storage } from "../storage";
 import { db } from "../db";
-import { stories, users } from "../../shared/schema";
+import { requireAuth } from "../middleware";
+import { stories, users, notifications } from "../../shared/schema";
 
 const r = Router();
 
@@ -189,6 +190,46 @@ r.post("/", async (req, res) => {
     }
     console.error("[bites] POST / error", e);
     res.status(500).json({ message: "Failed to create bite" });
+  }
+});
+
+// Like a bite — fires a notification to the owner
+r.post("/:id/like", requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const likerId = req.user!.id;
+
+    const [bite] = await db
+      .select({ userId: stories.userId })
+      .from(stories)
+      .where(eq(stories.id, id))
+      .limit(1);
+
+    if (!bite) return res.status(404).json({ ok: false, error: "Bite not found" });
+
+    if (bite.userId !== likerId) {
+      const [liker] = await db
+        .select({ displayName: users.displayName, username: users.username })
+        .from(users)
+        .where(eq(users.id, likerId))
+        .limit(1);
+
+      const likerName = liker?.displayName || liker?.username || "Someone";
+
+      await db.insert(notifications).values({
+        userId: bite.userId,
+        type: "like",
+        title: `${likerName} liked your Bite`,
+        message: `${likerName} reacted to your Bite`,
+        linkUrl: `/feed`,
+        priority: "normal",
+      });
+    }
+
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("[bites] POST /:id/like error", e);
+    res.status(500).json({ ok: false, error: "Failed to record like" });
   }
 });
 
