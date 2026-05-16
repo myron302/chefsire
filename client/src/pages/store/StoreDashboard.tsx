@@ -3,7 +3,6 @@ import { useLocation } from "wouter";
 import {
   Package,
   ShoppingCart,
-  Edit,
   Sparkles,
   Palette,
   BarChart3,
@@ -13,10 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/contexts/UserContext";
 import { useToast } from "@/hooks/use-toast";
 import SubscriptionPlansModal from "@/components/store/SubscriptionPlansModal";
-import StoreBuilder from "@/components/store/StoreBuilder";
 import { getSellerMarketplaceProducts } from "@/lib/store/marketplaceApi";
 import StoreDashboardStatsGrid from "./components/StoreDashboardStatsGrid";
-import StoreDashboardBuilderTab from "./components/StoreDashboardBuilderTab";
 import StoreDashboardAnalyticsTab from "./components/StoreDashboardAnalyticsTab";
 import StoreDashboardSubscriptionTab from "./components/StoreDashboardSubscriptionTab";
 import StoreDashboardQuickActions from "./components/StoreDashboardQuickActions";
@@ -54,7 +51,6 @@ export default function StoreDashboard() {
   const [publishing, setPublishing] = useState(false);
   const [selectedTheme, setSelectedTheme] = useState("modern");
   const [showPlansModal, setShowPlansModal] = useState(false);
-  const [showBuilder, setShowBuilder] = useState(false);
   const [activeTab, setActiveTab] = useState("products");
   const [customizeInitialTab, setCustomizeInitialTab] = useState("branding");
   const tabsRef = useRef<HTMLDivElement>(null);
@@ -351,22 +347,6 @@ export default function StoreDashboard() {
     }
   };
 
-  if (showBuilder && store) {
-    return (
-      <StoreBuilder
-        storeId={store.id}
-        store={store}
-        products={products}
-        productsLoaded={productsLoaded}
-        onBack={() => setShowBuilder(false)}
-        onReadinessAction={(action) => {
-          setShowBuilder(false);
-          handleReadinessAction(action);
-        }}
-      />
-    );
-  }
-
   if (loading) {
     return <StoreDashboardLoadingState />;
   }
@@ -423,10 +403,6 @@ export default function StoreDashboard() {
               <ShoppingCart className="w-4 h-4 mr-1.5" />
               Orders
             </TabsTrigger>
-            <TabsTrigger value="builder">
-              <Edit className="w-4 h-4 mr-1.5" />
-              Store Builder
-            </TabsTrigger>
             <TabsTrigger value="customize">
               <Sparkles className="w-4 h-4 mr-1.5" />
               Customize
@@ -458,13 +434,6 @@ export default function StoreDashboard() {
           {/* Orders Tab */}
           <TabsContent value="orders">
             <StoreDashboardOrdersTab recentSales={recentSales} />
-          </TabsContent>
-
-          {/* Store Builder Tab */}
-          <TabsContent value="builder">
-            <StoreDashboardBuilderTab
-              onOpenBuilder={() => setShowBuilder(true)}
-            />
           </TabsContent>
 
           {/* Customize Tab */}

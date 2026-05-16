@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StoreHeader } from "@/components/store/StoreHeader";
 import { ProductCard } from "@/components/store/ProductCard";
-import { ShoppingBag, Eye, Heart } from "lucide-react";
+import { ShoppingBag, Eye, Heart, MapPin, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import { THEMES } from "@/components/store/ThemeSelector";
@@ -20,7 +20,7 @@ interface StoreData {
   name: string;
   bio: string;
   theme: string;
-  customization: any;
+  layout: Record<string, any> | null;
   published: boolean;
   subscriptionTier: string;
   createdAt: string;
@@ -60,7 +60,6 @@ export default function StoreViewer() {
 
   const fetchStore = async () => {
     if (!storeHandle) return;
-
     try {
       setLoading(true);
       const response = await fetch(`/api/stores/${storeHandle}`, {
@@ -69,13 +68,10 @@ export default function StoreViewer() {
 
       if (!response.ok) {
         if (response.status === 404) {
-          // Before giving up, check if the current user owns a store with this handle
-          // (unpublished stores return 404 to non-owners)
           try {
             const ownerRes = await fetch(`/api/stores/check-handle/${storeHandle}`);
             if (ownerRes.ok) {
               const checkData = await ownerRes.json();
-              // available=false means store EXISTS (just not published)
               if (checkData.available === false) {
                 toast({
                   title: "Store not published",
@@ -100,13 +96,8 @@ export default function StoreViewer() {
 
       const storeData = await response.json();
       const storeObj = storeData.store ?? storeData;
-      // DEBUG — log full response so we can see the shape
-      console.log('[StoreViewer] raw response:', storeData);
-      console.log('[StoreViewer] storeObj:', storeObj);
-      console.log('[StoreViewer] userId:', storeObj?.userId, '| user_id:', (storeObj as any)?.user_id);
       setStore(storeObj);
 
-      // Track store view
       if (storeObj?.id) {
         fetch(`/api/stores/${storeObj.id}/increment-view`, { method: "PATCH" }).catch(() => {});
       }
@@ -127,22 +118,11 @@ export default function StoreViewer() {
     try {
       setProductsLoading(true);
       const response = await fetch(`/api/marketplace/sellers/${sellerId}/products`);
-
-      if (!response.ok) {
-        console.error('[StoreViewer] fetchProducts failed:', response.status, sellerId);
-        throw new Error("Failed to fetch products");
-      }
-
+      if (!response.ok) throw new Error("Failed to fetch products");
       const data = await response.json();
-      console.log('[StoreViewer] products response:', { sellerId, count: data.products?.length, data });
       setProducts(data.products || []);
     } catch (error) {
       console.error("Error fetching store products:", error);
-      toast({
-        title: "Error",
-        description: "Failed to load store products.",
-        variant: "destructive",
-      });
     } finally {
       setProductsLoading(false);
     }
@@ -155,10 +135,7 @@ export default function StoreViewer() {
 
   useEffect(() => {
     const sellerId = store?.userId ?? (store as any)?.user_id;
-    console.log('[StoreViewer] useEffect store changed:', { store, sellerId });
-    if (sellerId) {
-      fetchProducts(sellerId);
-    }
+    if (sellerId) fetchProducts(sellerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store?.userId, (store as any)?.user_id]);
 
@@ -168,7 +145,7 @@ export default function StoreViewer() {
     return (
       <div className="min-h-screen bg-gray-50">
         <div className="max-w-6xl mx-auto px-4 py-8">
-          <Skeleton className="h-32 w-full mb-8" />
+          <Skeleton className="h-64 w-full mb-8" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {Array.from({ length: 6 }).map((_, i) => (
               <Card key={i}>
@@ -176,7 +153,6 @@ export default function StoreViewer() {
                   <Skeleton className="h-48 w-full mb-4" />
                   <Skeleton className="h-4 w-3/4 mb-2" />
                   <Skeleton className="h-4 w-1/2 mb-2" />
-                  <Skeleton className="h-4 w-full mb-2" />
                   <Skeleton className="h-4 w-2/3" />
                 </CardContent>
               </Card>
@@ -192,30 +168,73 @@ export default function StoreViewer() {
   const isOwner = user?.id === store.userId;
   const themeColors = THEMES.find((t) => t.id === store.theme)?.colors ?? THEMES[0].colors;
 
-  return (
-    <div
-      className="min-h-screen bg-gray-50"
-      style={{
-        "--store-primary": themeColors.primary,
-        "--store-secondary": themeColors.secondary,
-        "--store-accent": themeColors.accent,
-      } as React.CSSProperties}
-    >
-      <StoreHeader store={store} isOwner={isOwner} />
+  // Extract layout config — saved by StoreCustomization as store.layout
+  const layout: Record<string, any> =
+    store.layout && typeof store.layout === "object" && !Array.isArray(store.layout)
+      ? store.layout
+      : {};
 
+  // Map layout fields to what StoreHeader expects
+  const storeForHeader = {
+    ...store,
+    banner_url: layout.bannerImage || (store as any).banner_url || null,
+    logo_url: layout.logo || (store as any).logo_url || null,
+    bio: store.bio || layout.aboutContent || null,
+  };
+
+  // Dynamic grid columns
+  const gridCols: number = layout.layout?.gridColumns ?? 3;
+  const gridClass =
+    gridCols === 2
+      ? "grid-cols-1 md:grid-cols-2"
+      : gridCols === 4
+        ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
+        : "grid-cols-1 md:grid-cols-3";
+
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: themeColors.accent + "22" }}>
+
+      {/* Announcement bar */}
+      {layout.announcementEnabled && layout.announcementBar && (
+        <div
+          className="text-white text-center py-2 px-4 text-sm font-medium"
+          style={{ backgroundColor: themeColors.primary }}
+        >
+          {layout.announcementBar}
+        </div>
+      )}
+
+      <StoreHeader store={storeForHeader} isOwner={isOwner} themeColors={themeColors} />
+
+      {/* About section */}
+      {layout.aboutEnabled && layout.aboutContent && (
+        <div className="max-w-6xl mx-auto px-4 pt-10 pb-2">
+          <h2 className="text-xl font-bold mb-3" style={{ color: themeColors.secondary }}>
+            {layout.aboutTitle || "About Us"}
+          </h2>
+          <p className="text-gray-700 leading-relaxed">{layout.aboutContent}</p>
+        </div>
+      )}
+
+      {/* Products */}
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-2xl font-bold mb-1">Products</h2>
+            <h2 className="text-2xl font-bold mb-1" style={{ color: themeColors.secondary }}>
+              Products
+            </h2>
             <p className="text-gray-600">{products.length} items available</p>
           </div>
-
           <div className="flex gap-3">
             <Button variant="outline" onClick={() => setLocation("/marketplace")}>
               Browse Marketplace
             </Button>
             {isOwner && (
-              <Button onClick={() => setLocation("/store/dashboard")}>
+              <Button
+                onClick={() => setLocation("/store/dashboard")}
+                style={{ backgroundColor: themeColors.primary }}
+                className="text-white hover:opacity-90"
+              >
                 Manage Store
               </Button>
             )}
@@ -223,14 +242,13 @@ export default function StoreViewer() {
         </div>
 
         {productsLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className={`grid ${gridClass} gap-6`}>
             {Array.from({ length: 6 }).map((_, i) => (
               <Card key={i}>
                 <CardContent className="p-4">
                   <Skeleton className="h-48 w-full mb-4" />
                   <Skeleton className="h-4 w-3/4 mb-2" />
                   <Skeleton className="h-4 w-1/2 mb-2" />
-                  <Skeleton className="h-4 w-full mb-2" />
                   <Skeleton className="h-4 w-2/3" />
                 </CardContent>
               </Card>
@@ -254,7 +272,7 @@ export default function StoreViewer() {
             </CardContent>
           </Card>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className={`grid ${gridClass} gap-6`}>
             {products.map((product) => (
               <div
                 key={product.id}
@@ -281,6 +299,26 @@ export default function StoreViewer() {
           </div>
         )}
       </div>
+
+      {/* Contact / hours footer */}
+      {(layout.contactInfo?.address || layout.contactInfo?.hours) && (
+        <div className="border-t mt-8">
+          <div className="max-w-6xl mx-auto px-4 py-8 flex flex-wrap gap-6 text-sm text-gray-600">
+            {layout.contactInfo?.address && (
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4 flex-shrink-0" style={{ color: themeColors.primary }} />
+                <span>{layout.contactInfo.address}</span>
+              </div>
+            )}
+            {layout.contactInfo?.hours && (
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 flex-shrink-0" style={{ color: themeColors.primary }} />
+                <span>{layout.contactInfo.hours}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
