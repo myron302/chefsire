@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import {
   Package,
@@ -57,6 +57,7 @@ export default function StoreDashboard() {
   const [showBuilder, setShowBuilder] = useState(false);
   const [activeTab, setActiveTab] = useState("products");
   const [customizeInitialTab, setCustomizeInitialTab] = useState("branding");
+  const tabsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (user?.id) loadDashboard();
@@ -234,6 +235,12 @@ export default function StoreDashboard() {
     }
   };
 
+  const scrollToTabs = () => {
+    setTimeout(() => {
+      tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+  };
+
   const handleReadinessAction = (
     action:
       | "description"
@@ -252,22 +259,28 @@ export default function StoreDashboard() {
     if (action === "description") {
       setCustomizeInitialTab("branding");
       setActiveTab("customize");
+      scrollToTabs();
+      toast({ description: "Edit your store description in the Branding section below." });
       return;
     }
 
     if (action === "productQuality") {
       setActiveTab("products");
+      scrollToTabs();
       return;
     }
 
     if (action === "banner") {
       setCustomizeInitialTab("sections");
       setActiveTab("customize");
+      scrollToTabs();
+      toast({ description: "Upload your banner image in the Sections tab below." });
       return;
     }
 
     if (action === "featured") {
       setActiveTab("products");
+      scrollToTabs();
       toast({
         title: "Choose a product",
         description:
@@ -395,6 +408,7 @@ export default function StoreDashboard() {
         <StoreDashboardStatsGrid stats={stats} />
 
         {/* Main Tabs */}
+        <div ref={tabsRef}>
         <Tabs
           value={activeTab}
           onValueChange={setActiveTab}
@@ -485,6 +499,7 @@ export default function StoreDashboard() {
             />
           </TabsContent>
         </Tabs>
+        </div>
 
         {/* Quick Action Cards */}
         <StoreDashboardQuickActions
