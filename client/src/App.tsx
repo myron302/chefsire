@@ -31,6 +31,7 @@ const DuetsPage = React.lazy(() => import("@/pages/social/duets"));
 const EventsPage = React.lazy(() => import("@/pages/social/events"));
 const DMInboxPage = React.lazy(() => import("@/pages/dm/InboxPage"));
 const DMThreadPage = React.lazy(() => import("@/pages/dm/ThreadPage"));
+const NotificationsPage = React.lazy(() => import("@/pages/notifications"));
 const ExplorePage = React.lazy(() => import("@/pages/explore/ExplorePage"));
 const Pantry = React.lazy(() => import("@/pages/pantry"));
 const RecipeMatches = React.lazy(() => import("@/pages/pantry/recipe-matches"));
@@ -203,6 +204,7 @@ export default function App() {
                 {/* 🔔 DMs (NEW) */}
                 <Route path="/messages" component={DMInboxPage} />
                 <Route path="/messages/:threadId" component={DMThreadPage} />
+                <Route path="/notifications" component={NotificationsPage} />
 
                 {/* BiteMap */}
                 <Route path="/bitemap" component={BiteMapPage} />
