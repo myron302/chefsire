@@ -11,6 +11,7 @@ import { ProductCard } from "@/components/store/ProductCard";
 import { ShoppingBag, Eye, Heart } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
+import { THEMES } from "@/components/store/ThemeSelector";
 
 interface StoreData {
   id: number;
@@ -189,9 +190,17 @@ export default function StoreViewer() {
   if (!store) return null;
 
   const isOwner = user?.id === store.userId;
+  const themeColors = THEMES.find((t) => t.id === store.theme)?.colors ?? THEMES[0].colors;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div
+      className="min-h-screen bg-gray-50"
+      style={{
+        "--store-primary": themeColors.primary,
+        "--store-secondary": themeColors.secondary,
+        "--store-accent": themeColors.accent,
+      } as React.CSSProperties}
+    >
       <StoreHeader store={store} isOwner={isOwner} />
 
       <div className="max-w-6xl mx-auto px-4 py-8">
