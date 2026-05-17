@@ -298,3 +298,128 @@ export const buildTemplateSlotDiff = (
 
   return rows;
 };
+
+export type PlannerSlotRef = {
+  day: string;
+  mealType: string;
+};
+
+export type PlannerMealRef = PlannerSlotRef & {
+  index: number;
+};
+
+const copyGeneratedId = () => `planner-copy-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+const deepClonePlannerValue = <T>(value: T): T => {
+  if (value === undefined || value === null) return value;
+  return JSON.parse(JSON.stringify(value));
+};
+
+const normalizePlannerSlotItems = (slotValue: any): any[] => {
+  if (!slotValue) return [];
+  return Array.isArray(slotValue) ? slotValue.filter(Boolean) : [slotValue].filter(Boolean);
+};
+
+const setPlannerSlotItems = (
+  weeklyMeals: Record<string, any>,
+  day: string,
+  mealType: string,
+  items: any[],
+): Record<string, any> => ({
+  ...weeklyMeals,
+  [day]: {
+    ...(weeklyMeals?.[day] || {}),
+    [mealType]: items.length > 0 ? items : undefined,
+  },
+});
+
+export const clonePlannerMeal = (meal: any, options: { preserveEntryId?: boolean } = {}) => {
+  const cloned = deepClonePlannerValue(meal || {});
+  if (!options.preserveEntryId) {
+    delete cloned.entryId;
+    cloned.copiedFromEntryId = meal?.entryId;
+  }
+
+  cloned.plannerGeneratedId = copyGeneratedId();
+  cloned.plannerArrangementSource = options.preserveEntryId ? 'moved-locally' : 'copied-locally';
+  cloned.plannerArrangementUpdatedAt = new Date().toISOString();
+  return cloned;
+};
+
+export const moveMealBetweenSlots = (
+  weeklyMeals: Record<string, any>,
+  from: PlannerMealRef,
+  to: PlannerSlotRef,
+): Record<string, any> => {
+  const sourceItems = normalizePlannerSlotItems(weeklyMeals?.[from.day]?.[from.mealType]);
+  const mealToMove = sourceItems[from.index];
+  if (!mealToMove) return weeklyMeals;
+
+  const sameSlot = from.day === to.day && from.mealType === to.mealType;
+  const nextSourceItems = sourceItems.filter((_: any, index: number) => index !== from.index);
+  let nextMeals = setPlannerSlotItems(weeklyMeals, from.day, from.mealType, nextSourceItems);
+  const destinationItems = sameSlot
+    ? nextSourceItems
+    : normalizePlannerSlotItems(nextMeals?.[to.day]?.[to.mealType]);
+
+  return setPlannerSlotItems(nextMeals, to.day, to.mealType, [
+    ...destinationItems,
+    clonePlannerMeal(mealToMove, { preserveEntryId: true }),
+  ]);
+};
+
+export const copyMealToSlot = (
+  weeklyMeals: Record<string, any>,
+  from: PlannerMealRef,
+  to: PlannerSlotRef,
+): Record<string, any> => {
+  const sourceItems = normalizePlannerSlotItems(weeklyMeals?.[from.day]?.[from.mealType]);
+  const mealToCopy = sourceItems[from.index];
+  if (!mealToCopy) return weeklyMeals;
+
+  const destinationItems = normalizePlannerSlotItems(weeklyMeals?.[to.day]?.[to.mealType]);
+  return setPlannerSlotItems(weeklyMeals, to.day, to.mealType, [
+    ...destinationItems,
+    clonePlannerMeal(mealToCopy, { preserveEntryId: false }),
+  ]);
+};
+
+export const copyDayMeals = (
+  weeklyMeals: Record<string, any>,
+  fromDay: string,
+  toDay: string,
+): Record<string, any> => {
+  if (!fromDay || !toDay || fromDay === toDay) return weeklyMeals;
+
+  const sourceDayMeals = weeklyMeals?.[fromDay] || {};
+  const targetDayMeals = weeklyMeals?.[toDay] || {};
+  const nextTargetDay = { ...targetDayMeals };
+
+  Object.entries(sourceDayMeals).forEach(([mealType, slotValue]) => {
+    const copiedItems = normalizePlannerSlotItems(slotValue).map((meal) => clonePlannerMeal(meal, { preserveEntryId: false }));
+    if (copiedItems.length === 0) return;
+    nextTargetDay[mealType] = [
+      ...normalizePlannerSlotItems(targetDayMeals?.[mealType]),
+      ...copiedItems,
+    ];
+  });
+
+  return {
+    ...weeklyMeals,
+    [toDay]: nextTargetDay,
+  };
+};
+
+export const clearPlannerSlot = (
+  weeklyMeals: Record<string, any>,
+  day: string,
+  mealType: string,
+): Record<string, any> => setPlannerSlotItems(weeklyMeals, day, mealType, []);
+
+export const clearPlannerDay = (
+  weeklyMeals: Record<string, any>,
+  day: string,
+): Record<string, any> => ({
+  ...weeklyMeals,
+  [day]: {},
+});

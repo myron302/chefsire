@@ -68,6 +68,13 @@ import {
   clientSideNutritionLookup,
   toGroceryExportItems,
   buildTemplateSlotDiff,
+  moveMealBetweenSlots,
+  copyMealToSlot,
+  copyDayMeals,
+  clearPlannerSlot,
+  clearPlannerDay,
+  type PlannerMealRef,
+  type PlannerSlotRef,
 } from '@/components/meal-planner/nutritionMealPlannerUtils';
 
 const createMealItemRow = () => ({
@@ -1456,6 +1463,49 @@ const NutritionMealPlanner = () => {
       setShowAddMealModal(false);
       setSelectedMealSlot(null);
     }
+  };
+
+  const updatePlannerArrangementLocally = (
+    updater: (previousMeals: Record<string, any>) => Record<string, any>,
+    description: string,
+  ) => {
+    setWeeklyMeals((previousMeals) => updater(previousMeals || {}));
+    toast({ description: `${description} (local planner arrangement only)` });
+  };
+
+  const handleMovePlannerMeal = (from: PlannerMealRef, to: PlannerSlotRef) => {
+    updatePlannerArrangementLocally(
+      (previousMeals) => moveMealBetweenSlots(previousMeals, from, to),
+      'Meal moved',
+    );
+  };
+
+  const handleCopyPlannerMeal = (from: PlannerMealRef, to: PlannerSlotRef) => {
+    updatePlannerArrangementLocally(
+      (previousMeals) => copyMealToSlot(previousMeals, from, to),
+      'Meal copied',
+    );
+  };
+
+  const handleCopyPlannerDay = (fromDay: string, toDay: string) => {
+    updatePlannerArrangementLocally(
+      (previousMeals) => copyDayMeals(previousMeals, fromDay, toDay),
+      'Day copied',
+    );
+  };
+
+  const handleClearPlannerSlot = (day: string, mealType: string) => {
+    updatePlannerArrangementLocally(
+      (previousMeals) => clearPlannerSlot(previousMeals, day, mealType),
+      'Slot cleared',
+    );
+  };
+
+  const handleClearPlannerDay = (day: string) => {
+    updatePlannerArrangementLocally(
+      (previousMeals) => clearPlannerDay(previousMeals, day),
+      'Day cleared',
+    );
   };
 
   const removeMealItem = async (day: string, mealType: string, itemIndex: number) => {
@@ -4382,6 +4432,11 @@ const NutritionMealPlanner = () => {
                 gradeClass={gradeClass}
                 getNutritionGrade={getNutritionGrade}
                 removeMealItem={removeMealItem}
+                movePlannerMeal={handleMovePlannerMeal}
+                copyPlannerMeal={handleCopyPlannerMeal}
+                copyPlannerDay={handleCopyPlannerDay}
+                clearPlannerSlot={handleClearPlannerSlot}
+                clearPlannerDay={handleClearPlannerDay}
                 dayNames={DAY_NAMES}
                 handleAIRecipe={handleAIRecipe}
                 handleUsePantry={handleUsePantry}

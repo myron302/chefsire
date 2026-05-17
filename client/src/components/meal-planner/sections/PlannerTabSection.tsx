@@ -1,9 +1,10 @@
 import React from 'react';
-import { BarChart3, ChefHat, ChevronDown, ChevronRight, Clock, Package, Plus, Save, ShoppingCart, Sparkles, Target, TrendingUp, Zap } from 'lucide-react';
+import { BarChart3, ChefHat, ChevronDown, ChevronRight, Clock, Copy, GripVertical, MoreVertical, MoveRight, Package, Plus, Save, ShoppingCart, Sparkles, Target, Trash2, TrendingUp, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import { type PlannerMealRef, type PlannerSlotRef } from '@/components/meal-planner/nutritionMealPlannerUtils';
 
 type ViewMode = 'day' | 'week' | 'month';
 
@@ -31,16 +32,21 @@ type PlannerTabSectionProps = {
   getCurrentWeekAnchor: () => string;
   parseDateOnly: (dateString: string) => Date;
   formatLocalDate: (date: Date) => string;
-  weekDays: string[];
+  weekDays: readonly string[];
   getDateForWeekday: (weekday: string) => string;
-  mealTypes: string[];
+  mealTypes: readonly string[];
   weeklyMeals: Record<string, any>;
   getMealSlotItems: (weeklyMeals: Record<string, any>, day: string, mealType: string) => any[];
   getMealSlotTotals: (weeklyMeals: Record<string, any>, day: string, mealType: string) => { calories: number; protein: number; carbs: number; fat: number };
   gradeClass: (grade: string) => string;
   getNutritionGrade: (item: any, calorieGoal: number) => string;
   removeMealItem: (day: string, mealType: string, index: number) => void;
-  dayNames: string[];
+  movePlannerMeal: (from: PlannerMealRef, to: PlannerSlotRef) => void;
+  copyPlannerMeal: (from: PlannerMealRef, to: PlannerSlotRef) => void;
+  copyPlannerDay: (fromDay: string, toDay: string) => void;
+  clearPlannerSlot: (day: string, mealType: string) => void;
+  clearPlannerDay: (day: string) => void;
+  dayNames: readonly string[];
   handleAIRecipe: () => void;
   handleUsePantry: () => void;
   handleLoadTemplate: () => void;
@@ -87,6 +93,11 @@ const PlannerTabSection = ({
   gradeClass,
   getNutritionGrade,
   removeMealItem,
+  movePlannerMeal,
+  copyPlannerMeal,
+  copyPlannerDay,
+  clearPlannerSlot,
+  clearPlannerDay,
   dayNames,
   handleAIRecipe,
   handleUsePantry,
@@ -103,6 +114,12 @@ const PlannerTabSection = ({
   const [showQuickGroceryList, setShowQuickGroceryList] = React.useState(false);
 
   const [expandedMealCards, setExpandedMealCards] = React.useState<Record<string, boolean>>({});
+  const [draggedMeal, setDraggedMeal] = React.useState<PlannerMealRef | null>(null);
+  const [dragOverSlot, setDragOverSlot] = React.useState<PlannerSlotRef | null>(null);
+  const [activeMealTargetKey, setActiveMealTargetKey] = React.useState<string | null>(null);
+  const [mealTargetDrafts, setMealTargetDrafts] = React.useState<Record<string, PlannerSlotRef>>({});
+  const [activeDayCopySource, setActiveDayCopySource] = React.useState<string | null>(null);
+  const [dayCopyTargets, setDayCopyTargets] = React.useState<Record<string, string>>({});
   const planningProgress = totalSlots > 0 ? Math.round((plannedSlots / totalSlots) * 100) : 0;
   const completionLabel = plannedSlots === 0
     ? 'No meals planned yet'
@@ -181,6 +198,158 @@ const PlannerTabSection = ({
 
   const futureDayCount = weekDays.filter((d) => getDayStatus(d) === 'future').length;
 
+  const getTargetDraft = (cardKey: string, fallback: PlannerSlotRef): PlannerSlotRef => mealTargetDrafts[cardKey] || fallback;
+
+  const setTargetDraft = (cardKey: string, nextDraft: PlannerSlotRef) => {
+    setMealTargetDrafts((prev) => ({ ...prev, [cardKey]: nextDraft }));
+  };
+
+  const isDragOverSlot = (day: string, mealType: string) => dragOverSlot?.day === day && dragOverSlot?.mealType === mealType;
+
+  const startMealDrag = (event: React.DragEvent, from: PlannerMealRef) => {
+    setDraggedMeal(from);
+    event.dataTransfer.effectAllowed = 'copyMove';
+    event.dataTransfer.setData('application/json', JSON.stringify(from));
+  };
+
+  const handleSlotDragOver = (event: React.DragEvent, slot: PlannerSlotRef) => {
+    if (!draggedMeal) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = event.altKey ? 'copy' : 'move';
+    setDragOverSlot(slot);
+  };
+
+  const handleSlotDrop = (event: React.DragEvent, slot: PlannerSlotRef) => {
+    event.preventDefault();
+    const fallbackPayload = event.dataTransfer.getData('application/json');
+    const from = draggedMeal || (fallbackPayload ? JSON.parse(fallbackPayload) : null);
+    setDraggedMeal(null);
+    setDragOverSlot(null);
+    if (!from) return;
+    if (event.altKey) copyPlannerMeal(from, slot);
+    else movePlannerMeal(from, slot);
+  };
+
+  const handleMealTargetAction = (action: 'move' | 'copy', from: PlannerMealRef, to: PlannerSlotRef) => {
+    if (action === 'move') movePlannerMeal(from, to);
+    else copyPlannerMeal(from, to);
+    setActiveMealTargetKey(null);
+  };
+
+  const renderSlotUtilityActions = (day: string, mealType: string, hasItems: boolean) => (
+    <div className="flex items-center gap-2">
+      {hasItems && (
+        <button
+          type="button"
+          className="text-[11px] text-gray-400 hover:text-red-600"
+          onClick={() => clearPlannerSlot(day, mealType)}
+          title="Clear this slot locally"
+        >
+          Clear slot
+        </button>
+      )}
+    </div>
+  );
+
+  const renderDayActions = (day: string) => {
+    const targetDay = dayCopyTargets[day] || weekDays.find((candidate) => candidate !== day) || day;
+    return (
+      <div className="relative ml-auto">
+        <details className="group">
+          <summary className="list-none cursor-pointer rounded-full p-1 text-gray-400 hover:bg-white hover:text-gray-700" title="Day actions">
+            <MoreVertical className="w-4 h-4" />
+          </summary>
+          <div className="absolute right-0 z-20 mt-1 w-56 rounded-md border bg-white p-2 shadow-lg">
+            <button type="button" className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-gray-50" onClick={() => setActiveDayCopySource(activeDayCopySource === day ? null : day)}>
+              <Copy className="mr-1 inline h-3 w-3" /> Copy day
+            </button>
+            {activeDayCopySource === day && (
+              <div className="space-y-2 border-t border-gray-100 pt-2">
+                <select
+                  className="w-full rounded border px-2 py-1 text-xs"
+                  value={targetDay}
+                  onChange={(event) => setDayCopyTargets((prev) => ({ ...prev, [day]: event.target.value }))}
+                >
+                  {weekDays.filter((candidate) => candidate !== day).map((candidate) => <option key={candidate} value={candidate}>{candidate}</option>)}
+                </select>
+                <Button type="button" size="sm" variant="outline" className="h-7 w-full text-xs" onClick={() => { copyPlannerDay(day, targetDay); setActiveDayCopySource(null); }}>
+                  Copy meals to {targetDay}
+                </Button>
+              </div>
+            )}
+            <button type="button" className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-gray-50" onClick={saveTemplate}>
+              <Save className="mr-1 inline h-3 w-3" /> Apply as template
+            </button>
+            <button type="button" className="w-full rounded px-2 py-1.5 text-left text-xs text-red-600 hover:bg-red-50" onClick={() => clearPlannerDay(day)}>
+              <Trash2 className="mr-1 inline h-3 w-3" /> Clear day
+            </button>
+          </div>
+        </details>
+      </div>
+    );
+  };
+
+  const renderMealCard = (item: any, day: string, mealType: string, idx: number, density: 'compact' | 'mobile' | 'day') => {
+    const mealTotals = getMealTotals(item);
+    const componentCount = getMealComponents(item).length;
+    const cardKey = `${day}-${mealType}-${item.entryId || item.plannerGeneratedId || idx}`;
+    const targetDraft = getTargetDraft(cardKey, { day, mealType });
+    const from = { day, mealType, index: idx };
+    const compact = density === 'compact';
+    const dayView = density === 'day';
+
+    return (
+      <div
+        key={cardKey}
+        draggable
+        onDragStart={(event) => startMealDrag(event, from)}
+        onDragEnd={() => { setDraggedMeal(null); setDragOverSlot(null); }}
+        className={`group rounded-md border border-transparent bg-white p-2 shadow-sm transition ${compact ? 'bg-white/80' : dayView ? 'bg-gray-50 px-3 py-2' : 'bg-white'} ${draggedMeal?.day === day && draggedMeal?.mealType === mealType && draggedMeal?.index === idx ? 'opacity-60 ring-2 ring-orange-200' : 'hover:border-orange-200'}`}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-1 gap-2">
+            <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-gray-300 group-hover:text-gray-500" />
+            <div className="min-w-0 flex-1">
+              <div className={`${compact ? 'text-xs' : 'text-sm'} font-medium text-gray-900 flex items-center gap-1`}>
+                {item.sourceRecipeImageUrl && <img src={item.sourceRecipeImageUrl} alt="" className={`${compact ? 'h-5 w-5' : 'h-7 w-7'} shrink-0 rounded border object-cover`} />}
+                <span className="truncate">{item.name}</span>
+                {(item.source === 'recipe' || item.sourceRecipeId) && <Badge variant="outline" className="shrink-0 border-orange-200 px-1 py-0 text-[9px] leading-3 text-orange-600"><ChefHat className="mr-0.5 h-2.5 w-2.5" />Recipe</Badge>}
+                {!compact && <span className={`rounded px-1.5 py-0.5 text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span>}
+              </div>
+              <div className={`${compact ? 'text-xs text-gray-400' : 'mt-0.5 flex flex-wrap gap-3 text-xs'} `}>
+                <span className={compact ? '' : 'text-gray-500'}>{mealTotals.calories} cal</span>
+                <span className={compact ? '' : 'text-blue-500'}>P: {mealTotals.protein}g</span>
+                {!compact && <span className="text-orange-500">C: {mealTotals.carbs}g</span>}
+                {!compact && <span className="text-purple-500">F: {mealTotals.fat}g</span>}
+                {componentCount > 0 && <span className={compact ? '' : 'text-gray-500'}>{componentCount} items</span>}
+              </div>
+              {renderMealComponents(item, cardKey)}
+            </div>
+          </div>
+          <details className="relative shrink-0">
+            <summary className="list-none cursor-pointer rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700" title="Meal actions"><MoreVertical className="h-4 w-4" /></summary>
+            <div className="absolute right-0 z-20 mt-1 w-60 rounded-md border bg-white p-2 shadow-lg">
+              <button type="button" className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-gray-50" onClick={() => copyPlannerMeal(from, { day, mealType })}><Copy className="mr-1 inline h-3 w-3" /> Duplicate</button>
+              <button type="button" className="w-full rounded px-2 py-1.5 text-left text-xs hover:bg-gray-50" onClick={() => setActiveMealTargetKey(activeMealTargetKey === cardKey ? null : cardKey)}><MoveRight className="mr-1 inline h-3 w-3" /> Move / Copy to…</button>
+              {activeMealTargetKey === cardKey && (
+                <div className="space-y-2 border-t border-gray-100 pt-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <select className="rounded border px-2 py-1 text-xs" value={targetDraft.day} onChange={(event) => setTargetDraft(cardKey, { ...targetDraft, day: event.target.value })}>{weekDays.map((candidate) => <option key={candidate} value={candidate}>{candidate}</option>)}</select>
+                    <select className="rounded border px-2 py-1 text-xs" value={targetDraft.mealType} onChange={(event) => setTargetDraft(cardKey, { ...targetDraft, mealType: event.target.value })}>{mealTypes.map((candidate) => <option key={candidate} value={candidate}>{candidate}</option>)}</select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleMealTargetAction('move', from, targetDraft)}>Move</Button>
+                    <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={() => handleMealTargetAction('copy', from, targetDraft)}>Copy</Button>
+                  </div>
+                </div>
+              )}
+              <button type="button" className="w-full rounded px-2 py-1.5 text-left text-xs text-red-600 hover:bg-red-50" onClick={() => removeMealItem(day, mealType, idx)}><Trash2 className="mr-1 inline h-3 w-3" /> Remove</button>
+            </div>
+          </details>
+        </div>
+      </div>
+    );
+  };
 
   const getMealComponents = (meal: any) => (
     Array.isArray(meal?.mealItems) ? meal.mealItems.filter((item: any) => item?.name) : []
@@ -494,6 +663,7 @@ const PlannerTabSection = ({
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-blue-100 border border-blue-300 inline-block" />Planned (future)</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-orange-100 border border-orange-300 inline-block" />Today</span>
             <span className="flex items-center gap-1.5"><span className="w-3 h-3 rounded bg-gray-100 border border-gray-200 inline-block" />Logged (past)</span>
+            <span className="text-gray-400">Drag to move • Alt/Option-drag or menus copy locally</span>
           </div>
 
           <div className="hidden md:block bg-white rounded-lg shadow-sm overflow-hidden overflow-x-auto">
@@ -505,13 +675,18 @@ const PlannerTabSection = ({
                 const isFuture = dayDate > today;
                 return (
                   <div key={day} className={`p-4 border-r last:border-r-0 ${isFuture ? 'bg-blue-50' : isToday ? 'bg-orange-50' : 'bg-gray-50'}`}>
-                    <div className="flex items-center gap-1.5">
-                      <div className="text-sm font-medium text-gray-900">{day}</div>
-                      {isFuture && <Badge variant="outline" className="text-[9px] py-0 px-1 border-blue-300 text-blue-600 leading-4">Plan</Badge>}
-                      {isToday && <Badge variant="outline" className="text-[9px] py-0 px-1 border-orange-300 text-orange-600 leading-4">Today</Badge>}
-                    </div>
-                    <div className={`text-xs ${isToday ? 'text-orange-600 font-semibold' : isFuture ? 'text-blue-500' : 'text-gray-500'}`}>
-                      {new Date(dayDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    <div className="flex items-start justify-between gap-1.5">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <div className="text-sm font-medium text-gray-900">{day}</div>
+                          {isFuture && <Badge variant="outline" className="text-[9px] py-0 px-1 border-blue-300 text-blue-600 leading-4">Plan</Badge>}
+                          {isToday && <Badge variant="outline" className="text-[9px] py-0 px-1 border-orange-300 text-orange-600 leading-4">Today</Badge>}
+                        </div>
+                        <div className={`text-xs ${isToday ? 'text-orange-600 font-semibold' : isFuture ? 'text-blue-500' : 'text-gray-500'}`}>
+                          {new Date(dayDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                        </div>
+                      </div>
+                      {renderDayActions(day)}
                     </div>
                   </div>
                 );
@@ -525,29 +700,17 @@ const PlannerTabSection = ({
                   const totals = getMealSlotTotals(weeklyMeals, day, mealType);
                   const isFuture = getDateForWeekday(day) > today;
                   return (
-                    <div key={`${day}-${mealType}`} className={`p-2 border-r last:border-r-0 min-h-[72px] ${isFuture ? 'bg-blue-50/30' : ''}`}>
+                    <div
+                      key={`${day}-${mealType}`}
+                      className={`p-2 border-r last:border-r-0 min-h-[72px] transition-colors ${isFuture ? 'bg-blue-50/30' : ''} ${isDragOverSlot(day, mealType) ? 'bg-orange-50 ring-2 ring-inset ring-orange-300' : ''}`}
+                      onDragOver={(event) => handleSlotDragOver(event, { day, mealType })}
+                      onDragLeave={() => setDragOverSlot(null)}
+                      onDrop={(event) => handleSlotDrop(event, { day, mealType })}
+                    >
+                      <div className="mb-1 flex justify-end">{renderSlotUtilityActions(day, mealType, items.length > 0)}</div>
                       {items.length > 0 && (
                         <div className="space-y-1 mb-1">
-                          {items.map((item: any, idx: number) => {
-                            const mealTotals = getMealTotals(item);
-                            const componentCount = getMealComponents(item).length;
-                            const cardKey = `${day}-${mealType}-${item.entryId || idx}`;
-                            return (
-                              <div key={idx} className="flex items-start justify-between gap-1 group rounded-md bg-white/70 p-1">
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-xs font-medium text-gray-900 truncate flex items-center gap-1">
-                                    {item.sourceRecipeImageUrl && <img src={item.sourceRecipeImageUrl} alt="" className="w-5 h-5 rounded object-cover border shrink-0" />}
-                                    <span className="truncate">{item.name}</span>
-                                    {(item.source === 'recipe' || item.sourceRecipeId) && <Badge variant="outline" className="text-[9px] leading-3 px-1 py-0 border-orange-200 text-orange-600 shrink-0"><ChefHat className="w-2.5 h-2.5 mr-0.5" />Recipe</Badge>}
-                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span>
-                                  </div>
-                                  <div className="text-xs text-gray-400">{mealTotals.calories} cal · P:{mealTotals.protein}g{componentCount > 0 ? ` · ${componentCount} items` : ''}</div>
-                                  {renderMealComponents(item, cardKey)}
-                                </div>
-                                <button className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs leading-none mt-0.5 shrink-0" onClick={(e) => { e.stopPropagation(); removeMealItem(day, mealType, idx); }} title="Remove">✕</button>
-                              </div>
-                            );
-                          })}
+                          {items.map((item: any, idx: number) => renderMealCard(item, day, mealType, idx, 'compact'))}
                           {items.length > 1 && <div className="text-xs text-orange-600 font-medium border-t border-gray-100 pt-1">Total: {totals.calories} cal</div>}
                         </div>
                       )}
@@ -573,10 +736,13 @@ const PlannerTabSection = ({
               return (
                 <Card key={day} className={isFuture ? 'border-blue-200' : isToday ? 'border-orange-200' : ''}>
                   <CardHeader className="pb-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-start gap-2">
+                      <div className="min-w-0 flex-1">
                       <CardTitle className="text-lg">{day}</CardTitle>
                       {isFuture && <Badge variant="outline" className="border-blue-300 text-blue-600">Plan ahead</Badge>}
                       {isToday && <Badge variant="outline" className="border-orange-300 text-orange-600">Today</Badge>}
+                      </div>
+                      {renderDayActions(day)}
                     </div>
                     <CardDescription className={isToday ? 'text-orange-600 font-semibold' : isFuture ? 'text-blue-500' : ''}>
                       {new Date(dayDate + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
@@ -584,39 +750,34 @@ const PlannerTabSection = ({
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {mealTypes.map((mealType) => (
-                      <div key={`${day}-${mealType}`} className={`p-3 rounded-lg ${isFuture ? 'bg-blue-50' : 'bg-gray-50'}`}>
+                      <div
+                        key={`${day}-${mealType}`}
+                        className={`p-3 rounded-lg transition-colors ${isFuture ? 'bg-blue-50' : 'bg-gray-50'} ${isDragOverSlot(day, mealType) ? 'ring-2 ring-orange-300 bg-orange-50' : ''}`}
+                        onDragOver={(event) => handleSlotDragOver(event, { day, mealType })}
+                        onDragLeave={() => setDragOverSlot(null)}
+                        onDrop={(event) => handleSlotDrop(event, { day, mealType })}
+                      >
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-sm font-medium text-gray-700 capitalize">{mealType}</span>
-                          <button
-                            className={`flex items-center gap-1 text-xs ${isFuture ? 'text-blue-500 hover:text-blue-700' : 'text-orange-500 hover:text-orange-700'}`}
-                            onClick={() => handleAddMeal(day, mealType)}
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            {slotAction(day, getMealSlotItems(weeklyMeals, day, mealType).length > 0)}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {renderSlotUtilityActions(day, mealType, getMealSlotItems(weeklyMeals, day, mealType).length > 0)}
+                            <button
+                              className={`flex items-center gap-1 text-xs ${isFuture ? 'text-blue-500 hover:text-blue-700' : 'text-orange-500 hover:text-orange-700'}`}
+                              onClick={() => handleAddMeal(day, mealType)}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              {slotAction(day, getMealSlotItems(weeklyMeals, day, mealType).length > 0)}
+                            </button>
+                          </div>
                         </div>
                         {getMealSlotItems(weeklyMeals, day, mealType).length > 0 ? (
                           <div className="space-y-2">
-                            {getMealSlotItems(weeklyMeals, day, mealType).map((item: any, idx: number) => {
-                              const mealTotals = getMealTotals(item);
-                              const componentCount = getMealComponents(item).length;
-                              const cardKey = `${day}-${mealType}-${item.entryId || idx}`;
-                              return (
-                                <div key={idx} className="flex items-start justify-between gap-2 bg-white rounded p-2">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
-                                    <div className="flex gap-1 mt-1 flex-wrap"><Badge variant="secondary" className="text-xs">{mealTotals.calories} cal</Badge><Badge variant="secondary" className="text-xs">P: {mealTotals.protein}g</Badge>{componentCount > 0 && <Badge variant="outline" className="text-xs">{componentCount} items</Badge>}</div>
-                                    {renderMealComponents(item, cardKey)}
-                                  </div>
-                                  <button className="text-red-400 hover:text-red-600 text-xs mt-0.5 shrink-0" onClick={() => removeMealItem(day, mealType, idx)}>✕</button>
-                                </div>
-                              );
-                            })}
+                            {getMealSlotItems(weeklyMeals, day, mealType).map((item: any, idx: number) => renderMealCard(item, day, mealType, idx, 'mobile'))}
                             {getMealSlotItems(weeklyMeals, day, mealType).length > 1 && <div className="text-xs text-orange-600 font-semibold text-right">Total: {getMealSlotTotals(weeklyMeals, day, mealType).calories} cal · P: {getMealSlotTotals(weeklyMeals, day, mealType).protein}g</div>}
                           </div>
                         ) : (
                           <p className="text-xs text-gray-500">
-                            {isFuture ? 'Tap Plan to schedule this meal' : 'Tap Log to record this meal'}
+                            {isFuture ? 'Tap Plan to schedule this meal or drop one here' : 'Tap Log to record this meal or drop one here'}
                           </p>
                         )}
                       </div>
@@ -645,45 +806,40 @@ const PlannerTabSection = ({
                     const items = getMealSlotItems(weeklyMeals, dayName, mealType);
                     const totals = getMealSlotTotals(weeklyMeals, dayName, mealType);
                     return (
-                      <div key={mealType} className="p-4">
+                      <div
+                        key={mealType}
+                        className={`p-4 transition-colors ${isDragOverSlot(dayName, mealType) ? 'bg-orange-50 ring-2 ring-inset ring-orange-300' : ''}`}
+                        onDragOver={(event) => handleSlotDragOver(event, { day: dayName, mealType })}
+                        onDragLeave={() => setDragOverSlot(null)}
+                        onDrop={(event) => handleSlotDrop(event, { day: dayName, mealType })}
+                      >
                         <div className="flex items-center justify-between mb-3">
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-semibold text-gray-800 capitalize">{mealType}</span>
                             {items.length > 0 && <span className="text-xs text-gray-400">{totals.calories} cal total</span>}
                           </div>
-                          <button
-                            className={`flex items-center gap-1 text-xs font-medium ${isFutureDay ? 'text-blue-500 hover:text-blue-700' : 'text-orange-500 hover:text-orange-700'}`}
-                            onClick={() => handleAddMeal(dayName, mealType)}
-                          >
-                            <Plus className="w-3.5 h-3.5" />
-                            {items.length > 0 ? 'Add more' : isFutureDay ? 'Plan meal' : 'Log meal'}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {renderSlotUtilityActions(dayName, mealType, items.length > 0)}
+                            <button
+                              className={`flex items-center gap-1 text-xs font-medium ${isFutureDay ? 'text-blue-500 hover:text-blue-700' : 'text-orange-500 hover:text-orange-700'}`}
+                              onClick={() => handleAddMeal(dayName, mealType)}
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              {items.length > 0 ? 'Add more' : isFutureDay ? 'Plan meal' : 'Log meal'}
+                            </button>
+                          </div>
                         </div>
                         {items.length > 0 ? (
                           <div className="space-y-2">
-                            {items.map((item: any, idx: number) => {
-                              const mealTotals = getMealTotals(item);
-                              const componentCount = getMealComponents(item).length;
-                              const cardKey = `${dayName}-${mealType}-${item.entryId || idx}`;
-                              return (
-                                <div key={idx} className="flex items-start justify-between bg-gray-50 rounded-lg px-3 py-2">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium text-gray-900 flex items-center gap-1">{item.sourceRecipeImageUrl && <img src={item.sourceRecipeImageUrl} alt="" className="w-7 h-7 rounded object-cover border shrink-0" />}<span className="truncate">{item.name}</span> {(item.source === 'recipe' || item.sourceRecipeId) && <Badge variant="outline" className="text-[9px] leading-3 px-1 py-0 border-orange-200 text-orange-600 shrink-0"><ChefHat className="w-2.5 h-2.5 mr-0.5" />Recipe</Badge>} <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span></div>
-                                    <div className="flex gap-3 mt-0.5 flex-wrap"><span className="text-xs text-gray-500">{mealTotals.calories} cal</span><span className="text-xs text-blue-500">P: {mealTotals.protein}g</span><span className="text-xs text-orange-500">C: {mealTotals.carbs}g</span><span className="text-xs text-purple-500">F: {mealTotals.fat}g</span>{componentCount > 0 && <span className="text-xs text-gray-500">{componentCount} items</span>}</div>
-                                    {renderMealComponents(item, cardKey)}
-                                  </div>
-                                  <button className="text-red-400 hover:text-red-600 text-xs ml-2 shrink-0" onClick={() => removeMealItem(dayName, mealType, idx)}>✕</button>
-                                </div>
-                              );
-                            })}
-                            {items.length > 1 && <div className="flex gap-4 text-xs font-semibold text-gray-600 px-1 pt-1 border-t"><span>{totals.calories} cal</span><span className="text-blue-500">P: {totals.protein}g</span><span className="text-orange-500">C: {totals.carbs}g</span><span className="text-purple-500">F: {totals.fat}g</span></div>}
+                            {items.map((item: any, idx: number) => renderMealCard(item, dayName, mealType, idx, 'day'))}
+                            {items.length > 1 && <div className="flex gap-4 text-xs font-semibold text-gray-600 px-1 pt-1 border-t"><span>{totals.calories} cal</span><span className="text-blue-500">P: {totals.protein}g</span><span className="text-orange-500">C: {totals.carbs}g</span><span className="text-purple-600">F: {totals.fat}g</span></div>}
                           </div>
                         ) : (
                           <div
                             className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-colors ${isFutureDay ? 'border-blue-200 hover:border-blue-400 hover:bg-blue-50' : 'border-gray-200 hover:border-orange-300 hover:bg-orange-50'}`}
                             onClick={() => handleAddMeal(dayName, mealType)}
                           >
-                            <p className="text-xs text-gray-400">{isFutureDay ? 'Nothing planned yet — click to plan' : 'Nothing logged yet — tap to add'}</p>
+                            <p className="text-xs text-gray-400">{isFutureDay ? 'Nothing planned yet — click to plan or drop a meal here' : 'Nothing logged yet — tap to add or drop a meal here'}</p>
                           </div>
                         )}
                       </div>
