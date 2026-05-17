@@ -34,6 +34,7 @@ import {
   type PlannerGroceryDerivationState,
   type PlannerGrocerySuggestion,
 } from '@/components/meal-planner/plannerGroceryUtils';
+import { derivePrepSessions } from '@/components/meal-planner/prepOrchestrationUtils';
 import {
   LineChart,
   Line,
@@ -161,6 +162,14 @@ const normalizePrepSession = (session: any): PrepSessionState => {
   const normalizedCarryoverIds = Array.isArray(session?.carryoverTaskIds)
     ? session.carryoverTaskIds.filter((taskId: string) => normalizedTasks.some((task) => task.id === taskId))
     : [];
+  const normalizedGeneratedPrepTaskCompletions = session?.generatedPrepTaskCompletions && typeof session.generatedPrepTaskCompletions === 'object'
+    ? Object.fromEntries(
+        Object.entries(session.generatedPrepTaskCompletions)
+          .filter(([taskId]) => typeof taskId === 'string' && taskId.startsWith('generated-prep-'))
+          .map(([taskId, completed]) => [taskId, Boolean(completed)]),
+      )
+    : {};
+
   const normalizedSuggestionLinks = Array.isArray(session?.blockerSuggestionLinks)
     ? session.blockerSuggestionLinks
         .map((link: any) => ({
@@ -181,6 +190,7 @@ const normalizePrepSession = (session: any): PrepSessionState => {
     blockerNote: typeof session?.blockerNote === 'string' ? session.blockerNote : '',
     blockerSuggestionLinks: normalizedSuggestionLinks,
     carryoverTaskIds: normalizedCarryoverIds,
+    generatedPrepTaskCompletions: normalizedGeneratedPrepTaskCompletions,
     completedAt: typeof session?.completedAt === 'string' ? session.completedAt : null,
   };
 };
@@ -2355,6 +2365,17 @@ const NutritionMealPlanner = () => {
     }));
   };
 
+
+  const toggleGeneratedPrepTask = (taskId: string) => {
+    setPrepSession((prev) => ({
+      ...prev,
+      generatedPrepTaskCompletions: {
+        ...(prev.generatedPrepTaskCompletions || {}),
+        [taskId]: !prev.generatedPrepTaskCompletions?.[taskId],
+      },
+    }));
+  };
+
   const PremiumUpgrade = () => (
     <div className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white rounded-xl shadow-2xl overflow-hidden">
       <div className="p-5 sm:p-8">
@@ -2445,6 +2466,12 @@ const NutritionMealPlanner = () => {
   const prepSessionPlanned = Boolean(prepSession.scheduledAt);
   const prepSessionCompleted = Boolean(prepSession.completedAt);
   const prepProgress = Math.round((prepSession.tasks.filter((task) => task.done).length / Math.max(1, prepSession.tasks.length)) * 100);
+  const prepOrchestration = useMemo(
+    () => derivePrepSessions(weeklyMeals, prepSession.generatedPrepTaskCompletions || {}),
+    [prepSession.generatedPrepTaskCompletions, weeklyMeals],
+  );
+  const generatedPrepProgress = prepOrchestration.summary.completionPercent;
+  const blendedPrepProgress = Math.max(prepProgress, generatedPrepProgress);
   const prepRecommendationsAvailable = plannedSlots > 0;
   const prepPlanMissing = plannedSlots > 0 && !prepSessionPlanned && !prepSessionCompleted;
   const prepActiveBlockersCount = prepSession.blockers.filter((blocker) => blocker.active).length;
@@ -2595,10 +2622,13 @@ const NutritionMealPlanner = () => {
       ? 'complete'
       : prepActiveBlockersCount > 0
         ? 'blocked'
-        : prepProgress > 0
+        : blendedPrepProgress > 0
           ? 'in_progress'
           : 'in_progress';
-  const prepReadyForWeek = prepSessionCompleted || (prepSessionPlanned && prepActiveBlockersCount === 0);
+  const prepReadyForWeek = prepSessionCompleted
+    || (prepSessionPlanned
+      && prepActiveBlockersCount === 0
+      && (prepOrchestration.summary.totalGeneratedTasks === 0 || prepOrchestration.summary.readinessScore >= 70));
   const weekReadyNow = plannedSlots === totalSlots && (groceryBuyItemCount === 0 || groceryPendingCount === 0) && prepReadyForWeek;
   const canResolvePrepGroceryBlockers = prepGroceryBlockersCount > 0 && groceryListCreated && groceryPendingCount === 0;
   const rawSavingsSummary = savingsReport?.summary || {};
@@ -4900,6 +4930,8 @@ const NutritionMealPlanner = () => {
                 unresolvedBlockerSuggestionNames={blockerSuggestionResolution.unresolvedNames}
                 blockerSuggestionConfidenceLabel={blockerSuggestionConfidenceLabel}
                 prepResolvedViaTrackedSuggestions={prepResolvedViaTrackedSuggestions}
+                prepOrchestration={prepOrchestration}
+                onToggleGeneratedPrepTask={toggleGeneratedPrepTask}
               />
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <Card>
