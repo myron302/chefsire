@@ -48,6 +48,13 @@ export type RecipeItem = {
   source: "chefsire" | "external";
   externalProvider?: "mealdb";
   averageRating?: string | number | null;
+  ingredients?: any[];
+  calories?: number | null;
+  protein?: number | string | null;
+  carbs?: number | string | null;
+  fat?: number | string | null;
+  fiber?: number | string | null;
+  nutrition?: Record<string, unknown> | null;
 };
 
 const EXTERNAL_PROVIDER: "mealdb" = "mealdb";
@@ -210,6 +217,13 @@ export async function searchRecipes(params: SearchParams): Promise<{
             ratingSpoons: recipe.averageRating ? Number(recipe.averageRating) : null,
             cookTime: recipe.cookTime,
             servings: recipe.servings,
+            ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients : [],
+            calories: recipe.calories ?? null,
+            protein: recipe.protein ?? null,
+            carbs: recipe.carbs ?? null,
+            fat: recipe.fat ?? null,
+            fiber: recipe.fiber ?? null,
+            nutrition: recipe.nutrition ?? null,
             source: "chefsire",
             averageRating: recipe.averageRating,
           }));
@@ -258,6 +272,13 @@ export async function searchRecipes(params: SearchParams): Promise<{
     ratingSpoons: recipe.averageRating ? Number(recipe.averageRating) : null,
     cookTime: recipe.cookTime,
     servings: recipe.servings,
+    ingredients: Array.isArray(recipe.ingredients) ? recipe.ingredients : [],
+    calories: recipe.calories ?? null,
+    protein: recipe.protein ?? null,
+    carbs: recipe.carbs ?? null,
+    fat: recipe.fat ?? null,
+    fiber: recipe.fiber ?? null,
+    nutrition: recipe.nutrition ?? null,
     source: "chefsire",
     averageRating: recipe.averageRating,
   }));

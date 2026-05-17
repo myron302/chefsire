@@ -89,6 +89,11 @@ export function mapEntriesToWeeklyMeals(entries: any[]) {
           recipeId: e.recipe.id,
           entryId: e.id,
           source: e.source || null,
+          sourceRecipeId: e.sourceRecipeId || e.recipe.id || null,
+          sourceRecipeTitle: e.sourceRecipeTitle || e.recipe.title || null,
+          sourceRecipeImageUrl: e.sourceRecipeImageUrl || e.recipe.imageUrl || null,
+          sourceRecipeServings: e.sourceRecipeServings || e.recipe.servings || null,
+          sourceRecipeUrl: e.sourceRecipeUrl || null,
         }
       : {
           name: e.customName || "Meal",
@@ -100,6 +105,11 @@ export function mapEntriesToWeeklyMeals(entries: any[]) {
           recipeId: null,
           entryId: e.id,
           source: e.source || null,
+          sourceRecipeId: e.sourceRecipeId || null,
+          sourceRecipeTitle: e.sourceRecipeTitle || null,
+          sourceRecipeImageUrl: e.sourceRecipeImageUrl || null,
+          sourceRecipeServings: e.sourceRecipeServings || null,
+          sourceRecipeUrl: e.sourceRecipeUrl || null,
         };
 
     const existing = out[dayName][e.mealType];

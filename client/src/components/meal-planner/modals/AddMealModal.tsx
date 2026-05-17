@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Sparkles, Trash2 } from 'lucide-react';
+import { ChefHat, Image as ImageIcon, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 
@@ -24,6 +24,11 @@ type MealForm = {
   servingSize: string;
   servingQty: number;
   mealItems: MealItemFormRow[];
+  sourceRecipeId?: string | number;
+  sourceRecipeTitle?: string;
+  sourceRecipeImageUrl?: string;
+  sourceRecipeServings?: number;
+  sourceRecipeUrl?: string;
 };
 
 type BaseNutrition = {
@@ -33,6 +38,40 @@ type BaseNutrition = {
   fat: number;
   fiber: number;
   servingSize: string;
+};
+
+
+type PlannerRecipeSearchItem = {
+  id: string | number;
+  title: string;
+  image?: string | null;
+  imageUrl?: string | null;
+  thumbnail?: string | null;
+  servings?: number | null;
+  calories?: number | string | null;
+  protein?: number | string | null;
+  carbs?: number | string | null;
+  fat?: number | string | null;
+  fiber?: number | string | null;
+  nutrition?: {
+    calories?: number | string | null;
+    protein?: number | string | null;
+    carbs?: number | string | null;
+    fat?: number | string | null;
+    fiber?: number | string | null;
+  } | null;
+  ingredients?: any[] | string | null;
+  sourceUrl?: string | null;
+  sourceURL?: string | null;
+  source_link?: string | null;
+  url?: string | null;
+  source?: string | null;
+};
+
+type RecipeSearchResponse = {
+  ok?: boolean;
+  items?: PlannerRecipeSearchItem[];
+  results?: PlannerRecipeSearchItem[];
 };
 
 type MealHistoryItem = {
@@ -80,6 +119,66 @@ const createMealItemRow = (overrides: Partial<MealItemFormRow> = {}): MealItemFo
 
 const toNumber = (value: string | number | undefined) => Number(value) || 0;
 
+const toOptionalNumber = (value: unknown): number | undefined => {
+  const num = Number(value);
+  return Number.isFinite(num) && num > 0 ? num : undefined;
+};
+
+const getRecipeImageUrl = (recipe: PlannerRecipeSearchItem | null) => (
+  recipe?.imageUrl || recipe?.image || recipe?.thumbnail || ''
+);
+
+const getRecipeUrl = (recipe: PlannerRecipeSearchItem | null) => (
+  recipe?.sourceUrl || recipe?.sourceURL || recipe?.source_link || recipe?.url || undefined
+);
+
+const getRecipeNutrition = (recipe: PlannerRecipeSearchItem | null) => ({
+  calories: toOptionalNumber(recipe?.calories ?? recipe?.nutrition?.calories),
+  protein: toOptionalNumber(recipe?.protein ?? recipe?.nutrition?.protein),
+  carbs: toOptionalNumber(recipe?.carbs ?? recipe?.nutrition?.carbs),
+  fat: toOptionalNumber(recipe?.fat ?? recipe?.nutrition?.fat),
+  fiber: toOptionalNumber(recipe?.fiber ?? recipe?.nutrition?.fiber),
+});
+
+const getRecipeIngredients = (recipe: PlannerRecipeSearchItem | null): any[] => {
+  const ingredients = recipe?.ingredients;
+  if (!ingredients) return [];
+  if (Array.isArray(ingredients)) return ingredients.filter(Boolean);
+  if (typeof ingredients === 'string') {
+    return ingredients
+      .split(/\n|,/)
+      .map((ingredient) => ingredient.trim())
+      .filter(Boolean);
+  }
+  return [];
+};
+
+const firstString = (...values: unknown[]) => (
+  values.find((value) => typeof value === 'string' && value.trim()) as string | undefined
+)?.trim();
+
+const ingredientToMealItem = (ingredient: any): MealItemFormRow => {
+  if (typeof ingredient === 'string') {
+    return createMealItemRow({ name: ingredient.trim() });
+  }
+
+  const name = firstString(ingredient?.name, ingredient?.ingredient, ingredient?.item, ingredient?.food, ingredient?.title) || 'Ingredient';
+  const amount = firstString(ingredient?.amount, ingredient?.quantity, ingredient?.qty, ingredient?.measure);
+  const unit = firstString(ingredient?.unit, ingredient?.unitName, ingredient?.unitShort);
+  const quantity = [amount, unit].filter(Boolean).join(' ').trim();
+  const notes = firstString(ingredient?.notes, ingredient?.note, ingredient?.preparation, ingredient?.aisle, ingredient?.original, ingredient?.originalString);
+
+  return createMealItemRow({
+    name,
+    quantity,
+    notes: notes && notes !== name && notes !== quantity ? notes : '',
+    calories: String(ingredient?.calories || ''),
+    protein: String(ingredient?.protein || ''),
+    carbs: String(ingredient?.carbs || ''),
+    fat: String(ingredient?.fat || ''),
+  });
+};
+
 const AddMealModal = ({
   open,
   selectedMealSlot,
@@ -104,6 +203,16 @@ const AddMealModal = ({
     carbs: acc.carbs + toNumber(item.carbs),
     fat: acc.fat + toNumber(item.fat),
   }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+  const [recipeSearchTerm, setRecipeSearchTerm] = React.useState('');
+  const [recipeResults, setRecipeResults] = React.useState<PlannerRecipeSearchItem[]>([]);
+  const [selectedRecipe, setSelectedRecipe] = React.useState<PlannerRecipeSearchItem | null>(null);
+  const [isSearchingRecipes, setIsSearchingRecipes] = React.useState(false);
+  const [recipeSearchError, setRecipeSearchError] = React.useState('');
+  const selectedRecipeNutrition = getRecipeNutrition(selectedRecipe);
+  const selectedRecipeIngredients = getRecipeIngredients(selectedRecipe);
+  const selectedRecipeImageUrl = getRecipeImageUrl(selectedRecipe);
+  const linkedRecipeId = mealForm.sourceRecipeId;
 
   const updateMealItem = (id: string, updates: Partial<MealItemFormRow>) => {
     onMealFormChange((prev) => ({
@@ -172,6 +281,91 @@ const AddMealModal = ({
       });
     }
   }, [mealForm.calories, mealForm.protein, mealForm.carbs, mealForm.fat]);
+
+
+  React.useEffect(() => {
+    if (!open) {
+      setRecipeSearchTerm('');
+      setRecipeResults([]);
+      setSelectedRecipe(null);
+      setRecipeSearchError('');
+    }
+  }, [open]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const trimmed = recipeSearchTerm.trim();
+    if (trimmed.length < 2) {
+      setRecipeResults([]);
+      setRecipeSearchError('');
+      return;
+    }
+
+    const controller = new AbortController();
+    const timeout = window.setTimeout(async () => {
+      setIsSearchingRecipes(true);
+      setRecipeSearchError('');
+      try {
+        const params = new URLSearchParams({ q: trimmed, pageSize: '8', source: 'all' });
+        const response = await fetch(`/api/recipes/search?${params.toString()}`, {
+          credentials: 'include',
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error('Recipe search failed');
+        const data: RecipeSearchResponse = await response.json();
+        setRecipeResults((data.items || data.results || []).filter((recipe) => recipe?.id && recipe?.title));
+      } catch (error: any) {
+        if (error?.name !== 'AbortError') {
+          setRecipeSearchError('Unable to search recipes right now. You can still enter the meal manually.');
+          setRecipeResults([]);
+        }
+      } finally {
+        if (!controller.signal.aborted) setIsSearchingRecipes(false);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [open, recipeSearchTerm]);
+
+  const useSelectedRecipe = () => {
+    if (!selectedRecipe) return;
+    const nutrition = getRecipeNutrition(selectedRecipe);
+    const ingredients = getRecipeIngredients(selectedRecipe);
+    const mappedItems = ingredients.map(ingredientToMealItem).filter((item) => item.name.trim());
+
+    onMealFormChange((prev) => ({
+      ...prev,
+      name: selectedRecipe.title,
+      calories: nutrition.calories ? String(nutrition.calories) : '',
+      protein: nutrition.protein ? String(nutrition.protein) : '',
+      carbs: nutrition.carbs ? String(nutrition.carbs) : '',
+      fat: nutrition.fat ? String(nutrition.fat) : '',
+      fiber: nutrition.fiber ? String(nutrition.fiber) : '',
+      servingSize: selectedRecipe.servings ? `${selectedRecipe.servings} serving${selectedRecipe.servings === 1 ? '' : 's'}` : prev.servingSize,
+      servingQty: selectedRecipe.servings || prev.servingQty || 1,
+      mealItems: mappedItems.length ? mappedItems : [createMealItemRow({ name: selectedRecipe.title, quantity: selectedRecipe.servings ? `${selectedRecipe.servings} serving${selectedRecipe.servings === 1 ? '' : 's'}` : '1 serving' })],
+      sourceRecipeId: selectedRecipe.id,
+      sourceRecipeTitle: selectedRecipe.title,
+      sourceRecipeImageUrl: getRecipeImageUrl(selectedRecipe) || undefined,
+      sourceRecipeServings: selectedRecipe.servings || undefined,
+      sourceRecipeUrl: getRecipeUrl(selectedRecipe),
+    }));
+  };
+
+  const clearLinkedRecipe = () => {
+    setSelectedRecipe(null);
+    onMealFormChange((prev) => ({
+      ...prev,
+      sourceRecipeId: undefined,
+      sourceRecipeTitle: undefined,
+      sourceRecipeImageUrl: undefined,
+      sourceRecipeServings: undefined,
+      sourceRecipeUrl: undefined,
+    }));
+  };
 
   if (!open) return null;
 
@@ -256,6 +450,93 @@ const AddMealModal = ({
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+          </div>
+
+
+          <div className="border rounded-lg p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-orange-100">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2"><ChefHat className="w-4 h-4 text-orange-500" /> From recipe <span className="text-xs font-normal text-gray-500">optional</span></h4>
+                <p className="text-xs text-gray-500">Search an existing recipe, preview it, then import its ingredients as editable meal items.</p>
+              </div>
+              {linkedRecipeId && (
+                <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={clearLinkedRecipe}>
+                  <X className="w-3.5 h-3.5 mr-1" /> Clear link
+                </Button>
+              )}
+            </div>
+
+            <div className="relative">
+              <Search className="w-4 h-4 text-gray-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                className="w-full border rounded px-9 py-2 text-sm bg-white"
+                placeholder="Search recipes by title or ingredient…"
+                value={recipeSearchTerm}
+                onChange={(event) => setRecipeSearchTerm(event.target.value)}
+              />
+            </div>
+            {recipeSearchError && <p className="text-xs text-red-500 mt-2">{recipeSearchError}</p>}
+
+            {recipeSearchTerm.trim().length >= 2 && (
+              <div className="mt-2 rounded-lg border bg-white divide-y max-h-48 overflow-y-auto">
+                {isSearchingRecipes && <div className="px-3 py-2 text-xs text-gray-500">Searching recipes…</div>}
+                {!isSearchingRecipes && recipeResults.length === 0 && <div className="px-3 py-2 text-xs text-gray-500">No recipes found.</div>}
+                {!isSearchingRecipes && recipeResults.map((recipe) => (
+                  <button
+                    key={recipe.id}
+                    type="button"
+                    className={`w-full text-left px-3 py-2 hover:bg-orange-50 flex items-center gap-3 ${selectedRecipe?.id === recipe.id ? 'bg-orange-50' : ''}`}
+                    onClick={() => setSelectedRecipe(recipe)}
+                  >
+                    {getRecipeImageUrl(recipe) ? (
+                      <img src={getRecipeImageUrl(recipe)} alt="" className="w-10 h-10 rounded object-cover border" />
+                    ) : (
+                      <div className="w-10 h-10 rounded border bg-gray-50 flex items-center justify-center"><ImageIcon className="w-4 h-4 text-gray-300" /></div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-gray-900 truncate">{recipe.title}</div>
+                      <div className="text-xs text-gray-500">
+                        {recipe.servings ? `${recipe.servings} servings · ` : ''}{getRecipeIngredients(recipe).length} ingredients
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {selectedRecipe && (
+              <div className="mt-3 rounded-lg border bg-white p-3 flex gap-3">
+                {selectedRecipeImageUrl ? (
+                  <img src={selectedRecipeImageUrl} alt="" className="w-20 h-20 rounded-lg object-cover border shrink-0" />
+                ) : (
+                  <div className="w-20 h-20 rounded-lg border bg-gray-50 flex items-center justify-center shrink-0"><ImageIcon className="w-6 h-6 text-gray-300" /></div>
+                )}
+                <div className="min-w-0 flex-1 space-y-2">
+                  <div>
+                    <div className="font-semibold text-gray-900 truncate">{selectedRecipe.title}</div>
+                    <div className="text-xs text-gray-500">
+                      {selectedRecipe.servings ? `${selectedRecipe.servings} serving${selectedRecipe.servings === 1 ? '' : 's'} · ` : ''}{selectedRecipeIngredients.length} ingredient{selectedRecipeIngredients.length === 1 ? '' : 's'}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-xs">
+                    <Badge variant="secondary">{selectedRecipeNutrition.calories ?? 0} cal</Badge>
+                    <Badge variant="secondary">P {selectedRecipeNutrition.protein ?? 0}g</Badge>
+                    <Badge variant="secondary">C {selectedRecipeNutrition.carbs ?? 0}g</Badge>
+                    <Badge variant="secondary">F {selectedRecipeNutrition.fat ?? 0}g</Badge>
+                  </div>
+                  <Button type="button" size="sm" className="bg-orange-500 hover:bg-orange-600 text-white" onClick={useSelectedRecipe}>
+                    Use this recipe
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {linkedRecipeId && (
+              <div className="mt-3 text-xs text-orange-700 flex items-center gap-1">
+                <ChefHat className="w-3.5 h-3.5" /> Linked to {mealForm.sourceRecipeTitle || 'selected recipe'}; item rows remain editable.
               </div>
             )}
           </div>

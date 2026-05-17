@@ -34,12 +34,15 @@ export const getMealItems = (meal: any): CalendarMealItem[] => (
 export const getMealNutritionTotals = (meal: any) => {
   const mealItems = getMealItems(meal);
   if (mealItems.length > 0) {
-    return mealItems.reduce((acc, item) => ({
+    const itemTotals = mealItems.reduce((acc, item) => ({
       calories: acc.calories + (Number(item?.calories) || 0),
       protein: acc.protein + (Number(item?.protein) || 0),
       carbs: acc.carbs + (Number(item?.carbs) || 0),
       fat: acc.fat + (Number(item?.fat) || 0),
     }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+    const hasItemNutrition = itemTotals.calories > 0 || itemTotals.protein > 0 || itemTotals.carbs > 0 || itemTotals.fat > 0;
+    const hasMealNutrition = Number(meal?.calories) > 0 || Number(meal?.protein) > 0 || Number(meal?.carbs) > 0 || Number(meal?.fat) > 0;
+    if (hasItemNutrition || !hasMealNutrition) return itemTotals;
   }
 
   return {

@@ -28,6 +28,11 @@ export const mealPlanEntries = pgTable("meal_plan_entries", {
   customFat: integer("custom_fat"),
   mealItems: jsonb("meal_items"),
   source: varchar("source", { length: 50 }),
+  sourceRecipeId: text("source_recipe_id"),
+  sourceRecipeTitle: text("source_recipe_title"),
+  sourceRecipeImageUrl: text("source_recipe_image_url"),
+  sourceRecipeServings: integer("source_recipe_servings"),
+  sourceRecipeUrl: text("source_recipe_url"),
 });
 
 export const mealStreaks = pgTable("meal_streaks", {

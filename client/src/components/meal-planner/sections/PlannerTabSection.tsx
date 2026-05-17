@@ -189,12 +189,15 @@ const PlannerTabSection = ({
   const getMealTotals = (meal: any) => {
     const components = getMealComponents(meal);
     if (components.length > 0) {
-      return components.reduce((acc: any, component: any) => ({
+      const itemTotals = components.reduce((acc: any, component: any) => ({
         calories: acc.calories + (Number(component.calories) || 0),
         protein: acc.protein + (Number(component.protein) || 0),
         carbs: acc.carbs + (Number(component.carbs) || 0),
         fat: acc.fat + (Number(component.fat) || 0),
       }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+      const hasItemNutrition = itemTotals.calories > 0 || itemTotals.protein > 0 || itemTotals.carbs > 0 || itemTotals.fat > 0;
+      const hasMealNutrition = Number(meal?.calories) > 0 || Number(meal?.protein) > 0 || Number(meal?.carbs) > 0 || Number(meal?.fat) > 0;
+      if (hasItemNutrition || !hasMealNutrition) return itemTotals;
     }
 
     return {
@@ -533,8 +536,9 @@ const PlannerTabSection = ({
                               <div key={idx} className="flex items-start justify-between gap-1 group rounded-md bg-white/70 p-1">
                                 <div className="flex-1 min-w-0">
                                   <div className="text-xs font-medium text-gray-900 truncate flex items-center gap-1">
-                                    {item.name}
-                                    {item.source === 'recipe' && <ChefHat className="w-3 h-3 text-orange-500" />}
+                                    {item.sourceRecipeImageUrl && <img src={item.sourceRecipeImageUrl} alt="" className="w-5 h-5 rounded object-cover border shrink-0" />}
+                                    <span className="truncate">{item.name}</span>
+                                    {(item.source === 'recipe' || item.sourceRecipeId) && <Badge variant="outline" className="text-[9px] leading-3 px-1 py-0 border-orange-200 text-orange-600 shrink-0"><ChefHat className="w-2.5 h-2.5 mr-0.5" />Recipe</Badge>}
                                     <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span>
                                   </div>
                                   <div className="text-xs text-gray-400">{mealTotals.calories} cal · P:{mealTotals.protein}g{componentCount > 0 ? ` · ${componentCount} items` : ''}</div>
@@ -664,7 +668,7 @@ const PlannerTabSection = ({
                               return (
                                 <div key={idx} className="flex items-start justify-between bg-gray-50 rounded-lg px-3 py-2">
                                   <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium text-gray-900 flex items-center gap-1">{item.name} {item.source === 'recipe' && <ChefHat className="w-3.5 h-3.5 text-orange-500" />} <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span></div>
+                                    <div className="text-sm font-medium text-gray-900 flex items-center gap-1">{item.sourceRecipeImageUrl && <img src={item.sourceRecipeImageUrl} alt="" className="w-7 h-7 rounded object-cover border shrink-0" />}<span className="truncate">{item.name}</span> {(item.source === 'recipe' || item.sourceRecipeId) && <Badge variant="outline" className="text-[9px] leading-3 px-1 py-0 border-orange-200 text-orange-600 shrink-0"><ChefHat className="w-2.5 h-2.5 mr-0.5" />Recipe</Badge>} <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span></div>
                                     <div className="flex gap-3 mt-0.5 flex-wrap"><span className="text-xs text-gray-500">{mealTotals.calories} cal</span><span className="text-xs text-blue-500">P: {mealTotals.protein}g</span><span className="text-xs text-orange-500">C: {mealTotals.carbs}g</span><span className="text-xs text-purple-500">F: {mealTotals.fat}g</span>{componentCount > 0 && <span className="text-xs text-gray-500">{componentCount} items</span>}</div>
                                     {renderMealComponents(item, cardKey)}
                                   </div>

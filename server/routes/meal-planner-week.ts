@@ -1483,7 +1483,7 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
 router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { date, mealType, name, calories, protein, carbs, fat, fiber, mealItems, source, recipeId } = req.body || {};
+    const { date, mealType, name, calories, protein, carbs, fat, fiber, mealItems, source, recipeId, sourceRecipeId, sourceRecipeTitle, sourceRecipeImageUrl, sourceRecipeServings, sourceRecipeUrl } = req.body || {};
 
     const parsed = date ? new Date(date) : null;
     if (!parsed || isNaN(parsed.getTime())) {
@@ -1548,6 +1548,11 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
         customFat: toNonNegativeRoundedInt(fat),
         mealItems: Array.isArray(mealItems) ? mealItems : null,
         source: source || null,
+        sourceRecipeId: sourceRecipeId ? String(sourceRecipeId) : null,
+        sourceRecipeTitle: sourceRecipeTitle ? String(sourceRecipeTitle) : null,
+        sourceRecipeImageUrl: sourceRecipeImageUrl ? String(sourceRecipeImageUrl) : null,
+        sourceRecipeServings: sourceRecipeServings ? toNonNegativeRoundedInt(sourceRecipeServings) : null,
+        sourceRecipeUrl: sourceRecipeUrl ? String(sourceRecipeUrl) : null,
       })
       .returning();
 
@@ -1647,6 +1652,11 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
         fiber: toNonNegativeRoundedInt(fiber),
         mealItems: Array.isArray(mealItems) ? mealItems : null,
         source: source || null,
+        sourceRecipeId: sourceRecipeId ? String(sourceRecipeId) : null,
+        sourceRecipeTitle: sourceRecipeTitle ? String(sourceRecipeTitle) : null,
+        sourceRecipeImageUrl: sourceRecipeImageUrl ? String(sourceRecipeImageUrl) : null,
+        sourceRecipeServings: sourceRecipeServings ? toNonNegativeRoundedInt(sourceRecipeServings) : null,
+        sourceRecipeUrl: sourceRecipeUrl ? String(sourceRecipeUrl) : null,
       },
     });
   } catch (error) {

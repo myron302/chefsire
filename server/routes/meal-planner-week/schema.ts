@@ -12,6 +12,11 @@ export async function ensureMealPlannerWeekSchema() {
     await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS custom_fat INTEGER;`);
     await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS meal_items JSONB;`);
     await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS source VARCHAR(50);`);
+    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS source_recipe_id TEXT;`);
+    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS source_recipe_title TEXT;`);
+    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS source_recipe_image_url TEXT;`);
+    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS source_recipe_servings INTEGER;`);
+    await db.execute(sql`ALTER TABLE meal_plan_entries ADD COLUMN IF NOT EXISTS source_recipe_url TEXT;`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS meal_plan_week_shares (
         id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),

@@ -128,6 +128,7 @@ export class RecipeService {
         cookTime: recipe.cookTime,
         servings: recipe.servings,
         difficulty: recipe.difficulty,
+        nutrition: recipe.nutrition,
         calories: recipe.calories,
         protein: recipe.protein,
         carbs: recipe.carbs,

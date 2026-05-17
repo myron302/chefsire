@@ -85,6 +85,11 @@ const createInitialMealForm = () => ({
   servingSize: '',
   servingQty: 1,
   mealItems: [createMealItemRow()],
+  sourceRecipeId: undefined,
+  sourceRecipeTitle: undefined,
+  sourceRecipeImageUrl: undefined,
+  sourceRecipeServings: undefined,
+  sourceRecipeUrl: undefined,
 });
 
 const INITIAL_MEAL_FORM = createInitialMealForm();
@@ -1279,6 +1284,11 @@ const NutritionMealPlanner = () => {
           mealItems: mealData.mealItems || null,
           source: mealData.source || null,
           recipeId: mealData.recipeId || null,
+          sourceRecipeId: mealData.sourceRecipeId || null,
+          sourceRecipeTitle: mealData.sourceRecipeTitle || null,
+          sourceRecipeImageUrl: mealData.sourceRecipeImageUrl || null,
+          sourceRecipeServings: mealData.sourceRecipeServings || null,
+          sourceRecipeUrl: mealData.sourceRecipeUrl || null,
         }),
       });
 
@@ -2001,16 +2011,29 @@ const NutritionMealPlanner = () => {
       carbs: acc.carbs + item.carbs,
       fat: acc.fat + item.fat,
     }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+    const hasRecipeNutrition = Boolean(mealForm.sourceRecipeId) && (Number(mealForm.calories) > 0 || Number(mealForm.protein) > 0 || Number(mealForm.carbs) > 0 || Number(mealForm.fat) > 0);
+    const mealTotals = hasRecipeNutrition ? {
+      calories: Number(mealForm.calories) || 0,
+      protein: Number(mealForm.protein) || 0,
+      carbs: Number(mealForm.carbs) || 0,
+      fat: Number(mealForm.fat) || 0,
+    } : itemTotals;
 
     saveMealToSlot({
       name: mealForm.name.trim(),
-      calories: itemTotals.calories,
-      protein: itemTotals.protein,
-      carbs: itemTotals.carbs,
-      fat: itemTotals.fat,
+      calories: mealTotals.calories,
+      protein: mealTotals.protein,
+      carbs: mealTotals.carbs,
+      fat: mealTotals.fat,
       fiber: Number(mealForm.fiber) || 0,
       servingSize: normalizedMealItems.length === 1 ? (normalizedMealItems[0].quantity || mealForm.servingSize || '1 serving') : `${normalizedMealItems.length} items`,
       mealItems: normalizedMealItems,
+      source: mealForm.sourceRecipeId ? 'recipe' : null,
+      sourceRecipeId: mealForm.sourceRecipeId,
+      sourceRecipeTitle: mealForm.sourceRecipeTitle,
+      sourceRecipeImageUrl: mealForm.sourceRecipeImageUrl,
+      sourceRecipeServings: mealForm.sourceRecipeServings,
+      sourceRecipeUrl: mealForm.sourceRecipeUrl,
     });
     resetAddMealModalState();
   };
