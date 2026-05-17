@@ -16,6 +16,40 @@ export type NutritionLookupResult = {
   servingSize: string;
 };
 
+export type CalendarMealItem = {
+  id: string;
+  name: string;
+  quantity?: string;
+  calories?: number;
+  protein?: number;
+  carbs?: number;
+  fat?: number;
+  notes?: string;
+};
+
+export const getMealItems = (meal: any): CalendarMealItem[] => (
+  Array.isArray(meal?.mealItems) ? meal.mealItems.filter((item: any) => item && item.name) : []
+);
+
+export const getMealNutritionTotals = (meal: any) => {
+  const mealItems = getMealItems(meal);
+  if (mealItems.length > 0) {
+    return mealItems.reduce((acc, item) => ({
+      calories: acc.calories + (Number(item?.calories) || 0),
+      protein: acc.protein + (Number(item?.protein) || 0),
+      carbs: acc.carbs + (Number(item?.carbs) || 0),
+      fat: acc.fat + (Number(item?.fat) || 0),
+    }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+  }
+
+  return {
+    calories: Number(meal?.calories) || 0,
+    protein: Number(meal?.protein) || 0,
+    carbs: Number(meal?.carbs) || 0,
+    fat: Number(meal?.fat) || 0,
+  };
+};
+
 export const formatLocalDate = (date: Date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -56,12 +90,15 @@ export const getSlotItems = (weeklyMeals: Record<string, any>, day: string, meal
 
 export const getSlotTotals = (weeklyMeals: Record<string, any>, day: string, mealType: string) => {
   const items = getSlotItems(weeklyMeals, day, mealType);
-  return items.reduce((acc, m) => ({
-    calories: acc.calories + (Number(m?.calories) || 0),
-    protein: acc.protein + (Number(m?.protein) || 0),
-    carbs: acc.carbs + (Number(m?.carbs) || 0),
-    fat: acc.fat + (Number(m?.fat) || 0),
-  }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+  return items.reduce((acc, m) => {
+    const totals = getMealNutritionTotals(m);
+    return {
+      calories: acc.calories + totals.calories,
+      protein: acc.protein + totals.protein,
+      carbs: acc.carbs + totals.carbs,
+      fat: acc.fat + totals.fat,
+    };
+  }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
 };
 
 export const calculateTodayNutritionTotals = (meals: Record<string, any>) => {
@@ -72,10 +109,11 @@ export const calculateTodayNutritionTotals = (meals: Record<string, any>) => {
   Object.values(todayMeals).forEach((slotValue: any) => {
     const items = Array.isArray(slotValue) ? slotValue : slotValue ? [slotValue] : [];
     items.forEach((meal: any) => {
-      totals.calories += Number(meal?.calories || 0);
-      totals.protein += Number(meal?.protein || 0);
-      totals.carbs += Number(meal?.carbs || 0);
-      totals.fat += Number(meal?.fat || 0);
+      const mealTotals = getMealNutritionTotals(meal);
+      totals.calories += mealTotals.calories;
+      totals.protein += mealTotals.protein;
+      totals.carbs += mealTotals.carbs;
+      totals.fat += mealTotals.fat;
     });
   });
 
@@ -84,9 +122,10 @@ export const calculateTodayNutritionTotals = (meals: Record<string, any>) => {
 
 export const getNutritionGrade = (meal: any, dailyCalorieGoal: number): string => {
   let score = 100;
-  const mealCals = Number(meal.calories) || 0;
-  const protein = Number(meal.protein) || 0;
-  const fat = Number(meal.fat) || 0;
+  const mealTotals = getMealNutritionTotals(meal);
+  const mealCals = mealTotals.calories;
+  const protein = mealTotals.protein;
+  const fat = mealTotals.fat;
   const fiber = Number(meal.fiber) || 0;
 
   const proteinDensity = mealCals > 0 ? (protein / mealCals) * 100 : 0;
