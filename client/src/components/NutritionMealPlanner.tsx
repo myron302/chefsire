@@ -3,7 +3,8 @@ import {
   Calendar, Plus, Target, TrendingUp, Clock, ChefHat, Star, Lock, Crown,
   ShoppingCart, CheckCircle, BarChart3, Download, Filter, Save,
   AlertCircle, Package, Utensils, CalendarDays, Zap, ListChecks, Settings, Camera,
-  DollarSign, Sparkles, Flame, Scale, Droplets, Ruler, Users, Globe, Copy, Share2
+  DollarSign, Sparkles, Flame, Scale, Droplets, Ruler, Users, Globe, Copy, Share2,
+  Brain, Lightbulb, ShieldCheck, AlertTriangle, Activity
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -35,6 +36,11 @@ import {
   type PlannerGrocerySuggestion,
 } from '@/components/meal-planner/plannerGroceryUtils';
 import { derivePrepSessions } from '@/components/meal-planner/prepOrchestrationUtils';
+import {
+  deriveNutritionCoachInsights,
+  type NutritionCoachInsight,
+  type NutritionCoachScore,
+} from '@/components/meal-planner/nutritionCoachUtils';
 import {
   LineChart,
   Line,
@@ -360,6 +366,7 @@ const NutritionMealPlanner = () => {
   const [fixItDetailsQueueDone, setFixItDetailsQueueDone] = useState(false);
   const [fixItDetailsQueueSnoozedByKey, setFixItDetailsQueueSnoozedByKey] = useState<Record<string, FixItDetailsQueueSnoozeOptionId>>({});
   const [plannerGroceryState, setPlannerGroceryState] = useState<PlannerGroceryDerivationState>({});
+  const [dismissedCoachInsightIds, setDismissedCoachInsightIds] = useState<string[]>([]);
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -380,6 +387,7 @@ const NutritionMealPlanner = () => {
   const getPrepSessionStorageKeyForAnchor = (anchorDate: string) => `meal-planner-prep-session-v1:${user?.id || 'anon'}:${anchorDate}`;
   const getShareVisibilityStorageKey = () => `meal-planner-share-visibility-v1:${user?.id || 'anon'}`;
   const getPlannerGroceryStorageKey = () => `meal-planner-derived-grocery-v1:${user?.id || 'anon'}:${getCurrentWeekAnchor()}`;
+  const getNutritionCoachDismissalStorageKey = () => `meal-planner-nutrition-coach-dismissed-v1:${user?.id || 'anon'}:${getCurrentWeekAnchor()}`;
   const countMealEntries = (weekMeals: Record<string, any> | null | undefined) => {
     if (!weekMeals || typeof weekMeals !== 'object') return 0;
     return Object.values(weekMeals).reduce((weekTotal, dayValue) => {
@@ -656,6 +664,29 @@ const NutritionMealPlanner = () => {
       console.error('Error saving planner grocery intelligence state:', error);
     }
   }, [plannerGroceryState, user?.id, selectedDate]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(getNutritionCoachDismissalStorageKey());
+      if (!stored) {
+        setDismissedCoachInsightIds([]);
+        return;
+      }
+      const parsed = JSON.parse(stored);
+      setDismissedCoachInsightIds(Array.isArray(parsed) ? parsed.filter((id) => typeof id === 'string') : []);
+    } catch (error) {
+      console.error('Error loading nutrition coach dismissal state:', error);
+      setDismissedCoachInsightIds([]);
+    }
+  }, [user?.id, selectedDate]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(getNutritionCoachDismissalStorageKey(), JSON.stringify(dismissedCoachInsightIds));
+    } catch (error) {
+      console.error('Error saving nutrition coach dismissal state:', error);
+    }
+  }, [dismissedCoachInsightIds, user?.id, selectedDate]);
 
 
   useEffect(() => {
@@ -3598,6 +3629,65 @@ const NutritionMealPlanner = () => {
     },
   ];
 
+  const nutritionCoachAnalysis = useMemo(() => deriveNutritionCoachInsights({
+    weeklyMeals,
+    mealTypes,
+    weekDays,
+    calorieGoal,
+    proteinGoal: macroGoals.protein || DEFAULT_NUTRITION_GOALS.macroGoals.protein,
+    water,
+    grocery: {
+      pendingCount: groceryPendingCount,
+      completedCount: groceryCompletedCount,
+      totalBuyCount: groceryBuyItemCount,
+      suggestions: activePlannerGrocerySuggestions,
+      pantryItemCount: normalizedSavingsReport?.pantryItemCount || groceryList.filter((item: any) => item?.isPantryItem).length,
+      pantrySavings: normalizedSavingsReport?.pantrySavings || 0,
+    },
+    prep: {
+      planned: prepSessionPlanned,
+      completed: prepSessionCompleted,
+      progress: blendedPrepProgress,
+      activeBlockersCount: prepActiveBlockersCount,
+      carryoverCount: prepCarryoverCount,
+      orchestration: prepOrchestration,
+    },
+    readiness: {
+      weekReadyNow,
+      prepReadyForWeek,
+    },
+    adherence: {
+      currentStreak: streak.currentStreak,
+    },
+  }), [
+    weeklyMeals,
+    mealTypes,
+    weekDays,
+    calorieGoal,
+    macroGoals.protein,
+    water,
+    groceryPendingCount,
+    groceryCompletedCount,
+    groceryBuyItemCount,
+    activePlannerGrocerySuggestions,
+    normalizedSavingsReport,
+    groceryList,
+    prepSessionPlanned,
+    prepSessionCompleted,
+    blendedPrepProgress,
+    prepActiveBlockersCount,
+    prepCarryoverCount,
+    prepOrchestration,
+    weekReadyNow,
+    prepReadyForWeek,
+    streak.currentStreak,
+  ]);
+  const visibleCoachInsights = nutritionCoachAnalysis.insights.filter((insight) => !dismissedCoachInsightIds.includes(insight.id));
+  const handleDismissCoachInsight = (insightId: string) => {
+    setDismissedCoachInsightIds((prev) => prev.includes(insightId) ? prev : [...prev, insightId]);
+  };
+  const handleRestoreCoachInsights = () => setDismissedCoachInsightIds([]);
+
   const copyWeeklyShareSummary = async () => {
     try {
       await navigator.clipboard.writeText(weeklyShareSummaryText);
@@ -5011,6 +5101,17 @@ const NutritionMealPlanner = () => {
 
           {/* Analytics Tab */}
           <TabsContent value="analytics">
+            <div className="space-y-6">
+              <NutritionCoachPanel
+                analysis={nutritionCoachAnalysis}
+                visibleInsights={visibleCoachInsights}
+                dismissedCount={dismissedCoachInsightIds.length}
+                onDismissInsight={handleDismissCoachInsight}
+                onRestoreInsights={handleRestoreCoachInsights}
+                onOpenPlanner={() => setActiveTab('planner')}
+                onOpenGrocery={() => setActiveTab('grocery')}
+                onOpenPrep={() => setActiveTab('prep')}
+              />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
                 <CardHeader>
@@ -5158,6 +5259,7 @@ const NutritionMealPlanner = () => {
                 </CardContent>
               </Card>
             </div>
+            </div>
           </TabsContent>
 
           <TabsContent value="advanced">
@@ -5273,7 +5375,7 @@ const NutritionMealPlanner = () => {
 };
 
 // Helper Components
-const MacroCard = ({ label, current, goal, unit, color }) => {
+const MacroCard = ({ label, current, goal, unit, color }: { label: string; current: number; goal: number; unit: string; color: 'blue' | 'orange' | 'purple' }) => {
   const percentage = (current / goal) * 100;
   const colorClasses = {
     blue: 'text-blue-600 bg-blue-50',
@@ -5290,7 +5392,256 @@ const MacroCard = ({ label, current, goal, unit, color }) => {
   );
 };
 
-const StorageTip = ({ icon, title, tip }) => (
+const coachSeverityStyles: Record<NutritionCoachInsight['severity'], string> = {
+  positive: 'border-emerald-200 bg-emerald-50/70 text-emerald-800',
+  neutral: 'border-blue-200 bg-blue-50/70 text-blue-800',
+  warning: 'border-amber-200 bg-amber-50/80 text-amber-800',
+  'high-priority': 'border-red-200 bg-red-50/80 text-red-800',
+};
+
+const coachCategoryStyles: Record<NutritionCoachInsight['category'], string> = {
+  nutrition: 'bg-blue-100 text-blue-800',
+  prep: 'bg-purple-100 text-purple-800',
+  grocery: 'bg-emerald-100 text-emerald-800',
+  readiness: 'bg-orange-100 text-orange-800',
+  consistency: 'bg-indigo-100 text-indigo-800',
+  budget: 'bg-green-100 text-green-800',
+  recovery: 'bg-rose-100 text-rose-800',
+  scheduling: 'bg-slate-100 text-slate-800',
+  hydration: 'bg-cyan-100 text-cyan-800',
+  adherence: 'bg-yellow-100 text-yellow-800',
+};
+
+const coachScoreGradient = (value: number) => {
+  if (value >= 80) return 'from-emerald-500 to-green-500';
+  if (value >= 60) return 'from-blue-500 to-cyan-500';
+  if (value >= 40) return 'from-amber-500 to-orange-500';
+  return 'from-red-500 to-rose-500';
+};
+
+const coachTrendLabel = (trend: NutritionCoachScore['trend']) => (
+  trend === 'up' ? 'Strong' : trend === 'steady' ? 'Stable' : 'Needs attention'
+);
+
+const NutritionCoachPanel = ({
+  analysis,
+  visibleInsights,
+  dismissedCount,
+  onDismissInsight,
+  onRestoreInsights,
+  onOpenPlanner,
+  onOpenGrocery,
+  onOpenPrep,
+}: {
+  analysis: ReturnType<typeof deriveNutritionCoachInsights>;
+  visibleInsights: NutritionCoachInsight[];
+  dismissedCount: number;
+  onDismissInsight: (insightId: string) => void;
+  onRestoreInsights: () => void;
+  onOpenPlanner: () => void;
+  onOpenGrocery: () => void;
+  onOpenPrep: () => void;
+}) => {
+  const topPriority = analysis.summary.topPriority;
+  const scoreById = new Map(analysis.scores.map((score) => [score.id, score]));
+  const momentum = scoreById.get('weeklyMomentum');
+  const primaryActions = [
+    { label: 'Review planner', onClick: onOpenPlanner },
+    { label: 'Grocery readiness', onClick: onOpenGrocery },
+    { label: 'Prep plan', onClick: onOpenPrep },
+  ];
+
+  return (
+    <Card className="overflow-hidden border-orange-200 bg-gradient-to-br from-orange-50 via-white to-purple-50 shadow-sm">
+      <CardHeader className="border-b border-orange-100 bg-white/70">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="bg-orange-600 text-white">
+                <Brain className="w-3.5 h-3.5 mr-1" />
+                Derived Intelligence
+              </Badge>
+              <Badge variant="outline" className="border-purple-200 bg-purple-50 text-purple-800">
+                <Sparkles className="w-3.5 h-3.5 mr-1" />
+                AI Nutrition Coach
+              </Badge>
+            </div>
+            <CardTitle className="mt-3 flex items-center gap-2 text-2xl text-gray-950">
+              <Activity className="w-6 h-6 text-orange-600" />
+              AI Nutrition Coach
+            </CardTitle>
+            <CardDescription className="mt-1 max-w-3xl text-gray-700">
+              Insight-driven weekly coaching from your planner, macros, grocery readiness, pantry signals, prep orchestration, hydration, and adherence data. No external AI call is made.
+            </CardDescription>
+          </div>
+          <div className="rounded-2xl border border-orange-200 bg-white/90 p-4 text-center shadow-sm lg:min-w-[190px]">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Weekly Momentum</p>
+            <p className="mt-1 text-4xl font-bold text-orange-600">{momentum?.value ?? 0}</p>
+            <p className="text-xs text-gray-500">{momentum?.description || 'Momentum unlocks as meals are planned.'}</p>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5 p-4 sm:p-6">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+          {analysis.scores.map((score) => (
+            <div key={score.id} className="rounded-xl border border-white/70 bg-white/90 p-3 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-medium text-gray-500">{score.label}</p>
+                  <p className="text-2xl font-bold text-gray-950">{score.value}</p>
+                </div>
+                <Badge variant="outline" className="text-[10px]">
+                  {coachTrendLabel(score.trend)}
+                </Badge>
+              </div>
+              <Progress value={score.value} className="mt-3 h-2" />
+              <div className={`mt-2 h-1 rounded-full bg-gradient-to-r ${coachScoreGradient(score.value)}`} style={{ width: `${Math.max(8, score.value)}%` }} />
+              <p className="mt-2 text-xs text-gray-600">{score.description}</p>
+            </div>
+          ))}
+        </div>
+
+        {topPriority ? (
+          <div className="rounded-2xl border border-orange-200 bg-white/90 p-4 shadow-sm">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-3">
+                {topPriority.severity === 'positive' ? (
+                  <ShieldCheck className="mt-1 h-5 w-5 text-emerald-600" />
+                ) : topPriority.severity === 'high-priority' ? (
+                  <AlertTriangle className="mt-1 h-5 w-5 text-red-600" />
+                ) : (
+                  <Lightbulb className="mt-1 h-5 w-5 text-orange-600" />
+                )}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-orange-700">Top coaching signal</p>
+                  <h3 className="text-lg font-semibold text-gray-950">{topPriority.title}</h3>
+                  <p className="text-sm text-gray-600">{topPriority.description}</p>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {primaryActions.map((action) => (
+                  <Button key={action.label} type="button" size="sm" variant="outline" onClick={action.onClick}>
+                    {action.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+          <div className="space-y-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="font-semibold text-gray-950">Coaching insights</h3>
+                <p className="text-sm text-gray-600">
+                  {analysis.summary.positiveCount} positive • {analysis.summary.warningCount} warning • {analysis.summary.recommendationCount} recommendation
+                </p>
+              </div>
+              {dismissedCount > 0 ? (
+                <Button type="button" size="sm" variant="ghost" onClick={onRestoreInsights}>
+                  Restore {dismissedCount} dismissed
+                </Button>
+              ) : null}
+            </div>
+            {visibleInsights.length > 0 ? (
+              <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
+                {visibleInsights.slice(0, 8).map((insight) => (
+                  <details key={insight.id} className={`group rounded-xl border p-4 shadow-sm ${coachSeverityStyles[insight.severity]}`}>
+                    <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
+                      <div>
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <Badge className={coachCategoryStyles[insight.category]}>{insight.category}</Badge>
+                          <Badge variant="outline" className="bg-white/70 text-[10px] uppercase tracking-wide">{insight.kind}</Badge>
+                        </div>
+                        <h4 className="font-semibold text-gray-950">{insight.title}</h4>
+                        <p className="mt-1 text-sm text-gray-700">{insight.description}</p>
+                      </div>
+                      <span className="rounded-full bg-white/80 px-2 py-1 text-xs font-semibold text-gray-500 group-open:hidden">Details</span>
+                    </summary>
+                    <div className="mt-4 space-y-3 rounded-lg bg-white/75 p-3 text-sm text-gray-700">
+                      {insight.suggestedActions.length > 0 ? (
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Suggested actions</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {insight.suggestedActions.map((action) => (
+                              <span key={action} className="rounded-full bg-white px-3 py-1 text-xs font-medium text-gray-700 shadow-sm">
+                                {action}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                      {insight.relatedMeals.length > 0 ? (
+                        <p><span className="font-medium">Related meals:</span> {insight.relatedMeals.slice(0, 5).join(', ')}</p>
+                      ) : null}
+                      {insight.relatedPrepSessions.length > 0 ? (
+                        <p><span className="font-medium">Prep links:</span> {insight.relatedPrepSessions.slice(0, 4).join(', ')}</p>
+                      ) : null}
+                      {insight.evidence.length > 0 ? (
+                        <p><span className="font-medium">Evidence:</span> {insight.evidence.slice(0, 4).join(' • ')}</p>
+                      ) : null}
+                      <Button type="button" size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => onDismissInsight(insight.id)}>
+                        Dismiss for this week
+                      </Button>
+                    </div>
+                  </details>
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-dashed bg-white/70 p-6 text-sm text-gray-600">
+                All visible coach insights are dismissed for this week. Restore dismissed insights to review them again.
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-3">
+            <div className="rounded-xl border border-white/80 bg-white/90 p-4 shadow-sm">
+              <h3 className="flex items-center gap-2 font-semibold text-gray-950">
+                <Lightbulb className="h-4 w-4 text-orange-600" />
+                Action queue
+              </h3>
+              {analysis.recommendations.length > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {analysis.recommendations.map((recommendation) => (
+                    <span key={recommendation} className="rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-medium text-orange-800">
+                      {recommendation}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-gray-600">No urgent action queue yet. Add meals and prep details to unlock more coaching.</p>
+              )}
+            </div>
+            <div className="rounded-xl border border-white/80 bg-white/90 p-4 shadow-sm">
+              <h3 className="font-semibold text-gray-950">Coach coverage</h3>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-xs text-gray-500">Planned slots</p>
+                  <p className="font-semibold text-gray-950">{analysis.summary.plannedSlots}/{analysis.summary.totalSlots}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-xs text-gray-500">Active days</p>
+                  <p className="font-semibold text-gray-950">{analysis.summary.activeDays}/7</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-xs text-gray-500">Repeated meals</p>
+                  <p className="font-semibold text-gray-950">{analysis.summary.repeatedMealCount}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3">
+                  <p className="text-xs text-gray-500">Visible insights</p>
+                  <p className="font-semibold text-gray-950">{visibleInsights.length}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+};
+
+const StorageTip = ({ icon, title, tip }: { icon: React.ReactNode; title: string; tip: string }) => (
   <div className="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
     {icon}
     <div>
@@ -5300,7 +5651,7 @@ const StorageTip = ({ icon, title, tip }) => (
   </div>
 );
 
-const InsightCard = ({ icon, title, description, trend }) => {
+const InsightCard = ({ icon, title, description, trend }: { icon: React.ReactNode; title: string; description: string; trend: 'positive' | 'neutral' }) => {
   const borderColor = trend === 'positive' ? 'border-green-200' : 'border-gray-200';
 
   return (
@@ -5312,7 +5663,7 @@ const InsightCard = ({ icon, title, description, trend }) => {
   );
 };
 
-const Testimonial = ({ name, text, rating }) => (
+const Testimonial = ({ name, text, rating }: { name: string; text: string; rating: number }) => (
   <div className="bg-white p-4 rounded-lg border border-purple-200">
     <div className="flex gap-1 mb-2">
       {[...Array(rating)].map((_, i) => (
