@@ -47,6 +47,7 @@ const MealPlanDetailsPage = React.lazy(() => import("@/pages/nutrition/MealPlanD
 const MyPurchasesPage = React.lazy(() => import("@/pages/nutrition/MyPurchasesPage"));
 const MealPlannerSharedWeekPage = React.lazy(() => import("@/pages/nutrition/MealPlannerSharedWeekPage"));
 const MealPlannerSharedBrowsePage = React.lazy(() => import("@/pages/nutrition/MealPlannerSharedBrowsePage"));
+const NutritionCampaignFeedPage = React.lazy(() => import("@/pages/nutrition/campaigns/NutritionCampaignFeedPage"));
 const AnalyticsPage = React.lazy(() => import("@/pages/analytics/AnalyticsPage"));
 const CateringMarketplace = React.lazy(() => import("@/pages/services/catering"));
 const WeddingPlanning = React.lazy(() => import("@/pages/services/wedding-planning"));
@@ -291,6 +292,7 @@ export default function App() {
                 <Route path="/nutrition/marketplace" component={MealPlanMarketplace} />
                 <Route path="/nutrition/analytics" component={CreatorAnalytics} />
                 <Route path="/nutrition/my-purchases" component={MyPurchasesPage} />
+                <Route path="/nutrition/campaigns" component={NutritionCampaignFeedPage} />
 
                 {/* Legacy Nutrition Paths (redirects) */}
                 <Route path="/nutrition/meal-plans/create">
