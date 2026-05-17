@@ -1,9 +1,10 @@
 import React from 'react';
-import { Camera, CheckCircle, DollarSign, Download, Filter, Lightbulb, Package, Plus, ShoppingCart, Star, TrendingUp, Users, Zap } from 'lucide-react';
+import { Camera, CheckCircle, ChevronDown, DollarSign, Download, Filter, Lightbulb, Package, Plus, ShoppingCart, Sparkles, Star, TrendingUp, Users, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
+import type { PlannerGrocerySuggestion } from '@/components/meal-planner/plannerGroceryUtils';
 
 type GroceryTabSectionProps = {
   groceryList: any[];
@@ -44,6 +45,13 @@ type GroceryTabSectionProps = {
   resolvedBlockerSuggestionNames: string[];
   canResolveTrackedSuggestionBlockers: boolean;
   onResolveTrackedSuggestionBlockers: () => void;
+  plannerGrocerySuggestions: PlannerGrocerySuggestion[];
+  pendingPlannerGroceryCount: number;
+  resolvedPlannerGroceryCount: number;
+  onAcceptPlannerGrocerySuggestion: (suggestion: PlannerGrocerySuggestion) => void;
+  onDismissPlannerGrocerySuggestion: (suggestion: PlannerGrocerySuggestion) => void;
+  onTogglePlannerGrocerySuggestion: (suggestion: PlannerGrocerySuggestion) => void;
+  onEditPlannerGrocerySuggestion: (suggestion: PlannerGrocerySuggestion) => void;
 };
 
 const GroceryTabSection = ({
@@ -73,10 +81,23 @@ const GroceryTabSection = ({
   resolvedBlockerSuggestionNames,
   canResolveTrackedSuggestionBlockers,
   onResolveTrackedSuggestionBlockers,
+  plannerGrocerySuggestions,
+  pendingPlannerGroceryCount,
+  resolvedPlannerGroceryCount,
+  onAcceptPlannerGrocerySuggestion,
+  onDismissPlannerGrocerySuggestion,
+  onTogglePlannerGrocerySuggestion,
+  onEditPlannerGrocerySuggestion,
 }: GroceryTabSectionProps) => {
   const buyItems = groceryList.filter((i: any) => !i.isPantryItem);
   const checkedBuyItems = buyItems.filter((i: any) => i.checked).length;
   const pendingBuyItems = buyItems.filter((i: any) => !i.checked).length;
+  const visiblePlannerGrocerySuggestions = plannerGrocerySuggestions.filter((suggestion) => !suggestion.dismissed);
+  const groupedPlannerGrocerySuggestions = visiblePlannerGrocerySuggestions.reduce((groups, suggestion) => {
+    const key = suggestion.category || 'From Recipe';
+    groups[key] = [...(groups[key] || []), suggestion];
+    return groups;
+  }, {} as Record<string, PlannerGrocerySuggestion[]>);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -114,6 +135,100 @@ const GroceryTabSection = ({
             </div>
           </CardContent>
         </Card>
+
+
+        {visiblePlannerGrocerySuggestions.length > 0 && (
+          <Card className="border-purple-200 bg-gradient-to-r from-purple-50 via-white to-orange-50">
+            <CardHeader className="pb-3">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <CardTitle className="text-base flex items-center gap-2 text-purple-900">
+                    <Sparkles className="w-4 h-4 text-purple-600" />
+                    Planner grocery intelligence
+                  </CardTitle>
+                  <CardDescription className="text-purple-700">
+                    Generated from structured meal items for this week. Accept items to add them to your saved list, or check/dismiss derived suggestions for readiness tracking.
+                  </CardDescription>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline" className="border-purple-200 text-purple-700">{visiblePlannerGrocerySuggestions.length} generated</Badge>
+                  <Badge variant="outline" className="border-orange-200 text-orange-700">{pendingPlannerGroceryCount} missing</Badge>
+                  <Badge variant="outline" className="border-green-200 text-green-700">{resolvedPlannerGroceryCount} resolved</Badge>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {Object.entries(groupedPlannerGrocerySuggestions).map(([category, suggestions]) => (
+                <div key={category} className="rounded-xl border border-purple-100 bg-white/80 p-3">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <p className="text-xs uppercase tracking-wide text-purple-700 font-semibold">{category}</p>
+                    <Badge variant="secondary" className="text-xs">{suggestions.length} item{suggestions.length === 1 ? '' : 's'}</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    {suggestions.map((suggestion) => {
+                      const isResolved = suggestion.checked || suggestion.accepted;
+                      const sourcePreview = suggestion.linkedMealNames.slice(0, 3).join(', ');
+                      return (
+                        <details key={suggestion.id} className={`group rounded-lg border p-3 transition ${isResolved ? 'border-green-100 bg-green-50/50' : 'border-gray-200 bg-white hover:border-purple-200'}`}>
+                          <summary className="list-none cursor-pointer">
+                            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                              <div className="flex items-start gap-3 min-w-0">
+                                <input
+                                  type="checkbox"
+                                  checked={suggestion.checked}
+                                  className="mt-0.5 w-5 h-5 rounded border-gray-300 cursor-pointer accent-purple-500"
+                                  onChange={(event) => {
+                                    event.preventDefault();
+                                    onTogglePlannerGrocerySuggestion(suggestion);
+                                  }}
+                                />
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className={`text-sm font-semibold ${isResolved ? 'text-green-800' : 'text-gray-900'}`}>{suggestion.name}</p>
+                                    {suggestion.generated && <Badge variant="outline" className="text-[10px] border-purple-200 text-purple-700">generated</Badge>}
+                                    {suggestion.sourceRecipeIds.length > 0 && <Badge variant="outline" className="text-[10px] border-blue-200 text-blue-700">recipe-linked</Badge>}
+                                    {suggestion.pantryMatchStatus !== 'missing' && <Badge variant="outline" className="text-[10px] border-green-200 text-green-700 bg-green-50">already in pantry</Badge>}
+                                    {suggestion.onManualList && <Badge variant="outline" className="text-[10px] border-orange-200 text-orange-700">on list</Badge>}
+                                  </div>
+                                  <p className="text-xs text-gray-500 mt-0.5">
+                                    {suggestion.quantitySummary} • {suggestion.sourceMealsCount} source meal{suggestion.sourceMealsCount === 1 ? '' : 's'}{sourcePreview ? `: ${sourcePreview}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                                {!suggestion.accepted && !suggestion.onManualList && suggestion.pantryMatchStatus === 'missing' && (
+                                  <Button size="sm" variant="outline" onClick={(event) => { event.preventDefault(); onAcceptPlannerGrocerySuggestion(suggestion); }}>
+                                    <Plus className="w-3.5 h-3.5 mr-1" />Accept
+                                  </Button>
+                                )}
+                                <Button size="sm" variant="ghost" onClick={(event) => { event.preventDefault(); onEditPlannerGrocerySuggestion(suggestion); }}>Edit</Button>
+                                <Button size="sm" variant="ghost" className="text-gray-500" onClick={(event) => { event.preventDefault(); onDismissPlannerGrocerySuggestion(suggestion); }}>Remove</Button>
+                                <ChevronDown className="w-4 h-4 text-gray-400 transition-transform group-open:rotate-180" />
+                              </div>
+                            </div>
+                          </summary>
+                          <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+                            <div className="flex flex-wrap gap-1.5">
+                              {suggestion.rows.slice(0, 8).map((row) => (
+                                <Badge key={row.id} variant="secondary" className="text-xs bg-gray-100 text-gray-700">
+                                  {row.rawName}{row.quantity ? ` • ${row.quantity}` : ''}
+                                </Badge>
+                              ))}
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-gray-600">
+                              <p><span className="font-medium text-gray-800">Source meals:</span> {suggestion.linkedMealNames.join(', ')}</p>
+                              <p><span className="font-medium text-gray-800">Pantry:</span> {suggestion.pantryMatchStatus === 'missing' ? 'No pantry/list match yet' : `Matched ${suggestion.pantryMatches.join(', ') || 'pantry item'}`}</p>
+                            </div>
+                          </div>
+                        </details>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
         {prepGroceryBlockersCount > 0 && (
           <Card className="border-amber-200 bg-amber-50/60">

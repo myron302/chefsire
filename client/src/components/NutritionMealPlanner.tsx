@@ -29,6 +29,12 @@ import CookingToolsReference from '@/components/meal-planner/CookingToolsReferen
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 import { normalizeShoppingListItem } from '@/lib/shopping-list';
 import {
+  derivePlannerGrocerySuggestions,
+  normalizeMealIngredient,
+  type PlannerGroceryDerivationState,
+  type PlannerGrocerySuggestion,
+} from '@/components/meal-planner/plannerGroceryUtils';
+import {
   LineChart,
   Line,
   CartesianGrid,
@@ -336,6 +342,7 @@ const NutritionMealPlanner = () => {
   const [fixItDetailsQueuePendingSkipReason, setFixItDetailsQueuePendingSkipReason] = useState<FixItDetailsQueueSkipReasonId>(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
   const [fixItDetailsQueueDone, setFixItDetailsQueueDone] = useState(false);
   const [fixItDetailsQueueSnoozedByKey, setFixItDetailsQueueSnoozedByKey] = useState<Record<string, FixItDetailsQueueSnoozeOptionId>>({});
+  const [plannerGroceryState, setPlannerGroceryState] = useState<PlannerGroceryDerivationState>({});
 
   // Add Meal modal — controlled fields
   const [mealForm, setMealForm] = useState(INITIAL_MEAL_FORM);
@@ -355,6 +362,7 @@ const NutritionMealPlanner = () => {
   const getPrepSessionStorageKey = () => `meal-planner-prep-session-v1:${user?.id || 'anon'}:${getCurrentWeekAnchor()}`;
   const getPrepSessionStorageKeyForAnchor = (anchorDate: string) => `meal-planner-prep-session-v1:${user?.id || 'anon'}:${anchorDate}`;
   const getShareVisibilityStorageKey = () => `meal-planner-share-visibility-v1:${user?.id || 'anon'}`;
+  const getPlannerGroceryStorageKey = () => `meal-planner-derived-grocery-v1:${user?.id || 'anon'}:${getCurrentWeekAnchor()}`;
   const countMealEntries = (weekMeals: Record<string, any> | null | undefined) => {
     if (!weekMeals || typeof weekMeals !== 'object') return 0;
     return Object.values(weekMeals).reduce((weekTotal, dayValue) => {
@@ -602,6 +610,36 @@ const NutritionMealPlanner = () => {
       fetchDailyNutrition();
     }
   }, [weeklyMeals]);
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(getPlannerGroceryStorageKey());
+      if (!stored) {
+        setPlannerGroceryState({});
+        return;
+      }
+
+      const parsed = JSON.parse(stored);
+      setPlannerGroceryState({
+        dismissedIds: Array.isArray(parsed?.dismissedIds) ? parsed.dismissedIds : [],
+        checkedIds: Array.isArray(parsed?.checkedIds) ? parsed.checkedIds : [],
+        acceptedIds: Array.isArray(parsed?.acceptedIds) ? parsed.acceptedIds : [],
+        editedById: parsed?.editedById && typeof parsed.editedById === 'object' ? parsed.editedById : {},
+      });
+    } catch (error) {
+      console.error('Error loading planner grocery intelligence state:', error);
+      setPlannerGroceryState({});
+    }
+  }, [user?.id, selectedDate]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(getPlannerGroceryStorageKey(), JSON.stringify(plannerGroceryState));
+    } catch (error) {
+      console.error('Error saving planner grocery intelligence state:', error);
+    }
+  }, [plannerGroceryState, user?.id, selectedDate]);
+
 
   useEffect(() => {
     try {
@@ -1221,10 +1259,10 @@ const NutritionMealPlanner = () => {
         description: `✅ Added "${suggestion.name}" from prep blocker suggestions.`,
       });
       setPrepSession((prev) => {
-        const normalizedName = suggestion.name.trim().toLowerCase();
+        const normalizedName = normalizeMealIngredient(suggestion.name);
         const alreadyTracked = prev.blockerSuggestionLinks.some((link) => (
           link.suggestionId === suggestion.id
-          || link.name.trim().toLowerCase() === normalizedName
+          || normalizeMealIngredient(link.name) === normalizedName
         ));
 
         if (alreadyTracked) {
@@ -1253,6 +1291,88 @@ const NutritionMealPlanner = () => {
         description: 'Failed to add suggested blocker item',
       });
     }
+  };
+
+
+  const updatePlannerGroceryState = (updater: (prev: PlannerGroceryDerivationState) => PlannerGroceryDerivationState) => {
+    setPlannerGroceryState((prev) => updater({
+      dismissedIds: prev.dismissedIds || [],
+      checkedIds: prev.checkedIds || [],
+      acceptedIds: prev.acceptedIds || [],
+      editedById: prev.editedById || {},
+    }));
+  };
+
+  const acceptPlannerGrocerySuggestion = async (suggestion: PlannerGrocerySuggestion) => {
+    if (suggestion.accepted || suggestion.onManualList) {
+      toast({ description: `“${suggestion.name}” is already represented on your grocery list.` });
+      return;
+    }
+
+    try {
+      const response = await addGroceryListItem({
+        ingredientName: suggestion.name,
+        quantity: suggestion.quantitySummary || '1',
+        unit: '',
+        category: suggestion.category || 'From Recipe',
+        notes: `Generated from planner meals: ${suggestion.linkedMealNames.slice(0, 4).join(', ')}`,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to accept planner grocery suggestion');
+      }
+
+      updatePlannerGroceryState((prev) => ({
+        ...prev,
+        acceptedIds: Array.from(new Set([...(prev.acceptedIds || []), suggestion.id])),
+        dismissedIds: (prev.dismissedIds || []).filter((id) => id !== suggestion.id),
+      }));
+      toast({ description: `✅ Added “${suggestion.name}” from planner grocery intelligence.` });
+      await fetchGroceryList();
+    } catch (error) {
+      console.error('Error accepting planner grocery suggestion:', error);
+      toast({ variant: 'destructive', description: 'Failed to add generated grocery item' });
+    }
+  };
+
+  const dismissPlannerGrocerySuggestion = (suggestion: PlannerGrocerySuggestion) => {
+    updatePlannerGroceryState((prev) => ({
+      ...prev,
+      dismissedIds: Array.from(new Set([...(prev.dismissedIds || []), suggestion.id])),
+      checkedIds: (prev.checkedIds || []).filter((id) => id !== suggestion.id),
+    }));
+  };
+
+  const togglePlannerGrocerySuggestion = (suggestion: PlannerGrocerySuggestion) => {
+    updatePlannerGroceryState((prev) => {
+      const checked = new Set(prev.checkedIds || []);
+      if (checked.has(suggestion.id)) {
+        checked.delete(suggestion.id);
+      } else {
+        checked.add(suggestion.id);
+      }
+      return { ...prev, checkedIds: Array.from(checked) };
+    });
+  };
+
+  const editPlannerGrocerySuggestion = (suggestion: PlannerGrocerySuggestion) => {
+    const nextName = window.prompt('Grocery item name', suggestion.name)?.trim();
+    if (nextName === undefined || !nextName) return;
+    const nextQuantity = window.prompt('Suggested quantity', suggestion.quantitySummary)?.trim();
+    const quantitySummary = nextQuantity === undefined ? suggestion.quantitySummary : nextQuantity;
+
+    updatePlannerGroceryState((prev) => ({
+      ...prev,
+      editedById: {
+        ...(prev.editedById || {}),
+        [suggestion.id]: {
+          ...(prev.editedById || {})[suggestion.id],
+          name: nextName,
+          quantitySummary,
+          category: suggestion.category,
+        },
+      },
+    }));
   };
 
   const closeAddMealModal = () => {
@@ -2261,10 +2381,16 @@ const NutritionMealPlanner = () => {
     const val = weeklyMeals?.[day]?.[type];
     return Array.isArray(val) ? val.length > 0 : Boolean(val);
   }));
-  const groceryPendingCount = groceryList.filter((item: any) => !item.checked && !item.isPantryItem).length;
-  const groceryCompletedCount = groceryList.filter((item: any) => item.checked && !item.isPantryItem).length;
-  const groceryBuyItemCount = groceryList.filter((item: any) => !item.isPantryItem).length;
-  const groceryListCreated = groceryList.length > 0;
+  const plannerGrocerySuggestions = useMemo<PlannerGrocerySuggestion[]>(() => (
+    derivePlannerGrocerySuggestions(weeklyMeals, groceryList, plannerGroceryState)
+  ), [weeklyMeals, groceryList, plannerGroceryState]);
+  const activePlannerGrocerySuggestions = plannerGrocerySuggestions.filter((suggestion) => !suggestion.dismissed);
+  const pendingPlannerGrocerySuggestions = activePlannerGrocerySuggestions.filter((suggestion) => !suggestion.checked && !suggestion.accepted);
+  const resolvedPlannerGrocerySuggestions = activePlannerGrocerySuggestions.filter((suggestion) => suggestion.checked || suggestion.accepted);
+  const groceryPendingCount = groceryList.filter((item: any) => !item.checked && !item.isPantryItem).length + pendingPlannerGrocerySuggestions.length;
+  const groceryCompletedCount = groceryList.filter((item: any) => item.checked && !item.isPantryItem).length + resolvedPlannerGrocerySuggestions.length;
+  const groceryBuyItemCount = groceryList.filter((item: any) => !item.isPantryItem).length + activePlannerGrocerySuggestions.length;
+  const groceryListCreated = groceryList.length > 0 || activePlannerGrocerySuggestions.length > 0;
   const unplannedMealSlots = Math.max(0, totalSlots - plannedSlots);
   const prepSessionPlanned = Boolean(prepSession.scheduledAt);
   const prepSessionCompleted = Boolean(prepSession.completedAt);
@@ -2284,9 +2410,10 @@ const NutritionMealPlanner = () => {
       (blocker) => blocker.active && GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id),
     );
     const existingItemNames = new Set(
-      groceryList
-        .map((item: any) => String(item?.name || item?.item || '').trim().toLowerCase())
-        .filter(Boolean),
+      [
+        ...groceryList.map((item: any) => normalizeMealIngredient(item?.name || item?.item)),
+        ...activePlannerGrocerySuggestions.map((suggestion) => normalizeMealIngredient(suggestion.name)),
+      ].filter(Boolean),
     );
 
     const noteCandidates = prepSession.blockerNote
@@ -2323,7 +2450,7 @@ const NutritionMealPlanner = () => {
 
     const uniqueByName = new Map<string, { name: string; category: string; reason: string }>();
     suggestionRows.forEach((row) => {
-      const normalized = row.name.trim().toLowerCase();
+      const normalized = normalizeMealIngredient(row.name);
       if (!normalized) return;
       if (!uniqueByName.has(normalized)) {
         uniqueByName.set(normalized, row);
@@ -2333,7 +2460,7 @@ const NutritionMealPlanner = () => {
     return Array.from(uniqueByName.values())
       .slice(0, 6)
       .map((row) => {
-        const normalizedName = row.name.trim().toLowerCase();
+        const normalizedName = normalizeMealIngredient(row.name);
         return {
           id: normalizedName.replace(/[^a-z0-9]+/g, '-'),
           name: row.name,
@@ -2342,11 +2469,11 @@ const NutritionMealPlanner = () => {
           alreadyOnList: existingItemNames.has(normalizedName),
         };
       });
-  }, [groceryList, prepGroceryBlockersCount, prepSession.blockerNote, prepSession.blockers]);
+  }, [activePlannerGrocerySuggestions, groceryList, prepGroceryBlockersCount, prepSession.blockerNote, prepSession.blockers]);
   const blockerSuggestionResolution = useMemo(() => {
     const trackedByName = new Map<string, BlockerSuggestionResolutionLink>();
     prepSession.blockerSuggestionLinks.forEach((link) => {
-      const normalized = link.name.trim().toLowerCase();
+      const normalized = normalizeMealIngredient(link.name);
       if (!normalized || trackedByName.has(normalized)) {
         return;
       }
@@ -2367,12 +2494,18 @@ const NutritionMealPlanner = () => {
       if (item?.isPantryItem) {
         return;
       }
-      const normalized = String(item?.name || item?.item || '').trim().toLowerCase();
+      const normalized = normalizeMealIngredient(item?.name || item?.item);
       if (!normalized) {
         return;
       }
       const existing = groceryNameStatus.get(normalized) || false;
       groceryNameStatus.set(normalized, existing || Boolean(item?.checked));
+    });
+    activePlannerGrocerySuggestions.forEach((suggestion) => {
+      const normalized = normalizeMealIngredient(suggestion.name);
+      if (!normalized) return;
+      const existing = groceryNameStatus.get(normalized) || false;
+      groceryNameStatus.set(normalized, existing || Boolean(suggestion.checked || suggestion.accepted));
     });
 
     const tracked = Array.from(trackedByName.entries()).map(([normalizedName, link]) => ({
@@ -2388,7 +2521,7 @@ const NutritionMealPlanner = () => {
       resolvedCount,
       unresolvedNames,
     };
-  }, [groceryList, prepSession.blockerSuggestionLinks]);
+  }, [activePlannerGrocerySuggestions, groceryList, prepSession.blockerSuggestionLinks]);
   const blockerSuggestionConfidenceLabel = blockerSuggestionResolution.trackedCount === 0
     ? 'Not started'
     : blockerSuggestionResolution.resolvedCount === blockerSuggestionResolution.trackedCount
@@ -4650,6 +4783,13 @@ const NutritionMealPlanner = () => {
                 resolvedBlockerSuggestionNames={resolvedTrackedSuggestionNames}
                 canResolveTrackedSuggestionBlockers={canResolvePrepGroceryBlockersFromSuggestions}
                 onResolveTrackedSuggestionBlockers={resolvePrepBlockersFromTrackedSuggestions}
+                plannerGrocerySuggestions={plannerGrocerySuggestions}
+                pendingPlannerGroceryCount={pendingPlannerGrocerySuggestions.length}
+                resolvedPlannerGroceryCount={resolvedPlannerGrocerySuggestions.length}
+                onAcceptPlannerGrocerySuggestion={acceptPlannerGrocerySuggestion}
+                onDismissPlannerGrocerySuggestion={dismissPlannerGrocerySuggestion}
+                onTogglePlannerGrocerySuggestion={togglePlannerGrocerySuggestion}
+                onEditPlannerGrocerySuggestion={editPlannerGrocerySuggestion}
               />
             </div>
           </TabsContent>
