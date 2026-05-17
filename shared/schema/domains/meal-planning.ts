@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, date, decimal, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, date, decimal, jsonb, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 import { recipes } from "./social-content";
 
@@ -26,6 +26,7 @@ export const mealPlanEntries = pgTable("meal_plan_entries", {
   customProtein: integer("custom_protein"),
   customCarbs: integer("custom_carbs"),
   customFat: integer("custom_fat"),
+  mealItems: jsonb("meal_items"),
   source: varchar("source", { length: 50 }),
 });
 

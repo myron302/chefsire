@@ -64,7 +64,18 @@ import {
   buildTemplateSlotDiff,
 } from '@/components/meal-planner/nutritionMealPlannerUtils';
 
-const INITIAL_MEAL_FORM = {
+const createMealItemRow = () => ({
+  id: `meal-item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+  name: '',
+  quantity: '',
+  calories: '',
+  protein: '',
+  carbs: '',
+  fat: '',
+  notes: '',
+});
+
+const createInitialMealForm = () => ({
   name: '',
   calories: '',
   protein: '',
@@ -73,7 +84,10 @@ const INITIAL_MEAL_FORM = {
   fiber: '',
   servingSize: '',
   servingQty: 1,
-};
+  mealItems: [createMealItemRow()],
+});
+
+const INITIAL_MEAL_FORM = createInitialMealForm();
 
 const DEFAULT_PREP_SESSION_TASKS = [
   { id: 'review-plan', label: 'Review planned meals and serving counts', done: false },
@@ -1151,14 +1165,14 @@ const NutritionMealPlanner = () => {
     if (day && type) {
       setSelectedMealSlot({ day, type });
     }
-    setMealForm(INITIAL_MEAL_FORM);
+    setMealForm(createInitialMealForm());
     setBaseNutrition(null);
     setShowAddMealModal(true);
     fetchMealHistory();
   };
 
   const resetAddMealModalState = () => {
-    setMealForm(INITIAL_MEAL_FORM);
+    setMealForm(createInitialMealForm());
     setBaseNutrition(null);
   };
 
@@ -1262,6 +1276,7 @@ const NutritionMealPlanner = () => {
           carbs: mealData.carbs,
           fat: mealData.fat,
           fiber: mealData.fiber,
+          mealItems: mealData.mealItems || null,
           source: mealData.source || null,
           recipeId: mealData.recipeId || null,
         }),
@@ -1833,29 +1848,48 @@ const NutritionMealPlanner = () => {
   const applyNutrition = (nutrition: { calories: number; protein: number; carbs: number; fat: number; fiber: number; servingSize: string }, qty?: number) => {
     const q = qty ?? 1;
     setBaseNutrition(nutrition);
-    setMealForm(prev => ({
-      ...prev,
-      calories: String(Math.round(nutrition.calories * q)),
-      protein: String(Math.round(nutrition.protein * q)),
-      carbs: String(Math.round(nutrition.carbs * q)),
-      fat: String(Math.round(nutrition.fat * q)),
-      fiber: String(Math.round(nutrition.fiber * q)),
-      servingSize: nutrition.servingSize || prev.servingSize,
-      servingQty: q,
-    }));
+    setMealForm(prev => {
+      const scaled = {
+        calories: String(Math.round(nutrition.calories * q)),
+        protein: String(Math.round(nutrition.protein * q)),
+        carbs: String(Math.round(nutrition.carbs * q)),
+        fat: String(Math.round(nutrition.fat * q)),
+      };
+      const currentItems = prev.mealItems?.length ? prev.mealItems : [createMealItemRow()];
+      return {
+        ...prev,
+        ...scaled,
+        fiber: String(Math.round(nutrition.fiber * q)),
+        servingSize: nutrition.servingSize || prev.servingSize,
+        servingQty: q,
+        mealItems: currentItems.map((item: any, index: number) => index === 0 ? {
+          ...item,
+          name: item.name || prev.name,
+          quantity: nutrition.servingSize || prev.servingSize || item.quantity,
+          ...scaled,
+        } : item),
+      };
+    });
   };
 
   const changeServingQty = (qty: number) => {
     if (baseNutrition) {
-      setMealForm(prev => ({
-        ...prev,
-        calories: String(Math.round(baseNutrition.calories * qty)),
-        protein: String(Math.round(baseNutrition.protein * qty)),
-        carbs: String(Math.round(baseNutrition.carbs * qty)),
-        fat: String(Math.round(baseNutrition.fat * qty)),
-        fiber: String(Math.round(baseNutrition.fiber * qty)),
-        servingQty: qty,
-      }));
+      setMealForm(prev => {
+        const scaled = {
+          calories: String(Math.round(baseNutrition.calories * qty)),
+          protein: String(Math.round(baseNutrition.protein * qty)),
+          carbs: String(Math.round(baseNutrition.carbs * qty)),
+          fat: String(Math.round(baseNutrition.fat * qty)),
+        };
+        const currentItems = prev.mealItems?.length ? prev.mealItems : [createMealItemRow()];
+        return {
+          ...prev,
+          ...scaled,
+          fiber: String(Math.round(baseNutrition.fiber * qty)),
+          servingQty: qty,
+          mealItems: currentItems.map((item: any, index: number) => index === 0 ? { ...item, ...scaled } : item),
+        };
+      });
     } else {
       // No base yet — just store the qty; user can still type macros manually
       setMealForm(prev => ({ ...prev, servingQty: qty }));
@@ -1938,19 +1972,45 @@ const NutritionMealPlanner = () => {
   };
 
   const handleAddMealFromModal = () => {
-    if (!mealForm.name || !mealForm.calories || !mealForm.protein) {
-      toast({ variant: 'destructive', description: 'Please fill in meal name, calories, and protein.' });
+    const normalizedMealItems = (mealForm.mealItems || [])
+      .map((item: any) => ({
+        id: item.id || `meal-item-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name: String(item.name || '').trim(),
+        quantity: String(item.quantity || '').trim() || undefined,
+        calories: Number(item.calories) || 0,
+        protein: Number(item.protein) || 0,
+        carbs: Number(item.carbs) || 0,
+        fat: Number(item.fat) || 0,
+        notes: String(item.notes || '').trim() || undefined,
+      }))
+      .filter((item: any) => item.name);
+
+    if (!mealForm.name.trim()) {
+      toast({ variant: 'destructive', description: 'Please enter a meal title.' });
       return;
     }
-    const qtyLabel = mealForm.servingQty !== 1 ? ` (×${mealForm.servingQty})` : '';
+
+    if (normalizedMealItems.length === 0) {
+      toast({ variant: 'destructive', description: 'Add at least one meal item/component.' });
+      return;
+    }
+
+    const itemTotals = normalizedMealItems.reduce((acc: any, item: any) => ({
+      calories: acc.calories + item.calories,
+      protein: acc.protein + item.protein,
+      carbs: acc.carbs + item.carbs,
+      fat: acc.fat + item.fat,
+    }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
     saveMealToSlot({
-      name: mealForm.name + qtyLabel,
-      calories: Number(mealForm.calories),
-      protein: Number(mealForm.protein),
-      carbs: Number(mealForm.carbs) || 0,
-      fat: Number(mealForm.fat) || 0,
+      name: mealForm.name.trim(),
+      calories: itemTotals.calories,
+      protein: itemTotals.protein,
+      carbs: itemTotals.carbs,
+      fat: itemTotals.fat,
       fiber: Number(mealForm.fiber) || 0,
-      servingSize: `${mealForm.servingQty === 1 ? '' : mealForm.servingQty + ' × '}${mealForm.servingSize || '1 serving'}`.trim(),
+      servingSize: normalizedMealItems.length === 1 ? (normalizedMealItems[0].quantity || mealForm.servingSize || '1 serving') : `${normalizedMealItems.length} items`,
+      mealItems: normalizedMealItems,
     });
     resetAddMealModalState();
   };
@@ -4898,6 +4958,7 @@ const NutritionMealPlanner = () => {
           onClose={closeAddMealModal}
           onLookupNutrition={lookupNutritionWithAI}
           onMealFormChange={setMealForm}
+          onSelectedMealTypeChange={(mealType) => setSelectedMealSlot((slot) => slot ? { ...slot, type: mealType } : slot)}
           onToggleRecentMeals={() => setShowRecentMeals((v) => !v)}
           onToggleFavorite={toggleMealHistoryFavorite}
           onServingQtyChange={changeServingQty}

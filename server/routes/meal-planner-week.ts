@@ -303,6 +303,7 @@ async function buildPublicWeekSummary(userId: string, weekAnchorRaw: Date | stri
         customProtein: mealPlanEntries.customProtein,
         customCarbs: mealPlanEntries.customCarbs,
         customFat: mealPlanEntries.customFat,
+        mealItems: mealPlanEntries.mealItems,
         source: mealPlanEntries.source,
         recipe: recipes,
       })
@@ -456,6 +457,7 @@ router.get("/week", requireAuth, async (req: Request, res: Response) => {
         customProtein: mealPlanEntries.customProtein,
         customCarbs: mealPlanEntries.customCarbs,
         customFat: mealPlanEntries.customFat,
+        mealItems: mealPlanEntries.mealItems,
         source: mealPlanEntries.source,
         recipe: recipes,
       })
@@ -750,6 +752,7 @@ router.get("/week/shared/:token", async (req: Request, res: Response) => {
             customProtein: mealPlanEntries.customProtein,
             customCarbs: mealPlanEntries.customCarbs,
             customFat: mealPlanEntries.customFat,
+        mealItems: mealPlanEntries.mealItems,
             source: mealPlanEntries.source,
             recipe: recipes,
           })
@@ -884,6 +887,7 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
         customProtein: mealPlanEntries.customProtein,
         customCarbs: mealPlanEntries.customCarbs,
         customFat: mealPlanEntries.customFat,
+        mealItems: mealPlanEntries.mealItems,
         source: mealPlanEntries.source,
       })
       .from(mealPlanEntries)
@@ -920,6 +924,7 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
             customProtein: mealPlanEntries.customProtein,
             customCarbs: mealPlanEntries.customCarbs,
             customFat: mealPlanEntries.customFat,
+        mealItems: mealPlanEntries.mealItems,
           })
           .from(mealPlanEntries)
           .where(inArray(mealPlanEntries.mealPlanId, existingTargetPlanIds))
@@ -967,6 +972,7 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
             customProtein: mealPlanEntries.customProtein,
             customCarbs: mealPlanEntries.customCarbs,
             customFat: mealPlanEntries.customFat,
+        mealItems: mealPlanEntries.mealItems,
           })
           .from(mealPlanEntries)
           .where(eq(mealPlanEntries.mealPlanId, targetPlanId));
@@ -1029,6 +1035,7 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
         customProtein: mealPlanEntries.customProtein,
         customCarbs: mealPlanEntries.customCarbs,
         customFat: mealPlanEntries.customFat,
+        mealItems: mealPlanEntries.mealItems,
         source: mealPlanEntries.source,
         recipe: recipes,
       })
@@ -1130,6 +1137,7 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
         customProtein: mealPlanEntries.customProtein,
         customCarbs: mealPlanEntries.customCarbs,
         customFat: mealPlanEntries.customFat,
+        mealItems: mealPlanEntries.mealItems,
         source: mealPlanEntries.source,
       })
       .from(mealPlanEntries)
@@ -1166,6 +1174,7 @@ router.get("/week/shared/:token/copy-impact", requireAuth, async (req: Request, 
             customProtein: mealPlanEntries.customProtein,
             customCarbs: mealPlanEntries.customCarbs,
             customFat: mealPlanEntries.customFat,
+        mealItems: mealPlanEntries.mealItems,
           })
           .from(mealPlanEntries)
           .where(inArray(mealPlanEntries.mealPlanId, targetPlanIds))
@@ -1442,6 +1451,7 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
         customProtein: mealPlanEntries.customProtein,
         customCarbs: mealPlanEntries.customCarbs,
         customFat: mealPlanEntries.customFat,
+        mealItems: mealPlanEntries.mealItems,
         source: mealPlanEntries.source,
         recipe: recipes,
       })
@@ -1473,7 +1483,7 @@ router.post("/week/generate", requireAuth, async (req: Request, res: Response) =
 router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
-    const { date, mealType, name, calories, protein, carbs, fat, fiber, source, recipeId } = req.body || {};
+    const { date, mealType, name, calories, protein, carbs, fat, fiber, mealItems, source, recipeId } = req.body || {};
 
     const parsed = date ? new Date(date) : null;
     if (!parsed || isNaN(parsed.getTime())) {
@@ -1536,6 +1546,7 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
         customProtein: toNonNegativeRoundedInt(protein),
         customCarbs: toNonNegativeRoundedInt(carbs),
         customFat: toNonNegativeRoundedInt(fat),
+        mealItems: Array.isArray(mealItems) ? mealItems : null,
         source: source || null,
       })
       .returning();
@@ -1634,6 +1645,7 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
         carbs: toNonNegativeRoundedInt(carbs),
         fat: toNonNegativeRoundedInt(fat),
         fiber: toNonNegativeRoundedInt(fiber),
+        mealItems: Array.isArray(mealItems) ? mealItems : null,
         source: source || null,
       },
     });

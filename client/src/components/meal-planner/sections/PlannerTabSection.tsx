@@ -1,5 +1,5 @@
 import React from 'react';
-import { BarChart3, ChefHat, Clock, Package, Plus, Save, ShoppingCart, Sparkles, Target, TrendingUp, Zap } from 'lucide-react';
+import { BarChart3, ChefHat, ChevronDown, ChevronRight, Clock, Package, Plus, Save, ShoppingCart, Sparkles, Target, TrendingUp, Zap } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -101,6 +101,8 @@ const PlannerTabSection = ({
   switchToAnalyticsTab,
 }: PlannerTabSectionProps) => {
   const [showQuickGroceryList, setShowQuickGroceryList] = React.useState(false);
+
+  const [expandedMealCards, setExpandedMealCards] = React.useState<Record<string, boolean>>({});
   const planningProgress = totalSlots > 0 ? Math.round((plannedSlots / totalSlots) * 100) : 0;
   const completionLabel = plannedSlots === 0
     ? 'No meals planned yet'
@@ -178,6 +180,69 @@ const PlannerTabSection = ({
   };
 
   const futureDayCount = weekDays.filter((d) => getDayStatus(d) === 'future').length;
+
+
+  const getMealComponents = (meal: any) => (
+    Array.isArray(meal?.mealItems) ? meal.mealItems.filter((item: any) => item?.name) : []
+  );
+
+  const getMealTotals = (meal: any) => {
+    const components = getMealComponents(meal);
+    if (components.length > 0) {
+      return components.reduce((acc: any, component: any) => ({
+        calories: acc.calories + (Number(component.calories) || 0),
+        protein: acc.protein + (Number(component.protein) || 0),
+        carbs: acc.carbs + (Number(component.carbs) || 0),
+        fat: acc.fat + (Number(component.fat) || 0),
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+    }
+
+    return {
+      calories: Number(meal?.calories) || 0,
+      protein: Number(meal?.protein) || 0,
+      carbs: Number(meal?.carbs) || 0,
+      fat: Number(meal?.fat) || 0,
+    };
+  };
+
+  const toggleMealDetails = (cardKey: string) => {
+    setExpandedMealCards((prev) => ({ ...prev, [cardKey]: !prev[cardKey] }));
+  };
+
+  const renderMealComponents = (meal: any, cardKey: string) => {
+    const components = getMealComponents(meal);
+    if (components.length === 0) return null;
+    const expanded = Boolean(expandedMealCards[cardKey]);
+
+    return (
+      <div className="mt-2">
+        <button
+          type="button"
+          className="flex items-center gap-1 text-[11px] font-medium text-orange-600 hover:text-orange-700"
+          onClick={(event) => { event.stopPropagation(); toggleMealDetails(cardKey); }}
+        >
+          {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+          {components.length} item{components.length === 1 ? '' : 's'} / components
+        </button>
+        {expanded && (
+          <div className="mt-1 space-y-1 rounded-md border border-orange-100 bg-white p-2">
+            {components.map((component: any, componentIndex: number) => (
+              <div key={component.id || `${cardKey}-component-${componentIndex}`} className="text-[11px] text-gray-600 border-b border-gray-100 last:border-b-0 pb-1 last:pb-0">
+                <div className="font-medium text-gray-800">{component.name}{component.quantity ? ` · ${component.quantity}` : ''}</div>
+                <div className="flex flex-wrap gap-2">
+                  <span>{Number(component.calories) || 0} cal</span>
+                  <span className="text-blue-500">P: {Number(component.protein) || 0}g</span>
+                  <span className="text-orange-500">C: {Number(component.carbs) || 0}g</span>
+                  <span className="text-purple-500">F: {Number(component.fat) || 0}g</span>
+                </div>
+                {component.notes && <div className="text-gray-400 italic">{component.notes}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const extractIngredientNames = (ingredients: any): string[] => {
     if (!ingredients) return [];
@@ -460,19 +525,25 @@ const PlannerTabSection = ({
                     <div key={`${day}-${mealType}`} className={`p-2 border-r last:border-r-0 min-h-[72px] ${isFuture ? 'bg-blue-50/30' : ''}`}>
                       {items.length > 0 && (
                         <div className="space-y-1 mb-1">
-                          {items.map((item: any, idx: number) => (
-                            <div key={idx} className="flex items-start justify-between gap-1 group">
-                              <div className="flex-1 min-w-0">
-                                <div className="text-xs font-medium text-gray-900 truncate flex items-center gap-1">
-                                  {item.name}
-                                  {item.source === 'recipe' && <ChefHat className="w-3 h-3 text-orange-500" />}
-                                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span>
+                          {items.map((item: any, idx: number) => {
+                            const mealTotals = getMealTotals(item);
+                            const componentCount = getMealComponents(item).length;
+                            const cardKey = `${day}-${mealType}-${item.entryId || idx}`;
+                            return (
+                              <div key={idx} className="flex items-start justify-between gap-1 group rounded-md bg-white/70 p-1">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-xs font-medium text-gray-900 truncate flex items-center gap-1">
+                                    {item.name}
+                                    {item.source === 'recipe' && <ChefHat className="w-3 h-3 text-orange-500" />}
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span>
+                                  </div>
+                                  <div className="text-xs text-gray-400">{mealTotals.calories} cal · P:{mealTotals.protein}g{componentCount > 0 ? ` · ${componentCount} items` : ''}</div>
+                                  {renderMealComponents(item, cardKey)}
                                 </div>
-                                <div className="text-xs text-gray-400">{item.calories} cal · P:{item.protein}g</div>
+                                <button className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs leading-none mt-0.5 shrink-0" onClick={(e) => { e.stopPropagation(); removeMealItem(day, mealType, idx); }} title="Remove">✕</button>
                               </div>
-                              <button className="opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-600 text-xs leading-none mt-0.5 shrink-0" onClick={(e) => { e.stopPropagation(); removeMealItem(day, mealType, idx); }} title="Remove">✕</button>
-                            </div>
-                          ))}
+                            );
+                          })}
                           {items.length > 1 && <div className="text-xs text-orange-600 font-medium border-t border-gray-100 pt-1">Total: {totals.calories} cal</div>}
                         </div>
                       )}
@@ -522,15 +593,21 @@ const PlannerTabSection = ({
                         </div>
                         {getMealSlotItems(weeklyMeals, day, mealType).length > 0 ? (
                           <div className="space-y-2">
-                            {getMealSlotItems(weeklyMeals, day, mealType).map((item: any, idx: number) => (
-                              <div key={idx} className="flex items-start justify-between gap-2 bg-white rounded p-2">
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
-                                  <div className="flex gap-1 mt-1 flex-wrap"><Badge variant="secondary" className="text-xs">{item.calories} cal</Badge><Badge variant="secondary" className="text-xs">P: {item.protein}g</Badge></div>
+                            {getMealSlotItems(weeklyMeals, day, mealType).map((item: any, idx: number) => {
+                              const mealTotals = getMealTotals(item);
+                              const componentCount = getMealComponents(item).length;
+                              const cardKey = `${day}-${mealType}-${item.entryId || idx}`;
+                              return (
+                                <div key={idx} className="flex items-start justify-between gap-2 bg-white rounded p-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 truncate">{item.name}</div>
+                                    <div className="flex gap-1 mt-1 flex-wrap"><Badge variant="secondary" className="text-xs">{mealTotals.calories} cal</Badge><Badge variant="secondary" className="text-xs">P: {mealTotals.protein}g</Badge>{componentCount > 0 && <Badge variant="outline" className="text-xs">{componentCount} items</Badge>}</div>
+                                    {renderMealComponents(item, cardKey)}
+                                  </div>
+                                  <button className="text-red-400 hover:text-red-600 text-xs mt-0.5 shrink-0" onClick={() => removeMealItem(day, mealType, idx)}>✕</button>
                                 </div>
-                                <button className="text-red-400 hover:text-red-600 text-xs mt-0.5 shrink-0" onClick={() => removeMealItem(day, mealType, idx)}>✕</button>
-                              </div>
-                            ))}
+                              );
+                            })}
                             {getMealSlotItems(weeklyMeals, day, mealType).length > 1 && <div className="text-xs text-orange-600 font-semibold text-right">Total: {getMealSlotTotals(weeklyMeals, day, mealType).calories} cal · P: {getMealSlotTotals(weeklyMeals, day, mealType).protein}g</div>}
                           </div>
                         ) : (
@@ -580,15 +657,21 @@ const PlannerTabSection = ({
                         </div>
                         {items.length > 0 ? (
                           <div className="space-y-2">
-                            {items.map((item: any, idx: number) => (
-                              <div key={idx} className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2">
-                                <div className="flex-1 min-w-0">
-                                  <div className="text-sm font-medium text-gray-900 flex items-center gap-1">{item.name} {item.source === 'recipe' && <ChefHat className="w-3.5 h-3.5 text-orange-500" />} <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span></div>
-                                  <div className="flex gap-3 mt-0.5"><span className="text-xs text-gray-500">{item.calories} cal</span><span className="text-xs text-blue-500">P: {item.protein}g</span><span className="text-xs text-orange-500">C: {item.carbs}g</span><span className="text-xs text-purple-500">F: {item.fat}g</span></div>
+                            {items.map((item: any, idx: number) => {
+                              const mealTotals = getMealTotals(item);
+                              const componentCount = getMealComponents(item).length;
+                              const cardKey = `${dayName}-${mealType}-${item.entryId || idx}`;
+                              return (
+                                <div key={idx} className="flex items-start justify-between bg-gray-50 rounded-lg px-3 py-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 flex items-center gap-1">{item.name} {item.source === 'recipe' && <ChefHat className="w-3.5 h-3.5 text-orange-500" />} <span className={`px-1.5 py-0.5 rounded text-[10px] ${gradeClass(getNutritionGrade(item, calorieGoal))}`}>{getNutritionGrade(item, calorieGoal)}</span></div>
+                                    <div className="flex gap-3 mt-0.5 flex-wrap"><span className="text-xs text-gray-500">{mealTotals.calories} cal</span><span className="text-xs text-blue-500">P: {mealTotals.protein}g</span><span className="text-xs text-orange-500">C: {mealTotals.carbs}g</span><span className="text-xs text-purple-500">F: {mealTotals.fat}g</span>{componentCount > 0 && <span className="text-xs text-gray-500">{componentCount} items</span>}</div>
+                                    {renderMealComponents(item, cardKey)}
+                                  </div>
+                                  <button className="text-red-400 hover:text-red-600 text-xs ml-2 shrink-0" onClick={() => removeMealItem(dayName, mealType, idx)}>✕</button>
                                 </div>
-                                <button className="text-red-400 hover:text-red-600 text-xs ml-2 shrink-0" onClick={() => removeMealItem(dayName, mealType, idx)}>✕</button>
-                              </div>
-                            ))}
+                              );
+                            })}
                             {items.length > 1 && <div className="flex gap-4 text-xs font-semibold text-gray-600 px-1 pt-1 border-t"><span>{totals.calories} cal</span><span className="text-blue-500">P: {totals.protein}g</span><span className="text-orange-500">C: {totals.carbs}g</span><span className="text-purple-500">F: {totals.fat}g</span></div>}
                           </div>
                         ) : (
