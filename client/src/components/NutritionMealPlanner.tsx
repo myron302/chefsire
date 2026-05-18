@@ -36,6 +36,7 @@ import {
 } from '@/components/meal-planner/plannerGroceryUtils';
 import { derivePrepSessions } from '@/components/meal-planner/prepOrchestrationUtils';
 import { deriveNutritionCoachInsights } from '@/components/meal-planner/nutritionCoachUtils';
+import { optimizeWeeklyPlan } from '@/components/meal-planner/auto-planner/autoPlannerEngine';
 import NutritionCoachPanel from '@/components/meal-planner/coach/NutritionCoachPanel';
 import {
   LineChart,
@@ -1543,6 +1544,23 @@ const NutritionMealPlanner = () => {
       (previousMeals) => clearPlannerDay(previousMeals, day),
       'Day cleared',
     );
+  };
+
+
+  const applyAutoPlannerPreview = (preview: any) => {
+    if (!preview) return;
+    const mode = preview.mode || 'balanced';
+    const prioritized = optimizeWeeklyPlan(weeklyMeals, weekDays, mealTypes, macroGoals.protein, mode, {
+      proteinPriority: 1, budgetPriority: 1, prepSimplicity: 1, varietyPriority: 1, pantryReusePriority: 1, groceryEfficiencyPriority: 1, fillEmptyOnly: true,
+    });
+    const nextWeeklyMeals = JSON.parse(JSON.stringify(weeklyMeals || {}));
+    prioritized.changes.forEach((change: any) => {
+      const day = change.slot.day;
+      const slot = change.slot.mealType;
+      nextWeeklyMeals[day] = { ...(nextWeeklyMeals[day] || {}), [slot]: [change.meal] };
+    });
+    setWeeklyMeals(nextWeeklyMeals);
+    toast({ title: 'Smart Auto-Plan applied', description: `Applied ${prioritized.changes.length} planner updates in ${mode} mode (local preview workflow).` });
   };
 
   const removeMealItem = async (day: string, mealType: string, itemIndex: number) => {
@@ -4565,6 +4583,7 @@ const NutritionMealPlanner = () => {
                 switchToGroceryTab={() => setActiveTab('grocery')}
                 switchToPrepTab={() => setActiveTab('prep')}
                 switchToAnalyticsTab={() => setActiveTab('analytics')}
+                applyAutoPlannerPreview={applyAutoPlannerPreview}
               />
               <Card>
                 <CardHeader>

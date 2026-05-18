@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { type PlannerMealRef, type PlannerSlotRef } from '@/components/meal-planner/nutritionMealPlannerUtils';
+import SmartAutoPlannerPanel from '@/components/meal-planner/auto-planner/SmartAutoPlannerPanel';
 
 type ViewMode = 'day' | 'week' | 'month';
 
@@ -58,6 +59,7 @@ type PlannerTabSectionProps = {
   switchToGroceryTab: () => void;
   switchToPrepTab: () => void;
   switchToAnalyticsTab: () => void;
+  applyAutoPlannerPreview: (preview: any) => void;
 };
 
 const PlannerTabSection = ({
@@ -110,6 +112,7 @@ const PlannerTabSection = ({
   switchToGroceryTab,
   switchToPrepTab,
   switchToAnalyticsTab,
+  applyAutoPlannerPreview,
 }: PlannerTabSectionProps) => {
   const [showQuickGroceryList, setShowQuickGroceryList] = React.useState(false);
 
