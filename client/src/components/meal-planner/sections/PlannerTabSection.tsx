@@ -680,13 +680,13 @@ const PlannerTabSection = ({
                   <div key={day} className={`p-4 border-r last:border-r-0 ${isFuture ? 'bg-blue-50' : isToday ? 'bg-orange-50' : 'bg-gray-50'}`}>
                     <div className="flex items-start justify-between gap-1.5">
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1.5">
-                          <div className="text-sm font-medium text-gray-900">{day}</div>
+                        <div className="text-sm font-medium text-gray-900">{day}</div>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          <span className={`text-xs ${isToday ? 'text-orange-600 font-semibold' : isFuture ? 'text-blue-500' : 'text-gray-500'}`}>
+                            {new Date(dayDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
                           {isFuture && <Badge variant="outline" className="text-[9px] py-0 px-1 border-blue-300 text-blue-600 leading-4">Plan</Badge>}
                           {isToday && <Badge variant="outline" className="text-[9px] py-0 px-1 border-orange-300 text-orange-600 leading-4">Today</Badge>}
-                        </div>
-                        <div className={`text-xs ${isToday ? 'text-orange-600 font-semibold' : isFuture ? 'text-blue-500' : 'text-gray-500'}`}>
-                          {new Date(dayDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                         </div>
                       </div>
                       {renderDayActions(day)}
