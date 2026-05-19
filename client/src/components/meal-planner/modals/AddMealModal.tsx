@@ -580,7 +580,7 @@ const AddMealModal = ({
             <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2 flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-orange-500 shrink-0" />
               <p className="text-xs text-orange-700">
-                Type an item name then tap ✨ on that row to auto-fill its nutrition. Add more rows for sides, sauces, drinks, and snacks.
+                Type an item name and move to the next field — nutrition fills automatically. Adjust any value manually if needed.
               </p>
             </div>
           )}
@@ -614,21 +614,19 @@ const AddMealModal = ({
                   <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
                     <div className="md:col-span-2">
                       <label className="block text-xs font-medium text-gray-600 mb-1">Item name *</label>
-                      <div className="flex gap-1">
-                        <input
-                          className="w-full border rounded px-3 py-2 text-sm"
-                          placeholder="Chicken breast"
-                          value={item.name || ''}
-                          onChange={e => updateMealItem(item.id, { name: e.target.value })}
-                        />
-                        <button
-                          type="button"
-                          title="Auto-fill nutrition"
-                          disabled={!item.name?.trim()}
-                          className="flex-shrink-0 px-2 rounded border border-orange-200 bg-orange-50 text-orange-500 hover:bg-orange-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                          onClick={() => {
-                            if (!item.name?.trim()) return;
-                            const result = clientSideNutritionLookup(item.name.trim());
+                      <input
+                        className="w-full border rounded px-3 py-2 text-sm"
+                        placeholder="e.g. pork chop, rice, broccoli"
+                        value={item.name || ''}
+                        onChange={e => updateMealItem(item.id, { name: e.target.value })}
+                        onBlur={e => {
+                          const name = e.target.value.trim();
+                          if (!name) return;
+                          // Auto-fill nutrition whenever the name field loses focus
+                          // and nutrition fields are still empty
+                          const hasNutrition = item.calories || item.protein || item.carbs || item.fat;
+                          if (!hasNutrition) {
+                            const result = clientSideNutritionLookup(name);
                             updateMealItem(item.id, {
                               calories: String(Math.round(result.calories)),
                               protein: String(Math.round(result.protein)),
@@ -636,11 +634,9 @@ const AddMealModal = ({
                               fat: String(Math.round(result.fat)),
                               quantity: item.quantity || result.servingSize || '1 serving',
                             });
-                          }}
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
+                          }
+                        }}
+                      />
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
