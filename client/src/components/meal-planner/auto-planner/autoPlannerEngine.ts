@@ -3,6 +3,7 @@ import { calculateWeeklyOptimizationScore, buildAdaptivePlannerRecommendations }
 import { optimizeMealPlacement } from './autoPlannerSimulationEngine';
 import { evolveWeeklyPlan, summarizeOptimizationDeltas } from './autoPlannerWeekOptimizer';
 import { type AutoPlannerMode, type AutoPlannerPriorities, type AutoPlannerResult } from './autoPlannerTypes';
+import { optimizeWeeklyLifeRhythm } from './autoPlannerRhythmEngine';
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -60,8 +61,41 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
   const afterOpt = calculateWeeklyOptimizationScore(next, weekDays, mealTypes);
   const contextual = buildAdaptivePlannerRecommendations(weeklyMeals, next, weekDays, mealTypes);
   const tradeoffNotes = summarizeOptimizationDeltas(weeklyMeals, next, weekDays, mealTypes);
+  const lifeRhythmBefore = optimizeWeeklyLifeRhythm(weeklyMeals, weekDays, mealTypes);
+  const lifeRhythmAfter = optimizeWeeklyLifeRhythm(next, weekDays, mealTypes);
   const optTone: 'positive' | 'warning' = afterOpt >= beforeOpt ? 'positive' : 'warning';
-  return { mode, changes, beforeScores, afterScores, suggestions: [{ id: 'autofill', tone: 'neutral', message: `Auto-filled ${changes.length} meal slots via contextual weekly optimization.` }, { id: 'opt-score', tone: optTone, message: `Weekly optimization score ${beforeOpt} → ${afterOpt} after evaluating ${evaluatedWeeks} candidate week arrangements.` }, ...contextual.map((message, idx) => ({ id: `ctx-${idx}`, tone: 'neutral' as const, message })), ...tradeoffNotes.map((message, idx) => ({ id: `tradeoff-${idx}`, tone: 'neutral' as const, message }))] };
+  const rhythmMessages: string[] = [];
+  if (lifeRhythmAfter.freshnessFlow.fragileLateWeek < lifeRhythmBefore.freshnessFlow.fragileLateWeek) rhythmMessages.push('Fragile produce usage shifted earlier to reduce waste.');
+  if (lifeRhythmAfter.prepTiming.quickDays >= lifeRhythmBefore.prepTiming.quickDays) rhythmMessages.push('Prep-heavy dinners redistributed away from busy evenings.');
+  if (lifeRhythmAfter.signals.energyFlow.prepHeavyDinners <= lifeRhythmBefore.signals.energyFlow.prepHeavyDinners) rhythmMessages.push('Recovery-friendly spacing improved after higher-complexity days.');
+
+  return {
+    mode,
+    changes,
+    beforeScores,
+    afterScores,
+    suggestions: [
+      { id: 'autofill', tone: 'neutral', category: 'core', message: `Auto-filled ${changes.length} meal slots via contextual weekly optimization.` },
+      { id: 'opt-score', tone: optTone, category: 'core', message: `Weekly optimization score ${beforeOpt} → ${afterOpt} after evaluating ${evaluatedWeeks} candidate week arrangements.` },
+      ...contextual.map((message, idx) => ({ id: `ctx-${idx}`, tone: 'neutral' as const, category: 'core' as const, message })),
+      ...tradeoffNotes.map((message, idx) => ({ id: `tradeoff-${idx}`, tone: 'neutral' as const, category: 'core' as const, message })),
+      ...rhythmMessages.map((message, idx) => ({ id: `rhythm-${idx}`, tone: 'neutral' as const, category: 'lifestyle' as const, message })),
+    ],
+    lifestyleContext: {
+      dayRhythm: lifeRhythmAfter.signals.energyFlow.daily.map((entry) => ({
+        day: entry.day,
+        energyLoad: entry.load.lifestyleLoad,
+        energyLevel: entry.energyLevel,
+        prepWindowType: lifeRhythmAfter.signals.prepWindows.find((window) => window.day === entry.day)?.prepWindowType || 'standard',
+      })),
+      freshnessPriority: {
+        fragileEarlyWeek: lifeRhythmAfter.freshnessFlow.fragileEarlyWeek,
+        fragileLateWeek: lifeRhythmAfter.freshnessFlow.fragileLateWeek,
+      },
+      prepWindowType: lifeRhythmAfter.prepTiming.recommended,
+      energyLoad: Math.round(lifeRhythmAfter.signals.energyFlow.daily.reduce((sum, day) => sum + day.load.lifestyleLoad, 0) / Math.max(1, lifeRhythmAfter.signals.energyFlow.daily.length)),
+    },
+  };
 };
 
 export const optimizeWeeklyPlan = generateAdaptiveMealPlan;
