@@ -196,6 +196,13 @@ const NUTRITION_TABLE: Record<string, NutritionLookupResult> = {
   bread: { calories: 79, protein: 3, carbs: 15, fat: 1, fiber: 1, servingSize: '1 slice' },
 };
 
+export const FOOD_SUGGESTIONS = Object.entries(NUTRITION_TABLE).map(([key, val]) => ({
+  key,
+  label: key.replace(/_/g, ' '),
+  servingSize: val.servingSize,
+  calories: val.calories,
+}));
+
 export const clientSideNutritionLookup = (name: string): NutritionLookupResult => {
   const lower = name.toLowerCase();
   const parts = lower.split(/[,&+]|\band\b|\bwith\b/).map((s) => s.trim()).filter(Boolean);

@@ -1,8 +1,8 @@
 import React from 'react';
-import { ChefHat, Image as ImageIcon, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
+import { ChefHat, CheckCircle2, Image as ImageIcon, Plus, Search, Sparkles, Trash2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { clientSideNutritionLookup } from '@/components/meal-planner/nutritionMealPlannerUtils';
+import { clientSideNutritionLookup, FOOD_SUGGESTIONS } from '@/components/meal-planner/nutritionMealPlannerUtils';
 
 export type MealItemFormRow = {
   id: string;
@@ -210,6 +210,63 @@ const AddMealModal = ({
   const [selectedRecipe, setSelectedRecipe] = React.useState<PlannerRecipeSearchItem | null>(null);
   const [isSearchingRecipes, setIsSearchingRecipes] = React.useState(false);
   const [recipeSearchError, setRecipeSearchError] = React.useState('');
+
+  // Bulk add
+  const [bulkInput, setBulkInput] = React.useState('');
+  const [bulkAdding, setBulkAdding] = React.useState(false);
+
+  // Autocomplete
+  const [acOpenId, setAcOpenId] = React.useState<string | null>(null);
+  const [acQuery, setAcQuery] = React.useState('');
+  const acTimeout = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const acMatches = React.useMemo(() => {
+    if (!acQuery.trim()) return [];
+    const q = acQuery.toLowerCase();
+    return FOOD_SUGGESTIONS.filter((f) => f.label.includes(q)).slice(0, 8);
+  }, [acQuery]);
+
+  const applyItemLookup = (id: string, name: string) => {
+    const result = clientSideNutritionLookup(name);
+    updateMealItem(id, {
+      name,
+      calories: String(Math.round(result.calories)),
+      protein: String(Math.round(result.protein)),
+      carbs: String(Math.round(result.carbs)),
+      fat: String(Math.round(result.fat)),
+      quantity: result.servingSize || '1 serving',
+    });
+    setAcOpenId(null);
+    setAcQuery('');
+  };
+
+  const handleBulkAdd = () => {
+    const items = bulkInput
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!items.length) return;
+    setBulkAdding(true);
+    const newRows = items.map((name) => {
+      const result = clientSideNutritionLookup(name);
+      return createMealItemRow({
+        name,
+        calories: String(Math.round(result.calories)),
+        protein: String(Math.round(result.protein)),
+        carbs: String(Math.round(result.carbs)),
+        fat: String(Math.round(result.fat)),
+        quantity: result.servingSize || '1 serving',
+      });
+    });
+    onMealFormChange((prev) => {
+      const existing = (prev.mealItems?.length ? prev.mealItems : itemRows).filter(
+        (r) => r.name || r.calories,
+      );
+      return { ...prev, mealItems: [...existing, ...newRows] };
+    });
+    setBulkInput('');
+    setBulkAdding(false);
+  };
   const selectedRecipeNutrition = getRecipeNutrition(selectedRecipe);
   const selectedRecipeIngredients = getRecipeIngredients(selectedRecipe);
   const selectedRecipeImageUrl = getRecipeImageUrl(selectedRecipe);
@@ -576,95 +633,155 @@ const AddMealModal = ({
             </div>
           </div>
 
-          {(baseNutrition || mealForm.calories || mealForm.protein) && (
-            <div className="bg-orange-50 border border-orange-200 rounded-lg px-4 py-2 flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-orange-500 shrink-0" />
-              <p className="text-xs text-orange-700">
-                Type an item name and move to the next field — nutrition fills automatically. Adjust any value manually if needed.
-              </p>
-            </div>
-          )}
-
+          {/* ── Meal Items ───────────────────────────────────────────── */}
           <div className="border rounded-xl overflow-hidden">
-            <div className="bg-gray-50 px-4 py-3 flex flex-col md:flex-row md:items-center md:justify-between gap-2 border-b">
-              <div>
-                <h4 className="text-sm font-semibold text-gray-900">Meal Items / Components</h4>
-                <p className="text-xs text-gray-500">Add each food, serving quantity, nutrition, and optional notes.</p>
+            {/* Header */}
+            <div className="bg-gray-50 px-4 py-3 border-b">
+              <div className="flex items-center justify-between mb-3">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900">Meal Components</h4>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    Nutrition auto-fills when you type a food name. Adjust any value manually.
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="outline" onClick={addMealItem}>
+                  <Plus className="w-4 h-4 mr-1" /> Add item
+                </Button>
               </div>
-              <Button type="button" size="sm" variant="outline" onClick={addMealItem}>
-                <Plus className="w-4 h-4 mr-1" /> Add item
-              </Button>
+
+              {/* Bulk add bar */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Sparkles className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-orange-400 pointer-events-none" />
+                  <input
+                    className="w-full border border-orange-200 rounded-lg pl-8 pr-3 py-2 text-sm bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                    placeholder="Quick add multiple items: pork chop, rice, broccoli, apple juice"
+                    value={bulkInput}
+                    onChange={e => setBulkInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleBulkAdd(); } }}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={!bulkInput.trim() || bulkAdding}
+                  onClick={handleBulkAdd}
+                  className="bg-orange-500 hover:bg-orange-600 text-white shrink-0"
+                >
+                  Add All
+                </Button>
+              </div>
             </div>
+
+            {/* Item rows */}
             <div className="divide-y">
-              {itemRows.map((item, index) => (
-                <div key={item.id} className="p-4 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <Badge variant="secondary">Item {index + 1}</Badge>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="text-red-500 hover:text-red-600"
-                      onClick={() => removeMealItem(item.id)}
-                      disabled={itemRows.length <= 1}
-                    >
-                      <Trash2 className="w-4 h-4 mr-1" /> Remove
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-                    <div className="md:col-span-2">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Item name *</label>
+              {itemRows.map((item, index) => {
+                const hasNutrition = !!(item.calories || item.protein || item.carbs || item.fat);
+                const isAcOpen = acOpenId === item.id && acMatches.length > 0;
+                return (
+                  <div key={item.id} className="p-4">
+                    {/* Row header */}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                        Item {index + 1}
+                      </span>
+                      {hasNutrition && (
+                        <span className="flex items-center gap-1 text-xs text-green-600">
+                          <CheckCircle2 className="w-3 h-3" /> Nutrition filled
+                        </span>
+                      )}
+                      <button
+                        type="button"
+                        className="ml-auto text-xs text-red-400 hover:text-red-600 flex items-center gap-1 disabled:opacity-30"
+                        onClick={() => removeMealItem(item.id)}
+                        disabled={itemRows.length <= 1}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" /> Remove
+                      </button>
+                    </div>
+
+                    {/* Name + quantity row */}
+                    <div className="flex gap-2 mb-2">
+                      {/* Name with autocomplete */}
+                      <div className="relative flex-1">
+                        <input
+                          className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                          placeholder="Food name (e.g. chicken breast)"
+                          value={item.name || ''}
+                          onChange={e => {
+                            updateMealItem(item.id, { name: e.target.value });
+                            setAcOpenId(item.id);
+                            setAcQuery(e.target.value);
+                          }}
+                          onFocus={() => { setAcOpenId(item.id); setAcQuery(item.name || ''); }}
+                          onBlur={() => {
+                            if (acTimeout.current) clearTimeout(acTimeout.current);
+                            acTimeout.current = setTimeout(() => {
+                              setAcOpenId(null);
+                              // auto-fill if nutrition still empty
+                              const name = item.name?.trim();
+                              if (name && !item.calories && !item.protein) {
+                                applyItemLookup(item.id, name);
+                              }
+                            }, 150);
+                          }}
+                        />
+                        {isAcOpen && (
+                          <ul className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+                            {acMatches.map((f) => (
+                              <li key={f.key}>
+                                <button
+                                  type="button"
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-orange-50 flex items-center justify-between gap-2"
+                                  onMouseDown={e => { e.preventDefault(); applyItemLookup(item.id, f.label); }}
+                                >
+                                  <span className="capitalize font-medium">{f.label}</span>
+                                  <span className="text-xs text-gray-400 shrink-0">{f.calories} cal · {f.servingSize}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                       <input
-                        className="w-full border rounded px-3 py-2 text-sm"
-                        placeholder="e.g. pork chop, rice, broccoli"
-                        value={item.name || ''}
-                        onChange={e => updateMealItem(item.id, { name: e.target.value })}
-                        onBlur={e => {
-                          const name = e.target.value.trim();
-                          if (!name) return;
-                          // Auto-fill nutrition whenever the name field loses focus
-                          // and nutrition fields are still empty
-                          const hasNutrition = item.calories || item.protein || item.carbs || item.fat;
-                          if (!hasNutrition) {
-                            const result = clientSideNutritionLookup(name);
-                            updateMealItem(item.id, {
-                              calories: String(Math.round(result.calories)),
-                              protein: String(Math.round(result.protein)),
-                              carbs: String(Math.round(result.carbs)),
-                              fat: String(Math.round(result.fat)),
-                              quantity: item.quantity || result.servingSize || '1 serving',
-                            });
-                          }
-                        }}
+                        className="w-28 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300"
+                        placeholder="Qty / size"
+                        value={item.quantity || ''}
+                        onChange={e => updateMealItem(item.id, { quantity: e.target.value })}
                       />
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Quantity</label>
-                      <input className="w-full border rounded px-3 py-2 text-sm" placeholder="4 oz" value={item.quantity || ''} onChange={e => updateMealItem(item.id, { quantity: e.target.value })} />
+
+                    {/* Nutrition row */}
+                    <div className="grid grid-cols-4 gap-2 mb-2">
+                      {[
+                        { label: 'Calories', key: 'calories', placeholder: '0' },
+                        { label: 'Protein g', key: 'protein', placeholder: '0' },
+                        { label: 'Carbs g', key: 'carbs', placeholder: '0' },
+                        { label: 'Fat g', key: 'fat', placeholder: '0' },
+                      ].map(({ label, key, placeholder }) => (
+                        <div key={key}>
+                          <label className="block text-[10px] font-medium text-gray-500 mb-1">{label}</label>
+                          <input
+                            type="number"
+                            className="w-full border rounded-lg px-2 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-orange-300"
+                            placeholder={placeholder}
+                            value={(item as any)[key] || ''}
+                            onChange={e => updateMealItem(item.id, { [key]: e.target.value } as any)}
+                          />
+                        </div>
+                      ))}
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Calories</label>
-                      <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="180" value={item.calories || ''} onChange={e => updateMealItem(item.id, { calories: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Protein (g)</label>
-                      <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="30" value={item.protein || ''} onChange={e => updateMealItem(item.id, { protein: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Carbs (g)</label>
-                      <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="0" value={item.carbs || ''} onChange={e => updateMealItem(item.id, { carbs: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Fat (g)</label>
-                      <input type="number" className="w-full border rounded px-3 py-2 text-sm" placeholder="4" value={item.fat || ''} onChange={e => updateMealItem(item.id, { fat: e.target.value })} />
-                    </div>
-                    <div className="md:col-span-5">
-                      <label className="block text-xs font-medium text-gray-600 mb-1">Notes <span className="text-gray-400 font-normal">optional</span></label>
-                      <input className="w-full border rounded px-3 py-2 text-sm" placeholder="e.g., grilled, no oil, sauce on side" value={item.notes || ''} onChange={e => updateMealItem(item.id, { notes: e.target.value })} />
-                    </div>
+
+                    {/* Notes */}
+                    <input
+                      className="w-full border rounded-lg px-3 py-1.5 text-sm text-gray-500 placeholder-gray-300 focus:outline-none focus:ring-2 focus:ring-orange-300"
+                      placeholder="Notes — e.g. grilled, no oil, sauce on side (optional)"
+                      value={item.notes || ''}
+                      onChange={e => updateMealItem(item.id, { notes: e.target.value })}
+                    />
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
