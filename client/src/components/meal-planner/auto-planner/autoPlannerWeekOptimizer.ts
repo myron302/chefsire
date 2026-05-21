@@ -1,0 +1,47 @@
+import type { AutoPlannerMode } from './autoPlannerTypes';
+import { simulateWeeklyArrangement } from './autoPlannerSimulationEngine';
+import { calculateCompositeOptimizationScore, deriveOptimizationTradeoffs } from './autoPlannerTradeoffAnalysis';
+
+export const compareWeeklyPlans = (a: Record<string, any>, b: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
+  const scoreA = calculateCompositeOptimizationScore(a, weekDays, mealTypes);
+  const scoreB = calculateCompositeOptimizationScore(b, weekDays, mealTypes);
+  if (scoreA === scoreB) return 0;
+  return scoreA > scoreB ? -1 : 1;
+};
+
+export const scoreCandidateWeek = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
+  return calculateCompositeOptimizationScore(weeklyMeals, weekDays, mealTypes);
+};
+
+export const optimizeWeeklyIteration = (weeklyMeals: Record<string, any>, pool: any[], weekDays: readonly string[], mealTypes: readonly string[], mode: AutoPlannerMode, baseScoreMeal: (meal: any) => number) => {
+  const candidates = simulateWeeklyArrangement(weeklyMeals, pool, weekDays, mealTypes, mode, baseScoreMeal);
+  const ranked = [...candidates].sort((a, b) => compareWeeklyPlans(a, b, weekDays, mealTypes));
+  const best = ranked[0] || weeklyMeals;
+  return { best, score: scoreCandidateWeek(best, weekDays, mealTypes), evaluated: ranked.length };
+};
+
+export const runOptimizationPass = (weeklyMeals: Record<string, any>, pool: any[], weekDays: readonly string[], mealTypes: readonly string[], mode: AutoPlannerMode, baseScoreMeal: (meal: any) => number) => {
+  return optimizeWeeklyIteration(weeklyMeals, pool, weekDays, mealTypes, mode, baseScoreMeal);
+};
+
+export const evolveWeeklyPlan = (weeklyMeals: Record<string, any>, pool: any[], weekDays: readonly string[], mealTypes: readonly string[], mode: AutoPlannerMode, baseScoreMeal: (meal: any) => number, iterations = 3) => {
+  let current = weeklyMeals;
+  let bestScore = scoreCandidateWeek(current, weekDays, mealTypes);
+  let evaluatedWeeks = 1;
+
+  for (let i = 0; i < iterations; i += 1) {
+    const result = runOptimizationPass(current, pool, weekDays, mealTypes, mode, baseScoreMeal);
+    evaluatedWeeks += result.evaluated;
+    if (result.score <= bestScore) break;
+    current = result.best;
+    bestScore = result.score;
+  }
+
+  return { next: current, score: bestScore, evaluatedWeeks };
+};
+
+export const optimizeWeeklyRhythm = evolveWeeklyPlan;
+
+export const summarizeOptimizationDeltas = (before: Record<string, any>, after: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
+  return deriveOptimizationTradeoffs(before, after, weekDays, mealTypes);
+};
