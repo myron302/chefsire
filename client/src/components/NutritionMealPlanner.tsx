@@ -25,6 +25,13 @@ import AddGroceryItemModal from '@/components/meal-planner/modals/AddGroceryItem
 import ShareFamilyDialog from '@/components/meal-planner/modals/ShareFamilyDialog';
 import AddMealModal from '@/components/meal-planner/modals/AddMealModal';
 import AIRecipeModal from '@/components/meal-planner/modals/AIRecipeModal';
+import PlannerShareDialog from '@/components/meal-planner/social/PlannerShareDialog';
+import PlannerShareCards, { generatePlannerMomentumCard } from '@/components/meal-planner/social/plannerShareCards';
+import PlannerTemplateCard from '@/components/meal-planner/social/PlannerTemplateCard';
+import PlannerSocialFeed from '@/components/meal-planner/social/PlannerSocialFeed';
+import { createShareablePlanSnapshot, generatePlannerShareSummary } from '@/components/meal-planner/social/plannerSharingUtils';
+import { applyTemplateToWeek, type PlannerTemplate } from '@/components/meal-planner/social/plannerTemplateUtils';
+import { buildPlannerFeed } from '@/components/meal-planner/social/plannerFeedUtils';
 import CookingToolsReference from '@/components/meal-planner/CookingToolsReference';
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 import { normalizeShoppingListItem } from '@/lib/shopping-list';
@@ -331,6 +338,7 @@ const NutritionMealPlanner = () => {
   const [showAIRecipeModal, setShowAIRecipeModal] = useState(false);
   const [showPantryModal, setShowPantryModal] = useState(false);
   const [showLoadTemplateModal, setShowLoadTemplateModal] = useState(false);
+  const [showPlannerShareDialog, setShowPlannerShareDialog] = useState(false);
   const [savingsReport, setSavingsReport] = useState<any>(null);
   const [showAddGroceryModal, setShowAddGroceryModal] = useState(false);
   const [showScanModal, setShowScanModal] = useState(false);
@@ -352,6 +360,28 @@ const NutritionMealPlanner = () => {
   const [sharePublicToken, setSharePublicToken] = useState<string | null>(null);
   const [shareMetadataLoaded, setShareMetadataLoaded] = useState(false);
   const [shareMetadataSaveState, setShareMetadataSaveState] = useState<ShareMetadataSaveState>('idle');
+  const plannerTemplates = useMemo<PlannerTemplate[]>(() => ([
+    { id: 'high-protein-week', title: 'High Protein Week', theme: 'Athletic recovery', creator: 'Coach Aria', nutritionFocus: 'High Protein', prepStyle: 'Batch Prep', tags: ['protein', 'recovery'], week: weeklyMeals },
+    { id: 'budget-week', title: 'College Budget Week', theme: 'Budget first', creator: 'Chef Sam', nutritionFocus: 'Budget Friendly', prepStyle: 'Minimal Prep', tags: ['budget', 'pantry'], week: weeklyMeals },
+  ]), [weeklyMeals]);
+  const plannerFeedItems = useMemo(() => buildPlannerFeed(plannerTemplates), [plannerTemplates]);
+  const plannerSnapshot = useMemo(() => createShareablePlanSnapshot(weeklyMeals, {
+    visibility: shareVisibility,
+    sharedBy: user?.displayName || user?.username || 'ChefSire Planner User',
+    shareDescription: 'A shareable weekly nutrition snapshot from ChefSire Planner.',
+    tags: ['weekly plan', 'meal prep', 'nutrition'],
+    nutritionFocus: 'Balanced',
+    prepStyle: 'Batch + Flexible',
+    generatedByAIPlanner: true,
+  }), [weeklyMeals, shareVisibility, user]);
+  const plannerShareSummary = useMemo(() => generatePlannerShareSummary(plannerSnapshot), [plannerSnapshot]);
+  const plannerMomentumCard = useMemo(() => generatePlannerMomentumCard({
+    macroConsistency: 78,
+    prepReadiness: 72,
+    groceryReadiness: 81,
+    hydrationStreak: 5,
+    aiCoachHighlights: ['Consistent meal spacing', 'Strong protein cadence'],
+  }), []);
   const [templateBridgeRequest, setTemplateBridgeRequest] = useState<TemplateBridgePayload | null>(null);
   const [pendingTemplateBridgePreview, setPendingTemplateBridgePreview] = useState<PendingTemplateBridgePreview | null>(null);
   const [recentPinnedTemplates, setRecentPinnedTemplates] = useState<RecentPinnedTemplateUsage[]>([]);
@@ -4651,6 +4681,10 @@ const NutritionMealPlanner = () => {
                       <Share2 className="w-4 h-4 mr-2" />
                       Share / Export
                     </Button>
+                    <Button variant="secondary" onClick={() => setShowPlannerShareDialog(true)}>
+                      <Camera className="w-4 h-4 mr-2" />
+                      Share Snapshot
+                    </Button>
                     {shareVisibility === 'public' && (
                       <Button variant="outline" onClick={copyWeeklyPublicShareLink} disabled={!publicShareUrl}>
                         <Globe className="w-4 h-4 mr-2" />
@@ -4667,6 +4701,27 @@ const NutritionMealPlanner = () => {
                       Public link foundation: {publicShareUrl || 'generating secure link token...'}
                     </p>
                   )}
+                </CardContent>
+              </Card>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <PlannerShareCards card={plannerMomentumCard} />
+                <PlannerSocialFeed items={plannerFeedItems} />
+              </div>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Featured Nutrition Templates</CardTitle>
+                  <CardDescription>Discover creator plans, clone them, or partially apply day/meal groups.</CardDescription>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                  {plannerTemplates.map((template) => (
+                    <PlannerTemplateCard
+                      key={template.id}
+                      template={template}
+                      onUse={() => setWeeklyMeals(applyTemplateToWeek(weeklyMeals, template.week, 'replace'))}
+                      onApplyMonday={() => setWeeklyMeals(applyTemplateToWeek(weeklyMeals, template.week, 'append', 'Monday'))}
+                      onCopyBreakfasts={() => setWeeklyMeals(applyTemplateToWeek(weeklyMeals, template.week, 'append', undefined, 'breakfast'))}
+                    />
+                  ))}
                 </CardContent>
               </Card>
             </div>
@@ -5383,6 +5438,14 @@ const NutritionMealPlanner = () => {
           familyMembers={familyMembers}
           groceryCount={groceryList.length}
           onCopyToClipboard={copyGroceryListToClipboard}
+        />
+        <PlannerShareDialog
+          open={showPlannerShareDialog}
+          onClose={() => setShowPlannerShareDialog(false)}
+          summary={plannerShareSummary}
+          onCopyLink={copyWeeklyPublicShareLink}
+          onShareSnapshot={shareWeeklySummary}
+          onExportWeek={copyWeeklyShareSummary}
         />
       </div>
     </div>
