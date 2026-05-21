@@ -1,3 +1,4 @@
+import { getMealsForSlot } from '../planner-graph/plannerGraphUtils';
 import { type AutoPlannerMode } from './autoPlannerTypes';
 
 export type PlannerSlotContext = {
@@ -18,14 +19,14 @@ export const deriveSlotContext = (day: string, mealType: string, dayIndex: numbe
 
 export const analyzeProteinDistribution = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
   return weekDays.map((d) => mealTypes.reduce((acc, m) => {
-    const arr = Array.isArray(weeklyMeals?.[d]?.[m]) ? weeklyMeals[d][m] : weeklyMeals?.[d]?.[m] ? [weeklyMeals[d][m]] : [];
+    const arr = getMealsForSlot(weeklyMeals, d, m);
     return acc + arr.reduce((s: number, it: any) => s + Number(it?.protein || 0), 0);
   }, 0));
 };
 
 export const analyzeCalorieDistribution = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
   return weekDays.map((d) => mealTypes.reduce((acc, m) => {
-    const arr = Array.isArray(weeklyMeals?.[d]?.[m]) ? weeklyMeals[d][m] : weeklyMeals?.[d]?.[m] ? [weeklyMeals[d][m]] : [];
+    const arr = getMealsForSlot(weeklyMeals, d, m);
     return acc + arr.reduce((s: number, it: any) => s + Number(it?.calories || it?.kcal || 0), 0);
   }, 0));
 };

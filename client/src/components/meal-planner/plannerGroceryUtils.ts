@@ -1,4 +1,6 @@
 import { MEAL_TYPES, WEEK_DAYS } from './nutritionMealPlannerUtils';
+import { getMealsForSlot } from './planner-graph/plannerGraphUtils';
+import { extractMealIngredients } from './planner-graph/plannerMealExtraction';
 
 export type PlannerGrocerySourceMeal = {
   mealName: string;
@@ -117,15 +119,6 @@ export const normalizeMealIngredient = (value: unknown) => {
   return tokens.join(' ').trim();
 };
 
-const getSlotItems = (slotValue: any) => {
-  if (!slotValue) return [];
-  return Array.isArray(slotValue) ? slotValue.filter(Boolean) : [slotValue];
-};
-
-const getMealItems = (meal: any) => (
-  Array.isArray(meal?.mealItems) ? meal.mealItems.filter((item: any) => item && String(item.name || '').trim()) : []
-);
-
 const isUsefulIngredient = (name: string) => {
   const normalized = normalizeMealIngredient(name);
   if (!normalized) return false;
@@ -153,9 +146,9 @@ export const aggregatePlannerGroceries = (weeklyMeals: Record<string, any> | nul
 
   WEEK_DAYS.forEach((day) => {
     MEAL_TYPES.forEach((mealType) => {
-      getSlotItems(weeklyMeals?.[day]?.[mealType]).forEach((meal: any, mealIndex: number) => {
+      getMealsForSlot(weeklyMeals, day, mealType).forEach((meal: any, mealIndex: number) => {
         const mealName = String(meal?.name || meal?.title || `${day} ${mealType}`).trim();
-        getMealItems(meal).forEach((item: any, itemIndex: number) => {
+        extractMealIngredients(meal).forEach((item: any, itemIndex: number) => {
           const rawName = String(item?.name || '').trim();
           if (!isUsefulIngredient(rawName)) return;
           const normalizedName = normalizeMealIngredient(rawName);

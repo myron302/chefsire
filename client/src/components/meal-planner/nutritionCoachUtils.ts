@@ -1,4 +1,7 @@
-import { MEAL_TYPES, WEEK_DAYS, getMealItems, getMealNutritionTotals, getSlotItems } from './nutritionMealPlannerUtils';
+import { MEAL_TYPES, WEEK_DAYS, getMealNutritionTotals } from './nutritionMealPlannerUtils';
+import { iterateWeeklyMeals } from './planner-graph/plannerIteration';
+import { extractMealIngredients } from './planner-graph/plannerMealExtraction';
+import { getMealsForSlot } from './planner-graph/plannerGraphUtils';
 import { aggregatePlannerGroceries, normalizeMealIngredient, type PlannerGrocerySuggestion } from './plannerGroceryUtils';
 import type { PrepOrchestration } from './prepOrchestrationUtils';
 
@@ -119,24 +122,18 @@ const getPlannedMeals = (
   weekDays: readonly string[],
   mealTypes: readonly string[],
 ): PlannedMeal[] => {
-  if (!weeklyMeals || typeof weeklyMeals !== 'object') return [];
-
   const meals: PlannedMeal[] = [];
-  weekDays.forEach((day) => {
-    mealTypes.forEach((mealType) => {
-      getSlotItems(weeklyMeals, day, mealType).forEach((meal: any, index: number) => {
-        const totals = getMealNutritionTotals(meal);
-        const ingredientNames = getMealItems(meal).map((item) => String(item?.name || '').trim()).filter(Boolean);
-        meals.push({
-          id: String(meal?.entryId || meal?.id || `${day}-${mealType}-${index}`),
-          name: String(meal?.name || meal?.title || `${toTitle(mealType)} meal`).trim(),
-          day,
-          mealType,
-          ...totals,
-          hasNutrition: totals.calories > 0 || totals.protein > 0 || totals.carbs > 0 || totals.fat > 0,
-          ingredientNames,
-        });
-      });
+  iterateWeeklyMeals(weeklyMeals, weekDays, mealTypes, ({ day, mealType, meal, index }) => {
+    const totals = getMealNutritionTotals(meal);
+    const ingredientNames = extractMealIngredients(meal).map((item) => String(item?.name || '').trim()).filter(Boolean);
+    meals.push({
+      id: String(meal?.entryId || meal?.id || `${day}-${mealType}-${index}`),
+      name: String(meal?.name || meal?.title || `${toTitle(mealType)} meal`).trim(),
+      day,
+      mealType,
+      ...totals,
+      hasNutrition: totals.calories > 0 || totals.protein > 0 || totals.carbs > 0 || totals.fat > 0,
+      ingredientNames,
     });
   });
 
@@ -279,7 +276,7 @@ export const deriveNutritionCoachInsights = (input: NutritionCoachInput): Nutrit
   const meals = getPlannedMeals(input.weeklyMeals, weekDays, mealTypes);
   const dayNutrition = getDayNutrition(meals, weekDays);
   const plannedSlots = weekDays.reduce((sum, day) => (
-    sum + mealTypes.filter((mealType) => getSlotItems(input.weeklyMeals || {}, day, mealType).length > 0).length
+    sum + mealTypes.filter((mealType) => getMealsForSlot(input.weeklyMeals || {}, day, mealType).length > 0).length
   ), 0);
   const missingSlots = totalSlots - plannedSlots;
   const missingDays = dayNutrition.filter((day) => day.mealsLogged === 0);
