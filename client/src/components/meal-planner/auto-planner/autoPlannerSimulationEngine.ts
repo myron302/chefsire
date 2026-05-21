@@ -1,6 +1,7 @@
 import { deriveSlotContext } from './autoPlannerContextAnalysis';
 import { calculateMealSlotCompatibility, rankMealForSpecificSlot } from './autoPlannerMealCompatibility';
 import type { AutoPlannerMode } from './autoPlannerTypes';
+import { generateRelationshipDrivenCandidates } from '../meal-relationships/relationshipDrivenPlanning';
 
 export type PlannerState = Record<string, any>;
 export type PlannerSlot = { day: string; mealType: string };
@@ -62,7 +63,8 @@ export const optimizeMealPlacement = (weeklyMeals: PlannerState, pool: any[], we
   openSlots.forEach((slot) => {
     const dayIndex = Math.max(0, weekDays.indexOf(slot.day));
     const context = deriveSlotContext(slot.day, slot.mealType, dayIndex, weekDays.length, mode);
-    const ranked = rankMealForSpecificSlot(pool, context, baseScoreMeal).slice(0, 3);
+    const relationshipCandidates = generateRelationshipDrivenCandidates(pool, next);
+    const ranked = rankMealForSpecificSlot(relationshipCandidates, context, baseScoreMeal).slice(0, 3);
     if (!ranked.length) return;
     const best = ranked.sort((a, b) => calculateMealSlotCompatibility(b, context) - calculateMealSlotCompatibility(a, context))[0];
     next = setSlotMeal(next, slot, best);

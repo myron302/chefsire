@@ -5,6 +5,7 @@ import { optimizeMealPlacement } from './autoPlannerSimulationEngine';
 import { evolveWeeklyPlan, summarizeOptimizationDeltas } from './autoPlannerWeekOptimizer';
 import { type AutoPlannerMode, type AutoPlannerPriorities, type AutoPlannerResult } from './autoPlannerTypes';
 import { optimizeWeeklyLifeRhythm } from './autoPlannerRhythmEngine';
+import { evolveWeeklyPlanWithRelationships } from '../meal-relationships/relationshipDrivenPlanning';
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -50,8 +51,9 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
     return arr;
   })).filter(Boolean);
   const beforeScores = calculateWeeklyScores(weeklyMeals, weekDays, mealTypes, proteinGoal);
-  const { next: seededPlan, changes } = fillPlannerGaps(weeklyMeals, weekDays, mealTypes, pool, mode, priorities);
-  const { next, evaluatedWeeks } = evolveWeeklyPlan(seededPlan, pool, weekDays, mealTypes, mode, (meal: any) => {
+  const { prioritizedPool, relationshipSummary } = evolveWeeklyPlanWithRelationships(weeklyMeals, weekDays, mealTypes, pool);
+  const { next: seededPlan, changes } = fillPlannerGaps(weeklyMeals, weekDays, mealTypes, prioritizedPool, mode, priorities);
+  const { next, evaluatedWeeks } = evolveWeeklyPlan(seededPlan, prioritizedPool, weekDays, mealTypes, mode, (meal: any) => {
     const protein = Number(meal?.protein || 0) * (mode === 'high-protein' ? 2 : priorities.proteinPriority);
     const prepPenalty = Number(meal?.mealItems?.length || 0) * priorities.prepSimplicity;
     const pantryBoost = (meal?.source === 'pantry' || meal?.isPantryItem ? 20 : 0) * priorities.pantryReusePriority;
@@ -81,6 +83,7 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
       ...contextual.map((message, idx) => ({ id: `ctx-${idx}`, tone: 'neutral' as const, category: 'core' as const, message })),
       ...tradeoffNotes.map((message, idx) => ({ id: `tradeoff-${idx}`, tone: 'neutral' as const, category: 'core' as const, message })),
       ...rhythmMessages.map((message, idx) => ({ id: `rhythm-${idx}`, tone: 'neutral' as const, category: 'lifestyle' as const, message })),
+      ...relationshipSummary.messages.map((message: string, idx: number) => ({ id: `relationship-${idx}`, tone: 'neutral' as const, category: 'prep' as const, message })),
     ],
     lifestyleContext: {
       dayRhythm: lifeRhythmAfter.signals.energyFlow.daily.map((entry) => ({
