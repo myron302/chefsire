@@ -33,8 +33,10 @@ export default function SmartAutoPlannerPanel({ weeklyMeals, weekDays, mealTypes
           <Badge variant="secondary">Changes: {preview.changes.length}</Badge>
           <Badge variant="outline">Readiness Δ {preview.afterScores.readinessScore - preview.beforeScores.readinessScore}</Badge>
           <Badge variant="outline">Protein Δ {preview.afterScores.proteinCoverageScore - preview.beforeScores.proteinCoverageScore}</Badge>
+          {typeof preview?.lifestyleContext?.energyLoad === 'number' && <Badge variant="outline">Lifestyle Load {preview.lifestyleContext.energyLoad}</Badge>}
         </div>
         <ul className="text-xs text-gray-700 list-disc pl-4">{preview.suggestions.map((s: any) => <li key={s.id}>{s.message}</li>)}</ul>
+        {!!preview?.lifestyleContext?.freshnessPriority && <p className="text-xs text-gray-600">Why this week flows better: fragile-ingredient pressure is front-loaded ({preview.lifestyleContext.freshnessPriority.fragileEarlyWeek} early-week vs {preview.lifestyleContext.freshnessPriority.fragileLateWeek} late-week slots).</p>}
         <div className="flex gap-2">
           <Button size="sm" onClick={() => onApplyPreview(preview)}>Apply All</Button>
           <Button size="sm" variant="ghost" onClick={() => setPreview(null)}>Discard</Button>

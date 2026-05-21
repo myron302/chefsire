@@ -32,7 +32,7 @@ export type AutoPlannerScores = {
   readinessScore: number;
 };
 
-export type AutoPlannerSuggestion = { id: string; message: string; tone: 'positive' | 'neutral' | 'warning' };
+export type AutoPlannerSuggestion = { id: string; message: string; tone: 'positive' | 'neutral' | 'warning'; category?: 'core' | 'lifestyle' | 'prep' | 'freshness' | 'recovery' };
 
 export type AutoPlannerResult = {
   mode: AutoPlannerMode;
@@ -40,4 +40,10 @@ export type AutoPlannerResult = {
   beforeScores: AutoPlannerScores;
   afterScores: AutoPlannerScores;
   suggestions: AutoPlannerSuggestion[];
+  lifestyleContext?: {
+    dayRhythm?: Array<{ day: string; energyLoad: number; energyLevel: 'low' | 'medium' | 'high'; prepWindowType: string }>;
+    freshnessPriority?: { fragileEarlyWeek: number; fragileLateWeek: number };
+    prepWindowType?: string;
+    energyLoad?: number;
+  };
 };
