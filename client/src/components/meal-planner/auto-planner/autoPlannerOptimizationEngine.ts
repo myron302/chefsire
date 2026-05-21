@@ -1,6 +1,7 @@
 import { deriveSlotContext, analyzeProteinDistribution, analyzeCalorieDistribution, calculateMacroBalanceScore } from './autoPlannerContextAnalysis';
 import { calculateMealSlotCompatibility, rankMealForSpecificSlot } from './autoPlannerMealCompatibility';
 import { type AutoPlannerMode, type AutoPlannerPriorities } from './autoPlannerTypes';
+import { calculateRelationshipEfficiencyScore } from '../meal-relationships/relationshipGraph';
 
 const gatherMeals = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => weekDays.flatMap((d) => mealTypes.flatMap((m) => {
   const arr = Array.isArray(weeklyMeals?.[d]?.[m]) ? weeklyMeals[d][m] : weeklyMeals?.[d]?.[m] ? [weeklyMeals[d][m]] : [];
@@ -84,7 +85,8 @@ export const calculateWeeklyOptimizationScore = (weeklyMeals: Record<string, any
   const fragmentation = calculateGroceryFragmentation(meals);
   const pantry = calculatePantryReuseEfficiency(meals);
   const stress = calculateWeeklyPlannerStress(weeklyMeals, weekDays, mealTypes);
-  return Math.round((macro * 0.26) + ((100 - fatigue) * 0.18) + (overlap * 0.14) + ((100 - fragmentation) * 0.14) + (pantry * 0.14) + ((100 - Math.min(100, stress * 5)) * 0.14));
+  const relationships = calculateRelationshipEfficiencyScore(weeklyMeals);
+  return Math.round((macro * 0.22) + ((100 - fatigue) * 0.16) + (overlap * 0.12) + ((100 - fragmentation) * 0.12) + (pantry * 0.12) + ((100 - Math.min(100, stress * 5)) * 0.12) + (relationships.efficiencyScore * 0.14));
 };
 
 export const optimizePrepDistribution = () => ({ applied: true });
@@ -120,5 +122,8 @@ export const buildAdaptivePlannerRecommendations = (before: Record<string, any>,
   if (afterMacro > beforeMacro) messages.push('Protein pacing improved across weekdays.');
   if (calculateIngredientOverlapScore(afterMeals) > calculateIngredientOverlapScore(beforeMeals)) messages.push('Ingredient overlap optimized to reduce grocery waste.');
   if (calculateMealFatigueScore(afterMeals) < calculateMealFatigueScore(beforeMeals)) messages.push('Breakfast and lunch variety improved without increasing prep complexity.');
+  const beforeRelationships = calculateRelationshipEfficiencyScore(before);
+  const afterRelationships = calculateRelationshipEfficiencyScore(after);
+  if (afterRelationships.continuityScore > beforeRelationships.continuityScore) messages.push('Meal chain continuity improved across prep and leftover windows.');
   return messages;
 };

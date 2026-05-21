@@ -4,8 +4,10 @@ import { extractMealIngredients } from './planner-graph/plannerMealExtraction';
 import { getMealsForSlot } from './planner-graph/plannerGraphUtils';
 import { aggregatePlannerGroceries, normalizeMealIngredient, type PlannerGrocerySuggestion } from './plannerGroceryUtils';
 import type { PrepOrchestration } from './prepOrchestrationUtils';
+import { buildMealRelationshipGraph } from './meal-relationships/relationshipGraph';
 
 export type NutritionCoachCategory =
+  | 'relationships'
   | 'nutrition'
   | 'prep'
   | 'grocery'
@@ -256,6 +258,24 @@ const getRepeatedIngredients = (meals: PlannedMeal[]) => {
 
 const makeInsight = (insight: NutritionCoachInsight): NutritionCoachInsight => insight;
 
+const deriveRelationshipCoachInsights = (weeklyMeals: Record<string, any> | null | undefined): NutritionCoachInsight[] => {
+  const graph = buildMealRelationshipGraph(weeklyMeals);
+  return graph.insights.slice(0, 3).map((description, index) => ({
+    id: `relationship-${index}`,
+    category: 'relationships',
+    title: index === 0 ? 'Meal relationship continuity detected' : 'Meal relationship optimization opportunity',
+    description,
+    severity: graph.relationshipEfficiency >= 70 ? 'positive' : 'neutral',
+    priority: graph.relationshipEfficiency >= 70 ? 55 : 70,
+    kind: 'recommendation',
+    relatedMeals: graph.nodes.slice(0, 4).map((node) => node.mealName),
+    relatedPrepSessions: graph.prepOpportunities.slice(0, 2).map((item) => item.artifact),
+    suggestedActions: ['Cluster related meals within 48-hour windows.', 'Batch prep shared artifacts before high-demand weekdays.'],
+    evidence: [`Continuity ${graph.continuityScore}/100`, `Relationship efficiency ${graph.relationshipEfficiency}/100`],
+  }));
+};
+
+
 export const calculateNutritionMomentum = (scores: NutritionCoachScore[]) => (
   clampScore(scores.reduce((sum, score) => sum + score.value, 0) / Math.max(1, scores.length))
 );
@@ -338,6 +358,7 @@ export const deriveNutritionCoachInsights = (input: NutritionCoachInput): Nutrit
   ];
 
   const insights: NutritionCoachInsight[] = [];
+  insights.push(...deriveRelationshipCoachInsights(input.weeklyMeals));
 
   if (meals.length === 0) {
     insights.push(makeInsight({
