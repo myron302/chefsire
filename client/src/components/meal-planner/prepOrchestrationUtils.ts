@@ -6,6 +6,7 @@ import {
   type PlannerGrocerySourceMeal,
   type PlannerGrocerySourceRow,
 } from "./plannerGroceryUtils";
+import { buildMealRelationshipGraph } from './meal-relationships/relationshipGraph';
 
 export type PrepComplexity = "Easy" | "Moderate" | "Hands-on";
 export type PrepSessionType =
@@ -672,5 +673,18 @@ export const derivePrepSessions = (
       totalGeneratedTasks,
       readinessScore,
     },
+  };
+};
+
+
+export const derivePrepRelationshipSummary = (weeklyMeals: Record<string, any> | null | undefined) => {
+  const graph = buildMealRelationshipGraph(weeklyMeals);
+  const batchClusters = graph.prepOpportunities.filter((item) => item.mealIds.length >= 3);
+  return {
+    continuityScore: graph.continuityScore,
+    relationshipEfficiency: graph.relationshipEfficiency,
+    reusablePrepArtifacts: graph.prepOpportunities.length,
+    batchClusters: batchClusters.length,
+    topPrepInsight: graph.insights.find((insight) => insight.toLowerCase().includes('batch-prepped')) || null,
   };
 };

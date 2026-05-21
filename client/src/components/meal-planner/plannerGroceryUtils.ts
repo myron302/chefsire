@@ -1,6 +1,7 @@
 import { MEAL_TYPES, WEEK_DAYS } from './nutritionMealPlannerUtils';
 import { getMealsForSlot } from './planner-graph/plannerGraphUtils';
 import { extractMealIngredients } from './planner-graph/plannerMealExtraction';
+import { buildMealRelationshipGraph } from './meal-relationships/relationshipGraph';
 
 export type PlannerGrocerySourceMeal = {
   mealName: string;
@@ -259,4 +260,17 @@ export const derivePlannerGrocerySuggestions = (
     if (a.sourceMealsCount !== b.sourceMealsCount) return b.sourceMealsCount - a.sourceMealsCount;
     return a.name.localeCompare(b.name);
   });
+};
+
+
+export const deriveRelationshipAwareGroceryInsights = (weeklyMeals: Record<string, any> | null | undefined) => {
+  const graph = buildMealRelationshipGraph(weeklyMeals);
+  const oneOffCount = graph.ingredientClusters.filter((cluster) => cluster.mealIds.length === 1).length;
+  return {
+    ingredientContinuityScore: graph.continuityScore,
+    reuseEfficiencyScore: graph.relationshipEfficiency,
+    oneOffRiskCount: oneOffCount,
+    topReusableIngredients: graph.ingredientClusters.slice(0, 5).map((cluster) => cluster.ingredient),
+    insights: graph.insights,
+  };
 };
