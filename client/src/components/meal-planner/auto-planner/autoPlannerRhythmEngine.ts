@@ -1,3 +1,4 @@
+import { getMealsForSlot } from '../planner-graph/plannerGraphUtils';
 import { analyzeWeeklyEnergyFlow, calculateMealEnergyFit, calculateRecoveryMealSupport } from './autoPlannerTemporalOptimization';
 import { deriveDayRhythmProfile, classifyDayEnergyLevel } from './autoPlannerLifestyleAnalysis';
 
@@ -33,7 +34,7 @@ export const calculateIngredientFreshnessPressure = (dayIndex: number, shelfLife
 export const analyzeGroceryLifecycle = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
   const entries: Array<{ day: string; dayIndex: number; shelfLife: 'fragile' | 'standard' | 'long-life'; freshnessPressure: number }> = [];
   weekDays.forEach((day, dayIndex) => mealTypes.forEach((mealType) => {
-    const meals = Array.isArray(weeklyMeals?.[day]?.[mealType]) ? weeklyMeals[day][mealType] : weeklyMeals?.[day]?.[mealType] ? [weeklyMeals[day][mealType]] : [];
+    const meals = getMealsForSlot(weeklyMeals, day, mealType);
     meals.forEach((meal: any) => {
       const shelfLife = calculateMealShelfLifeWindow(meal);
       entries.push({ day, dayIndex, shelfLife, freshnessPressure: calculateIngredientFreshnessPressure(dayIndex, shelfLife) });

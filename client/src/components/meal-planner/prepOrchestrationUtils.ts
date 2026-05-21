@@ -1,4 +1,5 @@
 import { MEAL_TYPES, WEEK_DAYS } from "./nutritionMealPlannerUtils";
+import { iterateWeeklyMeals } from "./planner-graph/plannerIteration";
 import {
   aggregatePlannerGroceries,
   normalizeMealIngredient,
@@ -201,23 +202,12 @@ const safeId = (value: string) =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "") || "prep";
 
-const getSlotItems = (slotValue: any) => {
-  if (!slotValue) return [];
-  return Array.isArray(slotValue) ? slotValue.filter(Boolean) : [slotValue];
-};
-
 const getPlannedMeals = (
   weeklyMeals: Record<string, any> | null | undefined,
 ) => {
-  if (!weeklyMeals || typeof weeklyMeals !== "object") return [];
-
   const meals: any[] = [];
-  WEEK_DAYS.forEach((day) => {
-    MEAL_TYPES.forEach((mealType) => {
-      getSlotItems(weeklyMeals?.[day]?.[mealType]).forEach((meal: any) => {
-        meals.push({ ...meal, day, mealType });
-      });
-    });
+  iterateWeeklyMeals(weeklyMeals, WEEK_DAYS, MEAL_TYPES, ({ day, mealType, meal }) => {
+    meals.push({ ...meal, day, mealType });
   });
 
   return meals;

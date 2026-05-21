@@ -1,3 +1,4 @@
+import { getMealsForSlot } from '../planner-graph/plannerGraphUtils';
 import { calculateWeeklyScores } from './autoPlannerScoring';
 import { calculateWeeklyOptimizationScore, buildAdaptivePlannerRecommendations } from './autoPlannerOptimizationEngine';
 import { optimizeMealPlacement } from './autoPlannerSimulationEngine';
@@ -32,8 +33,8 @@ export const fillPlannerGaps = (weeklyMeals: Record<string, any>, weekDays: read
   const placement = optimizeMealPlacement(next, pool, weekDays, mealTypes, mode, scoreMeal);
   next = placement.next;
   weekDays.forEach((day) => mealTypes.forEach((mealType) => {
-    const slotMeals = Array.isArray(next?.[day]?.[mealType]) ? next[day][mealType] : next?.[day]?.[mealType] ? [next[day][mealType]] : [];
-    const prevMeals = Array.isArray(weeklyMeals?.[day]?.[mealType]) ? weeklyMeals[day][mealType] : weeklyMeals?.[day]?.[mealType] ? [weeklyMeals[day][mealType]] : [];
+    const slotMeals = getMealsForSlot(next, day, mealType);
+    const prevMeals = getMealsForSlot(weeklyMeals, day, mealType);
     if (!slotMeals.length || prevMeals.length) return;
     const generatedMeal = { ...slotMeals[0], generatedByAutoPlanner: true, autoPlannerMode: mode, optimizationVersion: 3 };
     next[day] = { ...(next[day] || {}), [mealType]: [generatedMeal] };
@@ -45,7 +46,7 @@ export const fillPlannerGaps = (weeklyMeals: Record<string, any>, weekDays: read
 
 export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[], proteinGoal: number, mode: AutoPlannerMode, priorities: AutoPlannerPriorities): AutoPlannerResult => {
   const pool = weekDays.flatMap((d) => mealTypes.flatMap((m) => {
-    const arr = Array.isArray(weeklyMeals?.[d]?.[m]) ? weeklyMeals[d][m] : weeklyMeals?.[d]?.[m] ? [weeklyMeals[d][m]] : [];
+    const arr = getMealsForSlot(weeklyMeals, d, m);
     return arr;
   })).filter(Boolean);
   const beforeScores = calculateWeeklyScores(weeklyMeals, weekDays, mealTypes, proteinGoal);
