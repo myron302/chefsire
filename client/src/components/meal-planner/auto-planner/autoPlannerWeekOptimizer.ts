@@ -1,6 +1,7 @@
 import type { AutoPlannerMode } from './autoPlannerTypes';
 import { simulateWeeklyArrangement } from './autoPlannerSimulationEngine';
 import { calculateCompositeOptimizationScore, deriveOptimizationTradeoffs } from './autoPlannerTradeoffAnalysis';
+import { scoreRelationshipDrivenWeek } from '../meal-relationships/relationshipDrivenPlanning';
 
 export const compareWeeklyPlans = (a: Record<string, any>, b: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
   const scoreA = calculateCompositeOptimizationScore(a, weekDays, mealTypes);
@@ -10,7 +11,9 @@ export const compareWeeklyPlans = (a: Record<string, any>, b: Record<string, any
 };
 
 export const scoreCandidateWeek = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
-  return calculateCompositeOptimizationScore(weeklyMeals, weekDays, mealTypes);
+  const core = calculateCompositeOptimizationScore(weeklyMeals, weekDays, mealTypes);
+  const relationship = scoreRelationshipDrivenWeek(weeklyMeals, weekDays, mealTypes).score;
+  return Math.round((core * 0.7) + (relationship * 0.3));
 };
 
 export const optimizeWeeklyIteration = (weeklyMeals: Record<string, any>, pool: any[], weekDays: readonly string[], mealTypes: readonly string[], mode: AutoPlannerMode, baseScoreMeal: (meal: any) => number) => {

@@ -30,6 +30,7 @@ export default function SmartAutoPlannerPanel({ weeklyMeals, weekDays, mealTypes
       </div>
       {preview && <div className="space-y-2 rounded-lg border bg-white p-3">
         <div className="flex gap-2 flex-wrap">
+          <Badge variant="outline">Relationship Notes {preview.suggestions.filter((s: any) => s.id.startsWith('relationship-')).length}</Badge>
           <Badge variant="secondary">Changes: {preview.changes.length}</Badge>
           <Badge variant="outline">Readiness Δ {preview.afterScores.readinessScore - preview.beforeScores.readinessScore}</Badge>
           <Badge variant="outline">Protein Δ {preview.afterScores.proteinCoverageScore - preview.beforeScores.proteinCoverageScore}</Badge>
