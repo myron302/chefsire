@@ -1,3 +1,5 @@
+import type { AdaptiveNutritionIdentity } from '../personality-modeling/personalityTypes';
+
 export type LongitudinalPlanningSnapshot = {
   id: string;
   createdAt: string;
@@ -68,4 +70,5 @@ export type AdaptivePlannerProfile = {
   sustainability: SustainabilityProfile;
   relationshipLearning: RelationshipLearningProfile;
   recommendations: string[];
+  nutritionPersonality?: AdaptiveNutritionIdentity;
 };
