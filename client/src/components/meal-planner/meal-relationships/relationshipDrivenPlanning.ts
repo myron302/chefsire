@@ -5,6 +5,7 @@ import { generateLeftoverCascadeCandidates } from './leftoverCascadePlanning';
 import { flattenPlannerMeals } from '../planner-graph/plannerIteration';
 import { extractMealIngredients } from '../planner-graph/plannerMealExtraction';
 import { MEAL_TYPES, WEEK_DAYS } from '../nutritionMealPlannerUtils';
+import { derivePlannerObjectiveProfile } from '../planner-objectives/plannerObjectiveProfiles';
 
 const getPlannerMeals = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => (
   flattenPlannerMeals(weeklyMeals, weekDays, mealTypes).map((ref) => ref.meal).filter(Boolean)
@@ -32,11 +33,16 @@ export const calculateCandidateLeftoverChainGain = (candidate: any, weeklyMeals:
 };
 
 export const rankCandidatesByRelationshipValue = (candidates: any[], weeklyMeals: Record<string, any>) => {
+  const profile = derivePlannerObjectiveProfile('balanced');
+  const continuityWeight = profile.continuity;
+  const prepWeight = profile.prepEfficiency;
+  const leftoverWeight = profile.momentum;
+  const total = continuityWeight + prepWeight + leftoverWeight;
   return [...candidates].map((candidate) => {
     const continuity = calculateCandidateContinuityGain(candidate, weeklyMeals);
     const prepReuse = calculateCandidatePrepReuseGain(candidate, weeklyMeals);
     const leftover = calculateCandidateLeftoverChainGain(candidate, weeklyMeals);
-    const relationshipValue = Math.round((continuity * 0.45) + (prepReuse * 0.3) + (leftover * 0.25));
+    const relationshipValue = Math.round(((continuity * continuityWeight) + (prepReuse * prepWeight) + (leftover * leftoverWeight)) / Math.max(0.0001, total));
     return { ...candidate, relationshipValue, relationshipDrivenReason: `Continuity +${continuity}, prep reuse +${prepReuse}, leftover chain +${leftover}.` };
   }).sort((a, b) => b.relationshipValue - a.relationshipValue);
 };
