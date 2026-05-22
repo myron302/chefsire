@@ -1,9 +1,10 @@
 import { getMealsForSlot } from '../planner-graph/plannerGraphUtils';
+import { extractMealIngredients } from '../planner-graph/plannerMealExtraction';
+import { calculateMealComplexity } from '../planner-graph/plannerComplexity';
 import { analyzeWeeklyEnergyFlow, calculateMealEnergyFit, calculateRecoveryMealSupport } from './autoPlannerTemporalOptimization';
 import { deriveDayRhythmProfile, classifyDayEnergyLevel } from './autoPlannerLifestyleAnalysis';
 
-const ingredientName = (ingredient: any) => String(ingredient?.name || ingredient || '').toLowerCase().trim();
-const ingredientList = (meal: any) => (meal?.ingredients || []).map(ingredientName).filter(Boolean);
+const ingredientList = (meal: any) => extractMealIngredients(meal).map((ingredient: any) => String(ingredient?.name || '').toLowerCase().trim()).filter(Boolean);
 
 export const calculateMealShelfLifeWindow = (meal: any): 'fragile' | 'standard' | 'long-life' => {
   const names = ingredientList(meal);
@@ -13,7 +14,7 @@ export const calculateMealShelfLifeWindow = (meal: any): 'fragile' | 'standard' 
 };
 
 export const calculateLeftoverReusePotential = (meal: any) => {
-  const complexity = Number(meal?.mealItems?.length || meal?.ingredients?.length || 1);
+  const complexity = Math.max(1, calculateMealComplexity(meal));
   const protein = Number(meal?.protein || 0);
   return Math.max(0, Math.min(100, (complexity >= 5 ? 35 : 15) + Math.min(40, protein)));
 };

@@ -2,17 +2,12 @@ import { deriveSlotContext } from './autoPlannerContextAnalysis';
 import { calculateMealSlotCompatibility, rankMealForSpecificSlot } from './autoPlannerMealCompatibility';
 import type { AutoPlannerMode } from './autoPlannerTypes';
 import { generateRelationshipDrivenCandidates } from '../meal-relationships/relationshipDrivenPlanning';
+import { getMealsForSlot } from '../planner-graph/plannerGraphUtils';
 
 export type PlannerState = Record<string, any>;
 export type PlannerSlot = { day: string; mealType: string };
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
-
-const getSlotMeals = (weeklyMeals: PlannerState, day: string, mealType: string): any[] => {
-  const value = weeklyMeals?.[day]?.[mealType];
-  if (Array.isArray(value)) return value;
-  return value ? [value] : [];
-};
 
 const setSlotMeal = (weeklyMeals: PlannerState, slot: PlannerSlot, meal: any) => {
   const next = clone(weeklyMeals);
@@ -23,7 +18,7 @@ const setSlotMeal = (weeklyMeals: PlannerState, slot: PlannerSlot, meal: any) =>
 const getOpenSlots = (weeklyMeals: PlannerState, weekDays: readonly string[], mealTypes: readonly string[]) => {
   const slots: PlannerSlot[] = [];
   weekDays.forEach((day) => mealTypes.forEach((mealType) => {
-    if (getSlotMeals(weeklyMeals, day, mealType).length === 0) slots.push({ day, mealType });
+    if (getMealsForSlot(weeklyMeals, day, mealType).length === 0) slots.push({ day, mealType });
   }));
   return slots;
 };
@@ -32,11 +27,11 @@ export const generateMealSwapCandidates = (weeklyMeals: PlannerState, weekDays: 
   const candidates: Array<{ a: PlannerSlot; b: PlannerSlot; type: 'swap' }> = [];
   weekDays.forEach((day) => mealTypes.forEach((mealType, idx) => {
     const from = { day, mealType };
-    const fromMeals = getSlotMeals(weeklyMeals, from.day, from.mealType);
+    const fromMeals = getMealsForSlot(weeklyMeals, from.day, from.mealType);
     if (!fromMeals.length) return;
     mealTypes.slice(idx + 1).forEach((otherType) => {
       const to = { day, mealType: otherType };
-      const toMeals = getSlotMeals(weeklyMeals, to.day, to.mealType);
+      const toMeals = getMealsForSlot(weeklyMeals, to.day, to.mealType);
       if (!toMeals.length) return;
       candidates.push({ a: from, b: to, type: 'swap' });
     });
@@ -47,7 +42,7 @@ export const generateMealSwapCandidates = (weeklyMeals: PlannerState, weekDays: 
 export const evaluateMealRotation = (weeklyMeals: PlannerState, slots: PlannerSlot[]) => {
   if (slots.length < 2) return weeklyMeals;
   const next = clone(weeklyMeals);
-  const meals = slots.map((slot) => getSlotMeals(next, slot.day, slot.mealType)[0]).filter(Boolean);
+  const meals = slots.map((slot) => getMealsForSlot(next, slot.day, slot.mealType)[0]).filter(Boolean);
   if (meals.length !== slots.length) return weeklyMeals;
   slots.forEach((slot, index) => {
     next[slot.day] = { ...(next[slot.day] || {}), [slot.mealType]: [meals[(index + 1) % meals.length]] };
@@ -81,8 +76,8 @@ export const generateCandidateWeeks = (weeklyMeals: PlannerState, pool: any[], w
 
   const swaps = generateMealSwapCandidates(initial, weekDays, mealTypes).slice(0, 6);
   swaps.forEach((swap) => {
-    const aMeal = getSlotMeals(initial, swap.a.day, swap.a.mealType)[0];
-    const bMeal = getSlotMeals(initial, swap.b.day, swap.b.mealType)[0];
+    const aMeal = getMealsForSlot(initial, swap.a.day, swap.a.mealType)[0];
+    const bMeal = getMealsForSlot(initial, swap.b.day, swap.b.mealType)[0];
     if (!aMeal || !bMeal) return;
     let next = setSlotMeal(initial, swap.a, bMeal);
     next = setSlotMeal(next, swap.b, aMeal);

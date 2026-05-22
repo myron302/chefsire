@@ -3,11 +3,13 @@ import { calculateMealSlotCompatibility, rankMealForSpecificSlot } from './autoP
 import { type AutoPlannerMode, type AutoPlannerPriorities } from './autoPlannerTypes';
 import { calculateRelationshipEfficiencyScore } from '../meal-relationships/relationshipGraph';
 import { scoreRelationshipDrivenWeek, deriveRelationshipDrivenRecommendations } from '../meal-relationships/relationshipDrivenPlanning';
+import { getMealsForSlot } from '../planner-graph/plannerGraphUtils';
+import { extractMealIngredients } from '../planner-graph/plannerMealExtraction';
+import { calculateMealComplexity } from '../planner-graph/plannerComplexity';
 
-const gatherMeals = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => weekDays.flatMap((d) => mealTypes.flatMap((m) => {
-  const arr = Array.isArray(weeklyMeals?.[d]?.[m]) ? weeklyMeals[d][m] : weeklyMeals?.[d]?.[m] ? [weeklyMeals[d][m]] : [];
-  return arr;
-})).filter(Boolean);
+const gatherMeals = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => (
+  weekDays.flatMap((day) => mealTypes.flatMap((mealType) => getMealsForSlot(weeklyMeals, day, mealType))).filter(Boolean)
+);
 
 export const detectRepeatedProteins = (meals: any[]) => {
   const map = new Map<string, number>();
@@ -21,8 +23,8 @@ export const detectRepeatedProteins = (meals: any[]) => {
 
 export const detectIngredientOveruse = (meals: any[]) => {
   const map = new Map<string, number>();
-  meals.forEach((meal) => (meal?.ingredients || []).forEach((i: any) => {
-    const k = String(i?.name || i || '').toLowerCase().trim();
+  meals.forEach((meal) => extractMealIngredients(meal).forEach((i: any) => {
+    const k = String(i?.name || '').toLowerCase().trim();
     if (!k) return;
     map.set(k, (map.get(k) || 0) + 1);
   }));
@@ -37,12 +39,12 @@ export const calculateMealFatigueScore = (meals: any[]) => {
   return Math.max(0, Math.min(100, repeatedProteins * 10 + ingredientOveruse * 7 + namePenalty));
 };
 
-export const calculateDailyPrepStress = (dayMeals: any[]) => dayMeals.reduce((acc, meal) => acc + Number(meal?.mealItems?.length || meal?.ingredients?.length || 1), 0);
+export const calculateDailyPrepStress = (dayMeals: any[]) => dayMeals.reduce((acc, meal) => acc + Math.max(1, calculateMealComplexity(meal)), 0);
 
 export const calculateIngredientOverlapScore = (meals: any[]) => {
   const counts = new Map<string, number>();
-  meals.forEach((m) => (m?.ingredients || []).forEach((i: any) => {
-    const k = String(i?.name || i || '').toLowerCase().trim();
+  meals.forEach((m) => extractMealIngredients(m).forEach((i: any) => {
+    const k = String(i?.name || '').toLowerCase().trim();
     if (!k) return;
     counts.set(k, (counts.get(k) || 0) + 1);
   }));
@@ -52,8 +54,8 @@ export const calculateIngredientOverlapScore = (meals: any[]) => {
 
 export const calculateGroceryFragmentation = (meals: any[]) => {
   const counts = new Map<string, number>();
-  meals.forEach((m) => (m?.ingredients || []).forEach((i: any) => {
-    const k = String(i?.name || i || '').toLowerCase().trim();
+  meals.forEach((m) => extractMealIngredients(m).forEach((i: any) => {
+    const k = String(i?.name || '').toLowerCase().trim();
     if (!k) return;
     counts.set(k, (counts.get(k) || 0) + 1);
   }));
@@ -67,10 +69,7 @@ export const calculatePantryReuseEfficiency = (meals: any[]) => {
 };
 
 export const calculateWeeklyPlannerStress = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
-  const dayStress = weekDays.map((d) => calculateDailyPrepStress(mealTypes.flatMap((m) => {
-    const arr = Array.isArray(weeklyMeals?.[d]?.[m]) ? weeklyMeals[d][m] : weeklyMeals?.[d]?.[m] ? [weeklyMeals[d][m]] : [];
-    return arr;
-  })));
+  const dayStress = weekDays.map((day) => calculateDailyPrepStress(mealTypes.flatMap((mealType) => getMealsForSlot(weeklyMeals, day, mealType))));
   const max = Math.max(0, ...dayStress);
   const avg = dayStress.reduce((a, b) => a + b, 0) / Math.max(1, dayStress.length);
   return Math.round(Math.max(0, max - avg));
@@ -97,7 +96,7 @@ export const optimizeWeeklyDistribution = (params: { weeklyMeals: Record<string,
   const { weeklyMeals, weekDays, mealTypes, pool, mode, baseScoreMeal } = params;
   const selections: Array<{ day: string; mealType: string; candidate: any; reason: string }> = [];
   weekDays.forEach((day, dayIndex) => mealTypes.forEach((mealType) => {
-    const existing = Array.isArray(weeklyMeals?.[day]?.[mealType]) ? weeklyMeals[day][mealType] : weeklyMeals?.[day]?.[mealType] ? [weeklyMeals[day][mealType]] : [];
+    const existing = getMealsForSlot(weeklyMeals, day, mealType);
     if (existing.length > 0) return;
     const context = deriveSlotContext(day, mealType, dayIndex, weekDays.length, mode);
     const ranked = rankMealForSpecificSlot(pool, context, baseScoreMeal);

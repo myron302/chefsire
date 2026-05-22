@@ -1,15 +1,16 @@
 import { analyzeCalorieDistribution, analyzeProteinDistribution, calculateMacroBalanceScore } from './autoPlannerContextAnalysis';
 import { calculateGroceryFragmentation, calculateIngredientOverlapScore, calculateMealFatigueScore, calculatePantryReuseEfficiency, calculateWeeklyPlannerStress } from './autoPlannerOptimizationEngine';
+import { getMealsForSlot } from '../planner-graph/plannerGraphUtils';
+import { calculateMealComplexity } from '../planner-graph/plannerComplexity';
 
-const gatherMeals = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => weekDays.flatMap((d) => mealTypes.flatMap((m) => {
-  const arr = Array.isArray(weeklyMeals?.[d]?.[m]) ? weeklyMeals[d][m] : weeklyMeals?.[d]?.[m] ? [weeklyMeals[d][m]] : [];
-  return arr;
-})).filter(Boolean);
+const gatherMeals = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => (
+  weekDays.flatMap((day) => mealTypes.flatMap((mealType) => getMealsForSlot(weeklyMeals, day, mealType))).filter(Boolean)
+);
 
 export const calculateRecoverySpacing = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
   const dayStress = weekDays.map((d) => mealTypes.reduce((acc, mealType) => {
-    const meals = Array.isArray(weeklyMeals?.[d]?.[mealType]) ? weeklyMeals[d][mealType] : weeklyMeals?.[d]?.[mealType] ? [weeklyMeals[d][mealType]] : [];
-    return acc + meals.reduce((sum, meal) => sum + Number(meal?.mealItems?.length || meal?.ingredients?.length || 1), 0);
+    const meals = getMealsForSlot(weeklyMeals, d, mealType);
+    return acc + meals.reduce((sum, meal) => sum + Math.max(1, calculateMealComplexity(meal)), 0);
   }, 0));
   const heavyThreshold = Math.max(3, Math.round(dayStress.reduce((a, b) => a + b, 0) / Math.max(1, dayStress.length)));
   let penalties = 0;
