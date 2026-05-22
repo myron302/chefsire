@@ -1,3 +1,4 @@
+import { type AdaptivePlannerProfile } from '../planner-adaptation/adaptationTypes';
 export type AutoPlannerMode = 'balanced' | 'high-protein' | 'budget-friendly' | 'minimal-prep' | 'pantry-reuse' | 'variety-focused' | 'grocery-efficient' | 'recovery-focused';
 
 export type AutoPlannerPriorities = {
@@ -46,4 +47,5 @@ export type AutoPlannerResult = {
     prepWindowType?: string;
     energyLoad?: number;
   };
+  adaptiveProfile?: AdaptivePlannerProfile;
 };
