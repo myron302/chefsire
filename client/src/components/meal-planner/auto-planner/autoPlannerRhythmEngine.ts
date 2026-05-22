@@ -88,3 +88,16 @@ export const optimizeWeeklyLifeRhythm = (weeklyMeals: Record<string, any>, weekD
   const freshnessFlow = optimizeFreshnessFlow(signals);
   return { signals, prepTiming, freshnessFlow };
 };
+
+export const calculateFreshnessFlowScore = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
+  const flow = optimizeWeeklyLifeRhythm(weeklyMeals, weekDays, mealTypes).freshnessFlow;
+  const pressureBalance = Math.max(0, 100 - (flow.fragileLateWeek * 12));
+  return Math.max(0, Math.min(100, Math.round((pressureBalance * 0.7) + (flow.improved ? 30 : 0))));
+};
+
+export const calculateTemporalFlowScore = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
+  const rhythm = optimizeWeeklyLifeRhythm(weeklyMeals, weekDays, mealTypes);
+  const prepHeavy = rhythm.signals.energyFlow.prepHeavyDinners;
+  const quickDays = rhythm.prepTiming.quickDays;
+  return Math.max(0, Math.min(100, Math.round(100 - (prepHeavy * 10) + (quickDays * 3))));
+};

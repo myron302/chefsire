@@ -6,6 +6,7 @@ import { scoreRelationshipDrivenWeek, deriveRelationshipDrivenRecommendations } 
 import { getMealsForSlot } from '../planner-graph/plannerGraphUtils';
 import { extractMealIngredients } from '../planner-graph/plannerMealExtraction';
 import { calculateMealComplexity } from '../planner-graph/plannerComplexity';
+import { evaluatePlannerObjectives } from '../planner-objectives/plannerObjectiveEngine';
 
 const gatherMeals = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => (
   weekDays.flatMap((day) => mealTypes.flatMap((mealType) => getMealsForSlot(weeklyMeals, day, mealType))).filter(Boolean)
@@ -87,7 +88,9 @@ export const calculateWeeklyOptimizationScore = (weeklyMeals: Record<string, any
   const stress = calculateWeeklyPlannerStress(weeklyMeals, weekDays, mealTypes);
   const relationships = calculateRelationshipEfficiencyScore(weeklyMeals);
   const relationshipDriven = scoreRelationshipDrivenWeek(weeklyMeals, weekDays, mealTypes);
-  return Math.round((macro * 0.2) + ((100 - fatigue) * 0.14) + (overlap * 0.1) + ((100 - fragmentation) * 0.1) + (pantry * 0.1) + ((100 - Math.min(100, stress * 5)) * 0.1) + (relationships.efficiencyScore * 0.12) + (relationshipDriven.score * 0.14));
+  const legacy = Math.round((macro * 0.2) + ((100 - fatigue) * 0.14) + (overlap * 0.1) + ((100 - fragmentation) * 0.1) + (pantry * 0.1) + ((100 - Math.min(100, stress * 5)) * 0.1) + (relationships.efficiencyScore * 0.12) + (relationshipDriven.score * 0.14));
+  const unified = evaluatePlannerObjectives({ weeklyMeals, weekDays, mealTypes, mode: 'balanced' }).score;
+  return Math.round((unified * 0.75) + (legacy * 0.25));
 };
 
 export const optimizePrepDistribution = () => ({ applied: true });

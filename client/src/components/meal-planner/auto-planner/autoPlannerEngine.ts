@@ -6,6 +6,8 @@ import { evolveWeeklyPlan, summarizeOptimizationDeltas } from './autoPlannerWeek
 import { type AutoPlannerMode, type AutoPlannerPriorities, type AutoPlannerResult } from './autoPlannerTypes';
 import { optimizeWeeklyLifeRhythm } from './autoPlannerRhythmEngine';
 import { evolveWeeklyPlanWithRelationships } from '../meal-relationships/relationshipDrivenPlanning';
+import { summarizeObjectiveImprovements } from '../planner-objectives/plannerObjectiveEngine';
+import { deriveObjectiveContributionChips, deriveObjectiveOptimizationSummary } from '../planner-objectives/plannerObjectiveInsights';
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -63,6 +65,9 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
   const beforeOpt = calculateWeeklyOptimizationScore(weeklyMeals, weekDays, mealTypes);
   const afterOpt = calculateWeeklyOptimizationScore(next, weekDays, mealTypes);
   const contextual = buildAdaptivePlannerRecommendations(weeklyMeals, next, weekDays, mealTypes);
+  const objectiveSummary = summarizeObjectiveImprovements(weeklyMeals, next, weekDays, mealTypes, mode, proteinGoal);
+  const objectiveChips = deriveObjectiveContributionChips(objectiveSummary.after.contributions);
+  const objectiveMessages = deriveObjectiveOptimizationSummary(objectiveSummary.before.metrics, objectiveSummary.after.metrics);
   const tradeoffNotes = summarizeOptimizationDeltas(weeklyMeals, next, weekDays, mealTypes);
   const lifeRhythmBefore = optimizeWeeklyLifeRhythm(weeklyMeals, weekDays, mealTypes);
   const lifeRhythmAfter = optimizeWeeklyLifeRhythm(next, weekDays, mealTypes);
@@ -84,6 +89,9 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
       ...tradeoffNotes.map((message, idx) => ({ id: `tradeoff-${idx}`, tone: 'neutral' as const, category: 'core' as const, message })),
       ...rhythmMessages.map((message, idx) => ({ id: `rhythm-${idx}`, tone: 'neutral' as const, category: 'lifestyle' as const, message })),
       ...relationshipSummary.messages.map((message: string, idx: number) => ({ id: `relationship-${idx}`, tone: 'neutral' as const, category: 'prep' as const, message })),
+      ...objectiveMessages.map((message, idx) => ({ id: `objective-${idx}`, tone: 'neutral' as const, category: 'core' as const, message: `Objective: ${message}.` })),
+      ...objectiveChips.map((message, idx) => ({ id: `objective-chip-${idx}`, tone: 'neutral' as const, category: 'core' as const, message: `Optimization breakdown: ${message}` })),
+      ...objectiveSummary.after.overfittingSignals.map((message, idx) => ({ id: `objective-balance-${idx}`, tone: 'warning' as const, category: 'core' as const, message: `Balance guardrail: ${message}` })),
     ],
     lifestyleContext: {
       dayRhythm: lifeRhythmAfter.signals.energyFlow.daily.map((entry) => ({
