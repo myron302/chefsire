@@ -1,25 +1,12 @@
 import { type LongitudinalPlanningSnapshot, type PlannerHistoryProfile } from './adaptationTypes';
-
-const STORAGE_KEY = 'mealPlanner.longitudinalHistory.v1';
-const MAX_HISTORY = 12;
+import { readLongitudinalPlanningHistory, writeLongitudinalPlanningSnapshot } from './localAdaptivePlannerStore';
 
 const clamp = (v: number, min = 0, max = 1) => Math.max(min, Math.min(max, v));
 
-export const buildLongitudinalPlanningHistory = (): LongitudinalPlanningSnapshot[] => {
-  if (typeof window === 'undefined') return [];
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || '[]');
-    return Array.isArray(parsed) ? parsed.slice(-MAX_HISTORY) : [];
-  } catch {
-    return [];
-  }
-};
+export const buildLongitudinalPlanningHistory = (): LongitudinalPlanningSnapshot[] => readLongitudinalPlanningHistory();
 
 export const persistLongitudinalPlanningSnapshot = (snapshot: LongitudinalPlanningSnapshot) => {
-  if (typeof window === 'undefined') return;
-  const current = buildLongitudinalPlanningHistory();
-  const next = [...current.filter((entry) => entry.weekKey !== snapshot.weekKey), snapshot].slice(-MAX_HISTORY);
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  writeLongitudinalPlanningSnapshot(snapshot);
 };
 
 export const calculateHistoricalAdherence = (history: LongitudinalPlanningSnapshot[]) => {

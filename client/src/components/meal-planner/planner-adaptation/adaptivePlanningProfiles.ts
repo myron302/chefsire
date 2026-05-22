@@ -5,23 +5,7 @@ import { deriveSustainablePlanningProfile } from './sustainabilityEngine';
 import { deriveRelationshipLearningProfile } from './adaptiveRelationshipLearning';
 import { buildAdaptiveNutritionIdentity } from '../personality-modeling/nutritionPersonality';
 import { derivePersonalityObjectiveAdjustments, derivePersonalityRecommendations } from '../personality-modeling/personalityObjectiveAdjustments';
-
-
-const PERSONALITY_STORAGE_KEY = 'mealPlanner.nutritionPersonality.v1';
-const PERSONALITY_MEMORY_LIMIT = 24;
-
-const persistNutritionPersonalityMemory = (recommendations: string[], observedAt: string) => {
-  if (typeof window === 'undefined') return;
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(PERSONALITY_STORAGE_KEY) || '[]');
-    const safe = Array.isArray(parsed) ? parsed : [];
-    const next = [...safe, ...recommendations.map((message) => ({ message, observedAt }))].slice(-PERSONALITY_MEMORY_LIMIT);
-    window.localStorage.setItem(PERSONALITY_STORAGE_KEY, JSON.stringify(next));
-  } catch {
-    // no-op: storage failures should not affect planner behavior
-  }
-};
-
+import { appendNutritionPersonalityMemory } from './localAdaptivePlannerStore';
 
 export const deriveAdaptivePlannerProfile = (history: LongitudinalPlanningSnapshot[]): AdaptivePlannerProfile => {
   const historyProfile = derivePlannerHistoryProfile(history);
@@ -41,7 +25,12 @@ export const deriveAdaptivePlannerProfile = (history: LongitudinalPlanningSnapsh
   recommendations.push(...sustainability.unsustainablePatterns);
   recommendations.push(...relationshipLearning.breakdownPatterns);
   recommendations.push(...derivePersonalityRecommendations(nutritionPersonality));
-  persistNutritionPersonalityMemory(recommendations, new Date().toISOString());
+  const observedAt = new Date().toISOString();
+  appendNutritionPersonalityMemory(recommendations.map((message) => ({
+    id: `${observedAt}-${message}`,
+    observedAt,
+    message,
+  })));
 
   return {
     history: historyProfile,
