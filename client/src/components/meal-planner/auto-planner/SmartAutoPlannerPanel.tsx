@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { deriveWeeklyOptimizationSuggestions } from './autoPlannerRecommendationUtils';
 import { generateAdaptiveMealPlan } from './autoPlannerEngine';
+import { persistLongitudinalPlanningSnapshot, derivePlanningSnapshotFromResult } from '../planner-adaptation/longitudinalHistory';
 import { type AutoPlannerMode, type AutoPlannerPriorities } from './autoPlannerTypes';
 
 export default function SmartAutoPlannerPanel({ weeklyMeals, weekDays, mealTypes, proteinGoal, onApplyPreview }: any) {
@@ -15,7 +16,10 @@ export default function SmartAutoPlannerPanel({ weeklyMeals, weekDays, mealTypes
 
   const generate = () => {
     const result = generateAdaptiveMealPlan(weeklyMeals, weekDays, mealTypes, proteinGoal, mode, priorities);
-    setPreview({ ...result, suggestions: deriveWeeklyOptimizationSuggestions(result) });
+    const derivedSuggestions = deriveWeeklyOptimizationSuggestions(result);
+    const snapshot = derivePlanningSnapshotFromResult({ weekDays, mealTypes, beforeScores: result.beforeScores, afterScores: result.afterScores, changes: result.changes, suggestionMessages: derivedSuggestions.map((entry: any) => entry.message) });
+    persistLongitudinalPlanningSnapshot(snapshot);
+    setPreview({ ...result, suggestions: derivedSuggestions });
   };
 
   return <Card className="border-violet-200 bg-gradient-to-r from-violet-50 to-white">

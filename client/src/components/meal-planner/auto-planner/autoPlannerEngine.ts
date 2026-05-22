@@ -8,6 +8,8 @@ import { optimizeWeeklyLifeRhythm } from './autoPlannerRhythmEngine';
 import { evolveWeeklyPlanWithRelationships } from '../meal-relationships/relationshipDrivenPlanning';
 import { summarizeObjectiveImprovements } from '../planner-objectives/plannerObjectiveEngine';
 import { deriveObjectiveContributionChips, deriveObjectiveOptimizationSummary } from '../planner-objectives/plannerObjectiveInsights';
+import { buildLongitudinalPlanningHistory } from '../planner-adaptation/longitudinalHistory';
+import { deriveAdaptivePlannerProfile } from '../planner-adaptation/adaptivePlanningProfiles';
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -52,14 +54,17 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
     const arr = getMealsForSlot(weeklyMeals, d, m);
     return arr;
   })).filter(Boolean);
+  const longitudinalHistory = buildLongitudinalPlanningHistory();
+  const adaptiveProfile = deriveAdaptivePlannerProfile(longitudinalHistory);
   const beforeScores = calculateWeeklyScores(weeklyMeals, weekDays, mealTypes, proteinGoal);
   const { prioritizedPool, relationshipSummary } = evolveWeeklyPlanWithRelationships(weeklyMeals, weekDays, mealTypes, pool);
   const { next: seededPlan, changes } = fillPlannerGaps(weeklyMeals, weekDays, mealTypes, prioritizedPool, mode, priorities);
   const { next, evaluatedWeeks } = evolveWeeklyPlan(seededPlan, prioritizedPool, weekDays, mealTypes, mode, (meal: any) => {
     const protein = Number(meal?.protein || 0) * (mode === 'high-protein' ? 2 : priorities.proteinPriority);
-    const prepPenalty = Number(meal?.mealItems?.length || 0) * priorities.prepSimplicity;
-    const pantryBoost = (meal?.source === 'pantry' || meal?.isPantryItem ? 20 : 0) * priorities.pantryReusePriority;
-    return protein + pantryBoost - prepPenalty;
+    const prepPenalty = Number(meal?.mealItems?.length || 0) * priorities.prepSimplicity * adaptiveProfile.behaviorAdjustments.prepComplexityMultiplier;
+    const pantryBoost = (meal?.source === 'pantry' || meal?.isPantryItem ? 20 : 0) * priorities.pantryReusePriority * adaptiveProfile.behaviorAdjustments.failedChainPenalty;
+    const continuityBias = adaptiveProfile.behaviorAdjustments.continuityMultiplier * (meal?.leftoverFriendly || meal?.prepFriendly ? 1.05 : 1);
+    return (protein + pantryBoost - prepPenalty) * continuityBias;
   });
   const afterScores = calculateWeeklyScores(next, weekDays, mealTypes, proteinGoal);
   const beforeOpt = calculateWeeklyOptimizationScore(weeklyMeals, weekDays, mealTypes);
@@ -92,6 +97,8 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
       ...objectiveMessages.map((message, idx) => ({ id: `objective-${idx}`, tone: 'neutral' as const, category: 'core' as const, message: `Objective: ${message}.` })),
       ...objectiveChips.map((message, idx) => ({ id: `objective-chip-${idx}`, tone: 'neutral' as const, category: 'core' as const, message: `Optimization breakdown: ${message}` })),
       ...objectiveSummary.after.overfittingSignals.map((message, idx) => ({ id: `objective-balance-${idx}`, tone: 'warning' as const, category: 'core' as const, message: `Balance guardrail: ${message}` })),
+      ...adaptiveProfile.recommendations.map((message, idx) => ({ id: `adaptive-${idx}`, tone: 'neutral' as const, category: 'recovery' as const, message })),
+      { id: 'adaptive-sustainability', tone: 'neutral' as const, category: 'recovery' as const, message: `Sustainability score baseline: ${Math.round(adaptiveProfile.sustainability.sustainabilityScore * 100)}.` },
     ],
     lifestyleContext: {
       dayRhythm: lifeRhythmAfter.signals.energyFlow.daily.map((entry) => ({
@@ -107,6 +114,7 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
       prepWindowType: lifeRhythmAfter.prepTiming.recommended,
       energyLoad: Math.round(lifeRhythmAfter.signals.energyFlow.daily.reduce((sum, day) => sum + day.load.lifestyleLoad, 0) / Math.max(1, lifeRhythmAfter.signals.energyFlow.daily.length)),
     },
+    adaptiveProfile: { ...adaptiveProfile, recommendations: adaptiveProfile.recommendations, history: { ...adaptiveProfile.history, windowSize: adaptiveProfile.history.windowSize }, sustainability: { ...adaptiveProfile.sustainability }, relationshipLearning: { ...adaptiveProfile.relationshipLearning }, behaviorSignals: { ...adaptiveProfile.behaviorSignals }, behaviorAdjustments: { ...adaptiveProfile.behaviorAdjustments } },
   };
 };
 
