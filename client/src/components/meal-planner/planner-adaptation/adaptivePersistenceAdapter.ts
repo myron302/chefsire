@@ -34,9 +34,12 @@ export type AdaptivePlannerPersistenceAdapter = {
   putLongitudinalSnapshot: (snapshot: LongitudinalPlanningSnapshot) => void;
   getNutritionPersonalityMemory: () => AdaptiveNutritionPersonalityMemoryRecord[];
   appendNutritionPersonalityMemory: (records: AdaptiveNutritionPersonalityMemoryRecord[]) => void;
-  // TODO(neon-api): add getAdaptivePlannerProfile and putAdaptivePlannerProfile endpoints.
-  // TODO(neon-api): add getObjectiveHistory and putObjectiveHistory endpoints.
-  // TODO(neon-api): add getRelationshipLearningHistory and putRelationshipLearningHistory endpoints.
+  // TODO(neon-api-contract): profile contract => GET/POST /api/adaptive-planner/profile
+  // payload: { profileVersion, plannerMode, adaptationCadence, currentGoalFocus, profileMetadata }.
+  // TODO(neon-api-contract): objective contract => GET/POST /api/adaptive-planner/objectives
+  // payload: { objectiveVersion, objectiveKey, objectiveStatus, objectiveScore, summaryMetadata, observedAt }.
+  // TODO(neon-api-contract): relationship contract => GET/POST /api/adaptive-planner/relationships
+  // payload: { relationshipVersion, sourceDimension, targetDimension, confidenceScore, relationshipMetadata }.
   getObjectiveHistory: () => PlannerObjectiveHistoryRecord[];
   putObjectiveHistory: (_records: PlannerObjectiveHistoryRecord[]) => void;
   getRelationshipLearningHistory: () => RelationshipLearningHistoryRecord[];
@@ -80,21 +83,21 @@ export const createLocalAdaptivePlannerPersistenceAdapter = (): AdaptivePlannerP
 });
 
 export const createNeonAdaptivePlannerPersistenceAdapter = (): AdaptivePlannerPersistenceAdapter => ({
-  // TODO(neon-api): implement GET /api/adaptive-planner/snapshots.
+  // TODO(neon-api-phase2): implement GET /api/adaptive-planner/history (response: { items: AdaptivePlannerSnapshot[] }).
   getLongitudinalSnapshots: () => [],
-  // TODO(neon-api): implement POST /api/adaptive-planner/snapshots.
+  // TODO(neon-api-phase2): implement POST /api/adaptive-planner/history (body: { weekKey, snapshotVersion, objectiveState, adherenceState, sustainabilityState }).
   putLongitudinalSnapshot: () => {},
-  // TODO(neon-api): implement GET /api/adaptive-planner/nutrition-personality-memory.
+  // TODO(neon-api-phase2): implement GET /api/adaptive-planner/personality (response: { item: NutritionPersonalityProfile | null }).
   getNutritionPersonalityMemory: () => [],
-  // TODO(neon-api): implement POST /api/adaptive-planner/nutrition-personality-memory.
+  // TODO(neon-api-phase2): implement POST /api/adaptive-planner/personality (body: { personalityVersion, consistencyScore, noveltySeekingScore, routineAffinityScore, preferenceTags, profileMetadata }).
   appendNutritionPersonalityMemory: () => {},
-  // TODO(neon-api): implement GET /api/adaptive-planner/objective-history.
+  // TODO(neon-api-phase2): implement GET /api/adaptive-planner/objectives (response: { items: PlannerObjectiveHistory[] }).
   getObjectiveHistory: () => [],
-  // TODO(neon-api): implement POST /api/adaptive-planner/objective-history.
+  // TODO(neon-api-phase2): implement POST /api/adaptive-planner/objectives (body: { objectiveVersion, objectiveKey, objectiveStatus, objectiveScore, summaryMetadata, observedAt }).
   putObjectiveHistory: () => {},
-  // TODO(neon-api): implement GET /api/adaptive-planner/relationship-history.
+  // TODO(neon-api-phase2): implement GET /api/adaptive-planner/relationships (response: { items: PlannerRelationshipLearning[] }).
   getRelationshipLearningHistory: () => [],
-  // TODO(neon-api): implement POST /api/adaptive-planner/relationship-history.
+  // TODO(neon-api-phase2): implement POST /api/adaptive-planner/relationships (body: { relationshipVersion, sourceDimension, targetDimension, confidenceScore, relationshipMetadata }).
   putRelationshipLearningHistory: () => {},
   getSnapshot: () => ({
     profile: {
