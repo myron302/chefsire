@@ -82,6 +82,7 @@ import cateringRouter from "./catering";
 
 // Recipe imports (Paprika / AnyList / Plan to Eat / URL import)
 import importPaprikaRouter from "./import-paprika";
+import adaptivePlannerRouter from "./adaptive-planner";
 
 const r = Router();
 
@@ -210,6 +211,8 @@ r.use("/wedding", weddingRegistryLinksRouter);
 r.use("/wedding", weddingVendorQuotesRouter);
 r.use("/wedding", weddingVendorListingsRouter);
 r.use("/wedding", weddingInsightsRouter);
+
+r.use("/adaptive-planner", adaptivePlannerRouter);
 
 // Optional: dev-only route list
 if (process.env.NODE_ENV !== "production") {

@@ -156,6 +156,14 @@ import {
   weddingCalendarEvents,
 } from "./schema/domains/ops-wedding";
 
+import {
+  adaptivePlannerSnapshots,
+  adaptivePlannerProfiles,
+  nutritionPersonalityProfiles,
+  plannerRelationshipLearning,
+  plannerObjectiveHistory,
+} from "./schema/domains/adaptive-planner";
+
 export {
   mealPlans,
   mealPlanEntries,
@@ -256,6 +264,14 @@ export {
   recipeSaves,
   userDrinkStats,
 } from "./schema/domains/drinks-creator";
+export {
+  adaptivePlannerSnapshots,
+  adaptivePlannerProfiles,
+  nutritionPersonalityProfiles,
+  plannerRelationshipLearning,
+  plannerObjectiveHistory,
+} from "./schema/domains/adaptive-planner";
+
 export type {
   DrinkCollectionAccessType,
   DrinkCollectionPurchaseStatus,
@@ -281,6 +297,14 @@ export {
   weddingEventDetails,
   weddingCalendarEvents,
 } from "./schema/domains/ops-wedding";
+
+import {
+  adaptivePlannerSnapshots,
+  adaptivePlannerProfiles,
+  nutritionPersonalityProfiles,
+  plannerRelationshipLearning,
+  plannerObjectiveHistory,
+} from "./schema/domains/adaptive-planner";
 
 /* =========================================================================
    ===== INSERT SCHEMAS
