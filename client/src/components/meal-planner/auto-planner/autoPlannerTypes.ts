@@ -48,4 +48,11 @@ export type AutoPlannerResult = {
     energyLoad?: number;
   };
   adaptiveProfile?: AdaptivePlannerProfile;
+  semanticIntelligence?: {
+    comfortAnchorStrength: number;
+    recoveryMealAffinity: number;
+    seasonalBalanceScore: number;
+    semanticVarietyScore: number;
+    semanticRecommendations: string[];
+  };
 };

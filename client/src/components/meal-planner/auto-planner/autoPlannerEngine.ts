@@ -10,6 +10,7 @@ import { summarizeObjectiveImprovements } from '../planner-objectives/plannerObj
 import { deriveObjectiveContributionChips, deriveObjectiveOptimizationSummary } from '../planner-objectives/plannerObjectiveInsights';
 import { buildLongitudinalPlanningHistory } from '../planner-adaptation/longitudinalHistory';
 import { deriveAdaptivePlannerProfile } from '../planner-adaptation/adaptivePlanningProfiles';
+import { deriveSemanticIntelligenceSnapshot } from '../semantic-intelligence/semanticObjectiveIntegration';
 
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 
@@ -71,6 +72,7 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
   const afterOpt = calculateWeeklyOptimizationScore(next, weekDays, mealTypes);
   const contextual = buildAdaptivePlannerRecommendations(weeklyMeals, next, weekDays, mealTypes);
   const objectiveSummary = summarizeObjectiveImprovements(weeklyMeals, next, weekDays, mealTypes, mode, proteinGoal);
+  const semanticSnapshot = deriveSemanticIntelligenceSnapshot(next, weekDays, mealTypes);
   const objectiveChips = deriveObjectiveContributionChips(objectiveSummary.after.contributions);
   const objectiveMessages = deriveObjectiveOptimizationSummary(objectiveSummary.before.metrics, objectiveSummary.after.metrics);
   const tradeoffNotes = summarizeOptimizationDeltas(weeklyMeals, next, weekDays, mealTypes);
@@ -98,6 +100,7 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
       ...objectiveChips.map((message, idx) => ({ id: `objective-chip-${idx}`, tone: 'neutral' as const, category: 'core' as const, message: `Optimization breakdown: ${message}` })),
       ...objectiveSummary.after.overfittingSignals.map((message, idx) => ({ id: `objective-balance-${idx}`, tone: 'warning' as const, category: 'core' as const, message: `Balance guardrail: ${message}` })),
       ...adaptiveProfile.recommendations.map((message, idx) => ({ id: `adaptive-${idx}`, tone: 'neutral' as const, category: 'recovery' as const, message })),
+      ...semanticSnapshot.semanticRecommendations.map((message, idx) => ({ id: `semantic-${idx}`, tone: message.includes('fatigue') ? 'warning' as const : 'neutral' as const, category: 'lifestyle' as const, message })),
       { id: 'adaptive-sustainability', tone: 'neutral' as const, category: 'recovery' as const, message: `Sustainability score baseline: ${Math.round(adaptiveProfile.sustainability.sustainabilityScore * 100)}.` },
     ],
     lifestyleContext: {
@@ -115,6 +118,13 @@ export const generateAdaptiveMealPlan = (weeklyMeals: Record<string, any>, weekD
       energyLoad: Math.round(lifeRhythmAfter.signals.energyFlow.daily.reduce((sum, day) => sum + day.load.lifestyleLoad, 0) / Math.max(1, lifeRhythmAfter.signals.energyFlow.daily.length)),
     },
     adaptiveProfile: { ...adaptiveProfile, recommendations: adaptiveProfile.recommendations, history: { ...adaptiveProfile.history, windowSize: adaptiveProfile.history.windowSize }, sustainability: { ...adaptiveProfile.sustainability }, relationshipLearning: { ...adaptiveProfile.relationshipLearning }, behaviorSignals: { ...adaptiveProfile.behaviorSignals }, behaviorAdjustments: { ...adaptiveProfile.behaviorAdjustments } },
+    semanticIntelligence: {
+      comfortAnchorStrength: semanticSnapshot.comfortAnchorStrength,
+      recoveryMealAffinity: semanticSnapshot.recoveryMealAffinity,
+      seasonalBalanceScore: semanticSnapshot.seasonalBalanceScore,
+      semanticVarietyScore: semanticSnapshot.semanticVarietyScore,
+      semanticRecommendations: semanticSnapshot.semanticRecommendations.slice(0, 8),
+    },
   };
 };
 
