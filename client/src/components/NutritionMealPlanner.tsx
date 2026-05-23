@@ -45,6 +45,9 @@ import { derivePrepSessions } from '@/components/meal-planner/prepOrchestrationU
 import { deriveNutritionCoachInsights } from '@/components/meal-planner/nutritionCoachUtils';
 import { optimizeWeeklyPlan } from '@/components/meal-planner/auto-planner/autoPlannerEngine';
 import NutritionCoachPanel from '@/components/meal-planner/coach/NutritionCoachPanel';
+import NutritionCampaignPanel from '@/components/meal-planner/campaigns/NutritionCampaignPanel';
+import { evaluateCampaignProgress } from '@/components/meal-planner/campaigns/nutritionCampaignEngine';
+import { loadActiveCampaignState, saveActiveCampaignState } from '@/components/meal-planner/campaigns/nutritionCampaignProgress';
 import {
   LineChart,
   Line,
@@ -332,6 +335,8 @@ const NutritionMealPlanner = () => {
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
   const [weeklyMeals, setWeeklyMeals] = useState<Record<string, any>>({});
+  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
+  const [activeCampaignStartedAt, setActiveCampaignStartedAt] = useState<string | null>(null);
   const [showAddMealModal, setShowAddMealModal] = useState(false);
   const [showGoalsModal, setShowGoalsModal] = useState(false);
   const [selectedMealSlot, setSelectedMealSlot] = useState<{day: string, type: string} | null>(null);
@@ -2546,6 +2551,31 @@ const NutritionMealPlanner = () => {
     [prepSession.generatedPrepTaskCompletions, weeklyMeals],
   );
   const generatedPrepProgress = prepOrchestration.summary.completionPercent;
+  const plannedBreakfasts = useMemo(
+    () => weekDays.reduce((sum, day) => sum + getMealSlotItems(weeklyMeals, day, 'breakfast').length, 0),
+    [weekDays, weeklyMeals],
+  );
+  const prepTasksCompleted = useMemo(
+    () => prepSession.tasks.filter((task) => task.done).length + Object.values(prepSession.generatedPrepTaskCompletions || {}).filter(Boolean).length,
+    [prepSession.generatedPrepTaskCompletions, prepSession.tasks],
+  );
+  const pantryIngredientsUsed = useMemo(
+    () => Math.min(10, groceryList.filter((item: any) => item?.isPantryItem && item?.completed).length),
+    [groceryList],
+  );
+  const leftoverFriendlyMeals = useMemo(() => {
+    const matches = ['leftover', 'batch', 'reuse', 'repurpose'];
+    let count = 0;
+    weekDays.forEach((day) => {
+      mealTypes.forEach((type) => {
+        const items = getMealSlotItems(weeklyMeals, day, type);
+        count += items.filter((item: any) => matches.some((token) => String(item?.name || '').toLowerCase().includes(token))).length;
+      });
+    });
+    return count;
+  }, [mealTypes, weekDays, weeklyMeals]);
+  const semanticVarietyScore = Math.round((nutritionCoachAnalysis?.scoreBreakdown?.variety ?? 70) as number);
+  const prepOverloadReduction = Math.max(0, Math.round((prepOrchestration.summary.readinessScore || 0) - (prepActiveBlockersCount * 10)));
   const blendedPrepProgress = Math.max(prepProgress, generatedPrepProgress);
   const prepRecommendationsAvailable = plannedSlots > 0;
   const prepPlanMissing = plannedSlots > 0 && !prepSessionPlanned && !prepSessionCompleted;
@@ -3727,6 +3757,32 @@ const NutritionMealPlanner = () => {
     streak.currentStreak,
   ]);
   const visibleCoachInsights = nutritionCoachAnalysis.insights.filter((insight) => !dismissedCoachInsightIds.includes(insight.id));
+  useEffect(() => {
+    const state = loadActiveCampaignState(user?.id);
+    if (state) {
+      setActiveCampaignId(state.campaignId);
+      setActiveCampaignStartedAt(state.startedAt);
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!activeCampaignId || !activeCampaignStartedAt) return;
+    saveActiveCampaignState({ campaignId: activeCampaignId, startedAt: activeCampaignStartedAt }, user?.id);
+  }, [activeCampaignId, activeCampaignStartedAt, user?.id]);
+
+  const activeCampaignProgress = useMemo(() => {
+    if (!activeCampaignId || !activeCampaignStartedAt) return null;
+    return evaluateCampaignProgress(activeCampaignId, {
+      plannedBreakfasts,
+      prepTasksCompleted,
+      groceryItemsResolved: groceryCompletedCount,
+      pantryIngredientsUsed,
+      leftoverFriendlyMeals,
+      proteinGoalDays: proteinGoalHitDays,
+      semanticVarietyScore,
+      prepOverloadReduction,
+    }, activeCampaignStartedAt);
+  }, [activeCampaignId, activeCampaignStartedAt, plannedBreakfasts, prepTasksCompleted, groceryCompletedCount, pantryIngredientsUsed, leftoverFriendlyMeals, proteinGoalHitDays, semanticVarietyScore, prepOverloadReduction]);
   const handleDismissCoachInsight = (insightId: string) => {
     setDismissedCoachInsightIds((prev) => prev.includes(insightId) ? prev : [...prev, insightId]);
   };
@@ -5181,6 +5237,19 @@ const NutritionMealPlanner = () => {
                 onOpenPlanner={() => setActiveTab('planner')}
                 onOpenGrocery={() => setActiveTab('grocery')}
                 onOpenPrep={() => setActiveTab('prep')}
+              />
+              <NutritionCampaignPanel
+                activeCampaignId={activeCampaignId}
+                progress={activeCampaignProgress}
+                onActivateCampaign={(campaignId) => {
+                  setActiveCampaignId(campaignId);
+                  setActiveCampaignStartedAt(new Date().toISOString());
+                }}
+                onClearCampaign={() => {
+                  setActiveCampaignId(null);
+                  setActiveCampaignStartedAt(null);
+                  saveActiveCampaignState(null, user?.id);
+                }}
               />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
