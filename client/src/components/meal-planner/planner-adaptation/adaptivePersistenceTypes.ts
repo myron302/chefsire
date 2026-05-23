@@ -4,6 +4,10 @@ import type { LongitudinalPlanningSnapshot } from './adaptationTypes';
 export const ADAPTIVE_PLANNER_STORAGE_KEYS = {
   longitudinalSnapshots: 'mealPlanner.longitudinalHistory.v1',
   nutritionPersonalityMemory: 'mealPlanner.nutritionPersonality.v1',
+  objectiveHistory: 'mealPlanner.adaptiveObjectiveHistory.v1',
+  relationshipLearningHistory: 'mealPlanner.adaptiveRelationshipLearning.v1',
+  syncMetadata: 'mealPlanner.adaptiveSyncMetadata.v1',
+  syncQueue: 'mealPlanner.adaptiveSyncQueue.v1',
 } as const;
 
 export type PlannerObjectiveHistoryRecord = {

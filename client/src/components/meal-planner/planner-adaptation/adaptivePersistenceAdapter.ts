@@ -9,6 +9,8 @@ import type { LongitudinalPlanningSnapshot } from './adaptationTypes';
 
 const MAX_LONGITUDINAL_HISTORY = 12;
 const MAX_PERSONALITY_MEMORY = 24;
+const MAX_OBJECTIVE_HISTORY = 120;
+const MAX_RELATIONSHIP_HISTORY = 120;
 
 const readJsonArray = <T>(key: string): T[] => {
   if (typeof window === 'undefined') return [];
@@ -63,17 +65,21 @@ export const createLocalAdaptivePlannerPersistenceAdapter = (): AdaptivePlannerP
     const normalizedCurrent = current.map((record) => ({ id: 'id' in record ? record.id : `${record.observedAt}-${record.message}`, observedAt: record.observedAt, message: record.message }));
     writeJsonArray(ADAPTIVE_PLANNER_STORAGE_KEYS.nutritionPersonalityMemory, [...normalizedCurrent, ...records].slice(-MAX_PERSONALITY_MEMORY));
   },
-  getObjectiveHistory: () => [],
-  putObjectiveHistory: () => {},
-  getRelationshipLearningHistory: () => [],
-  putRelationshipLearningHistory: () => {},
+  getObjectiveHistory: () => readJsonArray<PlannerObjectiveHistoryRecord>(ADAPTIVE_PLANNER_STORAGE_KEYS.objectiveHistory).slice(-MAX_OBJECTIVE_HISTORY),
+  putObjectiveHistory: (records) => {
+    writeJsonArray(ADAPTIVE_PLANNER_STORAGE_KEYS.objectiveHistory, records.slice(-MAX_OBJECTIVE_HISTORY));
+  },
+  getRelationshipLearningHistory: () => readJsonArray<RelationshipLearningHistoryRecord>(ADAPTIVE_PLANNER_STORAGE_KEYS.relationshipLearningHistory).slice(-MAX_RELATIONSHIP_HISTORY),
+  putRelationshipLearningHistory: (records) => {
+    writeJsonArray(ADAPTIVE_PLANNER_STORAGE_KEYS.relationshipLearningHistory, records.slice(-MAX_RELATIONSHIP_HISTORY));
+  },
   getSnapshot: () => ({
     profile: {
       id: `adaptive-profile-${new Date().toISOString()}`,
       observedAt: new Date().toISOString(),
       profileVersion: 'v1',
-      objectiveHistory: [],
-      relationshipLearningHistory: [],
+      objectiveHistory: readJsonArray<PlannerObjectiveHistoryRecord>(ADAPTIVE_PLANNER_STORAGE_KEYS.objectiveHistory).slice(-MAX_OBJECTIVE_HISTORY),
+      relationshipLearningHistory: readJsonArray<RelationshipLearningHistoryRecord>(ADAPTIVE_PLANNER_STORAGE_KEYS.relationshipLearningHistory).slice(-MAX_RELATIONSHIP_HISTORY),
     },
     longitudinalSnapshots: readJsonArray<LongitudinalPlanningSnapshot>(ADAPTIVE_PLANNER_STORAGE_KEYS.longitudinalSnapshots).slice(-MAX_LONGITUDINAL_HISTORY),
     nutritionPersonalityMemory: readJsonArray<AdaptiveNutritionPersonalityMemoryRecord | { message: string; observedAt: string }>(ADAPTIVE_PLANNER_STORAGE_KEYS.nutritionPersonalityMemory)
@@ -83,29 +89,21 @@ export const createLocalAdaptivePlannerPersistenceAdapter = (): AdaptivePlannerP
 });
 
 export const createNeonAdaptivePlannerPersistenceAdapter = (): AdaptivePlannerPersistenceAdapter => ({
-  // TODO(neon-api-phase2): implement GET /api/adaptive-planner/history (response: { items: AdaptivePlannerSnapshot[] }).
   getLongitudinalSnapshots: () => [],
-  // TODO(neon-api-phase2): implement POST /api/adaptive-planner/history (body: { weekKey, snapshotVersion, objectiveState, adherenceState, sustainabilityState }).
-  putLongitudinalSnapshot: () => {},
-  // TODO(neon-api-phase2): implement GET /api/adaptive-planner/personality (response: { item: NutritionPersonalityProfile | null }).
+  putLongitudinalSnapshot: (snapshot) => { if (typeof window !== "undefined") void fetch("/api/adaptive-planner/history", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snapshot) }).catch(() => undefined); },
   getNutritionPersonalityMemory: () => [],
-  // TODO(neon-api-phase2): implement POST /api/adaptive-planner/personality (body: { personalityVersion, consistencyScore, noveltySeekingScore, routineAffinityScore, preferenceTags, profileMetadata }).
-  appendNutritionPersonalityMemory: () => {},
-  // TODO(neon-api-phase2): implement GET /api/adaptive-planner/objectives (response: { items: PlannerObjectiveHistory[] }).
+  appendNutritionPersonalityMemory: (records) => { if (typeof window !== "undefined") void fetch("/api/adaptive-planner/personality", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ records }) }).catch(() => undefined); },
   getObjectiveHistory: () => [],
-  // TODO(neon-api-phase2): implement POST /api/adaptive-planner/objectives (body: { objectiveVersion, objectiveKey, objectiveStatus, objectiveScore, summaryMetadata, observedAt }).
-  putObjectiveHistory: () => {},
-  // TODO(neon-api-phase2): implement GET /api/adaptive-planner/relationships (response: { items: PlannerRelationshipLearning[] }).
+  putObjectiveHistory: (records) => { if (typeof window !== "undefined") void fetch("/api/adaptive-planner/objectives", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ records }) }).catch(() => undefined); },
   getRelationshipLearningHistory: () => [],
-  // TODO(neon-api-phase2): implement POST /api/adaptive-planner/relationships (body: { relationshipVersion, sourceDimension, targetDimension, confidenceScore, relationshipMetadata }).
-  putRelationshipLearningHistory: () => {},
+  putRelationshipLearningHistory: (records) => { if (typeof window !== "undefined") void fetch("/api/adaptive-planner/relationships", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ records }) }).catch(() => undefined); },
   getSnapshot: () => ({
     profile: {
       id: 'adaptive-profile-neon-placeholder',
       observedAt: new Date().toISOString(),
       profileVersion: 'v1',
-      objectiveHistory: [],
-      relationshipLearningHistory: [],
+      objectiveHistory: readJsonArray<PlannerObjectiveHistoryRecord>(ADAPTIVE_PLANNER_STORAGE_KEYS.objectiveHistory).slice(-MAX_OBJECTIVE_HISTORY),
+      relationshipLearningHistory: readJsonArray<RelationshipLearningHistoryRecord>(ADAPTIVE_PLANNER_STORAGE_KEYS.relationshipLearningHistory).slice(-MAX_RELATIONSHIP_HISTORY),
     },
     longitudinalSnapshots: [],
     nutritionPersonalityMemory: [],
