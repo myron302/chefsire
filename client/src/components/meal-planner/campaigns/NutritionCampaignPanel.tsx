@@ -9,7 +9,7 @@ import { NutritionCampaignProgress } from '@/components/meal-planner/campaigns/n
 import type { NutritionCampaignAdaptiveRecommendation } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
 
 const WeeklyNutritionJourneyTimeline = React.lazy(() => import('@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline'));
-const ENABLE_JOURNEY_TIMELINE = true;
+const ENABLE_JOURNEY_TIMELINE = false;
 
 class TimelineErrorBoundary extends React.Component<React.PropsWithChildren, { hasError: boolean }> {
   state = { hasError: false };
