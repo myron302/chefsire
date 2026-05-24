@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { NUTRITION_CAMPAIGN_CATALOG } from '@/components/meal-planner/campaigns/nutritionCampaignCatalog';
 import { NutritionCampaignProgress } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
 import type { NutritionCampaignAdaptiveRecommendation } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
+import WeeklyNutritionJourneyTimeline from '@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline';
 
 type Props = {
   activeCampaignId: string | null;
@@ -68,6 +69,19 @@ const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, o
                   <span>{activeCampaign.rewardCopy}</span>
                 </div>
               )}
+              <WeeklyNutritionJourneyTimeline
+                context={{
+                  phase: progress.phase,
+                  phaseNarrative: progress.phaseNarrative,
+                  momentum: progress.momentum,
+                  journeyStability: progress.journeyStability,
+                  transitionReason: progress.transitionReason,
+                  completionPct: progress.completionPct,
+                  completedMissions: progress.completedMissions,
+                  totalMissions: progress.totalMissions,
+                  completionSemantics: progress.completionSemantics,
+                }}
+              />
               <Button variant="outline" size="sm" onClick={onClearCampaign}>End Active Campaign</Button>
             </div>
           ) : (
