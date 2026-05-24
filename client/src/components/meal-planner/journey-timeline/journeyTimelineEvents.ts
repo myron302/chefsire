@@ -4,7 +4,7 @@ import { derivePrepTimelineEvents, deriveReadinessTimelineEvents } from './journ
 import { deriveContinuityTimelineEvents } from './journeyTimelineContinuity';
 import type { JourneyTimelineContext, JourneyTimelineEvent } from './journeyTimelineTypes';
 
-const CAP = 28;
+const CAP = 42;
 
 export const deriveTimelineEvents = (context: JourneyTimelineContext): JourneyTimelineEvent[] => {
   const aiCoachEvents: JourneyTimelineEvent[] = (context.coachInsights || []).slice(0, 6).map((insight, index) => ({
@@ -16,6 +16,8 @@ export const deriveTimelineEvents = (context: JourneyTimelineContext): JourneyTi
     tone: insight.severity === 'warning' ? 'warning' : insight.severity === 'positive' ? 'positive' : 'neutral',
     marker: 'coach',
     tags: ['ai coach', insight.category || 'insight'],
+    lane: 'coach',
+    explainability: 'AI Coach markers surface adaptive interventions directly in the weekly orchestration flow.',
   }));
 
   return [
@@ -26,6 +28,6 @@ export const deriveTimelineEvents = (context: JourneyTimelineContext): JourneyTi
     ...deriveReadinessTimelineEvents(context),
     ...aiCoachEvents,
   ]
-    .sort((a, b) => a.dayIndex - b.dayIndex)
+    .sort((a, b) => a.dayIndex - b.dayIndex || a.type.localeCompare(b.type))
     .slice(0, CAP);
 };

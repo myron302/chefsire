@@ -13,6 +13,8 @@ export const deriveCampaignTimelineEvents = (context: JourneyTimelineContext): J
       marker: 'phase',
       phase: context.phase as any,
       tags: ['campaign arc'],
+      lane: 'campaign',
+      explainability: 'Phase events expose campaign arc evolution and why mission pacing changed.',
     });
   }
   if (context.transitionReason) {
@@ -25,6 +27,7 @@ export const deriveCampaignTimelineEvents = (context: JourneyTimelineContext): J
       tone: 'positive',
       marker: 'transition',
       tags: ['explainability'],
+      lane: 'campaign',
     });
   }
   if (typeof context.momentum === 'number') {
@@ -38,6 +41,8 @@ export const deriveCampaignTimelineEvents = (context: JourneyTimelineContext): J
       marker: context.momentum >= 0.6 ? 'momentum' : 'recovery',
       score: context.momentum,
       tags: ['campaign arc', 'adaptive pacing'],
+      lane: 'campaign',
+      explainability: 'Momentum vs recovery gating prevents burnout while preserving campaign progression.',
     });
   }
   return events;
