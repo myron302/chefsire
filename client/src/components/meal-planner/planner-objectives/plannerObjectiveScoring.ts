@@ -2,7 +2,7 @@ import { calculateWeeklyScores } from '../auto-planner/autoPlannerScoring';
 import { calculateRelationshipEfficiencyScore } from '../meal-relationships/relationshipGraph';
 import { scoreRelationshipDrivenWeek } from '../meal-relationships/relationshipDrivenPlanning';
 import { calculateRecoverySpacing, analyzeWeeklyVarietyRhythm } from '../auto-planner/autoPlannerTradeoffAnalysis';
-import { calculateWeeklyPlannerStress, calculateGroceryFragmentation, calculateIngredientOverlapScore, calculatePantryReuseEfficiency, calculateMealFatigueScore } from '../auto-planner/autoPlannerOptimizationEngine';
+import { calculateWeeklyPlannerStress, calculateGroceryFragmentation, calculateIngredientOverlapScore, calculatePantryReuseEfficiency, calculateMealFatigueScore } from '../auto-planner/autoPlannerMetrics';
 import { calculateFreshnessFlowScore, calculateTemporalFlowScore } from '../auto-planner/autoPlannerRhythmEngine';
 import { getMealsForSlot } from '../planner-graph/plannerGraphUtils';
 import type { ObjectiveContribution, PlannerObjectiveMetrics, PlannerObjectiveProfile } from './plannerObjectiveTypes';
