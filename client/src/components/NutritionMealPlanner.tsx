@@ -2574,12 +2574,11 @@ const NutritionMealPlanner = () => {
     });
     return count;
   }, [mealTypes, weekDays, weeklyMeals]);
-  const semanticVarietyScore = Math.round((nutritionCoachAnalysis?.scoreBreakdown?.variety ?? 70) as number);
+  const prepActiveBlockersCount = prepSession.blockers.filter((blocker) => blocker.active).length;
   const prepOverloadReduction = Math.max(0, Math.round((prepOrchestration.summary.readinessScore || 0) - (prepActiveBlockersCount * 10)));
   const blendedPrepProgress = Math.max(prepProgress, generatedPrepProgress);
   const prepRecommendationsAvailable = plannedSlots > 0;
   const prepPlanMissing = plannedSlots > 0 && !prepSessionPlanned && !prepSessionCompleted;
-  const prepActiveBlockersCount = prepSession.blockers.filter((blocker) => blocker.active).length;
   const prepGroceryBlockersCount = prepSession.blockers.filter(
     (blocker) => blocker.active && GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id),
   ).length;
@@ -3756,6 +3755,7 @@ const NutritionMealPlanner = () => {
     prepReadyForWeek,
     streak.currentStreak,
   ]);
+  const semanticVarietyScore = Math.round((nutritionCoachAnalysis?.scoreBreakdown?.variety ?? 70) as number);
   const visibleCoachInsights = nutritionCoachAnalysis.insights.filter((insight) => !dismissedCoachInsightIds.includes(insight.id));
   useEffect(() => {
     const state = loadActiveCampaignState(user?.id);
