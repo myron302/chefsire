@@ -1,6 +1,6 @@
 import { getAllPlannerMeals } from '../planner-graph/plannerGraphUtils';
 import { extractMealIngredients } from '../planner-graph/plannerMealExtraction';
-import { normalizeMealIngredient } from '../plannerGroceryUtils';
+import { normalizeMealIngredient } from '../ingredientNormalization';
 import { MEAL_TYPES, WEEK_DAYS } from '../nutritionMealPlannerUtils';
 import { buildIngredientRelationshipGraph, detectReusableIngredientClusters } from './ingredientRelationships';
 import { buildLeftoverLifecycleGraph, detectMealCarryoverChains } from './leftoverLifecycle';

@@ -1,8 +1,7 @@
 import { analyzeCalorieDistribution, analyzeProteinDistribution, calculateMacroBalanceScore } from './autoPlannerContextAnalysis';
-import { calculateGroceryFragmentation, calculateIngredientOverlapScore, calculateMealFatigueScore, calculatePantryReuseEfficiency, calculateWeeklyPlannerStress } from './autoPlannerOptimizationEngine';
+import { calculateGroceryFragmentation, calculateIngredientOverlapScore, calculateMealFatigueScore, calculatePantryReuseEfficiency, calculateWeeklyPlannerStress } from './autoPlannerMetrics';
 import { getMealsForSlot } from '../planner-graph/plannerGraphUtils';
 import { calculateMealComplexity } from '../planner-graph/plannerComplexity';
-import { evaluatePlannerObjectives } from '../planner-objectives/plannerObjectiveEngine';
 
 const gatherMeals = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => (
   weekDays.flatMap((day) => mealTypes.flatMap((mealType) => getMealsForSlot(weeklyMeals, day, mealType))).filter(Boolean)
@@ -76,11 +75,9 @@ export const calculateCompositeOptimizationScore = (weeklyMeals: Record<string, 
   const variety = analyzeWeeklyVarietyRhythm(weeklyMeals, weekDays, mealTypes);
   const tradeoffPenalty = calculateTradeoffPenalty(weeklyMeals, weekDays, mealTypes);
 
-  const legacy = Math.max(0, Math.min(100, Math.round(
+  return Math.max(0, Math.min(100, Math.round(
     macro * 0.2 + pantry * 0.12 + fragmentation * 0.14 + fatigue * 0.16 + weeklyBalance * 0.18 + variety * 0.2 - tradeoffPenalty * 0.12,
   )));
-  const unified = evaluatePlannerObjectives({ weeklyMeals, weekDays, mealTypes, mode: 'balanced' }).score;
-  return Math.round((unified * 0.7) + (legacy * 0.3));
 };
 
 export const deriveOptimizationTradeoffs = (before: Record<string, any>, after: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
