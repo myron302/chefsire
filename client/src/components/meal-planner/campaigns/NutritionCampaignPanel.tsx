@@ -7,7 +7,34 @@ import { Badge } from '@/components/ui/badge';
 import { NUTRITION_CAMPAIGN_CATALOG } from '@/components/meal-planner/campaigns/nutritionCampaignCatalog';
 import { NutritionCampaignProgress } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
 import type { NutritionCampaignAdaptiveRecommendation } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
-import WeeklyNutritionJourneyTimeline from '@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline';
+
+const WeeklyNutritionJourneyTimeline = React.lazy(() => import('@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline'));
+const ENABLE_JOURNEY_TIMELINE = true;
+
+class TimelineErrorBoundary extends React.Component<React.PropsWithChildren, { hasError: boolean }> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError(): { hasError: boolean } {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.error('Journey timeline render failed', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Card>
+          <CardContent className="pt-6 text-sm text-slate-600">
+            Journey timeline is temporarily unavailable.
+          </CardContent>
+        </Card>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 type Props = {
   activeCampaignId: string | null;
@@ -69,19 +96,31 @@ const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, o
                   <span>{activeCampaign.rewardCopy}</span>
                 </div>
               )}
-              <WeeklyNutritionJourneyTimeline
-                context={{
-                  phase: progress.phase,
-                  phaseNarrative: progress.phaseNarrative,
-                  momentum: progress.momentum,
-                  journeyStability: progress.journeyStability,
-                  transitionReason: progress.transitionReason,
-                  completionPct: progress.completionPct,
-                  completedMissions: progress.completedMissions,
-                  totalMissions: progress.totalMissions,
-                  completionSemantics: progress.completionSemantics,
-                }}
-              />
+              {ENABLE_JOURNEY_TIMELINE && (
+                <React.Suspense
+                  fallback={
+                    <Card>
+                      <CardContent className="pt-6 text-sm text-slate-600">Loading journey timeline…</CardContent>
+                    </Card>
+                  }
+                >
+                  <TimelineErrorBoundary>
+                    <WeeklyNutritionJourneyTimeline
+                      context={{
+                        phase: progress.phase,
+                        phaseNarrative: progress.phaseNarrative,
+                        momentum: progress.momentum,
+                        journeyStability: progress.journeyStability,
+                        transitionReason: progress.transitionReason,
+                        completionPct: progress.completionPct,
+                        completedMissions: progress.completedMissions,
+                        totalMissions: progress.totalMissions,
+                        completionSemantics: progress.completionSemantics,
+                      }}
+                    />
+                  </TimelineErrorBoundary>
+                </React.Suspense>
+              )}
               <Button variant="outline" size="sm" onClick={onClearCampaign}>End Active Campaign</Button>
             </div>
           ) : (

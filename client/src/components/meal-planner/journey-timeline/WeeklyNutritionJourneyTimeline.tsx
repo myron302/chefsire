@@ -32,6 +32,9 @@ const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const WeeklyNutritionJourneyTimeline: React.FC<Props> = ({ context }) => {
   const [expandedIds, setExpandedIds] = React.useState<Record<string, boolean>>(() => {
     try {
+      if (typeof window === 'undefined' || !window.localStorage) {
+        return {};
+      }
       const cached = localStorage.getItem('chefsire.journeyTimeline.expanded');
       return cached ? JSON.parse(cached) : {};
     } catch {
@@ -47,7 +50,13 @@ const WeeklyNutritionJourneyTimeline: React.FC<Props> = ({ context }) => {
   const toggleExpanded = (id: string) => {
     setExpandedIds((prev) => {
       const next = { ...prev, [id]: !prev[id] };
-      localStorage.setItem('chefsire.journeyTimeline.expanded', JSON.stringify(next));
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          localStorage.setItem('chefsire.journeyTimeline.expanded', JSON.stringify(next));
+        }
+      } catch {
+        // Ignore storage write failures to avoid runtime crashes.
+      }
       return next;
     });
   };
