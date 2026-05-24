@@ -72,3 +72,12 @@ export type NutritionCampaignProgress = {
   completionPct: number;
   complete: boolean;
 };
+
+
+export type NutritionCampaignAdaptiveRecommendation = {
+  fitScore: number;
+  fitReasons: string[];
+  narrative?: string;
+  pacing?: 'slow' | 'steady' | 'accelerated';
+  intensity?: 'low' | 'moderate' | 'high';
+};
