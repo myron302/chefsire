@@ -27,7 +27,7 @@ const iconByType: Record<JourneyTimelineEvent['type'], React.ReactNode> = {
   'ai-coach-event': <Brain className="h-4 w-4" />,
 };
 
-const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const WeeklyNutritionJourneyTimeline: React.FC<Props> = ({ context }) => {
   const [expandedIds, setExpandedIds] = React.useState<Record<string, boolean>>(() => {
@@ -66,7 +66,7 @@ const WeeklyNutritionJourneyTimeline: React.FC<Props> = ({ context }) => {
             {eventsByDay.map((dayEvents, dayIndex) => (
               <div key={dayIndex} className="relative rounded-xl border bg-slate-50/70 p-2">
                 <div className="mb-2 flex items-center justify-between">
-                  <Badge variant="outline" className="text-[10px] uppercase">{days[dayIndex]}</Badge>
+                  <Badge variant="outline" className="text-[10px] uppercase">{weekDays[dayIndex]}</Badge>
                   <span className="text-[10px] text-slate-500">{dayEvents.length} events</span>
                 </div>
 
