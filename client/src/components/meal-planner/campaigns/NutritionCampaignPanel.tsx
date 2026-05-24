@@ -6,15 +6,17 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { NUTRITION_CAMPAIGN_CATALOG } from '@/components/meal-planner/campaigns/nutritionCampaignCatalog';
 import { NutritionCampaignProgress } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
+import type { NutritionCampaignAdaptiveRecommendation } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
 
 type Props = {
   activeCampaignId: string | null;
   progress: NutritionCampaignProgress | null;
   onActivateCampaign: (campaignId: string) => void;
   onClearCampaign: () => void;
+  adaptiveRecommendationsByCampaignId?: Record<string, NutritionCampaignAdaptiveRecommendation>;
 };
 
-const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, onActivateCampaign, onClearCampaign }) => {
+const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, onActivateCampaign, onClearCampaign, adaptiveRecommendationsByCampaignId }) => {
   const activeCampaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === activeCampaignId) || null;
 
   return (
@@ -31,6 +33,9 @@ const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, o
                 <div>
                   <p className="font-semibold">{activeCampaign.title}</p>
                   <p className="text-sm text-gray-600">{activeCampaign.narrative}</p>
+                  {activeCampaignId && adaptiveRecommendationsByCampaignId?.[activeCampaignId]?.narrative && (
+                    <p className="text-xs text-emerald-700 mt-1">{adaptiveRecommendationsByCampaignId[activeCampaignId].narrative}</p>
+                  )}
                 </div>
                 <Badge variant="secondary">{progress.completedMissions}/{progress.totalMissions} missions</Badge>
               </div>
@@ -70,6 +75,14 @@ const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, o
                 <p className="font-medium text-sm">{campaign.title}</p>
                 <Badge variant="outline">{campaign.durationDays} days</Badge>
               </div>
+              {adaptiveRecommendationsByCampaignId?.[campaign.id] && (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  <Badge variant="secondary">Fit {adaptiveRecommendationsByCampaignId[campaign.id].fitScore}</Badge>
+                  {adaptiveRecommendationsByCampaignId[campaign.id].fitReasons.slice(0, 2).map((reason) => (
+                    <Badge key={`${campaign.id}-${reason}`} variant="outline" className="text-[10px]">{reason}</Badge>
+                  ))}
+                </div>
+              )}
               <p className="text-xs text-gray-600 mt-1">{campaign.description}</p>
               <Button className="mt-3" size="sm" variant={activeCampaignId === campaign.id ? 'secondary' : 'default'} onClick={() => onActivateCampaign(campaign.id)}>
                 {activeCampaignId === campaign.id ? 'Active' : 'Start Campaign'}

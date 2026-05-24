@@ -4,6 +4,7 @@ import {
   NutritionCampaignProgress,
   NutritionCampaignSignals,
 } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
+import { deriveAdaptiveMissionTargets, type AdaptiveCampaignProfile } from '@/components/meal-planner/campaigns/adaptiveCampaignScaling';
 
 const metricValue = (signals: NutritionCampaignSignals, metric: NutritionCampaignMissionMetric): number => {
   switch (metric) {
@@ -23,19 +24,23 @@ export const evaluateCampaignProgress = (
   campaignId: string,
   signals: NutritionCampaignSignals,
   startedAt: string,
+  adaptiveProfile?: AdaptiveCampaignProfile,
 ): NutritionCampaignProgress | null => {
   const campaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === campaignId);
   if (!campaign) return null;
 
+  const adaptiveTargets = adaptiveProfile ? deriveAdaptiveMissionTargets(campaign, adaptiveProfile) : null;
+
   const missionProgress = campaign.missions.map((mission) => {
     const value = metricValue(signals, mission.metric);
-    const progressPct = Math.min(100, Math.round((value / mission.target) * 100));
+    const target = adaptiveTargets?.[mission.metric] ?? mission.target;
+    const progressPct = Math.min(100, Math.round((value / target) * 100));
     return {
       mission,
       value,
-      target: mission.target,
+      target,
       progressPct,
-      completed: value >= mission.target,
+      completed: value >= target,
     };
   });
 
