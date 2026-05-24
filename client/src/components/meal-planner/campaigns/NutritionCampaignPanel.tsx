@@ -1,12 +1,12 @@
 import React from 'react';
-import { Trophy, Sparkles } from 'lucide-react';
+import { Trophy, Sparkles, Target, Clock3, Wand2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { NUTRITION_CAMPAIGN_CATALOG } from '@/components/meal-planner/campaigns/nutritionCampaignCatalog';
 import { NutritionCampaignProgress } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
-import type { NutritionCampaignAdaptiveRecommendation } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
+import type { NutritionCampaignAdaptiveRecommendation, NutritionCampaignDefinition } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
 
 const WeeklyNutritionJourneyTimeline = React.lazy(() => import('@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline'));
 const ENABLE_JOURNEY_TIMELINE = true;
@@ -44,8 +44,41 @@ type Props = {
   adaptiveRecommendationsByCampaignId?: Record<string, NutritionCampaignAdaptiveRecommendation>;
 };
 
+function pacingLabel(recommendation?: NutritionCampaignAdaptiveRecommendation) {
+  if (!recommendation?.pacing && !recommendation?.intensity) return null;
+  const pacing = recommendation?.pacing ? recommendation.pacing : 'steady';
+  const intensity = recommendation?.intensity ? recommendation.intensity : 'moderate';
+  return `${pacing} pace · ${intensity} intensity`;
+}
+
 const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, onActivateCampaign, onClearCampaign, adaptiveRecommendationsByCampaignId }) => {
+  const [pendingCampaignId, setPendingCampaignId] = React.useState<string | null>(null);
   const activeCampaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === activeCampaignId) || null;
+  const pendingCampaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === pendingCampaignId) || null;
+
+  const rankedCampaigns = React.useMemo(() => {
+    const withOrder = NUTRITION_CAMPAIGN_CATALOG.map((campaign, index) => ({ campaign, index }));
+    return withOrder
+      .sort((a, b) => {
+        const aFit = adaptiveRecommendationsByCampaignId?.[a.campaign.id]?.fitScore;
+        const bFit = adaptiveRecommendationsByCampaignId?.[b.campaign.id]?.fitScore;
+        if (typeof aFit === 'number' && typeof bFit === 'number') return bFit - aFit;
+        if (typeof aFit === 'number') return -1;
+        if (typeof bFit === 'number') return 1;
+        return a.index - b.index;
+      })
+      .map((item) => item.campaign);
+  }, [adaptiveRecommendationsByCampaignId]);
+
+  const topCampaignId = rankedCampaigns[0]?.id;
+
+  const buildMissionWhy = React.useCallback((campaign: NutritionCampaignDefinition, recommendation?: NutritionCampaignAdaptiveRecommendation) => {
+    const reasons = recommendation?.fitReasons?.slice(0, 2) ?? [];
+    if (reasons.length > 0) {
+      return `Supports your current focus: ${reasons.join(' · ')}`;
+    }
+    return `Builds progress toward ${campaign.goals[0]?.toLowerCase() || 'consistent weekly nutrition habits'}.`;
+  }, []);
 
   return (
     <div className="space-y-4">
@@ -68,16 +101,26 @@ const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, o
                   {progress.transitionReason && <p className="text-xs text-amber-700 mt-1">{progress.transitionReason}</p>}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                {progress.phase && <Badge variant="outline" className="capitalize">{progress.phase.replace('-', ' ')} phase</Badge>}
-                <Badge variant="secondary">{progress.completedMissions}/{progress.totalMissions} missions</Badge>
-              </div>
+                  {progress.phase && <Badge variant="outline" className="capitalize">{progress.phase.replace('-', ' ')} phase</Badge>}
+                  {activeCampaignId && pacingLabel(adaptiveRecommendationsByCampaignId?.[activeCampaignId]) && (
+                    <Badge variant="secondary">{pacingLabel(adaptiveRecommendationsByCampaignId?.[activeCampaignId])}</Badge>
+                  )}
+                  <Badge variant="secondary">{progress.completedMissions}/{progress.totalMissions} missions</Badge>
+                  <Badge variant="outline">{Math.round(progress.completionPct)}% complete</Badge>
+                </div>
               </div>
               <Progress value={progress.completionPct} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {progress.missionProgress.map((item) => (
-                  <div key={item.mission.id} className="rounded-lg border p-3">
-                    <p className="text-sm font-medium">{item.mission.title}</p>
+                  <div key={item.mission.id} className={`rounded-lg border p-3 ${item.completed ? 'border-emerald-300 bg-emerald-50/70' : ''}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">{item.mission.title}</p>
+                      <Badge variant={item.completed ? 'secondary' : 'outline'}>{item.completed ? 'Completed' : 'In progress'}</Badge>
+                    </div>
                     <p className="text-xs text-gray-600">{item.mission.description}</p>
+                    <p className="text-xs mt-1 text-slate-700">Adaptive target: {item.target}</p>
+                    <p className="text-xs mt-1 text-slate-700">Why this mission matters: {buildMissionWhy(activeCampaign, activeCampaignId ? adaptiveRecommendationsByCampaignId?.[activeCampaignId] : undefined)}</p>
+                    {progress.phaseNarrative && <p className="text-xs mt-1 text-blue-700">Phase note: {progress.phaseNarrative}</p>}
                     <p className="text-xs mt-1">{item.value}/{item.target}</p>
                     <Progress value={item.progressPct} className="mt-2" />
                   </div>
@@ -124,7 +167,16 @@ const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, o
               <Button variant="outline" size="sm" onClick={onClearCampaign}>End Active Campaign</Button>
             </div>
           ) : (
-            <p className="text-sm text-gray-600">Choose a campaign to start a guided nutrition journey.</p>
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600">Campaigns are guided weekly nutrition journeys that adapt missions and pacing as your planning habits evolve.</p>
+              <div className="flex flex-wrap gap-2">
+                {rankedCampaigns.slice(0, 3).map((campaign) => (
+                  <Badge key={`empty-state-${campaign.id}`} variant="secondary" className="py-1">
+                    {campaign.title}
+                  </Badge>
+                ))}
+              </div>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -134,11 +186,14 @@ const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, o
           <CardTitle>Suggested Campaigns</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {NUTRITION_CAMPAIGN_CATALOG.map((campaign) => (
+          {rankedCampaigns.map((campaign) => (
             <div key={campaign.id} className="rounded-lg border p-3">
               <div className="flex items-center justify-between gap-2">
                 <p className="font-medium text-sm">{campaign.title}</p>
-                <Badge variant="outline">{campaign.durationDays} days</Badge>
+                <div className="flex gap-2">
+                  {topCampaignId === campaign.id && <Badge className="bg-emerald-600 hover:bg-emerald-600">Recommended</Badge>}
+                  <Badge variant="outline">{campaign.durationDays} days</Badge>
+                </div>
               </div>
               {adaptiveRecommendationsByCampaignId?.[campaign.id] && (
                 <div className="mt-2 flex flex-wrap gap-1">
@@ -149,13 +204,45 @@ const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, o
                 </div>
               )}
               <p className="text-xs text-gray-600 mt-1">{campaign.description}</p>
-              <Button className="mt-3" size="sm" variant={activeCampaignId === campaign.id ? 'secondary' : 'default'} onClick={() => onActivateCampaign(campaign.id)}>
+              <Button className="mt-3" size="sm" variant={activeCampaignId === campaign.id ? 'secondary' : 'default'} onClick={() => setPendingCampaignId(campaign.id)}>
                 {activeCampaignId === campaign.id ? 'Active' : 'Start Campaign'}
               </Button>
             </div>
           ))}
         </CardContent>
       </Card>
+
+      {pendingCampaign && (
+        <Card className="border-emerald-300 bg-emerald-50/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Wand2 className="h-4 w-4 text-emerald-700" />Activate Campaign</CardTitle>
+            <CardDescription>Confirm before starting your guided journey.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div>
+              <p className="font-semibold">{pendingCampaign.title}</p>
+              <p className="text-sm text-slate-600 mt-1">{pendingCampaign.narrative}</p>
+            </div>
+            <p className="text-sm"><strong>Why recommended:</strong> {adaptiveRecommendationsByCampaignId?.[pendingCampaign.id]?.fitReasons?.join(' · ') || pendingCampaign.goals[0]}</p>
+            <div className="flex flex-wrap gap-2">
+              <Badge variant="secondary"><Clock3 className="mr-1 h-3 w-3" />{pendingCampaign.durationDays} days expected</Badge>
+              <Badge variant="outline"><Target className="mr-1 h-3 w-3" />{pendingCampaign.missions.length} mission preview</Badge>
+              {adaptiveRecommendationsByCampaignId?.[pendingCampaign.id] && <Badge variant="outline">Fit {adaptiveRecommendationsByCampaignId[pendingCampaign.id].fitScore}</Badge>}
+              {pacingLabel(adaptiveRecommendationsByCampaignId?.[pendingCampaign.id]) && <Badge variant="outline">{pacingLabel(adaptiveRecommendationsByCampaignId?.[pendingCampaign.id])}</Badge>}
+            </div>
+            <div className="rounded-lg border bg-white p-3">
+              <p className="text-xs uppercase tracking-wide text-slate-500">Mission preview</p>
+              <ul className="mt-2 space-y-1 text-sm text-slate-700">
+                {pendingCampaign.missions.slice(0, 3).map((mission) => <li key={mission.id}>• {mission.title}</li>)}
+              </ul>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button onClick={() => { onActivateCampaign(pendingCampaign.id); setPendingCampaignId(null); }}>Start journey</Button>
+              <Button variant="outline" onClick={() => setPendingCampaignId(null)}>Cancel</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
