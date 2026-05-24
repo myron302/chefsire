@@ -24,6 +24,25 @@ export type JourneyTimelineEvent = {
   phase?: CampaignJourneyPhase;
   score?: number;
   tags?: string[];
+  lane?: 'campaign' | 'cadence' | 'continuity' | 'prep' | 'readiness' | 'coach';
+  explainability?: string;
+  chainId?: string;
+};
+
+export type JourneyTimelineCadenceSignal = {
+  dayIndex: number;
+  cadence: 'heavy-cozy' | 'fresh-light' | 'recovery' | 'novelty';
+  intensity?: number;
+  fatigueDelta?: number;
+};
+
+export type JourneyTimelineContinuityLink = {
+  id: string;
+  dayIndex: number;
+  nextDayIndex?: number;
+  label: string;
+  relationship: 'breakfast-anchor' | 'leftover' | 'prep-dependency' | 'modular';
+  strength?: number;
 };
 
 export type JourneyTimelineContext = {
@@ -49,4 +68,9 @@ export type JourneyTimelineContext = {
     severity?: 'positive' | 'neutral' | 'warning';
     category?: string;
   }>;
+  cadenceSignals?: JourneyTimelineCadenceSignal[];
+  continuityLinks?: JourneyTimelineContinuityLink[];
+  readinessSignals?: Array<{ dayIndex: number; score: number; label?: string }>;
+  prepMoments?: Array<{ dayIndex: number; complete: boolean; label?: string }>;
+  groceryMoments?: Array<{ dayIndex: number; complete: boolean; label?: string }>;
 };
