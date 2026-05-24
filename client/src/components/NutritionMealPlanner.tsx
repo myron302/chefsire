@@ -3781,7 +3781,7 @@ const NutritionMealPlanner = () => {
       proteinGoalDays: proteinGoalHitDays,
       semanticVarietyScore,
       prepOverloadReduction,
-    }, activeCampaignStartedAt);
+    }, activeCampaignStartedAt, undefined, user?.id);
   }, [activeCampaignId, activeCampaignStartedAt, plannedBreakfasts, prepTasksCompleted, groceryCompletedCount, pantryIngredientsUsed, leftoverFriendlyMeals, proteinGoalHitDays, semanticVarietyScore, prepOverloadReduction]);
   const handleDismissCoachInsight = (insightId: string) => {
     setDismissedCoachInsightIds((prev) => prev.includes(insightId) ? prev : [...prev, insightId]);
