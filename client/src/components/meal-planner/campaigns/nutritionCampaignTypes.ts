@@ -63,6 +63,15 @@ export type NutritionCampaignMissionProgress = {
   completed: boolean;
 };
 
+export type NutritionCampaignCompletionSemantics = {
+  sustainabilityCompletion: boolean;
+  recoveryCompletion: boolean;
+  continuityCompletion: boolean;
+  stabilizationCompletion: boolean;
+  semanticResetCompletion: boolean;
+  missionCompletionPct: number;
+};
+
 export type NutritionCampaignProgress = {
   campaignId: string;
   startedAt: string;
@@ -71,6 +80,12 @@ export type NutritionCampaignProgress = {
   totalMissions: number;
   completionPct: number;
   complete: boolean;
+  phase?: string;
+  phaseNarrative?: string;
+  momentum?: number;
+  transitionReason?: string;
+  journeyStability?: number;
+  completionSemantics?: NutritionCampaignCompletionSemantics;
 };
 
 

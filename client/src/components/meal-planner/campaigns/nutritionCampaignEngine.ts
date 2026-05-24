@@ -5,6 +5,8 @@ import {
   NutritionCampaignSignals,
 } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
 import { deriveAdaptiveMissionTargets, type AdaptiveCampaignProfile } from '@/components/meal-planner/campaigns/adaptiveCampaignScaling';
+import { derivePhaseAwareMissionTargets } from '@/components/meal-planner/campaigns/adaptiveCampaignArcs';
+import { calculateCampaignJourneyStability, deriveCampaignCompletionSemantics, deriveCampaignJourneySummary, evolveCampaignJourney } from '@/components/meal-planner/campaigns/adaptiveCampaignJourney';
 
 const metricValue = (signals: NutritionCampaignSignals, metric: NutritionCampaignMissionMetric): number => {
   switch (metric) {
@@ -25,15 +27,18 @@ export const evaluateCampaignProgress = (
   signals: NutritionCampaignSignals,
   startedAt: string,
   adaptiveProfile?: AdaptiveCampaignProfile,
+  userId?: string | null,
 ): NutritionCampaignProgress | null => {
   const campaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === campaignId);
   if (!campaign) return null;
 
   const adaptiveTargets = adaptiveProfile ? deriveAdaptiveMissionTargets(campaign, adaptiveProfile) : null;
+  const journey = evolveCampaignJourney({ campaignId, signals, profile: adaptiveProfile, userId });
+  const phaseTargets = adaptiveTargets ? derivePhaseAwareMissionTargets(adaptiveTargets, journey.phase) : null;
 
   const missionProgress = campaign.missions.map((mission) => {
     const value = metricValue(signals, mission.metric);
-    const target = adaptiveTargets?.[mission.metric] ?? mission.target;
+    const target = phaseTargets?.[mission.metric] ?? adaptiveTargets?.[mission.metric] ?? mission.target;
     const progressPct = Math.min(100, Math.round((value / target) * 100));
     return {
       mission,
@@ -47,6 +52,9 @@ export const evaluateCampaignProgress = (
   const completedMissions = missionProgress.filter((mission) => mission.completed).length;
   const completionPct = Math.round((completedMissions / campaign.missions.length) * 100);
 
+  const completionSemantics = deriveCampaignCompletionSemantics(journey.trajectory, completionPct);
+  const journeySummary = deriveCampaignJourneySummary(journey.history);
+
   return {
     campaignId: campaign.id,
     startedAt,
@@ -55,5 +63,11 @@ export const evaluateCampaignProgress = (
     totalMissions: campaign.missions.length,
     completionPct,
     complete: completedMissions === campaign.missions.length,
+    phase: journey.phase,
+    phaseNarrative: journey.narrative,
+    momentum: journey.momentum,
+    transitionReason: journeySummary.completedPhases.length ? journey.history[journey.history.length - 1]?.reason : undefined,
+    journeyStability: calculateCampaignJourneyStability(journey.history),
+    completionSemantics,
   };
 };

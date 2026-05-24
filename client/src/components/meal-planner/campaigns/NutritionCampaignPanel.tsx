@@ -36,8 +36,13 @@ const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, o
                   {activeCampaignId && adaptiveRecommendationsByCampaignId?.[activeCampaignId]?.narrative && (
                     <p className="text-xs text-emerald-700 mt-1">{adaptiveRecommendationsByCampaignId[activeCampaignId].narrative}</p>
                   )}
+                  {progress.phaseNarrative && <p className="text-xs text-blue-700 mt-1">{progress.phaseNarrative}</p>}
+                  {progress.transitionReason && <p className="text-xs text-amber-700 mt-1">{progress.transitionReason}</p>}
                 </div>
+                <div className="flex flex-wrap items-center gap-2">
+                {progress.phase && <Badge variant="outline" className="capitalize">{progress.phase.replace('-', ' ')} phase</Badge>}
                 <Badge variant="secondary">{progress.completedMissions}/{progress.totalMissions} missions</Badge>
+              </div>
               </div>
               <Progress value={progress.completionPct} />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -50,6 +55,13 @@ const NutritionCampaignPanel: React.FC<Props> = ({ activeCampaignId, progress, o
                   </div>
                 ))}
               </div>
+              {progress.completionSemantics && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-xs text-blue-900">
+                  <p className="font-medium mb-1">Adaptive completion semantics</p>
+                  <p>Sustainability: {progress.completionSemantics.sustainabilityCompletion ? 'complete' : 'in progress'} · Recovery: {progress.completionSemantics.recoveryCompletion ? 'complete' : 'in progress'} · Continuity: {progress.completionSemantics.continuityCompletion ? 'complete' : 'in progress'}</p>
+                  {typeof progress.momentum === 'number' && <p className="mt-1">Momentum: {Math.round(progress.momentum * 100)}% · Stability: {Math.round((progress.journeyStability || 0) * 100)}%</p>}
+                </div>
+              )}
               {progress.complete && (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800 flex items-start gap-2">
                   <Sparkles className="w-4 h-4 mt-0.5" />
