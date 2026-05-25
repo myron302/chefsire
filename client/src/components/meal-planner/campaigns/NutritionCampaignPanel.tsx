@@ -39,6 +39,13 @@ import { deriveBehavioralEvolutionTimeline } from '@/components/meal-planner/cam
 import { deriveBehavioralRecommendationConfidence, deriveBehavioralCompatibilityScore, deriveGlobalRecommendationBias } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralRecommendationIntelligence';
 import { deriveAdaptiveStrategyWeights, deriveBehavioralStrategyBias } from '@/components/meal-planner/campaigns/behavioral-intelligence/adaptiveStrategyWeights';
 import { getBehavioralIntelligenceProfile, saveBehavioralIntelligenceProfile } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralIntelligenceStore';
+import { createDefaultLifeStateProfile, updateLifeStateProfile } from '@/components/meal-planner/campaigns/life-state-intelligence/lifeStateProfile';
+import { getLifeStateProfile, saveLifeStateProfile } from '@/components/meal-planner/campaigns/life-state-intelligence/lifeStateStore';
+import { deriveContextualAdaptationBias, deriveContextualInterventionStrategies } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualAdaptation';
+import { deriveContextualStabilityProfile, deriveRecoveryStabilizationWindows } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualStability';
+import { deriveLifeStateEvolutionTimeline } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualTimeline';
+import { deriveContextualStrategyWeights, deriveProtectiveAdaptationBias } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualStrategyWeights';
+import { deriveContextualCompatibilityScore, deriveContextualRecommendationConfidence, deriveProtectiveRecommendationBias } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualRecommendationIntelligence';
 
 const WeeklyNutritionJourneyTimeline = React.lazy(() => import('@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline'));
 const ENABLE_JOURNEY_TIMELINE = true;
@@ -94,6 +101,7 @@ const NutritionCampaignPanel: React.FC<Props> = ({
     }, {});
   });
   const [behavioralProfile, setBehavioralProfile] = React.useState(() => getBehavioralIntelligenceProfile());
+  const [lifeStateProfile, setLifeStateProfile] = React.useState(() => getLifeStateProfile() ?? createDefaultLifeStateProfile());
 
   const toggleSavedCampaign = React.useCallback((campaignId: string) => {
     const campaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === campaignId);
@@ -155,9 +163,11 @@ const NutritionCampaignPanel: React.FC<Props> = ({
 
   React.useEffect(() => {
     if (!activeCampaignId) return;
+    let nextValue: Record<string, ReturnType<typeof deriveCampaignEvolutionMemory>> | null = null;
     setEvolutionMemoryByCampaignId((prev) => {
       const nextMemory = updateCampaignEvolutionMemory(prev[activeCampaignId] ?? null, activeCampaignId, progress);
       const next = { ...prev, [activeCampaignId]: nextMemory };
+      nextValue = next;
       const allMemories = saveCampaignEvolutionMemory(Object.values(next));
       setBehavioralProfile((previous) => {
         const updated = updateBehavioralIntelligenceProfile(previous, allMemories);
@@ -165,6 +175,12 @@ const NutritionCampaignPanel: React.FC<Props> = ({
       });
       return next;
     });
+    if (nextValue) {
+      const allMemories = Object.values(nextValue) as ReturnType<typeof deriveCampaignEvolutionMemory>[];
+      const behavioralForLifeState = updateBehavioralIntelligenceProfile(behavioralProfile, allMemories);
+      const nextLifeState = updateLifeStateProfile(lifeStateProfile, behavioralForLifeState, allMemories);
+      setLifeStateProfile(saveLifeStateProfile(nextLifeState));
+    }
   }, [activeCampaignId, progress]);
 
   const activeEvolutionMemory = activeCampaignId ? evolutionMemoryByCampaignId[activeCampaignId] : null;
@@ -194,6 +210,22 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   const behavioralMilestones = React.useMemo(() => deriveBehavioralEvolutionTimeline(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
   const strategyWeights = React.useMemo(() => deriveAdaptiveStrategyWeights(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
   const strategyBias = React.useMemo(() => deriveBehavioralStrategyBias(strategyWeights), [strategyWeights]);
+  const contextualAdaptationBias = React.useMemo(() => deriveContextualAdaptationBias(lifeStateProfile), [lifeStateProfile]);
+  const contextualInterventions = React.useMemo(() => deriveContextualInterventionStrategies(lifeStateProfile), [lifeStateProfile]);
+  const contextualStability = React.useMemo(() => deriveContextualStabilityProfile(lifeStateProfile, Object.values(evolutionMemoryByCampaignId)), [lifeStateProfile, evolutionMemoryByCampaignId]);
+  const recoveryWindows = React.useMemo(() => deriveRecoveryStabilizationWindows(lifeStateProfile), [lifeStateProfile]);
+  const contextualTimeline = React.useMemo(() => deriveLifeStateEvolutionTimeline(lifeStateProfile), [lifeStateProfile]);
+  const contextualWeights = React.useMemo(() => deriveContextualStrategyWeights(lifeStateProfile), [lifeStateProfile]);
+  const protectiveNotes = React.useMemo(() => deriveProtectiveAdaptationBias(contextualWeights), [contextualWeights]);
+  const contextualCompatibility = React.useMemo(
+    () => deriveContextualCompatibilityScore(resolvedBehavioralProfile, lifeStateProfile, activeRecommendation),
+    [resolvedBehavioralProfile, lifeStateProfile, activeRecommendation],
+  );
+  const contextualRecommendationConfidence = React.useMemo(
+    () => deriveContextualRecommendationConfidence(lifeStateProfile, contextualCompatibility),
+    [lifeStateProfile, contextualCompatibility],
+  );
+  const protectiveRecommendationBias = React.useMemo(() => deriveProtectiveRecommendationBias(lifeStateProfile), [lifeStateProfile]);
 
   return (
     <div className="space-y-4">
@@ -348,6 +380,19 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                 <p className="mt-1">Strategy weights · continuity {Math.round(strategyWeights.continuityAnchor * 100)}%, recovery {Math.round(strategyWeights.recoveryPacing * 100)}%, prep reduction {Math.round(strategyWeights.prepReduction * 100)}%</p>
                 {strategyBias[0] && <p className="mt-1">Adaptive weighting: {strategyBias[0]}</p>}
                 {behavioralMilestones[0] && <p className="mt-1">Behavioral evolution: {behavioralMilestones.slice(0, 2).map((m) => m.detail).join(' · ')}</p>}
+              </div>
+              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900">
+                <p className="font-medium">Life-state intelligence · {Math.round(lifeStateProfile.contextualConfidence * 100)}% contextual confidence</p>
+                <p className="mt-1">Volatility {Math.round(lifeStateProfile.scheduleVolatilityScore * 100)}% · Time scarcity {Math.round(lifeStateProfile.timeScarcityScore * 100)}% · Burnout pressure {Math.round(lifeStateProfile.burnoutPressureScore * 100)}%</p>
+                <p className="mt-1">Recovery pressure {Math.round(lifeStateProfile.recoveryPressureScore * 100)}% · Stabilization need {Math.round(lifeStateProfile.stabilizationNeedScore * 100)}% · Energy consistency {Math.round(lifeStateProfile.energyConsistencyScore * 100)}%</p>
+                <p className="mt-1">Contextual compatibility {Math.round(contextualCompatibility * 100)}% · Recommendation confidence {Math.round(contextualRecommendationConfidence * 100)}%</p>
+                {contextualAdaptationBias[0] && <p className="mt-1">Adaptive guidance: {contextualAdaptationBias.slice(0, 2).join(' · ')}</p>}
+                {contextualInterventions[0] && <p className="mt-1">Protective interventions: {contextualInterventions.slice(0, 2).join(' · ')}</p>}
+                <p className="mt-1">Stability trend {Math.round(contextualStability.stabilizationTrend * 100)}% · Burnout cycle risk {Math.round(contextualStability.burnoutCycleRisk * 100)}%</p>
+                {recoveryWindows[0] && <p className="mt-1">Recovery window: {recoveryWindows[0]}</p>}
+                {protectiveNotes[0] && <p className="mt-1">Protective weighting: {protectiveNotes.slice(0, 2).join(' · ')}</p>}
+                {protectiveRecommendationBias[0] && <p className="mt-1">Recommendation bias: {protectiveRecommendationBias[0]}</p>}
+                {contextualTimeline[0] && <p className="mt-1">Contextual evolution: {contextualTimeline.slice(0, 2).map((m) => m.detail).join(' · ')}</p>}
               </div>
 
               {ENABLE_JOURNEY_TIMELINE && (
