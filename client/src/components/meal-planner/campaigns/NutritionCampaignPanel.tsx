@@ -27,6 +27,12 @@ import { deriveCampaignCollections } from '@/components/meal-planner/campaigns/i
 import { deriveCampaignLineage, deriveCampaignEvolutionNarrative } from '@/components/meal-planner/campaigns/identity/campaignLineage';
 import { getSavedCampaigns, removeSavedCampaign, saveCampaignIdentity } from '@/components/meal-planner/campaigns/identity/savedCampaignStore';
 
+import { deriveCampaignEvolutionMemory, updateCampaignEvolutionMemory } from '@/components/meal-planner/campaigns/evolution/campaignEvolutionMemory';
+import { getCampaignEvolutionMemory, saveCampaignEvolutionMemory } from '@/components/meal-planner/campaigns/evolution/campaignEvolutionStore';
+import { deriveCampaignLearningProfile, deriveAdaptiveLearningInsights } from '@/components/meal-planner/campaigns/evolution/campaignLearningProfiles';
+import { deriveEvolutionTimeline } from '@/components/meal-planner/campaigns/evolution/campaignEvolutionTimeline';
+import { deriveCampaignRecommendationFeedback } from '@/components/meal-planner/campaigns/evolution/campaignRecommendationFeedback';
+
 const WeeklyNutritionJourneyTimeline = React.lazy(() => import('@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline'));
 const ENABLE_JOURNEY_TIMELINE = true;
 
@@ -73,6 +79,13 @@ const NutritionCampaignPanel: React.FC<Props> = ({
 }) => {
   const [pendingCampaignId, setPendingCampaignId] = React.useState<string | null>(null);
   const [savedCampaignIds, setSavedCampaignIds] = React.useState<Set<string>>(() => new Set(getSavedCampaigns().map((item) => item.campaignId)));
+  const [evolutionMemoryByCampaignId, setEvolutionMemoryByCampaignId] = React.useState(() => {
+    const fromStore = getCampaignEvolutionMemory();
+    return fromStore.reduce<Record<string, ReturnType<typeof deriveCampaignEvolutionMemory>>>((acc, item) => {
+      acc[item.campaignId] = item;
+      return acc;
+    }, {});
+  });
 
   const toggleSavedCampaign = React.useCallback((campaignId: string) => {
     const campaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === campaignId);
@@ -131,6 +144,24 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   );
   const campaignEvents = React.useMemo(() => deriveCampaignEvents(progress), [progress]);
   const collections = React.useMemo(() => deriveCampaignCollections(rankedCampaigns), [rankedCampaigns]);
+
+  React.useEffect(() => {
+    if (!activeCampaignId) return;
+    setEvolutionMemoryByCampaignId((prev) => {
+      const nextMemory = updateCampaignEvolutionMemory(prev[activeCampaignId] ?? null, activeCampaignId, progress);
+      const next = { ...prev, [activeCampaignId]: nextMemory };
+      saveCampaignEvolutionMemory(Object.values(next));
+      return next;
+    });
+  }, [activeCampaignId, progress]);
+
+  const activeEvolutionMemory = activeCampaignId ? evolutionMemoryByCampaignId[activeCampaignId] : null;
+  const activeLearningProfile = activeEvolutionMemory ? deriveCampaignLearningProfile(activeEvolutionMemory) : null;
+  const activeLearningInsights = activeLearningProfile ? deriveAdaptiveLearningInsights(activeLearningProfile) : [];
+  const activeEvolutionTimeline = deriveEvolutionTimeline(progress, activeEvolutionMemory);
+  const activeRecommendationFeedback = activeEvolutionMemory
+    ? deriveCampaignRecommendationFeedback(activeEvolutionMemory, activeRecommendation)
+    : null;
 
   return (
     <div className="space-y-4">
@@ -211,6 +242,59 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                 <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
                   <Sparkles className="mt-0.5 h-4 w-4" />
                   <span>{activeCampaign.rewardCopy}</span>
+                </div>
+              )}
+
+
+              {activeLearningProfile && (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
+                  <p className="font-medium">Campaign learned…</p>
+                  <p>{activeLearningProfile.summary}</p>
+                  {activeLearningInsights.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {activeLearningInsights.map((insight) => (
+                        <Badge key={insight} variant="secondary" className="bg-emerald-100 text-emerald-900 hover:bg-emerald-100">
+                          {insight}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeEvolutionMemory && (
+                <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
+                  <p className="font-medium">Adaptive memory badges</p>
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {activeEvolutionMemory.successfulStrategies.slice(0, 3).map((strategy) => (
+                      <Badge key={strategy} variant="outline">✅ {strategy}</Badge>
+                    ))}
+                    {activeEvolutionMemory.continuityAnchors.slice(0, 2).map((anchor) => (
+                      <Badge key={anchor} variant="outline">🧭 {anchor}</Badge>
+                    ))}
+                    {activeEvolutionMemory.recoveryInterventions.slice(0, 2).map((item) => (
+                      <Badge key={item} variant="outline">🛟 {item}</Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activeEvolutionTimeline.length > 0 && (
+                <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-900">
+                  <p className="font-medium">Evolution timeline highlights</p>
+                  <ul className="mt-1 list-disc pl-4">
+                    {activeEvolutionTimeline.slice(0, 3).map((item) => (
+                      <li key={item.id}>{item.detail}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {activeRecommendationFeedback && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+                  <p className="font-medium">Adaptive recommendation confidence · {Math.round(activeRecommendationFeedback.confidence * 100)}%</p>
+                  {activeRecommendationFeedback.recommendationNudge[0] && <p className="mt-1">{activeRecommendationFeedback.recommendationNudge[0]}</p>}
+                  {activeRecommendationFeedback.cautionSignals[0] && <p className="mt-1">Watch: {activeRecommendationFeedback.cautionSignals[0]}</p>}
                 </div>
               )}
 
