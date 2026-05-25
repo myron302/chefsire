@@ -12,6 +12,14 @@ import CampaignHeaderSummary from '@/components/meal-planner/campaigns/component
 import CampaignMissionCard from '@/components/meal-planner/campaigns/components/CampaignMissionCard';
 import CampaignRecommendationBadges from '@/components/meal-planner/campaigns/components/CampaignRecommendationBadges';
 import { buildMissionWhy } from '@/components/meal-planner/campaigns/components/campaignPanelUtils';
+import { deriveCampaignAchievements } from '@/components/meal-planner/campaigns/ecosystem/campaignAchievements';
+import { deriveCampaignOrigin, deriveCampaignSourceLabel, deriveCampaignDiscoveryReason } from '@/components/meal-planner/campaigns/ecosystem/campaignOrigins';
+import { deriveCreatorCampaignRecommendations } from '@/components/meal-planner/campaigns/ecosystem/creatorCampaignTemplates';
+import { deriveSeasonalCampaigns, deriveSeasonalNarratives } from '@/components/meal-planner/campaigns/ecosystem/seasonalCampaigns';
+import { deriveSharedCampaignProgress, deriveCollaborativeMissionSuggestions } from '@/components/meal-planner/campaigns/ecosystem/householdCampaigns';
+import { deriveCampaignJourneyType, deriveJourneyCategoryNarrative } from '@/components/meal-planner/campaigns/ecosystem/campaignJourneyTypes';
+import { deriveCoachCampaignInsights, deriveCampaignInterventionReasoning } from '@/components/meal-planner/campaigns/ecosystem/coachCampaignIntegration';
+import { deriveCampaignEvents } from '@/components/meal-planner/campaigns/ecosystem/campaignEvents';
 
 const WeeklyNutritionJourneyTimeline = React.lazy(() => import('@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline'));
 const ENABLE_JOURNEY_TIMELINE = true;
@@ -79,6 +87,25 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   const topCampaignId = rankedCampaigns[0]?.id;
   const activeRecommendation = activeCampaignId ? adaptiveRecommendationsByCampaignId?.[activeCampaignId] : undefined;
   const missionWhy = activeCampaign ? buildMissionWhy(activeCampaign, activeRecommendation) : '';
+  const creatorTemplatesByCampaignId = React.useMemo(
+    () => deriveCreatorCampaignRecommendations(rankedCampaigns, adaptiveRecommendationsByCampaignId),
+    [rankedCampaigns, adaptiveRecommendationsByCampaignId],
+  );
+  const seasonalCampaignIds = React.useMemo(
+    () => new Set(deriveSeasonalCampaigns(rankedCampaigns).map((campaign) => campaign.id)),
+    [rankedCampaigns],
+  );
+  const seasonalNarrative = React.useMemo(() => deriveSeasonalNarratives(), []);
+  const achievements = React.useMemo(() => deriveCampaignAchievements(progress), [progress]);
+  const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked);
+  const sharedState = React.useMemo(() => deriveSharedCampaignProgress(progress, 3), [progress]);
+  const collaborationSuggestions = React.useMemo(() => deriveCollaborativeMissionSuggestions(sharedState), [sharedState]);
+  const activeJourneyType = activeCampaign ? deriveCampaignJourneyType(activeCampaign, progress) : null;
+  const coachInsights = React.useMemo(
+    () => deriveCoachCampaignInsights(rankedCampaigns, adaptiveRecommendationsByCampaignId, progress),
+    [rankedCampaigns, adaptiveRecommendationsByCampaignId, progress],
+  );
+  const campaignEvents = React.useMemo(() => deriveCampaignEvents(progress), [progress]);
 
   return (
     <div className="space-y-4">
@@ -130,6 +157,31 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                 </div>
               )}
 
+              {activeJourneyType && (
+                <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-900">
+                  <p className="font-medium">Journey type: {activeJourneyType}</p>
+                  <p>{deriveJourneyCategoryNarrative(activeJourneyType)}</p>
+                </div>
+              )}
+
+              {unlockedAchievements.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {unlockedAchievements.map((achievement) => (
+                    <Badge key={achievement.id} className="bg-amber-500 hover:bg-amber-500">
+                      🏆 {achievement.title}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              {sharedState && (
+                <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-900">
+                  <p className="font-medium">Household-ready campaign · {sharedState.participants} participants</p>
+                  <p>Shared completions: {sharedState.completedParticipants} · Streak sync: {sharedState.continuityStreakSharedDays} days</p>
+                  {collaborationSuggestions[0] && <p className="mt-1">{collaborationSuggestions[0]}</p>}
+                </div>
+              )}
+
               {progress.complete && (
                 <div className="flex items-start gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
                   <Sparkles className="mt-0.5 h-4 w-4" />
@@ -166,6 +218,16 @@ const NutritionCampaignPanel: React.FC<Props> = ({
               <Button variant="outline" size="sm" onClick={onClearCampaign}>
                 End Active Campaign
               </Button>
+
+              {coachInsights[0] && (
+                <p className="text-xs text-slate-600">
+                  AI Coach: {coachInsights[0].recommendation} · {deriveCampaignInterventionReasoning(progress)}
+                </p>
+              )}
+
+              {campaignEvents.length > 0 && (
+                <p className="text-xs text-slate-500">Recent events: {campaignEvents.slice(0, 2).map((event) => event.title).join(' · ')}</p>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -199,6 +261,27 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                   )}
                   <Badge variant="outline">{campaign.durationDays} days</Badge>
                 </div>
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-1">
+                {(() => {
+                  const origin = deriveCampaignOrigin(campaign, {
+                    hasCreatorTemplate: Boolean(creatorTemplatesByCampaignId[campaign.id]),
+                    isSeasonal: seasonalCampaignIds.has(campaign.id),
+                    isHouseholdReady: campaign.theme === 'meal-prep' || campaign.theme === 'leftovers',
+                    recommendation: adaptiveRecommendationsByCampaignId?.[campaign.id],
+                  });
+                  return (
+                    <>
+                      <Badge variant="secondary">{deriveCampaignSourceLabel(origin)}</Badge>
+                      {seasonalCampaignIds.has(campaign.id) && <Badge variant="outline">{seasonalNarrative.title}</Badge>}
+                      {creatorTemplatesByCampaignId[campaign.id] && <Badge variant="outline">{creatorTemplatesByCampaignId[campaign.id].creatorAvatar} {creatorTemplatesByCampaignId[campaign.id].creatorName}</Badge>}
+                      {(campaign.theme === 'meal-prep' || campaign.theme === 'leftovers') && <Badge variant="outline">Household Ready</Badge>}
+                      {activeCampaignId !== campaign.id && topCampaignId === campaign.id && <Badge variant="outline">AI Coach Recommended</Badge>}
+                      <p className="w-full text-[11px] text-slate-500">{deriveCampaignDiscoveryReason(origin)}</p>
+                    </>
+                  );
+                })()}
               </div>
 
               <CampaignRecommendationBadges
