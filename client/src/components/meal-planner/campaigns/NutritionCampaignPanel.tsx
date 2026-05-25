@@ -33,6 +33,13 @@ import { deriveCampaignLearningProfile, deriveAdaptiveLearningInsights } from '@
 import { deriveEvolutionTimeline } from '@/components/meal-planner/campaigns/evolution/campaignEvolutionTimeline';
 import { deriveCampaignRecommendationFeedback } from '@/components/meal-planner/campaigns/evolution/campaignRecommendationFeedback';
 
+import { deriveBehavioralPreferenceNarratives, deriveBehavioralSensitivitySignals, deriveBehavioralStrengths } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralPreferences';
+import { deriveBehavioralIntelligenceProfile, updateBehavioralIntelligenceProfile } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralIntelligenceProfile';
+import { deriveBehavioralEvolutionTimeline } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralEvolutionTimeline';
+import { deriveBehavioralRecommendationConfidence, deriveBehavioralCompatibilityScore, deriveGlobalRecommendationBias } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralRecommendationIntelligence';
+import { deriveAdaptiveStrategyWeights, deriveBehavioralStrategyBias } from '@/components/meal-planner/campaigns/behavioral-intelligence/adaptiveStrategyWeights';
+import { getBehavioralIntelligenceProfile, saveBehavioralIntelligenceProfile } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralIntelligenceStore';
+
 const WeeklyNutritionJourneyTimeline = React.lazy(() => import('@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline'));
 const ENABLE_JOURNEY_TIMELINE = true;
 
@@ -86,6 +93,7 @@ const NutritionCampaignPanel: React.FC<Props> = ({
       return acc;
     }, {});
   });
+  const [behavioralProfile, setBehavioralProfile] = React.useState(() => getBehavioralIntelligenceProfile());
 
   const toggleSavedCampaign = React.useCallback((campaignId: string) => {
     const campaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === campaignId);
@@ -150,7 +158,11 @@ const NutritionCampaignPanel: React.FC<Props> = ({
     setEvolutionMemoryByCampaignId((prev) => {
       const nextMemory = updateCampaignEvolutionMemory(prev[activeCampaignId] ?? null, activeCampaignId, progress);
       const next = { ...prev, [activeCampaignId]: nextMemory };
-      saveCampaignEvolutionMemory(Object.values(next));
+      const allMemories = saveCampaignEvolutionMemory(Object.values(next));
+      setBehavioralProfile((previous) => {
+        const updated = updateBehavioralIntelligenceProfile(previous, allMemories);
+        return saveBehavioralIntelligenceProfile(updated);
+      });
       return next;
     });
   }, [activeCampaignId, progress]);
@@ -162,6 +174,26 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   const activeRecommendationFeedback = activeEvolutionMemory
     ? deriveCampaignRecommendationFeedback(activeEvolutionMemory, activeRecommendation)
     : null;
+
+  const resolvedBehavioralProfile = React.useMemo(
+    () => behavioralProfile ?? deriveBehavioralIntelligenceProfile(Object.values(evolutionMemoryByCampaignId)),
+    [behavioralProfile, evolutionMemoryByCampaignId],
+  );
+  const behavioralNarratives = React.useMemo(() => deriveBehavioralPreferenceNarratives(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
+  const behavioralStrengths = React.useMemo(() => deriveBehavioralStrengths(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
+  const behavioralSensitivity = React.useMemo(() => deriveBehavioralSensitivitySignals(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
+  const recommendationCompatibility = React.useMemo(
+    () => deriveBehavioralCompatibilityScore(resolvedBehavioralProfile, activeRecommendation),
+    [resolvedBehavioralProfile, activeRecommendation],
+  );
+  const behavioralRecommendationConfidence = React.useMemo(
+    () => deriveBehavioralRecommendationConfidence(resolvedBehavioralProfile, recommendationCompatibility),
+    [resolvedBehavioralProfile, recommendationCompatibility],
+  );
+  const globalRecommendationBias = React.useMemo(() => deriveGlobalRecommendationBias(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
+  const behavioralMilestones = React.useMemo(() => deriveBehavioralEvolutionTimeline(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
+  const strategyWeights = React.useMemo(() => deriveAdaptiveStrategyWeights(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
+  const strategyBias = React.useMemo(() => deriveBehavioralStrategyBias(strategyWeights), [strategyWeights]);
 
   return (
     <div className="space-y-4">
@@ -297,6 +329,26 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                   {activeRecommendationFeedback.cautionSignals[0] && <p className="mt-1">Watch: {activeRecommendationFeedback.cautionSignals[0]}</p>}
                 </div>
               )}
+
+
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900">
+                <p className="font-medium">Behavioral intelligence · {Math.round(resolvedBehavioralProfile.behavioralConfidence * 100)}% confidence</p>
+                <p className="mt-1">Continuity: {Math.round(resolvedBehavioralProfile.continuityPreferenceScore * 100)}% · Recovery: {Math.round(resolvedBehavioralProfile.recoveryStabilizationScore * 100)}% · Prep tolerance: {Math.round(resolvedBehavioralProfile.prepToleranceScore * 100)}%</p>
+                <p className="mt-1">Cadence compatibility: {Math.round(recommendationCompatibility * 100)}% · Recommendation confidence: {Math.round(behavioralRecommendationConfidence * 100)}%</p>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {behavioralNarratives.slice(0, 3).map((item) => <Badge key={item} variant="secondary" className="bg-indigo-100 text-indigo-900 hover:bg-indigo-100">{item}</Badge>)}
+                </div>
+                <p className="mt-2 font-medium">Global recommendation bias</p>
+                <ul className="list-disc pl-4">
+                  {globalRecommendationBias.slice(0, 2).map((item) => <li key={item}>{item}</li>)}
+                </ul>
+                {(behavioralStrengths[0] || behavioralSensitivity[0]) && (
+                  <p className="mt-1">Strength: {behavioralStrengths[0] ?? 'Calibrating'} · Sensitivity: {behavioralSensitivity[0] ?? 'No major sensitivity detected'}</p>
+                )}
+                <p className="mt-1">Strategy weights · continuity {Math.round(strategyWeights.continuityAnchor * 100)}%, recovery {Math.round(strategyWeights.recoveryPacing * 100)}%, prep reduction {Math.round(strategyWeights.prepReduction * 100)}%</p>
+                {strategyBias[0] && <p className="mt-1">Adaptive weighting: {strategyBias[0]}</p>}
+                {behavioralMilestones[0] && <p className="mt-1">Behavioral evolution: {behavioralMilestones.slice(0, 2).map((m) => m.detail).join(' · ')}</p>}
+              </div>
 
               {ENABLE_JOURNEY_TIMELINE && (
                 <React.Suspense
