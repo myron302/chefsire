@@ -4,7 +4,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
-import { NUTRITION_CAMPAIGN_CATALOG } from '@/components/meal-planner/campaigns/nutritionCampaignCatalog';
 import { NutritionCampaignProgress } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
 import type { NutritionCampaignAdaptiveRecommendation } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
 import CampaignActivationCard from '@/components/meal-planner/campaigns/components/CampaignActivationCard';
@@ -54,6 +53,14 @@ import { deriveTemporalStabilityProfile } from '@/components/meal-planner/campai
 import { deriveTemporalCompatibilityScore, deriveTemporalRecommendationConfidence, deriveTemporalProtectionBias } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalRecommendationIntelligence';
 import { deriveTemporalStrategyWeights, deriveRhythmProtectionBias } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalStrategyWeights';
 import { deriveTemporalEvolutionTimeline } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalTimeline';
+import {
+  selectActiveCampaign,
+  selectAdaptiveConfidence,
+  selectCampaignProgress,
+  selectRankedCampaigns,
+  selectStabilizationSummary,
+  selectTemporalRhythmSummary,
+} from '@/components/meal-planner/planner-core/selectors';
 
 const WeeklyNutritionJourneyTimeline = React.lazy(() => import('@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline'));
 const ENABLE_JOURNEY_TIMELINE = true;
@@ -113,7 +120,7 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   const [temporalRhythmProfile, setTemporalRhythmProfile] = React.useState(() => getTemporalRhythmProfile() ?? createDefaultTemporalRhythmProfile());
 
   const toggleSavedCampaign = React.useCallback((campaignId: string) => {
-    const campaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === campaignId);
+    const campaign = selectActiveCampaign(campaignId);
     if (!campaign) return;
     const creator = deriveCreatorCampaignRecommendations([campaign], adaptiveRecommendationsByCampaignId)[campaign.id]?.creatorName;
     setSavedCampaignIds((prev) => {
@@ -129,25 +136,18 @@ const NutritionCampaignPanel: React.FC<Props> = ({
     });
   }, [adaptiveRecommendationsByCampaignId, progress]);
 
-  const activeCampaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === activeCampaignId) || null;
-  const pendingCampaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === pendingCampaignId) || null;
+  const activeCampaign = React.useMemo(() => selectActiveCampaign(activeCampaignId), [activeCampaignId]);
+  const pendingCampaign = React.useMemo(() => selectActiveCampaign(pendingCampaignId), [pendingCampaignId]);
 
-  const rankedCampaigns = React.useMemo(() => {
-    const withOrder = NUTRITION_CAMPAIGN_CATALOG.map((campaign, index) => ({ campaign, index }));
-    return withOrder
-      .sort((a, b) => {
-        const aFit = adaptiveRecommendationsByCampaignId?.[a.campaign.id]?.fitScore;
-        const bFit = adaptiveRecommendationsByCampaignId?.[b.campaign.id]?.fitScore;
-        if (typeof aFit === 'number' && typeof bFit === 'number') return bFit - aFit;
-        if (typeof aFit === 'number') return -1;
-        if (typeof bFit === 'number') return 1;
-        return a.index - b.index;
-      })
-      .map((item) => item.campaign);
-  }, [adaptiveRecommendationsByCampaignId]);
+  const rankedCampaigns = React.useMemo(
+    () => selectRankedCampaigns(adaptiveRecommendationsByCampaignId),
+    [adaptiveRecommendationsByCampaignId],
+  );
 
   const topCampaignId = rankedCampaigns[0]?.id;
   const activeRecommendation = activeCampaignId ? adaptiveRecommendationsByCampaignId?.[activeCampaignId] : undefined;
+  const adaptiveConfidence = React.useMemo(() => selectAdaptiveConfidence(activeRecommendation), [activeRecommendation]);
+  const campaignProgressSummary = React.useMemo(() => selectCampaignProgress(progress), [progress]);
   const missionWhy = activeCampaign ? buildMissionWhy(activeCampaign, activeRecommendation) : '';
   const creatorTemplatesByCampaignId = React.useMemo(
     () => deriveCreatorCampaignRecommendations(rankedCampaigns, adaptiveRecommendationsByCampaignId),
@@ -256,6 +256,19 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   const temporalWeights = React.useMemo(() => deriveTemporalStrategyWeights(temporalRhythmProfile), [temporalRhythmProfile]);
   const rhythmProtectionBias = React.useMemo(() => deriveRhythmProtectionBias(temporalWeights), [temporalWeights]);
   const temporalEvolutionTimeline = React.useMemo(() => deriveTemporalEvolutionTimeline(temporalRhythmProfile), [temporalRhythmProfile]);
+  const stabilizationSummary = React.useMemo(
+    () => selectStabilizationSummary(contextualStability, temporalStability),
+    [contextualStability, temporalStability],
+  );
+  const temporalRhythmSummary = React.useMemo(
+    () => selectTemporalRhythmSummary(temporalPhase, temporalTransitions, cadenceRecommendations),
+    [temporalPhase, temporalTransitions, cadenceRecommendations],
+  );
+
+  void adaptiveConfidence;
+  void campaignProgressSummary;
+  void stabilizationSummary;
+  void temporalRhythmSummary;
 
   return (
     <div className="space-y-4">
@@ -525,7 +538,12 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                     isHouseholdReady: campaign.theme === 'meal-prep' || campaign.theme === 'leftovers',
                     recommendation: adaptiveRecommendationsByCampaignId?.[campaign.id],
                   });
-                  return (
+                  void adaptiveConfidence;
+  void campaignProgressSummary;
+  void stabilizationSummary;
+  void temporalRhythmSummary;
+
+  return (
                     <>
                       <Badge variant="secondary">{deriveCampaignSourceLabel(origin)}</Badge>
                       {seasonalCampaignIds.has(campaign.id) && <Badge variant="outline">{seasonalNarrative.title}</Badge>}
@@ -545,7 +563,12 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                 const remix = deriveCampaignRemix(campaign, { householdContinuity: campaign.theme === 'leftovers' });
                 const lineage = deriveCampaignLineage(campaign, remix, creatorName);
                 const collection = collections.find((item) => item.campaignIds.includes(campaign.id));
-                return (
+                void adaptiveConfidence;
+  void campaignProgressSummary;
+  void stabilizationSummary;
+  void temporalRhythmSummary;
+
+  return (
                   <div className={`mt-2 rounded-md border p-2 text-[11px] ${identity.visualIdentity.bgClassName} ${identity.visualIdentity.borderClassName} ${identity.visualIdentity.textClassName}`}>
                     <p className="font-medium">{identity.journeySignature}</p>
                     <p>{identity.creatorAttribution}</p>
