@@ -44,6 +44,17 @@ import {
 import { derivePrepSessions } from '@/components/meal-planner/prepOrchestrationUtils';
 import { deriveNutritionCoachInsights } from '@/components/meal-planner/nutritionCoachUtils';
 import { optimizeWeeklyPlan } from '@/components/meal-planner/auto-planner/autoPlannerEngine';
+import {
+  selectCadenceConsistency,
+  selectContinuityAnchors,
+  selectContinuitySummary,
+  selectMomentumProtection,
+  selectPlannerMealCount,
+  selectPlannerMeals,
+  selectPrepReadinessSummary,
+  selectRecoveryStability,
+  selectStabilizationReadiness,
+} from '@/components/meal-planner/planner-core/selectors';
 import NutritionCoachPanel from '@/components/meal-planner/coach/NutritionCoachPanel';
 import NutritionCampaignPanel from '@/components/meal-planner/campaigns/NutritionCampaignPanel';
 import { evaluateCampaignProgress } from '@/components/meal-planner/campaigns/nutritionCampaignEngine';
@@ -3770,19 +3781,32 @@ const NutritionMealPlanner = () => {
     saveActiveCampaignState({ campaignId: activeCampaignId, startedAt: activeCampaignStartedAt }, user?.id);
   }, [activeCampaignId, activeCampaignStartedAt, user?.id]);
 
+  const plannerMeals = useMemo(() => selectPlannerMeals(weeklyMeals, WEEK_DAYS, MEAL_TYPES), [weeklyMeals]);
+  const plannerMealCount = useMemo(() => selectPlannerMealCount(weeklyMeals, WEEK_DAYS, MEAL_TYPES), [weeklyMeals]);
+  const continuityAnchors = useMemo(() => selectContinuityAnchors(plannedBreakfasts, prepTasksCompleted), [plannedBreakfasts, prepTasksCompleted]);
+  const recoveryStability = useMemo(() => selectRecoveryStability(prepOverloadReduction, leftoverFriendlyMeals), [prepOverloadReduction, leftoverFriendlyMeals]);
+  const momentumProtection = useMemo(() => selectMomentumProtection(proteinGoalHitDays, semanticVarietyScore), [proteinGoalHitDays, semanticVarietyScore]);
+  const cadenceConsistency = useMemo(() => selectCadenceConsistency(plannedBreakfasts, groceryCompletedCount), [plannedBreakfasts, groceryCompletedCount]);
+  const stabilizationReadiness = useMemo(() => selectStabilizationReadiness(prepTasksCompleted, prepOverloadReduction, groceryCompletedCount), [prepTasksCompleted, prepOverloadReduction, groceryCompletedCount]);
+  const prepReadinessSummary = useMemo(() => selectPrepReadinessSummary(prepTasksCompleted, groceryCompletedCount), [prepTasksCompleted, groceryCompletedCount]);
+  const continuitySummary = useMemo(() => selectContinuitySummary(continuityAnchors, recoveryStability, momentumProtection), [continuityAnchors, recoveryStability, momentumProtection]);
+
   const activeCampaignProgress = useMemo(() => {
     if (!activeCampaignId || !activeCampaignStartedAt) return null;
     return evaluateCampaignProgress(activeCampaignId, {
-      plannedBreakfasts,
-      prepTasksCompleted,
-      groceryItemsResolved: groceryCompletedCount,
+      plannedBreakfasts: continuitySummary.continuityAnchors.plannedBreakfasts,
+      prepTasksCompleted: prepReadinessSummary.prepTasksCompleted,
+      groceryItemsResolved: prepReadinessSummary.groceryCompletedCount,
       pantryIngredientsUsed,
-      leftoverFriendlyMeals,
-      proteinGoalDays: proteinGoalHitDays,
-      semanticVarietyScore,
-      prepOverloadReduction,
+      leftoverFriendlyMeals: continuitySummary.recoveryStability.leftoverFriendlyMeals,
+      proteinGoalDays: continuitySummary.momentumProtection.proteinGoalHitDays,
+      semanticVarietyScore: continuitySummary.momentumProtection.semanticVarietyScore,
+      prepOverloadReduction: continuitySummary.recoveryStability.prepOverloadReduction,
     }, activeCampaignStartedAt, undefined, user?.id);
-  }, [activeCampaignId, activeCampaignStartedAt, plannedBreakfasts, prepTasksCompleted, groceryCompletedCount, pantryIngredientsUsed, leftoverFriendlyMeals, proteinGoalHitDays, semanticVarietyScore, prepOverloadReduction]);
+  }, [activeCampaignId, activeCampaignStartedAt, continuitySummary, prepReadinessSummary, pantryIngredientsUsed, user?.id]);
+  void plannerMealCount;
+  void cadenceConsistency;
+  void stabilizationReadiness;
   const handleDismissCoachInsight = (insightId: string) => {
     setDismissedCoachInsightIds((prev) => prev.includes(insightId) ? prev : [...prev, insightId]);
   };
