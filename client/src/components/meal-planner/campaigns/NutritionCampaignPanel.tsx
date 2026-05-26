@@ -46,6 +46,14 @@ import { deriveContextualStabilityProfile, deriveRecoveryStabilizationWindows } 
 import { deriveLifeStateEvolutionTimeline } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualTimeline';
 import { deriveContextualStrategyWeights, deriveProtectiveAdaptationBias } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualStrategyWeights';
 import { deriveContextualCompatibilityScore, deriveContextualRecommendationConfidence, deriveProtectiveRecommendationBias } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualRecommendationIntelligence';
+import { createDefaultTemporalRhythmProfile, updateTemporalRhythmProfile } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalRhythmProfile';
+import { getTemporalRhythmProfile, saveTemporalRhythmProfile } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalRhythmStore';
+import { deriveTemporalAdaptationBias, deriveRhythmOrchestrationStrategies, deriveCadencePhaseRecommendations } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalAdaptation';
+import { deriveTemporalPhase, deriveTemporalPhaseTransitions, deriveRhythmCycleNarratives } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalPhaseModeling';
+import { deriveTemporalStabilityProfile } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalStability';
+import { deriveTemporalCompatibilityScore, deriveTemporalRecommendationConfidence, deriveTemporalProtectionBias } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalRecommendationIntelligence';
+import { deriveTemporalStrategyWeights, deriveRhythmProtectionBias } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalStrategyWeights';
+import { deriveTemporalEvolutionTimeline } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalTimeline';
 
 const WeeklyNutritionJourneyTimeline = React.lazy(() => import('@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline'));
 const ENABLE_JOURNEY_TIMELINE = true;
@@ -102,6 +110,7 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   });
   const [behavioralProfile, setBehavioralProfile] = React.useState(() => getBehavioralIntelligenceProfile());
   const [lifeStateProfile, setLifeStateProfile] = React.useState(() => getLifeStateProfile() ?? createDefaultLifeStateProfile());
+  const [temporalRhythmProfile, setTemporalRhythmProfile] = React.useState(() => getTemporalRhythmProfile() ?? createDefaultTemporalRhythmProfile());
 
   const toggleSavedCampaign = React.useCallback((campaignId: string) => {
     const campaign = NUTRITION_CAMPAIGN_CATALOG.find((item) => item.id === campaignId);
@@ -180,8 +189,10 @@ const NutritionCampaignPanel: React.FC<Props> = ({
       const behavioralForLifeState = updateBehavioralIntelligenceProfile(behavioralProfile, allMemories);
       const nextLifeState = updateLifeStateProfile(lifeStateProfile, behavioralForLifeState, allMemories);
       setLifeStateProfile(saveLifeStateProfile(nextLifeState));
+      const nextTemporal = updateTemporalRhythmProfile(temporalRhythmProfile, behavioralForLifeState, nextLifeState, allMemories);
+      setTemporalRhythmProfile(saveTemporalRhythmProfile(nextTemporal));
     }
-  }, [activeCampaignId, progress]);
+  }, [activeCampaignId, progress, behavioralProfile, lifeStateProfile, temporalRhythmProfile]);
 
   const activeEvolutionMemory = activeCampaignId ? evolutionMemoryByCampaignId[activeCampaignId] : null;
   const activeLearningProfile = activeEvolutionMemory ? deriveCampaignLearningProfile(activeEvolutionMemory) : null;
@@ -226,6 +237,25 @@ const NutritionCampaignPanel: React.FC<Props> = ({
     [lifeStateProfile, contextualCompatibility],
   );
   const protectiveRecommendationBias = React.useMemo(() => deriveProtectiveRecommendationBias(lifeStateProfile), [lifeStateProfile]);
+  const temporalPhase = React.useMemo(() => deriveTemporalPhase(temporalRhythmProfile), [temporalRhythmProfile]);
+  const temporalTransitions = React.useMemo(() => deriveTemporalPhaseTransitions(temporalRhythmProfile), [temporalRhythmProfile]);
+  const rhythmNarratives = React.useMemo(() => deriveRhythmCycleNarratives(temporalRhythmProfile), [temporalRhythmProfile]);
+  const temporalAdaptationBias = React.useMemo(() => deriveTemporalAdaptationBias(temporalRhythmProfile), [temporalRhythmProfile]);
+  const rhythmStrategies = React.useMemo(() => deriveRhythmOrchestrationStrategies(temporalRhythmProfile), [temporalRhythmProfile]);
+  const cadenceRecommendations = React.useMemo(() => deriveCadencePhaseRecommendations(temporalRhythmProfile), [temporalRhythmProfile]);
+  const temporalStability = React.useMemo(() => deriveTemporalStabilityProfile(temporalRhythmProfile), [temporalRhythmProfile]);
+  const temporalCompatibility = React.useMemo(
+    () => deriveTemporalCompatibilityScore(resolvedBehavioralProfile, lifeStateProfile, temporalRhythmProfile, activeRecommendation),
+    [resolvedBehavioralProfile, lifeStateProfile, temporalRhythmProfile, activeRecommendation],
+  );
+  const temporalRecommendationConfidence = React.useMemo(
+    () => deriveTemporalRecommendationConfidence(temporalRhythmProfile, temporalCompatibility),
+    [temporalRhythmProfile, temporalCompatibility],
+  );
+  const temporalProtectionBias = React.useMemo(() => deriveTemporalProtectionBias(temporalRhythmProfile), [temporalRhythmProfile]);
+  const temporalWeights = React.useMemo(() => deriveTemporalStrategyWeights(temporalRhythmProfile), [temporalRhythmProfile]);
+  const rhythmProtectionBias = React.useMemo(() => deriveRhythmProtectionBias(temporalWeights), [temporalWeights]);
+  const temporalEvolutionTimeline = React.useMemo(() => deriveTemporalEvolutionTimeline(temporalRhythmProfile), [temporalRhythmProfile]);
 
   return (
     <div className="space-y-4">
@@ -393,6 +423,24 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                 {protectiveNotes[0] && <p className="mt-1">Protective weighting: {protectiveNotes.slice(0, 2).join(' · ')}</p>}
                 {protectiveRecommendationBias[0] && <p className="mt-1">Recommendation bias: {protectiveRecommendationBias[0]}</p>}
                 {contextualTimeline[0] && <p className="mt-1">Contextual evolution: {contextualTimeline.slice(0, 2).map((m) => m.detail).join(' · ')}</p>}
+              </div>
+              <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-900">
+                <p className="font-medium">Temporal rhythm intelligence</p>
+                <p className="mt-1">
+                  Phase {temporalPhase} · Rhythm stability {Math.round(temporalRhythmProfile.rhythmStabilityScore * 100)}% · Recovery window {Math.round(temporalRhythmProfile.recoveryWindowScore * 100)}%
+                </p>
+                <p className="mt-1">
+                  Cadence resilience {Math.round(temporalStability.cadenceResilience * 100)}% · Temporal confidence {Math.round(temporalRecommendationConfidence * 100)}%
+                </p>
+                <p className="mt-1">Timing weights · recovery {Math.round(temporalWeights.recoveryPacingWeight * 100)}% · novelty {Math.round(temporalWeights.noveltyReintroductionWeight * 100)}% · continuity {Math.round(temporalWeights.continuityAnchorWeight * 100)}%</p>
+                <ul className="mt-1 list-disc pl-4">
+                  {[...rhythmNarratives, ...temporalTransitions, ...cadenceRecommendations].slice(0, 4).map((item) => <li key={item}>{item}</li>)}
+                </ul>
+                {temporalAdaptationBias[0] && <p className="mt-1">Rhythm adaptation: {temporalAdaptationBias.slice(0, 2).join(' · ')}</p>}
+                {rhythmStrategies[0] && <p className="mt-1">Orchestration: {rhythmStrategies.slice(0, 2).join(' · ')}</p>}
+                {temporalProtectionBias[0] && <p className="mt-1">Protection timing: {temporalProtectionBias[0]}</p>}
+                {rhythmProtectionBias[0] && <p className="mt-1">Protection weighting: {rhythmProtectionBias[0]}</p>}
+                {temporalEvolutionTimeline[0] && <p className="mt-1">Temporal evolution: {temporalEvolutionTimeline.slice(0, 2).join(' · ')}</p>}
               </div>
 
               {ENABLE_JOURNEY_TIMELINE && (
