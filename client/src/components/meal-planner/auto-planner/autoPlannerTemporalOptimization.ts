@@ -1,6 +1,7 @@
 import { deriveDayRhythmProfile, calculateDailyLifestyleLoad, classifyDayEnergyLevel, type DayRhythmProfile } from './autoPlannerLifestyleAnalysis';
+import { calculateMealComplexity, getMealsForSlot } from '../planner-core/traversal/plannerTraversal';
 
-const mealComplexity = (meal: any) => Number(meal?.mealItems?.length || meal?.ingredients?.length || 1);
+const mealComplexity = (meal: any) => Math.max(1, calculateMealComplexity(meal));
 
 export const calculateMealEnergyFit = (meal: any, mealType: string, energyLevel: 'low' | 'medium' | 'high') => {
   const complexity = mealComplexity(meal);
@@ -21,10 +22,7 @@ export const calculateRecoveryMealSupport = (meal: any, mealType: string, rhythm
 export const analyzeWeeklyEnergyFlow = (weeklyMeals: Record<string, any>, weekDays: readonly string[], mealTypes: readonly string[]) => {
   const daily = weekDays.map((day, dayIndex) => {
     const rhythm = deriveDayRhythmProfile(day, dayIndex, weekDays.length);
-    const meals = mealTypes.flatMap((mealType) => {
-      const arr = Array.isArray(weeklyMeals?.[day]?.[mealType]) ? weeklyMeals[day][mealType] : weeklyMeals?.[day]?.[mealType] ? [weeklyMeals[day][mealType]] : [];
-      return arr;
-    }).filter(Boolean);
+    const meals = mealTypes.flatMap((mealType) => getMealsForSlot(weeklyMeals, day, mealType));
     const load = calculateDailyLifestyleLoad(day, meals, rhythm);
     const energyLevel = classifyDayEnergyLevel(load.lifestyleLoad);
     return { day, rhythm, load, energyLevel, meals };
@@ -32,7 +30,7 @@ export const analyzeWeeklyEnergyFlow = (weeklyMeals: Record<string, any>, weekDa
 
   const lateWeekLoad = daily.filter((d) => d.rhythm.lifecyclePhase === 'late-week').reduce((acc, d) => acc + d.load.lifestyleLoad, 0);
   const prepHeavyDinners = daily.reduce((acc, d) => {
-    const dinners = Array.isArray(weeklyMeals?.[d.day]?.dinner) ? weeklyMeals[d.day].dinner : weeklyMeals?.[d.day]?.dinner ? [weeklyMeals[d.day].dinner] : [];
+    const dinners = getMealsForSlot(weeklyMeals, d.day, 'dinner');
     const heavy = dinners.some((meal: any) => mealComplexity(meal) >= 8);
     return acc + (heavy ? 1 : 0);
   }, 0);
