@@ -90,14 +90,7 @@ function looksLikeCraftNodeMap(obj: Record<string, unknown>): boolean {
  * Safe to call with any value coming from the database.
  */
 export function normalizeStoreLayout(raw: unknown): StoreLayoutConfigV2 {
-  // Legacy string: Craft.js state saved as a serialized JSON string
-  if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    if (!trimmed) return { version: 2, customization: {} };
-    return { version: 2, customization: {}, builder: trimmed as unknown as StoreBuilderLayoutConfig };
-  }
-
-  // null / undefined / number / boolean / array → empty v2
+  // null / undefined / primitive / array → empty v2
   if (raw === null || raw === undefined || typeof raw !== "object" || Array.isArray(raw)) {
     return { version: 2, customization: {} };
   }
