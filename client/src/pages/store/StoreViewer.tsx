@@ -12,6 +12,7 @@ import { ShoppingBag, Eye, Heart, MapPin, Clock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import { THEMES } from "@/components/store/ThemeSelector";
+import { normalizeStoreLayout } from "@shared/store/storeLayout";
 
 interface StoreData {
   id: number;
@@ -166,13 +167,17 @@ export default function StoreViewer() {
   if (!store) return null;
 
   const isOwner = user?.id === store.userId;
-  const themeColors = THEMES.find((t) => t.id === store.theme)?.colors ?? THEMES[0].colors;
 
-  // Extract layout config — saved by StoreCustomization as store.layout
-  const layout: Record<string, any> =
-    store.layout && typeof store.layout === "object" && !Array.isArray(store.layout)
-      ? store.layout
-      : {};
+  // Extract customization — safe for legacy flat, Craft node-map, and v2 shapes
+  const layout = normalizeStoreLayout(store.layout).customization;
+
+  // Custom colors override the theme preset
+  const preset = THEMES.find((t) => t.id === store.theme)?.colors ?? THEMES[0].colors;
+  const themeColors = {
+    primary: layout.colors?.primary || preset.primary,
+    secondary: layout.colors?.secondary || preset.secondary,
+    accent: layout.colors?.accent || preset.accent,
+  };
 
   // Map layout fields to what StoreHeader expects
   const storeForHeader = {

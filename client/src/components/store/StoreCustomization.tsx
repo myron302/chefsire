@@ -24,6 +24,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
+import { normalizeStoreLayout } from "@shared/store/storeLayout";
 
 interface StoreCustomizationProps {
   store: any;
@@ -37,7 +38,7 @@ export default function StoreCustomization({
   defaultTab = "branding",
 }: StoreCustomizationProps) {
   const { toast } = useToast();
-  const customization = store?.layout || {};
+  const customization = normalizeStoreLayout(store?.layout).customization;
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [profileBio, setProfileBio] = useState(store?.bio || "");
   const [config, setConfig] = useState({

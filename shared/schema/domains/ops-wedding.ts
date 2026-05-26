@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, boolean, timestamp, date, bigserial, jsonb, decimal, index } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 import { orders } from "./commerce-billing";
+import type { StoreLayoutConfigV2 } from "../../store/storeLayout";
 
 type StoreThemeConfig =
   | string
@@ -13,53 +14,8 @@ type StoreThemeConfig =
       backgroundColor?: string;
     };
 
-type StoreLayoutCustomizationConfig = {
-  logo?: string;
-  bannerImage?: string;
-  bannerTitle?: string;
-  bannerSubtitle?: string;
-  showBanner?: boolean;
-  aboutEnabled?: boolean;
-  aboutTitle?: string;
-  aboutContent?: string;
-  announcementBar?: string;
-  announcementEnabled?: boolean;
-  socialLinks?: {
-    instagram?: string;
-    facebook?: string;
-    twitter?: string;
-    email?: string;
-    phone?: string;
-  };
-  contactInfo?: {
-    address?: string;
-    hours?: string;
-  };
-  layout?: {
-    gridColumns?: number;
-    productCardStyle?: "elevated" | "flat";
-    spacing?: "compact" | "normal" | "relaxed";
-  };
-  colors?: {
-    primary?: string;
-    secondary?: string;
-    accent?: string;
-  };
-};
 
-type StoreBuilderNode = {
-  type?: string;
-  isCanvas?: boolean;
-  props?: Record<string, unknown>;
-  custom?: Record<string, unknown>;
-  displayName?: string;
-  parent?: string | null;
-  nodes?: string[];
-  linkedNodes?: Record<string, string>;
-};
-
-type StoreBuilderLayoutConfig = Record<string, StoreBuilderNode>;
-type StoreLayoutConfig = StoreLayoutCustomizationConfig | StoreBuilderLayoutConfig;
+type StoreLayoutConfig = StoreLayoutConfigV2;
 type PaymentMethodAccountDetails = {
   merchantId?: string;
   locationId?: string;
