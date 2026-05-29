@@ -146,7 +146,7 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-// PATCH /api/stores-crud/:id - Update store details
+// PATCH /api/stores/:id - Update store details
 router.patch("/:id", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
@@ -201,7 +201,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
   }
 });
 
-// PATCH /api/stores-crud/:id/layout - Update store builder layout
+// PATCH /api/stores/:id/layout - Update store builder layout
 router.patch("/:id/layout", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
@@ -239,7 +239,7 @@ router.patch("/:id/layout", requireAuth, async (req, res) => {
   }
 });
 
-// PATCH /api/stores-crud/:id/publish - Toggle published status
+// PATCH /api/stores/:id/publish - Toggle published status
 router.patch("/:id/publish", requireAuth, async (req, res) => {
   try {
     if (!req.user) {

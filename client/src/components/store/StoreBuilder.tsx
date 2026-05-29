@@ -138,7 +138,7 @@ export default function StoreBuilder({
     if (!storeId) { setLayoutReady(true); return; }
     (async () => {
       try {
-        const res = await fetch(`/api/stores-crud/${storeId}`, {
+        const res = await fetch(`/api/stores/${storeId}`, {
           credentials: "include",
         });
         if (res.ok) {
@@ -170,7 +170,7 @@ export default function StoreBuilder({
     }
     setSaving(true);
     try {
-      const res = await fetch(`/api/stores-crud/${storeId}/layout`, {
+      const res = await fetch(`/api/stores/${storeId}/layout`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
