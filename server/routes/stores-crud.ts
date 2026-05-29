@@ -4,6 +4,7 @@ import { stores, users, orders } from "../../shared/schema.js";
 import { eq, count, sum, sql } from "drizzle-orm";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { requireAuth, optionalAuth } from "../middleware/auth";
+import { normalizeStoreLayout } from "../../shared/store/storeLayout.js";
 
 const router = Router();
 type StoreInsert = typeof stores.$inferInsert;
@@ -174,17 +175,17 @@ router.patch("/:id", requireAuth, async (req, res) => {
 
     // Support both customization and layout fields
     if (customization !== undefined) {
-      const existingLayout =
-        existing.layout && typeof existing.layout === "object" && !Array.isArray(existing.layout)
-          ? (existing.layout as Record<string, unknown>)
-          : {};
-      const patchLayout =
+      const v2 = normalizeStoreLayout(existing.layout);
+      const patch =
         customization && typeof customization === "object" && !Array.isArray(customization)
           ? (customization as Record<string, unknown>)
           : {};
-      updateData.layout = { ...existingLayout, ...patchLayout } as StoreInsert["layout"];
+      updateData.layout = {
+        ...v2,
+        customization: { ...v2.customization, ...patch },
+      } as StoreInsert["layout"];
     } else if (layout !== undefined) {
-      updateData.layout = layout;
+      updateData.layout = normalizeStoreLayout(layout) as StoreInsert["layout"];
     }
 
     const [updated] = await db
@@ -200,7 +201,7 @@ router.patch("/:id", requireAuth, async (req, res) => {
   }
 });
 
-// PATCH /api/stores-crud/:id/layout - Update store layout
+// PATCH /api/stores-crud/:id/layout - Update store builder layout
 router.patch("/:id/layout", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
@@ -208,7 +209,8 @@ router.patch("/:id/layout", requireAuth, async (req, res) => {
     }
 
     const { id } = req.params;
-    const { layout } = req.body as Pick<StoreUpdateRequestBody, "layout">;
+    // Accepts { builder: <craft node map or serialized string> }
+    const { builder } = req.body as { builder: unknown };
 
     const existing = await db.query.stores.findFirst({
       where: eq(stores.id, id),
@@ -218,10 +220,13 @@ router.patch("/:id/layout", requireAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Not authorized" });
     }
 
+    const v2 = normalizeStoreLayout(existing.layout);
+    const updatedLayout = { ...v2, builder: builder ?? v2.builder };
+
     const [updated] = await db
       .update(stores)
       .set({
-        layout,
+        layout: updatedLayout as StoreInsert["layout"],
         updatedAt: new Date(),
       })
       .where(eq(stores.id, id))

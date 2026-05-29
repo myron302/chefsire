@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { useUser } from "@/contexts/UserContext";
 import { useToast } from "@/hooks/use-toast";
 import { ArrowLeft } from "lucide-react";
+import { normalizeStoreLayout } from "@shared/store/storeLayout";
 import StoreReadinessPanel from "@/pages/store/components/StoreReadinessPanel";
 import type { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
 
@@ -142,8 +143,12 @@ export default function StoreBuilder({
         });
         if (res.ok) {
           const data = await res.json();
-          if (typeof data.store?.layout === "string") {
-            setInitialLayout(data.store.layout);
+          const builderData = normalizeStoreLayout(data.store?.layout).builder;
+          if (builderData) {
+            // Frame expects a JSON string; stringify if we got an object
+            setInitialLayout(
+              typeof builderData === "string" ? builderData : JSON.stringify(builderData),
+            );
           }
         }
       } catch (err) {
@@ -169,7 +174,7 @@ export default function StoreBuilder({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ layout: editorState }),
+        body: JSON.stringify({ builder: editorState }),
       });
       if (res.ok) {
         toast({ description: "Store layout saved!" });
