@@ -1,4 +1,4 @@
-import { calculateDailyPrepStress } from './autoPlannerOptimizationEngine';
+import { calculateDailyPrepStress } from './autoPlannerMetrics';
 
 export type DayRhythmProfile = {
   day: string;

@@ -1,4 +1,4 @@
-import { normalizeMealIngredient } from '../plannerGroceryUtils';
+import { normalizeMealIngredient } from '../ingredientNormalization';
 import type { RelationshipNode, RelationshipEdge, IngredientCluster } from './relationshipTypes';
 
 const INGREDIENT_FAMILIES: Record<string, string[]> = {

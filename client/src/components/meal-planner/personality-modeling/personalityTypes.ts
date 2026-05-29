@@ -1,4 +1,4 @@
-import type { LongitudinalPlanningSnapshot } from '../planner-adaptation/adaptationTypes';
+import type { LongitudinalPlanningSnapshot } from '../planner-adaptation/longitudinalPlanningTypes';
 
 export type MealTypeAdherencePattern = Record<string, number>;
 
