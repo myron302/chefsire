@@ -4,7 +4,6 @@ import {
   Package,
   ShoppingCart,
   Sparkles,
-  Palette,
   BarChart3,
   Crown,
 } from "lucide-react";
@@ -22,10 +21,10 @@ import StoreDashboardEmptyState from "./components/StoreDashboardEmptyState";
 import StoreDashboardHeader from "./components/StoreDashboardHeader";
 import StoreDashboardProductsTab from "./components/StoreDashboardProductsTab";
 import StoreDashboardOrdersTab from "./components/StoreDashboardOrdersTab";
-import StoreDashboardCustomizeTab from "./components/StoreDashboardCustomizeTab";
 import StoreReadinessPanel from "./components/StoreReadinessPanel";
 import type { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
-import StoreDashboardThemeTab from "./components/StoreDashboardThemeTab";
+import UnifiedStoreCustomizer from "@/components/store/UnifiedStoreCustomizer";
+import type { StoreProduct } from "./StoreViewerContent";
 import {
   buildSubscriptionCheckoutPayload,
   calculateTrialDaysLeft,
@@ -49,10 +48,14 @@ export default function StoreDashboard() {
   const [productsLoaded, setProductsLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [publishing, setPublishing] = useState(false);
-  const [selectedTheme, setSelectedTheme] = useState("modern");
   const [showPlansModal, setShowPlansModal] = useState(false);
-  const [activeTab, setActiveTab] = useState("products");
-  const [customizeInitialTab, setCustomizeInitialTab] = useState("branding");
+  const [activeTab, setActiveTab] = useState(() => {
+    // Normalize legacy tab query params at startup
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get("tab") || "products";
+    if (tab === "theme" || tab === "builder") return "customize";
+    return tab;
+  });
   const tabsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -174,63 +177,6 @@ export default function StoreDashboard() {
     }
   };
 
-  const handleThemeChange = async (themeId: string) => {
-    setSelectedTheme(themeId);
-    if (!store?.id) return;
-    try {
-      const res = await fetch(`/api/stores/${store.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ theme: themeId }),
-      });
-      if (res.ok) {
-        toast({ description: "Theme updated!" });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to update theme",
-          variant: "destructive",
-        });
-      }
-    } catch {
-      toast({
-        title: "Error",
-        description: "Failed to update theme",
-        variant: "destructive",
-      });
-    }
-  };
-
-  const handleCustomizationUpdate = async (updates: any) => {
-    if (!store?.id) return;
-    try {
-      const res = await fetch(`/api/stores/${store.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify(updates),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setStore(data.store);
-        toast({ description: "Store customization saved!" });
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to save customization",
-          variant: "destructive",
-        });
-      }
-    } catch {
-      toast({
-        title: "Error",
-        description: "Failed to save customization",
-        variant: "destructive",
-      });
-    }
-  };
-
   const scrollToTabs = () => {
     setTimeout(() => {
       tabsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -253,7 +199,6 @@ export default function StoreDashboard() {
     }
 
     if (action === "description") {
-      setCustomizeInitialTab("branding");
       setActiveTab("customize");
       scrollToTabs();
       toast({ description: "Edit your store description in the Branding section below." });
@@ -267,10 +212,9 @@ export default function StoreDashboard() {
     }
 
     if (action === "banner") {
-      setCustomizeInitialTab("sections");
       setActiveTab("customize");
       scrollToTabs();
-      toast({ description: "Upload your banner image in the Sections tab below." });
+      toast({ description: "Upload your banner image in the Hero / Banner section below." });
       return;
     }
 
@@ -407,10 +351,6 @@ export default function StoreDashboard() {
               <Sparkles className="w-4 h-4 mr-1.5" />
               Customize
             </TabsTrigger>
-            <TabsTrigger value="theme">
-              <Palette className="w-4 h-4 mr-1.5" />
-              Theme
-            </TabsTrigger>
             <TabsTrigger value="analytics">
               <BarChart3 className="w-4 h-4 mr-1.5" />
               Analytics
@@ -436,20 +376,12 @@ export default function StoreDashboard() {
             <StoreDashboardOrdersTab recentSales={recentSales} />
           </TabsContent>
 
-          {/* Customize Tab */}
+          {/* Unified Customize Tab */}
           <TabsContent value="customize">
-            <StoreDashboardCustomizeTab
+            <UnifiedStoreCustomizer
               store={store}
-              onUpdate={handleCustomizationUpdate}
-              defaultTab={customizeInitialTab}
-            />
-          </TabsContent>
-
-          {/* Theme Tab */}
-          <TabsContent value="theme">
-            <StoreDashboardThemeTab
-              selectedTheme={selectedTheme}
-              onSelectTheme={handleThemeChange}
+              products={products as unknown as StoreProduct[]}
+              onSaved={(updatedStore) => setStore(updatedStore)}
             />
           </TabsContent>
 
