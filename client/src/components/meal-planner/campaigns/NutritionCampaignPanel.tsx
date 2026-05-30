@@ -9,58 +9,11 @@ import type { NutritionCampaignAdaptiveRecommendation } from '@/components/meal-
 import CampaignActivationCard from '@/components/meal-planner/campaigns/components/CampaignActivationCard';
 import CampaignHeaderSummary from '@/components/meal-planner/campaigns/components/CampaignHeaderSummary';
 import CampaignMissionCard from '@/components/meal-planner/campaigns/components/CampaignMissionCard';
-import CampaignRecommendationBadges from '@/components/meal-planner/campaigns/components/CampaignRecommendationBadges';
-import { buildMissionWhy } from '@/components/meal-planner/campaigns/components/campaignPanelUtils';
-import { deriveCampaignAchievements } from '@/components/meal-planner/campaigns/ecosystem/campaignAchievements';
-import { deriveCampaignOrigin, deriveCampaignSourceLabel, deriveCampaignDiscoveryReason } from '@/components/meal-planner/campaigns/ecosystem/campaignOrigins';
-import { deriveCreatorCampaignRecommendations } from '@/components/meal-planner/campaigns/ecosystem/creatorCampaignTemplates';
-import { deriveSeasonalCampaigns, deriveSeasonalNarratives } from '@/components/meal-planner/campaigns/ecosystem/seasonalCampaigns';
-import { deriveSharedCampaignProgress, deriveCollaborativeMissionSuggestions } from '@/components/meal-planner/campaigns/ecosystem/householdCampaigns';
-import { deriveCampaignJourneyType, deriveJourneyCategoryNarrative } from '@/components/meal-planner/campaigns/ecosystem/campaignJourneyTypes';
-import { deriveCoachCampaignInsights, deriveCampaignInterventionReasoning } from '@/components/meal-planner/campaigns/ecosystem/coachCampaignIntegration';
-import { deriveCampaignEvents } from '@/components/meal-planner/campaigns/ecosystem/campaignEvents';
-
-import { deriveCampaignIdentity } from '@/components/meal-planner/campaigns/identity/campaignIdentity';
-import { deriveCampaignRemix, deriveCampaignRemixNarrative } from '@/components/meal-planner/campaigns/identity/campaignRemix';
-import { deriveCampaignCollections } from '@/components/meal-planner/campaigns/identity/campaignCollections';
-import { deriveCampaignLineage, deriveCampaignEvolutionNarrative } from '@/components/meal-planner/campaigns/identity/campaignLineage';
-import { getSavedCampaigns, removeSavedCampaign, saveCampaignIdentity } from '@/components/meal-planner/campaigns/identity/savedCampaignStore';
-
-import { deriveCampaignEvolutionMemory, updateCampaignEvolutionMemory } from '@/components/meal-planner/campaigns/evolution/campaignEvolutionMemory';
-import { getCampaignEvolutionMemory, saveCampaignEvolutionMemory } from '@/components/meal-planner/campaigns/evolution/campaignEvolutionStore';
-import { deriveCampaignLearningProfile, deriveAdaptiveLearningInsights } from '@/components/meal-planner/campaigns/evolution/campaignLearningProfiles';
-import { deriveEvolutionTimeline } from '@/components/meal-planner/campaigns/evolution/campaignEvolutionTimeline';
-import { deriveCampaignRecommendationFeedback } from '@/components/meal-planner/campaigns/evolution/campaignRecommendationFeedback';
-
-import { deriveBehavioralPreferenceNarratives, deriveBehavioralSensitivitySignals, deriveBehavioralStrengths } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralPreferences';
-import { deriveBehavioralIntelligenceProfile, updateBehavioralIntelligenceProfile } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralIntelligenceProfile';
-import { deriveBehavioralEvolutionTimeline } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralEvolutionTimeline';
-import { deriveBehavioralRecommendationConfidence, deriveBehavioralCompatibilityScore, deriveGlobalRecommendationBias } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralRecommendationIntelligence';
-import { deriveAdaptiveStrategyWeights, deriveBehavioralStrategyBias } from '@/components/meal-planner/campaigns/behavioral-intelligence/adaptiveStrategyWeights';
-import { getBehavioralIntelligenceProfile, saveBehavioralIntelligenceProfile } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralIntelligenceStore';
-import { createDefaultLifeStateProfile, updateLifeStateProfile } from '@/components/meal-planner/campaigns/life-state-intelligence/lifeStateProfile';
-import { getLifeStateProfile, saveLifeStateProfile } from '@/components/meal-planner/campaigns/life-state-intelligence/lifeStateStore';
-import { deriveContextualAdaptationBias, deriveContextualInterventionStrategies } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualAdaptation';
-import { deriveContextualStabilityProfile, deriveRecoveryStabilizationWindows } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualStability';
-import { deriveLifeStateEvolutionTimeline } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualTimeline';
-import { deriveContextualStrategyWeights, deriveProtectiveAdaptationBias } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualStrategyWeights';
-import { deriveContextualCompatibilityScore, deriveContextualRecommendationConfidence, deriveProtectiveRecommendationBias } from '@/components/meal-planner/campaigns/life-state-intelligence/contextualRecommendationIntelligence';
-import { createDefaultTemporalRhythmProfile, updateTemporalRhythmProfile } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalRhythmProfile';
-import { getTemporalRhythmProfile, saveTemporalRhythmProfile } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalRhythmStore';
-import { deriveTemporalAdaptationBias, deriveRhythmOrchestrationStrategies, deriveCadencePhaseRecommendations } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalAdaptation';
-import { deriveTemporalPhase, deriveTemporalPhaseTransitions, deriveRhythmCycleNarratives } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalPhaseModeling';
-import { deriveTemporalStabilityProfile } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalStability';
-import { deriveTemporalCompatibilityScore, deriveTemporalRecommendationConfidence, deriveTemporalProtectionBias } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalRecommendationIntelligence';
-import { deriveTemporalStrategyWeights, deriveRhythmProtectionBias } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalStrategyWeights';
-import { deriveTemporalEvolutionTimeline } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalTimeline';
-import {
-  selectActiveCampaign,
-  selectAdaptiveConfidence,
-  selectCampaignProgress,
-  selectRankedCampaigns,
-  selectStabilizationSummary,
-  selectTemporalRhythmSummary,
-} from '@/components/meal-planner/planner-core/selectors';
+import CampaignSuggestionCard from '@/components/meal-planner/campaigns/components/CampaignSuggestionCard';
+import { useCampaignPersistence } from '@/components/meal-planner/campaigns/hooks/useCampaignPersistence';
+import { useCampaignIntelligence } from '@/components/meal-planner/campaigns/hooks/useCampaignIntelligence';
+import { buildCampaignPanelViewModel } from '@/components/meal-planner/campaigns/view-models/buildCampaignPanelViewModel';
+import { selectActiveCampaign, selectRankedCampaigns } from '@/components/meal-planner/planner-core/selectors';
 
 const WeeklyNutritionJourneyTimeline = React.lazy(() => import('@/components/meal-planner/journey-timeline/WeeklyNutritionJourneyTimeline'));
 const ENABLE_JOURNEY_TIMELINE = true;
@@ -107,168 +60,55 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   adaptiveRecommendationsByCampaignId,
 }) => {
   const [pendingCampaignId, setPendingCampaignId] = React.useState<string | null>(null);
-  const [savedCampaignIds, setSavedCampaignIds] = React.useState<Set<string>>(() => new Set(getSavedCampaigns().map((item) => item.campaignId)));
-  const [evolutionMemoryByCampaignId, setEvolutionMemoryByCampaignId] = React.useState(() => {
-    const fromStore = getCampaignEvolutionMemory();
-    return fromStore.reduce<Record<string, ReturnType<typeof deriveCampaignEvolutionMemory>>>((acc, item) => {
-      acc[item.campaignId] = item;
-      return acc;
-    }, {});
-  });
-  const [behavioralProfile, setBehavioralProfile] = React.useState(() => getBehavioralIntelligenceProfile());
-  const [lifeStateProfile, setLifeStateProfile] = React.useState(() => getLifeStateProfile() ?? createDefaultLifeStateProfile());
-  const [temporalRhythmProfile, setTemporalRhythmProfile] = React.useState(() => getTemporalRhythmProfile() ?? createDefaultTemporalRhythmProfile());
-
-  const toggleSavedCampaign = React.useCallback((campaignId: string) => {
-    const campaign = selectActiveCampaign(campaignId);
-    if (!campaign) return;
-    const creator = deriveCreatorCampaignRecommendations([campaign], adaptiveRecommendationsByCampaignId)[campaign.id]?.creatorName;
-    setSavedCampaignIds((prev) => {
-      if (prev.has(campaignId)) {
-        removeSavedCampaign(campaignId);
-        const next = new Set(prev);
-        next.delete(campaignId);
-        return next;
-      }
-      const identity = deriveCampaignIdentity(campaign, progress, creator);
-      saveCampaignIdentity(identity);
-      return new Set(prev).add(campaignId);
-    });
-  }, [adaptiveRecommendationsByCampaignId, progress]);
 
   const activeCampaign = React.useMemo(() => selectActiveCampaign(activeCampaignId), [activeCampaignId]);
   const pendingCampaign = React.useMemo(() => selectActiveCampaign(pendingCampaignId), [pendingCampaignId]);
-
   const rankedCampaigns = React.useMemo(
     () => selectRankedCampaigns(adaptiveRecommendationsByCampaignId),
     [adaptiveRecommendationsByCampaignId],
   );
-
-  const topCampaignId = rankedCampaigns[0]?.id;
   const activeRecommendation = activeCampaignId ? adaptiveRecommendationsByCampaignId?.[activeCampaignId] : undefined;
-  const adaptiveConfidence = React.useMemo(() => selectAdaptiveConfidence(activeRecommendation), [activeRecommendation]);
-  const campaignProgressSummary = React.useMemo(() => selectCampaignProgress(progress), [progress]);
-  const missionWhy = activeCampaign ? buildMissionWhy(activeCampaign, activeRecommendation) : '';
-  const creatorTemplatesByCampaignId = React.useMemo(
-    () => deriveCreatorCampaignRecommendations(rankedCampaigns, adaptiveRecommendationsByCampaignId),
-    [rankedCampaigns, adaptiveRecommendationsByCampaignId],
-  );
-  const seasonalCampaignIds = React.useMemo(
-    () => new Set(deriveSeasonalCampaigns(rankedCampaigns).map((campaign) => campaign.id)),
-    [rankedCampaigns],
-  );
-  const seasonalNarrative = React.useMemo(() => deriveSeasonalNarratives(), []);
-  const achievements = React.useMemo(() => deriveCampaignAchievements(progress), [progress]);
-  const unlockedAchievements = achievements.filter((achievement) => achievement.unlocked);
-  const sharedState = React.useMemo(() => deriveSharedCampaignProgress(progress, 3), [progress]);
-  const collaborationSuggestions = React.useMemo(() => deriveCollaborativeMissionSuggestions(sharedState), [sharedState]);
-  const activeJourneyType = activeCampaign ? deriveCampaignJourneyType(activeCampaign, progress) : null;
-  const coachInsights = React.useMemo(
-    () => deriveCoachCampaignInsights(rankedCampaigns, adaptiveRecommendationsByCampaignId, progress),
-    [rankedCampaigns, adaptiveRecommendationsByCampaignId, progress],
-  );
-  const campaignEvents = React.useMemo(() => deriveCampaignEvents(progress), [progress]);
-  const collections = React.useMemo(() => deriveCampaignCollections(rankedCampaigns), [rankedCampaigns]);
 
-  React.useEffect(() => {
-    if (!activeCampaignId) return;
-    let nextValue: Record<string, ReturnType<typeof deriveCampaignEvolutionMemory>> | null = null;
-    setEvolutionMemoryByCampaignId((prev) => {
-      const nextMemory = updateCampaignEvolutionMemory(prev[activeCampaignId] ?? null, activeCampaignId, progress);
-      const next = { ...prev, [activeCampaignId]: nextMemory };
-      nextValue = next;
-      const allMemories = saveCampaignEvolutionMemory(Object.values(next));
-      setBehavioralProfile((previous) => {
-        const updated = updateBehavioralIntelligenceProfile(previous, allMemories);
-        return saveBehavioralIntelligenceProfile(updated);
-      });
-      return next;
-    });
-    if (nextValue) {
-      const allMemories = Object.values(nextValue) as ReturnType<typeof deriveCampaignEvolutionMemory>[];
-      const behavioralForLifeState = updateBehavioralIntelligenceProfile(behavioralProfile, allMemories);
-      const nextLifeState = updateLifeStateProfile(lifeStateProfile, behavioralForLifeState, allMemories);
-      setLifeStateProfile(saveLifeStateProfile(nextLifeState));
-      const nextTemporal = updateTemporalRhythmProfile(temporalRhythmProfile, behavioralForLifeState, nextLifeState, allMemories);
-      setTemporalRhythmProfile(saveTemporalRhythmProfile(nextTemporal));
-    }
-  }, [activeCampaignId, progress, behavioralProfile, lifeStateProfile, temporalRhythmProfile]);
+  const {
+    savedCampaignIds,
+    toggleSavedCampaign,
+    evolutionMemoryByCampaignId,
+    behavioralProfile,
+    lifeStateProfile,
+    temporalRhythmProfile,
+  } = useCampaignPersistence({
+    activeCampaignId,
+    progress,
+    adaptiveRecommendationsByCampaignId,
+  });
 
-  const activeEvolutionMemory = activeCampaignId ? evolutionMemoryByCampaignId[activeCampaignId] : null;
-  const activeLearningProfile = activeEvolutionMemory ? deriveCampaignLearningProfile(activeEvolutionMemory) : null;
-  const activeLearningInsights = activeLearningProfile ? deriveAdaptiveLearningInsights(activeLearningProfile) : [];
-  const activeEvolutionTimeline = deriveEvolutionTimeline(progress, activeEvolutionMemory);
-  const activeRecommendationFeedback = activeEvolutionMemory
-    ? deriveCampaignRecommendationFeedback(activeEvolutionMemory, activeRecommendation)
-    : null;
+  const intelligence = useCampaignIntelligence({
+    activeCampaignId,
+    activeCampaign,
+    progress,
+    rankedCampaigns,
+    activeRecommendation,
+    adaptiveRecommendationsByCampaignId,
+    evolutionMemoryByCampaignId,
+    behavioralProfile,
+    lifeStateProfile,
+    temporalRhythmProfile,
+  });
 
-  const resolvedBehavioralProfile = React.useMemo(
-    () => behavioralProfile ?? deriveBehavioralIntelligenceProfile(Object.values(evolutionMemoryByCampaignId)),
-    [behavioralProfile, evolutionMemoryByCampaignId],
-  );
-  const behavioralNarratives = React.useMemo(() => deriveBehavioralPreferenceNarratives(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
-  const behavioralStrengths = React.useMemo(() => deriveBehavioralStrengths(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
-  const behavioralSensitivity = React.useMemo(() => deriveBehavioralSensitivitySignals(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
-  const recommendationCompatibility = React.useMemo(
-    () => deriveBehavioralCompatibilityScore(resolvedBehavioralProfile, activeRecommendation),
-    [resolvedBehavioralProfile, activeRecommendation],
-  );
-  const behavioralRecommendationConfidence = React.useMemo(
-    () => deriveBehavioralRecommendationConfidence(resolvedBehavioralProfile, recommendationCompatibility),
-    [resolvedBehavioralProfile, recommendationCompatibility],
-  );
-  const globalRecommendationBias = React.useMemo(() => deriveGlobalRecommendationBias(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
-  const behavioralMilestones = React.useMemo(() => deriveBehavioralEvolutionTimeline(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
-  const strategyWeights = React.useMemo(() => deriveAdaptiveStrategyWeights(resolvedBehavioralProfile), [resolvedBehavioralProfile]);
-  const strategyBias = React.useMemo(() => deriveBehavioralStrategyBias(strategyWeights), [strategyWeights]);
-  const contextualAdaptationBias = React.useMemo(() => deriveContextualAdaptationBias(lifeStateProfile), [lifeStateProfile]);
-  const contextualInterventions = React.useMemo(() => deriveContextualInterventionStrategies(lifeStateProfile), [lifeStateProfile]);
-  const contextualStability = React.useMemo(() => deriveContextualStabilityProfile(lifeStateProfile, Object.values(evolutionMemoryByCampaignId)), [lifeStateProfile, evolutionMemoryByCampaignId]);
-  const recoveryWindows = React.useMemo(() => deriveRecoveryStabilizationWindows(lifeStateProfile), [lifeStateProfile]);
-  const contextualTimeline = React.useMemo(() => deriveLifeStateEvolutionTimeline(lifeStateProfile), [lifeStateProfile]);
-  const contextualWeights = React.useMemo(() => deriveContextualStrategyWeights(lifeStateProfile), [lifeStateProfile]);
-  const protectiveNotes = React.useMemo(() => deriveProtectiveAdaptationBias(contextualWeights), [contextualWeights]);
-  const contextualCompatibility = React.useMemo(
-    () => deriveContextualCompatibilityScore(resolvedBehavioralProfile, lifeStateProfile, activeRecommendation),
-    [resolvedBehavioralProfile, lifeStateProfile, activeRecommendation],
-  );
-  const contextualRecommendationConfidence = React.useMemo(
-    () => deriveContextualRecommendationConfidence(lifeStateProfile, contextualCompatibility),
-    [lifeStateProfile, contextualCompatibility],
-  );
-  const protectiveRecommendationBias = React.useMemo(() => deriveProtectiveRecommendationBias(lifeStateProfile), [lifeStateProfile]);
-  const temporalPhase = React.useMemo(() => deriveTemporalPhase(temporalRhythmProfile), [temporalRhythmProfile]);
-  const temporalTransitions = React.useMemo(() => deriveTemporalPhaseTransitions(temporalRhythmProfile), [temporalRhythmProfile]);
-  const rhythmNarratives = React.useMemo(() => deriveRhythmCycleNarratives(temporalRhythmProfile), [temporalRhythmProfile]);
-  const temporalAdaptationBias = React.useMemo(() => deriveTemporalAdaptationBias(temporalRhythmProfile), [temporalRhythmProfile]);
-  const rhythmStrategies = React.useMemo(() => deriveRhythmOrchestrationStrategies(temporalRhythmProfile), [temporalRhythmProfile]);
-  const cadenceRecommendations = React.useMemo(() => deriveCadencePhaseRecommendations(temporalRhythmProfile), [temporalRhythmProfile]);
-  const temporalStability = React.useMemo(() => deriveTemporalStabilityProfile(temporalRhythmProfile), [temporalRhythmProfile]);
-  const temporalCompatibility = React.useMemo(
-    () => deriveTemporalCompatibilityScore(resolvedBehavioralProfile, lifeStateProfile, temporalRhythmProfile, activeRecommendation),
-    [resolvedBehavioralProfile, lifeStateProfile, temporalRhythmProfile, activeRecommendation],
-  );
-  const temporalRecommendationConfidence = React.useMemo(
-    () => deriveTemporalRecommendationConfidence(temporalRhythmProfile, temporalCompatibility),
-    [temporalRhythmProfile, temporalCompatibility],
-  );
-  const temporalProtectionBias = React.useMemo(() => deriveTemporalProtectionBias(temporalRhythmProfile), [temporalRhythmProfile]);
-  const temporalWeights = React.useMemo(() => deriveTemporalStrategyWeights(temporalRhythmProfile), [temporalRhythmProfile]);
-  const rhythmProtectionBias = React.useMemo(() => deriveRhythmProtectionBias(temporalWeights), [temporalWeights]);
-  const temporalEvolutionTimeline = React.useMemo(() => deriveTemporalEvolutionTimeline(temporalRhythmProfile), [temporalRhythmProfile]);
-  const stabilizationSummary = React.useMemo(
-    () => selectStabilizationSummary(contextualStability, temporalStability),
-    [contextualStability, temporalStability],
-  );
-  const temporalRhythmSummary = React.useMemo(
-    () => selectTemporalRhythmSummary(temporalPhase, temporalTransitions, cadenceRecommendations),
-    [temporalPhase, temporalTransitions, cadenceRecommendations],
+  const campaignPanelViewModel = React.useMemo(
+    () => buildCampaignPanelViewModel({
+      activeCampaignId,
+      progress,
+      rankedCampaigns,
+      adaptiveRecommendationsByCampaignId,
+    }),
+    [activeCampaignId, progress, rankedCampaigns, adaptiveRecommendationsByCampaignId],
   );
 
-  void adaptiveConfidence;
-  void campaignProgressSummary;
-  void stabilizationSummary;
-  void temporalRhythmSummary;
+  void intelligence.adaptiveConfidence;
+  void intelligence.campaignProgressSummary;
+  void intelligence.stabilizationSummary;
+  void intelligence.temporalRhythmSummary;
 
   return (
     <div className="space-y-4">
@@ -297,7 +137,7 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                   <CampaignMissionCard
                     key={item.mission.id}
                     missionProgress={item}
-                    missionWhy={missionWhy}
+                    missionWhy={intelligence.missionWhy}
                     phaseNarrative={progress.phaseNarrative}
                   />
                 ))}
@@ -320,16 +160,16 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                 </div>
               )}
 
-              {activeJourneyType && (
+              {intelligence.activeJourneyType && (
                 <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-900">
-                  <p className="font-medium">Journey type: {activeJourneyType}</p>
-                  <p>{deriveJourneyCategoryNarrative(activeJourneyType)}</p>
+                  <p className="font-medium">Journey type: {intelligence.activeJourneyType}</p>
+                  <p>{intelligence.activeJourneyNarrative}</p>
                 </div>
               )}
 
-              {unlockedAchievements.length > 0 && (
+              {intelligence.unlockedAchievements.length > 0 && (
                 <div className="flex flex-wrap gap-2">
-                  {unlockedAchievements.map((achievement) => (
+                  {intelligence.unlockedAchievements.map((achievement) => (
                     <Badge key={achievement.id} className="bg-amber-500 hover:bg-amber-500">
                       🏆 {achievement.title}
                     </Badge>
@@ -337,11 +177,11 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                 </div>
               )}
 
-              {sharedState && (
+              {intelligence.sharedState && (
                 <div className="rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-900">
-                  <p className="font-medium">Household-ready campaign · {sharedState.participants} participants</p>
-                  <p>Shared completions: {sharedState.completedParticipants} · Streak sync: {sharedState.continuityStreakSharedDays} days</p>
-                  {collaborationSuggestions[0] && <p className="mt-1">{collaborationSuggestions[0]}</p>}
+                  <p className="font-medium">Household-ready campaign · {intelligence.sharedState.participants} participants</p>
+                  <p>Shared completions: {intelligence.sharedState.completedParticipants} · Streak sync: {intelligence.sharedState.continuityStreakSharedDays} days</p>
+                  {intelligence.collaborationSuggestions[0] && <p className="mt-1">{intelligence.collaborationSuggestions[0]}</p>}
                 </div>
               )}
 
@@ -353,13 +193,13 @@ const NutritionCampaignPanel: React.FC<Props> = ({
               )}
 
 
-              {activeLearningProfile && (
+              {intelligence.activeLearningProfile && (
                 <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900">
                   <p className="font-medium">Campaign learned…</p>
-                  <p>{activeLearningProfile.summary}</p>
-                  {activeLearningInsights.length > 0 && (
+                  <p>{intelligence.activeLearningProfile.summary}</p>
+                  {intelligence.activeLearningInsights.length > 0 && (
                     <div className="mt-2 flex flex-wrap gap-1">
-                      {activeLearningInsights.map((insight) => (
+                      {intelligence.activeLearningInsights.map((insight) => (
                         <Badge key={insight} variant="secondary" className="bg-emerald-100 text-emerald-900 hover:bg-emerald-100">
                           {insight}
                         </Badge>
@@ -369,91 +209,91 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                 </div>
               )}
 
-              {activeEvolutionMemory && (
+              {intelligence.activeEvolutionMemory && (
                 <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-xs text-sky-900">
                   <p className="font-medium">Adaptive memory badges</p>
                   <div className="mt-1 flex flex-wrap gap-1">
-                    {activeEvolutionMemory.successfulStrategies.slice(0, 3).map((strategy) => (
+                    {intelligence.activeEvolutionMemory.successfulStrategies.slice(0, 3).map((strategy) => (
                       <Badge key={strategy} variant="outline">✅ {strategy}</Badge>
                     ))}
-                    {activeEvolutionMemory.continuityAnchors.slice(0, 2).map((anchor) => (
+                    {intelligence.activeEvolutionMemory.continuityAnchors.slice(0, 2).map((anchor) => (
                       <Badge key={anchor} variant="outline">🧭 {anchor}</Badge>
                     ))}
-                    {activeEvolutionMemory.recoveryInterventions.slice(0, 2).map((item) => (
+                    {intelligence.activeEvolutionMemory.recoveryInterventions.slice(0, 2).map((item) => (
                       <Badge key={item} variant="outline">🛟 {item}</Badge>
                     ))}
                   </div>
                 </div>
               )}
 
-              {activeEvolutionTimeline.length > 0 && (
+              {intelligence.activeEvolutionTimeline.length > 0 && (
                 <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-900">
                   <p className="font-medium">Evolution timeline highlights</p>
                   <ul className="mt-1 list-disc pl-4">
-                    {activeEvolutionTimeline.slice(0, 3).map((item) => (
+                    {intelligence.activeEvolutionTimeline.slice(0, 3).map((item) => (
                       <li key={item.id}>{item.detail}</li>
                     ))}
                   </ul>
                 </div>
               )}
 
-              {activeRecommendationFeedback && (
+              {intelligence.activeRecommendationFeedback && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                  <p className="font-medium">Adaptive recommendation confidence · {Math.round(activeRecommendationFeedback.confidence * 100)}%</p>
-                  {activeRecommendationFeedback.recommendationNudge[0] && <p className="mt-1">{activeRecommendationFeedback.recommendationNudge[0]}</p>}
-                  {activeRecommendationFeedback.cautionSignals[0] && <p className="mt-1">Watch: {activeRecommendationFeedback.cautionSignals[0]}</p>}
+                  <p className="font-medium">Adaptive recommendation confidence · {Math.round(intelligence.activeRecommendationFeedback.confidence * 100)}%</p>
+                  {intelligence.activeRecommendationFeedback.recommendationNudge[0] && <p className="mt-1">{intelligence.activeRecommendationFeedback.recommendationNudge[0]}</p>}
+                  {intelligence.activeRecommendationFeedback.cautionSignals[0] && <p className="mt-1">Watch: {intelligence.activeRecommendationFeedback.cautionSignals[0]}</p>}
                 </div>
               )}
 
 
               <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900">
-                <p className="font-medium">Behavioral intelligence · {Math.round(resolvedBehavioralProfile.behavioralConfidence * 100)}% confidence</p>
-                <p className="mt-1">Continuity: {Math.round(resolvedBehavioralProfile.continuityPreferenceScore * 100)}% · Recovery: {Math.round(resolvedBehavioralProfile.recoveryStabilizationScore * 100)}% · Prep tolerance: {Math.round(resolvedBehavioralProfile.prepToleranceScore * 100)}%</p>
-                <p className="mt-1">Cadence compatibility: {Math.round(recommendationCompatibility * 100)}% · Recommendation confidence: {Math.round(behavioralRecommendationConfidence * 100)}%</p>
+                <p className="font-medium">Behavioral intelligence · {Math.round(intelligence.resolvedBehavioralProfile.behavioralConfidence * 100)}% confidence</p>
+                <p className="mt-1">Continuity: {Math.round(intelligence.resolvedBehavioralProfile.continuityPreferenceScore * 100)}% · Recovery: {Math.round(intelligence.resolvedBehavioralProfile.recoveryStabilizationScore * 100)}% · Prep tolerance: {Math.round(intelligence.resolvedBehavioralProfile.prepToleranceScore * 100)}%</p>
+                <p className="mt-1">Cadence compatibility: {Math.round(intelligence.recommendationCompatibility * 100)}% · Recommendation confidence: {Math.round(intelligence.behavioralRecommendationConfidence * 100)}%</p>
                 <div className="mt-2 flex flex-wrap gap-1">
-                  {behavioralNarratives.slice(0, 3).map((item) => <Badge key={item} variant="secondary" className="bg-indigo-100 text-indigo-900 hover:bg-indigo-100">{item}</Badge>)}
+                  {intelligence.behavioralNarratives.slice(0, 3).map((item) => <Badge key={item} variant="secondary" className="bg-indigo-100 text-indigo-900 hover:bg-indigo-100">{item}</Badge>)}
                 </div>
                 <p className="mt-2 font-medium">Global recommendation bias</p>
                 <ul className="list-disc pl-4">
-                  {globalRecommendationBias.slice(0, 2).map((item) => <li key={item}>{item}</li>)}
+                  {intelligence.globalRecommendationBias.slice(0, 2).map((item) => <li key={item}>{item}</li>)}
                 </ul>
-                {(behavioralStrengths[0] || behavioralSensitivity[0]) && (
-                  <p className="mt-1">Strength: {behavioralStrengths[0] ?? 'Calibrating'} · Sensitivity: {behavioralSensitivity[0] ?? 'No major sensitivity detected'}</p>
+                {(intelligence.behavioralStrengths[0] || intelligence.behavioralSensitivity[0]) && (
+                  <p className="mt-1">Strength: {intelligence.behavioralStrengths[0] ?? 'Calibrating'} · Sensitivity: {intelligence.behavioralSensitivity[0] ?? 'No major sensitivity detected'}</p>
                 )}
-                <p className="mt-1">Strategy weights · continuity {Math.round(strategyWeights.continuityAnchor * 100)}%, recovery {Math.round(strategyWeights.recoveryPacing * 100)}%, prep reduction {Math.round(strategyWeights.prepReduction * 100)}%</p>
-                {strategyBias[0] && <p className="mt-1">Adaptive weighting: {strategyBias[0]}</p>}
-                {behavioralMilestones[0] && <p className="mt-1">Behavioral evolution: {behavioralMilestones.slice(0, 2).map((m) => m.detail).join(' · ')}</p>}
+                <p className="mt-1">Strategy weights · continuity {Math.round(intelligence.strategyWeights.continuityAnchor * 100)}%, recovery {Math.round(intelligence.strategyWeights.recoveryPacing * 100)}%, prep reduction {Math.round(intelligence.strategyWeights.prepReduction * 100)}%</p>
+                {intelligence.strategyBias[0] && <p className="mt-1">Adaptive weighting: {intelligence.strategyBias[0]}</p>}
+                {intelligence.behavioralMilestones[0] && <p className="mt-1">Behavioral evolution: {intelligence.behavioralMilestones.slice(0, 2).map((m) => m.detail).join(' · ')}</p>}
               </div>
               <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-900">
                 <p className="font-medium">Life-state intelligence · {Math.round(lifeStateProfile.contextualConfidence * 100)}% contextual confidence</p>
                 <p className="mt-1">Volatility {Math.round(lifeStateProfile.scheduleVolatilityScore * 100)}% · Time scarcity {Math.round(lifeStateProfile.timeScarcityScore * 100)}% · Burnout pressure {Math.round(lifeStateProfile.burnoutPressureScore * 100)}%</p>
                 <p className="mt-1">Recovery pressure {Math.round(lifeStateProfile.recoveryPressureScore * 100)}% · Stabilization need {Math.round(lifeStateProfile.stabilizationNeedScore * 100)}% · Energy consistency {Math.round(lifeStateProfile.energyConsistencyScore * 100)}%</p>
-                <p className="mt-1">Contextual compatibility {Math.round(contextualCompatibility * 100)}% · Recommendation confidence {Math.round(contextualRecommendationConfidence * 100)}%</p>
-                {contextualAdaptationBias[0] && <p className="mt-1">Adaptive guidance: {contextualAdaptationBias.slice(0, 2).join(' · ')}</p>}
-                {contextualInterventions[0] && <p className="mt-1">Protective interventions: {contextualInterventions.slice(0, 2).join(' · ')}</p>}
-                <p className="mt-1">Stability trend {Math.round(contextualStability.stabilizationTrend * 100)}% · Burnout cycle risk {Math.round(contextualStability.burnoutCycleRisk * 100)}%</p>
-                {recoveryWindows[0] && <p className="mt-1">Recovery window: {recoveryWindows[0]}</p>}
-                {protectiveNotes[0] && <p className="mt-1">Protective weighting: {protectiveNotes.slice(0, 2).join(' · ')}</p>}
-                {protectiveRecommendationBias[0] && <p className="mt-1">Recommendation bias: {protectiveRecommendationBias[0]}</p>}
-                {contextualTimeline[0] && <p className="mt-1">Contextual evolution: {contextualTimeline.slice(0, 2).map((m) => m.detail).join(' · ')}</p>}
+                <p className="mt-1">Contextual compatibility {Math.round(intelligence.contextualCompatibility * 100)}% · Recommendation confidence {Math.round(intelligence.contextualRecommendationConfidence * 100)}%</p>
+                {intelligence.contextualAdaptationBias[0] && <p className="mt-1">Adaptive guidance: {intelligence.contextualAdaptationBias.slice(0, 2).join(' · ')}</p>}
+                {intelligence.contextualInterventions[0] && <p className="mt-1">Protective interventions: {intelligence.contextualInterventions.slice(0, 2).join(' · ')}</p>}
+                <p className="mt-1">Stability trend {Math.round(intelligence.contextualStability.stabilizationTrend * 100)}% · Burnout cycle risk {Math.round(intelligence.contextualStability.burnoutCycleRisk * 100)}%</p>
+                {intelligence.recoveryWindows[0] && <p className="mt-1">Recovery window: {intelligence.recoveryWindows[0]}</p>}
+                {intelligence.protectiveNotes[0] && <p className="mt-1">Protective weighting: {intelligence.protectiveNotes.slice(0, 2).join(' · ')}</p>}
+                {intelligence.protectiveRecommendationBias[0] && <p className="mt-1">Recommendation bias: {intelligence.protectiveRecommendationBias[0]}</p>}
+                {intelligence.contextualTimeline[0] && <p className="mt-1">Contextual evolution: {intelligence.contextualTimeline.slice(0, 2).map((m) => m.detail).join(' · ')}</p>}
               </div>
               <div className="rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs text-violet-900">
                 <p className="font-medium">Temporal rhythm intelligence</p>
                 <p className="mt-1">
-                  Phase {temporalPhase} · Rhythm stability {Math.round(temporalRhythmProfile.rhythmStabilityScore * 100)}% · Recovery window {Math.round(temporalRhythmProfile.recoveryWindowScore * 100)}%
+                  Phase {intelligence.temporalPhase} · Rhythm stability {Math.round(temporalRhythmProfile.rhythmStabilityScore * 100)}% · Recovery window {Math.round(temporalRhythmProfile.recoveryWindowScore * 100)}%
                 </p>
                 <p className="mt-1">
-                  Cadence resilience {Math.round(temporalStability.cadenceResilience * 100)}% · Temporal confidence {Math.round(temporalRecommendationConfidence * 100)}%
+                  Cadence resilience {Math.round(intelligence.temporalStability.cadenceResilience * 100)}% · Temporal confidence {Math.round(intelligence.temporalRecommendationConfidence * 100)}%
                 </p>
-                <p className="mt-1">Timing weights · recovery {Math.round(temporalWeights.recoveryPacingWeight * 100)}% · novelty {Math.round(temporalWeights.noveltyReintroductionWeight * 100)}% · continuity {Math.round(temporalWeights.continuityAnchorWeight * 100)}%</p>
+                <p className="mt-1">Timing weights · recovery {Math.round(intelligence.temporalWeights.recoveryPacingWeight * 100)}% · novelty {Math.round(intelligence.temporalWeights.noveltyReintroductionWeight * 100)}% · continuity {Math.round(intelligence.temporalWeights.continuityAnchorWeight * 100)}%</p>
                 <ul className="mt-1 list-disc pl-4">
-                  {[...rhythmNarratives, ...temporalTransitions, ...cadenceRecommendations].slice(0, 4).map((item) => <li key={item}>{item}</li>)}
+                  {[...intelligence.rhythmNarratives, ...intelligence.temporalTransitions, ...intelligence.cadenceRecommendations].slice(0, 4).map((item) => <li key={item}>{item}</li>)}
                 </ul>
-                {temporalAdaptationBias[0] && <p className="mt-1">Rhythm adaptation: {temporalAdaptationBias.slice(0, 2).join(' · ')}</p>}
-                {rhythmStrategies[0] && <p className="mt-1">Orchestration: {rhythmStrategies.slice(0, 2).join(' · ')}</p>}
-                {temporalProtectionBias[0] && <p className="mt-1">Protection timing: {temporalProtectionBias[0]}</p>}
-                {rhythmProtectionBias[0] && <p className="mt-1">Protection weighting: {rhythmProtectionBias[0]}</p>}
-                {temporalEvolutionTimeline[0] && <p className="mt-1">Temporal evolution: {temporalEvolutionTimeline.slice(0, 2).join(' · ')}</p>}
+                {intelligence.temporalAdaptationBias[0] && <p className="mt-1">Rhythm adaptation: {intelligence.temporalAdaptationBias.slice(0, 2).join(' · ')}</p>}
+                {intelligence.rhythmStrategies[0] && <p className="mt-1">Orchestration: {intelligence.rhythmStrategies.slice(0, 2).join(' · ')}</p>}
+                {intelligence.temporalProtectionBias[0] && <p className="mt-1">Protection timing: {intelligence.temporalProtectionBias[0]}</p>}
+                {intelligence.rhythmProtectionBias[0] && <p className="mt-1">Protection weighting: {intelligence.rhythmProtectionBias[0]}</p>}
+                {intelligence.temporalEvolutionTimeline[0] && <p className="mt-1">Temporal evolution: {intelligence.temporalEvolutionTimeline.slice(0, 2).join(' · ')}</p>}
               </div>
 
               {ENABLE_JOURNEY_TIMELINE && (
@@ -486,14 +326,14 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                 End Active Campaign
               </Button>
 
-              {coachInsights[0] && (
+              {intelligence.coachInsights[0] && (
                 <p className="text-xs text-slate-600">
-                  AI Coach: {coachInsights[0].recommendation} · {deriveCampaignInterventionReasoning(progress)}
+                  AI Coach: {intelligence.coachInsights[0].recommendation} · {intelligence.campaignInterventionReasoning}
                 </p>
               )}
 
-              {campaignEvents.length > 0 && (
-                <p className="text-xs text-slate-500">Recent events: {campaignEvents.slice(0, 2).map((event) => event.title).join(' · ')}</p>
+              {intelligence.campaignEvents.length > 0 && (
+                <p className="text-xs text-slate-500">Recent events: {intelligence.campaignEvents.slice(0, 2).map((event) => event.title).join(' · ')}</p>
               )}
             </div>
           ) : (
@@ -518,90 +358,14 @@ const NutritionCampaignPanel: React.FC<Props> = ({
           <CardTitle>Suggested Campaigns</CardTitle>
         </CardHeader>
         <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {rankedCampaigns.map((campaign) => (
-            <div key={campaign.id} className="rounded-lg border p-3">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-medium">{campaign.title}</p>
-                <div className="flex gap-2">
-                  {topCampaignId === campaign.id && (
-                    <Badge className="bg-emerald-600 hover:bg-emerald-600">Recommended</Badge>
-                  )}
-                  <Badge variant="outline">{campaign.durationDays} days</Badge>
-                </div>
-              </div>
-
-              <div className="mt-2 flex flex-wrap gap-1">
-                {(() => {
-                  const origin = deriveCampaignOrigin(campaign, {
-                    hasCreatorTemplate: Boolean(creatorTemplatesByCampaignId[campaign.id]),
-                    isSeasonal: seasonalCampaignIds.has(campaign.id),
-                    isHouseholdReady: campaign.theme === 'meal-prep' || campaign.theme === 'leftovers',
-                    recommendation: adaptiveRecommendationsByCampaignId?.[campaign.id],
-                  });
-                  void adaptiveConfidence;
-  void campaignProgressSummary;
-  void stabilizationSummary;
-  void temporalRhythmSummary;
-
-  return (
-                    <>
-                      <Badge variant="secondary">{deriveCampaignSourceLabel(origin)}</Badge>
-                      {seasonalCampaignIds.has(campaign.id) && <Badge variant="outline">{seasonalNarrative.title}</Badge>}
-                      {creatorTemplatesByCampaignId[campaign.id] && <Badge variant="outline">{creatorTemplatesByCampaignId[campaign.id].creatorAvatar} {creatorTemplatesByCampaignId[campaign.id].creatorName}</Badge>}
-                      {(campaign.theme === 'meal-prep' || campaign.theme === 'leftovers') && <Badge variant="outline">Household Ready</Badge>}
-                      {activeCampaignId !== campaign.id && topCampaignId === campaign.id && <Badge variant="outline">AI Coach Recommended</Badge>}
-                      <p className="w-full text-[11px] text-slate-500">{deriveCampaignDiscoveryReason(origin)}</p>
-                    </>
-                  );
-                })()}
-              </div>
-
-
-              {(() => {
-                const creatorName = creatorTemplatesByCampaignId[campaign.id]?.creatorName;
-                const identity = deriveCampaignIdentity(campaign, progress, creatorName);
-                const remix = deriveCampaignRemix(campaign, { householdContinuity: campaign.theme === 'leftovers' });
-                const lineage = deriveCampaignLineage(campaign, remix, creatorName);
-                const collection = collections.find((item) => item.campaignIds.includes(campaign.id));
-                void adaptiveConfidence;
-  void campaignProgressSummary;
-  void stabilizationSummary;
-  void temporalRhythmSummary;
-
-  return (
-                  <div className={`mt-2 rounded-md border p-2 text-[11px] ${identity.visualIdentity.bgClassName} ${identity.visualIdentity.borderClassName} ${identity.visualIdentity.textClassName}`}>
-                    <p className="font-medium">{identity.journeySignature}</p>
-                    <p>{identity.creatorAttribution}</p>
-                    <p>{deriveCampaignRemixNarrative(remix)}</p>
-                    <p>{deriveCampaignEvolutionNarrative(lineage)}</p>
-                    {collection && <p>Collection: {collection.label}</p>}
-                  </div>
-                );
-              })()}
-
-              <CampaignRecommendationBadges
-                recommendation={adaptiveRecommendationsByCampaignId?.[campaign.id]}
-                compactReasons
-              />
-
-              <p className="mt-1 text-xs text-gray-600">{campaign.description}</p>
-              <Button
-                className="mt-3"
-                size="sm"
-                variant={activeCampaignId === campaign.id ? 'secondary' : 'default'}
-                onClick={() => setPendingCampaignId(campaign.id)}
-              >
-                {activeCampaignId === campaign.id ? 'Active' : 'Start Campaign'}
-              </Button>
-              <Button
-                className="mt-2"
-                size="sm"
-                variant="outline"
-                onClick={() => toggleSavedCampaign(campaign.id)}
-              >
-                {savedCampaignIds.has(campaign.id) ? 'Saved' : 'Save Campaign'}
-              </Button>
-            </div>
+          {campaignPanelViewModel.suggestedCampaigns.map((item) => (
+            <CampaignSuggestionCard
+              key={item.campaign.id}
+              item={item}
+              saved={savedCampaignIds.has(item.campaign.id)}
+              onSelect={setPendingCampaignId}
+              onToggleSaved={toggleSavedCampaign}
+            />
           ))}
         </CardContent>
       </Card>
