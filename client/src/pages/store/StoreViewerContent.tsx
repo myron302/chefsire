@@ -79,7 +79,9 @@ export default function StoreViewerContent({
       ? "grid-cols-1 md:grid-cols-2"
       : gridCols === 4
         ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-4"
-        : "grid-cols-1 md:grid-cols-3";
+        : gridCols === 5
+          ? "grid-cols-2 md:grid-cols-3 lg:grid-cols-5"
+          : "grid-cols-1 md:grid-cols-3";
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: themeColors.accent + "22" }}>

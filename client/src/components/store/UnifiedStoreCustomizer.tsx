@@ -99,11 +99,7 @@ export default function UnifiedStoreCustomizer({
       productCardStyle: "elevated",
       spacing: "normal",
     },
-    colors: savedCustomization?.colors || {
-      primary: "#FF6B35",
-      secondary: "#2C3E50",
-      accent: "#F7F7F7",
-    },
+    colors: savedCustomization?.colors,
   });
 
   const isDirty = useMemo(() => {
@@ -158,11 +154,7 @@ export default function UnifiedStoreCustomizer({
         productCardStyle: "elevated",
         spacing: "normal",
       },
-      colors: savedCustomization?.colors || {
-        primary: "#FF6B35",
-        secondary: "#2C3E50",
-        accent: "#F7F7F7",
-      },
+      colors: savedCustomization?.colors,
     });
   };
 
@@ -226,6 +218,15 @@ export default function UnifiedStoreCustomizer({
   };
 
   const c = draftCustomization;
+
+  // Effective colors: saved override per-channel, else fall back to the chosen theme preset.
+  // This means clicking a theme card immediately changes the preview even when no overrides exist.
+  const themePreset = THEMES.find((t) => t.id === draftTheme)?.colors ?? THEMES[0].colors;
+  const effectiveColors = {
+    primary: c.colors?.primary ?? themePreset.primary,
+    secondary: c.colors?.secondary ?? themePreset.secondary,
+    accent: c.colors?.accent ?? themePreset.accent,
+  };
 
   return (
     <div className="flex h-[calc(100vh-200px)] min-h-[600px]">
@@ -347,18 +348,18 @@ export default function UnifiedStoreCustomizer({
                 <p className="text-xs text-gray-500">Override the theme preset with your brand colors.</p>
                 <ColorPicker
                   label="Primary"
-                  value={c.colors?.primary || "#FF6B35"}
-                  onChange={(v) => patchCustomization({ colors: { ...c.colors, primary: v } })}
+                  value={effectiveColors.primary}
+                  onChange={(v) => patchCustomization({ colors: { ...(c.colors ?? {}), primary: v } })}
                 />
                 <ColorPicker
                   label="Secondary"
-                  value={c.colors?.secondary || "#2C3E50"}
-                  onChange={(v) => patchCustomization({ colors: { ...c.colors, secondary: v } })}
+                  value={effectiveColors.secondary}
+                  onChange={(v) => patchCustomization({ colors: { ...(c.colors ?? {}), secondary: v } })}
                 />
                 <ColorPicker
                   label="Accent / Background"
-                  value={c.colors?.accent || "#F7F7F7"}
-                  onChange={(v) => patchCustomization({ colors: { ...c.colors, accent: v } })}
+                  value={effectiveColors.accent}
+                  onChange={(v) => patchCustomization({ colors: { ...(c.colors ?? {}), accent: v } })}
                 />
               </AccordionContent>
             </AccordionItem>

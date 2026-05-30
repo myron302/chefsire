@@ -73,7 +73,6 @@ export default function StoreDashboard() {
         const storeData = await storeRes.json();
         const s = storeData.store;
         setStore(s);
-        if (s) setSelectedTheme(s.theme || "modern");
 
         if (s) {
           // Products
