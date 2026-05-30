@@ -5,9 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StoreHeader } from "@/components/store/StoreHeader";
 import { ProductCard } from "@/components/store/ProductCard";
+import StoreFontLoader from "@/components/store/StoreFontLoader";
 import { ShoppingBag, Eye, Heart, MapPin, Clock } from "lucide-react";
-import { THEMES } from "@/components/store/ThemeSelector";
 import { normalizeStoreLayout } from "@shared/store/storeLayout";
+import { resolveThemeTokens } from "@shared/store/storeThemes";
+import { tokensToStyleVars } from "@/lib/store/storeTokenStyles";
 
 export interface StoreData {
   id: string | number;
@@ -58,12 +60,14 @@ export default function StoreViewerContent({
   const navigate = previewMode ? () => {} : (onNavigate ?? (() => {}));
 
   const layout = normalizeStoreLayout(store.layout).customization;
+  const tokens = resolveThemeTokens(store.theme, layout.tokens);
+  const cssVars = tokensToStyleVars(tokens);
 
-  const preset = THEMES.find((t) => t.id === store.theme)?.colors ?? THEMES[0].colors;
+  // Still passed to StoreHeader (which renders its own banner gradient)
   const themeColors = {
-    primary: layout.colors?.primary || preset.primary,
-    secondary: layout.colors?.secondary || preset.secondary,
-    accent: layout.colors?.accent || preset.accent,
+    primary: tokens.primary,
+    secondary: tokens.secondary,
+    accent: tokens.accent,
   };
 
   const storeForHeader = {
@@ -84,11 +88,17 @@ export default function StoreViewerContent({
           : "grid-cols-1 md:grid-cols-3";
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: themeColors.accent + "22" }}>
+    <div
+      className="store-root min-h-screen"
+      style={{ ...cssVars, backgroundColor: "var(--store-surface)", color: "var(--store-text)", fontFamily: "var(--store-font-body)" }}
+    >
+      <StoreFontLoader />
+
+      {/* Announcement bar */}
       {layout.announcementEnabled && layout.announcementBar && (
         <div
-          className="text-white text-center py-2 px-4 text-sm font-medium"
-          style={{ backgroundColor: themeColors.primary }}
+          className="text-center py-2 px-4 text-sm font-medium"
+          style={{ backgroundColor: "var(--store-primary)", color: "var(--store-surface)" }}
         >
           {layout.announcementBar}
         </div>
@@ -96,22 +106,32 @@ export default function StoreViewerContent({
 
       <StoreHeader store={storeForHeader} isOwner={isOwner} themeColors={themeColors} />
 
+      {/* About section */}
       {layout.aboutEnabled && layout.aboutContent && (
         <div className="max-w-6xl mx-auto px-4 pt-10 pb-2">
-          <h2 className="text-xl font-bold mb-3" style={{ color: themeColors.secondary }}>
+          <h2
+            className="text-xl font-bold mb-3"
+            style={{ color: "var(--store-secondary)", fontFamily: "var(--store-font-heading)" }}
+          >
             {layout.aboutTitle || "About Us"}
           </h2>
-          <p className="text-gray-700 leading-relaxed">{layout.aboutContent}</p>
+          <p style={{ color: "var(--store-text)", fontFamily: "var(--store-font-body)" }} className="leading-relaxed">
+            {layout.aboutContent}
+          </p>
         </div>
       )}
 
+      {/* Products */}
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <div>
-            <h2 className="text-2xl font-bold mb-1" style={{ color: themeColors.secondary }}>
+            <h2
+              className="text-2xl font-bold mb-1"
+              style={{ color: "var(--store-secondary)", fontFamily: "var(--store-font-heading)" }}
+            >
               Products
             </h2>
-            <p className="text-gray-600">{products.length} items available</p>
+            <p style={{ color: "var(--store-text)", opacity: 0.7 }}>{products.length} items available</p>
           </div>
           {!previewMode && (
             <div className="flex gap-3">
@@ -121,8 +141,8 @@ export default function StoreViewerContent({
               {isOwner && (
                 <Button
                   onClick={() => navigate("/store/dashboard")}
-                  style={{ backgroundColor: themeColors.primary }}
                   className="text-white hover:opacity-90"
+                  style={{ backgroundColor: "var(--store-primary)", borderRadius: "var(--store-button-radius)" }}
                 >
                   Manage Store
                 </Button>
@@ -134,7 +154,7 @@ export default function StoreViewerContent({
         {productsLoading ? (
           <div className={`grid ${gridClass} gap-6`}>
             {Array.from({ length: 6 }).map((_, i) => (
-              <Card key={i}>
+              <Card key={i} style={{ borderRadius: "var(--store-radius)" }}>
                 <CardContent className="p-4">
                   <Skeleton className="h-48 w-full mb-4" />
                   <Skeleton className="h-4 w-3/4 mb-2" />
@@ -145,17 +165,25 @@ export default function StoreViewerContent({
             ))}
           </div>
         ) : products.length === 0 ? (
-          <Card>
+          <Card style={{ borderRadius: "var(--store-radius)" }}>
             <CardContent className="p-12 text-center">
-              <ShoppingBag className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">No products yet</h3>
-              <p className="text-gray-600 mb-4">
+              <ShoppingBag className="w-16 h-16 mx-auto mb-4" style={{ color: "var(--store-accent)" }} />
+              <h3 className="text-xl font-semibold mb-2" style={{ fontFamily: "var(--store-font-heading)" }}>
+                No products yet
+              </h3>
+              <p className="mb-4" style={{ color: "var(--store-text)", opacity: 0.7 }}>
                 {isOwner
                   ? "Start adding products to your store to begin selling."
                   : "This store hasn't listed any products yet."}
               </p>
               {isOwner && !previewMode && (
-                <Button onClick={() => navigate("/store/dashboard")}>Add Products</Button>
+                <Button
+                  onClick={() => navigate("/store/dashboard")}
+                  style={{ backgroundColor: "var(--store-primary)", borderRadius: "var(--store-button-radius)" }}
+                  className="text-white"
+                >
+                  Add Products
+                </Button>
               )}
             </CardContent>
           </Card>
@@ -165,6 +193,7 @@ export default function StoreViewerContent({
               <div
                 key={product.id}
                 className={`relative ${previewMode ? "pointer-events-none" : "cursor-pointer"}`}
+                style={{ borderRadius: "var(--store-radius)", overflow: "hidden" }}
                 onClick={previewMode ? undefined : () => navigate(`/product/${product.id}`)}
               >
                 <ProductCard product={product as any} onAddToCart={() => {}} />
@@ -188,18 +217,19 @@ export default function StoreViewerContent({
         )}
       </div>
 
+      {/* Contact / hours footer */}
       {(layout.contactInfo?.address || layout.contactInfo?.hours) && (
-        <div className="border-t mt-8">
-          <div className="max-w-6xl mx-auto px-4 py-8 flex flex-wrap gap-6 text-sm text-gray-600">
+        <div className="border-t mt-8" style={{ borderColor: "var(--store-accent)" }}>
+          <div className="max-w-6xl mx-auto px-4 py-8 flex flex-wrap gap-6 text-sm" style={{ color: "var(--store-text)", opacity: 0.8 }}>
             {layout.contactInfo?.address && (
               <div className="flex items-center gap-2">
-                <MapPin className="w-4 h-4 flex-shrink-0" style={{ color: themeColors.primary }} />
+                <MapPin className="w-4 h-4 flex-shrink-0" style={{ color: "var(--store-primary)" }} />
                 <span>{layout.contactInfo.address}</span>
               </div>
             )}
             {layout.contactInfo?.hours && (
               <div className="flex items-center gap-2">
-                <Clock className="w-4 h-4 flex-shrink-0" style={{ color: themeColors.primary }} />
+                <Clock className="w-4 h-4 flex-shrink-0" style={{ color: "var(--store-primary)" }} />
                 <span>{layout.contactInfo.hours}</span>
               </div>
             )}

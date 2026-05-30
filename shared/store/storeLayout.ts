@@ -11,6 +11,71 @@
 
 export const STORE_LAYOUT_VERSION = 2 as const;
 
+// ── Design token types ─────────────────────────────────────────────────────────
+
+export type FontPairingId =
+  | "inter"
+  | "editorial"
+  | "bold-display"
+  | "warm-serif"
+  | "soft-modern"
+  | "refined-serif";
+
+export type ButtonShape = "sharp" | "rounded" | "pill";
+export type CornerRadius = "sharp" | "soft" | "round";
+
+export type StoreThemeTokens = {
+  primary: string;
+  secondary: string;
+  accent: string;
+  surface: string;
+  text: string;
+  fontPairing: FontPairingId;
+  buttonShape: ButtonShape;
+  cornerRadius: CornerRadius;
+};
+
+// ── Token resolution lookup tables ────────────────────────────────────────────
+
+export const BUTTON_SHAPE_RADIUS: Record<ButtonShape, string> = {
+  sharp: "0px",
+  rounded: "8px",
+  pill: "9999px",
+};
+
+export const CORNER_RADIUS: Record<CornerRadius, string> = {
+  sharp: "0px",
+  soft: "8px",
+  round: "16px",
+};
+
+export const FONT_PAIRINGS: Record<FontPairingId, { heading: string; body: string }> = {
+  inter: {
+    heading: "Inter, sans-serif",
+    body: "Inter, sans-serif",
+  },
+  editorial: {
+    heading: "'Playfair Display', serif",
+    body: "'Source Sans Pro', sans-serif",
+  },
+  "bold-display": {
+    heading: "'Archivo Black', sans-serif",
+    body: "Inter, sans-serif",
+  },
+  "warm-serif": {
+    heading: "Lora, serif",
+    body: "Lato, sans-serif",
+  },
+  "soft-modern": {
+    heading: "Fraunces, serif",
+    body: "Mulish, sans-serif",
+  },
+  "refined-serif": {
+    heading: "'Cormorant Garamond', serif",
+    body: "Mulish, sans-serif",
+  },
+};
+
 // ── Inner types ────────────────────────────────────────────────────────────────
 
 export type StoreLayoutCustomizationConfig = {
@@ -40,11 +105,13 @@ export type StoreLayoutCustomizationConfig = {
     productCardStyle?: "elevated" | "flat";
     spacing?: "compact" | "normal" | "relaxed";
   };
+  /** @deprecated Use tokens instead. Kept for legacy read compatibility. */
   colors?: {
     primary?: string;
     secondary?: string;
     accent?: string;
   };
+  tokens?: Partial<StoreThemeTokens>;
 };
 
 export type StoreBuilderNode = {
@@ -69,9 +136,7 @@ export type StoreLayoutConfigV2 = {
 // ── Craft.js node-map detection ────────────────────────────────────────────────
 
 function looksLikeCraftNodeMap(obj: Record<string, unknown>): boolean {
-  // Craft.js always serializes a ROOT node
   if ("ROOT" in obj) return true;
-  // Fallback: majority of values look like Craft nodes { type, nodes } / { isCanvas }
   const values = Object.values(obj);
   if (values.length === 0) return false;
   const craftLike = values.filter(
@@ -81,6 +146,28 @@ function looksLikeCraftNodeMap(obj: Record<string, unknown>): boolean {
       ("isCanvas" in (v as object) || "nodes" in (v as object) || "type" in (v as object)),
   );
   return craftLike.length / values.length >= 0.6;
+}
+
+// ── Legacy color → tokens backfill ────────────────────────────────────────────
+
+function backfillTokensFromLegacyColors(
+  customization: StoreLayoutCustomizationConfig,
+): StoreLayoutCustomizationConfig {
+  const { colors, tokens } = customization;
+  if (!colors) return customization;
+
+  // Only backfill color keys that aren't already in tokens
+  const backfill: Partial<StoreThemeTokens> = {};
+  if (colors.primary && !tokens?.primary) backfill.primary = colors.primary;
+  if (colors.secondary && !tokens?.secondary) backfill.secondary = colors.secondary;
+  if (colors.accent && !tokens?.accent) backfill.accent = colors.accent;
+
+  if (Object.keys(backfill).length === 0) return customization;
+
+  return {
+    ...customization,
+    tokens: { ...tokens, ...backfill },
+  };
 }
 
 // ── Public normalizer ──────────────────────────────────────────────────────────
@@ -106,14 +193,15 @@ export function normalizeStoreLayout(raw: unknown): StoreLayoutConfigV2 {
 
   // Already v2 — return defensively ensuring customization is an object
   if (obj.version === 2) {
+    const rawCustomization =
+      obj.customization !== null &&
+      typeof obj.customization === "object" &&
+      !Array.isArray(obj.customization)
+        ? (obj.customization as StoreLayoutCustomizationConfig)
+        : {};
     return {
       version: 2,
-      customization:
-        obj.customization !== null &&
-        typeof obj.customization === "object" &&
-        !Array.isArray(obj.customization)
-          ? (obj.customization as StoreLayoutCustomizationConfig)
-          : {},
+      customization: backfillTokensFromLegacyColors(rawCustomization),
       ...(obj.builder !== undefined ? { builder: obj.builder as StoreBuilderLayoutConfig } : {}),
     };
   }
@@ -123,6 +211,9 @@ export function normalizeStoreLayout(raw: unknown): StoreLayoutConfigV2 {
     return { version: 2, customization: {}, builder: obj as StoreBuilderLayoutConfig };
   }
 
-  // Legacy flat customization object → put under customization
-  return { version: 2, customization: obj as StoreLayoutCustomizationConfig };
+  // Legacy flat customization object → put under customization, then backfill
+  return {
+    version: 2,
+    customization: backfillTokensFromLegacyColors(obj as StoreLayoutCustomizationConfig),
+  };
 }
