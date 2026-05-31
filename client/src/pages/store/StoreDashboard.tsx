@@ -25,6 +25,7 @@ import StoreReadinessPanel from "./components/StoreReadinessPanel";
 import type { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
 import UnifiedStoreCustomizer from "@/components/store/UnifiedStoreCustomizer";
 import type { StoreProduct } from "./StoreViewerContent";
+import type { StoreSocialProof } from "@shared/store/storeSocialProof";
 import {
   buildSubscriptionCheckoutPayload,
   calculateTrialDaysLeft,
@@ -41,6 +42,7 @@ export default function StoreDashboard() {
   const [, setLocation] = useLocation();
 
   const [store, setStore] = useState<any>(null);
+  const [socialProof, setSocialProof] = useState<StoreSocialProof | undefined>(undefined);
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_DASHBOARD_STATS);
   const [tier, setTier] = useState<any>(null);
   const [recentSales, setRecentSales] = useState<any[]>([]);
@@ -73,6 +75,7 @@ export default function StoreDashboard() {
         const storeData = await storeRes.json();
         const s = storeData.store;
         setStore(s);
+        if (storeData.socialProof) setSocialProof(storeData.socialProof);
 
         if (s) {
           // Products
@@ -381,6 +384,7 @@ export default function StoreDashboard() {
               store={store}
               products={products as unknown as StoreProduct[]}
               onSaved={(updatedStore) => setStore(updatedStore)}
+              socialProof={socialProof}
             />
           </TabsContent>
 
