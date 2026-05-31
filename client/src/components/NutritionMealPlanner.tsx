@@ -36,33 +36,24 @@ import CookingToolsReference from '@/components/meal-planner/CookingToolsReferen
 import { exportCSV, exportText } from "@/lib/shoppingExport";
 import { normalizeShoppingListItem } from '@/lib/shopping-list';
 import {
-  derivePlannerGrocerySuggestions,
   normalizeMealIngredient,
   type PlannerGroceryDerivationState,
   type PlannerGrocerySuggestion,
 } from '@/components/meal-planner/plannerGroceryUtils';
-import { derivePrepSessions } from '@/components/meal-planner/prepOrchestrationUtils';
-import { deriveNutritionCoachInsights } from '@/components/meal-planner/nutritionCoachUtils';
 import { optimizeWeeklyPlan } from '@/components/meal-planner/auto-planner/autoPlannerEngine';
-import {
-  selectCadenceConsistency,
-  selectContinuityAnchors,
-  selectContinuitySummary,
-  selectMomentumProtection,
-  selectPlannerMealCount,
-  selectPlannerMeals,
-  selectPrepReadinessSummary,
-  selectRecoveryStability,
-  selectStabilizationReadiness,
-} from '@/components/meal-planner/planner-core/selectors';
 import NutritionCoachPanel from '@/components/meal-planner/coach/NutritionCoachPanel';
 import NutritionCampaignPanel from '@/components/meal-planner/campaigns/NutritionCampaignPanel';
-import { evaluateCampaignProgress } from '@/components/meal-planner/campaigns/nutritionCampaignEngine';
 import { usePlannerHydration } from '@/components/meal-planner/hooks/usePlannerHydration';
 import { usePlannerBodyMetrics } from '@/components/meal-planner/hooks/usePlannerBodyMetrics';
 import { usePlannerHistory } from '@/components/meal-planner/hooks/usePlannerHistory';
 import { usePlannerCampaignState } from '@/components/meal-planner/hooks/usePlannerCampaignState';
 import { usePlannerModalState } from '@/components/meal-planner/hooks/usePlannerModalState';
+import {
+  buildPlannerAnalyticsViewModel,
+  buildPlannerCampaignViewModel,
+  buildPlannerDashboardViewModel,
+  buildPlannerReadinessViewModel,
+} from '@/components/meal-planner/view-models';
 import {
   LineChart,
   Line,
@@ -151,19 +142,6 @@ const DEFAULT_PREP_BLOCKERS = [
   { id: 'kitchen-access', label: 'Kitchen access', active: false },
 ];
 const GROCERY_LINKED_PREP_BLOCKER_IDS = ['missing-ingredient', 'waiting-on-grocery'];
-const BLOCKER_SUGGESTION_CATEGORY_BY_ID: Record<string, string> = {
-  'missing-ingredient': 'From Recipe',
-  'waiting-on-grocery': 'Other',
-};
-const BLOCKER_SUGGESTION_SEEDS_BY_ID: Record<string, string[]> = {
-  'missing-ingredient': ['Meal prep protein', 'Fresh vegetables', 'Breakfast staples'],
-  'waiting-on-grocery': ['Weekly produce refill', 'Protein restock', 'Quick snack options'],
-};
-const BLOCKER_NOTE_STOP_WORDS = new Set([
-  'and', 'the', 'for', 'with', 'need', 'needs', 'needed', 'still', 'more', 'from', 'into', 'this', 'that',
-  'prep', 'meal', 'meals', 'week', 'grocery', 'shopping', 'store', 'list', 'item', 'items', 'to', 'a', 'an',
-]);
-
 type BlockerSuggestionResolutionLink = {
   suggestionId: string;
   name: string;
@@ -2472,234 +2450,56 @@ const NutritionMealPlanner = () => {
   const proteinCurrent = dailyNutrition?.protein || 0;
   const carbsCurrent = dailyNutrition?.carbs || 0;
   const fatCurrent = dailyNutrition?.fat || 0;
-  const calorieProgress = Math.min(100, Math.round((caloriesCurrent / calorieGoal) * 100));
-  const remainingCalories = Math.max(0, calorieGoal - caloriesCurrent);
-  const plannedSlots = weekDays.reduce((sum, day) => sum + mealTypes.filter((type) => {
-    const val = weeklyMeals?.[day]?.[type];
-    return Array.isArray(val) ? val.length > 0 : Boolean(val);
-  }).length, 0);
-  const totalSlots = weekDays.length * mealTypes.length;
-  const unplannedDays = weekDays.filter((day) => !mealTypes.some((type) => {
-    const val = weeklyMeals?.[day]?.[type];
-    return Array.isArray(val) ? val.length > 0 : Boolean(val);
-  }));
-  const plannerGrocerySuggestions = useMemo<PlannerGrocerySuggestion[]>(() => (
-    derivePlannerGrocerySuggestions(weeklyMeals, groceryList, plannerGroceryState)
-  ), [weeklyMeals, groceryList, plannerGroceryState]);
-  const activePlannerGrocerySuggestions = plannerGrocerySuggestions.filter((suggestion) => !suggestion.dismissed);
-  const pendingPlannerGrocerySuggestions = activePlannerGrocerySuggestions.filter((suggestion) => !suggestion.checked && !suggestion.accepted);
-  const resolvedPlannerGrocerySuggestions = activePlannerGrocerySuggestions.filter((suggestion) => suggestion.checked || suggestion.accepted);
-  const groceryPendingCount = groceryList.filter((item: any) => !item.checked && !item.isPantryItem).length + pendingPlannerGrocerySuggestions.length;
-  const groceryCompletedCount = groceryList.filter((item: any) => item.checked && !item.isPantryItem).length + resolvedPlannerGrocerySuggestions.length;
-  const groceryBuyItemCount = groceryList.filter((item: any) => !item.isPantryItem).length + activePlannerGrocerySuggestions.length;
-  const groceryListCreated = groceryList.length > 0 || activePlannerGrocerySuggestions.length > 0;
-  const unplannedMealSlots = Math.max(0, totalSlots - plannedSlots);
-  const prepSessionPlanned = Boolean(prepSession.scheduledAt);
-  const prepSessionCompleted = Boolean(prepSession.completedAt);
-  const prepProgress = Math.round((prepSession.tasks.filter((task) => task.done).length / Math.max(1, prepSession.tasks.length)) * 100);
-  const prepOrchestration = useMemo(
-    () => derivePrepSessions(weeklyMeals, prepSession.generatedPrepTaskCompletions || {}),
-    [prepSession.generatedPrepTaskCompletions, weeklyMeals],
-  );
-  const generatedPrepProgress = prepOrchestration.summary.completionPercent;
-  const plannedBreakfasts = useMemo(
-    () => weekDays.reduce((sum, day) => sum + getMealSlotItems(weeklyMeals, day, 'breakfast').length, 0),
-    [weekDays, weeklyMeals],
-  );
-  const prepTasksCompleted = useMemo(
-    () => prepSession.tasks.filter((task) => task.done).length + Object.values(prepSession.generatedPrepTaskCompletions || {}).filter(Boolean).length,
-    [prepSession.generatedPrepTaskCompletions, prepSession.tasks],
-  );
-  const pantryIngredientsUsed = useMemo(
-    () => Math.min(10, groceryList.filter((item: any) => item?.isPantryItem && item?.completed).length),
-    [groceryList],
-  );
-  const leftoverFriendlyMeals = useMemo(() => {
-    const matches = ['leftover', 'batch', 'reuse', 'repurpose'];
-    let count = 0;
-    weekDays.forEach((day) => {
-      mealTypes.forEach((type) => {
-        const items = getMealSlotItems(weeklyMeals, day, type);
-        count += items.filter((item: any) => matches.some((token) => String(item?.name || '').toLowerCase().includes(token))).length;
-      });
-    });
-    return count;
-  }, [mealTypes, weekDays, weeklyMeals]);
-  const prepActiveBlockersCount = prepSession.blockers.filter((blocker) => blocker.active).length;
-  const prepOverloadReduction = Math.max(0, Math.round((prepOrchestration.summary.readinessScore || 0) - (prepActiveBlockersCount * 10)));
-  const blendedPrepProgress = Math.max(prepProgress, generatedPrepProgress);
-  const prepRecommendationsAvailable = plannedSlots > 0;
-  const prepPlanMissing = plannedSlots > 0 && !prepSessionPlanned && !prepSessionCompleted;
-  const prepGroceryBlockersCount = prepSession.blockers.filter(
-    (blocker) => blocker.active && GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id),
-  ).length;
-  const blockerItemSuggestions = useMemo<BlockerItemSuggestion[]>(() => {
-    if (prepGroceryBlockersCount === 0) {
-      return [];
-    }
-
-    const activeGroceryBlockers = prepSession.blockers.filter(
-      (blocker) => blocker.active && GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id),
-    );
-    const existingItemNames = new Set(
-      [
-        ...groceryList.map((item: any) => normalizeMealIngredient(item?.name || item?.item)),
-        ...activePlannerGrocerySuggestions.map((suggestion) => normalizeMealIngredient(suggestion.name)),
-      ].filter(Boolean),
-    );
-
-    const noteCandidates = prepSession.blockerNote
-      .split(/[\n,;|]/)
-      .flatMap((part) => part.split(/\band\b/i))
-      .map((part) => part.trim())
-      .filter((part) => part.length > 1)
-      .map((part) => part.replace(/^[\-\d.)\s]+/, '').replace(/\s{2,}/g, ' '))
-      .filter((part) => {
-        const normalized = part.toLowerCase();
-        return normalized.length > 2 && !BLOCKER_NOTE_STOP_WORDS.has(normalized);
-      });
-
-    const suggestionRows: Array<{ name: string; category: string; reason: string }> = [];
-
-    noteCandidates.forEach((candidate) => {
-      suggestionRows.push({
-        name: candidate,
-        category: 'From Recipe',
-        reason: 'from prep blocker note',
-      });
-    });
-
-    activeGroceryBlockers.forEach((blocker) => {
-      const seedItems = BLOCKER_SUGGESTION_SEEDS_BY_ID[blocker.id] || [];
-      seedItems.forEach((seed) => {
-        suggestionRows.push({
-          name: seed,
-          category: BLOCKER_SUGGESTION_CATEGORY_BY_ID[blocker.id] || 'Other',
-          reason: blocker.label.toLowerCase(),
-        });
-      });
-    });
-
-    const uniqueByName = new Map<string, { name: string; category: string; reason: string }>();
-    suggestionRows.forEach((row) => {
-      const normalized = normalizeMealIngredient(row.name);
-      if (!normalized) return;
-      if (!uniqueByName.has(normalized)) {
-        uniqueByName.set(normalized, row);
-      }
-    });
-
-    return Array.from(uniqueByName.values())
-      .slice(0, 6)
-      .map((row) => {
-        const normalizedName = normalizeMealIngredient(row.name);
-        return {
-          id: normalizedName.replace(/[^a-z0-9]+/g, '-'),
-          name: row.name,
-          category: row.category,
-          reason: row.reason,
-          alreadyOnList: existingItemNames.has(normalizedName),
-        };
-      });
-  }, [activePlannerGrocerySuggestions, groceryList, prepGroceryBlockersCount, prepSession.blockerNote, prepSession.blockers]);
-  const blockerSuggestionResolution = useMemo(() => {
-    const trackedByName = new Map<string, BlockerSuggestionResolutionLink>();
-    prepSession.blockerSuggestionLinks.forEach((link) => {
-      const normalized = normalizeMealIngredient(link.name);
-      if (!normalized || trackedByName.has(normalized)) {
-        return;
-      }
-      trackedByName.set(normalized, link);
-    });
-
-    if (trackedByName.size === 0) {
-      return {
-        tracked: [] as Array<BlockerSuggestionResolutionLink & { resolved: boolean }>,
-        trackedCount: 0,
-        resolvedCount: 0,
-        unresolvedNames: [] as string[],
-      };
-    }
-
-    const groceryNameStatus = new Map<string, boolean>();
-    groceryList.forEach((item: any) => {
-      if (item?.isPantryItem) {
-        return;
-      }
-      const normalized = normalizeMealIngredient(item?.name || item?.item);
-      if (!normalized) {
-        return;
-      }
-      const existing = groceryNameStatus.get(normalized) || false;
-      groceryNameStatus.set(normalized, existing || Boolean(item?.checked));
-    });
-    activePlannerGrocerySuggestions.forEach((suggestion) => {
-      const normalized = normalizeMealIngredient(suggestion.name);
-      if (!normalized) return;
-      const existing = groceryNameStatus.get(normalized) || false;
-      groceryNameStatus.set(normalized, existing || Boolean(suggestion.checked || suggestion.accepted));
-    });
-
-    const tracked = Array.from(trackedByName.entries()).map(([normalizedName, link]) => ({
-      ...link,
-      resolved: Boolean(groceryNameStatus.get(normalizedName)),
-    }));
-    const resolvedCount = tracked.filter((link) => link.resolved).length;
-    const unresolvedNames = tracked.filter((link) => !link.resolved).map((link) => link.name);
-
-    return {
-      tracked,
-      trackedCount: tracked.length,
-      resolvedCount,
-      unresolvedNames,
-    };
-  }, [activePlannerGrocerySuggestions, groceryList, prepSession.blockerSuggestionLinks]);
-  const blockerSuggestionConfidenceLabel = blockerSuggestionResolution.trackedCount === 0
-    ? 'Not started'
-    : blockerSuggestionResolution.resolvedCount === blockerSuggestionResolution.trackedCount
-      ? 'High'
-      : blockerSuggestionResolution.resolvedCount > 0
-        ? 'Medium'
-        : 'Low';
-  const resolvedTrackedSuggestionNames = blockerSuggestionResolution.tracked
-    .filter((link) => link.resolved)
-    .map((link) => link.name);
-  const canResolvePrepGroceryBlockersFromSuggestions = prepGroceryBlockersCount > 0
-    && blockerSuggestionResolution.trackedCount > 0
-    && blockerSuggestionResolution.resolvedCount === blockerSuggestionResolution.trackedCount;
-  const prepResolvedViaTrackedSuggestions = prepGroceryBlockersCount === 0
-    && blockerSuggestionResolution.trackedCount > 0
-    && blockerSuggestionResolution.resolvedCount === blockerSuggestionResolution.trackedCount;
-  const prepCarryoverCount = prepSession.carryoverTaskIds.filter((taskId) => prepSession.tasks.some((task) => task.id === taskId && !task.done)).length;
-  const prepExecutionState = !prepSessionPlanned
-    ? 'not_planned'
-    : prepSessionCompleted
-      ? 'complete'
-      : prepActiveBlockersCount > 0
-        ? 'blocked'
-        : blendedPrepProgress > 0
-          ? 'in_progress'
-          : 'in_progress';
-  const prepReadyForWeek = prepSessionCompleted
-    || (prepSessionPlanned
-      && prepActiveBlockersCount === 0
-      && (prepOrchestration.summary.totalGeneratedTasks === 0 || prepOrchestration.summary.readinessScore >= 70));
-  const weekReadyNow = plannedSlots === totalSlots && (groceryBuyItemCount === 0 || groceryPendingCount === 0) && prepReadyForWeek;
-  const canResolvePrepGroceryBlockers = prepGroceryBlockersCount > 0 && groceryListCreated && groceryPendingCount === 0;
-  const rawSavingsSummary = savingsReport?.summary || {};
-  const rawSavingsPantry = savingsReport?.pantry || {};
-  const safeTopSavingCategories = Array.isArray(savingsReport?.topSavingCategories)
-    ? savingsReport.topSavingCategories
-    : [];
-  const normalizedSavingsReport = savingsReport
-    ? {
-        totalSaved: Number(rawSavingsSummary.totalSaved || 0),
-        savingsRate: rawSavingsSummary.savingsRate || '0%',
-        pantrySavings: Number(rawSavingsPantry.savings || 0),
-        pantryItemCount: Number(rawSavingsPantry.itemCount || 0),
-        topSavingCategories: safeTopSavingCategories,
-      }
-    : null;
+  const readinessViewModel = useMemo(() => buildPlannerReadinessViewModel({
+    weeklyMeals,
+    weekDays,
+    mealTypes,
+    groceryList,
+    plannerGroceryState,
+    prepSession,
+    savingsReport,
+  }), [groceryList, mealTypes, plannerGroceryState, prepSession, savingsReport, weekDays, weeklyMeals]);
+  const {
+    plannedSlots,
+    totalSlots,
+    unplannedDays,
+    plannerGrocerySuggestions,
+    activePlannerGrocerySuggestions,
+    pendingPlannerGrocerySuggestions,
+    resolvedPlannerGrocerySuggestions,
+    groceryPendingCount,
+    groceryCompletedCount,
+    groceryBuyItemCount,
+    groceryListCreated,
+    unplannedMealSlots,
+    prepSessionPlanned,
+    prepSessionCompleted,
+    prepProgress,
+    prepOrchestration,
+    generatedPrepProgress,
+    plannedBreakfasts,
+    prepTasksCompleted,
+    pantryIngredientsUsed,
+    leftoverFriendlyMeals,
+    prepActiveBlockersCount,
+    prepOverloadReduction,
+    blendedPrepProgress,
+    prepRecommendationsAvailable,
+    prepPlanMissing,
+    prepGroceryBlockersCount,
+    blockerItemSuggestions,
+    blockerSuggestionResolution,
+    blockerSuggestionConfidenceLabel,
+    resolvedTrackedSuggestionNames,
+    canResolvePrepGroceryBlockersFromSuggestions,
+    prepResolvedViaTrackedSuggestions,
+    prepCarryoverCount,
+    prepExecutionState,
+    prepReadyForWeek,
+    weekReadyNow,
+    canResolvePrepGroceryBlockers,
+    normalizedSavingsReport,
+  } = readinessViewModel;
 
   useEffect(() => {
     if (!canResolvePrepGroceryBlockers && !canResolvePrepGroceryBlockersFromSuggestions) {
@@ -2726,96 +2526,35 @@ const NutritionMealPlanner = () => {
     });
   }, [canResolvePrepGroceryBlockers, canResolvePrepGroceryBlockersFromSuggestions]);
 
-  const weeklyNutritionData = weekDays.map((day) => {
-    const totals = mealTypes.reduce((acc, type) => {
-      const slotTotals = getMealSlotTotals(weeklyMeals, day, type);
-      const slotItems = getMealSlotItems(weeklyMeals, day, type);
-      return {
-        calories: acc.calories + slotTotals.calories,
-        protein: acc.protein + slotTotals.protein,
-        carbs: acc.carbs + slotTotals.carbs,
-        fat: acc.fat + slotTotals.fat,
-        mealsLogged: acc.mealsLogged + slotItems.length,
-      };
-    }, { calories: 0, protein: 0, carbs: 0, fat: 0, mealsLogged: 0 });
-
-    return {
-      day,
-      shortDay: day.slice(0, 3),
-      ...totals,
-      calorieGoal,
-      proteinGoal: macroGoals.protein,
-      hydrationPct,
-    };
-  });
-
-  const hasWeeklyNutritionData = weeklyNutritionData.some((day) => day.mealsLogged > 0 || day.calories > 0);
-  const weeklyNutritionInsights = useMemo(() => {
-    const missingMealDaysList = weeklyNutritionData.filter((day) => day.mealsLogged === 0);
-    const missingMealDays = missingMealDaysList.length;
-    const plannedDays = weeklyNutritionData.filter((day) => day.mealsLogged > 0);
-    const proteinTrackedDays = plannedDays.filter((day) => day.protein > 0);
-    const calorieTrackedDays = plannedDays.filter((day) => day.calories > 0);
-    const lowProteinDaysList = proteinTrackedDays.filter((day) => day.protein < 60);
-    const lowProteinDays = lowProteinDaysList.length;
-    const missingProteinDataDaysList = plannedDays.filter((day) => day.protein <= 0);
-    const missingCalorieDataDaysList = plannedDays.filter((day) => day.calories <= 0);
-
-    const caloriesVaryWidely = calorieTrackedDays.length >= 3
-      ? (() => {
-          const calorieValues = calorieTrackedDays.map((day) => day.calories);
-          const minCalories = Math.min(...calorieValues);
-          const maxCalories = Math.max(...calorieValues);
-          const spread = maxCalories - minCalories;
-          const ratio = maxCalories / Math.max(1, minCalories);
-          return ratio >= 1.6 || spread >= 800;
-        })()
-      : false;
-
-    const insights: string[] = [];
-    if (missingMealDays > 0) {
-      insights.push(`${missingMealDays} day${missingMealDays === 1 ? '' : 's'} have no meals planned.`);
-    } else {
-      insights.push('Week fully planned.');
-    }
-
-    if (proteinTrackedDays.length > 0) {
-      if (lowProteinDays > 0) {
-        insights.push(`Low protein on ${lowProteinDays} day${lowProteinDays === 1 ? '' : 's'} (<60g).`);
-      } else {
-        insights.push('Protein coverage looks steady across planned days.');
-      }
-    } else {
-      insights.push('Protein insights unlock as meal protein data is added.');
-    }
-
-    if (calorieTrackedDays.length >= 3) {
-      if (caloriesVaryWidely) {
-        insights.push('Calories vary widely across the week.');
-      } else {
-        insights.push('Calorie range is fairly consistent this week.');
-      }
-    } else {
-      insights.push('Add calorie details to at least 3 days to compare weekly consistency.');
-    }
-
-    const looksBalanced = missingMealDays === 0
-      && proteinTrackedDays.length > 0
-      && lowProteinDays === 0
-      && calorieTrackedDays.length >= 3
-      && !caloriesVaryWidely;
-
-    return {
-      insights,
-      looksBalanced,
-      missingMealDaysList,
-      lowProteinDaysList,
-      missingProteinDataDaysList,
-      missingCalorieDataDaysList,
-      caloriesVaryWidely,
-      canCompareCalories: calorieTrackedDays.length >= 3,
-    };
-  }, [weeklyNutritionData]);
+  const analyticsViewModel = useMemo(() => buildPlannerAnalyticsViewModel({
+    weeklyMeals,
+    weekDays,
+    mealTypes,
+    calorieGoal,
+    macroGoals,
+    hydrationPct,
+    bodyMetricSummary,
+  }), [bodyMetricSummary, calorieGoal, hydrationPct, macroGoals, mealTypes, weekDays, weeklyMeals]);
+  const {
+    weeklyNutritionData,
+    hasWeeklyNutritionData,
+    weeklyNutritionInsights,
+    weeklyMacroTotals,
+    macroDistributionData,
+    metricsTrendData,
+    weeklyTotals,
+    activeDays,
+    avgCalories,
+    avgProtein,
+    calorieGoalHitDays,
+    proteinGoalHitDays,
+    weeklyMealsCount,
+    latestBodyMetric,
+    bodyWeightDelta,
+  } = analyticsViewModel;
+  void weeklyMacroTotals;
+  void weeklyTotals;
+  void activeDays;
 
   const focusPlannerDay = (day: string) => {
     setActiveTab('planner');
@@ -3530,78 +3269,18 @@ const NutritionMealPlanner = () => {
     return recommendations.slice(0, 3);
   }, [activeFixItSlotSignals, activeFixItTarget, calorieGoal]);
 
-  const weeklyMacroTotals = weeklyNutritionData.reduce((acc, day) => ({
-    protein: acc.protein + day.protein,
-    carbs: acc.carbs + day.carbs,
-    fat: acc.fat + day.fat,
-  }), { protein: 0, carbs: 0, fat: 0 });
-
-  const proteinCals = weeklyMacroTotals.protein * 4;
-  const carbCals = weeklyMacroTotals.carbs * 4;
-  const fatCals = weeklyMacroTotals.fat * 9;
-  const totalMacroCalories = proteinCals + carbCals + fatCals;
-
-  const macroDistributionData = totalMacroCalories > 0 ? [
-    { name: 'Protein', grams: weeklyMacroTotals.protein, calories: proteinCals, percent: Math.round((proteinCals / totalMacroCalories) * 100), color: '#3b82f6' },
-    { name: 'Carbs', grams: weeklyMacroTotals.carbs, calories: carbCals, percent: Math.round((carbCals / totalMacroCalories) * 100), color: '#22c55e' },
-    { name: 'Fat', grams: weeklyMacroTotals.fat, calories: fatCals, percent: Math.round((fatCals / totalMacroCalories) * 100), color: '#f59e0b' },
-  ] : [];
-
-  const metricsTrendData = weeklyNutritionData.map((day) => ({
-    day: day.shortDay,
-    calories: Math.round(day.calories),
+  const dashboardViewModel = useMemo(() => buildPlannerDashboardViewModel({
+    caloriesCurrent,
+    proteinCurrent,
+    carbsCurrent,
+    fatCurrent,
     calorieGoal,
-    protein: Math.round(day.protein),
-    proteinGoal: macroGoals.protein,
-  }));
-
-  const weeklyTotals = weeklyNutritionData.reduce((acc, day) => ({
-    calories: acc.calories + day.calories,
-    protein: acc.protein + day.protein,
-    mealsLogged: acc.mealsLogged + day.mealsLogged,
-  }), { calories: 0, protein: 0, mealsLogged: 0 });
-  const activeDays = weeklyNutritionData.filter((day) => day.mealsLogged > 0).length;
-  const avgCalories = activeDays > 0 ? Math.round(weeklyTotals.calories / activeDays) : 0;
-  const avgProtein = activeDays > 0 ? Math.round(weeklyTotals.protein / activeDays) : 0;
-  const calorieGoalHitDays = weeklyNutritionData.filter((day) => day.calories >= calorieGoal * 0.9 && day.calories <= calorieGoal * 1.1).length;
-  const proteinGoalHitDays = weeklyNutritionData.filter((day) => day.protein >= macroGoals.protein).length;
-  const { latestBodyMetric, bodyWeightDelta } = bodyMetricSummary;
-  const weeklyMealsCount = weeklyNutritionData.reduce((sum, day) => sum + day.mealsLogged, 0);
-  const visibilitySummaryLabel = shareVisibility === 'private'
-    ? 'Private (only you)'
-    : shareVisibility === 'friends'
-      ? 'Friends'
-      : 'Public';
-  const weekLabel = weekRange?.weekStart && weekRange?.weekEnd
-    ? `${weekRange.weekStart} to ${weekRange.weekEnd}`
-    : `${getCurrentWeekAnchor()} week`;
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  const publicShareUrl = sharePublicToken
-    ? `${origin}/meal-planner/shared/${sharePublicToken}`
-    : '';
-  const weeklyShareSummaryText = useMemo(() => {
-    const lines = [
-      `Chefsire Meal Plan • Week of ${weekLabel}`,
-      `Visibility: ${visibilitySummaryLabel}`,
-      '',
-      `Planning coverage: ${plannedSlots}/${totalSlots} meal slots planned (${Math.round((plannedSlots / Math.max(1, totalSlots)) * 100)}%)`,
-      `Meals planned: ${weeklyMealsCount}`,
-      `Readiness: ${weekReadyNow ? 'Week ready ✅' : 'In progress'}`,
-      `Grocery progress: ${groceryCompletedCount}/${Math.max(1, groceryBuyItemCount)} purchased`,
-      `Prep progress: ${prepProgress}% (${prepSession.tasks.filter((task) => task.done).length}/${prepSession.tasks.length} tasks complete)`,
-      `Prep blockers: ${prepActiveBlockersCount}`,
-      '',
-      'Nutrition highlights:',
-      `• Avg calories/day: ${avgCalories} (goal: ${calorieGoal})`,
-      `• Avg protein/day: ${avgProtein}g (goal: ${macroGoals.protein || 150}g)`,
-      `• Protein goal hit days: ${proteinGoalHitDays}/7`,
-      `• Hydration today: ${water.glassesLogged}/${water.dailyTarget} glasses (${hydrationPct}%)`,
-    ];
-
-    return lines.join('\n');
-  }, [
-    weekLabel,
-    visibilitySummaryLabel,
+    macroGoals,
+    shareVisibility,
+    weekRange,
+    weekAnchor: getCurrentWeekAnchor(),
+    sharePublicToken,
+    origin: typeof window !== 'undefined' ? window.location.origin : '',
     plannedSlots,
     totalSlots,
     weeklyMealsCount,
@@ -3609,81 +3288,71 @@ const NutritionMealPlanner = () => {
     groceryCompletedCount,
     groceryBuyItemCount,
     prepProgress,
-    prepSession.tasks,
+    prepTasksCompletedCount: prepSession.tasks.filter((task) => task.done).length,
+    prepTasksCount: prepSession.tasks.length,
     prepActiveBlockersCount,
     avgCalories,
-    calorieGoal,
     avgProtein,
-    macroGoals.protein,
     proteinGoalHitDays,
-    water.glassesLogged,
-    water.dailyTarget,
-    hydrationPct,
-  ]);
-
-  const computedInsights = [
-    {
-      icon: <Flame className="w-6 h-6 text-orange-500" />,
-      title: calorieGoalHitDays > 0 ? `${calorieGoalHitDays} balanced day${calorieGoalHitDays === 1 ? '' : 's'}` : 'Calorie pacing in progress',
-      description: calorieGoalHitDays > 0
-        ? `You stayed within ±10% of your ${calorieGoal} kcal target on ${calorieGoalHitDays}/7 days.`
-        : `Average intake is ${avgCalories || 0} kcal. Keep logging meals to dial in your weekly target.`,
-      trend: calorieGoalHitDays >= 4 ? 'positive' : 'neutral',
-    },
-    {
-      icon: <Target className="w-6 h-6 text-blue-500" />,
-      title: proteinGoalHitDays > 0 ? `Protein target hit ${proteinGoalHitDays}/7 days` : 'Protein target opportunity',
-      description: proteinGoalHitDays > 0
-        ? `You're averaging ${avgProtein}g protein/day against a ${macroGoals.protein}g goal.`
-        : `Average protein is ${avgProtein}g/day. Add lean protein to breakfast or snacks for an easier boost.`,
-      trend: proteinGoalHitDays >= 4 ? 'positive' : 'neutral',
-    },
-    {
-      icon: <Droplets className="w-6 h-6 text-cyan-500" />,
-      title: hydrationPct >= 100 ? 'Hydration goal complete' : `${water.glassesLogged}/${water.dailyTarget} glasses today`,
-      description: latestBodyMetric
-        ? `Hydration is ${hydrationPct}% of target. Body weight trend: ${bodyWeightDelta > 0 ? '+' : ''}${bodyWeightDelta.toFixed(1)} lbs across your log history.`
-        : `Hydration is ${hydrationPct}% of target. Add body metrics entries to unlock trend correlations.`,
-      trend: hydrationPct >= 80 ? 'positive' : 'neutral',
-    },
-  ];
-
-  const nutritionCoachAnalysis = useMemo(() => deriveNutritionCoachInsights({
-    weeklyMeals,
-    mealTypes,
-    weekDays,
-    calorieGoal,
-    proteinGoal: macroGoals.protein || DEFAULT_NUTRITION_GOALS.macroGoals.protein,
+    calorieGoalHitDays,
     water,
-    grocery: {
-      pendingCount: groceryPendingCount,
-      completedCount: groceryCompletedCount,
-      totalBuyCount: groceryBuyItemCount,
-      suggestions: activePlannerGrocerySuggestions,
-      pantryItemCount: normalizedSavingsReport?.pantryItemCount || groceryList.filter((item: any) => item?.isPantryItem).length,
-      pantrySavings: normalizedSavingsReport?.pantrySavings || 0,
-    },
-    prep: {
-      planned: prepSessionPlanned,
-      completed: prepSessionCompleted,
-      progress: blendedPrepProgress,
-      activeBlockersCount: prepActiveBlockersCount,
-      carryoverCount: prepCarryoverCount,
-      orchestration: prepOrchestration,
-    },
-    readiness: {
-      weekReadyNow,
-      prepReadyForWeek,
-    },
-    adherence: {
-      currentStreak: streak.currentStreak,
-    },
+    hydrationPct,
+    latestBodyMetric,
+    bodyWeightDelta,
   }), [
+    avgCalories,
+    avgProtein,
+    bodyWeightDelta,
+    calorieGoal,
+    calorieGoalHitDays,
+    caloriesCurrent,
+    carbsCurrent,
+    fatCurrent,
+    groceryBuyItemCount,
+    groceryCompletedCount,
+    hydrationPct,
+    latestBodyMetric,
+    macroGoals,
+    plannedSlots,
+    prepActiveBlockersCount,
+    prepProgress,
+    prepSession.tasks,
+    proteinCurrent,
+    proteinGoalHitDays,
+    sharePublicToken,
+    shareVisibility,
+    totalSlots,
+    water,
+    weekReadyNow,
+    weekRange,
+    weeklyMealsCount,
+    selectedDate,
+  ]);
+  const {
+    calorieProgress,
+    remainingCalories,
+    visibilitySummaryLabel,
+    weeklyShareSummaryText,
+    weekLabel,
+    publicShareUrl,
+    computedInsightSummaries,
+  } = dashboardViewModel;
+
+  const computedInsights = computedInsightSummaries.map((insight) => ({
+    ...insight,
+    icon: insight.kind === 'calories'
+      ? <Flame className="w-6 h-6 text-orange-500" />
+      : insight.kind === 'protein'
+        ? <Target className="w-6 h-6 text-blue-500" />
+        : <Droplets className="w-6 h-6 text-cyan-500" />,
+  }));
+
+  const campaignViewModel = useMemo(() => buildPlannerCampaignViewModel({
     weeklyMeals,
     mealTypes,
     weekDays,
     calorieGoal,
-    macroGoals.protein,
+    macroGoals,
     water,
     groceryPendingCount,
     groceryCompletedCount,
@@ -3699,33 +3368,56 @@ const NutritionMealPlanner = () => {
     prepOrchestration,
     weekReadyNow,
     prepReadyForWeek,
-    streak.currentStreak,
+    streak,
+    plannedBreakfasts,
+    prepTasksCompleted,
+    prepOverloadReduction,
+    leftoverFriendlyMeals,
+    proteinGoalHitDays,
+    pantryIngredientsUsed,
+    activeCampaignId,
+    activeCampaignStartedAt,
+    userId: user?.id,
+  }), [
+    activeCampaignId,
+    activeCampaignStartedAt,
+    activePlannerGrocerySuggestions,
+    blendedPrepProgress,
+    calorieGoal,
+    groceryBuyItemCount,
+    groceryCompletedCount,
+    groceryList,
+    groceryPendingCount,
+    leftoverFriendlyMeals,
+    macroGoals,
+    mealTypes,
+    normalizedSavingsReport,
+    pantryIngredientsUsed,
+    plannedBreakfasts,
+    prepActiveBlockersCount,
+    prepCarryoverCount,
+    prepOrchestration,
+    prepOverloadReduction,
+    prepReadyForWeek,
+    prepSessionCompleted,
+    prepSessionPlanned,
+    prepTasksCompleted,
+    proteinGoalHitDays,
+    streak,
+    user?.id,
+    water,
+    weekDays,
+    weekReadyNow,
+    weeklyMeals,
   ]);
-  const semanticVarietyScore = Math.round((nutritionCoachAnalysis?.scoreBreakdown?.variety ?? 70) as number);
+  const {
+    nutritionCoachAnalysis,
+    plannerMealCount,
+    cadenceConsistency,
+    stabilizationReadiness,
+    activeCampaignProgress,
+  } = campaignViewModel;
   const visibleCoachInsights = nutritionCoachAnalysis.insights.filter((insight) => !dismissedCoachInsightIds.includes(insight.id));
-  const plannerMeals = useMemo(() => selectPlannerMeals(weeklyMeals), [weeklyMeals]);
-  const plannerMealCount = useMemo(() => selectPlannerMealCount(plannerMeals), [plannerMeals]);
-  const continuityAnchors = useMemo(() => selectContinuityAnchors(plannedBreakfasts, prepTasksCompleted), [plannedBreakfasts, prepTasksCompleted]);
-  const recoveryStability = useMemo(() => selectRecoveryStability(prepOverloadReduction, leftoverFriendlyMeals), [prepOverloadReduction, leftoverFriendlyMeals]);
-  const momentumProtection = useMemo(() => selectMomentumProtection(proteinGoalHitDays, semanticVarietyScore), [proteinGoalHitDays, semanticVarietyScore]);
-  const cadenceConsistency = useMemo(() => selectCadenceConsistency(plannedBreakfasts, groceryCompletedCount), [plannedBreakfasts, groceryCompletedCount]);
-  const stabilizationReadiness = useMemo(() => selectStabilizationReadiness(prepTasksCompleted, prepOverloadReduction, groceryCompletedCount), [prepTasksCompleted, prepOverloadReduction, groceryCompletedCount]);
-  const prepReadinessSummary = useMemo(() => selectPrepReadinessSummary(prepTasksCompleted, groceryCompletedCount), [prepTasksCompleted, groceryCompletedCount]);
-  const continuitySummary = useMemo(() => selectContinuitySummary(continuityAnchors, recoveryStability, momentumProtection), [continuityAnchors, recoveryStability, momentumProtection]);
-
-  const activeCampaignProgress = useMemo(() => {
-    if (!activeCampaignId || !activeCampaignStartedAt) return null;
-    return evaluateCampaignProgress(activeCampaignId, {
-      plannedBreakfasts: continuitySummary.continuityAnchors.plannedBreakfasts,
-      prepTasksCompleted: prepReadinessSummary.prepTasksCompleted,
-      groceryItemsResolved: prepReadinessSummary.groceryCompletedCount,
-      pantryIngredientsUsed,
-      leftoverFriendlyMeals: continuitySummary.recoveryStability.leftoverFriendlyMeals,
-      proteinGoalDays: continuitySummary.momentumProtection.proteinGoalHitDays,
-      semanticVarietyScore: continuitySummary.momentumProtection.semanticVarietyScore,
-      prepOverloadReduction: continuitySummary.recoveryStability.prepOverloadReduction,
-    }, activeCampaignStartedAt, undefined, user?.id);
-  }, [activeCampaignId, activeCampaignStartedAt, continuitySummary, prepReadinessSummary, pantryIngredientsUsed, user?.id]);
   void plannerMealCount;
   void cadenceConsistency;
   void stabilizationReadiness;
