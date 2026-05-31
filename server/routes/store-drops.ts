@@ -8,8 +8,6 @@ import { requireAuth } from "../middleware/auth";
 const router = Router();
 
 // POST /api/stores/:id/drops — create a drop and fan out to followers
-// TODO(v2): For merchants with > 50,000 followers, consider a background job for the fan-out
-//           instead of blocking the HTTP response on N notification inserts.
 router.post("/:id/drops", requireAuth, async (req, res) => {
   try {
     if (!req.user) {
@@ -34,87 +32,101 @@ router.post("/:id/drops", requireAuth, async (req, res) => {
       return res.status(403).json({ ok: false, error: "Not authorized" });
     }
 
-    // Validate productId belongs to this store's owner
+    // Validate productId belongs to this store's owner and is still active (FIX 1)
     if (!productId) {
       return res.status(400).json({ ok: false, error: "productId is required" });
     }
     const product = await db.query.products.findFirst({ where: eq(products.id, productId) });
-    if (!product || product.sellerId !== req.user.id) {
-      return res.status(400).json({ ok: false, error: "Product not found or not owned by you" });
-    }
-
-    // Rate limit: one drop per merchant per rolling 24h
-    const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const recentDrops = await db
-      .select({ id: storeDrops.id, createdAt: storeDrops.createdAt })
-      .from(storeDrops)
-      .where(and(eq(storeDrops.ownerId, req.user.id), sql`${storeDrops.createdAt} > ${cutoff}`))
-      .limit(1);
-
-    if (recentDrops.length > 0) {
-      const nextAllowedAt = new Date(recentDrops[0].createdAt.getTime() + 24 * 60 * 60 * 1000);
-      const retryAfterSeconds = Math.ceil((nextAllowedAt.getTime() - Date.now()) / 1000);
-      return res.status(429).json({
+    if (!product || product.sellerId !== req.user.id || !product.isActive) {
+      return res.status(400).json({
         ok: false,
-        error: "You can only send one drop per 24 hours",
-        retryAfterSeconds,
+        error: "Product not found, not owned by you, or no longer active",
       });
     }
 
-    // Snapshot follower count (consistent with stores-crud.ts fetchSocialProof)
-    const [{ cnt }] = await db
-      .select({ cnt: count() })
-      .from(follows)
-      .where(eq(follows.followingId, req.user.id));
+    // Atomically check rate limit, create drop, and fan out notifications (FIX 2).
+    // Advisory lock keyed on ownerId serializes concurrent POSTs from the same merchant
+    // so two simultaneous requests can't both pass the 24h check and double-notify followers.
+    // TODO(v2): For merchants with > 50,000 followers, move fan-out to a background job.
+    type TxResult =
+      | { rateLimited: true; retryAfterSeconds: number }
+      | { rateLimited: false; drop: { id: string; recipientCount: number; createdAt: Date } };
 
-    const recipientCount = Number(cnt ?? 0);
+    const result = await db.transaction(async (tx) => {
+      // Serialize per-owner: advisory lock auto-releases when the transaction ends
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${req.user!.id}))`);
 
-    // Create the drop record
-    const [drop] = await db
-      .insert(storeDrops)
-      .values({
-        storeId,
-        ownerId: req.user.id,
-        productId,
-        message,
-        recipientCount,
-      })
-      .returning();
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
+      const recentDrops = await tx
+        .select({ id: storeDrops.id, createdAt: storeDrops.createdAt })
+        .from(storeDrops)
+        .where(and(eq(storeDrops.ownerId, req.user!.id), sql`${storeDrops.createdAt} > ${cutoff}`))
+        .limit(1);
 
-    // Fan out notifications to all followers
-    if (recipientCount > 0) {
-      const followerRows = await db
-        .select({ followerId: follows.followerId })
-        .from(follows)
-        .where(eq(follows.followingId, req.user.id));
-
-      if (followerRows.length > 0) {
-        await db.insert(notifications).values(
-          followerRows.map((row) => ({
-            userId: row.followerId,
-            type: "store_drop",
-            title: `${store.name} dropped a new product`,
-            message: message ?? `${product.name} is now available in ${store.name}`,
-            imageUrl: (product.images as string[])?.[0] ?? null,
-            linkUrl: `/store/${store.handle}?drop=${drop.id}`,
-            metadata: {
-              dropId: drop.id,
-              storeHandle: store.handle,
-              productId,
-              message,
-            } as any,
-            priority: "normal",
-          })),
-        );
+      if (recentDrops.length > 0) {
+        const nextAllowedAt = new Date(recentDrops[0].createdAt.getTime() + 24 * 60 * 60 * 1000);
+        const retryAfterSeconds = Math.ceil((nextAllowedAt.getTime() - Date.now()) / 1000);
+        return { rateLimited: true, retryAfterSeconds } satisfies TxResult;
       }
+
+      // Snapshot follower count (consistent with stores-crud.ts fetchSocialProof)
+      const [{ cnt }] = await tx
+        .select({ cnt: count() })
+        .from(follows)
+        .where(eq(follows.followingId, req.user!.id));
+
+      const recipientCount = Number(cnt ?? 0);
+
+      const [drop] = await tx
+        .insert(storeDrops)
+        .values({ storeId, ownerId: req.user!.id, productId, message, recipientCount })
+        .returning();
+
+      // Fan out inside the transaction so a partial failure rolls everything back
+      if (recipientCount > 0) {
+        const followerRows = await tx
+          .select({ followerId: follows.followerId })
+          .from(follows)
+          .where(eq(follows.followingId, req.user!.id));
+
+        if (followerRows.length > 0) {
+          await tx.insert(notifications).values(
+            followerRows.map((row) => ({
+              userId: row.followerId,
+              type: "store_drop",
+              title: `${store.name} dropped a new product`,
+              message: message ?? `${product.name} is now available in ${store.name}`,
+              imageUrl: (product.images as string[])?.[0] ?? null,
+              linkUrl: `/store/${store.handle}?drop=${drop.id}`,
+              metadata: {
+                dropId: drop.id,
+                storeHandle: store.handle,
+                productId,
+                message,
+              } as any,
+              priority: "normal",
+            })),
+          );
+        }
+      }
+
+      return { rateLimited: false, drop } satisfies TxResult;
+    });
+
+    if (result.rateLimited) {
+      return res.status(429).json({
+        ok: false,
+        error: "You can only send one drop per 24 hours",
+        retryAfterSeconds: result.retryAfterSeconds,
+      });
     }
 
     return res.json({
       ok: true,
       drop: {
-        id: drop.id,
-        recipientCount: drop.recipientCount,
-        createdAt: drop.createdAt,
+        id: result.drop.id,
+        recipientCount: result.drop.recipientCount,
+        createdAt: result.drop.createdAt,
       },
     });
   } catch (error) {
