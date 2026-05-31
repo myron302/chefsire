@@ -112,6 +112,15 @@ export type StoreLayoutCustomizationConfig = {
     accent?: string;
   };
   tokens?: Partial<StoreThemeTokens>;
+  socialProof?: StoreSocialProofConfig;
+};
+
+export type StoreSocialProofConfig = {
+  showReviewRating?: boolean;
+  showCookoffWins?: boolean;
+  showFollowerCount?: boolean;
+  showChefClubs?: boolean;
+  showMemberSince?: boolean;
 };
 
 export type StoreBuilderNode = {

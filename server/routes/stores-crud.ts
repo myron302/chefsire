@@ -1,12 +1,63 @@
 import { Router } from "express";
 import { db } from "../db";
-import { stores, users, orders } from "../../shared/schema.js";
-import { eq, count, sum, sql } from "drizzle-orm";
+import { stores, users, orders, follows, clubs, clubMemberships } from "../../shared/schema.js";
+import { eq, count, sum, sql, and } from "drizzle-orm";
 import { SUBSCRIPTION_TIERS } from "./subscriptions";
 import { requireAuth, optionalAuth } from "../middleware/auth";
 import { normalizeStoreLayout } from "../../shared/store/storeLayout.js";
+import { competitions, competitionParticipants } from "../db/competitions.js";
+import type { StoreSocialProof } from "../../shared/store/storeSocialProof.js";
 
 const router = Router();
+
+async function fetchSocialProof(ownerId: string): Promise<StoreSocialProof> {
+  const [followerResult, winsResult, clubResult, ownerResult] = await Promise.all([
+    db
+      .select({ cnt: count() })
+      .from(follows)
+      .where(eq(follows.followingId, ownerId))
+      .then(([r]) => r?.cnt ?? 0)
+      .catch(() => null),
+    db
+      .select({ cnt: count() })
+      .from(competitionParticipants)
+      .where(
+        and(
+          eq(competitionParticipants.userId, ownerId),
+          eq(competitionParticipants.placement, 1),
+        ),
+      )
+      .then(([r]) => r?.cnt ?? 0)
+      .catch(() => null),
+    db
+      .select({ id: clubs.id, name: clubs.name })
+      .from(clubMemberships)
+      .innerJoin(clubs, eq(clubMemberships.clubId, clubs.id))
+      .where(eq(clubMemberships.userId, ownerId))
+      .catch(() => null),
+    db
+      .select({ createdAt: users.createdAt })
+      .from(users)
+      .where(eq(users.id, ownerId))
+      .limit(1)
+      .then(([r]) => r ?? null)
+      .catch(() => null),
+  ]);
+
+  const proof: StoreSocialProof = {};
+  if (followerResult !== null) proof.followerCount = Number(followerResult);
+  if (winsResult !== null) proof.cookoffWins = Number(winsResult);
+  if (clubResult !== null && clubResult.length > 0) {
+    proof.chefClubs = [...clubResult]
+      .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""))
+      .map((c) => ({ id: c.id, name: c.name ?? "" }));
+  }
+  if (ownerResult?.createdAt) {
+    proof.memberSince = ownerResult.createdAt.toISOString();
+  }
+  return proof;
+}
+
 type StoreInsert = typeof stores.$inferInsert;
 type StoreLayout = NonNullable<StoreInsert["layout"]>;
 
@@ -35,7 +86,8 @@ router.get("/user/:userId", async (req, res) => {
       where: eq(stores.userId, userId),
     });
 
-    res.json({ ok: true, store: store || null });
+    const socialProof = store ? await fetchSocialProof(userId) : undefined;
+    res.json({ ok: true, store: store || null, socialProof });
   } catch (error) {
     console.error("Error fetching user store:", error);
     res.status(500).json({ ok: false, error: "Failed to fetch store" });
@@ -80,7 +132,10 @@ router.get("/:handle", optionalAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: "Store not available" });
     }
 
-    res.json({ ok: true, store });
+    // reviewRating intentionally omitted — no store_reviews table exists
+    const socialProof = await fetchSocialProof(store.userId as string);
+
+    res.json({ ok: true, store, socialProof });
   } catch (error) {
     console.error("Error fetching store:", error);
     res.status(500).json({ ok: false, error: "Failed to fetch store" });

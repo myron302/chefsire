@@ -6,10 +6,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { StoreHeader } from "@/components/store/StoreHeader";
 import { ProductCard } from "@/components/store/ProductCard";
 import StoreFontLoader from "@/components/store/StoreFontLoader";
+import StoreSocialProof from "@/components/store/StoreSocialProof";
 import { ShoppingBag, Eye, Heart, MapPin, Clock } from "lucide-react";
 import { normalizeStoreLayout } from "@shared/store/storeLayout";
 import { resolveThemeTokens } from "@shared/store/storeThemes";
 import { tokensToStyleVars } from "@/lib/store/storeTokenStyles";
+import type { StoreSocialProof as StoreSocialProofData } from "@shared/store/storeSocialProof";
 
 export interface StoreData {
   id: string | number;
@@ -47,6 +49,7 @@ interface StoreViewerContentProps {
   isOwner?: boolean;
   previewMode?: boolean;
   onNavigate?: (path: string) => void;
+  socialProof?: StoreSocialProofData;
 }
 
 export default function StoreViewerContent({
@@ -56,6 +59,7 @@ export default function StoreViewerContent({
   isOwner = false,
   previewMode = false,
   onNavigate,
+  socialProof,
 }: StoreViewerContentProps) {
   const navigate = previewMode ? () => {} : (onNavigate ?? (() => {}));
 
@@ -103,6 +107,12 @@ export default function StoreViewerContent({
           {layout.announcementBar}
         </div>
       )}
+
+      <StoreSocialProof
+        socialProof={socialProof}
+        visibility={layout.socialProof}
+        tokens={tokens}
+      />
 
       <StoreHeader store={storeForHeader} isOwner={isOwner} themeColors={themeColors} />
 

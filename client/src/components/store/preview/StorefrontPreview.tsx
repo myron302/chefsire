@@ -5,6 +5,15 @@ import StoreViewerContent, {
   type StoreProduct,
 } from "@/pages/store/StoreViewerContent";
 import type { StoreLayoutCustomizationConfig } from "@shared/store/storeLayout";
+import type { StoreSocialProof } from "@shared/store/storeSocialProof";
+
+const PREVIEW_SOCIAL_PROOF: StoreSocialProof = {
+  reviewRating: { average: 4.8, count: 32 },
+  cookoffWins: 2,
+  followerCount: 1247,
+  chefClubs: [{ id: "demo-1", name: "Sample Club" }],
+  memberSince: "2024-03-15T00:00:00.000Z",
+};
 
 type Viewport = "desktop" | "mobile";
 
@@ -88,6 +97,7 @@ export default function StorefrontPreview({
             productsLoading={false}
             isOwner={false}
             previewMode={true}
+            socialProof={PREVIEW_SOCIAL_PROOF}
           />
         </div>
       </div>
