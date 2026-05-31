@@ -33,10 +33,8 @@ import { createShareablePlanSnapshot, generatePlannerShareSummary } from '@/comp
 import { applyTemplateToWeek, type PlannerTemplate } from '@/components/meal-planner/social/plannerTemplateUtils';
 import { buildPlannerFeed } from '@/components/meal-planner/social/plannerFeedUtils';
 import CookingToolsReference from '@/components/meal-planner/CookingToolsReference';
-import { exportCSV, exportText } from "@/lib/shoppingExport";
 import { normalizeShoppingListItem } from '@/lib/shopping-list';
 import {
-  normalizeMealIngredient,
   type PlannerGroceryDerivationState,
   type PlannerGrocerySuggestion,
 } from '@/components/meal-planner/plannerGroceryUtils';
@@ -51,6 +49,28 @@ import { usePlannerReadiness } from '@/components/meal-planner/hooks/usePlannerR
 import { usePlannerAnalytics } from '@/components/meal-planner/hooks/usePlannerAnalytics';
 import { usePlannerDashboard } from '@/components/meal-planner/hooks/usePlannerDashboard';
 import { usePlannerCampaigns } from '@/components/meal-planner/hooks/usePlannerCampaigns';
+import { usePlannerGroceryActions, type BlockerItemSuggestion } from '@/components/meal-planner/hooks/usePlannerGroceryActions';
+import { usePlannerPrepActions } from '@/components/meal-planner/hooks/usePlannerPrepActions';
+import { usePlannerShareActions } from '@/components/meal-planner/hooks/usePlannerShareActions';
+import {
+  usePlannerTemplateActions,
+  type PendingTemplateBridgePreview,
+  type RecentPinnedTemplateUsage,
+  type TemplateBridgePayload,
+  type TemplateMergeMode,
+  type RecentPinnedTemplateApplyResult,
+} from '@/components/meal-planner/hooks/usePlannerTemplateActions';
+import {
+  usePlannerFixItActions,
+  DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON,
+  FIX_IT_DETAILS_QUEUE_SKIP_REASONS,
+  FIX_IT_DETAILS_QUEUE_SNOOZE_OPTIONS,
+  type ActiveFixItTarget,
+  type FixItDetailsQueueSkipReasonId,
+  type FixItDetailsQueueSnoozeOptionId,
+  type FixItIssueType,
+  type FixItSlotRecommendation,
+} from '@/components/meal-planner/hooks/usePlannerFixItActions';
 import {
   buildFixItDataCompleteness,
   buildFixItDayCompletion,
@@ -207,31 +227,9 @@ const normalizePrepSession = (session: any): PrepSessionState => {
 
 const createDefaultPrepSession = (): PrepSessionState => normalizePrepSession({});
 
-type BlockerItemSuggestion = {
-  id: string;
-  name: string;
-  category: string;
-  reason: string;
-  alreadyOnList: boolean;
-};
-
 type MealPlanVisibility = 'private' | 'friends' | 'public';
 type ShareMetadataSaveState = 'idle' | 'saving' | 'saved' | 'error';
-type TemplateMergeMode = 'replace' | 'append';
-type FixItIssueType = 'missing-meals' | 'low-protein' | 'missing-details' | 'calorie-balance';
-type ActiveFixItTarget = {
-  issueType: FixItIssueType;
-  targetDay: string | null;
-  targetDate: string | null;
-  reason: string;
-  suggestedNextStep: string;
-};
-type FixItSlotRecommendation = {
-  key: string;
-  text: string;
-  cta: string;
-  onClick: () => void;
-};
+type TemplateMergePreferenceMap = Record<string, TemplateMergeMode>;
 type FixItProgressMiniState = {
   unresolvedCount: number;
   message: string;
@@ -270,50 +268,6 @@ type FixItDetailsQueueState = {
     reasonHint: string;
   } | null;
 };
-type FixItDetailsQueueSkipReasonId = 'protein-unknown' | 'label-unavailable' | 'add-later' | 'not-needed-today';
-type FixItDetailsQueueSnoozeOptionId = 'later-today' | 'tomorrow' | 'next-week';
-
-const FIX_IT_DETAILS_QUEUE_SKIP_REASONS: Array<{ id: FixItDetailsQueueSkipReasonId; label: string }> = [
-  { id: 'protein-unknown', label: "Don't know protein yet" },
-  { id: 'label-unavailable', label: 'Label unavailable' },
-  { id: 'add-later', label: 'Will add later' },
-  { id: 'not-needed-today', label: 'Not needed today' },
-];
-const DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON: FixItDetailsQueueSkipReasonId = 'add-later';
-const FIX_IT_DETAILS_QUEUE_SNOOZE_OPTIONS: Array<{ id: FixItDetailsQueueSnoozeOptionId; label: string }> = [
-  { id: 'later-today', label: 'Later today' },
-  { id: 'tomorrow', label: 'Tomorrow' },
-  { id: 'next-week', label: 'Next week' },
-];
-
-type TemplateBridgePayload = {
-  templateName: string;
-  targetWeekStart?: string;
-  source?: string;
-  requestedAt?: string;
-  mergeMode?: TemplateMergeMode;
-};
-type PendingTemplateBridgePreview = TemplateBridgePayload & {
-  templateMeals: Record<string, any>;
-  mergeMode: TemplateMergeMode;
-};
-type RecentPinnedTemplateUsage = {
-  templateName: string;
-  lastUsedAt: string;
-  mergeMode: TemplateMergeMode;
-  lastAppliedSummary?: string;
-  appliedMealCount?: number;
-  addedMealCount?: number;
-  targetWeekStart?: string;
-};
-type TemplateMergePreferenceMap = Record<string, TemplateMergeMode>;
-type RecentPinnedTemplateApplyResult = {
-  appliedMealCount?: number;
-  addedMealCount?: number;
-  targetWeekStart?: string;
-  lastAppliedSummary?: string;
-};
-
 const TEMPLATE_PINNED_STORAGE_KEY = 'meal-template-pinned-v1';
 const RECENT_PINNED_TEMPLATE_STORAGE_KEY = 'meal-template-recent-pinned-v1';
 const TEMPLATE_MERGE_PREFERENCES_STORAGE_KEY = 'meal-template-merge-preferences-v1';
@@ -552,7 +506,7 @@ const NutritionMealPlanner = () => {
             }))
             .filter((item) => Boolean(item.templateName))
         : [];
-      const sanitized = sanitizeRecentPinnedTemplates(normalized);
+      const sanitized = sanitizeRecentPinnedTemplates(normalized as RecentPinnedTemplateUsage[]);
       localStorage.setItem(RECENT_PINNED_TEMPLATE_STORAGE_KEY, JSON.stringify(sanitized));
       setRecentPinnedTemplates(sanitized);
     } catch (error) {
@@ -563,7 +517,7 @@ const NutritionMealPlanner = () => {
 
   const recordRecentPinnedTemplateUse = (
     templateName: string,
-    mergeMode: TemplateMergeMode,
+    mergeMode: TemplateMergeMode = 'replace',
     result: RecentPinnedTemplateApplyResult = {},
   ) => {
     const normalizedName = templateName.trim();
@@ -1144,73 +1098,6 @@ const NutritionMealPlanner = () => {
     }
   };
 
-  const exportGroceryList = async () => {
-    if (groceryList.length === 0) {
-      toast({
-        variant: "destructive",
-        description: "No items to export",
-      });
-      return;
-    }
-
-    try {
-      // Convert grocery list to export format
-      const itemsToExport = toGroceryExportItems(groceryList);
-
-      // Export as CSV
-      await exportCSV(itemsToExport, `shopping-list-${new Date().toISOString().split('T')[0]}.csv`);
-
-      toast({
-        description: "✅ Shopping list exported successfully!",
-      });
-    } catch (error) {
-      console.error('Error exporting list:', error);
-      toast({
-        variant: "destructive",
-        description: "Failed to export shopping list",
-      });
-    }
-  };
-
-  const optimizeShoppingList = async () => {
-    try {
-      const response = await fetch('/api/meal-planner/grocery-list/optimized', {
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to optimize list');
-      }
-
-      const data = await response.json();
-
-      // Reorganize the grocery list based on optimized store layout
-      const optimizedItems = data.optimized.flatMap((group: any) =>
-        group.items.map((item: any) => ({
-          id: item.id,
-          item: item.ingredientName,
-          name: item.ingredientName,
-          amount: item.quantity && item.unit ? `${item.quantity} ${item.unit}` : item.quantity || '',
-          category: item.category || 'Other',
-          checked: item.purchased || false,
-          notes: item.notes,
-        }))
-      );
-
-      setGroceryList(optimizedItems);
-
-      toast({
-        description: "🛒 Shopping list optimized by store layout!",
-      });
-    } catch (error) {
-      console.error('Error optimizing list:', error);
-      toast({
-        variant: "destructive",
-        description: "Failed to optimize shopping list",
-      });
-    }
-  };
-
   const handleAddMeal = (day?: string, type?: string) => {
     if (day && type) {
       setSelectedMealSlot({ day, type });
@@ -1224,162 +1111,6 @@ const NutritionMealPlanner = () => {
   const resetAddMealModalState = () => {
     setMealForm(createInitialMealForm());
     setBaseNutrition(null);
-  };
-
-  const addGroceryListItem = async (payload: {
-    ingredientName: string;
-    quantity: string;
-    unit: string;
-    category: string;
-    notes?: string;
-  }) => {
-    return fetch('/api/meal-planner/grocery-list', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify(payload),
-    });
-  };
-
-  const addBlockerSuggestionToGrocery = async (suggestion: BlockerItemSuggestion) => {
-    if (suggestion.alreadyOnList) {
-      toast({
-        description: `“${suggestion.name}” is already on your grocery list.`,
-      });
-      return;
-    }
-
-    try {
-      const response = await addGroceryListItem({
-        ingredientName: suggestion.name,
-        quantity: '1',
-        unit: '',
-        category: suggestion.category,
-        notes: `Prep blocker suggestion: ${suggestion.reason}`,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add blocker suggestion item');
-      }
-
-      toast({
-        description: `✅ Added "${suggestion.name}" from prep blocker suggestions.`,
-      });
-      setPrepSession((prev) => {
-        const normalizedName = normalizeMealIngredient(suggestion.name);
-        const alreadyTracked = prev.blockerSuggestionLinks.some((link) => (
-          link.suggestionId === suggestion.id
-          || normalizeMealIngredient(link.name) === normalizedName
-        ));
-
-        if (alreadyTracked) {
-          return prev;
-        }
-
-        return {
-          ...prev,
-          blockerSuggestionLinks: [
-            ...prev.blockerSuggestionLinks,
-            {
-              suggestionId: suggestion.id,
-              name: suggestion.name,
-              category: suggestion.category,
-              reason: suggestion.reason,
-              addedAt: formatLocalDate(new Date()),
-            },
-          ],
-        };
-      });
-      await fetchGroceryList();
-    } catch (error) {
-      console.error('Error adding blocker suggestion:', error);
-      toast({
-        variant: 'destructive',
-        description: 'Failed to add suggested blocker item',
-      });
-    }
-  };
-
-
-  const updatePlannerGroceryState = (updater: (prev: PlannerGroceryDerivationState) => PlannerGroceryDerivationState) => {
-    setPlannerGroceryState((prev) => updater({
-      dismissedIds: prev.dismissedIds || [],
-      checkedIds: prev.checkedIds || [],
-      acceptedIds: prev.acceptedIds || [],
-      editedById: prev.editedById || {},
-    }));
-  };
-
-  const acceptPlannerGrocerySuggestion = async (suggestion: PlannerGrocerySuggestion) => {
-    if (suggestion.accepted || suggestion.onManualList) {
-      toast({ description: `“${suggestion.name}” is already represented on your grocery list.` });
-      return;
-    }
-
-    try {
-      const response = await addGroceryListItem({
-        ingredientName: suggestion.name,
-        quantity: suggestion.quantitySummary || '1',
-        unit: '',
-        category: suggestion.category || 'From Recipe',
-        notes: `Generated from planner meals: ${suggestion.linkedMealNames.slice(0, 4).join(', ')}`,
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to accept planner grocery suggestion');
-      }
-
-      updatePlannerGroceryState((prev) => ({
-        ...prev,
-        acceptedIds: Array.from(new Set([...(prev.acceptedIds || []), suggestion.id])),
-        dismissedIds: (prev.dismissedIds || []).filter((id) => id !== suggestion.id),
-      }));
-      toast({ description: `✅ Added “${suggestion.name}” from planner grocery intelligence.` });
-      await fetchGroceryList();
-    } catch (error) {
-      console.error('Error accepting planner grocery suggestion:', error);
-      toast({ variant: 'destructive', description: 'Failed to add generated grocery item' });
-    }
-  };
-
-  const dismissPlannerGrocerySuggestion = (suggestion: PlannerGrocerySuggestion) => {
-    updatePlannerGroceryState((prev) => ({
-      ...prev,
-      dismissedIds: Array.from(new Set([...(prev.dismissedIds || []), suggestion.id])),
-      checkedIds: (prev.checkedIds || []).filter((id) => id !== suggestion.id),
-    }));
-  };
-
-  const togglePlannerGrocerySuggestion = (suggestion: PlannerGrocerySuggestion) => {
-    updatePlannerGroceryState((prev) => {
-      const checked = new Set(prev.checkedIds || []);
-      if (checked.has(suggestion.id)) {
-        checked.delete(suggestion.id);
-      } else {
-        checked.add(suggestion.id);
-      }
-      return { ...prev, checkedIds: Array.from(checked) };
-    });
-  };
-
-  const editPlannerGrocerySuggestion = (suggestion: PlannerGrocerySuggestion) => {
-    const nextName = window.prompt('Grocery item name', suggestion.name)?.trim();
-    if (nextName === undefined || !nextName) return;
-    const nextQuantity = window.prompt('Suggested quantity', suggestion.quantitySummary)?.trim();
-    const quantitySummary = nextQuantity === undefined ? suggestion.quantitySummary : nextQuantity;
-
-    updatePlannerGroceryState((prev) => ({
-      ...prev,
-      editedById: {
-        ...(prev.editedById || {}),
-        [suggestion.id]: {
-          ...(prev.editedById || {})[suggestion.id],
-          name: nextName,
-          quantitySummary,
-          category: suggestion.category,
-        },
-      },
-    }));
   };
 
   const closeAddMealModal = () => {
@@ -1560,81 +1291,36 @@ const NutritionMealPlanner = () => {
   };
 
 
-  const saveTemplate = () => {
-    const templateName = prompt('Enter a name for this meal plan template:');
-    if (templateName) {
-      localStorage.setItem(`meal-template-${templateName}`, JSON.stringify(weeklyMeals));
-      toast({
-        description: `✅ Template "${templateName}" saved successfully!`,
-      });
-    }
-  };
-
-  const toggleGroceryItem = async (index: number) => {
-    const item = groceryList[index];
-    if (!item) return;
-
-    try {
-      // Toggle the purchased status via API
-      const response = await fetch(`/api/meal-planner/grocery-list/${item.id}/purchase`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ toggle: true }),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        // Update local state with the actual server response
-        setGroceryList((prev: any) => prev.map((item: any, i: number) =>
-          i === index ? { ...item, checked: result.item.purchased } : item
-        ));
-      } else {
-        throw new Error('Failed to toggle item');
-      }
-    } catch (error) {
-      console.error('Error toggling grocery item:', error);
-      toast({
-        variant: "destructive",
-        description: "Failed to update item status",
-      });
-    }
-  };
-
-  const loadTemplate = (templateName: string, mergeMode: TemplateMergeMode = 'replace') => {
-    const saved = localStorage.getItem(`meal-template-${templateName}`);
-    if (saved) {
-      try {
-        const parsedTemplateMeals = JSON.parse(saved);
-        if (!parsedTemplateMeals || typeof parsedTemplateMeals !== 'object') {
-          throw new Error('Invalid template payload');
-        }
-
-        const appliedMealCount = countMealEntries(parsedTemplateMeals);
-        const addedMealCount = mergeMode === 'append' ? estimateAppendAddedMeals(weeklyMeals, parsedTemplateMeals) : undefined;
-        const nextWeeklyMeals = applyTemplateMeals(weeklyMeals, parsedTemplateMeals, mergeMode);
-        setWeeklyMeals(nextWeeklyMeals);
-        setTemplateMergePreference(templateName, mergeMode);
-        recordRecentPinnedTemplateUse(templateName, mergeMode, {
-          appliedMealCount,
-          addedMealCount,
-          targetWeekStart: getCurrentWeekAnchor(),
-        });
-        toast({
-          description: mergeMode === 'append'
-            ? `✅ Template "${templateName}" appended into open planner slots!`
-            : `✅ Template "${templateName}" loaded successfully!`,
-        });
-        setShowLoadTemplateModal(false);
-      } catch (error) {
-        console.error('Error loading template from localStorage:', error);
-        toast({
-          variant: 'destructive',
-          description: `Template "${templateName}" is invalid or outdated. Re-save it and try again.`,
-        });
-      }
-    }
-  };
+  const {
+    saveTemplate,
+    loadTemplate,
+    handleLoadTemplate,
+    handleApplyPendingTemplateBridge,
+    handleCancelPendingTemplateBridge,
+    handleUseRecentPinnedTemplate,
+    handleChangeRecentPinnedTemplateMergePreference,
+  } = usePlannerTemplateActions({
+    weeklyMeals,
+    setWeeklyMeals,
+    setShowLoadTemplateModal,
+    selectedDate,
+    pendingTemplateBridgePreview,
+    setPendingTemplateBridgePreview,
+    setTemplateBridgeRequest,
+    setRecentPinnedTemplates,
+    getCurrentWeekAnchor,
+    getTemplateMergePreference,
+    setTemplateMergePreference,
+    refreshRecentPinnedTemplates,
+    countMealEntries,
+    estimateAppendAddedMeals,
+    applyTemplateMeals,
+    recordRecentPinnedTemplateUse,
+    pendingTemplateMealsCount: pendingTemplateBridgePreview ? countMealEntries(pendingTemplateBridgePreview.templateMeals) : 0,
+    pendingTemplateAppendAddedMeals: pendingTemplateBridgePreview ? estimateAppendAddedMeals(weeklyMeals, pendingTemplateBridgePreview.templateMeals || {}) : 0,
+    recentPinnedTemplateStorageKey: RECENT_PINNED_TEMPLATE_STORAGE_KEY,
+    toast,
+  });
 
   useEffect(() => {
     if (!templateBridgeRequest || loading || !isPremium) return;
@@ -1736,72 +1422,6 @@ const NutritionMealPlanner = () => {
     return `Append parity: append mode would add ${pendingTemplateAppendAddedMeals} ${pendingTemplateAppendAddedMeals === 1 ? 'meal' : 'meals'} and skip ${estimatedAppendSkippedMeals} already-filled ${estimatedAppendSkippedMeals === 1 ? 'slot' : 'slots'}.`;
   }, [pendingTemplateBridgePreview, pendingTemplateMealsCount, pendingTemplateAppendAddedMeals]);
 
-  const handleApplyPendingTemplateBridge = () => {
-    if (!pendingTemplateBridgePreview) return;
-    const nextWeeklyMeals = applyTemplateMeals(
-      weeklyMeals,
-      pendingTemplateBridgePreview.templateMeals,
-      pendingTemplateBridgePreview.mergeMode,
-    );
-    setWeeklyMeals(nextWeeklyMeals);
-    setTemplateMergePreference(pendingTemplateBridgePreview.templateName, pendingTemplateBridgePreview.mergeMode);
-    recordRecentPinnedTemplateUse(pendingTemplateBridgePreview.templateName, pendingTemplateBridgePreview.mergeMode, {
-      appliedMealCount: pendingTemplateMealsCount,
-      addedMealCount: pendingTemplateBridgePreview.mergeMode === 'append' ? pendingTemplateAppendAddedMeals : undefined,
-      targetWeekStart: pendingTemplateBridgePreview.targetWeekStart || selectedDate,
-    });
-    toast({
-      title: 'Template applied',
-      description: pendingTemplateBridgePreview.mergeMode === 'append'
-        ? `Appended "${pendingTemplateBridgePreview.templateName}" into open slots for week ${pendingTemplateBridgePreview.targetWeekStart || selectedDate}.`
-        : `Loaded "${pendingTemplateBridgePreview.templateName}" into week ${pendingTemplateBridgePreview.targetWeekStart || selectedDate}.`,
-    });
-    localStorage.removeItem('meal-planner-template-bridge-v1');
-    setTemplateBridgeRequest(null);
-    setPendingTemplateBridgePreview(null);
-  };
-
-  const handleCancelPendingTemplateBridge = () => {
-    if (!pendingTemplateBridgePreview) return;
-    toast({
-      description: `Cancelled applying "${pendingTemplateBridgePreview.templateName}".`,
-    });
-    localStorage.removeItem('meal-planner-template-bridge-v1');
-    setTemplateBridgeRequest(null);
-    setPendingTemplateBridgePreview(null);
-  };
-
-  const handleUseRecentPinnedTemplate = (templateName: string) => {
-    const saved = localStorage.getItem(`meal-template-${templateName}`);
-    if (!saved) {
-      toast({
-        variant: 'destructive',
-        description: `Template "${templateName}" is no longer available.`,
-      });
-      refreshRecentPinnedTemplates();
-      return;
-    }
-
-    const request: TemplateBridgePayload = {
-      templateName,
-      targetWeekStart: getCurrentWeekAnchor(),
-      source: 'planner-recent-pinned-strip',
-      requestedAt: new Date().toISOString(),
-      mergeMode: getTemplateMergePreference(templateName),
-    };
-    localStorage.setItem('meal-planner-template-bridge-v1', JSON.stringify(request));
-    setTemplateBridgeRequest(request);
-  };
-
-  const handleChangeRecentPinnedTemplateMergePreference = (templateName: string, mergeMode: TemplateMergeMode) => {
-    setTemplateMergePreference(templateName, mergeMode);
-    setRecentPinnedTemplates((prev) => {
-      const nextItems = prev.map((item) => (item.templateName === templateName ? { ...item, mergeMode } : item));
-      localStorage.setItem(RECENT_PINNED_TEMPLATE_STORAGE_KEY, JSON.stringify(nextItems));
-      return nextItems;
-    });
-  };
-
   const formatRecentTemplateDate = (value: string) => {
     const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) return 'recently';
@@ -1868,116 +1488,31 @@ const NutritionMealPlanner = () => {
     }
   };
 
-  const shareWithFamily = async () => {
-    try {
-      if (groceryList.length === 0) {
-        toast({
-          variant: "destructive",
-          description: "No items in grocery list to share",
-        });
-        return;
-      }
-
-      // Fetch family members
-      const members = await fetchFamilyMembers();
-
-      if (members.length === 0) {
-        toast({
-          title: "No family members found",
-          description: "Add family members in the Allergies section first to share your grocery list.",
-        });
-        return;
-      }
-
-      // Show the share dialog
-      setShowShareFamilyModal(true);
-    } catch (error) {
-      console.error('Error in shareWithFamily:', error);
-      toast({
-        variant: "destructive",
-        description: "Failed to open share dialog",
-      });
-    }
-  };
-
-  const copyGroceryListToClipboard = async () => {
-    try {
-      const itemsToExport = toGroceryExportItems(groceryList);
-
-      const textContent = await exportText(itemsToExport);
-      await navigator.clipboard.writeText(textContent);
-
-      toast({
-        description: "✅ Grocery list copied to clipboard!",
-      });
-    } catch (error) {
-      console.error('Error copying to clipboard:', error);
-      toast({
-        variant: "destructive",
-        description: "Failed to copy to clipboard",
-      });
-    }
-  };
-
-  const handleLoadTemplate = () => {
-    setShowLoadTemplateModal(true);
-  };
-
-  const handleAddGroceryItem = async () => {
-    const itemName = (document.getElementById('groceryItemName') as HTMLInputElement)?.value;
-    const itemAmount = (document.getElementById('groceryItemAmount') as HTMLInputElement)?.value;
-    const itemCategory = (document.getElementById('groceryItemCategory') as HTMLSelectElement)?.value;
-
-    if (!itemName) {
-      toast({
-        variant: "destructive",
-        description: "Please enter an item name",
-      });
-      return;
-    }
-
-    try {
-      // Parse quantity and unit from amount (e.g., "2 lbs" -> quantity: 2, unit: "lbs")
-      let quantity = itemAmount || '1';
-      let unit = '';
-      const match = itemAmount?.match(/^(\d+(?:\.\d+)?)\s*(.*)$/);
-      if (match) {
-        quantity = match[1];
-        unit = match[2];
-      }
-
-      const payload = {
-        ingredientName: itemName,
-        quantity,
-        unit,
-        category: itemCategory || 'Other',
-      };
-      console.log('Adding grocery item:', payload);
-
-      const response = await addGroceryListItem(payload);
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log('Item added successfully:', result);
-        toast({
-          description: `✅ ${itemName} added to grocery list!`,
-        });
-        setShowAddGroceryModal(false);
-        // Refetch the list to get the new item
-        await fetchGroceryList();
-      } else {
-        const errorText = await response.text();
-        console.error('Failed to add item:', response.status, errorText);
-        throw new Error('Failed to add item');
-      }
-    } catch (error) {
-      console.error('Error adding grocery item:', error);
-      toast({
-        variant: "destructive",
-        description: "Failed to add item to grocery list",
-      });
-    }
-  };
+  const {
+    addGroceryListItem,
+    addBlockerSuggestionToGrocery,
+    updatePlannerGroceryState,
+    acceptPlannerGrocerySuggestion,
+    dismissPlannerGrocerySuggestion,
+    togglePlannerGrocerySuggestion,
+    editPlannerGrocerySuggestion,
+    toggleGroceryItem,
+    shareWithFamily,
+    copyGroceryListToClipboard,
+    handleAddGroceryItem,
+    exportGroceryList,
+    optimizeShoppingList,
+  } = usePlannerGroceryActions({
+    groceryList,
+    setGroceryList,
+    setPlannerGroceryState,
+    setPrepSession,
+    setShowAddGroceryModal,
+    setShowShareFamilyModal,
+    fetchGroceryList,
+    fetchFamilyMembers,
+    toast,
+  });
 
   const handleScanBarcode = async (barcode: string) => {
     console.log('Barcode scanned:', barcode);
@@ -2234,154 +1769,26 @@ const NutritionMealPlanner = () => {
     setShowAIRecipeModal(false);
   };
 
-  const updatePrepSchedule = (value: string) => {
-    setPrepSession((prev) => ({
-      ...prev,
-      scheduledAt: value,
-      completedAt: value ? prev.completedAt : null,
-    }));
-  };
-
-  const updatePrepNotes = (value: string) => {
-    setPrepSession((prev) => ({
-      ...prev,
-      notes: value,
-    }));
-  };
-
-  const togglePrepTask = (taskId: string) => {
-    setPrepSession((prev) => ({
-      ...prev,
-      tasks: prev.tasks.map((task) => task.id === taskId ? { ...task, done: !task.done } : task),
-      carryoverTaskIds: prev.tasks.find((task) => task.id === taskId)?.done
-        ? [...new Set([...prev.carryoverTaskIds, taskId])]
-        : prev.carryoverTaskIds.filter((id) => id !== taskId),
-      completedAt: prev.completedAt,
-    }));
-  };
-
-  const togglePrepBlocker = (blockerId: string) => {
-    setPrepSession((prev) => ({
-      ...prev,
-      blockers: prev.blockers.map((blocker) => blocker.id === blockerId ? { ...blocker, active: !blocker.active } : blocker),
-      completedAt: null,
-    }));
-  };
-
-  const updatePrepBlockerNote = (value: string) => {
-    setPrepSession((prev) => ({
-      ...prev,
-      blockerNote: value,
-    }));
-  };
-
-  const resolvePrepGroceryBlockers = () => {
-    setPrepSession((prev) => ({
-      ...prev,
-      blockers: prev.blockers.map((blocker) => (
-        GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id)
-          ? { ...blocker, active: false }
-          : blocker
-      )),
-      completedAt: null,
-    }));
-  };
-
-  const resolvePrepBlockersFromTrackedSuggestions = () => {
-    setPrepSession((prev) => {
-      const hasActiveLinkedBlocker = prev.blockers.some(
-        (blocker) => blocker.active && GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id),
-      );
-
-      if (!hasActiveLinkedBlocker) {
-        return prev;
-      }
-
-      return {
-        ...prev,
-        blockers: prev.blockers.map((blocker) => (
-          GROCERY_LINKED_PREP_BLOCKER_IDS.includes(blocker.id)
-            ? { ...blocker, active: false }
-            : blocker
-        )),
-        completedAt: null,
-      };
-    });
-    toast({
-      description: 'Resolved grocery-linked prep blockers from completed blocker suggestions.',
-    });
-  };
-
-  const carryForwardUnfinishedPrepTasks = () => {
-    const unfinishedTaskIds = prepSession.tasks.filter((task) => !task.done).map((task) => task.id);
-
-    if (unfinishedTaskIds.length === 0) {
-      toast({
-        description: 'No unfinished prep tasks to carry forward.',
-      });
-      return;
-    }
-
-    const nextWeekDate = parseDateOnly(getCurrentWeekAnchor());
-    nextWeekDate.setDate(nextWeekDate.getDate() + 7);
-    const nextWeekAnchor = formatLocalDate(nextWeekDate);
-
-    try {
-      const nextWeekStorageKey = getPrepSessionStorageKeyForAnchor(nextWeekAnchor);
-      const stored = localStorage.getItem(nextWeekStorageKey);
-      const parsed = stored ? JSON.parse(stored) : {};
-      const nextWeekSession = normalizePrepSession(parsed);
-      const mergedCarryoverIds = [...new Set([...nextWeekSession.carryoverTaskIds, ...unfinishedTaskIds])];
-
-      localStorage.setItem(nextWeekStorageKey, JSON.stringify({
-        ...nextWeekSession,
-        carryoverTaskIds: mergedCarryoverIds,
-      }));
-
-      setPrepSession((prev) => ({
-        ...prev,
-        carryoverTaskIds: [...new Set([...prev.carryoverTaskIds, ...unfinishedTaskIds])],
-      }));
-
-      toast({
-        description: `Carried ${unfinishedTaskIds.length} unfinished prep tasks to next week.`,
-      });
-    } catch (error) {
-      console.error('Error carrying prep tasks forward:', error);
-      toast({
-        variant: 'destructive',
-        description: 'Unable to carry forward prep tasks right now.',
-      });
-    }
-  };
-
-  const markPrepComplete = () => {
-    setPrepSession((prev) => ({
-      ...prev,
-      completedAt: formatLocalDate(new Date()),
-    }));
-    toast({
-      description: 'Prep session marked complete. Your readiness checklist is now execution-aware.',
-    });
-  };
-
-  const resetPrepCompletion = () => {
-    setPrepSession((prev) => ({
-      ...prev,
-      completedAt: null,
-    }));
-  };
-
-
-  const toggleGeneratedPrepTask = (taskId: string) => {
-    setPrepSession((prev) => ({
-      ...prev,
-      generatedPrepTaskCompletions: {
-        ...(prev.generatedPrepTaskCompletions || {}),
-        [taskId]: !prev.generatedPrepTaskCompletions?.[taskId],
-      },
-    }));
-  };
+  const {
+    updatePrepSchedule,
+    updatePrepNotes,
+    togglePrepTask,
+    togglePrepBlocker,
+    updatePrepBlockerNote,
+    resolvePrepGroceryBlockers,
+    resolvePrepBlockersFromTrackedSuggestions,
+    carryForwardUnfinishedPrepTasks,
+    markPrepComplete,
+    resetPrepCompletion,
+    toggleGeneratedPrepTask,
+  } = usePlannerPrepActions({
+    prepSession,
+    setPrepSession,
+    getCurrentWeekAnchor,
+    getPrepSessionStorageKeyForAnchor,
+    normalizePrepSession,
+    toast,
+  });
 
   const PremiumUpgrade = () => (
     <div className="bg-gradient-to-r from-orange-500 via-red-500 to-pink-500 text-white rounded-xl shadow-2xl overflow-hidden">
@@ -2559,137 +1966,41 @@ const NutritionMealPlanner = () => {
     setSelectedDate(getDateForWeekday(day));
   };
 
-  const createFixItTarget = (
-    issueType: FixItIssueType,
-    targetDay: string | null,
-    reason: string,
-    suggestedNextStep: string,
-  ): ActiveFixItTarget => ({
-    issueType,
-    targetDay,
-    targetDate: targetDay ? getDateForWeekday(targetDay) : null,
-    reason,
-    suggestedNextStep,
-  });
-
-  const handleFixMissingDay = () => {
-    const targetDay = weeklyNutritionInsights.missingMealDaysList[0]?.day;
-    setActiveFixItTarget(createFixItTarget(
-      'missing-meals',
-      targetDay || null,
-      targetDay
-        ? `${targetDay} has no planned meals yet.`
-        : 'Your week has at least one day without meals planned.',
-      'Add at least one anchor meal, then fill the remaining slots for that day.',
-    ));
-    if (!targetDay) {
-      setActiveTab('planner');
-      return;
-    }
-    focusPlannerDay(targetDay);
-    handleAddMeal(targetDay, 'Dinner');
-  };
-
-  const handleFixLowProteinDay = () => {
-    const targetDay = weeklyNutritionInsights.lowProteinDaysList[0]?.day;
-    setActiveFixItTarget(createFixItTarget(
-      'low-protein',
-      targetDay || null,
-      targetDay
-        ? `${targetDay} is below the 60g protein signal for this week.`
-        : 'A planned day is currently below the protein target signal.',
-      'Add or swap in a higher-protein meal on this day to improve coverage.',
-    ));
-    if (!targetDay) {
-      setActiveTab('planner');
-      return;
-    }
-    focusPlannerDay(targetDay);
-  };
-
-  const handleFixMealDetails = () => {
-    const targetDay = weeklyNutritionInsights.missingProteinDataDaysList[0]?.day
-      || weeklyNutritionInsights.missingCalorieDataDaysList[0]?.day;
-    setActiveFixItTarget(createFixItTarget(
-      'missing-details',
-      targetDay || null,
-      targetDay
-        ? `${targetDay} has meal entries missing protein or calorie details.`
-        : 'Some planned meals are missing calorie or protein details.',
-      'Update meal nutrition details so weekly coverage and balance insights are more accurate.',
-    ));
-    if (!targetDay) {
-      setActiveTab('planner');
-      return;
-    }
-    focusPlannerDay(targetDay);
-  };
-
-  const handleFixCalorieBalance = () => {
-    const targetDay = weeklyNutritionData.reduce<{ day: string; calories: number } | null>((best, day) => {
-      if (day.calories <= 0) return best;
-      if (!best || day.calories > best.calories) {
-        return { day: day.day, calories: day.calories };
-      }
-      return best;
-    }, null)?.day || null;
-    setActiveFixItTarget(createFixItTarget(
-      'calorie-balance',
-      targetDay,
-      'Calorie totals are swinging widely across tracked days this week.',
-      'Review high and low days in Analytics, then smooth portions or meal choices on outlier days.',
-    ));
-    setActiveTab('analytics');
-  };
-
-  const weeklyNutritionFixActions = useMemo(() => {
-    const actions: Array<{ key: string; label: string; onClick: () => void }> = [];
-    if (weeklyNutritionInsights.missingMealDaysList.length > 0) {
-      actions.push({
-        key: 'fill-unplanned-day',
-        label: 'Fill unplanned day',
-        onClick: handleFixMissingDay,
-      });
-    }
-    if (weeklyNutritionInsights.lowProteinDaysList.length > 0) {
-      actions.push({
-        key: 'review-low-protein-day',
-        label: 'Review low-protein day',
-        onClick: handleFixLowProteinDay,
-      });
-    }
-    if (weeklyNutritionInsights.missingProteinDataDaysList.length > 0 || weeklyNutritionInsights.missingCalorieDataDaysList.length > 0) {
-      actions.push({
-        key: 'review-meal-details',
-        label: 'Add meal details',
-        onClick: handleFixMealDetails,
-      });
-    }
-    if (weeklyNutritionInsights.canCompareCalories && weeklyNutritionInsights.caloriesVaryWidely) {
-      actions.push({
-        key: 'review-calorie-balance',
-        label: 'Review calorie balance',
-        onClick: handleFixCalorieBalance,
-      });
-    }
-    if (actions.length > 0) {
-      actions.push({
-        key: 'open-ai-suggestions',
-        label: 'Open AI suggestions',
-        onClick: () => {
-          setActiveTab('planner');
-          handleAIRecipe();
-        },
-      });
-    }
-    return actions;
-  }, [weeklyNutritionInsights]);
-
   const activeFixItSlotSignals = useMemo(() => buildFixItSlotSignals({
     activeFixItTarget,
     mealTypes: mealTypes as string[],
     weeklyMeals,
   }), [activeFixItTarget?.targetDay, mealTypes, weeklyMeals]);
+
+  const {
+    weeklyNutritionFixActions,
+    handleQueueCompleteDetails,
+    handleQueueSkipCurrent,
+    handleQueueSnoozeCurrent,
+    handleQueueRevisitSnoozed,
+    handleQueueRevisitSkipped,
+    activeFixItSkippedReasonSummary,
+    activeFixItSlotRecommendations,
+  } = usePlannerFixItActions({
+    activeFixItTarget,
+    setActiveFixItTarget,
+    weeklyNutritionInsights,
+    weeklyNutritionData,
+    activeFixItSlotSignals,
+    calorieGoal,
+    fixItDetailsQueueSkippedKeys,
+    fixItDetailsQueueSkipReasonByKey,
+    setFixItDetailsQueueSkippedKeys,
+    setFixItDetailsQueueSkipReasonByKey,
+    setFixItDetailsQueuePendingSkipReason,
+    setFixItDetailsQueueDone,
+    setFixItDetailsQueueSnoozedByKey,
+    getDateForWeekday,
+    focusPlannerDay,
+    handleAddMeal,
+    handleAIRecipe,
+    setActiveTab,
+  });
 
   const activeFixItDataCompleteness = useMemo<FixItDataCompletenessChipState | null>(() => buildFixItDataCompleteness({
     activeFixItTarget,
@@ -2929,211 +2240,6 @@ const NutritionMealPlanner = () => {
     };
   }, [activeFixItSlotSignals, activeFixItTarget?.targetDay, fixItDetailsQueueSkippedKeys, fixItDetailsQueueSnoozedByKey]);
 
-  const handleQueueCompleteDetails = (mealType: string) => {
-    if (!activeFixItTarget?.targetDay) return;
-    focusPlannerDay(activeFixItTarget.targetDay);
-    handleAddMeal(activeFixItTarget.targetDay, formatMealTypeLabel(mealType));
-  };
-
-  const handleQueueSkipCurrent = (slotKey: string, reasonId: FixItDetailsQueueSkipReasonId = DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON) => {
-    setFixItDetailsQueueSkippedKeys((prev) => (
-      prev.includes(slotKey) ? prev : [...prev, slotKey]
-    ));
-    setFixItDetailsQueueSkipReasonByKey((prev) => ({
-      ...prev,
-      [slotKey]: reasonId,
-    }));
-    setFixItDetailsQueueSnoozedByKey((prev) => {
-      if (!prev[slotKey]) return prev;
-      const next = { ...prev };
-      delete next[slotKey];
-      return next;
-    });
-    setFixItDetailsQueuePendingSkipReason(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
-  };
-
-
-  const handleQueueSnoozeCurrent = (slotKey: string, snoozeId: FixItDetailsQueueSnoozeOptionId) => {
-    setFixItDetailsQueueSnoozedByKey((prev) => ({
-      ...prev,
-      [slotKey]: snoozeId,
-    }));
-    setFixItDetailsQueueSkippedKeys((prev) => prev.filter((key) => key !== slotKey));
-    setFixItDetailsQueueSkipReasonByKey((prev) => {
-      if (!prev[slotKey]) return prev;
-      const next = { ...prev };
-      delete next[slotKey];
-      return next;
-    });
-  };
-
-  const handleQueueRevisitSnoozed = () => {
-    setFixItDetailsQueueSnoozedByKey({});
-  };
-  const handleQueueRevisitSkipped = () => {
-    setFixItDetailsQueueSkippedKeys([]);
-    setFixItDetailsQueueSkipReasonByKey({});
-    setFixItDetailsQueuePendingSkipReason(DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON);
-    setFixItDetailsQueueDone(false);
-  };
-
-  const activeFixItSkippedReasonSummary = useMemo(() => {
-    if (fixItDetailsQueueSkippedKeys.length <= 0) return '';
-
-    const counts = fixItDetailsQueueSkippedKeys.reduce((acc, slotKey) => {
-      const reasonId = fixItDetailsQueueSkipReasonByKey[slotKey] ?? DEFAULT_FIX_IT_DETAILS_QUEUE_SKIP_REASON;
-      acc[reasonId] = (acc[reasonId] ?? 0) + 1;
-      return acc;
-    }, {} as Record<FixItDetailsQueueSkipReasonId, number>);
-
-    const parts = FIX_IT_DETAILS_QUEUE_SKIP_REASONS
-      .filter((reason) => counts[reason.id])
-      .map((reason) => `${reason.label} (${counts[reason.id]})`);
-
-    return parts.join(' • ');
-  }, [fixItDetailsQueueSkipReasonByKey, fixItDetailsQueueSkippedKeys]);
-
-  const activeFixItSlotRecommendations = useMemo<FixItSlotRecommendation[]>(() => {
-    if (!activeFixItTarget?.targetDay) return [];
-
-    const targetDay = activeFixItTarget.targetDay;
-    const slotSignals = activeFixItSlotSignals;
-
-    const addMealForSlot = (mealType: string) => {
-      focusPlannerDay(targetDay);
-      handleAddMeal(targetDay, formatMealTypeLabel(mealType));
-    };
-    const openTargetedAI = () => {
-      focusPlannerDay(targetDay);
-      handleAIRecipe();
-    };
-    const openAnalytics = () => setActiveTab('analytics');
-
-    const recommendations: FixItSlotRecommendation[] = [];
-    const pushRecommendation = (recommendation: FixItSlotRecommendation) => {
-      if (recommendations.some((existing) => existing.key === recommendation.key)) return;
-      if (recommendations.length >= 3) return;
-      recommendations.push(recommendation);
-    };
-
-    if (activeFixItTarget.issueType === 'missing-meals') {
-      const emptySlots = slotSignals.filter((slot) => !slot.hasMeals);
-      const preferredOrder = ['dinner', 'lunch', 'breakfast', 'snack'];
-      emptySlots
-        .sort((a, b) => preferredOrder.indexOf(a.mealType) - preferredOrder.indexOf(b.mealType))
-        .slice(0, 2)
-        .forEach((slot) => {
-          pushRecommendation({
-            key: `fill-${slot.mealType}`,
-            text: `Fill ${slot.mealTypeLabel}`,
-            cta: 'Add Meal',
-            onClick: () => addMealForSlot(slot.mealType),
-          });
-        });
-      pushRecommendation({
-        key: 'missing-meals-ai',
-        text: 'Need quick ideas for open slots?',
-        cta: 'Open AI Suggestions',
-        onClick: openTargetedAI,
-      });
-    }
-
-    if (activeFixItTarget.issueType === 'low-protein') {
-      const lowestProteinSlot = slotSignals
-        .filter((slot) => slot.hasMeals)
-        .sort((a, b) => a.protein - b.protein)[0];
-      const emptySlot = slotSignals.find((slot) => !slot.hasMeals);
-
-      if (lowestProteinSlot) {
-        pushRecommendation({
-          key: `protein-${lowestProteinSlot.mealType}`,
-          text: `Add protein to ${lowestProteinSlot.mealTypeLabel}`,
-          cta: 'Add Meal',
-          onClick: () => addMealForSlot(lowestProteinSlot.mealType),
-        });
-      }
-      if (emptySlot) {
-        pushRecommendation({
-          key: `protein-fill-${emptySlot.mealType}`,
-          text: `Fill ${emptySlot.mealTypeLabel} with a protein-forward meal`,
-          cta: 'Add Meal',
-          onClick: () => addMealForSlot(emptySlot.mealType),
-        });
-      }
-      pushRecommendation({
-        key: 'low-protein-ai',
-        text: 'Get protein-forward meal ideas for this day',
-        cta: 'Open AI Suggestions',
-        onClick: openTargetedAI,
-      });
-    }
-
-    if (activeFixItTarget.issueType === 'missing-details') {
-      const missingDetailSlots = slotSignals.filter((slot) => slot.missingDetails);
-      if (missingDetailSlots.length > 0) {
-        missingDetailSlots.slice(0, 2).forEach((slot) => {
-          pushRecommendation({
-            key: `details-${slot.mealType}`,
-            text: `Complete calories/protein for ${slot.mealTypeLabel}`,
-            cta: 'Add Meal',
-            onClick: () => addMealForSlot(slot.mealType),
-          });
-        });
-      }
-      const emptySlots = slotSignals.filter((slot) => !slot.hasMeals);
-      if (emptySlots.length > 0) {
-        emptySlots.slice(0, 1).forEach((slot) => {
-          pushRecommendation({
-            key: `details-fill-${slot.mealType}`,
-            text: `Fill ${slot.mealTypeLabel} so nutrition details can be tracked`,
-            cta: 'Add Meal',
-            onClick: () => addMealForSlot(slot.mealType),
-          });
-        });
-      }
-      pushRecommendation({
-        key: 'details-ai',
-        text: 'Use AI suggestions to replace meals with complete nutrition data',
-        cta: 'Open AI Suggestions',
-        onClick: openTargetedAI,
-      });
-    }
-
-    if (activeFixItTarget.issueType === 'calorie-balance') {
-      const highestCalorieSlot = slotSignals
-        .filter((slot) => slot.calories > 0)
-        .sort((a, b) => b.calories - a.calories)[0];
-      const lowestCalorieSlot = slotSignals
-        .filter((slot) => slot.hasMeals)
-        .sort((a, b) => a.calories - b.calories)[0];
-
-      if (highestCalorieSlot) {
-        pushRecommendation({
-          key: `calorie-heavy-${highestCalorieSlot.mealType}`,
-          text: `Review calorie-heavy ${highestCalorieSlot.mealTypeLabel}`,
-          cta: 'Review Analytics',
-          onClick: openAnalytics,
-        });
-      }
-      if (lowestCalorieSlot && lowestCalorieSlot.calories < calorieGoal * 0.2) {
-        pushRecommendation({
-          key: `calorie-complete-${lowestCalorieSlot.mealType}`,
-          text: `Complete calories for ${lowestCalorieSlot.mealTypeLabel}`,
-          cta: 'Add Meal',
-          onClick: () => addMealForSlot(lowestCalorieSlot.mealType),
-        });
-      }
-      pushRecommendation({
-        key: 'calorie-balance-analytics',
-        text: 'Compare high and low days before adjusting portions',
-        cta: 'Review Analytics',
-        onClick: openAnalytics,
-      });
-    }
-
-    return recommendations.slice(0, 3);
-  }, [activeFixItSlotSignals, activeFixItTarget, calorieGoal]);
-
   const dashboardViewModel = usePlannerDashboard({
     caloriesCurrent,
     proteinCurrent,
@@ -3174,6 +2280,17 @@ const NutritionMealPlanner = () => {
     publicShareUrl,
     computedInsightSummaries,
   } = dashboardViewModel;
+
+  const {
+    copyWeeklyShareSummary,
+    shareWeeklySummary,
+    copyWeeklyPublicShareLink,
+  } = usePlannerShareActions({
+    weeklyShareSummaryText,
+    weekLabel,
+    publicShareUrl,
+    toast,
+  });
 
   const computedInsights = computedInsightSummaries.map((insight) => ({
     ...insight,
@@ -3234,93 +2351,7 @@ const NutritionMealPlanner = () => {
   };
   const handleRestoreCoachInsights = () => setDismissedCoachInsightIds([]);
 
-  const copyWeeklyShareSummary = async () => {
-    try {
-      await navigator.clipboard.writeText(weeklyShareSummaryText);
-      toast({
-        description: '✅ Weekly plan share summary copied to clipboard.',
-      });
-    } catch (error) {
-      console.error('Error copying weekly share summary:', error);
-      toast({
-        variant: 'destructive',
-        description: 'Unable to copy summary right now.',
-      });
-    }
-  };
 
-  const shareWeeklySummary = async () => {
-    if (typeof navigator === 'undefined' || typeof navigator.share !== 'function') {
-      await copyWeeklyShareSummary();
-      return;
-    }
-
-    try {
-      await navigator.share({
-        title: `Meal plan summary • ${weekLabel}`,
-        text: weeklyShareSummaryText,
-      });
-      toast({
-        description: 'Shared weekly meal plan summary.',
-      });
-    } catch (error: any) {
-      if (error?.name !== 'AbortError') {
-        console.error('Error sharing weekly summary:', error);
-        await copyWeeklyShareSummary();
-      }
-    }
-  };
-
-  const copyWeeklyPublicShareLink = async () => {
-    if (!publicShareUrl) {
-      toast({
-        variant: 'destructive',
-        description: 'Public share link is still preparing. Try again in a moment.',
-      });
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(publicShareUrl);
-      toast({
-        description: '✅ Public weekly share link copied to clipboard.',
-      });
-    } catch (error) {
-      console.error('Error copying weekly public share link:', error);
-      toast({
-        variant: 'destructive',
-        description: 'Unable to copy the public share link right now.',
-      });
-    }
-  };
-
-
-  const calculateGoals = () => {
-    const weightKg = calcForm.weightUnit === 'kg' ? Number(calcForm.weight) : Number(calcForm.weight) * 0.453592;
-    const weightLbs = calcForm.weightUnit === 'lbs' ? Number(calcForm.weight) : Number(calcForm.weight) * 2.20462;
-    const heightCm = calcForm.heightUnit === 'cm' ? Number(calcForm.cm) : (Number(calcForm.feet) * 12 + Number(calcForm.inches)) * 2.54;
-    const age = Number(calcForm.age);
-
-    const bmr = calcForm.gender === 'male'
-      ? 10 * weightKg + 6.25 * heightCm - 5 * age + 5
-      : 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
-
-    const activityMap: Record<string, number> = {
-      'sedentary': 1.2,
-      'lightly active': 1.375,
-      'moderately active': 1.55,
-      'very active': 1.725,
-      'extra active': 1.9,
-    };
-
-    const tdee = bmr * (activityMap[calcForm.activity] || 1.55);
-    const targetCalories = calcForm.goal === 'lose weight' ? tdee - 500 : calcForm.goal === 'gain muscle' ? tdee + 300 : tdee;
-    const protein = calcForm.goal === 'lose weight' ? weightLbs * 0.8 : weightLbs * 1;
-    const carbs = (targetCalories * 0.4) / 4;
-    const fat = (targetCalories * 0.3) / 9;
-
-    setCalcResult({ dailyCalorieGoal: Math.round(targetCalories), macroGoals: { protein: Math.round(protein), carbs: Math.round(carbs), fat: Math.round(fat) } });
-  };
 
   const saveCalculatedGoals = async () => {
     if (!calcResult) return;
