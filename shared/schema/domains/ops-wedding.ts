@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { pgTable, text, varchar, integer, boolean, timestamp, date, bigserial, jsonb, decimal, index } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
-import { orders } from "./commerce-billing";
+import { orders, products } from "./commerce-billing";
 import type { StoreLayoutConfigV2 } from "../../store/storeLayout";
 
 type StoreThemeConfig =
@@ -285,5 +285,24 @@ export const weddingCalendarEvents = pgTable(
   (t) => ({
     userIdx: index("wedding_calendar_events_user_idx").on(t.userId),
     dateIdx: index("wedding_calendar_events_date_idx").on(t.eventDate),
+  })
+);
+
+/* ===== STORE DROPS ===== */
+export const storeDrops = pgTable(
+  "store_drops",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    storeId: varchar("store_id").references(() => stores.id).notNull(),
+    ownerId: varchar("owner_id").references(() => users.id).notNull(),
+    productId: varchar("product_id").references(() => products.id),
+    message: text("message"),
+    recipientCount: integer("recipient_count").notNull().default(0),
+    clickCount: integer("click_count").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => ({
+    ownerCreatedAtIdx: index("store_drops_owner_created_at_idx").on(t.ownerId, t.createdAt),
+    storeIdIdx: index("store_drops_store_id_idx").on(t.storeId),
   })
 );

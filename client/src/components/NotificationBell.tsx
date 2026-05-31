@@ -149,6 +149,7 @@ export default function NotificationBell() {
       friend_activity: "🎉",
       suggestion: "💡",
       dm: "✉️",
+      store_drop: "🛍️",
     };
     return icons[type] || "🔔";
   };

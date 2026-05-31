@@ -6,6 +6,7 @@ import {
   Sparkles,
   BarChart3,
   Crown,
+  Megaphone,
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/contexts/UserContext";
@@ -21,6 +22,7 @@ import StoreDashboardEmptyState from "./components/StoreDashboardEmptyState";
 import StoreDashboardHeader from "./components/StoreDashboardHeader";
 import StoreDashboardProductsTab from "./components/StoreDashboardProductsTab";
 import StoreDashboardOrdersTab from "./components/StoreDashboardOrdersTab";
+import StoreDropsTab from "./StoreDropsTab";
 import StoreReadinessPanel from "./components/StoreReadinessPanel";
 import type { MarketplaceProduct } from "@/lib/store/marketplaceTypes";
 import UnifiedStoreCustomizer from "@/components/store/UnifiedStoreCustomizer";
@@ -349,6 +351,10 @@ export default function StoreDashboard() {
               <ShoppingCart className="w-4 h-4 mr-1.5" />
               Orders
             </TabsTrigger>
+            <TabsTrigger value="drops">
+              <Megaphone className="w-4 h-4 mr-1.5" />
+              Drops
+            </TabsTrigger>
             <TabsTrigger value="customize">
               <Sparkles className="w-4 h-4 mr-1.5" />
               Customize
@@ -376,6 +382,11 @@ export default function StoreDashboard() {
           {/* Orders Tab */}
           <TabsContent value="orders">
             <StoreDashboardOrdersTab recentSales={recentSales} />
+          </TabsContent>
+
+          {/* Drops Tab */}
+          <TabsContent value="drops">
+            <StoreDropsTab storeId={store.id} />
           </TabsContent>
 
           {/* Unified Customize Tab */}
