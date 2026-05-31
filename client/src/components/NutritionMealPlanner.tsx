@@ -52,6 +52,13 @@ import { usePlannerAnalytics } from '@/components/meal-planner/hooks/usePlannerA
 import { usePlannerDashboard } from '@/components/meal-planner/hooks/usePlannerDashboard';
 import { usePlannerCampaigns } from '@/components/meal-planner/hooks/usePlannerCampaigns';
 import {
+  buildFixItDataCompleteness,
+  buildFixItDayCompletion,
+  buildFixItProgressMiniState,
+  buildFixItSlotSignals,
+  formatMealTypeLabel,
+} from '@/components/meal-planner/tab-domains/analyticsTabDomain';
+import {
   LineChart,
   Line,
   CartesianGrid,
@@ -2678,169 +2685,36 @@ const NutritionMealPlanner = () => {
     return actions;
   }, [weeklyNutritionInsights]);
 
-  const formatMealTypeLabel = (mealType: string) => (
-    mealType.charAt(0).toUpperCase() + mealType.slice(1)
-  );
+  const activeFixItSlotSignals = useMemo(() => buildFixItSlotSignals({
+    activeFixItTarget,
+    mealTypes: mealTypes as string[],
+    weeklyMeals,
+  }), [activeFixItTarget?.targetDay, mealTypes, weeklyMeals]);
 
-  const activeFixItSlotSignals = useMemo(() => {
-    if (!activeFixItTarget?.targetDay) return [];
-    return mealTypes.map((mealType) => {
-      const items = getMealSlotItems(weeklyMeals, activeFixItTarget.targetDay as string, mealType);
-      const totals = getMealSlotTotals(weeklyMeals, activeFixItTarget.targetDay as string, mealType);
-      const hasMeals = items.length > 0;
-      const missingProtein = hasMeals && totals.protein <= 0;
-      const missingCalories = hasMeals && totals.calories <= 0;
-      const missingDetails = missingProtein || missingCalories;
-      return {
-        mealType,
-        mealTypeLabel: formatMealTypeLabel(mealType),
-        hasMeals,
-        protein: totals.protein,
-        calories: totals.calories,
-        missingProtein,
-        missingCalories,
-        missingDetails,
-      };
-    });
-  }, [activeFixItTarget?.targetDay, mealTypes, weeklyMeals]);
+  const activeFixItDataCompleteness = useMemo<FixItDataCompletenessChipState | null>(() => buildFixItDataCompleteness({
+    activeFixItTarget,
+    activeFixItSlotSignals,
+    mealTypes: mealTypes as string[],
+    weeklyMeals,
+  }), [activeFixItSlotSignals, activeFixItTarget?.issueType, activeFixItTarget?.targetDay, mealTypes, weeklyMeals]);
 
-  const activeFixItDataCompleteness = useMemo<FixItDataCompletenessChipState | null>(() => {
-    if (!activeFixItTarget?.targetDay) return null;
+  const activeFixItProgressMiniState = useMemo<FixItProgressMiniState | null>(() => buildFixItProgressMiniState({
+    activeFixItTarget,
+    activeFixItSlotSignals,
+    calorieGoal,
+    macroGoals,
+    mealTypes: mealTypes as string[],
+    weeklyMeals,
+  }), [activeFixItSlotSignals, activeFixItTarget, calorieGoal, macroGoals.protein, mealTypes, weeklyMeals]);
 
-    let plannedMealCount = 0;
-    let mealsWithNutritionCount = 0;
-    let missingNutritionCount = 0;
-    const emptySlotCount = activeFixItSlotSignals.filter((slot) => !slot.hasMeals).length;
-
-    mealTypes.forEach((mealType) => {
-      const items = getMealSlotItems(weeklyMeals, activeFixItTarget.targetDay as string, mealType);
-      items.forEach((item) => {
-        plannedMealCount += 1;
-        const hasCalories = Number(item?.calories) > 0;
-        const hasProtein = Number(item?.protein) > 0;
-        const hasCoreNutrition = hasCalories && hasProtein;
-        if (hasCoreNutrition) {
-          mealsWithNutritionCount += 1;
-          return;
-        }
-        missingNutritionCount += 1;
-      });
-    });
-
-    if (plannedMealCount <= 0) {
-      return {
-        label: 'Needs more meal details',
-        detail: 'No meals planned yet for this day.',
-        tone: 'neutral',
-      };
-    }
-
-    if (activeFixItTarget.issueType === 'missing-meals' && emptySlotCount > 0) {
-      return {
-        label: 'Partial meal coverage',
-        detail: `${emptySlotCount} meal slot${emptySlotCount === 1 ? '' : 's'} still empty, so guidance is based on partial day data.`,
-        tone: 'neutral',
-      };
-    }
-
-    if (missingNutritionCount <= 0) {
-      return {
-        label: 'Complete data',
-        detail: 'Guidance is based on complete calories and protein data.',
-        tone: 'success',
-      };
-    }
-
-    if (mealsWithNutritionCount <= 0) {
-      return {
-        label: 'Needs more meal details',
-        detail: `${missingNutritionCount} planned meal${missingNutritionCount === 1 ? '' : 's'} missing calories or protein.`,
-        tone: 'warning',
-      };
-    }
-
-    return {
-      label: 'Partial nutrition data',
-      detail: `${missingNutritionCount} meal${missingNutritionCount === 1 ? '' : 's'} missing calories or protein, so guidance may be directional.`,
-      tone: 'warning',
-    };
-  }, [activeFixItSlotSignals, activeFixItTarget?.issueType, activeFixItTarget?.targetDay, mealTypes, weeklyMeals]);
-
-  const activeFixItProgressMiniState = useMemo<FixItProgressMiniState | null>(() => {
-    if (!activeFixItTarget || !activeFixItTarget.targetDay) return null;
-
-    let unresolvedCount = 0;
-    if (activeFixItTarget.issueType === 'missing-meals') {
-      unresolvedCount = activeFixItSlotSignals.filter((slot) => !slot.hasMeals).length;
-    } else if (activeFixItTarget.issueType === 'low-protein') {
-      const dayTotals = mealTypes.reduce((totals, mealType) => {
-        const slotTotals = getMealSlotTotals(weeklyMeals, activeFixItTarget.targetDay as string, mealType);
-        return {
-          protein: totals.protein + slotTotals.protein,
-        };
-      }, { protein: 0 });
-      const proteinGap = Math.max(0, Math.ceil(macroGoals.protein - dayTotals.protein));
-      unresolvedCount = proteinGap > 0 ? 1 : 0;
-    } else if (activeFixItTarget.issueType === 'missing-details') {
-      unresolvedCount = activeFixItSlotSignals.filter((slot) => slot.missingDetails || !slot.hasMeals).length;
-    } else if (activeFixItTarget.issueType === 'calorie-balance') {
-      const targetDayTotals = calculateTodayNutritionTotals(weeklyMeals, activeFixItTarget.targetDay as string);
-      const lowerBound = calorieGoal * 0.9;
-      const upperBound = calorieGoal * 1.1;
-      unresolvedCount = targetDayTotals.calories < lowerBound || targetDayTotals.calories > upperBound ? 1 : 0;
-    }
-
-    if (unresolvedCount <= 0) {
-      return {
-        unresolvedCount: 0,
-        message: 'All suggested fixes addressed.',
-        tone: 'success',
-      };
-    }
-
-    return {
-      unresolvedCount,
-      message: unresolvedCount === 1
-        ? '1 slot still needs attention.'
-        : `${unresolvedCount} slots still need attention.`,
-      tone: 'warning',
-    };
-  }, [activeFixItSlotSignals, activeFixItTarget, calorieGoal, macroGoals.protein, mealTypes, weeklyMeals]);
-
-  const activeFixItDayCompletion = useMemo<FixItDayCompletionState | null>(() => {
-    if (!activeFixItTarget?.targetDay) return null;
-
-    const slotCount = mealTypes.length;
-    if (slotCount <= 0) return null;
-
-    const missingMealsRemaining = activeFixItSlotSignals.filter((slot) => !slot.hasMeals).length;
-    const missingMealsResolved = Math.max(0, slotCount - missingMealsRemaining);
-
-    const missingDetailsRemaining = activeFixItSlotSignals.filter((slot) => slot.missingDetails || !slot.hasMeals).length;
-    const missingDetailsResolved = Math.max(0, slotCount - missingDetailsRemaining);
-
-    const dayProtein = activeFixItSlotSignals.reduce((sum, slot) => sum + slot.protein, 0);
-    const proteinGap = Math.max(0, Math.ceil(macroGoals.protein - dayProtein));
-    const lowProteinRemaining = proteinGap > 0 ? 1 : 0;
-    const lowProteinResolved = lowProteinRemaining === 0 ? 1 : 0;
-
-    const dayTotals = calculateTodayNutritionTotals(weeklyMeals, activeFixItTarget.targetDay);
-    const lowerBound = calorieGoal * 0.9;
-    const upperBound = calorieGoal * 1.1;
-    const calorieBalanceRemaining = calorieGoal > 0 && (dayTotals.calories < lowerBound || dayTotals.calories > upperBound) ? 1 : 0;
-    const calorieBalanceResolved = calorieBalanceRemaining === 0 ? 1 : 0;
-
-    const totalIssues = (slotCount * 2) + 2;
-    const resolvedIssues = missingMealsResolved + missingDetailsResolved + lowProteinResolved + calorieBalanceResolved;
-    const remainingIssues = Math.max(0, totalIssues - resolvedIssues);
-
-    return {
-      totalIssues,
-      resolvedIssues,
-      remainingIssues,
-      allResolved: remainingIssues === 0,
-    };
-  }, [activeFixItSlotSignals, activeFixItTarget?.targetDay, calorieGoal, macroGoals.protein, mealTypes, weeklyMeals]);
+  const activeFixItDayCompletion = useMemo<FixItDayCompletionState | null>(() => buildFixItDayCompletion({
+    activeFixItTarget,
+    activeFixItSlotSignals,
+    calorieGoal,
+    macroGoals,
+    mealTypes: mealTypes as string[],
+    weeklyMeals,
+  }), [activeFixItSlotSignals, activeFixItTarget?.targetDay, calorieGoal, macroGoals.protein, mealTypes, weeklyMeals]);
 
   const activeFixItBaselineKey = activeFixItTarget
     ? `${activeFixItTarget.issueType}:${activeFixItTarget.targetDay ?? ''}:${activeFixItTarget.targetDate ?? ''}`
