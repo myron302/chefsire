@@ -217,7 +217,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
       } else {
         (tokens as any)[key] = value;
       }
-      return { ...prev, tokens: Object.keys(tokens).length ? tokens : undefined };
+      return { ...prev, tokens: Object.keys(tokens).length ? tokens : {} };
     });
 
   const handleDiscard = () => {
@@ -474,7 +474,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
                       onClick={() => {
                         const { primary: _p, secondary: _s, accent: _a, surface: _su, text: _t, ...rest } =
                           c.tokens ?? {};
-                        patchCustomization({ tokens: Object.keys(rest).length ? rest : undefined });
+                        patchCustomization({ tokens: Object.keys(rest).length ? rest : {} });
                       }}
                       className="text-xs text-gray-400 hover:text-gray-600 underline"
                     >
