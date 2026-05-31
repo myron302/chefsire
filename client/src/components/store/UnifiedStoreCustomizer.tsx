@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Upload,
   X,
@@ -10,6 +10,7 @@ import {
   MapPin,
   Save,
   RotateCcw,
+  Check,
 } from "lucide-react";
 import {
   Accordion,
@@ -23,12 +24,21 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
-import { Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { normalizeStoreLayout } from "@shared/store/storeLayout";
-import type { StoreLayoutCustomizationConfig } from "@shared/store/storeLayout";
-import { THEMES } from "@/components/store/ThemeSelector";
+import type {
+  StoreLayoutCustomizationConfig,
+  StoreThemeTokens,
+  FontPairingId,
+  ButtonShape,
+  CornerRadius,
+} from "@shared/store/storeLayout";
+import { FONT_PAIRINGS } from "@shared/store/storeLayout";
+import {
+  STORE_THEME_LIST,
+  STORE_THEME_PRESETS,
+  resolveThemeTokens,
+} from "@shared/store/storeThemes";
 import StorefrontPreview from "@/components/store/preview/StorefrontPreview";
 import type { StoreProduct } from "@/pages/store/StoreViewerContent";
 
@@ -51,18 +61,114 @@ function ColorPicker({
     <div>
       <Label className="text-xs">{label}</Label>
       <div className="flex gap-2 items-center mt-1">
-        <Input type="color" value={value} onChange={(e) => onChange(e.target.value)} className="w-12 h-9 p-0.5 cursor-pointer" />
-        <Input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="flex-1 text-xs font-mono" />
+        <Input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-12 h-9 p-0.5 cursor-pointer"
+        />
+        <Input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1 text-xs font-mono"
+        />
       </div>
     </div>
   );
 }
 
-export default function UnifiedStoreCustomizer({
-  store,
-  products,
-  onSaved,
-}: UnifiedStoreCustomizerProps) {
+function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+  sentinel,
+}: {
+  options: { value: T; label: string }[];
+  value: T | undefined;
+  onChange: (v: T | undefined) => void;
+  sentinel?: string;
+}) {
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {options.map((opt) => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(value === opt.value ? undefined : opt.value)}
+          className={`px-3 py-1.5 border-2 rounded-md text-xs font-medium transition-colors ${
+            value === opt.value
+              ? "border-orange-500 bg-orange-50 text-orange-700"
+              : "border-gray-200 hover:border-gray-300 text-gray-600"
+          }`}
+        >
+          {opt.label}
+        </button>
+      ))}
+      {sentinel && value !== undefined && (
+        <button
+          onClick={() => onChange(undefined)}
+          className="px-2 py-1.5 text-xs text-gray-400 hover:text-gray-600 border border-dashed border-gray-200 rounded-md transition-colors"
+        >
+          {sentinel}
+        </button>
+      )}
+    </div>
+  );
+}
+
+const ORIGINALS = new Set(["modern", "elegant", "vibrant", "rustic"]);
+const ORIGINALS_LIST = STORE_THEME_LIST.filter((t) => ORIGINALS.has(t.id));
+const CURATED_LIST = STORE_THEME_LIST.filter((t) => !ORIGINALS.has(t.id));
+
+const FONT_PAIRING_OPTIONS: { value: FontPairingId; label: string }[] = [
+  { value: "inter", label: "Inter (Clean Sans)" },
+  { value: "editorial", label: "Playfair + Source Sans (Editorial)" },
+  { value: "bold-display", label: "Archivo Black + Inter (Bold)" },
+  { value: "warm-serif", label: "Lora + Lato (Warm Serif)" },
+  { value: "soft-modern", label: "Fraunces + Mulish (Soft Modern)" },
+  { value: "refined-serif", label: "Cormorant + Mulish (Refined)" },
+];
+
+const BUTTON_SHAPE_OPTIONS: { value: ButtonShape; label: string }[] = [
+  { value: "sharp", label: "Sharp" },
+  { value: "rounded", label: "Rounded" },
+  { value: "pill", label: "Pill" },
+];
+
+const CORNER_RADIUS_OPTIONS: { value: CornerRadius; label: string }[] = [
+  { value: "sharp", label: "Sharp" },
+  { value: "soft", label: "Soft" },
+  { value: "round", label: "Round" },
+];
+
+function makeInitialCustomization(
+  saved: StoreLayoutCustomizationConfig,
+): StoreLayoutCustomizationConfig {
+  return {
+    logo: saved?.logo || "",
+    bannerImage: saved?.bannerImage || "",
+    bannerTitle: saved?.bannerTitle || "",
+    bannerSubtitle: saved?.bannerSubtitle || "",
+    showBanner: saved?.showBanner !== false,
+    aboutEnabled: saved?.aboutEnabled || false,
+    aboutTitle: saved?.aboutTitle || "About Us",
+    aboutContent: saved?.aboutContent || "",
+    announcementBar: saved?.announcementBar || "",
+    announcementEnabled: saved?.announcementEnabled || false,
+    socialLinks: saved?.socialLinks || {
+      instagram: "",
+      facebook: "",
+      twitter: "",
+      email: "",
+      phone: "",
+    },
+    contactInfo: saved?.contactInfo || { address: "", hours: "" },
+    layout: saved?.layout || { gridColumns: 3, productCardStyle: "elevated", spacing: "normal" },
+    tokens: saved?.tokens,
+  };
+}
+
+export default function UnifiedStoreCustomizer({ store, products, onSaved }: UnifiedStoreCustomizerProps) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -75,41 +181,20 @@ export default function UnifiedStoreCustomizer({
   const [draftName, setDraftName] = useState(store?.name || "");
   const [draftBio, setDraftBio] = useState(store?.bio || "");
   const [draftTheme, setDraftTheme] = useState(store?.theme || "modern");
-  const [draftCustomization, setDraftCustomization] = useState<StoreLayoutCustomizationConfig>({
-    logo: savedCustomization?.logo || "",
-    bannerImage: savedCustomization?.bannerImage || "",
-    bannerTitle: savedCustomization?.bannerTitle || "",
-    bannerSubtitle: savedCustomization?.bannerSubtitle || "",
-    showBanner: savedCustomization?.showBanner !== false,
-    aboutEnabled: savedCustomization?.aboutEnabled || false,
-    aboutTitle: savedCustomization?.aboutTitle || "About Us",
-    aboutContent: savedCustomization?.aboutContent || "",
-    announcementBar: savedCustomization?.announcementBar || "",
-    announcementEnabled: savedCustomization?.announcementEnabled || false,
-    socialLinks: savedCustomization?.socialLinks || {
-      instagram: "",
-      facebook: "",
-      twitter: "",
-      email: "",
-      phone: "",
-    },
-    contactInfo: savedCustomization?.contactInfo || { address: "", hours: "" },
-    layout: savedCustomization?.layout || {
-      gridColumns: 3,
-      productCardStyle: "elevated",
-      spacing: "normal",
-    },
-    colors: savedCustomization?.colors,
-  });
+  const [draftCustomization, setDraftCustomization] = useState<StoreLayoutCustomizationConfig>(
+    () => makeInitialCustomization(savedCustomization),
+  );
 
   const isDirty = useMemo(() => {
     if (draftName !== (store?.name || "")) return true;
     if (draftBio !== (store?.bio || "")) return true;
     if (draftTheme !== (store?.theme || "modern")) return true;
-    return JSON.stringify(draftCustomization) !== JSON.stringify(savedCustomization);
+    return (
+      JSON.stringify(draftCustomization) !==
+      JSON.stringify(makeInitialCustomization(savedCustomization))
+    );
   }, [draftName, draftBio, draftTheme, draftCustomization, store, savedCustomization]);
 
-  // Warn on navigation away with unsaved changes
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
       if (isDirty) {
@@ -124,44 +209,32 @@ export default function UnifiedStoreCustomizer({
   const patchCustomization = (patch: Partial<StoreLayoutCustomizationConfig>) =>
     setDraftCustomization((prev) => ({ ...prev, ...patch }));
 
+  const patchToken = (key: keyof StoreThemeTokens, value: string | undefined) =>
+    setDraftCustomization((prev) => {
+      const tokens = { ...(prev.tokens ?? {}) };
+      if (value === undefined) {
+        delete (tokens as any)[key];
+      } else {
+        (tokens as any)[key] = value;
+      }
+      return { ...prev, tokens: Object.keys(tokens).length ? tokens : {} };
+    });
+
   const handleDiscard = () => {
     if (!isDirty) return;
     if (!window.confirm("Discard all unsaved changes?")) return;
     setDraftName(store?.name || "");
     setDraftBio(store?.bio || "");
     setDraftTheme(store?.theme || "modern");
-    setDraftCustomization({
-      logo: savedCustomization?.logo || "",
-      bannerImage: savedCustomization?.bannerImage || "",
-      bannerTitle: savedCustomization?.bannerTitle || "",
-      bannerSubtitle: savedCustomization?.bannerSubtitle || "",
-      showBanner: savedCustomization?.showBanner !== false,
-      aboutEnabled: savedCustomization?.aboutEnabled || false,
-      aboutTitle: savedCustomization?.aboutTitle || "About Us",
-      aboutContent: savedCustomization?.aboutContent || "",
-      announcementBar: savedCustomization?.announcementBar || "",
-      announcementEnabled: savedCustomization?.announcementEnabled || false,
-      socialLinks: savedCustomization?.socialLinks || {
-        instagram: "",
-        facebook: "",
-        twitter: "",
-        email: "",
-        phone: "",
-      },
-      contactInfo: savedCustomization?.contactInfo || { address: "", hours: "" },
-      layout: savedCustomization?.layout || {
-        gridColumns: 3,
-        productCardStyle: "elevated",
-        spacing: "normal",
-      },
-      colors: savedCustomization?.colors,
-    });
+    setDraftCustomization(makeInitialCustomization(savedCustomization));
   };
 
   const handleSave = async () => {
     if (!store?.id) return;
     setSaving(true);
     try {
+      // Strip legacy `colors` on save — all color overrides now live in `tokens`
+      const { colors: _legacy, ...customizationToSave } = draftCustomization;
       const res = await fetch(`/api/stores/${store.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -170,7 +243,7 @@ export default function UnifiedStoreCustomizer({
           name: draftName.trim() || store.name,
           bio: draftBio.trim() || null,
           theme: draftTheme,
-          customization: draftCustomization,
+          customization: customizationToSave,
         }),
       });
       if (res.ok) {
@@ -179,7 +252,11 @@ export default function UnifiedStoreCustomizer({
         onSaved(data.store);
       } else {
         const err = await res.json();
-        toast({ title: "Save failed", description: err.error || "Please try again.", variant: "destructive" });
+        toast({
+          title: "Save failed",
+          description: err.error || "Please try again.",
+          variant: "destructive",
+        });
       }
     } catch {
       toast({ title: "Save failed", description: "An error occurred.", variant: "destructive" });
@@ -198,11 +275,7 @@ export default function UnifiedStoreCustomizer({
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch("/api/upload", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
+      const res = await fetch("/api/upload", { method: "POST", body: formData, credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         patchCustomization({ [field]: data.url });
@@ -218,73 +291,89 @@ export default function UnifiedStoreCustomizer({
   };
 
   const c = draftCustomization;
+  const presetTokens = STORE_THEME_PRESETS[draftTheme] ?? STORE_THEME_PRESETS.modern;
 
-  // Effective colors: saved override per-channel, else fall back to the chosen theme preset.
-  // This means clicking a theme card immediately changes the preview even when no overrides exist.
-  const themePreset = THEMES.find((t) => t.id === draftTheme)?.colors ?? THEMES[0].colors;
-  const effectiveColors = {
-    primary: c.colors?.primary ?? themePreset.primary,
-    secondary: c.colors?.secondary ?? themePreset.secondary,
-    accent: c.colors?.accent ?? themePreset.accent,
-  };
+  // Effective value for a color token: override if set, else preset
+  const colorVal = (key: "primary" | "secondary" | "accent" | "surface" | "text") =>
+    (c.tokens as any)?.[key] ?? presetTokens[key];
+
+  const fontPairingVal = c.tokens?.fontPairing;
+  const buttonShapeVal = c.tokens?.buttonShape;
+  const cornerRadiusVal = c.tokens?.cornerRadius;
+
+  function ThemeCard({ id, name }: { id: string; name: string }) {
+    const preset = STORE_THEME_PRESETS[id];
+    const selected = draftTheme === id;
+    return (
+      <button
+        onClick={() => setDraftTheme(id)}
+        className={`relative rounded-lg border-2 overflow-hidden transition-all text-left w-full ${
+          selected ? "border-orange-500 shadow-md" : "border-gray-200 hover:border-gray-300"
+        }`}
+      >
+        <div
+          className="h-10"
+          style={{
+            background: `linear-gradient(135deg, ${preset.primary} 0%, ${preset.secondary} 100%)`,
+          }}
+        >
+          {selected && (
+            <div className="absolute top-1 right-1 bg-green-500 rounded-full p-0.5 z-10">
+              <Check size={9} className="text-white" />
+            </div>
+          )}
+        </div>
+        <div className="px-1.5 py-1" style={{ backgroundColor: preset.surface }}>
+          <p
+            className="text-[10px] font-semibold leading-tight truncate"
+            style={{ color: preset.text }}
+          >
+            {name}
+          </p>
+          <div className="flex gap-0.5 mt-0.5">
+            {[preset.primary, preset.secondary, preset.accent].map((col) => (
+              <div
+                key={col}
+                className="w-2.5 h-2.5 rounded-full border border-black/10"
+                style={{ backgroundColor: col }}
+              />
+            ))}
+          </div>
+        </div>
+      </button>
+    );
+  }
 
   return (
     <div className="flex h-[calc(100vh-200px)] min-h-[600px]">
       {/* ── Left control panel ── */}
       <div className="w-[420px] flex-shrink-0 flex flex-col border-r bg-white overflow-hidden">
-        {/* Scrollable sections */}
         <div className="flex-1 overflow-y-auto px-4 py-3">
           <Accordion type="multiple" defaultValue={["theme", "branding"]} className="space-y-1">
 
-            {/* 1. Theme */}
+            {/* 1. Theme — 16 cards in two labeled groups */}
             <AccordionItem value="theme" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">Theme</AccordionTrigger>
-              <AccordionContent className="pb-4">
-                <div className="grid grid-cols-2 gap-3">
-                  {THEMES.map((theme) => {
-                    const selected = draftTheme === theme.id;
-                    return (
-                      <button
-                        key={theme.id}
-                        onClick={() => setDraftTheme(theme.id)}
-                        className={`relative rounded-lg border-2 overflow-hidden transition-all text-left ${
-                          selected ? "border-orange-500 shadow-md" : "border-gray-200 hover:border-gray-300"
-                        }`}
-                      >
-                        <div
-                          className="h-14"
-                          style={{
-                            background: `linear-gradient(135deg, ${theme.colors.primary} 0%, ${theme.colors.secondary} 100%)`,
-                          }}
-                        >
-                          {selected && (
-                            <div className="absolute top-1.5 right-1.5 bg-green-500 rounded-full p-0.5">
-                              <Check size={10} className="text-white" />
-                            </div>
-                          )}
-                        </div>
-                        <div className="px-2 py-1.5">
-                          <p className="text-xs font-semibold leading-tight">{theme.name}</p>
-                          <div className="flex gap-1 mt-1">
-                            {[theme.colors.primary, theme.colors.secondary, theme.colors.accent].map(
-                              (col) => (
-                                <div
-                                  key={col}
-                                  className="w-3 h-3 rounded-full border border-gray-200"
-                                  style={{ backgroundColor: col }}
-                                />
-                              ),
-                            )}
-                          </div>
-                        </div>
-                        {selected && (
-                          <Badge className="absolute bottom-1.5 right-1.5 text-[9px] px-1.5 py-0 bg-orange-500">
-                            Selected
-                          </Badge>
-                        )}
-                      </button>
-                    );
-                  })}
+              <AccordionContent className="pb-4 space-y-3">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1.5 font-semibold">
+                    Originals
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {ORIGINALS_LIST.map((t) => (
+                      <ThemeCard key={t.id} id={t.id} name={t.name} />
+                    ))}
+                  </div>
+                </div>
+                <div className="border-t pt-3">
+                  <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1.5 font-semibold">
+                    Curated
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {CURATED_LIST.map((t) => (
+                      <ThemeCard key={t.id} id={t.id} name={t.name} />
+                    ))}
+                  </div>
                 </div>
               </AccordionContent>
             </AccordionItem>
@@ -316,7 +405,11 @@ export default function UnifiedStoreCustomizer({
                   <Label className="text-xs">Logo</Label>
                   {c.logo ? (
                     <div className="relative inline-block mt-1">
-                      <img src={c.logo} alt="Logo" className="h-20 w-20 object-contain border rounded-lg" />
+                      <img
+                        src={c.logo}
+                        alt="Logo"
+                        className="h-20 w-20 object-contain border rounded-lg"
+                      />
                       <button
                         onClick={() => patchCustomization({ logo: "" })}
                         className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
@@ -341,30 +434,160 @@ export default function UnifiedStoreCustomizer({
               </AccordionContent>
             </AccordionItem>
 
-            {/* 3. Colors */}
+            {/* 3. Colors — 5 per-channel token pickers */}
             <AccordionItem value="colors" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">Colors</AccordionTrigger>
               <AccordionContent className="pb-4 space-y-3">
-                <p className="text-xs text-gray-500">Override the theme preset with your brand colors.</p>
+                <p className="text-xs text-gray-500">
+                  Override individual colors. Others continue tracking the theme preset.
+                </p>
                 <ColorPicker
                   label="Primary"
-                  value={effectiveColors.primary}
-                  onChange={(v) => patchCustomization({ colors: { ...(c.colors ?? {}), primary: v } })}
+                  value={colorVal("primary")}
+                  onChange={(v) => patchToken("primary", v)}
                 />
                 <ColorPicker
                   label="Secondary"
-                  value={effectiveColors.secondary}
-                  onChange={(v) => patchCustomization({ colors: { ...(c.colors ?? {}), secondary: v } })}
+                  value={colorVal("secondary")}
+                  onChange={(v) => patchToken("secondary", v)}
                 />
                 <ColorPicker
-                  label="Accent / Background"
-                  value={effectiveColors.accent}
-                  onChange={(v) => patchCustomization({ colors: { ...(c.colors ?? {}), accent: v } })}
+                  label="Accent"
+                  value={colorVal("accent")}
+                  onChange={(v) => patchToken("accent", v)}
                 />
+                <ColorPicker
+                  label="Surface (background)"
+                  value={colorVal("surface")}
+                  onChange={(v) => patchToken("surface", v)}
+                />
+                <ColorPicker
+                  label="Text"
+                  value={colorVal("text")}
+                  onChange={(v) => patchToken("text", v)}
+                />
+                {c.tokens &&
+                  Object.keys(c.tokens).some((k) =>
+                    ["primary", "secondary", "accent", "surface", "text"].includes(k),
+                  ) && (
+                    <button
+                      onClick={() => {
+                        const { primary: _p, secondary: _s, accent: _a, surface: _su, text: _t, ...rest } =
+                          c.tokens ?? {};
+                        patchCustomization({ tokens: Object.keys(rest).length ? rest : {} });
+                      }}
+                      className="text-xs text-gray-400 hover:text-gray-600 underline"
+                    >
+                      Reset colors to theme default
+                    </button>
+                  )}
               </AccordionContent>
             </AccordionItem>
 
-            {/* 4. Hero / Banner */}
+            {/* 4. Typography */}
+            <AccordionItem value="typography" className="border rounded-lg px-3">
+              <AccordionTrigger className="text-sm font-semibold py-3">Typography</AccordionTrigger>
+              <AccordionContent className="pb-4 space-y-3">
+                <div>
+                  <Label className="text-xs">Font Pairing</Label>
+                  <select
+                    value={fontPairingVal ?? ""}
+                    onChange={(e) => patchToken("fontPairing", e.target.value || undefined)}
+                    className="mt-1 w-full text-xs border border-gray-300 rounded-md px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                  >
+                    <option value="">Use theme default ({presetTokens.fontPairing})</option>
+                    {FONT_PAIRING_OPTIONS.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="border rounded-lg p-3 bg-gray-50 space-y-1">
+                  <p className="text-xs text-gray-400 mb-1">Preview</p>
+                  <p
+                    className="font-bold text-sm"
+                    style={{
+                      fontFamily:
+                        FONT_PAIRINGS[fontPairingVal ?? presetTokens.fontPairing]?.heading,
+                    }}
+                  >
+                    The quick brown fox
+                  </p>
+                  <p
+                    className="text-xs"
+                    style={{
+                      fontFamily:
+                        FONT_PAIRINGS[fontPairingVal ?? presetTokens.fontPairing]?.body,
+                    }}
+                  >
+                    Handcrafted with love — body text appears in this typeface.
+                  </p>
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* 5. Button Style */}
+            <AccordionItem value="buttonShape" className="border rounded-lg px-3">
+              <AccordionTrigger className="text-sm font-semibold py-3">Button Style</AccordionTrigger>
+              <AccordionContent className="pb-4 space-y-3">
+                <SegmentedControl
+                  options={BUTTON_SHAPE_OPTIONS}
+                  value={buttonShapeVal}
+                  onChange={(v) => patchToken("buttonShape", v)}
+                  sentinel="Use theme default"
+                />
+                <div className="flex gap-2 mt-2">
+                  {BUTTON_SHAPE_OPTIONS.map((opt) => (
+                    <div
+                      key={opt.value}
+                      className={`px-4 py-1.5 text-xs border-2 border-orange-400 text-orange-600 font-medium transition-opacity ${
+                        (buttonShapeVal ?? presetTokens.buttonShape) === opt.value
+                          ? "opacity-100"
+                          : "opacity-30"
+                      }`}
+                      style={{
+                        borderRadius:
+                          opt.value === "sharp" ? "0px" : opt.value === "pill" ? "9999px" : "8px",
+                      }}
+                    >
+                      {opt.label}
+                    </div>
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* 6. Corner Radius */}
+            <AccordionItem value="cornerRadius" className="border rounded-lg px-3">
+              <AccordionTrigger className="text-sm font-semibold py-3">Corner Radius</AccordionTrigger>
+              <AccordionContent className="pb-4 space-y-3">
+                <SegmentedControl
+                  options={CORNER_RADIUS_OPTIONS}
+                  value={cornerRadiusVal}
+                  onChange={(v) => patchToken("cornerRadius", v)}
+                  sentinel="Use theme default"
+                />
+                <div className="flex gap-2 mt-2">
+                  {CORNER_RADIUS_OPTIONS.map((opt) => (
+                    <div
+                      key={opt.value}
+                      className={`w-10 h-10 bg-orange-400 transition-opacity ${
+                        (cornerRadiusVal ?? presetTokens.cornerRadius) === opt.value
+                          ? "opacity-100"
+                          : "opacity-30"
+                      }`}
+                      style={{
+                        borderRadius:
+                          opt.value === "sharp" ? "0px" : opt.value === "round" ? "16px" : "8px",
+                      }}
+                    />
+                  ))}
+                </div>
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* 7. Hero / Banner */}
             <AccordionItem value="banner" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">
                 <span className="flex items-center gap-2">
@@ -381,7 +604,11 @@ export default function UnifiedStoreCustomizer({
                 <AccordionContent className="pb-4 space-y-3">
                   {c.bannerImage ? (
                     <div className="relative">
-                      <img src={c.bannerImage} alt="Banner" className="w-full h-28 object-cover rounded-lg" />
+                      <img
+                        src={c.bannerImage}
+                        alt="Banner"
+                        className="w-full h-28 object-cover rounded-lg"
+                      />
                       <button
                         onClick={() => patchCustomization({ bannerImage: "" })}
                         className="absolute top-1.5 right-1.5 bg-red-500 text-white rounded-full p-0.5 hover:bg-red-600"
@@ -424,7 +651,7 @@ export default function UnifiedStoreCustomizer({
               )}
             </AccordionItem>
 
-            {/* 5. About */}
+            {/* 8. About */}
             <AccordionItem value="about" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">
                 <span className="flex items-center gap-2">
@@ -461,7 +688,7 @@ export default function UnifiedStoreCustomizer({
               )}
             </AccordionItem>
 
-            {/* 6. Announcement Bar */}
+            {/* 9. Announcement Bar */}
             <AccordionItem value="announcement" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">
                 <span className="flex items-center gap-2">
@@ -486,7 +713,7 @@ export default function UnifiedStoreCustomizer({
               )}
             </AccordionItem>
 
-            {/* 7. Layout */}
+            {/* 10. Layout */}
             <AccordionItem value="layout" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">Layout</AccordionTrigger>
               <AccordionContent className="pb-4 space-y-4">
@@ -559,7 +786,7 @@ export default function UnifiedStoreCustomizer({
               </AccordionContent>
             </AccordionItem>
 
-            {/* 8. Contact & Social */}
+            {/* 11. Contact & Social */}
             <AccordionItem value="contact" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">Contact & Social</AccordionTrigger>
               <AccordionContent className="pb-4 space-y-3">
@@ -624,10 +851,11 @@ export default function UnifiedStoreCustomizer({
 
         {/* Sticky footer */}
         <div className="flex-shrink-0 border-t bg-white px-4 py-3 flex items-center gap-2">
-          {isDirty && (
+          {isDirty ? (
             <span className="text-xs text-amber-600 font-medium flex-1">Unsaved changes</span>
+          ) : (
+            <span className="flex-1 text-xs text-gray-400">All changes saved</span>
           )}
-          {!isDirty && <span className="flex-1 text-xs text-gray-400">All changes saved</span>}
           <Button
             variant="outline"
             size="sm"
