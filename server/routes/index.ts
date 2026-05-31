@@ -34,6 +34,7 @@ import competitionsRouter from "./competitions";
 
 // Stores (user storefronts)
 import storesRouter from "./stores-crud";
+import storeDropsRouter from "./store-drops";
 
 // Square (subscriptions / checkout links)
 import squareRouter from "./stores";
@@ -165,6 +166,7 @@ r.use("/competitions", competitionsRouter);
 
 // Stores (public viewer + owner writes)
 r.use("/stores", storesRouter);
+r.use("/stores", storeDropsRouter);
 
 // Square (payments/subscriptions)
 r.use("/square", squareRouter);

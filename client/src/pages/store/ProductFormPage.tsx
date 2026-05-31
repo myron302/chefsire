@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useRoute } from 'wouter';
-import { ArrowLeft, Loader2 } from 'lucide-react';
+import { ArrowLeft, Loader2, Megaphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useUser } from '@/contexts/UserContext';
 import { getMarketplaceProduct, saveMarketplaceProduct } from '@/lib/store/marketplaceApi';
 import { buildMarketplaceProductPayload, ProductFormData, toProductFormData } from '@/lib/store/productPayload';
+import NotifyFollowersDialog from '@/components/store/products/NotifyFollowersDialog';
 
 export default function ProductFormPage() {
   const { user } = useUser();
@@ -22,6 +23,8 @@ export default function ProductFormPage() {
   const [loading, setLoading] = useState(false);
   const [loadingProduct, setLoadingProduct] = useState(!!productId);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [showNotifyDialog, setShowNotifyDialog] = useState(false);
+  const [storeInfo, setStoreInfo] = useState<{ id: string; followerCount: number } | null>(null);
   const [formData, setFormData] = useState<ProductFormData>({
     name: '',
     description: '',
@@ -58,6 +61,21 @@ export default function ProductFormPage() {
       loadProduct();
     }
   }, [productId]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    fetch(`/api/stores/user/${user.id}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.store) {
+          setStoreInfo({
+            id: data.store.id,
+            followerCount: data.socialProof?.followerCount ?? 0,
+          });
+        }
+      })
+      .catch(() => {});
+  }, [user?.id]);
 
   const loadProduct = async () => {
     try {
@@ -354,6 +372,7 @@ export default function ProductFormPage() {
   }
 
   return (
+    <>
     <div className="min-h-screen bg-gray-50 py-8 px-4">
       <div className="max-w-2xl mx-auto">
         {/* Back Button */}
@@ -731,10 +750,41 @@ export default function ProductFormPage() {
                   )}
                 </Button>
               </div>
+
+              {/* Notify followers — only available on saved products */}
+              {productId && storeInfo && (
+                <div className="pt-2 border-t">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-orange-200 text-orange-600 hover:bg-orange-50"
+                    onClick={() => setShowNotifyDialog(true)}
+                  >
+                    <Megaphone className="mr-2 h-4 w-4" />
+                    Notify my followers
+                  </Button>
+                </div>
+              )}
             </form>
           </CardContent>
         </Card>
       </div>
     </div>
+
+    {productId && storeInfo && showNotifyDialog && (
+      <NotifyFollowersDialog
+        open={showNotifyDialog}
+        onOpenChange={setShowNotifyDialog}
+        storeId={storeInfo.id}
+        product={{
+          id: productId,
+          name: formData.name,
+          price: formData.price,
+          images: formData.images,
+        }}
+        followerCount={storeInfo.followerCount}
+      />
+    )}
+    </>
   );
 }

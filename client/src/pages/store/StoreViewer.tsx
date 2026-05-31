@@ -22,6 +22,20 @@ export default function StoreViewer() {
 
   const storeHandle = params?.handle;
 
+  // Record click-through from a drop notification and strip the param so refreshes don't double-count
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const dropId = searchParams.get("drop");
+    if (!dropId) return;
+
+    fetch(`/api/stores/drops/${dropId}/click`, { method: "POST", credentials: "include" }).catch(() => {});
+
+    searchParams.delete("drop");
+    const newSearch = searchParams.toString();
+    const newUrl = window.location.pathname + (newSearch ? `?${newSearch}` : "");
+    window.history.replaceState(null, "", newUrl);
+  }, []);
+
   useEffect(() => {
     if (!storeHandle) return;
     let cancelled = false;

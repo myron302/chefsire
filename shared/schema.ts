@@ -146,6 +146,7 @@ import {
 } from "./schema/domains/drinks-creator";
 import {
   stores,
+  storeDrops,
   paymentMethods,
   commissions,
   payouts,
@@ -288,6 +289,7 @@ export type {
 } from "./schema/domains/drinks-creator";
 export {
   stores,
+  storeDrops,
   paymentMethods,
   commissions,
   payouts,
