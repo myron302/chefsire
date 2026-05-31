@@ -46,14 +46,11 @@ import NutritionCampaignPanel from '@/components/meal-planner/campaigns/Nutritio
 import { usePlannerHydration } from '@/components/meal-planner/hooks/usePlannerHydration';
 import { usePlannerBodyMetrics } from '@/components/meal-planner/hooks/usePlannerBodyMetrics';
 import { usePlannerHistory } from '@/components/meal-planner/hooks/usePlannerHistory';
-import { usePlannerCampaignState } from '@/components/meal-planner/hooks/usePlannerCampaignState';
 import { usePlannerModalState } from '@/components/meal-planner/hooks/usePlannerModalState';
-import {
-  buildPlannerAnalyticsViewModel,
-  buildPlannerCampaignViewModel,
-  buildPlannerDashboardViewModel,
-  buildPlannerReadinessViewModel,
-} from '@/components/meal-planner/view-models';
+import { usePlannerReadiness } from '@/components/meal-planner/hooks/usePlannerReadiness';
+import { usePlannerAnalytics } from '@/components/meal-planner/hooks/usePlannerAnalytics';
+import { usePlannerDashboard } from '@/components/meal-planner/hooks/usePlannerDashboard';
+import { usePlannerCampaigns } from '@/components/meal-planner/hooks/usePlannerCampaigns';
 import {
   LineChart,
   Line,
@@ -328,12 +325,6 @@ const NutritionMealPlanner = () => {
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
   const [weeklyMeals, setWeeklyMeals] = useState<Record<string, any>>({});
-  const {
-    activeCampaignId,
-    activeCampaignStartedAt,
-    activateCampaign,
-    clearCampaign,
-  } = usePlannerCampaignState(user?.id);
   const {
     showAddMealModal,
     setShowAddMealModal,
@@ -2450,7 +2441,7 @@ const NutritionMealPlanner = () => {
   const proteinCurrent = dailyNutrition?.protein || 0;
   const carbsCurrent = dailyNutrition?.carbs || 0;
   const fatCurrent = dailyNutrition?.fat || 0;
-  const readinessViewModel = useMemo(() => buildPlannerReadinessViewModel({
+  const readinessViewModel = usePlannerReadiness({
     weeklyMeals,
     weekDays,
     mealTypes,
@@ -2458,7 +2449,7 @@ const NutritionMealPlanner = () => {
     plannerGroceryState,
     prepSession,
     savingsReport,
-  }), [groceryList, mealTypes, plannerGroceryState, prepSession, savingsReport, weekDays, weeklyMeals]);
+  });
   const {
     plannedSlots,
     totalSlots,
@@ -2526,7 +2517,7 @@ const NutritionMealPlanner = () => {
     });
   }, [canResolvePrepGroceryBlockers, canResolvePrepGroceryBlockersFromSuggestions]);
 
-  const analyticsViewModel = useMemo(() => buildPlannerAnalyticsViewModel({
+  const analyticsViewModel = usePlannerAnalytics({
     weeklyMeals,
     weekDays,
     mealTypes,
@@ -2534,7 +2525,7 @@ const NutritionMealPlanner = () => {
     macroGoals,
     hydrationPct,
     bodyMetricSummary,
-  }), [bodyMetricSummary, calorieGoal, hydrationPct, macroGoals, mealTypes, weekDays, weeklyMeals]);
+  });
   const {
     weeklyNutritionData,
     hasWeeklyNutritionData,
@@ -3269,7 +3260,7 @@ const NutritionMealPlanner = () => {
     return recommendations.slice(0, 3);
   }, [activeFixItSlotSignals, activeFixItTarget, calorieGoal]);
 
-  const dashboardViewModel = useMemo(() => buildPlannerDashboardViewModel({
+  const dashboardViewModel = usePlannerDashboard({
     caloriesCurrent,
     proteinCurrent,
     carbsCurrent,
@@ -3299,35 +3290,7 @@ const NutritionMealPlanner = () => {
     hydrationPct,
     latestBodyMetric,
     bodyWeightDelta,
-  }), [
-    avgCalories,
-    avgProtein,
-    bodyWeightDelta,
-    calorieGoal,
-    calorieGoalHitDays,
-    caloriesCurrent,
-    carbsCurrent,
-    fatCurrent,
-    groceryBuyItemCount,
-    groceryCompletedCount,
-    hydrationPct,
-    latestBodyMetric,
-    macroGoals,
-    plannedSlots,
-    prepActiveBlockersCount,
-    prepProgress,
-    prepSession.tasks,
-    proteinCurrent,
-    proteinGoalHitDays,
-    sharePublicToken,
-    shareVisibility,
-    totalSlots,
-    water,
-    weekReadyNow,
-    weekRange,
-    weeklyMealsCount,
-    selectedDate,
-  ]);
+  });
   const {
     calorieProgress,
     remainingCalories,
@@ -3347,7 +3310,7 @@ const NutritionMealPlanner = () => {
         : <Droplets className="w-6 h-6 text-cyan-500" />,
   }));
 
-  const campaignViewModel = useMemo(() => buildPlannerCampaignViewModel({
+  const campaigns = usePlannerCampaigns({
     weeklyMeals,
     mealTypes,
     weekDays,
@@ -3375,49 +3338,20 @@ const NutritionMealPlanner = () => {
     leftoverFriendlyMeals,
     proteinGoalHitDays,
     pantryIngredientsUsed,
-    activeCampaignId,
-    activeCampaignStartedAt,
     userId: user?.id,
-  }), [
-    activeCampaignId,
-    activeCampaignStartedAt,
-    activePlannerGrocerySuggestions,
-    blendedPrepProgress,
-    calorieGoal,
-    groceryBuyItemCount,
-    groceryCompletedCount,
-    groceryList,
-    groceryPendingCount,
-    leftoverFriendlyMeals,
-    macroGoals,
-    mealTypes,
-    normalizedSavingsReport,
-    pantryIngredientsUsed,
-    plannedBreakfasts,
-    prepActiveBlockersCount,
-    prepCarryoverCount,
-    prepOrchestration,
-    prepOverloadReduction,
-    prepReadyForWeek,
-    prepSessionCompleted,
-    prepSessionPlanned,
-    prepTasksCompleted,
-    proteinGoalHitDays,
-    streak,
-    user?.id,
-    water,
-    weekDays,
-    weekReadyNow,
-    weeklyMeals,
-  ]);
+    dismissedCoachInsightIds,
+  });
   const {
     nutritionCoachAnalysis,
     plannerMealCount,
     cadenceConsistency,
     stabilizationReadiness,
     activeCampaignProgress,
-  } = campaignViewModel;
-  const visibleCoachInsights = nutritionCoachAnalysis.insights.filter((insight) => !dismissedCoachInsightIds.includes(insight.id));
+    visibleCoachInsights,
+    activeCampaignId,
+    activateCampaign,
+    clearCampaign,
+  } = campaigns;
   void plannerMealCount;
   void cadenceConsistency;
   void stabilizationReadiness;
