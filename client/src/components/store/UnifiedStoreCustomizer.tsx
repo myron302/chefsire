@@ -11,6 +11,11 @@ import {
   Save,
   RotateCcw,
   Check,
+  Star,
+  Trophy,
+  Users,
+  Award,
+  Calendar,
 } from "lucide-react";
 import {
   Accordion,
@@ -41,11 +46,14 @@ import {
 } from "@shared/store/storeThemes";
 import StorefrontPreview from "@/components/store/preview/StorefrontPreview";
 import type { StoreProduct } from "@/pages/store/StoreViewerContent";
+import type { StoreSocialProof } from "@shared/store/storeSocialProof";
+import { DEFAULT_SOCIAL_PROOF_VISIBILITY } from "@shared/store/storeSocialProof";
 
 interface UnifiedStoreCustomizerProps {
   store: any;
   products: StoreProduct[];
   onSaved: (updatedStore: any) => void;
+  socialProof?: StoreSocialProof;
 }
 
 function ColorPicker({
@@ -168,7 +176,7 @@ function makeInitialCustomization(
   };
 }
 
-export default function UnifiedStoreCustomizer({ store, products, onSaved }: UnifiedStoreCustomizerProps) {
+export default function UnifiedStoreCustomizer({ store, products, onSaved, socialProof }: UnifiedStoreCustomizerProps) {
   const { toast } = useToast();
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -434,7 +442,82 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
               </AccordionContent>
             </AccordionItem>
 
-            {/* 3. Colors — 5 per-channel token pickers */}
+            {/* 3. Trust Signals */}
+            <AccordionItem value="trust" className="border rounded-lg px-3">
+              <AccordionTrigger className="text-sm font-semibold py-3">Trust Signals</AccordionTrigger>
+              <AccordionContent className="pb-4 space-y-3">
+                <p className="text-xs text-gray-500">
+                  Show your ChefSire credentials on your storefront to build buyer trust.
+                </p>
+                {[
+                  {
+                    key: "showReviewRating" as const,
+                    icon: <Star className="w-3.5 h-3.5" />,
+                    label: "Review Rating",
+                    available: !!(socialProof?.reviewRating && socialProof.reviewRating.count > 0),
+                    missingNote: "Earn your first store review to enable this.",
+                  },
+                  {
+                    key: "showCookoffWins" as const,
+                    icon: <Trophy className="w-3.5 h-3.5" />,
+                    label: "Cook-off Wins",
+                    available: typeof socialProof?.cookoffWins === "number",
+                    missingNote: "Win a cook-off competition to enable this.",
+                  },
+                  {
+                    key: "showFollowerCount" as const,
+                    icon: <Users className="w-3.5 h-3.5" />,
+                    label: "Followers",
+                    available: typeof socialProof?.followerCount === "number",
+                    missingNote: "Follower data unavailable.",
+                  },
+                  {
+                    key: "showChefClubs" as const,
+                    icon: <Award className="w-3.5 h-3.5" />,
+                    label: "Chef Clubs",
+                    available: !!(socialProof?.chefClubs && socialProof.chefClubs.length > 0),
+                    missingNote: "Join a chef club to enable this.",
+                  },
+                  {
+                    key: "showMemberSince" as const,
+                    icon: <Calendar className="w-3.5 h-3.5" />,
+                    label: "Member Since",
+                    available: !!socialProof?.memberSince,
+                    missingNote: "Account date unavailable.",
+                  },
+                ].map(({ key, icon, label, available, missingNote }) => {
+                  const checked =
+                    c.socialProof?.[key] ??
+                    DEFAULT_SOCIAL_PROOF_VISIBILITY[key];
+                  return (
+                    <div key={key}>
+                      <div className="flex items-center justify-between gap-2">
+                        <label
+                          className={`flex items-center gap-1.5 text-xs ${available ? "text-gray-700" : "text-gray-400"}`}
+                        >
+                          {icon}
+                          {label}
+                        </label>
+                        <Switch
+                          checked={available ? checked : false}
+                          disabled={!available}
+                          onCheckedChange={(v) =>
+                            patchCustomization({
+                              socialProof: { ...c.socialProof, [key]: v },
+                            })
+                          }
+                        />
+                      </div>
+                      {!available && (
+                        <p className="text-[10px] text-gray-400 mt-0.5 pl-5">{missingNote}</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </AccordionContent>
+            </AccordionItem>
+
+            {/* 4. Colors — 5 per-channel token pickers */}
             <AccordionItem value="colors" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">Colors</AccordionTrigger>
               <AccordionContent className="pb-4 space-y-3">
@@ -484,7 +567,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
               </AccordionContent>
             </AccordionItem>
 
-            {/* 4. Typography */}
+            {/* 5. Typography */}
             <AccordionItem value="typography" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">Typography</AccordionTrigger>
               <AccordionContent className="pb-4 space-y-3">
@@ -527,7 +610,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
               </AccordionContent>
             </AccordionItem>
 
-            {/* 5. Button Style */}
+            {/* 6. Button Style */}
             <AccordionItem value="buttonShape" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">Button Style</AccordionTrigger>
               <AccordionContent className="pb-4 space-y-3">
@@ -558,7 +641,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
               </AccordionContent>
             </AccordionItem>
 
-            {/* 6. Corner Radius */}
+            {/* 7. Corner Radius */}
             <AccordionItem value="cornerRadius" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">Corner Radius</AccordionTrigger>
               <AccordionContent className="pb-4 space-y-3">
@@ -587,7 +670,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
               </AccordionContent>
             </AccordionItem>
 
-            {/* 7. Hero / Banner */}
+            {/* 8. Hero / Banner */}
             <AccordionItem value="banner" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">
                 <span className="flex items-center gap-2">
@@ -651,7 +734,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
               )}
             </AccordionItem>
 
-            {/* 8. About */}
+            {/* 9. About */}
             <AccordionItem value="about" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">
                 <span className="flex items-center gap-2">
@@ -688,7 +771,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
               )}
             </AccordionItem>
 
-            {/* 9. Announcement Bar */}
+            {/* 10. Announcement Bar */}
             <AccordionItem value="announcement" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">
                 <span className="flex items-center gap-2">
@@ -713,7 +796,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
               )}
             </AccordionItem>
 
-            {/* 10. Layout */}
+            {/* 11. Layout */}
             <AccordionItem value="layout" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">Layout</AccordionTrigger>
               <AccordionContent className="pb-4 space-y-4">
@@ -786,7 +869,7 @@ export default function UnifiedStoreCustomizer({ store, products, onSaved }: Uni
               </AccordionContent>
             </AccordionItem>
 
-            {/* 11. Contact & Social */}
+            {/* 12. Contact & Social */}
             <AccordionItem value="contact" className="border rounded-lg px-3">
               <AccordionTrigger className="text-sm font-semibold py-3">Contact & Social</AccordionTrigger>
               <AccordionContent className="pb-4 space-y-3">

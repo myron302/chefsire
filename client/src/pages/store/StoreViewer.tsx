@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import StoreViewerContent, { type StoreData, type StoreProduct } from "./StoreViewerContent";
+import type { StoreSocialProof } from "@shared/store/storeSocialProof";
 
 export default function StoreViewer() {
   const [, setLocation] = useLocation();
@@ -14,6 +15,7 @@ export default function StoreViewer() {
   const { user } = useUser();
 
   const [store, setStore] = useState<StoreData | null>(null);
+  const [socialProof, setSocialProof] = useState<StoreSocialProof | undefined>(undefined);
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [productsLoading, setProductsLoading] = useState(true);
@@ -61,6 +63,7 @@ export default function StoreViewer() {
         const storeObj = storeData.store ?? storeData;
         if (cancelled) return;
         setStore(storeObj);
+        if (storeData.socialProof) setSocialProof(storeData.socialProof);
 
         if (storeObj?.id) {
           fetch(`/api/stores/${storeObj.id}/increment-view`, { method: "PATCH" }).catch(() => {});
@@ -129,6 +132,7 @@ export default function StoreViewer() {
       isOwner={isOwner}
       previewMode={false}
       onNavigate={setLocation}
+      socialProof={socialProof}
     />
   );
 }
