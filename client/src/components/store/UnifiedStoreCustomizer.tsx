@@ -173,6 +173,7 @@ function makeInitialCustomization(
     contactInfo: saved?.contactInfo || { address: "", hours: "" },
     layout: saved?.layout || { gridColumns: 3, productCardStyle: "elevated", spacing: "normal" },
     tokens: saved?.tokens,
+    socialProof: saved?.socialProof,
   };
 }
 

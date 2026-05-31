@@ -33,7 +33,7 @@ async function fetchSocialProof(ownerId: string): Promise<StoreSocialProof> {
       .select({ id: clubs.id, name: clubs.name })
       .from(clubMemberships)
       .innerJoin(clubs, eq(clubMemberships.clubId, clubs.id))
-      .where(eq(clubMemberships.userId, ownerId))
+      .where(and(eq(clubMemberships.userId, ownerId), eq(clubs.isPublic, true)))
       .catch(() => null),
     db
       .select({ createdAt: users.createdAt })
