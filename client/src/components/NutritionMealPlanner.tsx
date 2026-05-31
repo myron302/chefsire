@@ -58,7 +58,11 @@ import {
 import NutritionCoachPanel from '@/components/meal-planner/coach/NutritionCoachPanel';
 import NutritionCampaignPanel from '@/components/meal-planner/campaigns/NutritionCampaignPanel';
 import { evaluateCampaignProgress } from '@/components/meal-planner/campaigns/nutritionCampaignEngine';
-import { loadActiveCampaignState, saveActiveCampaignState } from '@/components/meal-planner/campaigns/nutritionCampaignProgress';
+import { usePlannerHydration } from '@/components/meal-planner/hooks/usePlannerHydration';
+import { usePlannerBodyMetrics } from '@/components/meal-planner/hooks/usePlannerBodyMetrics';
+import { usePlannerHistory } from '@/components/meal-planner/hooks/usePlannerHistory';
+import { usePlannerCampaignState } from '@/components/meal-planner/hooks/usePlannerCampaignState';
+import { usePlannerModalState } from '@/components/meal-planner/hooks/usePlannerModalState';
 import {
   LineChart,
   Line,
@@ -346,29 +350,62 @@ const NutritionMealPlanner = () => {
   const [isPremium, setIsPremium] = useState(false);
   const [loading, setLoading] = useState(true);
   const [weeklyMeals, setWeeklyMeals] = useState<Record<string, any>>({});
-  const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
-  const [activeCampaignStartedAt, setActiveCampaignStartedAt] = useState<string | null>(null);
-  const [showAddMealModal, setShowAddMealModal] = useState(false);
-  const [showGoalsModal, setShowGoalsModal] = useState(false);
-  const [selectedMealSlot, setSelectedMealSlot] = useState<{day: string, type: string} | null>(null);
-  const [showAIRecipeModal, setShowAIRecipeModal] = useState(false);
-  const [showPantryModal, setShowPantryModal] = useState(false);
-  const [showLoadTemplateModal, setShowLoadTemplateModal] = useState(false);
-  const [showPlannerShareDialog, setShowPlannerShareDialog] = useState(false);
+  const {
+    activeCampaignId,
+    activeCampaignStartedAt,
+    activateCampaign,
+    clearCampaign,
+  } = usePlannerCampaignState(user?.id);
+  const {
+    showAddMealModal,
+    setShowAddMealModal,
+    showGoalsModal,
+    setShowGoalsModal,
+    selectedMealSlot,
+    setSelectedMealSlot,
+    showAIRecipeModal,
+    setShowAIRecipeModal,
+    showPantryModal,
+    setShowPantryModal,
+    showLoadTemplateModal,
+    setShowLoadTemplateModal,
+    showPlannerShareDialog,
+    setShowPlannerShareDialog,
+    showAddGroceryModal,
+    setShowAddGroceryModal,
+    showScanModal,
+    setShowScanModal,
+    showShareFamilyModal,
+    setShowShareFamilyModal,
+    showCalcModal,
+    setShowCalcModal,
+  } = usePlannerModalState();
   const [savingsReport, setSavingsReport] = useState<any>(null);
-  const [showAddGroceryModal, setShowAddGroceryModal] = useState(false);
-  const [showScanModal, setShowScanModal] = useState(false);
-  const [showShareFamilyModal, setShowShareFamilyModal] = useState(false);
   const [familyMembers, setFamilyMembers] = useState<any[]>([]);
   const [weekRange, setWeekRange] = useState<{ weekStart: string; weekEnd: string } | null>(null);
   const [isGeneratingWeek, setIsGeneratingWeek] = useState(false);
   const [streak, setStreak] = useState<{ currentStreak: number; longestStreak: number; lastLoggedDate: string | null }>({ currentStreak: 0, longestStreak: 0, lastLoggedDate: null });
-  const [bodyMetricsLog, setBodyMetricsLog] = useState<any[]>([]);
-  const [bodyForm, setBodyForm] = useState({ date: formatLocalDate(new Date()), weight: '', bodyFatPct: '', waistIn: '', hipIn: '', unit: 'lbs' as 'lbs' | 'kg' });
-  const [water, setWater] = useState<{ date: string; glassesLogged: number; dailyTarget: number }>({ date: formatLocalDate(new Date()), glassesLogged: 0, dailyTarget: 8 });
-  const [mealHistory, setMealHistory] = useState<any[]>([]);
-  const [showRecentMeals, setShowRecentMeals] = useState(true);
-  const [showCalcModal, setShowCalcModal] = useState(false);
+  const {
+    bodyMetricsLog,
+    bodyForm,
+    setBodyForm,
+    bodyMetricSummary,
+    fetchBodyMetrics,
+    saveBodyMetric,
+  } = usePlannerBodyMetrics(toast);
+  const {
+    water,
+    hydrationPct,
+    fetchWater,
+    saveWater,
+    updateWaterTarget,
+  } = usePlannerHydration();
+  const {
+    mealHistory,
+    showRecentMeals,
+    fetchMealHistory,
+    toggleRecentMeals,
+  } = usePlannerHistory();
   const [calcForm, setCalcForm] = useState({ age: 30, gender: 'male', heightUnit: 'ft', feet: 5, inches: 10, cm: 178, weightUnit: 'lbs', weight: 180, activity: 'moderately active', goal: 'maintain' });
   const [calcResult, setCalcResult] = useState<any>(null);
   const [prepSession, setPrepSession] = useState<PrepSessionState>(() => createDefaultPrepSession());
@@ -1078,103 +1115,6 @@ const NutritionMealPlanner = () => {
       }
     } catch (error) {
       console.error('Error fetching streak:', error);
-    }
-  };
-
-  const fetchBodyMetrics = async () => {
-    try {
-      const response = await fetch('/api/meal-planner/body-metrics?limit=30', { credentials: 'include' });
-      if (response.ok) {
-        const data = await response.json();
-        setBodyMetricsLog((data.metrics || []).slice().reverse());
-      }
-    } catch (error) {
-      console.error('Error fetching body metrics:', error);
-    }
-  };
-
-  const saveBodyMetric = async () => {
-    if (!bodyForm.weight) return;
-    const weightLbs = bodyForm.unit === 'kg' ? Number(bodyForm.weight) * 2.20462 : Number(bodyForm.weight);
-    try {
-      const response = await fetch('/api/meal-planner/body-metrics', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          date: bodyForm.date,
-          weightLbs,
-          bodyFatPct: bodyForm.bodyFatPct ? Number(bodyForm.bodyFatPct) : null,
-          waistIn: bodyForm.waistIn ? Number(bodyForm.waistIn) : null,
-          hipIn: bodyForm.hipIn ? Number(bodyForm.hipIn) : null,
-        }),
-      });
-      if (!response.ok) throw new Error('Failed to save metric');
-      await fetchBodyMetrics();
-      toast({ description: '✅ Body metrics logged' });
-    } catch (error) {
-      toast({ variant: 'destructive', description: 'Failed to save body metrics' });
-    }
-  };
-
-  const fetchWater = async (date = formatLocalDate(new Date())) => {
-    try {
-      const response = await fetch(`/api/meal-planner/water?date=${date}`, { credentials: 'include' });
-      if (response.ok) {
-        const data = await response.json();
-        setWater(data);
-      }
-    } catch (error) {
-      console.error('Error fetching water:', error);
-    }
-  };
-
-  const saveWater = async (glassesLogged: number) => {
-    const date = formatLocalDate(new Date());
-    try {
-      const response = await fetch('/api/meal-planner/water', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ date, glassesLogged }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setWater(data);
-      }
-    } catch (error) {
-      console.error('Error saving water:', error);
-    }
-  };
-
-  const updateWaterTarget = async () => {
-    const next = Number(prompt('Daily water target (glasses):', String(water.dailyTarget || 8)));
-    if (!Number.isFinite(next) || next <= 0) return;
-    try {
-      const response = await fetch('/api/meal-planner/water/target', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ dailyTarget: next }),
-      });
-      if (response.ok) {
-        const data = await response.json();
-        setWater((prev) => ({ ...prev, dailyTarget: data.dailyTarget }));
-      }
-    } catch (error) {
-      console.error('Error updating water target:', error);
-    }
-  };
-
-  const fetchMealHistory = async () => {
-    try {
-      const response = await fetch('/api/meal-planner/history', { credentials: 'include' });
-      if (response.ok) {
-        const data = await response.json();
-        setMealHistory(data.meals || []);
-      }
-    } catch (error) {
-      console.error('Error fetching meal history:', error);
     }
   };
 
@@ -2805,7 +2745,7 @@ const NutritionMealPlanner = () => {
       ...totals,
       calorieGoal,
       proteinGoal: macroGoals.protein,
-      hydrationPct: Math.round(((water.glassesLogged || 0) / Math.max(1, water.dailyTarget || 8)) * 100),
+      hydrationPct,
     };
   });
 
@@ -3625,12 +3565,7 @@ const NutritionMealPlanner = () => {
   const avgProtein = activeDays > 0 ? Math.round(weeklyTotals.protein / activeDays) : 0;
   const calorieGoalHitDays = weeklyNutritionData.filter((day) => day.calories >= calorieGoal * 0.9 && day.calories <= calorieGoal * 1.1).length;
   const proteinGoalHitDays = weeklyNutritionData.filter((day) => day.protein >= macroGoals.protein).length;
-  const latestBodyMetric = bodyMetricsLog.length > 0 ? bodyMetricsLog[bodyMetricsLog.length - 1] : null;
-  const firstBodyMetric = bodyMetricsLog.length > 0 ? bodyMetricsLog[0] : null;
-  const bodyWeightDelta = latestBodyMetric && firstBodyMetric
-    ? Number(latestBodyMetric.weightLbs || 0) - Number(firstBodyMetric.weightLbs || 0)
-    : 0;
-  const hydrationPct = Math.round(((water.glassesLogged || 0) / Math.max(1, water.dailyTarget || 8)) * 100);
+  const { latestBodyMetric, bodyWeightDelta } = bodyMetricSummary;
   const weeklyMealsCount = weeklyNutritionData.reduce((sum, day) => sum + day.mealsLogged, 0);
   const visibilitySummaryLabel = shareVisibility === 'private'
     ? 'Private (only you)'
@@ -3768,19 +3703,6 @@ const NutritionMealPlanner = () => {
   ]);
   const semanticVarietyScore = Math.round((nutritionCoachAnalysis?.scoreBreakdown?.variety ?? 70) as number);
   const visibleCoachInsights = nutritionCoachAnalysis.insights.filter((insight) => !dismissedCoachInsightIds.includes(insight.id));
-  useEffect(() => {
-    const state = loadActiveCampaignState(user?.id);
-    if (state) {
-      setActiveCampaignId(state.campaignId);
-      setActiveCampaignStartedAt(state.startedAt);
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!activeCampaignId || !activeCampaignStartedAt) return;
-    saveActiveCampaignState({ campaignId: activeCampaignId, startedAt: activeCampaignStartedAt }, user?.id);
-  }, [activeCampaignId, activeCampaignStartedAt, user?.id]);
-
   const plannerMeals = useMemo(() => selectPlannerMeals(weeklyMeals), [weeklyMeals]);
   const plannerMealCount = useMemo(() => selectPlannerMealCount(plannerMeals), [plannerMeals]);
   const continuityAnchors = useMemo(() => selectContinuityAnchors(plannedBreakfasts, prepTasksCompleted), [plannedBreakfasts, prepTasksCompleted]);
@@ -5265,15 +5187,8 @@ const NutritionMealPlanner = () => {
               <NutritionCampaignPanel
                 activeCampaignId={activeCampaignId}
                 progress={activeCampaignProgress}
-                onActivateCampaign={(campaignId) => {
-                  setActiveCampaignId(campaignId);
-                  setActiveCampaignStartedAt(new Date().toISOString());
-                }}
-                onClearCampaign={() => {
-                  setActiveCampaignId(null);
-                  setActiveCampaignStartedAt(null);
-                  saveActiveCampaignState(null, user?.id);
-                }}
+                onActivateCampaign={activateCampaign}
+                onClearCampaign={clearCampaign}
               />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <Card>
@@ -5474,7 +5389,7 @@ const NutritionMealPlanner = () => {
           onLookupNutrition={lookupNutritionWithAI}
           onMealFormChange={setMealForm}
           onSelectedMealTypeChange={(mealType) => setSelectedMealSlot((slot) => slot ? { ...slot, type: mealType } : slot)}
-          onToggleRecentMeals={() => setShowRecentMeals((v) => !v)}
+          onToggleRecentMeals={toggleRecentMeals}
           onToggleFavorite={toggleMealHistoryFavorite}
           onServingQtyChange={changeServingQty}
           onAddToPlanner={handleAddMealFromModal}
