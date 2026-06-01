@@ -133,16 +133,26 @@ async function runMigrations() {
       const sql = await readFile(filePath, "utf-8");
 
       try {
-        // Split into individual statements so CONCURRENTLY indexes can run
-        // outside a transaction block (sending the whole file at once triggers
-        // an implicit transaction in the Neon serverless driver).
-        const statements = sql
-          .split(/;/)
-          .map((s) => s.trim())
-          .filter((s) => s.length > 0 && !s.startsWith("--"));
+        // If the file contains CONCURRENTLY indexes they must run outside a
+        // transaction, so we fall back to the per-statement approach in that case.
+        // For all other files we send the entire content as one query so that
+        // every statement shares the same implicit transaction/connection —
+        // critical for Neon's HTTP-based serverless driver, where each pool.query()
+        // call is an independent HTTP request and can't see DDL from a prior call.
+        const hasConcurrently = /\bCONCURRENTLY\b/i.test(sql);
 
-        for (const stmt of statements) {
-          await pool.query(stmt);
+        if (!hasConcurrently) {
+          await pool.query(sql);
+        } else {
+          // Per-statement path retained only for files with CONCURRENTLY indexes.
+          const statements = sql
+            .split(/;/)
+            .map((s) => s.trim())
+            .filter((s) => s.length > 0 && !s.startsWith("--"));
+
+          for (const stmt of statements) {
+            await pool.query(stmt);
+          }
         }
         await markApplied(file.ledgerKey);
         console.log(`✅ Completed: ${file.ledgerKey}\n`);
