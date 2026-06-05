@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { Calendar, DollarSign, ShoppingBag, ArrowLeft, ExternalLink } from "lucide-react";
+import { Bookmark, Calendar, DollarSign, ShoppingBag, ArrowLeft, ExternalLink } from "lucide-react";
+import { MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
 
 type PurchaseRow = {
   purchase: {
@@ -44,6 +45,21 @@ type MyPurchasesResponse = {
   purchases: PurchaseRow[];
 };
 
+type SavedMealPlannerResponse = {
+  marketplacePlans: Array<{
+    blueprint: { id: string; title: string; description: string | null; priceInCents: number; duration: number; durationUnit: string; savedAt?: string | null };
+    creator: { id: string; username: string; displayName: string };
+    social?: { likeCount: number; saveCount: number; commentCount: number; viewerHasLiked: boolean; viewerHasSaved: boolean };
+  }>;
+  sharedWeeks: Array<{
+    token: string;
+    weekAnchor: string;
+    savedAt: string | null;
+    sharer: { id?: string | null; username: string | null; displayName: string | null };
+    social?: { likeCount: number; saveCount: number; commentCount: number; viewerHasLiked: boolean; viewerHasSaved: boolean };
+  }>;
+};
+
 function formatMoney(cents: number) {
   const dollars = cents / 100;
   return dollars.toLocaleString(undefined, { style: "currency", currency: "USD" });
@@ -66,7 +82,11 @@ export default function MyPurchasesPage() {
     queryKey: ["/api/my-purchases"],
   });
 
+  const savedQuery = useQuery<SavedMealPlannerResponse>({ queryKey: ["/api/me/saved-meal-planner-items"] });
+
   const purchases = useMemo(() => data?.purchases || [], [data]);
+  const savedPlans = savedQuery.data?.marketplacePlans || [];
+  const savedWeeks = savedQuery.data?.sharedWeeks || [];
 
   return (
     <div className="max-w-5xl mx-auto p-6">
@@ -89,6 +109,47 @@ export default function MyPurchasesPage() {
           </Button>
         </div>
       </div>
+
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><Bookmark className="h-5 w-5" /> Saved planner items</CardTitle>
+          <CardDescription>Bookmarked marketplace plans and public shared weeks.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {savedQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading saved items…</p> : null}
+          {!savedQuery.isLoading && savedPlans.length === 0 && savedWeeks.length === 0 ? <p className="text-sm text-muted-foreground">No saved planner items yet. Tap Save on marketplace plans or shared weeks to collect them here.</p> : null}
+          {savedPlans.length > 0 ? <div className="text-sm font-semibold">Marketplace plans</div> : null}
+          {savedPlans.map((item) => (
+            <div key={item.blueprint.id} className="rounded-lg border p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="font-semibold">{item.blueprint.title}</div>
+                  <div className="text-sm text-muted-foreground">By {item.creator.displayName || item.creator.username} • {formatMoney(item.blueprint.priceInCents)}</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <MealPlannerSocialActions target="meal-plan" id={item.blueprint.id} initialStats={item.social} compact />
+                  <Button size="sm" variant="outline" onClick={() => setLocation(`/nutrition/meal-plans/${item.blueprint.id}`)}>Open</Button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {savedWeeks.length > 0 ? <div className="text-sm font-semibold">Shared weeks</div> : null}
+          {savedWeeks.map((item) => (
+            <div key={item.token} className="rounded-lg border p-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="font-semibold">Week of {item.weekAnchor}</div>
+                  <div className="text-sm text-muted-foreground">Shared by {item.sharer.displayName || item.sharer.username || "Chefsire member"}</div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <MealPlannerSocialActions target="shared-week" id={item.token} initialStats={item.social} compact />
+                  <Button size="sm" variant="outline" onClick={() => setLocation(`/meal-planner/shared/${item.token}`)}>Open</Button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, ShoppingCart, ShieldCheck, Activity, Globe, ArrowRight } from 'lucide-react';
+import { CreatorFollowButton, CreatorProfileLink, MealPlannerSocialActions } from '@/components/nutrition/social/MealPlannerSocial';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -30,8 +31,16 @@ type SharedBrowseItem = {
   weekEnd: string;
   sharedAt: string | null;
   sharer: {
+    id?: string | null;
     displayName: string | null;
     username: string | null;
+  };
+  social?: {
+    likeCount: number;
+    saveCount: number;
+    commentCount: number;
+    viewerHasLiked: boolean;
+    viewerHasSaved: boolean;
   };
   readiness: {
     status: string;
@@ -432,7 +441,10 @@ export default function MealPlannerSharedBrowsePage() {
             <Card key={item.token}>
               <CardHeader className="space-y-1">
                 <CardTitle className="text-base">Week of {item.weekStart} to {item.weekEnd}</CardTitle>
-                <CardDescription>{byline}</CardDescription>
+                <CardDescription className="flex flex-wrap items-center gap-2">
+                  <CreatorProfileLink creatorId={item.sharer.id}>{byline}</CreatorProfileLink>
+                  <CreatorFollowButton creatorId={item.sharer.id} compact />
+                </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
                 <div className="grid gap-3">
@@ -463,6 +475,10 @@ export default function MealPlannerSharedBrowsePage() {
                       {item.nutritionHighlights.plannedMealsCount} planned meals • Avg/day {item.nutritionHighlights.avgCaloriesPerPlannedDay} kcal • {item.nutritionHighlights.avgProteinPerPlannedDay}g protein
                     </div>
                   </div>
+                </div>
+
+                <div className="border-t pt-3">
+                  <MealPlannerSocialActions target="shared-week" id={item.token} initialStats={item.social} compact />
                 </div>
 
                 <div className="flex items-center justify-between border-t pt-3">
