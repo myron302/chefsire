@@ -11,8 +11,9 @@ import {
   recipes,
   users,
 } from "../../shared/schema.js";
-import { requireAuth } from "../middleware";
+import { optionalAuth, requireAuth } from "../middleware";
 import { ensureMealPlannerWeekSchema } from "./meal-planner-week/schema.js";
+import { ensureMealSocialSchema, getSharedWeekSocialStats } from "./meal-social.js";
 import {
   addDays,
   assertPremiumNutrition,
@@ -591,8 +592,10 @@ router.post("/week/share-metadata", requireAuth, async (req: Request, res: Respo
 // GET /api/meal-planner/week/shared
 // Public browse surface: recent public shared weeks.
 // ============================================================
-router.get("/week/shared", async (req: Request, res: Response) => {
+router.get("/week/shared", optionalAuth, async (req: Request, res: Response) => {
   try {
+    await ensureMealSocialSchema();
+    const viewerId = (req.user as any)?.id || null;
     const parsedLimit = Number(req.query.limit ?? PUBLIC_SHARED_WEEKS_LIMIT_DEFAULT);
     const limit = Math.max(1, Math.min(PUBLIC_SHARED_WEEKS_LIMIT_MAX, Number.isFinite(parsedLimit) ? parsedLimit : PUBLIC_SHARED_WEEKS_LIMIT_DEFAULT));
     const readinessFilter = parsePublicSharedReadinessFilter(req.query.readiness);
@@ -626,9 +629,11 @@ router.get("/week/shared", async (req: Request, res: Response) => {
           weekEnd: summary.weekEnd,
           sharedAt: row.updated_at || null,
           sharer: {
+            id: row.user_id,
             displayName: row.display_name || null,
             username: row.username || null,
           },
+          social: await getSharedWeekSocialStats(row.public_share_token, viewerId),
           readiness: {
             status: summary.readinessStatus,
             plannedSlots: summary.plannedSlots,
@@ -702,17 +707,19 @@ router.get("/week/shared", async (req: Request, res: Response) => {
 // GET /api/meal-planner/week/shared/:token
 // Public, read-only weekly summary for token-based sharing.
 // ============================================================
-router.get("/week/shared/:token", async (req: Request, res: Response) => {
+router.get("/week/shared/:token", optionalAuth, async (req: Request, res: Response) => {
   try {
+    await ensureMealSocialSchema();
     const token = String(req.params?.token || "").trim();
     if (!SHARED_WEEK_TOKEN_PATTERN.test(token)) {
       return res.status(400).json({ message: "Invalid share token" });
     }
 
     const shareResult = await db.execute(sql`
-      SELECT user_id, week_anchor, visibility, updated_at
-      FROM meal_plan_week_shares
-      WHERE public_share_token = ${token}
+      SELECT user_id, week_anchor, visibility, updated_at, u.display_name, u.username
+      FROM meal_plan_week_shares s
+      LEFT JOIN users u ON u.id = s.user_id
+      WHERE s.public_share_token = ${token}
       LIMIT 1
     `);
     const shareRow = (shareResult as any).rows?.[0];
@@ -790,6 +797,12 @@ router.get("/week/shared/:token", async (req: Request, res: Response) => {
       weekEnd: fmtISODate(weekEnd),
       sharedAt: shareRow.updated_at || null,
       visibility: "public",
+      sharer: {
+        id: shareRow.user_id,
+        displayName: shareRow.display_name || null,
+        username: shareRow.username || null,
+      },
+      social: await getSharedWeekSocialStats(token, (req.user as any)?.id),
       plannedMeals: publicWeeklyMeals,
       readiness: {
         status: summary.readinessStatus,

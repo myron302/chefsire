@@ -10,7 +10,7 @@ import {
   users,
   recipes
 } from "../../shared/schema.js";
-import { requireAuth } from "../middleware";
+import { optionalAuth, requireAuth } from "../middleware";
 import {
   buildSimulatedTransactionId,
   filterBrowsePlans,
@@ -20,6 +20,7 @@ import {
   sortBrowsePlans,
   toIsoDateString,
 } from "./meal-plans/utils.js";
+import { ensureMealSocialSchema, getMealPlanSocialStats } from "./meal-social.js";
 
 const router = express.Router();
 
@@ -90,6 +91,8 @@ router.post("/meal-plans", requireAuth, async (req: Request, res: Response) => {
 router.get("/my-plans", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    await ensureMealSocialSchema();
+    const viewerId = userId;
 
     const plans = await db
       .select({
@@ -97,6 +100,11 @@ router.get("/my-plans", requireAuth, async (req: Request, res: Response) => {
         // ⬇️ removed generic to avoid esbuild TS-parse error
         avgRating: sql`avg(${mealPlanReviews.rating})`,
         reviewCount: sql`count(distinct ${mealPlanReviews.id})`,
+        likeCount: sql`(SELECT COUNT(*)::int FROM meal_plan_likes WHERE blueprint_id = ${mealPlanBlueprints.id})`,
+        saveCount: sql`(SELECT COUNT(*)::int FROM meal_plan_saves WHERE blueprint_id = ${mealPlanBlueprints.id})`,
+        commentCount: sql`(SELECT COUNT(*)::int FROM meal_plan_comments WHERE blueprint_id = ${mealPlanBlueprints.id} AND deleted_at IS NULL)`,
+        viewerHasLiked: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM meal_plan_likes WHERE blueprint_id = ${mealPlanBlueprints.id} AND user_id = ${viewerId})` : sql`FALSE`}`,
+        viewerHasSaved: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM meal_plan_saves WHERE blueprint_id = ${mealPlanBlueprints.id} AND user_id = ${viewerId})` : sql`FALSE`}`,
       })
       .from(mealPlanBlueprints)
       .leftJoin(mealPlanReviews, eq(mealPlanBlueprints.id, mealPlanReviews.blueprintId))
@@ -145,8 +153,10 @@ router.post("/meal-plans/:id/publish", requireAuth, async (req: Request, res: Re
 });
 
 // Browse published meal plans
-router.get("/meal-plans", async (req: Request, res: Response) => {
+router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
   try {
+    await ensureMealSocialSchema();
+    const viewerId = (req.user as any)?.id || null;
     const { category, difficulty, minPrice, maxPrice, search, sort } = req.query;
 
     let query = db
@@ -160,6 +170,11 @@ router.get("/meal-plans", async (req: Request, res: Response) => {
         // ⬇️ removed generic to avoid esbuild TS-parse error
         avgRating: sql`avg(${mealPlanReviews.rating})`,
         reviewCount: sql`count(distinct ${mealPlanReviews.id})`,
+        likeCount: sql`(SELECT COUNT(*)::int FROM meal_plan_likes WHERE blueprint_id = ${mealPlanBlueprints.id})`,
+        saveCount: sql`(SELECT COUNT(*)::int FROM meal_plan_saves WHERE blueprint_id = ${mealPlanBlueprints.id})`,
+        commentCount: sql`(SELECT COUNT(*)::int FROM meal_plan_comments WHERE blueprint_id = ${mealPlanBlueprints.id} AND deleted_at IS NULL)`,
+        viewerHasLiked: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM meal_plan_likes WHERE blueprint_id = ${mealPlanBlueprints.id} AND user_id = ${viewerId})` : sql`FALSE`}`,
+        viewerHasSaved: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM meal_plan_saves WHERE blueprint_id = ${mealPlanBlueprints.id} AND user_id = ${viewerId})` : sql`FALSE`}`,
       })
       .from(mealPlanBlueprints)
       .innerJoin(users, eq(mealPlanBlueprints.creatorId, users.id))
@@ -180,7 +195,18 @@ router.get("/meal-plans", async (req: Request, res: Response) => {
 
     const sorted = sortBrowsePlans(filtered, sort);
 
-    res.json({ plans: sorted });
+    res.json({
+      plans: sorted.map((item: any) => ({
+        ...item,
+        social: {
+          likeCount: Number(item.likeCount || 0),
+          saveCount: Number(item.saveCount || 0),
+          commentCount: Number(item.commentCount || 0),
+          viewerHasLiked: Boolean(item.viewerHasLiked),
+          viewerHasSaved: Boolean(item.viewerHasSaved),
+        },
+      })),
+    });
   } catch (error) {
     console.error("Error browsing meal plans:", error);
     res.status(500).json({ message: "Failed to browse meal plans" });
@@ -188,8 +214,9 @@ router.get("/meal-plans", async (req: Request, res: Response) => {
 });
 
 // Get single meal plan details
-router.get("/meal-plans/:id", async (req: Request, res: Response) => {
+router.get("/meal-plans/:id", optionalAuth, async (req: Request, res: Response) => {
   try {
+    await ensureMealSocialSchema();
     const planId = req.params.id;
 
     const [plan] = await db
@@ -246,6 +273,7 @@ router.get("/meal-plans/:id", async (req: Request, res: Response) => {
       version,
       reviews,
       ratingStats: normalizeRatingStats(ratingStats),
+      social: await getMealPlanSocialStats(planId, (req.user as any)?.id),
     });
   } catch (error) {
     console.error("Error fetching meal plan details:", error);

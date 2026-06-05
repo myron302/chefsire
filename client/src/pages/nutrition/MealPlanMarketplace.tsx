@@ -1,11 +1,12 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingCart, Search, Filter, DollarSign, Calendar, Star, TrendingUp, ChefHat, Users } from "lucide-react";
+import { CreatorFollowButton, MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
+import { ShoppingCart, Search, Calendar, Star, ChefHat, Users } from "lucide-react";
 
 type MealPlanListing = {
   blueprint: {
@@ -27,6 +28,13 @@ type MealPlanListing = {
   };
   avgRating: number;
   reviewCount: number;
+  social?: {
+    likeCount: number;
+    saveCount: number;
+    commentCount: number;
+    viewerHasLiked: boolean;
+    viewerHasSaved: boolean;
+  };
 };
 
 export default function MealPlanMarketplace() {
@@ -204,9 +212,12 @@ export default function MealPlanMarketplace() {
 
                 {/* Title & Creator */}
                 <h3 className="text-lg font-semibold mb-1">{plan.blueprint.title}</h3>
-                <p className="text-sm text-muted-foreground mb-3">
-                  by {plan.creator.displayName || plan.creator.username}
-                </p>
+                <div className="mb-3 flex items-center justify-between gap-2 text-sm text-muted-foreground">
+                  <Link href={`/nutrition/creators/${plan.creator.id}`} className="underline-offset-4 hover:underline">
+                    by {plan.creator.displayName || plan.creator.username}
+                  </Link>
+                  <CreatorFollowButton creatorId={plan.creator.id} compact />
+                </div>
 
                 {/* Description */}
                 {plan.blueprint.description && (
@@ -244,8 +255,12 @@ export default function MealPlanMarketplace() {
                     </span>
                   </div>
                   <span className="text-lg font-bold text-green-600">
-                    ${plan.blueprint.price}
+                    ${plan.blueprint.price ?? ((plan.blueprint as any).priceInCents / 100).toFixed(2)}
                   </span>
+                </div>
+
+                <div className="mb-4">
+                  <MealPlannerSocialActions target="meal-plan" id={plan.blueprint.id} initialStats={plan.social} compact />
                 </div>
 
                 {/* Actions */}

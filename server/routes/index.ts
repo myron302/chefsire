@@ -18,6 +18,7 @@ import nutritionRouter from "./nutrition";
 import mealPlansRouter from "./meal-plans";
 import mealPlannerAdvancedRouter from "./meal-planner-advanced";
 import mealPlannerWeekRouter from "./meal-planner-week";
+import mealSocialRouter from "./meal-social";
 import dmRouter from "./dm";
 import clubsRouter from "./clubs";
 
@@ -137,6 +138,7 @@ r.use("/nutrition", nutritionRouter);
 
 // Meal Plans Marketplace - prefixed
 r.use(mealPlansRouter);
+r.use(mealSocialRouter);
 
 // Advanced Meal Planning Features - prefixed
 r.use("/meal-planner", mealPlannerAdvancedRouter);

@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import { ArrowLeft, Calendar, DollarSign, Star, User, Send } from "lucide-react";
+import { CreatorFollowButton, CreatorProfileLink, MealPlannerCommentsPanel, MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
 
 type MealPlanDetailsResponse = {
   plan: {
@@ -51,6 +52,13 @@ type MealPlanDetailsResponse = {
     user: { id: string; username: string; displayName: string };
   }>;
   ratingStats: { avgRating: number; totalReviews: number };
+  social?: {
+    likeCount: number;
+    saveCount: number;
+    commentCount: number;
+    viewerHasLiked: boolean;
+    viewerHasSaved: boolean;
+  };
 };
 
 function formatMoney(cents: number) {
@@ -178,6 +186,7 @@ export default function MealPlanDetailsPage() {
         {blueprint ? (
           <div className="flex flex-col items-end gap-2 shrink-0">
             <div className="text-2xl font-bold">{formatMoney(blueprint.priceInCents)}</div>
+            <MealPlannerSocialActions target="meal-plan" id={blueprint.id} initialStats={data?.social} />
             <div className="flex items-center gap-2">
               <Badge variant="secondary">{blueprint.category}</Badge>
               <Badge variant="outline">{blueprint.difficulty}</Badge>
@@ -207,7 +216,8 @@ export default function MealPlanDetailsPage() {
                 {creator ? (
                   <span className="inline-flex items-center gap-2">
                     <User className="w-4 h-4" />
-                    By {creator.displayName || creator.username}
+                    By <CreatorProfileLink creatorId={creator.id}>{creator.displayName || creator.username}</CreatorProfileLink>
+                    <CreatorFollowButton creatorId={creator.id} compact />
                   </span>
                 ) : null}
               </CardDescription>
@@ -245,6 +255,8 @@ export default function MealPlanDetailsPage() {
               ) : null}
             </CardContent>
           </Card>
+
+          {planId ? <MealPlannerCommentsPanel target="meal-plan" id={planId} title="Meal plan comments" /> : null}
 
           <Card>
             <CardHeader>

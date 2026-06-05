@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, ShoppingCart, ShieldCheck, Utensils, Activity } from 'lucide-react';
+import { CreatorFollowButton, CreatorProfileLink, MealPlannerCommentsPanel, MealPlannerSocialActions } from '@/components/nutrition/social/MealPlannerSocial';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -21,6 +22,14 @@ type SharedWeekPayload = {
   weekStart: string;
   weekEnd: string;
   weekAnchor: string;
+  sharer?: { id?: string | null; displayName: string | null; username: string | null };
+  social?: {
+    likeCount: number;
+    saveCount: number;
+    commentCount: number;
+    viewerHasLiked: boolean;
+    viewerHasSaved: boolean;
+  };
   plannedMeals: Record<string, Record<string, SharedMeal[]>>;
   readiness: {
     status: string;
@@ -422,13 +431,20 @@ export default function MealPlannerSharedWeekPage() {
             <CalendarDays className="h-5 w-5" />
             Public Weekly Meal Plan Snapshot
           </CardTitle>
-          <CardDescription>
-            Week of <strong>{data.weekStart}</strong> to <strong>{data.weekEnd}</strong>
+          <CardDescription className="space-y-1">
+            <div>Week of <strong>{data.weekStart}</strong> to <strong>{data.weekEnd}</strong></div>
+            {data.sharer ? (
+              <div className="flex flex-wrap items-center gap-2">
+                Shared by <CreatorProfileLink creatorId={data.sharer.id}>{data.sharer.displayName || data.sharer.username || 'Chefsire member'}</CreatorProfileLink>
+                <CreatorFollowButton creatorId={data.sharer.id} compact />
+              </div>
+            ) : null}
           </CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
+        <CardContent className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">Read-only public view</Badge>
           <Badge variant="outline">Token shared</Badge>
+          {token ? <MealPlannerSocialActions target="shared-week" id={token} initialStats={data.social} /> : null}
           {user ? (
             <Button size="sm" onClick={handleCopyWeek} disabled={isCopying}>
               {isCopying ? 'Copying…' : 'Copy This Week to My Planner'}
@@ -513,6 +529,8 @@ export default function MealPlannerSharedWeekPage() {
           </CardContent>
         </Card>
       )}
+
+      {token ? <MealPlannerCommentsPanel target="shared-week" id={token} title="Shared week comments" /> : null}
 
       {copySummary && (
         <Card>
