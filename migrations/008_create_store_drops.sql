@@ -1,7 +1,3 @@
--- Migration: 008_create_store_drops
--- Created: 2026-05-31
--- Purpose: Add store_drops table for merchant follower drop notifications with click-through tracking
-
 CREATE TABLE IF NOT EXISTS store_drops (
   id          varchar PRIMARY KEY DEFAULT gen_random_uuid(),
   store_id    varchar NOT NULL REFERENCES stores(id),
@@ -13,12 +9,28 @@ CREATE TABLE IF NOT EXISTS store_drops (
   created_at  timestamp NOT NULL DEFAULT now()
 );
 
+/*
+  Migration: 008_create_store_drops
+  Created: 2026-05-31
+  Purpose: Add store_drops table for merchant follower drop notifications with click-through tracking.
+
+  Keep every executable statement before comments that describe it. The legacy
+  migration runner splits on semicolons and skips statements that start with
+  "--", so leading line comments can accidentally skip the following DDL.
+*/
+
+ALTER TABLE store_drops ADD COLUMN IF NOT EXISTS id varchar DEFAULT gen_random_uuid();
+ALTER TABLE store_drops ADD COLUMN IF NOT EXISTS store_id varchar;
+ALTER TABLE store_drops ADD COLUMN IF NOT EXISTS owner_id varchar;
+ALTER TABLE store_drops ADD COLUMN IF NOT EXISTS product_id varchar;
+ALTER TABLE store_drops ADD COLUMN IF NOT EXISTS message text;
+ALTER TABLE store_drops ADD COLUMN IF NOT EXISTS recipient_count integer NOT NULL DEFAULT 0;
+ALTER TABLE store_drops ADD COLUMN IF NOT EXISTS click_count integer NOT NULL DEFAULT 0;
+ALTER TABLE store_drops ADD COLUMN IF NOT EXISTS created_at timestamp NOT NULL DEFAULT now();
+
 COMMENT ON COLUMN store_drops.recipient_count IS 'Snapshot of follower count at drop creation time';
 COMMENT ON COLUMN store_drops.click_count IS 'Incremented each time a follower taps through the notification link';
 COMMENT ON COLUMN store_drops.product_id IS 'Nullable to allow future free-form announcement drops';
 
--- Fast lookup for merchant history page and rate-limit checks
 CREATE INDEX IF NOT EXISTS store_drops_owner_created_at_idx ON store_drops (owner_id, created_at DESC);
-
--- Allow filtering drops by store
 CREATE INDEX IF NOT EXISTS store_drops_store_id_idx ON store_drops (store_id);
