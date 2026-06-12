@@ -6,6 +6,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { stories, users, notifications } from "../../shared/schema";
+import { persistDataUri } from "../lib/data-uri";
 
 const r = Router();
 
@@ -165,6 +166,10 @@ r.post("/", async (req, res) => {
     });
 
     const data = schema.parse(req.body);
+
+    // Safety net: persist any stray data URIs to disk
+    data.imageUrl = await persistDataUri(data.imageUrl);
+
     const expiresAt = data.expiresAt
       ? new Date(data.expiresAt)
       : new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h default

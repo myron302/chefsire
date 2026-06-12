@@ -51,7 +51,8 @@
     "audit:content": "npm run audit:drink-canonical && npm run audit:pet-food-pages",
     "merge:substitutions": "tsx server/scripts/merge-substitutions.ts",
     "db:seed:subs:dry-run": "tsx server/scripts/dry-run-substitutions-import.ts",
-    "db:seed:subs:verify": "tsx server/scripts/verify-substitutions-seed.ts"
+    "db:seed:subs:verify": "tsx server/scripts/verify-substitutions-seed.ts",
+    "db:migrate:images": "tsx server/scripts/migrate-base64-images.ts"
   },
   "dependencies": {
     "@craftjs/core": "^0.2.12",
@@ -135,6 +136,7 @@
     "react-icons": "^5.4.0",
     "react-resizable-panels": "^2.1.7",
     "recharts": "^2.15.2",
+    "sharp": "^0.35.1",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
     "square": "^43.2.0",

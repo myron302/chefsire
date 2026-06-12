@@ -4,6 +4,7 @@ import { storage } from "../storage";
 import { asyncHandler, ErrorFactory } from "../middleware/error-handler";
 import { validateRequest, CommonSchemas } from "../middleware/validation";
 import { requireAuth } from "../middleware/auth";
+import { persistDataUri } from "../lib/data-uri";
 
 const r = Router();
 
@@ -120,6 +121,13 @@ r.post("/", async (req, res) => {
     // If it's a recipe post, enforce recipe payload
     if (body.isRecipe && !body.recipe) {
       return res.status(400).json({ message: "Recipe details are required for recipe posts" });
+    }
+
+    // Safety net: persist any stray data URIs to disk
+    body.imageUrl = await persistDataUri(body.imageUrl);
+    body.additionalImages = await Promise.all(body.additionalImages.map(persistDataUri));
+    if (body.recipe?.imageUrl) {
+      body.recipe.imageUrl = await persistDataUri(body.recipe.imageUrl);
     }
 
     const created = await storage.createPost({

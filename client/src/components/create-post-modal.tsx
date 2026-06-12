@@ -48,6 +48,37 @@ interface CreatePostModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+async function uploadImageFile(file: File): Promise<{ url: string; thumbUrl: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/upload/image", {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Upload failed (${res.status})`);
+  }
+  return res.json();
+}
+
+async function uploadVideoFile(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Upload failed (${res.status})`);
+  }
+  const data = await res.json();
+  return data.url as string;
+}
+
 export default function CreatePostModal({ open, onOpenChange }: CreatePostModalProps) {
   const { toast } = useToast();
   const { user } = useUser();
@@ -55,6 +86,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string>("");
+  const [isUploading, setIsUploading] = useState(false);
 
   const [postType, setPostType] = useState<PostType>("post");
 
@@ -131,36 +163,67 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
 
     setImageFile(null);
     setImagePreview("");
+    setIsUploading(false);
 
     setBiteExpiry("24h");
     setBiteMediaUrl("");
     setBiteMediaType("video");
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setImageFile(file);
 
+    // Show local preview immediately
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      setImagePreview(result);
-      // NOTE: demo uses base64 as imageUrl; in production upload to storage/CDN
-      setImageUrl(result);
-    };
+    reader.onloadend = () => setImagePreview(reader.result as string);
     reader.readAsDataURL(file);
+
+    // Upload the actual file to the server
+    setIsUploading(true);
+    try {
+      const { url } = await uploadImageFile(file);
+      setImageUrl(url);
+    } catch (err: any) {
+      toast({ variant: "destructive", description: `Image upload failed: ${err.message}` });
+      setImageFile(null);
+      setImagePreview("");
+      setImageUrl("");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
-  const handleBiteFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBiteFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
     const isVideo = file.type.startsWith("video/");
     setBiteMediaType(isVideo ? "video" : "image");
+
+    // Show a local preview while uploading
     const reader = new FileReader();
     reader.onloadend = () => setBiteMediaUrl(reader.result as string);
     reader.readAsDataURL(file);
+
+    setIsUploading(true);
+    try {
+      let url: string;
+      if (isVideo) {
+        url = await uploadVideoFile(file);
+      } else {
+        const result = await uploadImageFile(file);
+        url = result.url;
+      }
+      setBiteMediaUrl(url);
+    } catch (err: any) {
+      toast({ variant: "destructive", description: `Upload failed: ${err.message}` });
+      setBiteMediaUrl("");
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const buildRecipePayload = () => {
@@ -263,6 +326,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
           body: JSON.stringify({
             userId: user!.id,
             imageUrl: biteMediaUrl,
+            mediaType: biteMediaType,
             caption: caption.trim() || undefined,
             expiresAt,
           }),
@@ -314,6 +378,8 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
   const removeInstruction = (idx: number) =>
     setInstructions((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
 
+  const isSubmitDisabled = isUploading || createPostMutation.isPending;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
@@ -333,6 +399,9 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
                   alt="Preview"
                   className="w-full max-h-48 object-cover rounded-lg mx-auto"
                 />
+                {isUploading && (
+                  <p className="text-xs text-muted-foreground animate-pulse">Uploading…</p>
+                )}
                 <Button
                   type="button"
                   variant="outline"
@@ -445,6 +514,10 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
                   </div>
                 )}
               </div>
+
+              {isUploading && (
+                <p className="text-xs text-muted-foreground text-center animate-pulse">Uploading…</p>
+              )}
 
               {/* Expiry / Permanent toggle */}
               <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg">
@@ -680,9 +753,9 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
           <Button
             type="submit"
             className="w-full bg-primary text-primary-foreground hover:opacity-90"
-            disabled={createPostMutation.isPending}
+            disabled={isSubmitDisabled}
           >
-            {createPostMutation.isPending ? "Sharing..." : postType === "recipe" ? "Share Recipe" : postType === "review" ? "Share Review" : postType === "bite" ? "Share Bite" : postType === "clip" ? "Share Clip" : "Share Post"}
+            {isUploading ? "Uploading…" : createPostMutation.isPending ? "Sharing..." : postType === "recipe" ? "Share Recipe" : postType === "review" ? "Share Review" : postType === "bite" ? "Share Bite" : postType === "clip" ? "Share Clip" : "Share Post"}
           </Button>
         </form>
       </DialogContent>

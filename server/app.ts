@@ -31,14 +31,14 @@ app.use(cors({
   origin: process.env.CLIENT_URL || true, // Allow configured origin or all origins in dev
 }));
 app.use(express.json({
-  limit: "50mb",
+  limit: "2mb",
   verify: (req, _res, buf) => {
     (req as Request & { rawBody?: string }).rawBody = buf.toString("utf8");
   },
 }));
 app.use(express.urlencoded({
   extended: true,
-  limit: "50mb",
+  limit: "2mb",
   verify: (req, _res, buf) => {
     (req as Request & { rawBody?: string }).rawBody = buf.toString("utf8");
   },
@@ -89,6 +89,8 @@ const uploadContentTypes: Record<string, string> = {
 app.use(
   "/uploads",
   express.static(uploadsDir, {
+    maxAge: "365d",
+    immutable: true,
     setHeaders: (res, filePath) => {
       const contentType = uploadContentTypes[path.extname(filePath).toLowerCase()];
       if (contentType) {
