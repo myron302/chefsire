@@ -48,18 +48,52 @@ interface CreatePostModalProps {
   onOpenChange: (open: boolean) => void;
 }
 
+async function uploadImageFile(file: File): Promise<{ url: string; thumbUrl: string }> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/upload/image", {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as any).error || `Upload failed (${res.status})`);
+  }
+  return res.json();
+}
+
+async function uploadVideoFile(file: File): Promise<string> {
+  const fd = new FormData();
+  fd.append("file", file);
+  const res = await fetch("/api/upload", {
+    method: "POST",
+    credentials: "include",
+    body: fd,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as any).error || `Upload failed (${res.status})`);
+  }
+  const data = await res.json();
+  return (data as any).url as string;
+}
+
 export default function CreatePostModal({ open, onOpenChange }: CreatePostModalProps) {
   const { toast } = useToast();
   const { user } = useUser();
   const queryClient = useQueryClient();
 
+  // Post image flow
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string>("");
+  const [imagePreview, setImagePreview] = useState<string>("");  // local data URI for preview only
+  const [imageUrl, setImageUrl] = useState<string>("");          // confirmed /uploads/... URL
+  const postSelectToken = useRef(0);
 
+  const [isUploading, setIsUploading] = useState(false);
   const [postType, setPostType] = useState<PostType>("post");
 
   const [caption, setCaption] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
   const [tags, setTags] = useState("");
 
   // Recipe fields
@@ -83,7 +117,9 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
   const [biteExpiry, setBiteExpiry] = useState<"24h" | "permanent">("24h");
   const [showGoLive, setShowGoLive] = useState(false);
   const biteFileRef = useRef<HTMLInputElement>(null);
-  const [biteMediaUrl, setBiteMediaUrl] = useState<string>("");
+  const biteSelectToken = useRef(0);
+  const [biteMediaUrl, setBiteMediaUrl] = useState<string>("");         // confirmed /uploads/... URL
+  const [biteMediaPreview, setBiteMediaPreview] = useState<string>(""); // local data URI for preview only
   const [biteMediaType, setBiteMediaType] = useState<"image" | "video">("video");
 
   const cleanedTags = useMemo(
@@ -131,36 +167,91 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
 
     setImageFile(null);
     setImagePreview("");
+    setIsUploading(false);
 
     setBiteExpiry("24h");
     setBiteMediaUrl("");
+    setBiteMediaPreview("");
     setBiteMediaType("video");
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Post image handler — FileReader writes only to imagePreview (data URI, for instant display).
+  // imageUrl is set only from a successful /api/upload/image response.
+  // A per-selection token guards against stale FileReader or fetch callbacks overwriting
+  // state after the user has already selected a different file.
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const token = ++postSelectToken.current;
+
     setImageFile(file);
+    setImagePreview("");
+    setImageUrl("");
 
     const reader = new FileReader();
     reader.onloadend = () => {
-      const result = reader.result as string;
-      setImagePreview(result);
-      // NOTE: demo uses base64 as imageUrl; in production upload to storage/CDN
-      setImageUrl(result);
+      if (postSelectToken.current !== token) return;
+      setImagePreview(reader.result as string);
     };
     reader.readAsDataURL(file);
+
+    setIsUploading(true);
+    try {
+      const { url } = await uploadImageFile(file);
+      if (postSelectToken.current !== token) return;
+      setImageUrl(url);
+    } catch (err: any) {
+      if (postSelectToken.current !== token) return;
+      toast({ variant: "destructive", description: `Image upload failed: ${err.message}` });
+      setImageFile(null);
+      setImagePreview("");
+      setImageUrl("");
+    } finally {
+      if (postSelectToken.current === token) setIsUploading(false);
+    }
   };
 
-  const handleBiteFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Bite / Clip handler — FileReader writes only to biteMediaPreview (data URI, for instant display).
+  // biteMediaUrl is set only from a successful upload response.
+  // The token ref guards against races when the user picks a second file before the first upload finishes.
+  const handleBiteFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    const token = ++biteSelectToken.current;
     const isVideo = file.type.startsWith("video/");
+
     setBiteMediaType(isVideo ? "video" : "image");
+    setBiteMediaUrl("");
+    setBiteMediaPreview("");
+
     const reader = new FileReader();
-    reader.onloadend = () => setBiteMediaUrl(reader.result as string);
+    reader.onloadend = () => {
+      if (biteSelectToken.current !== token) return;
+      setBiteMediaPreview(reader.result as string);
+    };
     reader.readAsDataURL(file);
+
+    setIsUploading(true);
+    try {
+      let url: string;
+      if (isVideo) {
+        url = await uploadVideoFile(file);
+      } else {
+        const result = await uploadImageFile(file);
+        url = result.url;
+      }
+      if (biteSelectToken.current !== token) return;
+      setBiteMediaUrl(url);
+    } catch (err: any) {
+      if (biteSelectToken.current !== token) return;
+      toast({ variant: "destructive", description: `Upload failed: ${err.message}` });
+      setBiteMediaUrl("");
+      setBiteMediaPreview("");
+    } finally {
+      if (biteSelectToken.current === token) setIsUploading(false);
+    }
   };
 
   const buildRecipePayload = () => {
@@ -208,6 +299,7 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
     }
 
     if (postType === "bite" || postType === "clip") {
+      // Validate against biteMediaUrl, not biteMediaPreview — URL is set only after a successful upload
       if (!biteMediaUrl) {
         toast({ variant: "destructive", description: "Please pick a video or photo" });
         return false;
@@ -262,7 +354,8 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             userId: user!.id,
-            imageUrl: biteMediaUrl,
+            imageUrl: biteMediaUrl,   // always a confirmed /uploads/... URL
+            mediaType: biteMediaType,
             caption: caption.trim() || undefined,
             expiresAt,
           }),
@@ -314,6 +407,12 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
   const removeInstruction = (idx: number) =>
     setInstructions((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== idx)));
 
+  const isSubmitDisabled = isUploading || createPostMutation.isPending;
+
+  // The preview src for bites: use the local data URI while uploading for instant feedback;
+  // fall back to biteMediaUrl for cases where no file was selected (e.g. URL pasted externally).
+  const bitePreviewSrc = biteMediaPreview || biteMediaUrl;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
@@ -333,14 +432,19 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
                   alt="Preview"
                   className="w-full max-h-48 object-cover rounded-lg mx-auto"
                 />
+                {isUploading && (
+                  <p className="text-xs text-muted-foreground animate-pulse">Uploading…</p>
+                )}
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
                   onClick={() => {
+                    ++postSelectToken.current; // invalidate any in-flight upload
                     setImageFile(null);
                     setImagePreview("");
                     setImageUrl("");
+                    setIsUploading(false);
                   }}
                 >
                   <X className="h-4 w-4 mr-1" />
@@ -433,10 +537,10 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
                 className="w-full aspect-video bg-gray-100 dark:bg-gray-800 rounded-xl flex items-center justify-center cursor-pointer overflow-hidden border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary transition-colors"
                 onClick={() => biteFileRef.current?.click()}
               >
-                {biteMediaUrl && biteMediaType === "video" ? (
-                  <video src={biteMediaUrl} className="w-full h-full object-cover rounded-xl" controls muted playsInline />
-                ) : biteMediaUrl ? (
-                  <img src={biteMediaUrl} alt="Preview" className="w-full h-full object-cover rounded-xl" />
+                {bitePreviewSrc && biteMediaType === "video" ? (
+                  <video src={bitePreviewSrc} className="w-full h-full object-cover rounded-xl" controls muted playsInline />
+                ) : bitePreviewSrc ? (
+                  <img src={bitePreviewSrc} alt="Preview" className="w-full h-full object-cover rounded-xl" />
                 ) : (
                   <div className="flex flex-col items-center gap-2 text-gray-400">
                     <Video className="w-8 h-8" />
@@ -445,6 +549,10 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
                   </div>
                 )}
               </div>
+
+              {isUploading && (
+                <p className="text-xs text-muted-foreground text-center animate-pulse">Uploading…</p>
+              )}
 
               {/* Expiry / Permanent toggle */}
               <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-lg">
@@ -680,9 +788,9 @@ export default function CreatePostModal({ open, onOpenChange }: CreatePostModalP
           <Button
             type="submit"
             className="w-full bg-primary text-primary-foreground hover:opacity-90"
-            disabled={createPostMutation.isPending}
+            disabled={isSubmitDisabled}
           >
-            {createPostMutation.isPending ? "Sharing..." : postType === "recipe" ? "Share Recipe" : postType === "review" ? "Share Review" : postType === "bite" ? "Share Bite" : postType === "clip" ? "Share Clip" : "Share Post"}
+            {isUploading ? "Uploading…" : createPostMutation.isPending ? "Sharing..." : postType === "recipe" ? "Share Recipe" : postType === "review" ? "Share Review" : postType === "bite" ? "Share Bite" : postType === "clip" ? "Share Clip" : "Share Post"}
           </Button>
         </form>
       </DialogContent>

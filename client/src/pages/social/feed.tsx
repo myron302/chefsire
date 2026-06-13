@@ -220,7 +220,7 @@ function SimpleRecipeCard({
     <Card className="overflow-hidden">
       <div className="relative cursor-pointer" onClick={() => onCardClick?.(post)}>
         {post.imageUrl ? (
-          <img src={post.imageUrl} alt={post.caption || "Recipe"} className="w-full h-64 object-cover" />
+          <img src={post.imageUrl} alt={post.caption || "Recipe"} className="w-full h-64 object-cover" loading="lazy" decoding="async" />
         ) : (
           <div className="w-full h-64 bg-gray-200 flex items-center justify-center">
             <Heart className="w-8 h-8 text-gray-400" />
@@ -473,7 +473,7 @@ export default function Feed() {
                   className="flex space-x-3 cursor-pointer hover:bg-muted/50 p-2 rounded-lg transition-colors"
                   data-testid={`trending-recipe-${recipe.id}`}
                 >
-                  <img src={recipe.post.imageUrl} alt={recipe.title} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" />
+                  <img src={recipe.post.imageUrl} alt={recipe.title} className="w-12 h-12 rounded-lg object-cover flex-shrink-0" loading="lazy" decoding="async" />
                   <div className="flex-1">
                     <p className="text-sm font-medium">{recipe.title}</p>
                     <p className="text-xs text-muted-foreground">
@@ -542,7 +542,7 @@ export default function Feed() {
                 {selectedPost.imageUrl?.includes("video") || selectedPost.imageUrl?.includes(".mp4") ? (
                   <video src={selectedPost.imageUrl} controls className="w-full h-full object-contain" />
                 ) : (
-                  <img src={selectedPost.imageUrl} alt={selectedPost.caption || "Post"} className="w-full h-full object-contain" />
+                  <img src={selectedPost.imageUrl} alt={selectedPost.caption || "Post"} className="w-full h-full object-contain" loading="lazy" decoding="async" />
                 )}
               </div>
 
