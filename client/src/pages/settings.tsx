@@ -2685,15 +2685,29 @@ function SubscriptionSettingsPanel() {
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setProfile({ ...profile, avatar: reader.result as string });
-                            };
-                            reader.readAsDataURL(file);
+                          if (!file) return;
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            setProfile((p) => ({ ...p, avatar: reader.result as string }));
+                          };
+                          reader.readAsDataURL(file);
+                          try {
+                            const fd = new FormData();
+                            fd.append("file", file);
+                            const res = await fetch("/api/upload/image", {
+                              method: "POST",
+                              credentials: "include",
+                              body: fd,
+                            });
+                            if (!res.ok) throw new Error("Upload failed");
+                            const data = await res.json();
+                            setProfile((p) => ({ ...p, avatar: data.url }));
+                          } catch {
+                            // preview already shown; server-side persistDataUri handles fallback
                           }
+                          e.target.value = "";
                         }}
                       />
                     </div>

@@ -223,6 +223,7 @@ export default function ClubPage() {
   const [newPostImageFile, setNewPostImageFile] = useState<File | null>(null);
   const [newPostImagePreview, setNewPostImagePreview] = useState<string>("");
   const [newPostMediaKind, setNewPostMediaKind] = useState<MediaKind>("");
+  const [isNewPostUploading, setIsNewPostUploading] = useState(false);
 
   // Recipe fields
   const [recipeTitle, setRecipeTitle] = useState("");
@@ -321,7 +322,7 @@ export default function ClubPage() {
   const isMember = !!stats?.isMember;
   const isAdmin = !!stats?.isAdmin;
 
-  const handleNewPostMediaChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleNewPostMediaChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -346,6 +347,31 @@ export default function ClubPage() {
     const reader = new FileReader();
     reader.onload = () => setNewPostImagePreview(String(reader.result || ""));
     reader.readAsDataURL(file);
+
+    setIsNewPostUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(kind === "video" ? "/api/upload" : "/api/upload/image", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "Upload failed");
+      }
+      const data = await res.json();
+      setNewPostImagePreview(data.url);
+    } catch (err: any) {
+      setNewPostImagePreview("");
+      setNewPostImageFile(null);
+      setNewPostMediaKind("");
+      toast({ variant: "destructive", description: err.message || "Upload failed" });
+    } finally {
+      setIsNewPostUploading(false);
+      e.target.value = "";
+    }
   };
 
   // Join / Leave
@@ -1194,9 +1220,9 @@ export default function ClubPage() {
                       <Button
                         type="button"
                         onClick={() => createClubPostMutation.mutate()}
-                        disabled={createClubPostMutation.isPending}
+                        disabled={createClubPostMutation.isPending || isNewPostUploading}
                       >
-                        {createClubPostMutation.isPending ? "Posting..." : "Post"}
+                        {isNewPostUploading ? "Uploading..." : createClubPostMutation.isPending ? "Posting..." : "Post"}
                       </Button>
                     </div>
                   </>
