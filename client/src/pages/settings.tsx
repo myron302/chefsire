@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -145,6 +145,7 @@ export default function SettingsPage() {
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const avatarSelectToken = useRef(0);
 
   const [accountType, setAccountType] = useState<"personal" | "business">(user?.isChef ? "business" : "personal");
 
@@ -2685,15 +2686,34 @@ function SubscriptionSettingsPanel() {
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setProfile({ ...profile, avatar: reader.result as string });
-                            };
-                            reader.readAsDataURL(file);
+                          if (!file) return;
+                          const token = ++avatarSelectToken.current;
+                          const prevAvatar = profile.avatar;
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            if (avatarSelectToken.current !== token) return;
+                            setProfile((p) => ({ ...p, avatar: reader.result as string }));
+                          };
+                          reader.readAsDataURL(file);
+                          try {
+                            const fd = new FormData();
+                            fd.append("file", file);
+                            const res = await fetch("/api/upload/image", {
+                              method: "POST",
+                              credentials: "include",
+                              body: fd,
+                            });
+                            if (!res.ok) throw new Error("Upload failed");
+                            const data = await res.json();
+                            if (avatarSelectToken.current !== token) return;
+                            setProfile((p) => ({ ...p, avatar: data.url }));
+                          } catch {
+                            if (avatarSelectToken.current !== token) return;
+                            setProfile((p) => ({ ...p, avatar: prevAvatar }));
                           }
+                          e.target.value = "";
                         }}
                       />
                     </div>

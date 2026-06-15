@@ -15,9 +15,11 @@ import {
 import { eq, desc, and, sql, inArray } from "drizzle-orm";
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 import { requireAuth } from "../middleware/auth";
 import { RecipeService } from "../services/recipe.service";
 import { sendRecipeReviewNotification } from "../services/notification-service";
+import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
 
 const router = Router();
 
@@ -217,12 +219,17 @@ async function resolveRecipeIdentityForReview(recipeId: string): Promise<Resolve
   };
 }
 
-// Multer config for review photos
+// Multer config for review photos — writes to UPLOADS_DIR/reviews/ (absolute, canonical path)
+const reviewsSubdir = path.join(UPLOADS_DIR, "reviews");
+if (!fs.existsSync(reviewsSubdir)) {
+  fs.mkdirSync(reviewsSubdir, { recursive: true });
+}
+
 const multerStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, "uploads/reviews/");
+  destination: (_req, _file, cb) => {
+    cb(null, reviewsSubdir);
   },
-  filename: (req, file, cb) => {
+  filename: (_req, file, cb) => {
     const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
     cb(null, `review-${uniqueSuffix}${path.extname(file.originalname)}`);
   },
@@ -706,7 +713,7 @@ router.post(
       // Create photo record
       const photoData: InsertRecipeReviewPhoto = {
         reviewId,
-        photoUrl: `/uploads/reviews/${req.file.filename}`,
+        photoUrl: uploadUrlPath(`reviews/${req.file.filename}`),
         caption: caption || null,
       };
 
