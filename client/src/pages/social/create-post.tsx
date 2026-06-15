@@ -231,6 +231,7 @@ export default function CreatePost() {
     if (formData.postType === "bite" || formData.postType === "clip") {
       const token = ++biteSelectToken.current;
       setBiteMediaType(type);
+      setBiteMediaUrl("");
       setBiteMediaPreview(dataUrl);
       setIsBiteUploading(true);
       try {
@@ -250,6 +251,7 @@ export default function CreatePost() {
     const token = ++imageSelectToken.current;
     setMediaPreview(dataUrl);
     setMediaKind(kind);
+    setFormData((prev) => ({ ...prev, imageUrl: "", additionalImages: [] }));
     setIsUploading(true);
     try {
       const url = await uploadMediaUrl(dataUrl);
@@ -259,6 +261,7 @@ export default function CreatePost() {
       if (imageSelectToken.current !== token) return;
       setMediaPreview("");
       setMediaKind("");
+      setFormData((prev) => ({ ...prev, imageUrl: "", additionalImages: [] }));
       toast({ variant: "destructive", description: "Upload failed" });
     } finally {
       if (imageSelectToken.current === token) setIsUploading(false);
@@ -286,6 +289,8 @@ export default function CreatePost() {
     const token = ++biteSelectToken.current;
     const isVideo = file.type.startsWith("video/");
     setBiteMediaType(isVideo ? "video" : "image");
+    setBiteMediaUrl("");
+    setBiteMediaPreview("");
     const reader = new FileReader();
     reader.onloadend = () => {
       if (biteSelectToken.current !== token) return;
@@ -629,6 +634,7 @@ export default function CreatePost() {
 
     setMediaFile(firstFile);
     setMediaKind(kind);
+    setFormData((prev) => ({ ...prev, imageUrl: "", additionalImages: [] }));
 
     const reader = new FileReader();
     reader.onloadend = () => {
@@ -682,6 +688,7 @@ export default function CreatePost() {
       setMediaPreview("");
       setMediaKind("");
       setMediaFile(null);
+      setFormData((prev) => ({ ...prev, imageUrl: "", additionalImages: [] }));
       toast({
         variant: "destructive",
         description: error.message || "Failed to upload file",

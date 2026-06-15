@@ -224,6 +224,7 @@ export default function ClubPage() {
   const [newPostImagePreview, setNewPostImagePreview] = useState<string>("");
   const [newPostMediaKind, setNewPostMediaKind] = useState<MediaKind>("");
   const [isNewPostUploading, setIsNewPostUploading] = useState(false);
+  const newPostSelectToken = useRef(0);
 
   // Recipe fields
   const [recipeTitle, setRecipeTitle] = useState("");
@@ -341,11 +342,16 @@ export default function ClubPage() {
       return;
     }
 
+    const token = ++newPostSelectToken.current;
     setNewPostMediaKind(kind);
     setNewPostImageFile(file);
+    setNewPostImagePreview("");
 
     const reader = new FileReader();
-    reader.onload = () => setNewPostImagePreview(String(reader.result || ""));
+    reader.onload = () => {
+      if (newPostSelectToken.current !== token) return;
+      setNewPostImagePreview(String(reader.result || ""));
+    };
     reader.readAsDataURL(file);
 
     setIsNewPostUploading(true);
@@ -362,14 +368,16 @@ export default function ClubPage() {
         throw new Error(err?.error ?? "Upload failed");
       }
       const data = await res.json();
+      if (newPostSelectToken.current !== token) return;
       setNewPostImagePreview(data.url);
     } catch (err: any) {
+      if (newPostSelectToken.current !== token) return;
       setNewPostImagePreview("");
       setNewPostImageFile(null);
       setNewPostMediaKind("");
       toast({ variant: "destructive", description: err.message || "Upload failed" });
     } finally {
-      setIsNewPostUploading(false);
+      if (newPostSelectToken.current === token) setIsNewPostUploading(false);
       e.target.value = "";
     }
   };
