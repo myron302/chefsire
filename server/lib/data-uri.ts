@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import path from "path";
 import fs from "fs/promises";
-import { existsSync, mkdirSync } from "fs";
+import { UPLOADS_DIR, uploadUrlPath } from "./uploads-dir";
 
 const MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -29,13 +29,8 @@ export async function persistDataUri(value: string): Promise<string> {
 
   const ext = MIME_TO_EXT[mime] ?? "bin";
   const filename = `${randomUUID()}.${ext}`;
-  const uploadsDir = path.join(process.cwd(), "uploads");
 
-  if (!existsSync(uploadsDir)) {
-    mkdirSync(uploadsDir, { recursive: true });
-  }
+  await fs.writeFile(path.join(UPLOADS_DIR, filename), buffer);
 
-  await fs.writeFile(path.join(uploadsDir, filename), buffer);
-
-  return `/uploads/${filename}`;
+  return uploadUrlPath(filename);
 }

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -145,6 +145,9 @@ export default function SettingsPage() {
   });
 
   const [isSaving, setIsSaving] = useState(false);
+  const avatarSelectToken = useRef(0);
+  const [avatarPreview, setAvatarPreview] = useState(user?.avatar || "");
+  const [isAvatarUploading, setIsAvatarUploading] = useState(false);
 
   const [accountType, setAccountType] = useState<"personal" | "business">(user?.isChef ? "business" : "personal");
 
@@ -2485,6 +2488,15 @@ function SubscriptionSettingsPanel() {
       return;
     }
 
+    if (isAvatarUploading) {
+      toast({
+        title: "Avatar upload in progress",
+        description: "Please wait for your profile picture to finish uploading before saving.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSaving(true);
     try {
       const response = await fetch(`/api/users/${user.id}`, {
@@ -2665,8 +2677,8 @@ function SubscriptionSettingsPanel() {
                   <Label>Profile Picture</Label>
                   <div className="flex items-center gap-4 mt-2">
                     <div className="w-20 h-20 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
-                      {profile.avatar ? (
-                        <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                      {avatarPreview || profile.avatar ? (
+                        <img src={avatarPreview || profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
                       ) : (
                         <User size={32} className="text-gray-400" />
                       )}
@@ -2676,23 +2688,48 @@ function SubscriptionSettingsPanel() {
                         type="button"
                         variant="outline"
                         onClick={() => document.getElementById("avatar-upload")?.click()}
+                        disabled={isAvatarUploading}
                       >
                         <Upload size={16} className="mr-2" />
-                        Upload Photo
+                        {isAvatarUploading ? "Uploading..." : "Upload Photo"}
                       </Button>
                       <input
                         id="avatar-upload"
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setProfile({ ...profile, avatar: reader.result as string });
-                            };
-                            reader.readAsDataURL(file);
+                          if (!file) return;
+                          const token = ++avatarSelectToken.current;
+                          const prevAvatar = profile.avatar;
+                          setIsAvatarUploading(true);
+                          const reader = new FileReader();
+                          reader.onloadend = () => {
+                            if (avatarSelectToken.current !== token) return;
+                            setAvatarPreview(reader.result as string);
+                          };
+                          reader.readAsDataURL(file);
+                          try {
+                            const fd = new FormData();
+                            fd.append("file", file);
+                            const res = await fetch("/api/upload/image", {
+                              method: "POST",
+                              credentials: "include",
+                              body: fd,
+                            });
+                            if (!res.ok) throw new Error("Upload failed");
+                            const data = await res.json();
+                            if (avatarSelectToken.current !== token) return;
+                            setAvatarPreview(data.url);
+                            setProfile((p) => ({ ...p, avatar: data.url }));
+                          } catch {
+                            if (avatarSelectToken.current !== token) return;
+                            setAvatarPreview(prevAvatar);
+                            setProfile((p) => ({ ...p, avatar: prevAvatar }));
+                          } finally {
+                            if (avatarSelectToken.current === token) setIsAvatarUploading(false);
+                            e.target.value = "";
                           }
                         }}
                       />
@@ -2733,9 +2770,9 @@ function SubscriptionSettingsPanel() {
                   <p className="text-xs text-gray-500 mt-1">{profile.bio.length}/500 characters</p>
                 </div>
 
-                <Button onClick={handleSaveProfile} className="bg-orange-500 hover:bg-orange-600" disabled={isSaving}>
+                <Button onClick={handleSaveProfile} className="bg-orange-500 hover:bg-orange-600" disabled={isSaving || isAvatarUploading}>
                   <Save size={16} className="mr-2" />
-                  {isSaving ? "Saving..." : "Save Profile"}
+                  {isAvatarUploading ? "Uploading avatar..." : isSaving ? "Saving..." : "Save Profile"}
                 </Button>
               </CardContent>
             </Card>

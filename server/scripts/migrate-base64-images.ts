@@ -7,11 +7,11 @@
 import "dotenv/config";
 import path from "path";
 import fs from "fs/promises";
-import { existsSync, mkdirSync } from "fs";
 import { randomUUID } from "crypto";
 import { db } from "../db";
 import { posts, recipes, stories } from "../../shared/schema";
 import { sql, like, or } from "drizzle-orm";
+import { UPLOADS_DIR } from "../lib/uploads-dir";
 
 const MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -24,14 +24,6 @@ const MIME_TO_EXT: Record<string, string> = {
   "video/quicktime": "mov",
 };
 
-const uploadsDir = path.join(process.cwd(), "uploads");
-
-async function ensureUploadsDir() {
-  if (!existsSync(uploadsDir)) {
-    mkdirSync(uploadsDir, { recursive: true });
-  }
-}
-
 async function saveDataUri(dataUri: string): Promise<{ url: string; bytes: number }> {
   const match = dataUri.match(/^data:([^;]+);base64,([\s\S]+)$/);
   if (!match) throw new Error("Invalid data URI format");
@@ -40,7 +32,7 @@ async function saveDataUri(dataUri: string): Promise<{ url: string; bytes: numbe
   const buffer = Buffer.from(base64, "base64");
   const ext = MIME_TO_EXT[mime] ?? "bin";
   const filename = `${randomUUID()}.${ext}`;
-  const filepath = path.join(uploadsDir, filename);
+  const filepath = path.join(UPLOADS_DIR, filename);
 
   await fs.writeFile(filepath, buffer);
 
@@ -139,8 +131,7 @@ async function migrateStories() {
 }
 
 async function main() {
-  console.log("Starting base64 image migration...");
-  await ensureUploadsDir();
+  console.log(`Starting base64 image migration... (writing to ${UPLOADS_DIR})`);
 
   await migratePosts();
   await migrateRecipes();

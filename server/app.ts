@@ -13,6 +13,7 @@ import routes from "./routes";
 import { setupGoogleOAuth } from "./services/google-oauth.service";
 import { setupFacebookOAuth } from "./services/facebook-oauth.service";
 import { setupTikTokOAuth } from "./services/tiktok-oauth.service";
+import { UPLOADS_DIR } from "./lib/uploads-dir";
 
 // Define __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -75,11 +76,8 @@ app.get("/api", (_req, res) => {
   });
 });
 
-// Serve uploaded files
-const uploadsDir = path.resolve(process.cwd(), "uploads");
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
+// Serve uploaded files — UPLOADS_DIR is the canonical absolute path shared by
+// all write sites (routes/upload.ts, lib/data-uri.ts, routes/auth.ts, etc.).
 const uploadContentTypes: Record<string, string> = {
   ".mp4": "video/mp4",
   ".mov": "video/quicktime",
@@ -88,7 +86,7 @@ const uploadContentTypes: Record<string, string> = {
 
 app.use(
   "/uploads",
-  express.static(uploadsDir, {
+  express.static(UPLOADS_DIR, {
     maxAge: "365d",
     immutable: true,
     setHeaders: (res, filePath) => {
