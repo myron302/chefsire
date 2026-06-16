@@ -16,6 +16,7 @@ import {
   passwordChangeLimiter,
   verifyEmailLimiter,
 } from "../middleware/rate-limit";
+import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
 
 const RAW_SECRET =
   process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
@@ -23,24 +24,15 @@ const JWT_SECRET = RAW_SECRET.trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
 
 const router = Router();
 
-// Configure multer for avatar uploads
+// Configure multer for avatar uploads — writes to UPLOADS_DIR (canonical absolute path)
 const avatarStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadDir = path.join(process.cwd(), 'uploads');
-    try {
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      cb(null, uploadDir);
-    } catch (error) {
-      console.error('[UPLOAD] Failed to create uploads directory:', error);
-      cb(error as Error, uploadDir);
-    }
+  destination: (_req, _file, cb) => {
+    cb(null, UPLOADS_DIR);
   },
-  filename: (req, file, cb) => {
+  filename: (_req, file, cb) => {
     const uniqueName = `avatar-${randomUUID()}${path.extname(file.originalname)}`;
     cb(null, uniqueName);
-  }
+  },
 });
 
 const avatarUpload = multer({
@@ -109,7 +101,7 @@ router.post("/auth/signup", signupLimiter, avatarUpload.single('avatar'), async 
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Handle avatar URL (if file was uploaded, it will be in /uploads)
-    const avatarUrl = avatarFile ? `/uploads/${avatarFile.filename}` : null;
+    const avatarUrl = avatarFile ? uploadUrlPath(avatarFile.filename) : null;
 
     // Create user
     const newUser = await storage.createUser({

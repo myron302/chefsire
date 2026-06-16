@@ -226,21 +226,46 @@ export default function CreatePost() {
 
   const [showCamera, setShowCamera] = useState(false);
 
-  const handleCameraCapture = (dataUrl: string, type: "image" | "video") => {
+  const handleCameraCapture = async (dataUrl: string, type: "image" | "video") => {
     const kind: MediaKind = type;
-    // For bite/clip, feed the capture into the bite media state
     if (formData.postType === "bite" || formData.postType === "clip") {
+      const token = ++biteSelectToken.current;
       setBiteMediaType(type);
-      setBiteMediaUrl(dataUrl);
+      setBiteMediaUrl("");
+      setBiteMediaPreview(dataUrl);
+      setIsBiteUploading(true);
+      try {
+        const url = await uploadMediaUrl(dataUrl);
+        if (biteSelectToken.current !== token) return;
+        setBiteMediaUrl(url);
+      } catch {
+        if (biteSelectToken.current !== token) return;
+        setBiteMediaPreview("");
+        setBiteMediaUrl("");
+        toast({ variant: "destructive", description: "Upload failed" });
+      } finally {
+        if (biteSelectToken.current === token) setIsBiteUploading(false);
+      }
       return;
     }
+    const token = ++imageSelectToken.current;
     setMediaPreview(dataUrl);
     setMediaKind(kind);
-    setFormData((prev) => ({
-      ...prev,
-      imageUrl: dataUrl,
-      additionalImages: [],
-    }));
+    setFormData((prev) => ({ ...prev, imageUrl: "", additionalImages: [] }));
+    setIsUploading(true);
+    try {
+      const url = await uploadMediaUrl(dataUrl);
+      if (imageSelectToken.current !== token) return;
+      setFormData((prev) => ({ ...prev, imageUrl: url, additionalImages: [] }));
+    } catch {
+      if (imageSelectToken.current !== token) return;
+      setMediaPreview("");
+      setMediaKind("");
+      setFormData((prev) => ({ ...prev, imageUrl: "", additionalImages: [] }));
+      toast({ variant: "destructive", description: "Upload failed" });
+    } finally {
+      if (imageSelectToken.current === token) setIsUploading(false);
+    }
   };
 
   // Bite / Clip state
@@ -252,22 +277,57 @@ export default function CreatePost() {
     "video",
   );
   const [biteSubmitting, setBiteSubmitting] = useState(false);
+  const imageSelectToken = useRef(0);
+  const biteSelectToken = useRef(0);
+  const [biteMediaPreview, setBiteMediaPreview] = useState("");
+  const [isUploading, setIsUploading] = useState(false);
+  const [isBiteUploading, setIsBiteUploading] = useState(false);
 
-  const handleBiteFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBiteFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setBiteMediaType(file.type.startsWith("video/") ? "video" : "image");
+    const token = ++biteSelectToken.current;
+    const isVideo = file.type.startsWith("video/");
+    setBiteMediaType(isVideo ? "video" : "image");
+    setBiteMediaUrl("");
+    setBiteMediaPreview("");
     const reader = new FileReader();
-    reader.onloadend = () => setBiteMediaUrl(reader.result as string);
+    reader.onloadend = () => {
+      if (biteSelectToken.current !== token) return;
+      setBiteMediaPreview(reader.result as string);
+    };
     reader.readAsDataURL(file);
+    setIsBiteUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(isVideo ? "/api/upload" : "/api/upload/image", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? "Upload failed");
+      }
+      const data = await res.json();
+      if (biteSelectToken.current !== token) return;
+      setBiteMediaUrl(data.url);
+    } catch (err: any) {
+      if (biteSelectToken.current !== token) return;
+      setBiteMediaPreview("");
+      setBiteMediaUrl("");
+      toast({ variant: "destructive", description: err.message || "Upload failed" });
+    } finally {
+      if (biteSelectToken.current === token) setIsBiteUploading(false);
+      e.target.value = "";
+    }
   };
 
   const handleBiteSubmit = async () => {
     if (!user?.id || !biteMediaUrl) return;
     setBiteSubmitting(true);
     try {
-      toast({ description: "Uploading media…" });
-      const storedUrl = await uploadMediaUrl(biteMediaUrl);
       const expiresAt =
         biteExpiry === "permanent"
           ? new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString()
@@ -278,7 +338,7 @@ export default function CreatePost() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: user.id,
-          imageUrl: storedUrl,
+          imageUrl: biteMediaUrl,
           mediaType: biteMediaType,
           caption: formData.caption || undefined,
           expiresAt,
@@ -542,7 +602,7 @@ export default function CreatePost() {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
     if (!files.length) return;
 
@@ -568,58 +628,80 @@ export default function CreatePost() {
       return;
     }
 
-    const readFileAsDataUrl = (file: File) =>
-      new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error(`Failed to read ${file.name}`));
-        reader.readAsDataURL(file);
-      });
+    const token = ++imageSelectToken.current;
+    const firstFile = files[0];
+    const kind: MediaKind = firstFile.type.startsWith("video/") ? "video" : "image";
 
-    Promise.all(files.map(readFileAsDataUrl))
-      .then((results) => {
-        const firstFile = files[0];
-        const kind: MediaKind = firstFile.type.startsWith("video/")
-          ? "video"
-          : "image";
+    setMediaFile(firstFile);
+    setMediaKind(kind);
+    setFormData((prev) => ({ ...prev, imageUrl: "", additionalImages: [] }));
 
-        setMediaFile(firstFile);
-        setMediaPreview(results[0] ?? "");
-        setMediaKind(kind);
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (imageSelectToken.current !== token) return;
+      setMediaPreview(reader.result as string);
+    };
+    reader.readAsDataURL(firstFile);
 
-        if (kind === "video") {
-          setFormData((prev) => ({
-            ...prev,
-            imageUrl: results[0] ?? "",
-            additionalImages: [],
-          }));
-          return;
-        }
-
-        const [{ imageUrl, additionalImages }] = [
-          splitPostImages(
-            results.map((url, index) => ({ id: `${index}-${url}`, url })),
-          ),
-        ];
-
-        setFormData((prev) => ({
-          ...prev,
-          imageUrl,
-          additionalImages,
-        }));
-      })
-      .catch((error: Error) => {
-        toast({
-          variant: "destructive",
-          description: error.message || "Failed to load selected files",
+    setIsUploading(true);
+    try {
+      if (kind === "video") {
+        const fd = new FormData();
+        fd.append("file", firstFile);
+        const res = await fetch("/api/upload", {
+          method: "POST",
+          credentials: "include",
+          body: fd,
         });
-      })
-      .finally(() => {
-        e.target.value = "";
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err?.error ?? "Video upload failed");
+        }
+        const data = await res.json();
+        if (imageSelectToken.current !== token) return;
+        setFormData((prev) => ({ ...prev, imageUrl: data.url, additionalImages: [] }));
+      } else {
+        const urls = await Promise.all(
+          files.map(async (file) => {
+            const fd = new FormData();
+            fd.append("file", file);
+            const res = await fetch("/api/upload/image", {
+              method: "POST",
+              credentials: "include",
+              body: fd,
+            });
+            if (!res.ok) {
+              const err = await res.json().catch(() => ({}));
+              throw new Error(err?.error ?? `Failed to upload ${file.name}`);
+            }
+            return (await res.json()).url as string;
+          }),
+        );
+        if (imageSelectToken.current !== token) return;
+        const [{ imageUrl, additionalImages }] = [
+          splitPostImages(urls.map((url, index) => ({ id: `${index}-${url}`, url }))),
+        ];
+        setFormData((prev) => ({ ...prev, imageUrl, additionalImages }));
+      }
+    } catch (error: any) {
+      if (imageSelectToken.current !== token) return;
+      setMediaPreview("");
+      setMediaKind("");
+      setMediaFile(null);
+      setFormData((prev) => ({ ...prev, imageUrl: "", additionalImages: [] }));
+      toast({
+        variant: "destructive",
+        description: error.message || "Failed to upload file",
       });
+    } finally {
+      if (imageSelectToken.current === token) setIsUploading(false);
+      e.target.value = "";
+    }
   };
 
   const clearMedia = () => {
+    ++imageSelectToken.current;
+    setIsUploading(false);
     setMediaFile(null);
     setMediaPreview("");
     setMediaKind("");
@@ -755,6 +837,8 @@ export default function CreatePost() {
     }));
   };
 
+  const bitePreviewSrc = biteMediaPreview || biteMediaUrl;
+
   return (
     <div className="max-w-2xl mx-auto px-4 py-6">
       <Card className="w-full">
@@ -820,17 +904,17 @@ export default function CreatePost() {
                   onChange={handleBiteFileSelect}
                 />
                 <div className="w-full aspect-video bg-muted rounded-xl overflow-hidden border-2 border-dashed border-border">
-                  {biteMediaUrl && biteMediaType === "video" ? (
+                  {bitePreviewSrc && biteMediaType === "video" ? (
                     <video
-                      src={biteMediaUrl}
+                      src={bitePreviewSrc}
                       className="w-full h-full object-cover"
                       controls
                       muted
                       playsInline
                     />
-                  ) : biteMediaUrl ? (
+                  ) : bitePreviewSrc ? (
                     <img
-                      src={biteMediaUrl}
+                      src={bitePreviewSrc}
                       alt="Preview"
                       className="w-full h-full object-cover"
                     />
@@ -1574,16 +1658,18 @@ export default function CreatePost() {
               <Button
                 type="submit"
                 className="w-full"
-                disabled={createPostMutation.isPending || biteSubmitting}
+                disabled={createPostMutation.isPending || biteSubmitting || isUploading || isBiteUploading}
                 data-testid="button-submit-post"
               >
-                {createPostMutation.isPending || biteSubmitting
-                  ? "Posting..."
-                  : formData.postType === "bite"
-                    ? "Share Bite"
-                    : formData.postType === "clip"
-                      ? "Share Clip"
-                      : "Post"}
+                {isUploading || isBiteUploading
+                  ? "Uploading..."
+                  : createPostMutation.isPending || biteSubmitting
+                    ? "Posting..."
+                    : formData.postType === "bite"
+                      ? "Share Bite"
+                      : formData.postType === "clip"
+                        ? "Share Clip"
+                        : "Post"}
               </Button>
             )}
           </form>
