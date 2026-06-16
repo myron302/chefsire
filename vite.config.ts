@@ -31,38 +31,6 @@ export default defineConfig(async ({ mode }) => {
     build: {
       outDir: resolve(__dirname, "dist/public"),
       emptyOutDir: true,
-      chunkSizeWarningLimit: 1000,
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (!id.includes("node_modules")) {
-              return undefined;
-            }
-
-            if (/[\\/]node_modules[\\/](react|react-dom|wouter)[\\/]/.test(id)) {
-              return "vendor-react";
-            }
-
-            if (/[\\/]node_modules[\\/](recharts|d3-[^\\/]+)[\\/]/.test(id)) {
-              return "vendor-charts";
-            }
-
-            if (/[\\/]node_modules[\\/]framer-motion[\\/]/.test(id)) {
-              return "vendor-motion";
-            }
-
-            if (/[\\/]node_modules[\\/]@tanstack[\\/]react-query[\\/]/.test(id)) {
-              return "vendor-query";
-            }
-
-            if (/[\\/]node_modules[\\/](date-fns|lodash)[\\/]/.test(id)) {
-              return "vendor-utils";
-            }
-
-            return "vendor";
-          },
-        },
-      },
     },
     server: {
       fs: {
