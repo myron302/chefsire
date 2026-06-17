@@ -52,7 +52,9 @@
     "merge:substitutions": "tsx server/scripts/merge-substitutions.ts",
     "db:seed:subs:dry-run": "tsx server/scripts/dry-run-substitutions-import.ts",
     "db:seed:subs:verify": "tsx server/scripts/verify-substitutions-seed.ts",
-    "db:migrate:images": "tsx server/scripts/migrate-base64-images.ts"
+    "db:migrate:images": "tsx server/scripts/migrate-base64-images.ts",
+    "compress:uploads": "tsx server/scripts/compress-uploads.ts",
+    "compress:uploads:dry": "tsx server/scripts/compress-uploads.ts --dry-run"
   },
   "dependencies": {
     "@craftjs/core": "^0.2.12",
