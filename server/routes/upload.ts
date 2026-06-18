@@ -74,9 +74,7 @@ router.post("/", requireAuth, (req, res) => {
         return res.status(400).json({ ok: false, error: "No file uploaded" });
       }
 
-      const protocol = req.get('x-forwarded-proto') || req.protocol;
-      const host = req.get('x-forwarded-host') || req.get('host');
-      const fileUrl = `${protocol}://${host}${uploadUrlPath(req.file.filename)}`;
+      const fileUrl = uploadUrlPath(req.file.filename);
 
       res.json({
         ok: true,
@@ -123,14 +121,11 @@ router.post("/image", requireAuth, (req, res) => {
         return res.status(400).json({ ok: false, error: "No file uploaded" });
       }
 
-      const protocol = req.get('x-forwarded-proto') || req.protocol;
-      const host = req.get('x-forwarded-host') || req.get('host');
-
       // GIFs are saved as-is to preserve animation
       if (req.file.mimetype === 'image/gif') {
         const filename = `${randomUUID()}.gif`;
         fs.writeFileSync(path.join(UPLOADS_DIR, filename), req.file.buffer);
-        const url = `${protocol}://${host}${uploadUrlPath(filename)}`;
+        const url = uploadUrlPath(filename);
         return res.json({ ok: true, url, thumbUrl: url });
       }
 
@@ -152,8 +147,8 @@ router.post("/image", requireAuth, (req, res) => {
         .webp({ quality: 75 })
         .toFile(thumbPath);
 
-      const url = `${protocol}://${host}${uploadUrlPath(mainFilename)}`;
-      const thumbUrl = `${protocol}://${host}${uploadUrlPath(thumbFilename)}`;
+      const url = uploadUrlPath(mainFilename);
+      const thumbUrl = uploadUrlPath(thumbFilename);
 
       res.json({ ok: true, url, thumbUrl });
     } catch (error: any) {
