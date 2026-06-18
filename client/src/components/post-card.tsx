@@ -8,6 +8,7 @@ import { MoreHorizontal, Plus, Minus, CalendarDays, ChevronLeft, ChevronRight } 
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { shareContent, getPostShareUrl } from "@/lib/share";
 import { Link } from "wouter";
+import { normalizeMediaUrl } from "@/lib/mediaUrl";
 
 // Import UI primitives from their individual modules (do not import the directory)
 import { Card } from "@/components/ui/card";
@@ -125,7 +126,7 @@ function normalizeSteps(steps: string[]): string[] {
 
 function getPostImageGallery(post: PostWithUser): string[] {
   return [post.imageUrl, ...(post.additionalImages ?? [])]
-    .map((image) => String(image ?? "").trim())
+    .map((image) => normalizeMediaUrl(image))
     .filter((image, index, images) => Boolean(image) && images.indexOf(image) === index);
 }
 
@@ -506,7 +507,7 @@ export default function PostCard({
   };
 
   const isVideo = (() => {
-    const url = post.imageUrl ?? "";
+    const url = normalizeMediaUrl(post.imageUrl);
     if (!url) return false;
     if (url.startsWith("data:video/")) return true;
     const clean = url.toLowerCase().split("?")[0];
@@ -537,7 +538,7 @@ export default function PostCard({
             <a>
               <Avatar className="w-10 h-10 cursor-pointer hover:opacity-80 transition-opacity">
                 <AvatarImage
-                  src={post.user.avatar || ""}
+                  src={normalizeMediaUrl(post.user.avatar)}
                   alt={post.user.displayName}
                 />
                 <AvatarFallback>
@@ -646,7 +647,7 @@ export default function PostCard({
       >
         {isVideo ? (
           <video
-            src={post.imageUrl}
+            src={normalizeMediaUrl(post.imageUrl)}
             controls
             muted
             playsInline
