@@ -1,24 +1,32 @@
 /**
  * Single source of truth for the uploads directory path.
  *
- * Path calculation (stable regardless of process.cwd()):
- *   server/lib/uploads-dir.ts  (this file, or server/dist/index.js in the esbuild bundle)
- *   ../   → server/
- *   ../../ → project root  (= domain root on the Plesk server, sibling of httpdocs)
- *   ../../uploads → project-root/uploads/
+ * Prefer an explicit UPLOADS_DIR in production so Plesk deployments can pin the
+ * canonical home-level uploads folder even when the Node app is launched from
+ * httpdocs or from a bundled server/dist entrypoint. Without an override, infer
+ * the repository/domain root from this module location:
  *
- * In the esbuild bundle (server/dist/index.js), import.meta.url resolves to
- * server/dist/index.js, so ../.. from server/dist/ also lands at the project root —
- * the path is consistent between `tsx` (dev) and the compiled bundle (prod).
+ *   server/lib/uploads-dir.ts  (dev, tsx)          → ../../uploads
+ *   server/dist/index.js       (prod, esbuild)     → ../../uploads
+ *
+ * If the compiled server is deployed under httpdocs/server/dist but the real
+ * upload files live beside httpdocs, set UPLOADS_DIR=/path/to/account/uploads.
  */
 import { fileURLToPath } from "url";
 import path from "path";
 import { mkdirSync, existsSync } from "fs";
 
-export const UPLOADS_DIR: string = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../uploads"
-);
+function resolveUploadsDir(): string {
+  const configuredDir = process.env.UPLOADS_DIR?.trim();
+
+  if (configuredDir) {
+    return path.resolve(configuredDir);
+  }
+
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../uploads");
+}
+
+export const UPLOADS_DIR: string = resolveUploadsDir();
 
 // Ensure the directory exists at import time so every module can rely on it.
 if (!existsSync(UPLOADS_DIR)) {
