@@ -28,12 +28,14 @@ export async function persistDataUri(value: string): Promise<string> {
     throw new Error("Data URI exceeds 25MB limit");
   }
 
-  const ext = MIME_TO_EXT[mime] ?? "bin";
+  const mappedExt = MIME_TO_EXT[mime];
+  const contentType = mappedExt ? mime : "application/octet-stream";
+  const ext = mappedExt ?? "bin";
   const filename = `${randomUUID()}.${ext}`;
 
   if (isR2Configured()) {
     const key = `posts/${filename}`;
-    await uploadToR2(key, buffer, mime);
+    await uploadToR2(key, buffer, contentType);
     return publicUrl(key);
   }
 
