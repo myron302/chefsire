@@ -6,6 +6,7 @@ import { requireAuth } from "../middleware";
 import fs from "fs";
 import sharp from "sharp";
 import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
+import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
 
 const router = Router();
 
@@ -20,7 +21,7 @@ const storage = multer.diskStorage({
   },
 });
 
-const upload = multer({
+const localUpload = multer({
   storage,
   limits: {
     fileSize: 100 * 1024 * 1024, // 100MB
@@ -54,8 +55,65 @@ const upload = multer({
 });
 
 // POST /api/upload - General file upload (videos, docs, etc.)
+const memoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 100 * 1024 * 1024, // 100MB
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowedTypes = [
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'video/mp4',
+      'video/quicktime',
+      'video/x-msvideo',
+      'video/webm',
+      'video/ogg',
+      'application/zip',
+      'application/epub+zip',
+      'image/jpeg',
+      'image/png',
+      'image/gif',
+      'image/webp',
+    ];
+
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only PDF, DOC, Excel, videos, images, and ZIP files are allowed.'));
+    }
+  },
+});
+
+function extensionForUpload(file: Express.Multer.File): string {
+  const ext = path.extname(file.originalname);
+  if (ext) return ext.toLowerCase();
+
+  const mimeExt: Record<string, string> = {
+    "video/mp4": ".mp4",
+    "video/quicktime": ".mov",
+    "video/x-msvideo": ".avi",
+    "video/webm": ".webm",
+    "video/ogg": ".ogg",
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+    "application/pdf": ".pdf",
+    "application/zip": ".zip",
+    "application/epub+zip": ".epub",
+  };
+
+  return mimeExt[file.mimetype] || "";
+}
+
+// POST /api/upload - General file upload (videos, docs, etc.)
 router.post("/", requireAuth, (req, res) => {
-  upload.single('file')(req, res, (err) => {
+  const middleware = isR2Configured() ? memoryUpload : localUpload;
+  middleware.single('file')(req, res, async (err) => {
     if (err) {
       console.error("Upload error:", err);
 
@@ -74,7 +132,15 @@ router.post("/", requireAuth, (req, res) => {
         return res.status(400).json({ ok: false, error: "No file uploaded" });
       }
 
-      const fileUrl = uploadUrlPath(req.file.filename);
+      let fileUrl: string;
+
+      if (isR2Configured()) {
+        const key = `posts/${randomUUID()}${extensionForUpload(req.file)}`;
+        await uploadToR2(key, req.file.buffer, req.file.mimetype);
+        fileUrl = publicUrl(key);
+      } else {
+        fileUrl = uploadUrlPath(req.file.filename);
+      }
 
       res.json({
         ok: true,
@@ -124,31 +190,65 @@ router.post("/image", requireAuth, (req, res) => {
       // GIFs are saved as-is to preserve animation
       if (req.file.mimetype === 'image/gif') {
         const filename = `${randomUUID()}.gif`;
-        fs.writeFileSync(path.join(UPLOADS_DIR, filename), req.file.buffer);
-        const url = uploadUrlPath(filename);
+        let url: string;
+        if (isR2Configured()) {
+          const key = `posts/${randomUUID()}.gif`;
+          await uploadToR2(key, req.file.buffer, req.file.mimetype);
+          url = publicUrl(key);
+        } else {
+          fs.writeFileSync(path.join(UPLOADS_DIR, filename), req.file.buffer);
+          url = uploadUrlPath(filename);
+        }
         return res.json({ ok: true, url, thumbUrl: url });
       }
 
       const uuid = randomUUID();
       const mainFilename = `${uuid}.webp`;
       const thumbFilename = `${uuid}_thumb.webp`;
-      const mainPath = path.join(UPLOADS_DIR, mainFilename);
-      const thumbPath = path.join(UPLOADS_DIR, thumbFilename);
+      let url: string;
+      let thumbUrl: string;
 
-      await sharp(req.file.buffer)
-        .rotate()
-        .resize({ width: 1600, withoutEnlargement: true })
-        .webp({ quality: 80 })
-        .toFile(mainPath);
+      if (isR2Configured()) {
+        const mainBuffer = await sharp(req.file.buffer)
+          .rotate()
+          .resize({ width: 1600, withoutEnlargement: true })
+          .webp({ quality: 80 })
+          .toBuffer();
 
-      await sharp(req.file.buffer)
-        .rotate()
-        .resize({ width: 480, withoutEnlargement: true })
-        .webp({ quality: 75 })
-        .toFile(thumbPath);
+        const thumbBuffer = await sharp(req.file.buffer)
+          .rotate()
+          .resize({ width: 480, withoutEnlargement: true })
+          .webp({ quality: 75 })
+          .toBuffer();
 
-      const url = uploadUrlPath(mainFilename);
-      const thumbUrl = uploadUrlPath(thumbFilename);
+        const mainKey = `posts/${mainFilename}`;
+        const thumbKey = `posts/${thumbFilename}`;
+        await Promise.all([
+          uploadToR2(mainKey, mainBuffer, "image/webp"),
+          uploadToR2(thumbKey, thumbBuffer, "image/webp"),
+        ]);
+
+        url = publicUrl(mainKey);
+        thumbUrl = publicUrl(thumbKey);
+      } else {
+        const mainPath = path.join(UPLOADS_DIR, mainFilename);
+        const thumbPath = path.join(UPLOADS_DIR, thumbFilename);
+
+        await sharp(req.file.buffer)
+          .rotate()
+          .resize({ width: 1600, withoutEnlargement: true })
+          .webp({ quality: 80 })
+          .toFile(mainPath);
+
+        await sharp(req.file.buffer)
+          .rotate()
+          .resize({ width: 480, withoutEnlargement: true })
+          .webp({ quality: 75 })
+          .toFile(thumbPath);
+
+        url = uploadUrlPath(mainFilename);
+        thumbUrl = uploadUrlPath(thumbFilename);
+      }
 
       res.json({ ok: true, url, thumbUrl });
     } catch (error: any) {

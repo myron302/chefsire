@@ -20,6 +20,8 @@ import { requireAuth } from "../middleware/auth";
 import { RecipeService } from "../services/recipe.service";
 import { sendRecipeReviewNotification } from "../services/notification-service";
 import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
+import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
+import { randomUUID } from "crypto";
 
 const router = Router();
 
@@ -235,7 +237,7 @@ const multerStorage = multer.diskStorage({
   },
 });
 
-const upload = multer({
+const localUpload = multer({
   storage: multerStorage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
   fileFilter: (req, file, cb) => {
@@ -249,6 +251,26 @@ const upload = multer({
     }
   },
 });
+
+const memoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only images are allowed (jpeg, jpg, png, webp)"));
+    }
+  },
+});
+
+const upload = (req: Request, res: Response, next: (err?: any) => void) => {
+  const middleware = isR2Configured() ? memoryUpload : localUpload;
+  return middleware.single("photo")(req, res, next);
+};
 
 // Get all reviews for a recipe
 router.get("/recipe/:recipeId", async (req: Request, res: Response) => {
@@ -684,7 +706,7 @@ router.delete("/:reviewId", requireAuth, async (req: Request, res: Response) => 
 router.post(
   "/:reviewId/photos",
   requireAuth,
-  upload.single("photo"),
+  upload,
   async (req: Request, res: Response) => {
     try {
       const userId = (req as any).user.id;
@@ -710,10 +732,20 @@ router.post(
         return res.status(403).json({ error: "You can only add photos to your own reviews" });
       }
 
+      let photoUrl: string;
+      if (isR2Configured()) {
+        const ext = path.extname(req.file.originalname).toLowerCase() || (req.file.mimetype === "image/png" ? ".png" : req.file.mimetype === "image/webp" ? ".webp" : ".jpg");
+        const key = `reviews/${randomUUID()}${ext}`;
+        await uploadToR2(key, req.file.buffer, req.file.mimetype);
+        photoUrl = publicUrl(key);
+      } else {
+        photoUrl = uploadUrlPath(`reviews/${req.file.filename}`);
+      }
+
       // Create photo record
       const photoData: InsertRecipeReviewPhoto = {
         reviewId,
-        photoUrl: uploadUrlPath(`reviews/${req.file.filename}`),
+        photoUrl,
         caption: caption || null,
       };
 

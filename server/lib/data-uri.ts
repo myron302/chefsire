@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import path from "path";
 import fs from "fs/promises";
 import { UPLOADS_DIR, uploadUrlPath } from "./uploads-dir";
+import { isR2Configured, publicUrl, uploadToR2 } from "./r2";
 
 const MIME_TO_EXT: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -29,6 +30,12 @@ export async function persistDataUri(value: string): Promise<string> {
 
   const ext = MIME_TO_EXT[mime] ?? "bin";
   const filename = `${randomUUID()}.${ext}`;
+
+  if (isR2Configured()) {
+    const key = `posts/${filename}`;
+    await uploadToR2(key, buffer, mime);
+    return publicUrl(key);
+  }
 
   await fs.writeFile(path.join(UPLOADS_DIR, filename), buffer);
 

@@ -17,6 +17,7 @@ import {
   verifyEmailLimiter,
 } from "../middleware/rate-limit";
 import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
+import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
 
 const RAW_SECRET =
   process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
@@ -35,7 +36,7 @@ const avatarStorage = multer.diskStorage({
   },
 });
 
-const avatarUpload = multer({
+const avatarLocalUpload = multer({
   storage: avatarStorage,
   limits: {
     fileSize: 5 * 1024 * 1024, // 5MB limit for avatars
@@ -49,6 +50,26 @@ const avatarUpload = multer({
     }
   }
 });
+
+const avatarMemoryUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB limit for avatars
+  },
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed for avatars'));
+    }
+  }
+});
+
+const avatarUpload = (req: any, res: any, next: any) => {
+  const middleware = isR2Configured() ? avatarMemoryUpload : avatarLocalUpload;
+  return middleware.single('avatar')(req, res, next);
+};
 
 // Map slug values to pretty labels for the space version
 const TITLE_LABELS: Record<string, string> = {
@@ -69,7 +90,7 @@ const TITLE_LABELS: Record<string, string> = {
 /**
  * POST /auth/signup
  */
-router.post("/auth/signup", signupLimiter, avatarUpload.single('avatar'), async (req, res) => {
+router.post("/auth/signup", signupLimiter, avatarUpload, async (req, res) => {
   const { firstName, lastName, username, email, password, selectedTitle } = req.body ?? {};
   // Avatar file comes from req.file if multer is used, or handle manually from FormData
   const avatarFile = (req as any).file; // Will be set if multer middleware is used
@@ -100,8 +121,18 @@ router.post("/auth/signup", signupLimiter, avatarUpload.single('avatar'), async 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Handle avatar URL (if file was uploaded, it will be in /uploads)
-    const avatarUrl = avatarFile ? uploadUrlPath(avatarFile.filename) : null;
+    // Handle avatar URL (if file was uploaded, it will be in /uploads locally or R2 in production)
+    let avatarUrl: string | null = null;
+    if (avatarFile) {
+      if (isR2Configured()) {
+        const ext = path.extname(avatarFile.originalname).toLowerCase() || (avatarFile.mimetype === "image/png" ? ".png" : avatarFile.mimetype === "image/gif" ? ".gif" : avatarFile.mimetype === "image/webp" ? ".webp" : ".jpg");
+        const key = `avatars/${randomUUID()}${ext}`;
+        await uploadToR2(key, avatarFile.buffer, avatarFile.mimetype);
+        avatarUrl = publicUrl(key);
+      } else {
+        avatarUrl = uploadUrlPath(avatarFile.filename);
+      }
+    }
 
     // Create user
     const newUser = await storage.createUser({
