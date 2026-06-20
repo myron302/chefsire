@@ -51,17 +51,43 @@ export function filterBrowsePlans(
   return filtered;
 }
 
+function recentnessBoost(createdAt: unknown): number {
+  const createdMs = new Date(String(createdAt || 0)).getTime();
+  if (!Number.isFinite(createdMs) || createdMs <= 0) return 0;
+  const ageDays = Math.max(0, (Date.now() - createdMs) / 86400000);
+  return Math.max(0, Math.round(30 - Math.min(ageDays, 30)));
+}
+
+function planTrendingScore(plan: any): number {
+  const likes = Number(plan.likeCount || 0);
+  const saves = Number(plan.saveCount || 0);
+  const comments = Number(plan.commentCount || 0);
+  const purchases = Number(plan.blueprint?.salesCount || 0);
+  return likes * 3 + saves * 4 + comments * 2 + purchases * 6 + recentnessBoost(plan.blueprint?.createdAt);
+}
+
 export function sortBrowsePlans(plans: any[], sort: unknown): any[] {
+  plans.forEach((plan) => {
+    plan.recentnessBoost = recentnessBoost(plan.blueprint?.createdAt);
+    plan.trendingScore = planTrendingScore(plan);
+  });
+
+  if (sort === "followed-creators") {
+    return plans.sort((a, b) => Number(b.viewerIsFollowingCreator) - Number(a.viewerIsFollowingCreator) || planTrendingScore(b) - planTrendingScore(a));
+  }
+
+  if (sort === "most-liked") return plans.sort((a, b) => Number(b.likeCount || 0) - Number(a.likeCount || 0) || planTrendingScore(b) - planTrendingScore(a));
+  if (sort === "most-saved") return plans.sort((a, b) => Number(b.saveCount || 0) - Number(a.saveCount || 0) || planTrendingScore(b) - planTrendingScore(a));
+  if (sort === "most-commented" || sort === "most-reviewed") return plans.sort((a, b) => Number(b.commentCount || b.reviewCount || 0) - Number(a.commentCount || a.reviewCount || 0) || planTrendingScore(b) - planTrendingScore(a));
+  if (sort === "most-purchased") return plans.sort((a, b) => Number(b.blueprint?.salesCount || 0) - Number(a.blueprint?.salesCount || 0) || planTrendingScore(b) - planTrendingScore(a));
+  if (sort === "top-rated" || sort === "rating") return plans.sort((a, b) => Number(b.avgRating || 0) - Number(a.avgRating || 0) || Number(b.reviewCount || 0) - Number(a.reviewCount || 0));
+  if (sort === "trending") return plans.sort((a, b) => planTrendingScore(b) - planTrendingScore(a));
   if (sort === "price-asc") {
     return plans.sort((a, b) => a.blueprint.priceInCents - b.blueprint.priceInCents);
   }
 
   if (sort === "price-desc") {
     return plans.sort((a, b) => b.blueprint.priceInCents - a.blueprint.priceInCents);
-  }
-
-  if (sort === "rating") {
-    return plans.sort((a, b) => (b.avgRating || 0) - (a.avgRating || 0));
   }
 
   return plans.sort(

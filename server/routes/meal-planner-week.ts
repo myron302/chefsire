@@ -34,7 +34,7 @@ const PUBLIC_SHARED_WEEKS_LIMIT_DEFAULT = 20;
 const PUBLIC_SHARED_WEEKS_LIMIT_MAX = 50;
 type PublicSharedReadinessFilter = PublicWeekSummary["readinessStatus"] | "all";
 type PublicSharedCoverageFilter = "all" | "low" | "medium" | "high";
-type PublicSharedSort = "newest" | "readiness" | "coverage";
+type PublicSharedSort = "newest" | "readiness" | "coverage" | "trending" | "most-liked" | "most-saved" | "most-commented" | "followed-creators";
 type SharedWeekCopyMode = "replace" | "append" | "skip-duplicates";
 
 function parsePublicSharedReadinessFilter(raw: unknown): PublicSharedReadinessFilter {
@@ -53,7 +53,7 @@ function parsePublicSharedCoverageFilter(raw: unknown): PublicSharedCoverageFilt
 
 function parsePublicSharedSort(raw: unknown): PublicSharedSort {
   const value = String(raw || "newest").trim();
-  if (value === "readiness" || value === "coverage") return value;
+  if (["readiness", "coverage", "trending", "most-liked", "most-saved", "most-commented", "followed-creators"].includes(value)) return value as PublicSharedSort;
   return "newest";
 }
 
@@ -62,6 +62,26 @@ function isCoverageMatch(coveragePct: number, filter: PublicSharedCoverageFilter
   if (filter === "low") return coveragePct < 40;
   if (filter === "medium") return coveragePct >= 40 && coveragePct < 70;
   return coveragePct >= 70;
+}
+
+
+function sharedWeekRecentnessBoost(sharedAt: string | null): number {
+  const sharedMs = new Date(String(sharedAt || 0)).getTime();
+  if (!Number.isFinite(sharedMs) || sharedMs <= 0) return 0;
+  const ageDays = Math.max(0, (Date.now() - sharedMs) / 86400000);
+  return Math.max(0, Math.round(30 - Math.min(ageDays, 30)));
+}
+
+function sharedWeekTrendingScore(item: any): number {
+  const social = item.social || {};
+  const copies = Number(item.copyCount || 0);
+  return Number(social.likeCount || 0) * 3 + Number(social.saveCount || 0) * 4 + Number(social.commentCount || 0) * 2 + copies * 5 + sharedWeekRecentnessBoost(item.sharedAt);
+}
+
+async function isViewerFollowingCreator(viewerId: string, creatorId: string): Promise<boolean> {
+  if (!viewerId || !creatorId || viewerId === creatorId) return false;
+  const result = await db.execute(sql`SELECT 1 FROM follows WHERE follower_id = ${viewerId} AND following_id = ${creatorId} LIMIT 1`);
+  return Boolean((result as any).rows?.[0]);
 }
 
 function readinessSortScore(status: PublicWeekSummary["readinessStatus"]): number {
@@ -634,6 +654,7 @@ router.get("/week/shared", optionalAuth, async (req: Request, res: Response) => 
             username: row.username || null,
           },
           social: await getSharedWeekSocialStats(row.public_share_token, viewerId),
+          viewerIsFollowingCreator: Boolean(viewerId && (await isViewerFollowingCreator(viewerId, row.user_id))),
           readiness: {
             status: summary.readinessStatus,
             plannedSlots: summary.plannedSlots,
@@ -663,20 +684,22 @@ router.get("/week/shared", optionalAuth, async (req: Request, res: Response) => 
     });
 
     if (sort === "coverage") {
-      items.sort((a, b) => {
-        const coverageDiff = b.readiness.plannedCoveragePct - a.readiness.plannedCoveragePct;
-        if (coverageDiff !== 0) return coverageDiff;
-        return new Date(b.sharedAt || 0).getTime() - new Date(a.sharedAt || 0).getTime();
-      });
+      items.sort((a, b) => b.readiness.plannedCoveragePct - a.readiness.plannedCoveragePct || new Date(b.sharedAt || 0).getTime() - new Date(a.sharedAt || 0).getTime());
     } else if (sort === "readiness") {
-      items.sort((a, b) => {
-        const readinessDiff = readinessSortScore(b.readiness.status as PublicWeekSummary["readinessStatus"]) - readinessSortScore(a.readiness.status as PublicWeekSummary["readinessStatus"]);
-        if (readinessDiff !== 0) return readinessDiff;
-        const coverageDiff = b.readiness.plannedCoveragePct - a.readiness.plannedCoveragePct;
-        if (coverageDiff !== 0) return coverageDiff;
-        return new Date(b.sharedAt || 0).getTime() - new Date(a.sharedAt || 0).getTime();
-      });
+      items.sort((a, b) => readinessSortScore(b.readiness.status as PublicWeekSummary["readinessStatus"]) - readinessSortScore(a.readiness.status as PublicWeekSummary["readinessStatus"]) || b.readiness.plannedCoveragePct - a.readiness.plannedCoveragePct || new Date(b.sharedAt || 0).getTime() - new Date(a.sharedAt || 0).getTime());
+    } else if (sort === "trending") {
+      items.sort((a, b) => sharedWeekTrendingScore(b) - sharedWeekTrendingScore(a));
+    } else if (sort === "most-liked") {
+      items.sort((a, b) => Number(b.social?.likeCount || 0) - Number(a.social?.likeCount || 0) || sharedWeekTrendingScore(b) - sharedWeekTrendingScore(a));
+    } else if (sort === "most-saved") {
+      items.sort((a, b) => Number(b.social?.saveCount || 0) - Number(a.social?.saveCount || 0) || sharedWeekTrendingScore(b) - sharedWeekTrendingScore(a));
+    } else if (sort === "most-commented") {
+      items.sort((a, b) => Number(b.social?.commentCount || 0) - Number(a.social?.commentCount || 0) || sharedWeekTrendingScore(b) - sharedWeekTrendingScore(a));
+    } else if (sort === "followed-creators") {
+      items.sort((a: any, b: any) => Number(b.viewerIsFollowingCreator) - Number(a.viewerIsFollowingCreator) || sharedWeekTrendingScore(b) - sharedWeekTrendingScore(a));
     }
+
+    items = items.map((item: any) => ({ ...item, ranking: { trendingScore: sharedWeekTrendingScore(item), recentnessBoost: sharedWeekRecentnessBoost(item.sharedAt) } }));
 
     items = items.slice(0, limit);
     const stats = {

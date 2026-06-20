@@ -10,7 +10,7 @@ import { useToast } from '@/hooks/use-toast';
 
 type BrowseReadinessFilter = 'all' | 'not-started' | 'in-progress' | 'week-ready';
 type BrowseCoverageFilter = 'all' | 'low' | 'medium' | 'high';
-type BrowseSort = 'newest' | 'readiness' | 'coverage';
+type BrowseSort = 'newest' | 'readiness' | 'coverage' | 'trending' | 'most-liked' | 'most-saved' | 'most-commented' | 'followed-creators';
 type BrowsePreset = 'ready-high-coverage' | 'newest-ideas' | 'in-progress' | 'balanced-browse';
 type CopyMergeMode = 'replace' | 'append' | 'skip-duplicates';
 type CopyImpactSummary = {
@@ -128,7 +128,7 @@ export default function MealPlannerSharedBrowsePage() {
     const preset = parsePreset(params.get('preset'));
     if (preset) return resolvePresetConfig(preset).sort;
     const value = params.get('sort');
-    if (value === 'readiness' || value === 'coverage') return value;
+    if (value === 'readiness' || value === 'coverage' || value === 'trending' || value === 'most-liked' || value === 'most-saved' || value === 'most-commented' || value === 'followed-creators') return value;
     return 'newest';
   });
   const [activePreset, setActivePreset] = useState<BrowsePreset | null>(() => {
@@ -378,7 +378,12 @@ export default function MealPlannerSharedBrowsePage() {
               onChange={(event) => handleSortChange(event.target.value as BrowseSort)}
               className="h-9 rounded-md border bg-background px-2"
             >
-              <option value="newest">Newest shared</option>
+              <option value="trending">Trending</option>
+              <option value="most-liked">Most Liked</option>
+              <option value="most-saved">Most Saved</option>
+              <option value="most-commented">Most Commented</option>
+              <option value="newest">Newest</option>
+              <option value="followed-creators">Followed Creators</option>
               <option value="readiness">Best readiness</option>
               <option value="coverage">Most planned coverage</option>
             </select>

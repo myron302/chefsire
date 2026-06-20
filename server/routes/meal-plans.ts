@@ -105,6 +105,7 @@ router.get("/my-plans", requireAuth, async (req: Request, res: Response) => {
         commentCount: sql`(SELECT COUNT(*)::int FROM meal_plan_comments WHERE blueprint_id = ${mealPlanBlueprints.id} AND deleted_at IS NULL)`,
         viewerHasLiked: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM meal_plan_likes WHERE blueprint_id = ${mealPlanBlueprints.id} AND user_id = ${viewerId})` : sql`FALSE`}`,
         viewerHasSaved: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM meal_plan_saves WHERE blueprint_id = ${mealPlanBlueprints.id} AND user_id = ${viewerId})` : sql`FALSE`}`,
+        viewerIsFollowingCreator: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM follows WHERE follower_id = ${viewerId} AND following_id = ${mealPlanBlueprints.creatorId})` : sql`FALSE`}`,
       })
       .from(mealPlanBlueprints)
       .leftJoin(mealPlanReviews, eq(mealPlanBlueprints.id, mealPlanReviews.blueprintId))
@@ -175,6 +176,7 @@ router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
         commentCount: sql`(SELECT COUNT(*)::int FROM meal_plan_comments WHERE blueprint_id = ${mealPlanBlueprints.id} AND deleted_at IS NULL)`,
         viewerHasLiked: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM meal_plan_likes WHERE blueprint_id = ${mealPlanBlueprints.id} AND user_id = ${viewerId})` : sql`FALSE`}`,
         viewerHasSaved: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM meal_plan_saves WHERE blueprint_id = ${mealPlanBlueprints.id} AND user_id = ${viewerId})` : sql`FALSE`}`,
+        viewerIsFollowingCreator: sql`${viewerId ? sql`EXISTS(SELECT 1 FROM follows WHERE follower_id = ${viewerId} AND following_id = ${mealPlanBlueprints.creatorId})` : sql`FALSE`}`,
       })
       .from(mealPlanBlueprints)
       .innerJoin(users, eq(mealPlanBlueprints.creatorId, users.id))
@@ -204,6 +206,11 @@ router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
           commentCount: Number(item.commentCount || 0),
           viewerHasLiked: Boolean(item.viewerHasLiked),
           viewerHasSaved: Boolean(item.viewerHasSaved),
+        },
+        viewerIsFollowingCreator: Boolean(item.viewerIsFollowingCreator),
+        ranking: {
+          trendingScore: Number(item.trendingScore || 0),
+          recentnessBoost: Number(item.recentnessBoost || 0),
         },
       })),
     });

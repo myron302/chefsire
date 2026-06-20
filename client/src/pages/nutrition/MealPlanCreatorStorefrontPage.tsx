@@ -81,6 +81,8 @@ export default function MealPlanCreatorStorefrontPage() {
   const { creator, stats } = creatorQuery.data;
   const plans = plansQuery.data?.plans || [];
   const publicSharedWeeks = creatorQuery.data.publicSharedWeeks || [];
+  const topLikedPlans = [...plans].sort((a, b) => Number(b.social?.likeCount || 0) - Number(a.social?.likeCount || 0)).slice(0, 3);
+  const topSavedPlans = [...plans].sort((a, b) => Number(b.social?.saveCount || 0) - Number(a.social?.saveCount || 0)).slice(0, 3);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
@@ -110,9 +112,15 @@ export default function MealPlanCreatorStorefrontPage() {
         <Stat label="Sales" value={stats.totalSales} />
       </div>
 
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <SpotlightPlans title="Top liked plans" description="Marketplace plans ranked by social likes." plans={topLikedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
+        <SpotlightPlans title="Top saved plans" description="Marketplace plans shoppers are saving most." plans={topSavedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
+      </div>
+
       <Card>
         <CardHeader>
-          <CardTitle>Public shared weeks</CardTitle>
+          <CardTitle>Recent shared weeks</CardTitle>
           <CardDescription>Reusable public weekly planner snapshots from this creator.</CardDescription>
         </CardHeader>
         <CardContent>
@@ -168,6 +176,29 @@ export default function MealPlanCreatorStorefrontPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function SpotlightPlans({ title, description, plans, onOpen }: { title: string; description: string; plans: PlanListing[]; onOpen: (planId: string) => void }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {plans.length === 0 ? <p className="text-sm text-muted-foreground">No ranked plans yet.</p> : null}
+        {plans.map((plan) => (
+          <div key={plan.blueprint.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+            <div className="min-w-0">
+              <div className="truncate font-medium">{plan.blueprint.title}</div>
+              <div className="text-xs text-muted-foreground">{Number(plan.social?.likeCount || 0)} likes • {Number(plan.social?.saveCount || 0)} saves</div>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => onOpen(plan.blueprint.id)}>View</Button>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 

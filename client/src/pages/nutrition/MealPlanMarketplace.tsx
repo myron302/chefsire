@@ -35,6 +35,8 @@ type MealPlanListing = {
     viewerHasLiked: boolean;
     viewerHasSaved: boolean;
   };
+  viewerIsFollowingCreator?: boolean;
+  ranking?: { trendingScore: number; recentnessBoost: number };
 };
 
 export default function MealPlanMarketplace() {
@@ -153,10 +155,16 @@ export default function MealPlanMarketplace() {
                 onChange={(e) => setSortBy(e.target.value)}
                 className="w-full p-2 border rounded"
               >
+                <option value="trending">Trending</option>
+                <option value="most-liked">Most Liked</option>
+                <option value="most-saved">Most Saved</option>
+                <option value="most-reviewed">Most Reviewed</option>
+                <option value="top-rated">Top Rated</option>
                 <option value="newest">Newest</option>
+                <option value="followed-creators">Followed Creators</option>
+                <option value="most-purchased">Most Purchased</option>
                 <option value="price-asc">Price: Low to High</option>
                 <option value="price-desc">Price: High to Low</option>
-                <option value="rating">Highest Rated</option>
               </select>
             </div>
             <div className="flex gap-2">
