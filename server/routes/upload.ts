@@ -9,6 +9,8 @@ import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
 import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
 
 const router = Router();
+const GENERAL_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024;
+const R2_MEMORY_UPLOAD_LIMIT_BYTES = 25 * 1024 * 1024;
 
 // Configure multer for general file uploads (disk storage → UPLOADS_DIR)
 const storage = multer.diskStorage({
@@ -24,7 +26,7 @@ const storage = multer.diskStorage({
 const localUpload = multer({
   storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB
+    fileSize: GENERAL_UPLOAD_LIMIT_BYTES, // 100MB
   },
   fileFilter: (_req, file, cb) => {
     const allowedTypes = [
@@ -54,11 +56,13 @@ const localUpload = multer({
   },
 });
 
-// POST /api/upload - General file upload (videos, docs, etc.)
+// R2 uploads still use memoryStorage because the current upload path accepts a Multer
+// buffer before PutObject; cap this substantially below the disk-backed 100MB limit so
+// concurrent uploads cannot retain multiple near-100MB files in the Node heap.
 const memoryUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB
+    fileSize: R2_MEMORY_UPLOAD_LIMIT_BYTES, // 25MB
   },
   fileFilter: (_req, file, cb) => {
     const allowedTypes = [
@@ -119,7 +123,8 @@ router.post("/", requireAuth, (req, res) => {
 
       if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({ ok: false, error: "File is too large. Maximum size is 100MB." });
+          const maxSize = isR2Configured() ? "25MB" : "100MB";
+          return res.status(400).json({ ok: false, error: `File is too large. Maximum size is ${maxSize}.` });
         }
         return res.status(400).json({ ok: false, error: `Upload error: ${err.message}` });
       }
