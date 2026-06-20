@@ -1,91 +1,95 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
+import os from "os";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware";
 import fs from "fs";
 import sharp from "sharp";
 import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
-import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
+import { isR2Configured, publicUrl, uploadFileToR2, uploadToR2 } from "../lib/r2";
 
 const router = Router();
 
-// Configure multer for general file uploads (disk storage → UPLOADS_DIR)
+const GENERAL_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024; // 100MB
+const R2_TEMP_UPLOAD_DIR = path.join(os.tmpdir(), "chefsire-r2-uploads");
+
+const allowedGeneralUploadTypes = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'video/mp4',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/webm',
+  'video/ogg',
+  'application/zip',
+  'application/epub+zip',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+];
+
+function generalUploadFileFilter(_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) {
+  if (allowedGeneralUploadTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only PDF, DOC, Excel, videos, images, and ZIP files are allowed.'));
+  }
+}
+
+function uniqueUploadFilename(file: Express.Multer.File): string {
+  return `${randomUUID()}${path.extname(file.originalname)}`;
+}
+
+async function cleanupTempUpload(file?: Express.Multer.File) {
+  if (!isR2Configured() || !file?.path) return;
+
+  try {
+    await fs.promises.unlink(file.path);
+  } catch (error) {
+    console.error("Error cleaning up temporary upload:", error);
+  }
+}
+
+// Configure multer for general local file uploads (disk storage → UPLOADS_DIR)
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, UPLOADS_DIR);
   },
   filename: (_req, file, cb) => {
-    const uniqueName = `${randomUUID()}${path.extname(file.originalname)}`;
-    cb(null, uniqueName);
+    cb(null, uniqueUploadFilename(file));
   },
 });
 
 const localUpload = multer({
   storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB
+    fileSize: GENERAL_UPLOAD_LIMIT_BYTES,
   },
-  fileFilter: (_req, file, cb) => {
-    const allowedTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'video/mp4',
-      'video/quicktime',
-      'video/x-msvideo',
-      'video/webm',
-      'video/ogg',
-      'application/zip',
-      'application/epub+zip',
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-    ];
+  fileFilter: generalUploadFileFilter,
+});
 
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only PDF, DOC, Excel, videos, images, and ZIP files are allowed.'));
-    }
+// For R2-backed general uploads, write the request body to a temp file first,
+// then stream that file to R2. This avoids holding product-sized uploads in heap.
+const r2TempStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    fs.mkdir(R2_TEMP_UPLOAD_DIR, { recursive: true }, (err) => cb(err, R2_TEMP_UPLOAD_DIR));
+  },
+  filename: (_req, file, cb) => {
+    cb(null, uniqueUploadFilename(file));
   },
 });
 
-// POST /api/upload - General file upload (videos, docs, etc.)
-const memoryUpload = multer({
-  storage: multer.memoryStorage(),
+const r2DiskUpload = multer({
+  storage: r2TempStorage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB
+    fileSize: GENERAL_UPLOAD_LIMIT_BYTES,
   },
-  fileFilter: (_req, file, cb) => {
-    const allowedTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'video/mp4',
-      'video/quicktime',
-      'video/x-msvideo',
-      'video/webm',
-      'video/ogg',
-      'application/zip',
-      'application/epub+zip',
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-    ];
-
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only PDF, DOC, Excel, videos, images, and ZIP files are allowed.'));
-    }
-  },
+  fileFilter: generalUploadFileFilter,
 });
 
 function extensionForUpload(file: Express.Multer.File): string {
@@ -112,9 +116,10 @@ function extensionForUpload(file: Express.Multer.File): string {
 
 // POST /api/upload - General file upload (videos, docs, etc.)
 router.post("/", requireAuth, (req, res) => {
-  const middleware = isR2Configured() ? memoryUpload : localUpload;
+  const middleware = isR2Configured() ? r2DiskUpload : localUpload;
   middleware.single('file')(req, res, async (err) => {
     if (err) {
+      await cleanupTempUpload(req.file);
       console.error("Upload error:", err);
 
       if (err instanceof multer.MulterError) {
@@ -136,7 +141,7 @@ router.post("/", requireAuth, (req, res) => {
 
       if (isR2Configured()) {
         const key = `posts/${randomUUID()}${extensionForUpload(req.file)}`;
-        await uploadToR2(key, req.file.buffer, req.file.mimetype);
+        await uploadFileToR2(key, req.file.path, req.file.mimetype);
         fileUrl = publicUrl(key);
       } else {
         fileUrl = uploadUrlPath(req.file.filename);
@@ -152,6 +157,8 @@ router.post("/", requireAuth, (req, res) => {
     } catch (error: any) {
       console.error("Error processing upload:", error);
       res.status(500).json({ ok: false, error: error.message || "Failed to process upload" });
+    } finally {
+      await cleanupTempUpload(req.file);
     }
   });
 });
