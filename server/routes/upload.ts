@@ -1,16 +1,46 @@
 import { Router } from "express";
 import multer from "multer";
+import os from "os";
 import path from "path";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware";
 import fs from "fs";
 import sharp from "sharp";
 import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
-import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
+import { isR2Configured, publicUrl, uploadFileToR2, uploadToR2 } from "../lib/r2";
 
 const router = Router();
 
-// Configure multer for general file uploads (disk storage → UPLOADS_DIR)
+const GENERAL_UPLOAD_LIMIT_BYTES = 100 * 1024 * 1024; // 100MB
+
+const allowedGeneralUploadTypes = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'video/mp4',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/webm',
+  'video/ogg',
+  'application/zip',
+  'application/epub+zip',
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+];
+
+function generalUploadFileFilter(_req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) {
+  if (allowedGeneralUploadTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only PDF, DOC, Excel, videos, images, and ZIP files are allowed.'));
+  }
+}
+
+// Configure multer for general local file uploads (disk storage → UPLOADS_DIR)
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, UPLOADS_DIR);
@@ -24,69 +54,42 @@ const storage = multer.diskStorage({
 const localUpload = multer({
   storage,
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB
+    fileSize: GENERAL_UPLOAD_LIMIT_BYTES,
   },
-  fileFilter: (_req, file, cb) => {
-    const allowedTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'video/mp4',
-      'video/quicktime',
-      'video/x-msvideo',
-      'video/webm',
-      'video/ogg',
-      'application/zip',
-      'application/epub+zip',
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-    ];
-
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only PDF, DOC, Excel, videos, images, and ZIP files are allowed.'));
-    }
-  },
+  fileFilter: generalUploadFileFilter,
 });
 
-// POST /api/upload - General file upload (videos, docs, etc.)
-const memoryUpload = multer({
-  storage: multer.memoryStorage(),
+const r2TempUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => {
+      cb(null, os.tmpdir());
+    },
+    filename: (_req, file, cb) => {
+      cb(null, `chefsire-upload-${randomUUID()}${path.extname(file.originalname)}`);
+    },
+  }),
   limits: {
-    fileSize: 100 * 1024 * 1024, // 100MB
+    fileSize: GENERAL_UPLOAD_LIMIT_BYTES,
   },
-  fileFilter: (_req, file, cb) => {
-    const allowedTypes = [
-      'application/pdf',
-      'application/msword',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.ms-excel',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'video/mp4',
-      'video/quicktime',
-      'video/x-msvideo',
-      'video/webm',
-      'video/ogg',
-      'application/zip',
-      'application/epub+zip',
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-    ];
-
-    if (allowedTypes.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only PDF, DOC, Excel, videos, images, and ZIP files are allowed.'));
-    }
-  },
+  fileFilter: generalUploadFileFilter,
 });
+
+function tempUploadPath(file?: Express.Multer.File): string | undefined {
+  return file && 'path' in file ? file.path : undefined;
+}
+
+async function cleanupTempUpload(file?: Express.Multer.File) {
+  const filePath = tempUploadPath(file);
+  if (!filePath) return;
+
+  try {
+    await fs.promises.unlink(filePath);
+  } catch (error: any) {
+    if (error?.code !== 'ENOENT') {
+      console.warn("Failed to delete temp upload:", error);
+    }
+  }
+}
 
 function extensionForUpload(file: Express.Multer.File): string {
   const ext = path.extname(file.originalname);
@@ -112,9 +115,14 @@ function extensionForUpload(file: Express.Multer.File): string {
 
 // POST /api/upload - General file upload (videos, docs, etc.)
 router.post("/", requireAuth, (req, res) => {
-  const middleware = isR2Configured() ? memoryUpload : localUpload;
+  const usingR2 = isR2Configured();
+  const middleware = usingR2 ? r2TempUpload : localUpload;
   middleware.single('file')(req, res, async (err) => {
     if (err) {
+      if (usingR2) {
+        await cleanupTempUpload(req.file);
+      }
+
       console.error("Upload error:", err);
 
       if (err instanceof multer.MulterError) {
@@ -134,9 +142,9 @@ router.post("/", requireAuth, (req, res) => {
 
       let fileUrl: string;
 
-      if (isR2Configured()) {
+      if (usingR2) {
         const key = `posts/${randomUUID()}${extensionForUpload(req.file)}`;
-        await uploadToR2(key, req.file.buffer, req.file.mimetype);
+        await uploadFileToR2(key, req.file.path, req.file.mimetype);
         fileUrl = publicUrl(key);
       } else {
         fileUrl = uploadUrlPath(req.file.filename);
@@ -152,6 +160,10 @@ router.post("/", requireAuth, (req, res) => {
     } catch (error: any) {
       console.error("Error processing upload:", error);
       res.status(500).json({ ok: false, error: error.message || "Failed to process upload" });
+    } finally {
+      if (usingR2) {
+        await cleanupTempUpload(req.file);
+      }
     }
   });
 });

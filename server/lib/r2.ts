@@ -1,4 +1,6 @@
+import fs from "fs";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 
 const requiredEnvVars = [
   "R2_ENDPOINT",
@@ -22,18 +24,38 @@ export const r2Client = new S3Client({
   forcePathStyle: true,
 });
 
-export async function uploadToR2(key: string, body: Buffer, contentType: string): Promise<string> {
+function r2Bucket(): string {
   const bucket = process.env.R2_BUCKET;
   if (!bucket) {
     throw new Error("R2_BUCKET is required to upload media");
   }
 
+  return bucket;
+}
+
+export async function uploadToR2(key: string, body: Buffer, contentType: string): Promise<string> {
   await r2Client.send(new PutObjectCommand({
-    Bucket: bucket,
+    Bucket: r2Bucket(),
     Key: key,
     Body: body,
     ContentType: contentType,
   }));
+
+  return key;
+}
+
+export async function uploadFileToR2(key: string, filePath: string, contentType: string): Promise<string> {
+  const upload = new Upload({
+    client: r2Client,
+    params: {
+      Bucket: r2Bucket(),
+      Key: key,
+      Body: fs.createReadStream(filePath),
+      ContentType: contentType,
+    },
+  });
+
+  await upload.done();
 
   return key;
 }
