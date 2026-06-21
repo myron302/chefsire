@@ -74,8 +74,7 @@ function sharedWeekRecentnessBoost(sharedAt: string | null): number {
 
 function sharedWeekTrendingScore(item: any): number {
   const social = item.social || {};
-  const copies = Number(item.copyCount || 0);
-  return Number(social.likeCount || 0) * 3 + Number(social.saveCount || 0) * 4 + Number(social.commentCount || 0) * 2 + copies * 5 + sharedWeekRecentnessBoost(item.sharedAt);
+  return Number(social.likeCount || 0) * 3 + Number(social.saveCount || 0) * 4 + Number(social.commentCount || 0) * 2 + sharedWeekRecentnessBoost(item.sharedAt);
 }
 
 async function isViewerFollowingCreator(viewerId: string, creatorId: string): Promise<boolean> {

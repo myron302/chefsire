@@ -310,6 +310,7 @@ router.delete("/meal-planner/week/shared/:token/comments/:commentId", requireAut
 router.get("/meal-plan-creators", optionalAuth, async (req, res) => {
   const viewerId = (req.user as any)?.id || "";
   const search = String(req.query.search || "").trim().toLowerCase();
+  const searchPattern = `%${search}%`;
   const result = await db.execute(sql`
     WITH creator_ids AS (
       SELECT creator_id AS id FROM meal_plan_blueprints WHERE status = 'published'
@@ -333,6 +334,15 @@ router.get("/meal-plan-creators", optionalAuth, async (req, res) => {
     FROM creator_ids ci
     INNER JOIN users u ON u.id = ci.id
     LEFT JOIN meal_plan_creator_profiles p ON p.user_id = u.id
+    WHERE ${!search} OR (
+      LOWER(COALESCE(u.username, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(u.display_name, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(p.display_title, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(u.bio, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(p.bio, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(u.specialty, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(p.specialty, '')) LIKE ${searchPattern}
+    )
     ORDER BY (COALESCE(u.followers_count, 0) + (SELECT COUNT(*) FROM meal_plan_blueprints b WHERE b.creator_id = u.id AND b.status = 'published') * 3) DESC, u.display_name ASC
     LIMIT 100
   `);
@@ -357,9 +367,6 @@ router.get("/meal-plan-creators", optionalAuth, async (req, res) => {
       viewerIsFollowing: Boolean(row.viewer_is_following),
     };
   });
-  if (search) {
-    creators = creators.filter((creator: any) => [creator.displayName, creator.username, creator.bio, creator.specialty].some((value) => String(value || "").toLowerCase().includes(search)));
-  }
   res.json({ creators });
 });
 

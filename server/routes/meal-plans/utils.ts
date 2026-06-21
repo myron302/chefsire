@@ -78,7 +78,8 @@ export function sortBrowsePlans(plans: any[], sort: unknown): any[] {
 
   if (sort === "most-liked") return plans.sort((a, b) => Number(b.likeCount || 0) - Number(a.likeCount || 0) || planTrendingScore(b) - planTrendingScore(a));
   if (sort === "most-saved") return plans.sort((a, b) => Number(b.saveCount || 0) - Number(a.saveCount || 0) || planTrendingScore(b) - planTrendingScore(a));
-  if (sort === "most-commented" || sort === "most-reviewed") return plans.sort((a, b) => Number(b.commentCount || b.reviewCount || 0) - Number(a.commentCount || a.reviewCount || 0) || planTrendingScore(b) - planTrendingScore(a));
+  if (sort === "most-commented") return plans.sort((a, b) => Number(b.commentCount || 0) - Number(a.commentCount || 0) || planTrendingScore(b) - planTrendingScore(a));
+  if (sort === "most-reviewed") return plans.sort((a, b) => Number(b.reviewCount || 0) - Number(a.reviewCount || 0) || planTrendingScore(b) - planTrendingScore(a));
   if (sort === "most-purchased") return plans.sort((a, b) => Number(b.blueprint?.salesCount || 0) - Number(a.blueprint?.salesCount || 0) || planTrendingScore(b) - planTrendingScore(a));
   if (sort === "top-rated" || sort === "rating") return plans.sort((a, b) => Number(b.avgRating || 0) - Number(a.avgRating || 0) || Number(b.reviewCount || 0) - Number(a.reviewCount || 0));
   if (sort === "trending") return plans.sort((a, b) => planTrendingScore(b) - planTrendingScore(a));
