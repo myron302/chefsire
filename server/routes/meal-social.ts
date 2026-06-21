@@ -306,6 +306,70 @@ router.delete("/meal-planner/week/shared/:token/comments/:commentId", requireAut
   res.json(await getSharedWeekSocialStats(token, (req.user as any).id));
 });
 
+
+router.get("/meal-plan-creators", optionalAuth, async (req, res) => {
+  const viewerId = (req.user as any)?.id || "";
+  const search = String(req.query.search || "").trim().toLowerCase();
+  const searchPattern = `%${search}%`;
+  const result = await db.execute(sql`
+    WITH creator_ids AS (
+      SELECT creator_id AS id FROM meal_plan_blueprints WHERE status = 'published'
+      UNION
+      SELECT user_id AS id FROM meal_plan_week_shares WHERE visibility = 'public' AND public_share_token IS NOT NULL
+      UNION
+      SELECT user_id AS id FROM meal_plan_creator_profiles
+    )
+    SELECT u.id, u.username, u.display_name, u.avatar, u.bio, u.specialty, u.followers_count,
+           p.display_title, p.bio AS profile_bio, p.specialty AS profile_specialty, p.avatar_url,
+           (SELECT COUNT(*)::int FROM meal_plan_blueprints b WHERE b.creator_id = u.id AND b.status = 'published') AS plan_count,
+           (SELECT COUNT(*)::int FROM meal_plan_week_shares sh WHERE sh.user_id = u.id AND sh.visibility = 'public' AND sh.public_share_token IS NOT NULL) AS shared_week_count,
+           (SELECT COALESCE(SUM((SELECT COUNT(*) FROM meal_plan_likes l WHERE l.blueprint_id = b.id)), 0)::int FROM meal_plan_blueprints b WHERE b.creator_id = u.id AND b.status = 'published') AS plan_likes,
+           (SELECT COALESCE(SUM((SELECT COUNT(*) FROM meal_plan_saves sv WHERE sv.blueprint_id = b.id)), 0)::int FROM meal_plan_blueprints b WHERE b.creator_id = u.id AND b.status = 'published') AS plan_saves,
+           (SELECT COALESCE(SUM((SELECT COUNT(*) FROM meal_plan_comments c WHERE c.blueprint_id = b.id AND c.deleted_at IS NULL)), 0)::int FROM meal_plan_blueprints b WHERE b.creator_id = u.id AND b.status = 'published') AS plan_comments,
+           (SELECT COALESCE(SUM((SELECT COUNT(*) FROM shared_week_likes l WHERE l.public_share_token = sh.public_share_token)), 0)::int FROM meal_plan_week_shares sh WHERE sh.user_id = u.id AND sh.visibility = 'public') AS week_likes,
+           (SELECT COALESCE(SUM((SELECT COUNT(*) FROM shared_week_saves sv WHERE sv.public_share_token = sh.public_share_token)), 0)::int FROM meal_plan_week_shares sh WHERE sh.user_id = u.id AND sh.visibility = 'public') AS week_saves,
+           (SELECT COALESCE(SUM((SELECT COUNT(*) FROM shared_week_comments c WHERE c.public_share_token = sh.public_share_token AND c.deleted_at IS NULL)), 0)::int FROM meal_plan_week_shares sh WHERE sh.user_id = u.id AND sh.visibility = 'public') AS week_comments,
+           (SELECT COALESCE(SUM(b.sales_count), 0)::int FROM meal_plan_blueprints b WHERE b.creator_id = u.id AND b.status = 'published') AS total_sales,
+           EXISTS(SELECT 1 FROM follows f WHERE f.follower_id = ${viewerId} AND f.following_id = u.id) AS viewer_is_following
+    FROM creator_ids ci
+    INNER JOIN users u ON u.id = ci.id
+    LEFT JOIN meal_plan_creator_profiles p ON p.user_id = u.id
+    WHERE ${!search} OR (
+      LOWER(COALESCE(u.username, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(u.display_name, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(p.display_title, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(u.bio, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(p.bio, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(u.specialty, '')) LIKE ${searchPattern}
+      OR LOWER(COALESCE(p.specialty, '')) LIKE ${searchPattern}
+    )
+    ORDER BY (COALESCE(u.followers_count, 0) + (SELECT COUNT(*) FROM meal_plan_blueprints b WHERE b.creator_id = u.id AND b.status = 'published') * 3) DESC, u.display_name ASC
+    LIMIT 100
+  `);
+  let creators = ((result as any).rows || []).map((row: any) => {
+    const totalLikes = Number(row.plan_likes || 0) + Number(row.week_likes || 0);
+    const totalSaves = Number(row.plan_saves || 0) + Number(row.week_saves || 0);
+    const totalComments = Number(row.plan_comments || 0) + Number(row.week_comments || 0);
+    return {
+      creatorId: row.id,
+      displayName: row.display_title || row.display_name,
+      username: row.username,
+      avatarUrl: row.avatar_url || row.avatar,
+      bio: row.profile_bio || row.bio,
+      specialty: row.profile_specialty || row.specialty,
+      followerCount: Number(row.followers_count || 0),
+      planCount: Number(row.plan_count || 0),
+      sharedWeekCount: Number(row.shared_week_count || 0),
+      totalLikes,
+      totalSaves,
+      totalComments,
+      totalSales: Number(row.total_sales || 0),
+      viewerIsFollowing: Boolean(row.viewer_is_following),
+    };
+  });
+  res.json({ creators });
+});
+
 router.get("/meal-plan-creators/:creatorId", optionalAuth, async (req, res) => {
   const creatorId = req.params.creatorId;
   const creatorResult = await db.execute(sql`
