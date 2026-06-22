@@ -5,6 +5,7 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, ShoppingCart, ShieldCheck, Activity, Globe, ArrowRight } from 'lucide-react';
 import { CreatorFollowButton, CreatorProfileLink, MealPlannerSocialActions } from '@/components/nutrition/social/MealPlannerSocial';
+import { ConversionBadges } from '@/components/nutrition/social/conversionUtils';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -450,6 +451,7 @@ export default function MealPlannerSharedBrowsePage() {
                   <CreatorProfileLink creatorId={item.sharer.id}>{byline}</CreatorProfileLink>
                   <CreatorFollowButton creatorId={item.sharer.id} compact />
                 </CardDescription>
+                <ConversionBadges input={{ priceInCents: 0, createdAt: item.sharedAt, social: item.social }} />
               </CardHeader>
               <CardContent className="space-y-4 text-sm">
                 <div className="grid gap-3">
@@ -483,7 +485,7 @@ export default function MealPlannerSharedBrowsePage() {
                 </div>
 
                 <div className="border-t pt-3">
-                  <MealPlannerSocialActions target="shared-week" id={item.token} initialStats={item.social} compact />
+                  <MealPlannerSocialActions target="shared-week" id={item.token} initialStats={item.social} compact saveActionLinks={{ creatorHref: item.sharer.id ? `/nutrition/creators/${item.sharer.id}` : undefined }} />
                 </div>
 
                 <div className="flex items-center justify-between border-t pt-3">

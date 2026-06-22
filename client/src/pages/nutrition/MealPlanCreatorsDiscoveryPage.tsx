@@ -28,13 +28,25 @@ type Creator = {
 
 export default function MealPlanCreatorsDiscoveryPage() {
   const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("most-followed");
   const { data, isLoading, error } = useQuery<{ creators: Creator[] }>({ queryKey: ["/api/meal-plan-creators"] });
   const creators = useMemo(() => {
     const q = search.trim().toLowerCase();
-    const rows = data?.creators || [];
-    if (!q) return rows;
-    return rows.filter((creator) => [creator.displayName, creator.username, creator.bio, creator.specialty].some((value) => String(value || "").toLowerCase().includes(q)));
-  }, [data?.creators, search]);
+    let rows = data?.creators || [];
+    if (filter === "marketplace-sellers") rows = rows.filter((creator) => creator.planCount > 0 || creator.totalSales > 0);
+    if (filter === "shared-week-creators") rows = rows.filter((creator) => creator.sharedWeekCount > 0);
+    if (q) rows = rows.filter((creator) => [creator.displayName, creator.username, creator.bio, creator.specialty].some((value) => String(value || "").toLowerCase().includes(q)));
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      if (filter === "most-liked") return b.totalLikes - a.totalLikes;
+      if (filter === "most-saved") return b.totalSaves - a.totalSaves;
+      if (filter === "most-active") return (b.planCount + b.sharedWeekCount + b.totalComments) - (a.planCount + a.sharedWeekCount + a.totalComments);
+      if (filter === "marketplace-sellers") return (b.totalSales + b.planCount) - (a.totalSales + a.planCount);
+      if (filter === "shared-week-creators") return b.sharedWeekCount - a.sharedWeekCount;
+      return b.followerCount - a.followerCount;
+    });
+    return sorted;
+  }, [data?.creators, search, filter]);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
@@ -44,9 +56,19 @@ export default function MealPlanCreatorsDiscoveryPage() {
           <CardDescription>Discover creators with marketplace plans, public shared weeks, and social planner activity.</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="relative max-w-xl">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search creators, specialties, or bios…" className="pl-10" />
+          <div className="grid gap-3 md:grid-cols-[1fr_240px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search creators, specialties, or bios…" className="pl-10" />
+            </div>
+            <select value={filter} onChange={(event) => setFilter(event.target.value)} className="h-10 rounded-md border bg-background px-3 text-sm">
+              <option value="most-followed">Most followed</option>
+              <option value="most-liked">Most liked</option>
+              <option value="most-saved">Most saved</option>
+              <option value="most-active">Most active</option>
+              <option value="marketplace-sellers">Marketplace sellers</option>
+              <option value="shared-week-creators">Shared-week creators</option>
+            </select>
           </div>
         </CardContent>
       </Card>

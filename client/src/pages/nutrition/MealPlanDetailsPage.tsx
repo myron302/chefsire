@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import { ArrowLeft, Calendar, DollarSign, Star, User, Send } from "lucide-react";
 import { CreatorFollowButton, CreatorProfileLink, MealPlannerCommentsPanel, MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
+import { CreatorFollowPrompt } from "@/components/nutrition/social/conversionUtils";
 
 type MealPlanDetailsResponse = {
   plan: {
@@ -186,7 +187,7 @@ export default function MealPlanDetailsPage() {
         {blueprint ? (
           <div className="flex flex-col items-end gap-2 shrink-0">
             <div className="text-2xl font-bold">{formatMoney(blueprint.priceInCents)}</div>
-            <MealPlannerSocialActions target="meal-plan" id={blueprint.id} initialStats={data?.social} />
+            <MealPlannerSocialActions target="meal-plan" id={blueprint.id} initialStats={data?.social} saveActionLinks={{ creatorHref: creator ? `/nutrition/creators/${creator.id}` : undefined }} />
             <div className="flex items-center gap-2">
               <Badge variant="secondary">{blueprint.category}</Badge>
               <Badge variant="outline">{blueprint.difficulty}</Badge>
@@ -255,6 +256,8 @@ export default function MealPlanDetailsPage() {
               ) : null}
             </CardContent>
           </Card>
+
+          {creator ? <CreatorFollowPrompt creatorId={creator.id} creatorName={creator.displayName || creator.username} /> : null}
 
           {planId ? <MealPlannerCommentsPanel target="meal-plan" id={planId} title="Meal plan comments" /> : null}
 

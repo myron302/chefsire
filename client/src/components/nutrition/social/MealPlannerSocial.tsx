@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import { Bookmark, Heart, MessageCircle, Send, Trash2, UserPlus } from "lucide-react";
@@ -46,12 +47,14 @@ export function MealPlannerSocialActions({
   initialStats,
   compact = false,
   onChange,
+  saveActionLinks,
 }: {
   target: SocialTarget;
   id: string;
   initialStats?: Partial<MealPlannerSocialStats> | null;
   compact?: boolean;
   onChange?: (stats: MealPlannerSocialStats) => void;
+  saveActionLinks?: { copyHref?: string; creatorHref?: string };
 }) {
   const { user } = useUser();
   const [, setLocation] = useLocation();
@@ -80,6 +83,21 @@ export function MealPlannerSocialActions({
       if (!res.ok) throw new Error(next?.message || `Unable to update ${kind}`);
       setStats(next);
       onChange?.(next);
+      if (kind === "save" && !active) {
+        toast({
+          title: target === "meal-plan" ? "Meal plan saved" : "Shared week saved",
+          description: "Choose a next step when you're ready.",
+          action: (
+            <div className="flex flex-wrap gap-2">
+              <ToastAction altText="View saved items" onClick={() => setLocation("/nutrition/my-purchases")}>View saved items</ToastAction>
+              {target === "shared-week" ? (
+                <ToastAction altText="Copy this week" onClick={() => setLocation(saveActionLinks?.copyHref || `/meal-planner/shared/${id}`)}>Copy this week</ToastAction>
+              ) : null}
+              <ToastAction altText="View creator" onClick={() => setLocation(saveActionLinks?.creatorHref || (target === "meal-plan" ? `/nutrition/meal-plans/${id}` : `/meal-planner/shared/${id}`))}>View creator</ToastAction>
+            </div>
+          ),
+        });
+      }
     } catch (error: any) {
       toast({ title: "Social action failed", description: error?.message || "Please try again.", variant: "destructive" });
     } finally {

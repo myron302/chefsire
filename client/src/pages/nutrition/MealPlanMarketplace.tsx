@@ -6,6 +6,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { CreatorFollowButton, MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
+import { ConversionBadges } from "@/components/nutrition/social/conversionUtils";
 import { ShoppingCart, Search, Calendar, Star, ChefHat, Users } from "lucide-react";
 
 type MealPlanListing = {
@@ -236,6 +237,7 @@ export default function MealPlanMarketplace() {
 
                 {/* Badges */}
                 <div className="flex flex-wrap gap-2 mb-4">
+                  <ConversionBadges input={{ price: plan.blueprint.price, avgRating: plan.avgRating, reviewCount: plan.reviewCount, salesCount: plan.blueprint.salesCount, createdAt: plan.blueprint.createdAt, social: plan.social, ranking: plan.ranking }} />
                   <Badge variant="outline" className="flex items-center gap-1">
                     <Calendar className="w-3 h-3" />
                     {plan.blueprint.duration} days
@@ -268,7 +270,7 @@ export default function MealPlanMarketplace() {
                 </div>
 
                 <div className="mb-4">
-                  <MealPlannerSocialActions target="meal-plan" id={plan.blueprint.id} initialStats={plan.social} compact />
+                  <MealPlannerSocialActions target="meal-plan" id={plan.blueprint.id} initialStats={plan.social} compact saveActionLinks={{ creatorHref: `/nutrition/creators/${plan.creator.id}` }} />
                 </div>
 
                 {/* Actions */}
