@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { CalendarDays, ShoppingCart, ShieldCheck, Utensils, Activity } from 'lucide-react';
 import { CreatorFollowButton, CreatorProfileLink, MealPlannerCommentsPanel, MealPlannerSocialActions } from '@/components/nutrition/social/MealPlannerSocial';
+import { CreatorFollowPrompt } from '@/components/nutrition/social/conversionUtils';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -444,7 +445,7 @@ export default function MealPlannerSharedWeekPage() {
         <CardContent className="flex flex-wrap items-center gap-2">
           <Badge variant="secondary">Read-only public view</Badge>
           <Badge variant="outline">Token shared</Badge>
-          {token ? <MealPlannerSocialActions target="shared-week" id={token} initialStats={data.social} /> : null}
+          {token ? <MealPlannerSocialActions target="shared-week" id={token} initialStats={data.social} saveActionLinks={{ creatorHref: data.sharer?.id ? `/nutrition/creators/${data.sharer.id}` : undefined }} /> : null}
           {user ? (
             <Button size="sm" onClick={handleCopyWeek} disabled={isCopying}>
               {isCopying ? 'Copying…' : 'Copy This Week to My Planner'}
@@ -459,6 +460,8 @@ export default function MealPlannerSharedWeekPage() {
           </Button>
         </CardContent>
       </Card>
+
+      {data.sharer?.id ? <CreatorFollowPrompt creatorId={data.sharer.id} creatorName={data.sharer.displayName || data.sharer.username} /> : null}
 
       {user && (
         <Card>

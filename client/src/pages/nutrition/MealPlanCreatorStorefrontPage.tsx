@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreatorFollowButton, MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
+import { ConversionBadges } from "@/components/nutrition/social/conversionUtils";
 import { Calendar, ChefHat, DollarSign, Star, Users } from "lucide-react";
 
 type CreatorPayload = {
@@ -100,7 +101,11 @@ export default function MealPlanCreatorStorefrontPage() {
             <p className="mt-1 text-sm text-muted-foreground">@{creator.username} • {creator.followerCount || 0} followers</p>
             {creator.bio ? <p className="mt-3 max-w-3xl text-muted-foreground">{creator.bio}</p> : <p className="mt-3 text-muted-foreground">This creator is building a meal-planner storefront.</p>}
           </div>
-          <CreatorFollowButton creatorId={creator.id} />
+          <div className="flex flex-col gap-2">
+            <CreatorFollowButton creatorId={creator.id} />
+            <Button variant="outline" onClick={() => document.getElementById("creator-plans")?.scrollIntoView({ behavior: "smooth" })}>Browse Plans</Button>
+            <Button variant="outline" onClick={() => document.getElementById("creator-shared-weeks")?.scrollIntoView({ behavior: "smooth" })}>View Shared Weeks</Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -114,11 +119,11 @@ export default function MealPlanCreatorStorefrontPage() {
 
 
       <div className="grid gap-4 md:grid-cols-2">
-        <SpotlightPlans title="Top liked plans" description="Marketplace plans ranked by social likes." plans={topLikedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
-        <SpotlightPlans title="Top saved plans" description="Marketplace plans shoppers are saving most." plans={topSavedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
+        <SpotlightPlans title="Most Liked" description="Marketplace plans ranked by social likes." plans={topLikedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
+        <SpotlightPlans title="Most Saved" description="Marketplace plans shoppers are saving most." plans={topSavedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
       </div>
 
-      <Card>
+      <Card id="creator-shared-weeks">
         <CardHeader>
           <CardTitle>Recent shared weeks</CardTitle>
           <CardDescription>Reusable public weekly planner snapshots from this creator.</CardDescription>
@@ -142,7 +147,7 @@ export default function MealPlanCreatorStorefrontPage() {
         </CardContent>
       </Card>
 
-      <Card>
+      <Card id="creator-plans">
         <CardHeader>
           <CardTitle>Published meal plans</CardTitle>
           <CardDescription>Creator storefront catalog for marketplace plans.</CardDescription>
@@ -161,6 +166,7 @@ export default function MealPlanCreatorStorefrontPage() {
                     <h3 className="font-semibold">{plan.blueprint.title}</h3>
                     {plan.blueprint.description ? <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">{plan.blueprint.description}</p> : null}
                   </div>
+                  <ConversionBadges input={{ priceInCents: plan.blueprint.priceInCents, avgRating: plan.avgRating, reviewCount: plan.reviewCount, salesCount: plan.blueprint.salesCount, social: plan.social, creatorFollowerCount: creator.followerCount }} />
                   <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1"><Calendar className="h-3.5 w-3.5" />{plan.blueprint.duration} {plan.blueprint.durationUnit || "days"}</span>
                     <span className="inline-flex items-center gap-1"><DollarSign className="h-3.5 w-3.5" />{money(plan.blueprint.priceInCents)}</span>
@@ -168,7 +174,7 @@ export default function MealPlanCreatorStorefrontPage() {
                     <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" />{plan.blueprint.salesCount}</span>
                   </div>
                   <MealPlannerSocialActions target="meal-plan" id={plan.blueprint.id} initialStats={plan.social} compact />
-                  <Button className="w-full" variant="outline" onClick={() => setLocation(`/nutrition/meal-plans/${plan.blueprint.id}`)}>View details</Button>
+                  <Button className="w-full" onClick={() => setLocation(`/nutrition/meal-plans/${plan.blueprint.id}`)}>Start with this plan</Button>
                 </CardContent>
               </Card>
             ))}

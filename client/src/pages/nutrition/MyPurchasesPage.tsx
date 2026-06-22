@@ -1,5 +1,5 @@
 // client/src/pages/nutrition/MyPurchasesPage.tsx
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Bookmark, Calendar, DollarSign, ShoppingBag, ArrowLeft, ExternalLink } from "lucide-react";
-import { MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
+import { CreatorProfileLink, MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
 
 type PurchaseRow = {
   purchase: {
@@ -73,6 +73,7 @@ function formatDate(iso: string) {
 
 export default function MyPurchasesPage() {
   const [, setLocation] = useLocation();
+  const [libraryTab, setLibraryTab] = useState<"purchased" | "saved-plans" | "saved-weeks">("purchased");
 
   const {
     data,
@@ -112,38 +113,46 @@ export default function MyPurchasesPage() {
 
       <Card className="mb-6">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Bookmark className="h-5 w-5" /> Saved planner items</CardTitle>
-          <CardDescription>Bookmarked marketplace plans and public shared weeks.</CardDescription>
+          <CardTitle className="flex items-center gap-2"><Bookmark className="h-5 w-5" /> Planner library</CardTitle>
+          <CardDescription>Purchased plans, saved plans, and saved shared weeks with quick actions.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant={libraryTab === "purchased" ? "default" : "outline"} onClick={() => setLibraryTab("purchased")}>Purchased Plans ({purchases.length})</Button>
+            <Button size="sm" variant={libraryTab === "saved-plans" ? "default" : "outline"} onClick={() => setLibraryTab("saved-plans")}>Saved Plans ({savedPlans.length})</Button>
+            <Button size="sm" variant={libraryTab === "saved-weeks" ? "default" : "outline"} onClick={() => setLibraryTab("saved-weeks")}>Saved Shared Weeks ({savedWeeks.length})</Button>
+          </div>
           {savedQuery.isLoading ? <p className="text-sm text-muted-foreground">Loading saved items…</p> : null}
-          {!savedQuery.isLoading && savedPlans.length === 0 && savedWeeks.length === 0 ? <p className="text-sm text-muted-foreground">No saved planner items yet. Tap Save on marketplace plans or shared weeks to collect them here.</p> : null}
-          {savedPlans.length > 0 ? <div className="text-sm font-semibold">Marketplace plans</div> : null}
-          {savedPlans.map((item) => (
+          {libraryTab === "purchased" ? <p className="text-sm text-muted-foreground">Purchased plans are listed below with full purchase details.</p> : null}
+          {libraryTab === "saved-plans" && !savedQuery.isLoading && savedPlans.length === 0 ? <p className="text-sm text-muted-foreground">No saved marketplace plans yet. Tap Save on marketplace plans to collect them here.</p> : null}
+          {libraryTab === "saved-plans" && savedPlans.map((item) => (
             <div key={item.blueprint.id} className="rounded-lg border p-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <div className="font-semibold">{item.blueprint.title}</div>
-                  <div className="text-sm text-muted-foreground">By {item.creator.displayName || item.creator.username} • {formatMoney(item.blueprint.priceInCents)}</div>
+                  <div className="text-sm text-muted-foreground">By <CreatorProfileLink creatorId={item.creator.id}>{item.creator.displayName || item.creator.username}</CreatorProfileLink> • {formatMoney(item.blueprint.priceInCents)}</div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <MealPlannerSocialActions target="meal-plan" id={item.blueprint.id} initialStats={item.social} compact />
-                  <Button size="sm" variant="outline" onClick={() => setLocation(`/nutrition/meal-plans/${item.blueprint.id}`)}>Open</Button>
+                  <MealPlannerSocialActions target="meal-plan" id={item.blueprint.id} initialStats={item.social} compact saveActionLinks={{ creatorHref: `/nutrition/creators/${item.creator.id}` }} />
+                  <Button size="sm" variant="outline" onClick={() => setLocation(`/nutrition/meal-plans/${item.blueprint.id}`)}>View</Button>
+                  <Button size="sm" variant="outline" onClick={() => setLocation(`/nutrition/creators/${item.creator.id}`)}>View creator</Button>
                 </div>
               </div>
             </div>
           ))}
-          {savedWeeks.length > 0 ? <div className="text-sm font-semibold">Shared weeks</div> : null}
-          {savedWeeks.map((item) => (
+          {libraryTab === "saved-weeks" && !savedQuery.isLoading && savedWeeks.length === 0 ? <p className="text-sm text-muted-foreground">No saved shared weeks yet. Save public weeks to collect reusable ideas here.</p> : null}
+          {libraryTab === "saved-weeks" && savedWeeks.map((item) => (
             <div key={item.token} className="rounded-lg border p-4">
               <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <div>
                   <div className="font-semibold">Week of {item.weekAnchor}</div>
-                  <div className="text-sm text-muted-foreground">Shared by {item.sharer.displayName || item.sharer.username || "Chefsire member"}</div>
+                  <div className="text-sm text-muted-foreground">Shared by <CreatorProfileLink creatorId={item.sharer.id}>{item.sharer.displayName || item.sharer.username || "Chefsire member"}</CreatorProfileLink></div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <MealPlannerSocialActions target="shared-week" id={item.token} initialStats={item.social} compact />
-                  <Button size="sm" variant="outline" onClick={() => setLocation(`/meal-planner/shared/${item.token}`)}>Open</Button>
+                  <MealPlannerSocialActions target="shared-week" id={item.token} initialStats={item.social} compact saveActionLinks={{ creatorHref: item.sharer.id ? `/nutrition/creators/${item.sharer.id}` : undefined }} />
+                  <Button size="sm" variant="outline" onClick={() => setLocation(`/meal-planner/shared/${item.token}`)}>View</Button>
+                  <Button size="sm" onClick={() => setLocation(`/meal-planner/shared/${item.token}`)}>Copy week</Button>
+                  {item.sharer.id ? <Button size="sm" variant="outline" onClick={() => setLocation(`/nutrition/creators/${item.sharer.id}`)}>View creator</Button> : null}
                 </div>
               </div>
             </div>
