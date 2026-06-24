@@ -46,9 +46,9 @@ export default function CampaignCard({ campaign, featured = false }: { campaign:
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>Preview weekly layout</DropdownMenuItem>
-              <DropdownMenuItem>Compare macros</DropdownMenuItem>
-              <DropdownMenuItem>Share campaign</DropdownMenuItem>
+              <DropdownMenuItem disabled>Preview weekly layout — Coming soon</DropdownMenuItem>
+              <DropdownMenuItem disabled>Compare macros — Coming soon</DropdownMenuItem>
+              <DropdownMenuItem disabled>Share campaign — Coming soon</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -112,9 +112,9 @@ export default function CampaignCard({ campaign, featured = false }: { campaign:
             <span className="inline-flex items-center gap-1"><GitFork className="h-4 w-4" /> {compactNumber(campaign.remixes)} remixes</span>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" className="rounded-full">Preview</Button>
-            <Button className="rounded-full bg-slate-950 text-white hover:bg-emerald-700">
-              <GitFork className="mr-2 h-4 w-4" /> Remix
+            <Button variant="outline" className="rounded-full" disabled title="Campaign previews are coming soon.">Preview — Coming soon</Button>
+            <Button className="rounded-full bg-slate-950 text-white hover:bg-emerald-700" disabled title="Campaign remixing is coming soon.">
+              <GitFork className="mr-2 h-4 w-4" /> Remix — Coming soon
             </Button>
           </div>
         </div>
