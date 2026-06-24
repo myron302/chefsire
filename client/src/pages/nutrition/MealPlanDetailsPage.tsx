@@ -1,5 +1,5 @@
 // client/src/pages/nutrition/MealPlanDetailsPage.tsx
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { useUser } from "@/contexts/UserContext";
 import { ArrowLeft, BarChart3, Calendar, DollarSign, Star, User, Send } from "lucide-react";
 import { CreatorFollowButton, CreatorProfileLink, MealPlannerCommentsPanel, MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
 import { CreatorFollowPrompt } from "@/components/nutrition/social/conversionUtils";
+import { trackMealPlannerEventOnce } from "@/lib/mealPlannerAnalytics";
 
 type MealPlanDetailsResponse = {
   plan: {
@@ -116,6 +117,11 @@ export default function MealPlanDetailsPage() {
 
   const blueprint = data?.plan?.blueprint;
   const creator = data?.plan?.creator;
+
+  useEffect(() => {
+    if (!blueprint?.id || !creator?.id) return;
+    trackMealPlannerEventOnce({ eventType: "plan_view", mealPlanId: blueprint.id, creatorId: creator.id });
+  }, [blueprint?.id, creator?.id]);
 
   // Check if the current user already has a review
   const myExistingReview = useMemo(

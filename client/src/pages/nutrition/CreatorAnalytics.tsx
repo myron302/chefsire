@@ -17,6 +17,7 @@ type CreatorAnalyticsData = {
     totalWeekCopies: Count;
     totalMarketplacePurchases: number;
     totalProfileViews: Count;
+    totalPlanViews?: Count;
     plansPublished: number;
     sharedWeeksPublished: number;
   };
@@ -31,8 +32,9 @@ type CreatorAnalyticsData = {
   topContent: {
     mostSavedPlans: Array<{ id: string; title: string; saveCount: number; purchaseCount: number; likeCount: number; reviewCount: number }>;
     mostSavedSharedWeeks: Array<{ token: string; weekAnchor: string; updatedAt: string | null; saveCount: number; likeCount: number; commentCount: number; copyCount: Count }>;
-    mostViewedPlan: null;
-    highestConvertingPlan: null;
+    mostViewedPlan: { id: string; title: string; view_count: number } | null;
+    mostCopiedSharedWeek?: { token: string; week_anchor: string; copy_count: number } | null;
+    highestConvertingPlan: { id: string; title: string; view_count: number; purchase_count: number } | null;
   };
   badges: Array<{ label: string; description: string }>;
   daily: Array<{ date: string; totalSales?: number; totalRevenueCents?: number }>;
@@ -111,9 +113,10 @@ export default function CreatorAnalytics() {
         <MetricCard title="Total followers" value={data.totals.totalFollowers} help={data.totals.totalFollowers ? "People following your creator profile" : "No followers yet"} icon={Users} />
         <MetricCard title="Total plan saves" value={data.totals.totalPlanSaves} help={data.totals.totalPlanSaves ? "Marketplace plans saved by users" : "No saved plans yet"} icon={Heart} />
         <MetricCard title="Shared week saves" value={data.totals.totalSharedWeekSaves} help={data.totals.totalSharedWeekSaves ? "Public weeks saved by users" : "No saved shared weeks yet"} icon={Calendar} />
-        <MetricCard title="Week copies" value={data.totals.totalWeekCopies} help={data.unavailableMetrics.weekCopies} icon={Copy} />
+        <MetricCard title="Week copies" value={data.totals.totalWeekCopies} help={data.totals.totalWeekCopies === 0 ? "No copied shared weeks yet" : "Successful shared-week copy actions"} icon={Copy} />
         <MetricCard title="Marketplace purchases" value={data.totals.totalMarketplacePurchases} help="Completed persisted meal plan purchases" icon={ShoppingBag} />
-        <MetricCard title="Profile/storefront views" value={data.totals.totalProfileViews} help={data.unavailableMetrics.profileViews} icon={Eye} />
+        <MetricCard title="Storefront views" value={data.totals.totalProfileViews} help={data.totals.totalProfileViews === 0 ? "No storefront views yet" : "Tracked storefront page opens"} icon={Eye} />
+        <MetricCard title="Plan views" value={data.totals.totalPlanViews ?? null} help={(data.totals.totalPlanViews || 0) === 0 ? "No meal plan views yet" : "Tracked plan detail opens"} icon={Eye} />
         <MetricCard title="Published plans" value={data.totals.plansPublished} help="Currently published marketplace plans" icon={BarChart3} />
         <MetricCard title="Public shared weeks" value={data.totals.sharedWeeksPublished} help="Reusable public weekly planner snapshots" icon={Calendar} />
       </div>
@@ -122,7 +125,7 @@ export default function CreatorAnalytics() {
         <MetricCard title="Followers this week" value={data.weekly.followersThisWeek} help="Since the start of this week" icon={Users} />
         <MetricCard title="Plan saves this week" value={data.weekly.planSavesThisWeek} help="Timestamped saves this week" icon={Heart} />
         <MetricCard title="Week saves this week" value={data.weekly.sharedWeekSavesThisWeek} help="Timestamped shared week saves this week" icon={Calendar} />
-        <MetricCard title="Copies this week" value={data.weekly.copiesThisWeek} help={data.unavailableMetrics.weekCopies} icon={Copy} />
+        <MetricCard title="Copies this week" value={data.weekly.copiesThisWeek} help={data.weekly.copiesThisWeek === 0 ? "No copies since the start of this week" : "Successful copies this week"} icon={Copy} />
         <MetricCard title="Purchases this week" value={data.weekly.purchasesThisWeek} help="Completed purchases this week" icon={ShoppingBag} />
       </div>
 
@@ -137,6 +140,7 @@ export default function CreatorAnalytics() {
       <div className="grid gap-4 lg:grid-cols-2">
         <TopPlans plans={data.topContent.mostSavedPlans} onOpen={(id) => setLocation(`/nutrition/meal-plans/${id}`)} />
         <TopWeeks weeks={data.topContent.mostSavedSharedWeeks} onOpen={(token) => setLocation(`/meal-planner/shared/${token}`)} />
+        <TopEventContent data={data} onPlan={(id) => setLocation(`/nutrition/meal-plans/${id}`)} onWeek={(token) => setLocation(`/meal-planner/shared/${token}`)} />
       </div>
 
       <Card>
@@ -155,5 +159,18 @@ function TopPlans({ plans, onOpen }: { plans: CreatorAnalyticsData["topContent"]
 }
 
 function TopWeeks({ weeks, onOpen }: { weeks: CreatorAnalyticsData["topContent"]["mostSavedSharedWeeks"]; onOpen: (token: string) => void }) {
-  return <Card><CardHeader><CardTitle>Most saved shared weeks</CardTitle><CardDescription>Copy counts are not tracked yet, so shared weeks are ranked by saves.</CardDescription></CardHeader><CardContent className="space-y-3">{weeks.length === 0 ? <p className="text-sm text-muted-foreground">No copied weeks yet. Shared week saves will appear here when users save your public weeks.</p> : null}{weeks.map((week) => <div key={week.token} className="flex items-center justify-between gap-3 rounded-lg border p-3"><div><div className="font-medium">Week of {week.weekAnchor}</div><div className="text-xs text-muted-foreground">{week.saveCount} saves • {week.copyCount === null ? "Copies not tracked yet" : `${week.copyCount} copies`} • {week.likeCount} likes</div></div><Button size="sm" variant="outline" onClick={() => onOpen(week.token)}>View</Button></div>)}</CardContent></Card>;
+  return <Card><CardHeader><CardTitle>Most saved shared weeks</CardTitle><CardDescription>Ranked by tracked copies, then saves.</CardDescription></CardHeader><CardContent className="space-y-3">{weeks.length === 0 ? <p className="text-sm text-muted-foreground">No copied or saved shared weeks yet.</p> : null}{weeks.map((week) => <div key={week.token} className="flex items-center justify-between gap-3 rounded-lg border p-3"><div><div className="font-medium">Week of {week.weekAnchor}</div><div className="text-xs text-muted-foreground">{week.saveCount} saves • {Number(week.copyCount || 0)} copies • {week.likeCount} likes</div></div><Button size="sm" variant="outline" onClick={() => onOpen(week.token)}>View</Button></div>)}</CardContent></Card>;
+}
+
+
+function TopEventContent({ data, onPlan, onWeek }: { data: CreatorAnalyticsData; onPlan: (id: string) => void; onWeek: (token: string) => void }) {
+  const plan = data.topContent.mostViewedPlan;
+  const week = data.topContent.mostCopiedSharedWeek;
+  const converting = data.topContent.highestConvertingPlan;
+  return <Card><CardHeader><CardTitle>Tracked view and copy leaders</CardTitle><CardDescription>Aggregated analytics events only; viewer identities stay private.</CardDescription></CardHeader><CardContent className="space-y-3">
+    {!plan && !week && !converting ? <p className="text-sm text-muted-foreground">Not tracked yet. Views and copies will appear after audience activity.</p> : null}
+    {plan ? <div className="flex items-center justify-between rounded-lg border p-3"><div><div className="font-medium">Most viewed plan: {plan.title}</div><div className="text-xs text-muted-foreground">{Number(plan.view_count || 0)} views</div></div><Button size="sm" variant="outline" onClick={() => onPlan(plan.id)}>View</Button></div> : null}
+    {week ? <div className="flex items-center justify-between rounded-lg border p-3"><div><div className="font-medium">Most copied shared week: Week of {week.week_anchor || "shared week"}</div><div className="text-xs text-muted-foreground">{Number(week.copy_count || 0)} copies</div></div><Button size="sm" variant="outline" onClick={() => onWeek(week.token)}>View</Button></div> : null}
+    {converting ? <div className="rounded-lg border p-3"><div className="font-medium">Highest view-to-purchase plan: {converting.title}</div><div className="text-xs text-muted-foreground">{Number(converting.purchase_count || 0)} purchases from {Number(converting.view_count || 0)} tracked views</div></div> : null}
+  </CardContent></Card>;
 }

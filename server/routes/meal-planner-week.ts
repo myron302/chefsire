@@ -14,6 +14,7 @@ import {
 import { optionalAuth, requireAuth } from "../middleware";
 import { ensureMealPlannerWeekSchema } from "./meal-planner-week/schema.js";
 import { ensureMealSocialSchema, getSharedWeekSocialStats } from "./meal-social.js";
+import { recordMealPlannerEvent } from "./meal-planner-events.js";
 import {
   addDays,
   assertPremiumNutrition,
@@ -1086,6 +1087,18 @@ router.post("/week/shared/:token/copy", requireAuth, async (req: Request, res: R
       : copyMode === "append"
         ? `Added ${entriesToInsert.length} meals to ${targetWeekMealsBeforeCount} existing meals.`
         : `Added ${entriesToInsert.length} meals and skipped ${skippedDuplicatesCount} duplicates.`;
+
+    try {
+      await recordMealPlannerEvent({
+        eventType: "shared_week_copy",
+        creatorId: shareRow.user_id,
+        actorUserId: userId,
+        sharedWeekToken: token,
+        metadata: { mergeMode: copyMode, copiedEntriesCount: entriesToInsert.length, sourceEntriesCount: sourceEntries.length, targetWeekStart: fmtISODate(targetWeekStart) },
+      });
+    } catch (analyticsError) {
+      console.error("Error recording shared week copy analytics:", analyticsError);
+    }
 
     res.json({
       ok: true,
