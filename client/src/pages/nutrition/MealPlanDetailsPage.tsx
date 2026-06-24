@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
-import { ArrowLeft, Calendar, DollarSign, Star, User, Send } from "lucide-react";
+import { ArrowLeft, BarChart3, Calendar, DollarSign, Star, User, Send } from "lucide-react";
 import { CreatorFollowButton, CreatorProfileLink, MealPlannerCommentsPanel, MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
 import { CreatorFollowPrompt } from "@/components/nutrition/social/conversionUtils";
 
@@ -219,6 +219,7 @@ export default function MealPlanDetailsPage() {
                     <User className="w-4 h-4" />
                     By <CreatorProfileLink creatorId={creator.id}>{creator.displayName || creator.username}</CreatorProfileLink>
                     <CreatorFollowButton creatorId={creator.id} compact />
+                    {user?.id === creator.id ? <Button size="sm" variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-1 h-3.5 w-3.5" />Analytics</Button> : null}
                   </span>
                 ) : null}
               </CardDescription>

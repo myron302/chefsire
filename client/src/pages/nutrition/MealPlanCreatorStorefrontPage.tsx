@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { CreatorFollowButton, MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
 import { ConversionBadges } from "@/components/nutrition/social/conversionUtils";
-import { Calendar, ChefHat, DollarSign, Star, Users } from "lucide-react";
+import { BarChart3, Calendar, ChefHat, DollarSign, Star, Users } from "lucide-react";
 
 type CreatorPayload = {
   creator: {
@@ -103,6 +103,7 @@ export default function MealPlanCreatorStorefrontPage() {
           </div>
           <div className="flex flex-col gap-2">
             <CreatorFollowButton creatorId={creator.id} />
+            <Button variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-2 h-4 w-4" />Creator Analytics</Button>
             <Button variant="outline" onClick={() => document.getElementById("creator-plans")?.scrollIntoView({ behavior: "smooth" })}>Browse Plans</Button>
             <Button variant="outline" onClick={() => document.getElementById("creator-shared-weeks")?.scrollIntoView({ behavior: "smooth" })}>View Shared Weeks</Button>
           </div>
