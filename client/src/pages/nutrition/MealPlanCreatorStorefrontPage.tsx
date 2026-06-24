@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -7,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { CreatorFollowButton, MealPlannerSocialActions } from "@/components/nutrition/social/MealPlannerSocial";
 import { ConversionBadges } from "@/components/nutrition/social/conversionUtils";
 import { BarChart3, Calendar, ChefHat, DollarSign, Star, Users } from "lucide-react";
+import { trackMealPlannerEventOnce } from "@/lib/mealPlannerAnalytics";
 
 type CreatorPayload = {
   creator: {
@@ -73,6 +75,12 @@ export default function MealPlanCreatorStorefrontPage() {
     },
     enabled: Boolean(creatorId),
   });
+
+  useEffect(() => {
+    const trackedCreatorId = creatorQuery.data?.creator?.id;
+    if (!trackedCreatorId) return;
+    trackMealPlannerEventOnce({ eventType: "storefront_view", creatorId: trackedCreatorId });
+  }, [creatorQuery.data?.creator?.id]);
 
   if (creatorQuery.isLoading) return <div className="mx-auto max-w-6xl p-6 text-sm text-muted-foreground">Loading creator storefront…</div>;
   if (creatorQuery.error || !creatorQuery.data) {

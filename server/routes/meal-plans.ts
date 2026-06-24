@@ -1,4 +1,5 @@
 import express, { type Request, type Response } from "express";
+import { z } from "zod";
 import { db } from "../db/index.js";
 import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import {
@@ -21,8 +22,61 @@ import {
   toIsoDateString,
 } from "./meal-plans/utils.js";
 import { ensureMealSocialSchema, getMealPlanSocialStats } from "./meal-social.js";
+import { MEAL_PLANNER_EVENT_TYPES, ensureMealPlannerEventsSchema, recordMealPlannerEvent } from "./meal-planner-events.js";
 
 const router = express.Router();
+
+
+const plannerEventSchema = z.object({
+  eventType: z.enum(MEAL_PLANNER_EVENT_TYPES),
+  creatorId: z.string().trim().min(1).optional(),
+  mealPlanId: z.string().trim().min(1).optional(),
+  sharedWeekToken: z.string().trim().min(1).max(160).optional(),
+  metadata: z.record(z.unknown()).optional(),
+  sessionKey: z.string().trim().max(160).optional(),
+});
+
+router.post("/meal-planner/events", optionalAuth, async (req: Request, res: Response) => {
+  try {
+    const parsed = plannerEventSchema.safeParse(req.body || {});
+    if (!parsed.success) return res.status(400).json({ message: "Invalid analytics event" });
+    const { eventType, mealPlanId, sharedWeekToken, sessionKey } = parsed.data;
+    let creatorId = parsed.data.creatorId || null;
+
+    if (mealPlanId) {
+      const planResult = await db.execute(sql`SELECT creator_id, status FROM meal_plan_blueprints WHERE id = ${mealPlanId} LIMIT 1`);
+      const plan = (planResult as any).rows?.[0];
+      if (!plan || (eventType === "plan_view" && plan.status !== "published")) return res.status(404).json({ message: "Meal plan not found" });
+      creatorId = plan.creator_id;
+    }
+
+    if (sharedWeekToken) {
+      const shareResult = await db.execute(sql`SELECT user_id, visibility FROM meal_plan_week_shares WHERE public_share_token = ${sharedWeekToken} LIMIT 1`);
+      const share = (shareResult as any).rows?.[0];
+      if (!share || share.visibility !== "public") return res.status(404).json({ message: "Shared week not found" });
+      creatorId = creatorId || share.user_id;
+    }
+
+    if ((eventType === "plan_view" || eventType === "marketplace_plan_save") && !mealPlanId) return res.status(400).json({ message: "mealPlanId is required" });
+    if ((eventType === "shared_week_view" || eventType === "shared_week_copy" || eventType === "shared_week_save") && !sharedWeekToken) return res.status(400).json({ message: "sharedWeekToken is required" });
+    if (eventType === "storefront_view" && !creatorId) return res.status(400).json({ message: "creatorId is required" });
+
+    await recordMealPlannerEvent({
+      eventType,
+      creatorId,
+      actorUserId: (req.user as any)?.id || null,
+      mealPlanId: mealPlanId || null,
+      sharedWeekToken: sharedWeekToken || null,
+      metadata: parsed.data.metadata || {},
+      sessionKey: sessionKey || req.get("x-analytics-session") || null,
+      dedupeViews: true,
+    });
+    res.json({ ok: true });
+  } catch (error) {
+    console.error("Error recording meal planner analytics event:", error);
+    res.status(202).json({ ok: false });
+  }
+});
 
 // ============================================================
 // CREATOR - MEAL PLAN MANAGEMENT
@@ -530,7 +584,9 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
     const userId = req.user!.id;
     const weekStart = sql`date_trunc('week', NOW())`;
 
-    const [totalsResult, trendsResult, topPlansResult, topSharedWeeksResult, daily, salesTopPlans] = await Promise.all([
+    await ensureMealPlannerEventsSchema();
+
+    const [totalsResult, trendsResult, topPlansResult, topSharedWeeksResult, daily, salesTopPlans, eventTotalsResult, mostViewedPlanResult, mostCopiedWeekResult, highestConvertingPlanResult] = await Promise.all([
       db.execute(sql`
         SELECT
           COALESCE(u.followers_count, 0)::int AS total_followers,
@@ -571,18 +627,29 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
         SELECT sh.public_share_token, sh.week_anchor, sh.updated_at,
           COUNT(DISTINCT s.id)::int AS save_count,
           COUNT(DISTINCT l.id)::int AS like_count,
-          COUNT(DISTINCT c.id)::int AS comment_count
+          COUNT(DISTINCT c.id)::int AS comment_count,
+          COUNT(DISTINCT e.id)::int AS copy_count
         FROM meal_plan_week_shares sh
         LEFT JOIN shared_week_saves s ON s.public_share_token = sh.public_share_token
         LEFT JOIN shared_week_likes l ON l.public_share_token = sh.public_share_token
         LEFT JOIN shared_week_comments c ON c.public_share_token = sh.public_share_token AND c.deleted_at IS NULL
+        LEFT JOIN meal_planner_analytics_events e ON e.shared_week_token = sh.public_share_token AND e.event_type = 'shared_week_copy'
         WHERE sh.user_id = ${userId} AND sh.visibility = 'public' AND sh.public_share_token IS NOT NULL
         GROUP BY sh.public_share_token, sh.week_anchor, sh.updated_at
-        ORDER BY save_count DESC, like_count DESC, sh.updated_at DESC
+        ORDER BY copy_count DESC, save_count DESC, like_count DESC, sh.updated_at DESC
         LIMIT 5
       `),
       db.select().from(creatorAnalytics).where(eq(creatorAnalytics.creatorId, userId)).orderBy(desc(creatorAnalytics.date)).limit(30),
       db.select({ blueprint: mealPlanBlueprints, totalRevenue: sql`${mealPlanBlueprints.salesCount} * ${mealPlanBlueprints.priceInCents}` }).from(mealPlanBlueprints).where(eq(mealPlanBlueprints.creatorId, userId)).orderBy(desc(mealPlanBlueprints.salesCount)).limit(10),
+      db.execute(sql`SELECT
+        COUNT(*) FILTER (WHERE event_type = 'storefront_view')::int AS storefront_views,
+        COUNT(*) FILTER (WHERE event_type = 'plan_view')::int AS plan_views,
+        COUNT(*) FILTER (WHERE event_type = 'shared_week_copy')::int AS week_copies,
+        COUNT(*) FILTER (WHERE event_type = 'shared_week_copy' AND created_at >= ${weekStart})::int AS week_copies_this_week
+        FROM meal_planner_analytics_events WHERE creator_id = ${userId}`),
+      db.execute(sql`SELECT e.meal_plan_id AS id, b.title, COUNT(*)::int AS view_count FROM meal_planner_analytics_events e INNER JOIN meal_plan_blueprints b ON b.id = e.meal_plan_id WHERE e.creator_id = ${userId} AND e.event_type = 'plan_view' GROUP BY e.meal_plan_id, b.title ORDER BY view_count DESC LIMIT 1`),
+      db.execute(sql`SELECT e.shared_week_token AS token, sh.week_anchor, COUNT(*)::int AS copy_count FROM meal_planner_analytics_events e LEFT JOIN meal_plan_week_shares sh ON sh.public_share_token = e.shared_week_token WHERE e.creator_id = ${userId} AND e.event_type = 'shared_week_copy' GROUP BY e.shared_week_token, sh.week_anchor ORDER BY copy_count DESC LIMIT 1`),
+      db.execute(sql`SELECT b.id, b.title, COUNT(e.id)::int AS view_count, COUNT(DISTINCT p.id)::int AS purchase_count FROM meal_plan_blueprints b LEFT JOIN meal_planner_analytics_events e ON e.meal_plan_id = b.id AND e.event_type = 'plan_view' LEFT JOIN meal_plan_purchases p ON p.blueprint_id = b.id AND p.payment_status = 'completed' WHERE b.creator_id = ${userId} GROUP BY b.id, b.title HAVING COUNT(e.id) > 0 ORDER BY (COUNT(DISTINCT p.id)::float / NULLIF(COUNT(e.id), 0)) DESC, purchase_count DESC LIMIT 1`),
     ]);
 
     const totalsRow = (totalsResult as any).rows?.[0] || {};
@@ -592,6 +659,10 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
     const totalSharedWeekSaves = Number(totalsRow.total_shared_week_saves || 0);
     const totalMarketplacePurchases = Number(totalsRow.total_marketplace_purchases || 0);
     const sharedWeekSavesThisWeek = Number(trendRow.shared_week_saves_this_week || 0);
+    const eventTotals = (eventTotalsResult as any).rows?.[0] || {};
+    const storefrontViews = Number(eventTotals.storefront_views || 0);
+    const planViews = Number(eventTotals.plan_views || 0);
+    const totalWeekCopies = Number(eventTotals.week_copies || 0);
     const badges = [
       totalFollowers >= 10 && { label: "Community Favorite", description: "10+ followers" },
       totalPlanSaves >= 10 && { label: "Top Saved Creator", description: "10+ marketplace plan saves" },
@@ -606,9 +677,10 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
         totalFollowers,
         totalPlanSaves,
         totalSharedWeekSaves,
-        totalWeekCopies: null,
+        totalWeekCopies,
         totalMarketplacePurchases,
-        totalProfileViews: null,
+        totalProfileViews: storefrontViews,
+        totalPlanViews: planViews,
         plansPublished: Number(totalsRow.plans_published || 0),
         sharedWeeksPublished: Number(totalsRow.shared_weeks_published || 0),
       },
@@ -616,20 +688,16 @@ router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
         followersThisWeek: Number(trendRow.followers_this_week || 0),
         planSavesThisWeek: Number(trendRow.plan_saves_this_week || 0),
         sharedWeekSavesThisWeek,
-        copiesThisWeek: null,
+        copiesThisWeek: Number(eventTotals.week_copies_this_week || 0),
         purchasesThisWeek: Number(trendRow.purchases_this_week || 0),
       },
-      unavailableMetrics: {
-        weekCopies: "Shared week copy events are not tracked yet.",
-        profileViews: "Profile and storefront views are not tracked yet.",
-        planViews: "Meal plan views are not tracked yet.",
-        conversionRate: "Plan view-to-purchase conversion is not tracked yet.",
-      },
+      unavailableMetrics: {},
       topContent: {
         mostSavedPlans: ((topPlansResult as any).rows || []).map((row: any) => ({ id: row.id, title: row.title, saveCount: Number(row.save_count || 0), purchaseCount: Number(row.purchase_count || 0), likeCount: Number(row.like_count || 0), reviewCount: Number(row.review_count || 0) })),
-        mostSavedSharedWeeks: ((topSharedWeeksResult as any).rows || []).map((row: any) => ({ token: row.public_share_token, weekAnchor: row.week_anchor, updatedAt: row.updated_at, saveCount: Number(row.save_count || 0), likeCount: Number(row.like_count || 0), commentCount: Number(row.comment_count || 0), copyCount: null })),
-        mostViewedPlan: null,
-        highestConvertingPlan: null,
+        mostSavedSharedWeeks: ((topSharedWeeksResult as any).rows || []).map((row: any) => ({ token: row.public_share_token, weekAnchor: row.week_anchor, updatedAt: row.updated_at, saveCount: Number(row.save_count || 0), likeCount: Number(row.like_count || 0), commentCount: Number(row.comment_count || 0), copyCount: Number(row.copy_count || 0) })),
+        mostViewedPlan: (mostViewedPlanResult as any).rows?.[0] || null,
+        mostCopiedSharedWeek: (mostCopiedWeekResult as any).rows?.[0] || null,
+        highestConvertingPlan: (highestConvertingPlanResult as any).rows?.[0] || null,
       },
       badges,
       daily,

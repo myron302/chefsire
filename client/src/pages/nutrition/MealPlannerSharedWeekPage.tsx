@@ -9,6 +9,7 @@ import { CreatorFollowButton, CreatorProfileLink, MealPlannerCommentsPanel, Meal
 import { CreatorFollowPrompt } from '@/components/nutrition/social/conversionUtils';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
+import { trackMealPlannerEventOnce } from '@/lib/mealPlannerAnalytics';
 
 type SharedMeal = {
   name: string;
@@ -244,6 +245,11 @@ export default function MealPlannerSharedWeekPage() {
       cancelled = true;
     };
   }, [token]);
+
+  useEffect(() => {
+    if (!token || !data) return;
+    trackMealPlannerEventOnce({ eventType: 'shared_week_view', sharedWeekToken: token, creatorId: data.sharer?.id || null });
+  }, [token, data?.sharer?.id]);
 
   useEffect(() => {
     if (!user || !token) {
