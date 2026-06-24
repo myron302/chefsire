@@ -53,8 +53,8 @@ function SectionHeader({ eyebrow, title, description }: { eyebrow: string; title
         <h2 className="mt-2 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">{title}</h2>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">{description}</p>
       </div>
-      <Button variant="ghost" className="w-fit gap-2 rounded-full text-emerald-700 hover:text-emerald-800">
-        View all <ArrowRight className="h-4 w-4" />
+      <Button variant="ghost" className="w-fit gap-2 rounded-full text-emerald-700 hover:text-emerald-800" disabled title="Expanded campaign collections are coming soon.">
+        View all — Coming soon <ArrowRight className="h-4 w-4" />
       </Button>
     </div>
   );
@@ -148,7 +148,7 @@ export default function NutritionCampaignFeedPage() {
           </Card>
         </section>
 
-        <section className="space-y-5">
+        <section id="nutrition-campaign-grid" className="space-y-5 scroll-mt-6">
           <SectionHeader
             eyebrow="Discovery feed"
             title="Main Feed Grid"

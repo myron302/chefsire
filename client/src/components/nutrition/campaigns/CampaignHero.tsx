@@ -1,4 +1,5 @@
 import { ArrowRight, BarChart3, Flame, GitFork, Sparkles, Users } from "lucide-react";
+import { Link } from "wouter";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,11 +35,11 @@ export default function CampaignHero({ campaigns }: { campaigns: NutritionCampai
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
-            <Button size="lg" className="rounded-full bg-white text-slate-950 shadow-xl hover:bg-emerald-50">
-              Explore campaigns <ArrowRight className="ml-2 h-4 w-4" />
+            <Button size="lg" asChild className="rounded-full bg-white text-slate-950 shadow-xl hover:bg-emerald-50">
+              <a href="#nutrition-campaign-grid">Explore campaigns <ArrowRight className="ml-2 h-4 w-4" /></a>
             </Button>
-            <Button size="lg" variant="outline" className="rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white">
-              View creator playbooks
+            <Button size="lg" variant="outline" asChild className="rounded-full border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white">
+              <Link href="/nutrition/creators">View creator playbooks</Link>
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
