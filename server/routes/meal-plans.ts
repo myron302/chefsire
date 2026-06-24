@@ -528,37 +528,112 @@ router.delete("/meal-plans/:id", requireAuth, async (req: Request, res: Response
 router.get("/analytics", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = req.user!.id;
+    const weekStart = sql`date_trunc('week', NOW())`;
 
-    const [totals] = await db
-      .select({
-        // ⬇️ removed generic to avoid esbuild TS-parse error
-        totalSales: sql`sum(${creatorAnalytics.totalSales})`,
-        totalRevenue: sql`sum(${creatorAnalytics.totalRevenueCents})`,
-      })
-      .from(creatorAnalytics)
-      .where(eq(creatorAnalytics.creatorId, userId));
+    const [totalsResult, trendsResult, topPlansResult, topSharedWeeksResult, daily, salesTopPlans] = await Promise.all([
+      db.execute(sql`
+        SELECT
+          COALESCE(u.followers_count, 0)::int AS total_followers,
+          (SELECT COUNT(*)::int FROM meal_plan_saves s INNER JOIN meal_plan_blueprints b ON b.id = s.blueprint_id WHERE b.creator_id = ${userId}) AS total_plan_saves,
+          (SELECT COUNT(*)::int FROM shared_week_saves s INNER JOIN meal_plan_week_shares sh ON sh.public_share_token = s.public_share_token WHERE sh.user_id = ${userId} AND sh.visibility = 'public') AS total_shared_week_saves,
+          (SELECT COUNT(*)::int FROM meal_plan_purchases p INNER JOIN meal_plan_blueprints b ON b.id = p.blueprint_id WHERE b.creator_id = ${userId} AND p.payment_status = 'completed') AS total_marketplace_purchases,
+          (SELECT COALESCE(SUM(price_paid_cents), 0)::int FROM meal_plan_purchases p INNER JOIN meal_plan_blueprints b ON b.id = p.blueprint_id WHERE b.creator_id = ${userId} AND p.payment_status = 'completed') AS total_revenue_cents,
+          (SELECT COUNT(*)::int FROM meal_plan_blueprints b WHERE b.creator_id = ${userId} AND b.status = 'published') AS plans_published,
+          (SELECT COUNT(*)::int FROM meal_plan_week_shares sh WHERE sh.user_id = ${userId} AND sh.visibility = 'public' AND sh.public_share_token IS NOT NULL) AS shared_weeks_published
+        FROM users u
+        WHERE u.id = ${userId}
+        LIMIT 1
+      `),
+      db.execute(sql`
+        SELECT
+          (SELECT COUNT(*)::int FROM follows f WHERE f.following_id = ${userId} AND f.created_at >= ${weekStart}) AS followers_this_week,
+          (SELECT COUNT(*)::int FROM meal_plan_saves s INNER JOIN meal_plan_blueprints b ON b.id = s.blueprint_id WHERE b.creator_id = ${userId} AND s.created_at >= ${weekStart}) AS plan_saves_this_week,
+          (SELECT COUNT(*)::int FROM shared_week_saves s INNER JOIN meal_plan_week_shares sh ON sh.public_share_token = s.public_share_token WHERE sh.user_id = ${userId} AND sh.visibility = 'public' AND s.created_at >= ${weekStart}) AS shared_week_saves_this_week,
+          (SELECT COUNT(*)::int FROM meal_plan_purchases p INNER JOIN meal_plan_blueprints b ON b.id = p.blueprint_id WHERE b.creator_id = ${userId} AND p.payment_status = 'completed' AND p.created_at >= ${weekStart}) AS purchases_this_week
+      `),
+      db.execute(sql`
+        SELECT b.id, b.title, b.sales_count,
+          COUNT(DISTINCT s.id)::int AS save_count,
+          COUNT(DISTINCT l.id)::int AS like_count,
+          COUNT(DISTINCT r.id)::int AS review_count,
+          COUNT(DISTINCT p.id)::int AS purchase_count
+        FROM meal_plan_blueprints b
+        LEFT JOIN meal_plan_saves s ON s.blueprint_id = b.id
+        LEFT JOIN meal_plan_likes l ON l.blueprint_id = b.id
+        LEFT JOIN meal_plan_reviews r ON r.blueprint_id = b.id
+        LEFT JOIN meal_plan_purchases p ON p.blueprint_id = b.id AND p.payment_status = 'completed'
+        WHERE b.creator_id = ${userId} AND b.status = 'published'
+        GROUP BY b.id, b.title, b.sales_count
+        ORDER BY save_count DESC, purchase_count DESC, b.created_at DESC
+        LIMIT 5
+      `),
+      db.execute(sql`
+        SELECT sh.public_share_token, sh.week_anchor, sh.updated_at,
+          COUNT(DISTINCT s.id)::int AS save_count,
+          COUNT(DISTINCT l.id)::int AS like_count,
+          COUNT(DISTINCT c.id)::int AS comment_count
+        FROM meal_plan_week_shares sh
+        LEFT JOIN shared_week_saves s ON s.public_share_token = sh.public_share_token
+        LEFT JOIN shared_week_likes l ON l.public_share_token = sh.public_share_token
+        LEFT JOIN shared_week_comments c ON c.public_share_token = sh.public_share_token AND c.deleted_at IS NULL
+        WHERE sh.user_id = ${userId} AND sh.visibility = 'public' AND sh.public_share_token IS NOT NULL
+        GROUP BY sh.public_share_token, sh.week_anchor, sh.updated_at
+        ORDER BY save_count DESC, like_count DESC, sh.updated_at DESC
+        LIMIT 5
+      `),
+      db.select().from(creatorAnalytics).where(eq(creatorAnalytics.creatorId, userId)).orderBy(desc(creatorAnalytics.date)).limit(30),
+      db.select({ blueprint: mealPlanBlueprints, totalRevenue: sql`${mealPlanBlueprints.salesCount} * ${mealPlanBlueprints.priceInCents}` }).from(mealPlanBlueprints).where(eq(mealPlanBlueprints.creatorId, userId)).orderBy(desc(mealPlanBlueprints.salesCount)).limit(10),
+    ]);
 
-    const daily = await db
-      .select()
-      .from(creatorAnalytics)
-      .where(eq(creatorAnalytics.creatorId, userId))
-      .orderBy(desc(creatorAnalytics.date))
-      .limit(30);
-
-    const topPlans = await db
-      .select({
-        blueprint: mealPlanBlueprints,
-        totalRevenue: sql`${mealPlanBlueprints.salesCount} * ${mealPlanBlueprints.priceInCents}`,
-      })
-      .from(mealPlanBlueprints)
-      .where(eq(mealPlanBlueprints.creatorId, userId))
-      .orderBy(desc(mealPlanBlueprints.salesCount))
-      .limit(10);
+    const totalsRow = (totalsResult as any).rows?.[0] || {};
+    const trendRow = (trendsResult as any).rows?.[0] || {};
+    const totalFollowers = Number(totalsRow.total_followers || 0);
+    const totalPlanSaves = Number(totalsRow.total_plan_saves || 0);
+    const totalSharedWeekSaves = Number(totalsRow.total_shared_week_saves || 0);
+    const totalMarketplacePurchases = Number(totalsRow.total_marketplace_purchases || 0);
+    const sharedWeekSavesThisWeek = Number(trendRow.shared_week_saves_this_week || 0);
+    const badges = [
+      totalFollowers >= 10 && { label: "Community Favorite", description: "10+ followers" },
+      totalPlanSaves >= 10 && { label: "Top Saved Creator", description: "10+ marketplace plan saves" },
+      Number(trendRow.followers_this_week || 0) >= 3 && { label: "Fast Growing Creator", description: "3+ new followers this week" },
+      (Number(trendRow.followers_this_week || 0) + Number(trendRow.plan_saves_this_week || 0) + sharedWeekSavesThisWeek) >= 5 && { label: "Rising Creator", description: "5+ audience actions this week" },
+    ].filter(Boolean);
 
     res.json({
-      totals: normalizeAnalyticsTotals(totals),
+      totals: {
+        totalSales: totalMarketplacePurchases,
+        totalRevenue: String(Number(totalsRow.total_revenue_cents || 0) / 100),
+        totalFollowers,
+        totalPlanSaves,
+        totalSharedWeekSaves,
+        totalWeekCopies: null,
+        totalMarketplacePurchases,
+        totalProfileViews: null,
+        plansPublished: Number(totalsRow.plans_published || 0),
+        sharedWeeksPublished: Number(totalsRow.shared_weeks_published || 0),
+      },
+      weekly: {
+        followersThisWeek: Number(trendRow.followers_this_week || 0),
+        planSavesThisWeek: Number(trendRow.plan_saves_this_week || 0),
+        sharedWeekSavesThisWeek,
+        copiesThisWeek: null,
+        purchasesThisWeek: Number(trendRow.purchases_this_week || 0),
+      },
+      unavailableMetrics: {
+        weekCopies: "Shared week copy events are not tracked yet.",
+        profileViews: "Profile and storefront views are not tracked yet.",
+        planViews: "Meal plan views are not tracked yet.",
+        conversionRate: "Plan view-to-purchase conversion is not tracked yet.",
+      },
+      topContent: {
+        mostSavedPlans: ((topPlansResult as any).rows || []).map((row: any) => ({ id: row.id, title: row.title, saveCount: Number(row.save_count || 0), purchaseCount: Number(row.purchase_count || 0), likeCount: Number(row.like_count || 0), reviewCount: Number(row.review_count || 0) })),
+        mostSavedSharedWeeks: ((topSharedWeeksResult as any).rows || []).map((row: any) => ({ token: row.public_share_token, weekAnchor: row.week_anchor, updatedAt: row.updated_at, saveCount: Number(row.save_count || 0), likeCount: Number(row.like_count || 0), commentCount: Number(row.comment_count || 0), copyCount: null })),
+        mostViewedPlan: null,
+        highestConvertingPlan: null,
+      },
+      badges,
       daily,
-      topPlans,
+      topPlans: salesTopPlans,
     });
   } catch (error) {
     console.error("Error fetching analytics:", error);

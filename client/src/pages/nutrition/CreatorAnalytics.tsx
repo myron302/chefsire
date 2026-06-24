@@ -1,198 +1,159 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { DollarSign, TrendingUp, ShoppingBag, Star, Calendar } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Award, BarChart3, Calendar, Copy, Eye, Heart, ShoppingBag, Sparkles, Star, TrendingUp, Users } from "lucide-react";
 
-type AnalyticsData = {
+type Count = number | null;
+
+type CreatorAnalyticsData = {
   totals: {
     totalSales: number;
     totalRevenue: string;
+    totalFollowers: number;
+    totalPlanSaves: number;
+    totalSharedWeekSaves: number;
+    totalWeekCopies: Count;
+    totalMarketplacePurchases: number;
+    totalProfileViews: Count;
+    plansPublished: number;
+    sharedWeeksPublished: number;
   };
-  daily: Array<{
-    date: string;
-    sales: number;
-    revenue: string;
-  }>;
-  topPlans: Array<{
-    blueprint: {
-      id: string;
-      title: string;
-      price: string;
-      salesCount: number;
-    };
-    totalRevenue: string;
-  }>;
+  weekly: {
+    followersThisWeek: number;
+    planSavesThisWeek: number;
+    sharedWeekSavesThisWeek: number;
+    copiesThisWeek: Count;
+    purchasesThisWeek: number;
+  };
+  unavailableMetrics: Record<string, string>;
+  topContent: {
+    mostSavedPlans: Array<{ id: string; title: string; saveCount: number; purchaseCount: number; likeCount: number; reviewCount: number }>;
+    mostSavedSharedWeeks: Array<{ token: string; weekAnchor: string; updatedAt: string | null; saveCount: number; likeCount: number; commentCount: number; copyCount: Count }>;
+    mostViewedPlan: null;
+    highestConvertingPlan: null;
+  };
+  badges: Array<{ label: string; description: string }>;
+  daily: Array<{ date: string; totalSales?: number; totalRevenueCents?: number }>;
 };
 
+function MetricValue({ value }: { value: Count }) {
+  return value === null ? <span className="text-base font-semibold text-muted-foreground">Not tracked yet</span> : <>{Number(value || 0).toLocaleString()}</>;
+}
+
+function MetricCard({ title, value, help, icon: Icon }: { title: string; value: Count; help: string; icon: any }) {
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        <div className="text-2xl font-bold"><MetricValue value={value} /></div>
+        <p className="mt-1 text-xs text-muted-foreground">{help}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function CreatorAnalytics() {
-  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [, setLocation] = useLocation();
+  const [data, setData] = useState<CreatorAnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let mounted = true;
+    async function fetchAnalytics() {
+      try {
+        setLoading(true);
+        const response = await fetch("/api/analytics", { credentials: "include" });
+        if (!response.ok) throw new Error(`Failed to load analytics (${response.status})`);
+        const analyticsData = await response.json();
+        if (mounted) setData(analyticsData);
+      } catch (err: any) {
+        if (mounted) setError(err?.message || "Failed to fetch analytics");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    }
     fetchAnalytics();
+    return () => { mounted = false; };
   }, []);
 
-  const fetchAnalytics = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch("/api/analytics", {
-        credentials: "include",
-      });
+  if (loading) return <div className="mx-auto max-w-7xl p-6 text-center text-muted-foreground">Loading creator analytics…</div>;
+  if (error || !data) return <div className="mx-auto max-w-3xl p-6"><Card><CardHeader><CardTitle>Analytics unavailable</CardTitle><CardDescription>{error || "No analytics data available."}</CardDescription></CardHeader></Card></div>;
 
-      if (response.ok) {
-        const analyticsData = await response.json();
-        setData(analyticsData);
-      }
-    } catch (error) {
-      console.error("Failed to fetch analytics:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="max-w-7xl mx-auto p-6">
-        <p className="text-center text-muted-foreground">Loading analytics...</p>
-      </div>
-    );
-  }
-
-  if (!data) {
-    return (
-      <div className="max-w-7xl mx-auto p-6">
-        <p className="text-center text-muted-foreground">No analytics data available</p>
-      </div>
-    );
-  }
+  const hasAudienceActivity = data.totals.totalFollowers + data.totals.totalPlanSaves + data.totals.totalSharedWeekSaves + data.totals.totalMarketplacePurchases > 0;
 
   return (
-    <div className="max-w-7xl mx-auto p-6">
-      {/* Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold flex items-center gap-2 mb-2">
-          <TrendingUp className="w-8 h-8 text-blue-500" />
-          Creator Analytics
-        </h1>
-        <p className="text-muted-foreground">Track your meal plan performance and revenue</p>
+    <div className="mx-auto max-w-7xl space-y-6 p-6">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-3xl font-bold"><TrendingUp className="h-8 w-8 text-blue-500" />Creator Analytics</h1>
+          <p className="text-muted-foreground">Real engagement signals from your meal plans, shared weeks, storefront, and followers.</p>
+        </div>
+        <Button variant="outline" onClick={() => setLocation("/nutrition/create")}>Create a meal plan</Button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-            <DollarSign className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              ${parseFloat(data.totals.totalRevenue || "0").toFixed(2)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">All-time earnings</p>
+      {!hasAudienceActivity ? (
+        <Card className="border-dashed">
+          <CardContent className="p-6 text-center">
+            <Sparkles className="mx-auto mb-3 h-8 w-8 text-muted-foreground" />
+            <h2 className="text-lg font-semibold">Analytics will appear after users interact with your meal plans.</h2>
+            <p className="mt-1 text-sm text-muted-foreground">No followers, saved plans, saved shared weeks, or marketplace purchases yet.</p>
           </CardContent>
         </Card>
+      ) : null}
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
-            <ShoppingBag className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data.totals.totalSales}</div>
-            <p className="text-xs text-muted-foreground mt-1">Plans sold</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium">Average Sale</CardTitle>
-            <Star className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              $
-              {data.totals.totalSales > 0
-                ? (parseFloat(data.totals.totalRevenue) / data.totals.totalSales).toFixed(2)
-                : "0.00"}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">Per transaction</p>
-          </CardContent>
-        </Card>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <MetricCard title="Total followers" value={data.totals.totalFollowers} help={data.totals.totalFollowers ? "People following your creator profile" : "No followers yet"} icon={Users} />
+        <MetricCard title="Total plan saves" value={data.totals.totalPlanSaves} help={data.totals.totalPlanSaves ? "Marketplace plans saved by users" : "No saved plans yet"} icon={Heart} />
+        <MetricCard title="Shared week saves" value={data.totals.totalSharedWeekSaves} help={data.totals.totalSharedWeekSaves ? "Public weeks saved by users" : "No saved shared weeks yet"} icon={Calendar} />
+        <MetricCard title="Week copies" value={data.totals.totalWeekCopies} help={data.unavailableMetrics.weekCopies} icon={Copy} />
+        <MetricCard title="Marketplace purchases" value={data.totals.totalMarketplacePurchases} help="Completed persisted meal plan purchases" icon={ShoppingBag} />
+        <MetricCard title="Profile/storefront views" value={data.totals.totalProfileViews} help={data.unavailableMetrics.profileViews} icon={Eye} />
+        <MetricCard title="Published plans" value={data.totals.plansPublished} help="Currently published marketplace plans" icon={BarChart3} />
+        <MetricCard title="Public shared weeks" value={data.totals.sharedWeeksPublished} help="Reusable public weekly planner snapshots" icon={Calendar} />
       </div>
 
-      {/* Top Performing Plans */}
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Top Performing Plans</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.topPlans.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No sales data yet</p>
-          ) : (
-            <div className="space-y-4">
-              {data.topPlans.map((plan, index) => (
-                <div
-                  key={plan.blueprint.id}
-                  className="flex items-center justify-between p-4 border rounded-lg"
-                >
-                  <div className="flex items-center gap-4">
-                    <div className="text-2xl font-bold text-muted-foreground w-8">
-                      #{index + 1}
-                    </div>
-                    <div>
-                      <h3 className="font-semibold">{plan.blueprint.title}</h3>
-                      <p className="text-sm text-muted-foreground">
-                        {plan.blueprint.salesCount} sales at ${plan.blueprint.price} each
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold text-green-600">
-                      ${parseFloat(plan.totalRevenue).toFixed(2)}
-                    </div>
-                    <p className="text-xs text-muted-foreground">Total revenue</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+      <div className="grid gap-4 md:grid-cols-5">
+        <MetricCard title="Followers this week" value={data.weekly.followersThisWeek} help="Since the start of this week" icon={Users} />
+        <MetricCard title="Plan saves this week" value={data.weekly.planSavesThisWeek} help="Timestamped saves this week" icon={Heart} />
+        <MetricCard title="Week saves this week" value={data.weekly.sharedWeekSavesThisWeek} help="Timestamped shared week saves this week" icon={Calendar} />
+        <MetricCard title="Copies this week" value={data.weekly.copiesThisWeek} help={data.unavailableMetrics.weekCopies} icon={Copy} />
+        <MetricCard title="Purchases this week" value={data.weekly.purchasesThisWeek} help="Completed purchases this week" icon={ShoppingBag} />
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="flex items-center gap-2"><Award className="h-5 w-5" />Social proof badges</CardTitle><CardDescription>Deterministic badges earned from persisted audience data only.</CardDescription></CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          {data.badges.length === 0 ? <p className="text-sm text-muted-foreground">No badges earned yet. Keep publishing and sharing to unlock creator milestones.</p> : null}
+          {data.badges.map((badge) => <Badge key={badge.label} className="gap-1"><Star className="h-3.5 w-3.5" />{badge.label}<span className="ml-1 opacity-80">• {badge.description}</span></Badge>)}
         </CardContent>
       </Card>
 
-      {/* Recent Activity */}
+      <div className="grid gap-4 lg:grid-cols-2">
+        <TopPlans plans={data.topContent.mostSavedPlans} onOpen={(id) => setLocation(`/nutrition/meal-plans/${id}`)} />
+        <TopWeeks weeks={data.topContent.mostSavedSharedWeeks} onOpen={(token) => setLocation(`/meal-planner/shared/${token}`)} />
+      </div>
+
       <Card>
-        <CardHeader>
-          <CardTitle>Sales History (Last 30 Days)</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {data.daily.length === 0 ? (
-            <p className="text-muted-foreground text-center py-8">No recent sales</p>
-          ) : (
-            <div className="space-y-2">
-              {data.daily.map((day) => (
-                <div
-                  key={day.date}
-                  className="flex items-center justify-between p-3 border rounded"
-                >
-                  <div className="flex items-center gap-3">
-                    <Calendar className="w-4 h-4 text-muted-foreground" />
-                    <span className="font-medium">
-                      {day.date ? new Date(day.date).toLocaleDateString() : "Unknown date"}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-6">
-                    <span className="text-sm text-muted-foreground">
-                      {day.sales} {day.sales === 1 ? "sale" : "sales"}
-                    </span>
-                    <span className="font-semibold text-green-600">
-                      ${parseFloat(day.revenue || "0").toFixed(2)}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+        <CardHeader><CardTitle>Purchase history (last 30 tracked days)</CardTitle><CardDescription>Uses the existing creator analytics purchase rollup. Engagement metrics above use live persisted social data.</CardDescription></CardHeader>
+        <CardContent className="space-y-2">
+          {data.daily.length === 0 ? <p className="py-6 text-center text-sm text-muted-foreground">No recent marketplace purchases.</p> : null}
+          {data.daily.map((day) => <div key={day.date} className="flex items-center justify-between rounded border p-3 text-sm"><span>{day.date}</span><span>{Number(day.totalSales || 0)} purchases • ${((Number(day.totalRevenueCents || 0)) / 100).toFixed(2)}</span></div>)}
         </CardContent>
       </Card>
     </div>
   );
+}
+
+function TopPlans({ plans, onOpen }: { plans: CreatorAnalyticsData["topContent"]["mostSavedPlans"]; onOpen: (id: string) => void }) {
+  return <Card><CardHeader><CardTitle>Most saved plans</CardTitle><CardDescription>Ranked by real plan save records.</CardDescription></CardHeader><CardContent className="space-y-3">{plans.length === 0 ? <p className="text-sm text-muted-foreground">No saved plans yet.</p> : null}{plans.map((plan) => <div key={plan.id} className="flex items-center justify-between gap-3 rounded-lg border p-3"><div><div className="font-medium">{plan.title}</div><div className="text-xs text-muted-foreground">{plan.saveCount} saves • {plan.purchaseCount} purchases • {plan.likeCount} likes</div></div><Button size="sm" variant="outline" onClick={() => onOpen(plan.id)}>View</Button></div>)}</CardContent></Card>;
+}
+
+function TopWeeks({ weeks, onOpen }: { weeks: CreatorAnalyticsData["topContent"]["mostSavedSharedWeeks"]; onOpen: (token: string) => void }) {
+  return <Card><CardHeader><CardTitle>Most saved shared weeks</CardTitle><CardDescription>Copy counts are not tracked yet, so shared weeks are ranked by saves.</CardDescription></CardHeader><CardContent className="space-y-3">{weeks.length === 0 ? <p className="text-sm text-muted-foreground">No copied weeks yet. Shared week saves will appear here when users save your public weeks.</p> : null}{weeks.map((week) => <div key={week.token} className="flex items-center justify-between gap-3 rounded-lg border p-3"><div><div className="font-medium">Week of {week.weekAnchor}</div><div className="text-xs text-muted-foreground">{week.saveCount} saves • {week.copyCount === null ? "Copies not tracked yet" : `${week.copyCount} copies`} • {week.likeCount} likes</div></div><Button size="sm" variant="outline" onClick={() => onOpen(week.token)}>View</Button></div>)}</CardContent></Card>;
 }
