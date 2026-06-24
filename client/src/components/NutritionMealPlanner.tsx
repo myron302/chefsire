@@ -2351,7 +2351,45 @@ const NutritionMealPlanner = () => {
   };
   const handleRestoreCoachInsights = () => setDismissedCoachInsightIds([]);
 
+  const calculateGoals = () => {
+    const weightKg = calcForm.weightUnit === 'kg' ? Number(calcForm.weight) : Number(calcForm.weight) * 0.453592;
+    const weightLbs = calcForm.weightUnit === 'lbs' ? Number(calcForm.weight) : Number(calcForm.weight) * 2.20462;
+    const heightCm = calcForm.heightUnit === 'cm'
+      ? Number(calcForm.cm)
+      : (Number(calcForm.feet) * 12 + Number(calcForm.inches)) * 2.54;
+    const age = Number(calcForm.age);
 
+    const bmr = calcForm.gender === 'male'
+      ? 10 * weightKg + 6.25 * heightCm - 5 * age + 5
+      : 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
+
+    const activityMap: Record<string, number> = {
+      sedentary: 1.2,
+      'lightly active': 1.375,
+      'moderately active': 1.55,
+      'very active': 1.725,
+      'extra active': 1.9,
+    };
+
+    const tdee = bmr * (activityMap[calcForm.activity] || 1.55);
+    const targetCalories = calcForm.goal === 'lose weight'
+      ? tdee - 500
+      : calcForm.goal === 'gain muscle'
+        ? tdee + 300
+        : tdee;
+    const protein = calcForm.goal === 'lose weight' ? weightLbs * 0.8 : weightLbs;
+    const carbs = (targetCalories * 0.4) / 4;
+    const fat = (targetCalories * 0.3) / 9;
+
+    setCalcResult({
+      dailyCalorieGoal: Math.round(targetCalories),
+      macroGoals: {
+        protein: Math.round(protein),
+        carbs: Math.round(carbs),
+        fat: Math.round(fat),
+      },
+    });
+  };
 
   const saveCalculatedGoals = async () => {
     if (!calcResult) return;
