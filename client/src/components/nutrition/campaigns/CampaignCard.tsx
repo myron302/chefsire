@@ -38,7 +38,7 @@ export default function CampaignCard({ campaign, featured = false }: { campaign:
           <CampaignDifficultyBadge difficulty={campaign.difficulty} />
         </div>
         <div className="absolute right-4 top-4 flex gap-2">
-          <CampaignSaveButton />
+          <CampaignSaveButton campaignId={campaign.id} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button size="icon" variant="secondary" className="rounded-full bg-white/90 hover:bg-white">

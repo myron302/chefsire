@@ -18,6 +18,7 @@ import nutritionRouter from "./nutrition";
 import mealPlansRouter from "./meal-plans";
 import mealPlannerAdvancedRouter from "./meal-planner-advanced";
 import mealPlannerWeekRouter from "./meal-planner-week";
+import nutritionCampaignsRouter from "./nutrition-campaigns";
 import mealSocialRouter from "./meal-social";
 import dmRouter from "./dm";
 import clubsRouter from "./clubs";
@@ -145,6 +146,7 @@ r.use("/meal-planner", mealPlannerAdvancedRouter);
 
 // Week planning (one-click generator + weekly plan fetch) - prefixed
 r.use("/meal-planner", mealPlannerWeekRouter);
+r.use("/meal-planner/campaigns", nutritionCampaignsRouter);
 
 // AI nutrition lookup + recipe suggestions
 import mealNutritionAiRouter from "./meal-nutrition-ai";

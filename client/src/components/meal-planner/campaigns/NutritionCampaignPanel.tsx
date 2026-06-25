@@ -47,7 +47,9 @@ class TimelineErrorBoundary extends React.Component<React.PropsWithChildren, { h
 type Props = {
   activeCampaignId: string | null;
   progress: NutritionCampaignProgress | null;
-  onActivateCampaign: (campaignId: string) => void;
+  onActivateCampaign: (campaignId: string) => void | Promise<void>;
+  campaignActionPending?: boolean;
+  campaignActionError?: string | null;
   onClearCampaign: () => void;
   adaptiveRecommendationsByCampaignId?: Record<string, NutritionCampaignAdaptiveRecommendation>;
 };
@@ -58,6 +60,8 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   onActivateCampaign,
   onClearCampaign,
   adaptiveRecommendationsByCampaignId,
+  campaignActionPending = false,
+  campaignActionError = null,
 }) => {
   const [pendingCampaignId, setPendingCampaignId] = React.useState<string | null>(null);
 
@@ -72,6 +76,8 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   const {
     savedCampaignIds,
     toggleSavedCampaign,
+    savingCampaignId,
+    campaignPersistenceError,
     evolutionMemoryByCampaignId,
     behavioralProfile,
     lifeStateProfile,
@@ -89,6 +95,8 @@ const NutritionCampaignPanel: React.FC<Props> = ({
     rankedCampaigns,
     activeRecommendation,
     adaptiveRecommendationsByCampaignId,
+    savingCampaignId,
+    campaignPersistenceError,
     evolutionMemoryByCampaignId,
     behavioralProfile,
     lifeStateProfile,
@@ -108,6 +116,8 @@ const NutritionCampaignPanel: React.FC<Props> = ({
   void intelligence.adaptiveConfidence;
   void intelligence.campaignProgressSummary;
   void intelligence.stabilizationSummary;
+
+  const actionError = campaignActionError || campaignPersistenceError;
   void intelligence.temporalRhythmSummary;
 
   return (
@@ -365,19 +375,24 @@ const NutritionCampaignPanel: React.FC<Props> = ({
               saved={savedCampaignIds.has(item.campaign.id)}
               onSelect={setPendingCampaignId}
               onToggleSaved={toggleSavedCampaign}
+              saving={savingCampaignId === item.campaign.id}
+              starting={campaignActionPending && pendingCampaignId === item.campaign.id}
             />
           ))}
         </CardContent>
       </Card>
 
+      {actionError ? <p className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">{actionError}</p> : null}
+
       {pendingCampaign && (
         <CampaignActivationCard
           campaign={pendingCampaign}
           recommendation={adaptiveRecommendationsByCampaignId?.[pendingCampaign.id]}
-          onStart={() => {
-            onActivateCampaign(pendingCampaign.id);
+          onStart={async () => {
+            await onActivateCampaign(pendingCampaign.id);
             setPendingCampaignId(null);
           }}
+          starting={campaignActionPending}
           onCancel={() => setPendingCampaignId(null)}
         />
       )}

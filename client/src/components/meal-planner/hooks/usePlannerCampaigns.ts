@@ -51,6 +51,8 @@ export const usePlannerCampaigns = ({
     activeCampaignStartedAt,
     activateCampaign,
     clearCampaign,
+    campaignActionPending,
+    campaignActionError,
   } = usePlannerCampaignState(userId);
 
   const campaignViewModel = useMemo(
@@ -139,5 +141,7 @@ export const usePlannerCampaigns = ({
     activeCampaignStartedAt,
     activateCampaign,
     clearCampaign,
+    campaignActionPending,
+    campaignActionError,
   };
 };

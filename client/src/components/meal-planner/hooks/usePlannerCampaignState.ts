@@ -1,32 +1,45 @@
 import { useEffect, useState } from 'react';
-import { loadActiveCampaignState, saveActiveCampaignState } from '@/components/meal-planner/campaigns/nutritionCampaignProgress';
+import { fetchCampaignState, startCampaign } from '@/components/meal-planner/campaigns/api/campaignPersistenceApi';
 
 export const usePlannerCampaignState = (userId?: string | null) => {
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [activeCampaignStartedAt, setActiveCampaignStartedAt] = useState<string | null>(null);
 
+  const [campaignActionPending, setCampaignActionPending] = useState(false);
+  const [campaignActionError, setCampaignActionError] = useState<string | null>(null);
+
   useEffect(() => {
-    const state = loadActiveCampaignState(userId);
-    if (state) {
-      setActiveCampaignId(state.campaignId);
-      setActiveCampaignStartedAt(state.startedAt);
-    }
+    if (!userId) return;
+    let mounted = true;
+    fetchCampaignState()
+      .then((state) => {
+        if (!mounted) return;
+        setActiveCampaignId(state.activeCampaign?.campaignId ?? null);
+        setActiveCampaignStartedAt(state.activeCampaign?.startedAt ?? null);
+      })
+      .catch((error) => { if (mounted) setCampaignActionError(error instanceof Error ? error.message : 'Failed to load campaign state'); });
+    return () => { mounted = false; };
   }, [userId]);
 
-  useEffect(() => {
-    if (!activeCampaignId || !activeCampaignStartedAt) return;
-    saveActiveCampaignState({ campaignId: activeCampaignId, startedAt: activeCampaignStartedAt }, userId);
-  }, [activeCampaignId, activeCampaignStartedAt, userId]);
-
-  const activateCampaign = (campaignId: string) => {
-    setActiveCampaignId(campaignId);
-    setActiveCampaignStartedAt(new Date().toISOString());
+  const activateCampaign = async (campaignId: string) => {
+    setCampaignActionPending(true);
+    setCampaignActionError(null);
+    try {
+      const active = await startCampaign(campaignId);
+      setActiveCampaignId(active.campaignId);
+      setActiveCampaignStartedAt(active.startedAt ?? new Date().toISOString());
+    } catch (error) {
+      setCampaignActionError(error instanceof Error ? error.message : 'Failed to start campaign');
+      throw error;
+    } finally {
+      setCampaignActionPending(false);
+    }
   };
 
   const clearCampaign = () => {
     setActiveCampaignId(null);
     setActiveCampaignStartedAt(null);
-    saveActiveCampaignState(null, userId);
+
   };
 
   return {
@@ -36,5 +49,7 @@ export const usePlannerCampaignState = (userId?: string | null) => {
     setActiveCampaignStartedAt,
     activateCampaign,
     clearCampaign,
+    campaignActionPending,
+    campaignActionError,
   };
 };

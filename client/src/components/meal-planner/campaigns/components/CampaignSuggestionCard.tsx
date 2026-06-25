@@ -8,14 +8,18 @@ type CampaignSuggestionCardProps = {
   item: CampaignSuggestionCardViewModel;
   saved: boolean;
   onSelect: (campaignId: string) => void;
-  onToggleSaved: (campaignId: string) => void;
+  onToggleSaved: (campaignId: string) => void | Promise<void>;
+  saving?: boolean;
+  starting?: boolean;
 };
-
-const CAMPAIGN_ACTION_UNAVAILABLE = 'Campaign actions are not available yet because they are not backed by real persistence.';
 
 const CampaignSuggestionCard: React.FC<CampaignSuggestionCardProps> = ({
   item,
   saved,
+  saving = false,
+  starting = false,
+  onSelect,
+  onToggleSaved,
 }) => {
   const { campaign, identity } = item;
 
@@ -54,26 +58,24 @@ const CampaignSuggestionCard: React.FC<CampaignSuggestionCardProps> = ({
       />
 
       <p className="mt-1 text-xs text-gray-600">{campaign.description}</p>
-      <Button
-        className="mt-3"
-        size="sm"
-        variant="secondary"
-        disabled
-        aria-disabled="true"
-        title={CAMPAIGN_ACTION_UNAVAILABLE}
-      >
-        {item.isActive ? 'Active campaign — Not available yet' : 'Start campaign — Coming soon'}
-      </Button>
-      <Button
-        className="mt-2"
-        size="sm"
-        variant="outline"
-        disabled
-        aria-disabled="true"
-        title={CAMPAIGN_ACTION_UNAVAILABLE}
-      >
-        {saved ? 'Saved campaign — Not available yet' : 'Save campaign — Coming soon'}
-      </Button>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={starting}
+          onClick={() => onSelect(campaign.id)}
+        >
+          {starting ? 'Starting…' : item.isActive ? 'Active campaign' : 'Start campaign'}
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={saving}
+          onClick={() => void onToggleSaved(campaign.id)}
+        >
+          {saving ? 'Saving…' : saved ? 'Saved' : 'Save campaign'}
+        </Button>
+      </div>
     </div>
   );
 };
