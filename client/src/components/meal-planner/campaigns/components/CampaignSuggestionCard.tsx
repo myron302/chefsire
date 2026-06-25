@@ -11,11 +11,11 @@ type CampaignSuggestionCardProps = {
   onToggleSaved: (campaignId: string) => void;
 };
 
+const CAMPAIGN_ACTION_UNAVAILABLE = 'Campaign actions are not available yet because they are not backed by real persistence.';
+
 const CampaignSuggestionCard: React.FC<CampaignSuggestionCardProps> = ({
   item,
   saved,
-  onSelect,
-  onToggleSaved,
 }) => {
   const { campaign, identity } = item;
 
@@ -57,18 +57,22 @@ const CampaignSuggestionCard: React.FC<CampaignSuggestionCardProps> = ({
       <Button
         className="mt-3"
         size="sm"
-        variant={item.isActive ? 'secondary' : 'default'}
-        onClick={() => onSelect(campaign.id)}
+        variant="secondary"
+        disabled
+        aria-disabled="true"
+        title={CAMPAIGN_ACTION_UNAVAILABLE}
       >
-        {item.isActive ? 'Active' : 'Start Campaign'}
+        {item.isActive ? 'Active campaign — Not available yet' : 'Start campaign — Coming soon'}
       </Button>
       <Button
         className="mt-2"
         size="sm"
         variant="outline"
-        onClick={() => onToggleSaved(campaign.id)}
+        disabled
+        aria-disabled="true"
+        title={CAMPAIGN_ACTION_UNAVAILABLE}
       >
-        {saved ? 'Saved' : 'Save Campaign'}
+        {saved ? 'Saved campaign — Not available yet' : 'Save campaign — Coming soon'}
       </Button>
     </div>
   );

@@ -94,7 +94,7 @@ export default function MealPlanCreatorStorefrontPage() {
   const topSavedPlans = [...plans].sort((a, b) => Number(b.social?.saveCount || 0) - Number(a.social?.saveCount || 0)).slice(0, 3);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 p-6">
+    <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
       <Card>
         <CardContent className="flex flex-col gap-5 p-6 md:flex-row md:items-center">
           <Avatar className="h-24 w-24">
@@ -109,11 +109,11 @@ export default function MealPlanCreatorStorefrontPage() {
             <p className="mt-1 text-sm text-muted-foreground">@{creator.username} • {creator.followerCount || 0} followers</p>
             {creator.bio ? <p className="mt-3 max-w-3xl text-muted-foreground">{creator.bio}</p> : <p className="mt-3 text-muted-foreground">This creator is building a meal-planner storefront.</p>}
           </div>
-          <div className="flex flex-col gap-2">
+          <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:w-auto md:grid-cols-1">
             <CreatorFollowButton creatorId={creator.id} />
-            <Button variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-2 h-4 w-4" />Creator Analytics</Button>
-            <Button variant="outline" onClick={() => document.getElementById("creator-plans")?.scrollIntoView({ behavior: "smooth" })}>Browse Plans</Button>
-            <Button variant="outline" onClick={() => document.getElementById("creator-shared-weeks")?.scrollIntoView({ behavior: "smooth" })}>View Shared Weeks</Button>
+            <Button className="w-full justify-center" variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-2 h-4 w-4" />Creator Analytics</Button>
+            <Button className="w-full justify-center" variant="outline" onClick={() => document.getElementById("creator-plans")?.scrollIntoView({ behavior: "smooth" })}>Browse Plans</Button>
+            <Button className="w-full justify-center" variant="outline" onClick={() => document.getElementById("creator-shared-weeks")?.scrollIntoView({ behavior: "smooth" })}>View Shared Weeks</Button>
           </div>
         </CardContent>
       </Card>

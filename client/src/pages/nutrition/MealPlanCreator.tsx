@@ -371,7 +371,7 @@ export default function MealPlanCreator() {
       )}
 
       {/* ── Header ── */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-2">
             <ChefHat className="w-8 h-8 text-orange-500" />
@@ -379,12 +379,12 @@ export default function MealPlanCreator() {
           </h1>
           <p className="text-muted-foreground mt-1">Create and sell your meal plan templates</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setLocation("/nutrition/analytics")}>
+        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
+          <Button className="w-full justify-center" variant="outline" onClick={() => setLocation("/nutrition/analytics")}>
             <TrendingUp className="w-4 h-4 mr-2" />
             Analytics
           </Button>
-          <Button onClick={() => setShowCreateForm(!showCreateForm)}>
+          <Button className="w-full justify-center" onClick={() => setShowCreateForm(!showCreateForm)}>
             <Plus className="w-4 h-4 mr-2" />
             Create New Plan
           </Button>
