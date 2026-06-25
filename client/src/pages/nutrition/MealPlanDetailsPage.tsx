@@ -225,12 +225,18 @@ export default function MealPlanDetailsPage() {
                     <User className="w-4 h-4" />
                     By <CreatorProfileLink creatorId={creator.id}>{creator.displayName || creator.username}</CreatorProfileLink>
                     <CreatorFollowButton creatorId={creator.id} compact />
-                    {user?.id === creator.id ? <Button className="w-full justify-center sm:w-auto" size="sm" variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-1 h-3.5 w-3.5" />Analytics</Button> : null}
+                    {user?.id === creator.id ? <Button className="hidden justify-center sm:inline-flex sm:w-auto" size="sm" variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-1 h-3.5 w-3.5" />Analytics</Button> : null}
                   </span>
                 ) : null}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              {user?.id === creator?.id ? (
+                <Button className="w-full justify-center sm:hidden" size="sm" variant="outline" onClick={() => setLocation("/nutrition/analytics")} aria-label="Open creator analytics">
+                  <BarChart3 className="mr-2 h-4 w-4" />
+                  Creator Analytics
+                </Button>
+              ) : null}
               {isLoading ? <div className="text-sm text-muted-foreground">Loading details…</div> : null}
 
               {blueprint ? (

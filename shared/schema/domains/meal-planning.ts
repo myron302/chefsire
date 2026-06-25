@@ -138,3 +138,16 @@ export const creatorAnalytics = pgTable("creator_analytics", {
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export const userNutritionCampaigns = pgTable("user_nutrition_campaigns", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  campaignId: text("campaign_id").notNull(),
+  status: text("status").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  startedAt: timestamp("started_at"),
+}, (table) => ({
+  userCampaignStatusIdx: uniqueIndex("user_nutrition_campaigns_user_campaign_status_idx").on(table.userId, table.campaignId, table.status),
+  userStatusUpdatedIdx: index("user_nutrition_campaigns_user_status_updated_idx").on(table.userId, table.status, table.updatedAt),
+}));

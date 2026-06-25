@@ -56,6 +56,7 @@ import {
   mealPlanPurchases,
   mealPlanReviews,
   creatorAnalytics,
+  userNutritionCampaigns,
 } from "./schema/domains/meal-planning";
 import {
   pantryHouseholds,
@@ -177,6 +178,7 @@ export {
   mealPlanPurchases,
   mealPlanReviews,
   creatorAnalytics,
+  userNutritionCampaigns,
 } from "./schema/domains/meal-planning";
 export {
   pantryHouseholds,

@@ -1,8 +1,8 @@
 import React from 'react';
 import type { NutritionCampaignAdaptiveRecommendation, NutritionCampaignProgress } from '@/components/meal-planner/campaigns/nutritionCampaignTypes';
-import { deriveCreatorCampaignRecommendations } from '@/components/meal-planner/campaigns/ecosystem/creatorCampaignTemplates';
-import { deriveCampaignIdentity } from '@/components/meal-planner/campaigns/identity/campaignIdentity';
-import { getSavedCampaigns, removeSavedCampaign, saveCampaignIdentity } from '@/components/meal-planner/campaigns/identity/savedCampaignStore';
+
+
+
 import { deriveCampaignEvolutionMemory, updateCampaignEvolutionMemory } from '@/components/meal-planner/campaigns/evolution/campaignEvolutionMemory';
 import { getCampaignEvolutionMemory, saveCampaignEvolutionMemory } from '@/components/meal-planner/campaigns/evolution/campaignEvolutionStore';
 import { deriveBehavioralIntelligenceProfile, updateBehavioralIntelligenceProfile } from '@/components/meal-planner/campaigns/behavioral-intelligence/behavioralIntelligenceProfile';
@@ -11,7 +11,7 @@ import { createDefaultLifeStateProfile, updateLifeStateProfile } from '@/compone
 import { getLifeStateProfile, saveLifeStateProfile } from '@/components/meal-planner/campaigns/life-state-intelligence/lifeStateStore';
 import { createDefaultTemporalRhythmProfile, updateTemporalRhythmProfile } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalRhythmProfile';
 import { getTemporalRhythmProfile, saveTemporalRhythmProfile } from '@/components/meal-planner/campaigns/temporal-rhythm/temporalRhythmStore';
-import { selectActiveCampaign } from '@/components/meal-planner/planner-core/selectors';
+import { fetchCampaignState, saveCampaign, unsaveCampaign } from '@/components/meal-planner/campaigns/api/campaignPersistenceApi';
 
 export type CampaignEvolutionMemoryById = Record<string, ReturnType<typeof deriveCampaignEvolutionMemory>>;
 
@@ -26,7 +26,9 @@ export const useCampaignPersistence = ({
   progress,
   adaptiveRecommendationsByCampaignId,
 }: UseCampaignPersistenceInput) => {
-  const [savedCampaignIds, setSavedCampaignIds] = React.useState<Set<string>>(() => new Set(getSavedCampaigns().map((item) => item.campaignId)));
+  const [savedCampaignIds, setSavedCampaignIds] = React.useState<Set<string>>(() => new Set());
+  const [savingCampaignId, setSavingCampaignId] = React.useState<string | null>(null);
+  const [campaignPersistenceError, setCampaignPersistenceError] = React.useState<string | null>(null);
   const [evolutionMemoryByCampaignId, setEvolutionMemoryByCampaignId] = React.useState(() => {
     const fromStore = getCampaignEvolutionMemory();
     return fromStore.reduce<CampaignEvolutionMemoryById>((acc, item) => {
@@ -38,22 +40,39 @@ export const useCampaignPersistence = ({
   const [lifeStateProfile, setLifeStateProfile] = React.useState(() => getLifeStateProfile() ?? createDefaultLifeStateProfile());
   const [temporalRhythmProfile, setTemporalRhythmProfile] = React.useState(() => getTemporalRhythmProfile() ?? createDefaultTemporalRhythmProfile());
 
-  const toggleSavedCampaign = React.useCallback((campaignId: string) => {
-    const campaign = selectActiveCampaign(campaignId);
-    if (!campaign) return;
-    const creator = deriveCreatorCampaignRecommendations([campaign], adaptiveRecommendationsByCampaignId)[campaign.id]?.creatorName;
-    setSavedCampaignIds((prev) => {
-      if (prev.has(campaignId)) {
-        removeSavedCampaign(campaignId);
-        const next = new Set(prev);
-        next.delete(campaignId);
-        return next;
+  React.useEffect(() => {
+    let mounted = true;
+    fetchCampaignState()
+      .then((state) => {
+        if (!mounted) return;
+        setSavedCampaignIds(new Set(state.savedCampaigns.map((campaign) => campaign.campaignId)));
+      })
+      .catch((error) => { if (mounted) setCampaignPersistenceError(error instanceof Error ? error.message : 'Failed to load saved campaigns'); });
+    return () => { mounted = false; };
+  }, []);
+
+  const toggleSavedCampaign = React.useCallback(async (campaignId: string) => {
+    setSavingCampaignId(campaignId);
+    setCampaignPersistenceError(null);
+    try {
+      if (savedCampaignIds.has(campaignId)) {
+        await unsaveCampaign(campaignId);
+        setSavedCampaignIds((prev) => {
+          const next = new Set(prev);
+          next.delete(campaignId);
+          return next;
+        });
+      } else {
+        await saveCampaign(campaignId);
+        setSavedCampaignIds((prev) => new Set(prev).add(campaignId));
       }
-      const identity = deriveCampaignIdentity(campaign, progress, creator);
-      saveCampaignIdentity(identity);
-      return new Set(prev).add(campaignId);
-    });
-  }, [adaptiveRecommendationsByCampaignId, progress]);
+    } catch (error) {
+      setCampaignPersistenceError(error instanceof Error ? error.message : 'Failed to update saved campaign');
+      throw error;
+    } finally {
+      setSavingCampaignId(null);
+    }
+  }, [savedCampaignIds]);
 
   React.useEffect(() => {
     if (!activeCampaignId) return;
@@ -82,6 +101,8 @@ export const useCampaignPersistence = ({
   return {
     savedCampaignIds,
     toggleSavedCampaign,
+    savingCampaignId,
+    campaignPersistenceError,
     evolutionMemoryByCampaignId,
     behavioralProfile,
     lifeStateProfile,
