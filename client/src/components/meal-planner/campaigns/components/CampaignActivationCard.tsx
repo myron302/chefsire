@@ -13,7 +13,7 @@ type Props = {
   onCancel: () => void;
 };
 
-const CampaignActivationCard: React.FC<Props> = ({ campaign, recommendation, onStart, onCancel }) => (
+const CampaignActivationCard: React.FC<Props> = ({ campaign, recommendation, onCancel }) => (
   <Card className="border-emerald-300 bg-emerald-50/50">
     <CardHeader>
       <CardTitle className="flex items-center gap-2"><Wand2 className="h-4 w-4 text-emerald-700" />Activate Campaign</CardTitle>
@@ -38,7 +38,7 @@ const CampaignActivationCard: React.FC<Props> = ({ campaign, recommendation, onS
         </ul>
       </div>
       <div className="flex flex-wrap gap-2">
-        <Button onClick={onStart}>Start journey</Button>
+        <Button disabled aria-disabled="true" title="Campaign activation is coming soon because it is not backed by real persistence.">Start journey — Coming soon</Button>
         <Button variant="outline" onClick={onCancel}>Cancel</Button>
       </div>
     </CardContent>

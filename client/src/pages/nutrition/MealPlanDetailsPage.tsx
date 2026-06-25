@@ -221,11 +221,11 @@ export default function MealPlanDetailsPage() {
               <CardTitle>Overview</CardTitle>
               <CardDescription>
                 {creator ? (
-                  <span className="inline-flex items-center gap-2">
+                  <span className="flex flex-col items-start gap-2 sm:inline-flex sm:flex-row sm:items-center">
                     <User className="w-4 h-4" />
                     By <CreatorProfileLink creatorId={creator.id}>{creator.displayName || creator.username}</CreatorProfileLink>
                     <CreatorFollowButton creatorId={creator.id} compact />
-                    {user?.id === creator.id ? <Button size="sm" variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-1 h-3.5 w-3.5" />Analytics</Button> : null}
+                    {user?.id === creator.id ? <Button className="w-full justify-center sm:w-auto" size="sm" variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-1 h-3.5 w-3.5" />Analytics</Button> : null}
                   </span>
                 ) : null}
               </CardDescription>
