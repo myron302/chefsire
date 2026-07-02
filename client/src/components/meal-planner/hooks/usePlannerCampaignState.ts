@@ -4,6 +4,7 @@ import { fetchCampaignState, startCampaign } from '@/components/meal-planner/cam
 export const usePlannerCampaignState = (userId?: string | null) => {
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [activeCampaignStartedAt, setActiveCampaignStartedAt] = useState<string | null>(null);
+  const [lastActivatedCampaignId, setLastActivatedCampaignId] = useState<string | null>(null);
 
   const [campaignActionPending, setCampaignActionPending] = useState(false);
   const [campaignActionError, setCampaignActionError] = useState<string | null>(null);
@@ -16,6 +17,7 @@ export const usePlannerCampaignState = (userId?: string | null) => {
         if (!mounted) return;
         setActiveCampaignId(state.activeCampaign?.campaignId ?? null);
         setActiveCampaignStartedAt(state.activeCampaign?.startedAt ?? null);
+        setLastActivatedCampaignId(null);
       })
       .catch((error) => { if (mounted) setCampaignActionError(error instanceof Error ? error.message : 'Failed to load campaign state'); });
     return () => { mounted = false; };
@@ -28,6 +30,7 @@ export const usePlannerCampaignState = (userId?: string | null) => {
       const active = await startCampaign(campaignId);
       setActiveCampaignId(active.campaignId);
       setActiveCampaignStartedAt(active.startedAt ?? new Date().toISOString());
+      setLastActivatedCampaignId(active.campaignId);
     } catch (error) {
       setCampaignActionError(error instanceof Error ? error.message : 'Failed to start campaign');
       throw error;
@@ -39,6 +42,7 @@ export const usePlannerCampaignState = (userId?: string | null) => {
   const clearCampaign = () => {
     setActiveCampaignId(null);
     setActiveCampaignStartedAt(null);
+    setLastActivatedCampaignId(null);
 
   };
 
@@ -46,6 +50,7 @@ export const usePlannerCampaignState = (userId?: string | null) => {
     activeCampaignId,
     setActiveCampaignId,
     activeCampaignStartedAt,
+    lastActivatedCampaignId,
     setActiveCampaignStartedAt,
     activateCampaign,
     clearCampaign,

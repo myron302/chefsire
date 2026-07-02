@@ -49,6 +49,7 @@ export const usePlannerCampaigns = ({
   const {
     activeCampaignId,
     activeCampaignStartedAt,
+    lastActivatedCampaignId,
     activateCampaign,
     clearCampaign,
     campaignActionPending,
@@ -139,6 +140,7 @@ export const usePlannerCampaigns = ({
     visibleCoachInsights,
     activeCampaignId,
     activeCampaignStartedAt,
+    lastActivatedCampaignId,
     activateCampaign,
     clearCampaign,
     campaignActionPending,

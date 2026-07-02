@@ -380,7 +380,11 @@ export default function MealPlanCreator() {
           <p className="text-muted-foreground mt-1">Create and sell your meal plan templates</p>
         </div>
         <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2" aria-label="Creator dashboard actions">
-          <Button className="w-full justify-center" variant="outline" onClick={() => setLocation("/nutrition/analytics")}>
+          <Button className="w-full justify-center sm:hidden" variant="outline" onClick={() => setLocation("/nutrition/analytics")} aria-label="Open creator analytics">
+            <TrendingUp className="w-4 h-4 mr-2" />
+            Analytics
+          </Button>
+          <Button className="hidden w-full justify-center sm:inline-flex" variant="outline" onClick={() => setLocation("/nutrition/analytics")}>
             <TrendingUp className="w-4 h-4 mr-2" />
             Analytics
           </Button>

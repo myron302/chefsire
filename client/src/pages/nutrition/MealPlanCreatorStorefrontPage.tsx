@@ -110,8 +110,11 @@ export default function MealPlanCreatorStorefrontPage() {
             {creator.bio ? <p className="mt-3 max-w-3xl text-muted-foreground">{creator.bio}</p> : <p className="mt-3 text-muted-foreground">This creator is building a meal-planner storefront.</p>}
           </div>
           <div className="grid w-full grid-cols-1 gap-2 sm:grid-cols-2 md:w-auto md:grid-cols-1" aria-label="Creator storefront actions">
+            <Button className="w-full justify-center sm:hidden" variant="outline" onClick={() => setLocation("/nutrition/analytics")} aria-label="Open creator analytics">
+              <BarChart3 className="mr-2 h-4 w-4" />Creator Analytics
+            </Button>
             <CreatorFollowButton creatorId={creator.id} />
-            <Button className="w-full justify-center" variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-2 h-4 w-4" />Creator Analytics</Button>
+            <Button className="hidden w-full justify-center sm:inline-flex" variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-2 h-4 w-4" />Creator Analytics</Button>
             <Button className="w-full justify-center" variant="outline" onClick={() => document.getElementById("creator-plans")?.scrollIntoView({ behavior: "smooth" })}>Browse Plans</Button>
             <Button className="w-full justify-center" variant="outline" onClick={() => document.getElementById("creator-shared-weeks")?.scrollIntoView({ behavior: "smooth" })}>View Shared Weeks</Button>
           </div>
