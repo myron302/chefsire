@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fetchCampaignState, startCampaign } from '@/components/meal-planner/campaigns/api/campaignPersistenceApi';
 
 export const usePlannerCampaignState = (userId?: string | null) => {
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
   const [activeCampaignStartedAt, setActiveCampaignStartedAt] = useState<string | null>(null);
   const [lastActivatedCampaignId, setLastActivatedCampaignId] = useState<string | null>(null);
+  const activationVersionRef = useRef(0);
 
   const [campaignActionPending, setCampaignActionPending] = useState(false);
   const [campaignActionError, setCampaignActionError] = useState<string | null>(null);
@@ -12,14 +13,19 @@ export const usePlannerCampaignState = (userId?: string | null) => {
   useEffect(() => {
     if (!userId) return;
     let mounted = true;
+    const loadActivationVersion = activationVersionRef.current;
     fetchCampaignState()
       .then((state) => {
-        if (!mounted) return;
+        if (!mounted || activationVersionRef.current !== loadActivationVersion) return;
         setActiveCampaignId(state.activeCampaign?.campaignId ?? null);
         setActiveCampaignStartedAt(state.activeCampaign?.startedAt ?? null);
         setLastActivatedCampaignId(null);
       })
-      .catch((error) => { if (mounted) setCampaignActionError(error instanceof Error ? error.message : 'Failed to load campaign state'); });
+      .catch((error) => {
+        if (mounted && activationVersionRef.current === loadActivationVersion) {
+          setCampaignActionError(error instanceof Error ? error.message : 'Failed to load campaign state');
+        }
+      });
     return () => { mounted = false; };
   }, [userId]);
 
@@ -28,6 +34,7 @@ export const usePlannerCampaignState = (userId?: string | null) => {
     setCampaignActionError(null);
     try {
       const active = await startCampaign(campaignId);
+      activationVersionRef.current += 1;
       setActiveCampaignId(active.campaignId);
       setActiveCampaignStartedAt(active.startedAt ?? new Date().toISOString());
       setLastActivatedCampaignId(active.campaignId);
