@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Sparkles } from 'lucide-react';
+import { CheckCircle2, Trophy, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -46,6 +46,7 @@ class TimelineErrorBoundary extends React.Component<React.PropsWithChildren, { h
 
 type Props = {
   activeCampaignId: string | null;
+  lastActivatedCampaignId?: string | null;
   progress: NutritionCampaignProgress | null;
   onActivateCampaign: (campaignId: string) => void | Promise<void>;
   campaignActionPending?: boolean;
@@ -56,6 +57,7 @@ type Props = {
 
 const NutritionCampaignPanel: React.FC<Props> = ({
   activeCampaignId,
+  lastActivatedCampaignId = null,
   progress,
   onActivateCampaign,
   onClearCampaign,
@@ -134,13 +136,25 @@ const NutritionCampaignPanel: React.FC<Props> = ({
         <CardContent>
           {activeCampaign && progress ? (
             <div className="space-y-4">
+              {lastActivatedCampaignId === activeCampaign.id ? (
+                <div className="rounded-lg border border-emerald-300 bg-emerald-50 p-3 text-sm text-emerald-900" role="status" aria-live="polite">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <CheckCircle2 className="h-4 w-4" />
+                    Campaign is active: {activeCampaign.title}
+                  </div>
+                  <p className="mt-1 text-xs">
+                    Started successfully from the server. Progress is now {progress.completionPct}% with {progress.completedMissions} of {progress.totalMissions} missions complete.
+                  </p>
+                </div>
+              ) : null}
+
               <CampaignHeaderSummary
                 campaign={activeCampaign}
                 progress={progress}
                 recommendation={activeRecommendation}
               />
 
-              <Progress value={progress.completionPct} />
+              <Progress value={progress.completionPct} aria-label={`${activeCampaign.title} progress`} />
 
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                 {progress.missionProgress.map((item) => (

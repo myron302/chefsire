@@ -2340,6 +2340,7 @@ const NutritionMealPlanner = () => {
     activeCampaignProgress,
     visibleCoachInsights,
     activeCampaignId,
+    lastActivatedCampaignId,
     activateCampaign,
     clearCampaign,
     campaignActionPending,
@@ -3757,6 +3758,7 @@ const NutritionMealPlanner = () => {
               />
               <NutritionCampaignPanel
                 activeCampaignId={activeCampaignId}
+                lastActivatedCampaignId={lastActivatedCampaignId}
                 progress={activeCampaignProgress}
                 onActivateCampaign={activateCampaign}
                 onClearCampaign={clearCampaign}
