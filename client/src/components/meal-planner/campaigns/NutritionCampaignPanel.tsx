@@ -51,7 +51,7 @@ type Props = {
   onActivateCampaign: (campaignId: string) => void | Promise<void>;
   campaignActionPending?: boolean;
   campaignActionError?: string | null;
-  onClearCampaign: () => void;
+  onClearCampaign: () => void | Promise<void>;
   adaptiveRecommendationsByCampaignId?: Record<string, NutritionCampaignAdaptiveRecommendation>;
 };
 
@@ -346,8 +346,8 @@ const NutritionCampaignPanel: React.FC<Props> = ({
                 </React.Suspense>
               )}
 
-              <Button variant="outline" size="sm" onClick={onClearCampaign}>
-                End Active Campaign
+              <Button variant="outline" size="sm" disabled={campaignActionPending} onClick={() => void onClearCampaign()}>
+                {campaignActionPending ? 'Ending…' : 'End Active Campaign'}
               </Button>
 
               {intelligence.coachInsights[0] && (

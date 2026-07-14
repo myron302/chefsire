@@ -1,4 +1,4 @@
-import { CalendarDays, DollarSign, Flame, GitFork, HeartPulse, MoreHorizontal, Timer, Users } from "lucide-react";
+import { CalendarDays, DollarSign, Flame, GitFork, HeartPulse, MoreHorizontal, Share2, Timer, Users } from "lucide-react";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { NutritionCampaign } from "@/pages/nutrition/campaigns/mockCampaigns";
 
@@ -24,6 +25,37 @@ const prepTone: Record<NutritionCampaign["prepIntensity"], string> = {
 };
 
 export default function CampaignCard({ campaign, featured = false }: { campaign: NutritionCampaign; featured?: boolean }) {
+  const { toast } = useToast();
+
+  const showPreview = () => {
+    toast({
+      title: campaign.title,
+      description: `${campaign.durationDays} days · ${campaign.estimatedBudget} · ${campaign.prepIntensity} prep · ${campaign.macros.caloriesPerDay} calories/day.`,
+    });
+  };
+
+  const compareMacros = () => {
+    toast({
+      title: "Macro snapshot",
+      description: `${campaign.macros.proteinPerDay}g protein/day with ${campaign.macros.carbsPerDay}g carbs and ${campaign.macros.fatPerDay}g fat.`,
+    });
+  };
+
+  const shareCampaign = async () => {
+    const url = `${window.location.origin}/nutrition/campaigns#${campaign.id}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: campaign.title, text: campaign.subtitle, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast({ title: "Campaign link copied", description: "Share link copied to your clipboard." });
+      }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      toast({ title: "Share failed", description: "We could not share this campaign. Please try again.", variant: "destructive" });
+    }
+  };
+
   return (
     <Card className={cn(
       "group overflow-hidden border-white/70 bg-white/90 shadow-lg shadow-slate-950/5 backdrop-blur transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:shadow-emerald-950/15",
@@ -46,9 +78,9 @@ export default function CampaignCard({ campaign, featured = false }: { campaign:
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem disabled>Preview weekly layout — Coming soon</DropdownMenuItem>
-              <DropdownMenuItem disabled>Compare macros — Coming soon</DropdownMenuItem>
-              <DropdownMenuItem disabled>Share campaign — Coming soon</DropdownMenuItem>
+              <DropdownMenuItem onSelect={showPreview}>Preview weekly layout</DropdownMenuItem>
+              <DropdownMenuItem onSelect={compareMacros}>Compare macros</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void shareCampaign()}><Share2 className="mr-2 h-4 w-4" /> Share campaign</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -111,10 +143,10 @@ export default function CampaignCard({ campaign, featured = false }: { campaign:
             <span className="inline-flex items-center gap-1"><Users className="h-4 w-4" /> {compactNumber(campaign.saves)} saves</span>
             <span className="inline-flex items-center gap-1"><GitFork className="h-4 w-4" /> {compactNumber(campaign.remixes)} remixes</span>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" className="rounded-full" disabled title="Campaign previews are coming soon.">Preview — Coming soon</Button>
-            <Button className="rounded-full bg-slate-950 text-white hover:bg-emerald-700" disabled title="Campaign remixing is coming soon.">
-              <GitFork className="mr-2 h-4 w-4" /> Remix — Coming soon
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Button variant="outline" className="rounded-full" onClick={showPreview}>Preview</Button>
+            <Button className="rounded-full bg-slate-950 text-white hover:bg-emerald-700" onClick={() => void shareCampaign()}>
+              <Share2 className="mr-2 h-4 w-4" /> Share
             </Button>
           </div>
         </div>
