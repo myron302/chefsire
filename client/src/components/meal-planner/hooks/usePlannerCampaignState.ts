@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { fetchCampaignState, startCampaign } from '@/components/meal-planner/campaigns/api/campaignPersistenceApi';
+import { completeActiveCampaign, fetchCampaignState, startCampaign } from '@/components/meal-planner/campaigns/api/campaignPersistenceApi';
 
 export const usePlannerCampaignState = (userId?: string | null) => {
   const [activeCampaignId, setActiveCampaignId] = useState<string | null>(null);
@@ -46,11 +46,21 @@ export const usePlannerCampaignState = (userId?: string | null) => {
     }
   };
 
-  const clearCampaign = () => {
-    setActiveCampaignId(null);
-    setActiveCampaignStartedAt(null);
-    setLastActivatedCampaignId(null);
-
+  const clearCampaign = async () => {
+    setCampaignActionPending(true);
+    setCampaignActionError(null);
+    try {
+      await completeActiveCampaign();
+      activationVersionRef.current += 1;
+      setActiveCampaignId(null);
+      setActiveCampaignStartedAt(null);
+      setLastActivatedCampaignId(null);
+    } catch (error) {
+      setCampaignActionError(error instanceof Error ? error.message : 'Failed to end campaign');
+      throw error;
+    } finally {
+      setCampaignActionPending(false);
+    }
   };
 
   return {

@@ -33,3 +33,10 @@ export async function startCampaign(campaignId: string): Promise<PersistedCampai
   }));
   return payload.activeCampaign;
 }
+
+export async function completeActiveCampaign(): Promise<{ completedCampaign: PersistedCampaign | null }> {
+  return readJson(await fetch('/api/meal-planner/campaigns/active/complete', {
+    method: 'POST',
+    credentials: 'include',
+  }));
+}

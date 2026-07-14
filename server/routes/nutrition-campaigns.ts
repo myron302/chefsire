@@ -125,4 +125,20 @@ router.post("/active", requireAuth, async (req, res) => {
   }
 });
 
+router.post("/active/complete", requireAuth, async (req, res) => {
+  try {
+    const userId = userIdFrom(req);
+    const result = await db.execute(sql`
+      UPDATE user_nutrition_campaigns
+      SET status = 'completed', updated_at = NOW()
+      WHERE user_id = ${userId} AND status = 'active'
+      RETURNING campaign_id AS "campaignId", status, created_at AS "createdAt", updated_at AS "updatedAt", started_at AS "startedAt"
+    `);
+    res.json({ completedCampaign: result.rows[0] ?? null });
+  } catch (error) {
+    console.error("nutrition campaigns complete error", error);
+    res.status(500).json({ message: "Failed to end active campaign" });
+  }
+});
+
 export default router;

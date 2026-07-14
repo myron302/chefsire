@@ -3,12 +3,14 @@ import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { fetchCampaignState, saveCampaign, unsaveCampaign } from "@/components/meal-planner/campaigns/api/campaignPersistenceApi";
+import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 export default function CampaignSaveButton({ campaignId, initialSaved = false, className }: { campaignId: string; initialSaved?: boolean; className?: string }) {
   const [saved, setSaved] = useState(initialSaved);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     let mounted = true;
@@ -27,12 +29,16 @@ export default function CampaignSaveButton({ campaignId, initialSaved = false, c
       if (saved) {
         await unsaveCampaign(campaignId);
         setSaved(false);
+        toast({ title: "Campaign removed", description: "This campaign was removed from your saved list." });
       } else {
         await saveCampaign(campaignId);
         setSaved(true);
+        toast({ title: "Campaign saved", description: "This campaign is now saved to your account." });
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update saved campaign");
+      const message = err instanceof Error ? err.message : "Unable to update saved campaign";
+      setError(message);
+      toast({ title: "Campaign update failed", description: message, variant: "destructive" });
     } finally {
       setPending(false);
     }
