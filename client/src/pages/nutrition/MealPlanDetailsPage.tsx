@@ -14,6 +14,8 @@ import { CreatorFollowButton, CreatorProfileLink, MealPlannerCommentsPanel, Meal
 import { CreatorFollowPrompt } from "@/components/nutrition/social/conversionUtils";
 import { trackMealPlannerEventOnce } from "@/lib/mealPlannerAnalytics";
 
+type RecommendedPlan = { blueprint: { id: string; title: string; description: string | null; priceInCents: number; duration: number; durationUnit: string; difficulty: string; salesCount: number }; creator: { id: string; username: string; displayName: string }; avgRating: number; reviewCount: number; saveCount: number };
+
 type MealPlanDetailsResponse = {
   plan: {
     blueprint: {
@@ -54,6 +56,7 @@ type MealPlanDetailsResponse = {
     user: { id: string; username: string; displayName: string };
   }>;
   ratingStats: { avgRating: number; totalReviews: number };
+  recommendations?: { moreFromCreator: RecommendedPlan[]; similarMealPlans: RecommendedPlan[]; usersAlsoSaved: RecommendedPlan[] };
   social?: {
     likeCount: number;
     saveCount: number;
@@ -384,6 +387,37 @@ export default function MealPlanDetailsPage() {
           </Card>
         </div>
       </div>
+
+      {data?.recommendations ? (
+        <div className="mt-8 space-y-6">
+          <RecommendationRail title="More from this creator" plans={data.recommendations.moreFromCreator} onOpen={(id) => setLocation(`/nutrition/meal-plans/${id}`)} />
+          <RecommendationRail title="Similar meal plans" plans={data.recommendations.similarMealPlans} onOpen={(id) => setLocation(`/nutrition/meal-plans/${id}`)} />
+          <RecommendationRail title="Users also saved" plans={data.recommendations.usersAlsoSaved} onOpen={(id) => setLocation(`/nutrition/meal-plans/${id}`)} />
+        </div>
+      ) : null}
+
     </div>
+  );
+}
+
+function RecommendationRail({ title, plans, onOpen }: { title: string; plans: RecommendedPlan[]; onOpen: (id: string) => void }) {
+  if (!plans?.length) return null;
+  return (
+    <section>
+      <h2 className="mb-3 text-xl font-semibold">{title}</h2>
+      <div className="flex gap-4 overflow-x-auto pb-3 scroll-smooth snap-x">
+        {plans.map((plan) => (
+          <Card key={plan.blueprint.id} className="w-72 flex-none snap-start">
+            <CardContent className="space-y-3 p-4">
+              <h3 className="line-clamp-2 font-semibold">{plan.blueprint.title}</h3>
+              <p className="text-sm text-muted-foreground">by {plan.creator.displayName || plan.creator.username}</p>
+              {plan.blueprint.description ? <p className="line-clamp-2 text-sm text-muted-foreground">{plan.blueprint.description}</p> : null}
+              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground"><span>{formatMoney(plan.blueprint.priceInCents)}</span><span>{plan.blueprint.duration} {plan.blueprint.durationUnit}</span><span>{plan.avgRating ? `${Number(plan.avgRating).toFixed(1)} ★` : "New"}</span><span>{Number(plan.saveCount || 0)} saves</span></div>
+              <Button className="w-full" variant="outline" onClick={() => onOpen(plan.blueprint.id)}>View plan</Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </section>
   );
 }

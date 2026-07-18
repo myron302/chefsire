@@ -540,6 +540,7 @@ function mapPlanRow(row: any) {
       status: row.status,
       salesCount: Number(row.sales_count || 0),
       createdAt: row.created_at,
+      updatedAt: row.updated_at,
       savedAt: row.saved_at || null,
     },
     creator: { id: row.creator_id, username: row.username, displayName: row.display_name },

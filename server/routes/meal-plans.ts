@@ -240,7 +240,7 @@ router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
   try {
     await ensureMealSocialSchema();
     const viewerId = (req.user as any)?.id || null;
-    const { category, difficulty, minPrice, maxPrice, search, sort } = req.query;
+    const { category, difficulty, minPrice, maxPrice, search, sort, duration, dietaryStyle, creator } = req.query;
 
     let query = db
       .select({
@@ -249,6 +249,13 @@ router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
           id: users.id,
           username: users.username,
           displayName: users.displayName,
+          avatar: users.avatar,
+        },
+        creatorStats: {
+          publishedPlans: sql`(SELECT COUNT(*)::int FROM meal_plan_blueprints cb WHERE cb.creator_id = ${mealPlanBlueprints.creatorId} AND cb.status = 'published')`,
+          avgRating: sql`(SELECT COALESCE(AVG(cr.rating), 0) FROM meal_plan_reviews cr INNER JOIN meal_plan_blueprints cb ON cb.id = cr.blueprint_id WHERE cb.creator_id = ${mealPlanBlueprints.creatorId} AND cb.status = 'published')`,
+          totalSaves: sql`(SELECT COUNT(*)::int FROM meal_plan_saves cs INNER JOIN meal_plan_blueprints cb ON cb.id = cs.blueprint_id WHERE cb.creator_id = ${mealPlanBlueprints.creatorId} AND cb.status = 'published')`,
+          totalFollowers: sql`(SELECT COALESCE(followers_count, 0)::int FROM users cu WHERE cu.id = ${mealPlanBlueprints.creatorId})`,
         },
         // ⬇️ removed generic to avoid esbuild TS-parse error
         avgRating: sql`avg(${mealPlanReviews.rating})`,
@@ -277,7 +284,12 @@ router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
       search,
     });
 
-    const sorted = sortBrowsePlans(filtered, sort);
+    let filteredExpanded = filtered;
+    if (duration && duration !== "all") filteredExpanded = filteredExpanded.filter((p: any) => Number(p.blueprint.duration) === Number(duration));
+    if (dietaryStyle && dietaryStyle !== "all") filteredExpanded = filteredExpanded.filter((p: any) => (p.blueprint.dietaryLabels || []).map((x: any) => String(x).toLowerCase()).includes(String(dietaryStyle).toLowerCase()));
+    if (creator && creator !== "all") filteredExpanded = filteredExpanded.filter((p: any) => String(p.blueprint.creatorId) === String(creator) || String(p.creator?.username || "").toLowerCase() === String(creator).toLowerCase());
+
+    const sorted = sortBrowsePlans(filteredExpanded, sort);
 
     res.json({
       plans: sorted.map((item: any) => ({
@@ -290,6 +302,12 @@ router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
           viewerHasSaved: Boolean(item.viewerHasSaved),
         },
         viewerIsFollowingCreator: Boolean(item.viewerIsFollowingCreator),
+        creatorStats: item.creatorStats ? {
+          publishedPlans: Number(item.creatorStats.publishedPlans || 0),
+          avgRating: Number(item.creatorStats.avgRating || 0),
+          totalSaves: Number(item.creatorStats.totalSaves || 0),
+          totalFollowers: Number(item.creatorStats.totalFollowers || 0),
+        } : undefined,
         ranking: {
           trendingScore: Number(item.trendingScore || 0),
           recentnessBoost: Number(item.recentnessBoost || 0),
@@ -299,6 +317,52 @@ router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Error browsing meal plans:", error);
     res.status(500).json({ message: "Failed to browse meal plans" });
+  }
+});
+
+
+// Discovery sections built only from persisted marketplace/social data.
+router.get("/meal-plans/discovery/sections", optionalAuth, async (req: Request, res: Response) => {
+  try {
+    await ensureMealSocialSchema();
+    const viewerId = (req.user as any)?.id || "";
+    const base = (orderSql: any) => db.execute(sql`
+      SELECT b.*, u.id AS creator_id, u.username, u.display_name,
+        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS avg_rating,
+        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS review_count,
+        (SELECT COUNT(*)::int FROM meal_plan_likes l WHERE l.blueprint_id = b.id) AS like_count,
+        (SELECT COUNT(*)::int FROM meal_plan_saves s WHERE s.blueprint_id = b.id) AS save_count,
+        (SELECT COUNT(*)::int FROM meal_plan_comments c WHERE c.blueprint_id = b.id AND c.deleted_at IS NULL) AS comment_count,
+        EXISTS(SELECT 1 FROM meal_plan_likes l WHERE l.blueprint_id = b.id AND l.user_id = ${viewerId}) AS viewer_has_liked,
+        EXISTS(SELECT 1 FROM meal_plan_saves s WHERE s.blueprint_id = b.id AND s.user_id = ${viewerId}) AS viewer_has_saved
+      FROM meal_plan_blueprints b INNER JOIN users u ON u.id = b.creator_id
+      WHERE b.status = 'published'
+      ORDER BY ${orderSql}
+      LIMIT 8
+    `);
+    const weekStart = sql`date_trunc('week', NOW())`;
+    const [trending, saved, rated, newest, updated] = await Promise.all([
+      base(sql`((SELECT COUNT(*) FROM meal_plan_saves s WHERE s.blueprint_id = b.id AND s.created_at >= ${weekStart}) * 4 + (SELECT COUNT(*) FROM meal_plan_likes l WHERE l.blueprint_id = b.id AND l.created_at >= ${weekStart}) * 3 + (SELECT COUNT(*) FROM meal_plan_purchases p WHERE p.blueprint_id = b.id AND p.payment_status = 'completed' AND p.created_at >= ${weekStart}) * 6) DESC, b.created_at DESC`),
+      base(sql`(SELECT COUNT(*) FROM meal_plan_saves s WHERE s.blueprint_id = b.id) DESC, b.created_at DESC`),
+      base(sql`(SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) DESC NULLS LAST, (SELECT COUNT(*) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) DESC, b.created_at DESC`),
+      base(sql`b.created_at DESC`),
+      base(sql`b.updated_at DESC`),
+    ]);
+    const map = (result: any) => ((result as any).rows || []).map((row: any) => ({
+      blueprint: { id: row.id, creatorId: row.creator_id, title: row.title, description: row.description, duration: Number(row.duration || 0), durationUnit: row.duration_unit, priceInCents: Number(row.price_in_cents || 0), category: row.category, dietaryLabels: row.dietary_labels || [], difficulty: row.difficulty, servings: Number(row.servings || 0), tags: row.tags || [], status: row.status, salesCount: Number(row.sales_count || 0), createdAt: row.created_at, updatedAt: row.updated_at },
+      creator: { id: row.creator_id, username: row.username, displayName: row.display_name }, avgRating: Number(row.avg_rating || 0), reviewCount: Number(row.review_count || 0),
+      social: { likeCount: Number(row.like_count || 0), saveCount: Number(row.save_count || 0), commentCount: Number(row.comment_count || 0), viewerHasLiked: Boolean(row.viewer_has_liked), viewerHasSaved: Boolean(row.viewer_has_saved) }
+    }));
+    res.json({ sections: [
+      { key: "trending-week", title: "Trending This Week", plans: map(trending) },
+      { key: "most-saved", title: "Most Saved", plans: map(saved) },
+      { key: "highest-rated", title: "Highest Rated", plans: map(rated) },
+      { key: "new-week", title: "New This Week", plans: map(newest).filter((p: any) => Date.now() - new Date(p.blueprint.createdAt).getTime() <= 7 * 86400000) },
+      { key: "recently-updated", title: "Recently Updated", plans: map(updated) },
+    ].filter(section => section.plans.length > 0) });
+  } catch (error) {
+    console.error("Error fetching meal plan discovery sections:", error);
+    res.status(500).json({ message: "Failed to fetch discovery sections" });
   }
 });
 
@@ -357,12 +421,49 @@ router.get("/meal-plans/:id", optionalAuth, async (req: Request, res: Response) 
       .from(mealPlanReviews)
       .where(eq(mealPlanReviews.blueprintId, planId));
 
+    const recommendationResult = await db.execute(sql`
+      WITH current_plan AS (SELECT creator_id, category, dietary_labels, difficulty FROM meal_plan_blueprints WHERE id = ${planId})
+      SELECT 'more_from_creator' AS rail, b.*, u.id AS creator_id, u.username, u.display_name,
+        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS avg_rating,
+        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS review_count,
+        (SELECT COUNT(*)::int FROM meal_plan_saves s WHERE s.blueprint_id = b.id) AS save_count
+      FROM meal_plan_blueprints b INNER JOIN current_plan cp ON cp.creator_id = b.creator_id INNER JOIN users u ON u.id = b.creator_id
+      WHERE b.status = 'published' AND b.id <> ${planId}
+      ORDER BY b.updated_at DESC LIMIT 8
+    `);
+    const similarResult = await db.execute(sql`
+      WITH current_plan AS (SELECT creator_id, category, dietary_labels, difficulty FROM meal_plan_blueprints WHERE id = ${planId})
+      SELECT b.*, u.id AS creator_id, u.username, u.display_name,
+        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS avg_rating,
+        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS review_count,
+        (SELECT COUNT(*)::int FROM meal_plan_saves s WHERE s.blueprint_id = b.id) AS save_count
+      FROM meal_plan_blueprints b INNER JOIN current_plan cp ON true INNER JOIN users u ON u.id = b.creator_id
+      WHERE b.status = 'published' AND b.id <> ${planId} AND (b.category = cp.category OR b.difficulty = cp.difficulty OR b.dietary_labels && cp.dietary_labels)
+      ORDER BY (CASE WHEN b.category = cp.category THEN 2 ELSE 0 END + CASE WHEN b.difficulty = cp.difficulty THEN 1 ELSE 0 END) DESC, b.updated_at DESC LIMIT 8
+    `);
+    const alsoSavedResult = await db.execute(sql`
+      SELECT b.*, u.id AS creator_id, u.username, u.display_name,
+        (SELECT AVG(r.rating) FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS avg_rating,
+        (SELECT COUNT(*)::int FROM meal_plan_reviews r WHERE r.blueprint_id = b.id) AS review_count,
+        COUNT(DISTINCT s2.user_id)::int AS save_count
+      FROM meal_plan_saves s1 INNER JOIN meal_plan_saves s2 ON s2.user_id = s1.user_id AND s2.blueprint_id <> ${planId}
+      INNER JOIN meal_plan_blueprints b ON b.id = s2.blueprint_id INNER JOIN users u ON u.id = b.creator_id
+      WHERE s1.blueprint_id = ${planId} AND b.status = 'published'
+      GROUP BY b.id, u.id ORDER BY save_count DESC, b.updated_at DESC LIMIT 8
+    `);
+    const mapRec = (rows: any[]) => rows.map((row: any) => ({ blueprint: { id: row.id, creatorId: row.creator_id, title: row.title, description: row.description, duration: Number(row.duration || 0), durationUnit: row.duration_unit, priceInCents: Number(row.price_in_cents || 0), category: row.category, dietaryLabels: row.dietary_labels || [], difficulty: row.difficulty, salesCount: Number(row.sales_count || 0), createdAt: row.created_at, updatedAt: row.updated_at }, creator: { id: row.creator_id, username: row.username, displayName: row.display_name }, avgRating: Number(row.avg_rating || 0), reviewCount: Number(row.review_count || 0), saveCount: Number(row.save_count || 0) }));
+
     res.json({
       plan,
       version,
       reviews,
       ratingStats: normalizeRatingStats(ratingStats),
       social: await getMealPlanSocialStats(planId, (req.user as any)?.id),
+      recommendations: {
+        moreFromCreator: mapRec((recommendationResult as any).rows || []),
+        similarMealPlans: mapRec((similarResult as any).rows || []),
+        usersAlsoSaved: mapRec((alsoSavedResult as any).rows || []),
+      },
     });
   } catch (error) {
     console.error("Error fetching meal plan details:", error);
