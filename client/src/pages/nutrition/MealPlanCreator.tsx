@@ -6,9 +6,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/contexts/UserContext";
 import {
   ChefHat, Plus, DollarSign, Calendar, TrendingUp,
-  Edit, Trash2, Eye, Crown, X, AlertTriangle,
+  Edit, Trash2, Eye, Crown, X, AlertTriangle, Store,
 } from "lucide-react";
 
 type MealPlanBlueprint = {
@@ -75,17 +76,19 @@ function getCompletenessScore(title: string, description: string) {
   let score = 0;
   if (title.trim()) score += 40;
   if (description.trim()) score += 35;
-  if (parseFloat(title) !== 0) score += 25;
+  if (description.trim().length >= 80) score += 25;
   return Math.min(score, 100);
 }
 
 export default function MealPlanCreator() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useUser();
+  const authenticatedUserId = user?.id ? String(user.id) : null;
+  const userHasPremium = Boolean(user?.nutritionPremium);
 
   const [plans, setPlans] = useState<MealPlanBlueprint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userHasPremium, setUserHasPremium] = useState(false);
 
   // Create form
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -103,18 +106,7 @@ export default function MealPlanCreator() {
 
   useEffect(() => {
     fetchMyPlans();
-    checkPremiumStatus();
   }, []);
-
-  const checkPremiumStatus = async () => {
-    try {
-      const res = await fetch("/api/user", { credentials: "include" });
-      if (res.ok) {
-        const data = await res.json();
-        setUserHasPremium(data.nutritionPremium || false);
-      }
-    } catch {}
-  };
 
   const fetchMyPlans = async () => {
     try {
@@ -128,7 +120,9 @@ export default function MealPlanCreator() {
           reviewCount: Number(p.reviewCount || 0),
         })));
       }
-    } catch {}
+    } catch {
+      toast({ title: "Error", description: "Unable to load your meal plans.", variant: "destructive" });
+    }
     finally { setLoading(false); }
   };
 
@@ -251,6 +245,26 @@ export default function MealPlanCreator() {
       }
     } catch {
       toast({ title: "Error", description: "Failed to publish.", variant: "destructive" });
+    }
+  };
+
+
+
+  const handleUnpublish = async (planId: string) => {
+    try {
+      const res = await fetch(`/api/meal-plans/${planId}/unpublish`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        toast({ title: "Unpublished", description: "Your meal plan is back in drafts and can be edited." });
+        fetchMyPlans();
+      } else {
+        toast({ title: "Error", description: data.message || "Failed to unpublish.", variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error", description: "Failed to unpublish.", variant: "destructive" });
     }
   };
 
@@ -379,7 +393,7 @@ export default function MealPlanCreator() {
           </h1>
           <p className="text-muted-foreground mt-1">Create and sell your meal plan templates</p>
         </div>
-        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2" aria-label="Creator dashboard actions">
+        <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-3" aria-label="Creator dashboard actions">
           <Button className="w-full justify-center sm:hidden" variant="outline" onClick={() => setLocation("/nutrition/analytics")} aria-label="Open creator analytics">
             <TrendingUp className="w-4 h-4 mr-2" />
             Analytics
@@ -387,6 +401,10 @@ export default function MealPlanCreator() {
           <Button className="hidden w-full justify-center sm:inline-flex" variant="outline" onClick={() => setLocation("/nutrition/analytics")}>
             <TrendingUp className="w-4 h-4 mr-2" />
             Analytics
+          </Button>
+          <Button className="w-full justify-center" variant="outline" onClick={() => setLocation(authenticatedUserId ? `/nutrition/creators/${authenticatedUserId}` : "/nutrition/creators")}>
+            <Store className="w-4 h-4 mr-2" />
+            View Storefront
           </Button>
           <Button className="w-full justify-center" onClick={() => setShowCreateForm(!showCreateForm)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -423,8 +441,8 @@ export default function MealPlanCreator() {
                   {userHasPremium ? "Mark as premium content" : "Upgrade to create premium content"}
                 </label>
                 {!userHasPremium && (
-                  <Button type="button" size="sm" variant="outline" className="ml-auto" onClick={() => setLocation("/nutrition/meal-planner")}>
-                    Upgrade
+                  <Button type="button" size="sm" variant="outline" className="ml-auto" onClick={() => setLocation("/nutrition")}>
+                    View nutrition options
                   </Button>
                 )}
               </div>
@@ -487,9 +505,11 @@ export default function MealPlanCreator() {
                         {plan.reviewCount ? <span>{plan.reviewCount} reviews ({Number(plan.avgRating || 0).toFixed(1)} ⭐)</span> : null}
                       </div>
                     </div>
-                    <div className="flex gap-2 shrink-0">
-                      {plan.status === "draft" && (
+                    <div className="flex w-full flex-wrap gap-2 shrink-0 sm:w-auto sm:justify-end">
+                      {plan.status === "draft" ? (
                         <Button size="sm" onClick={() => handlePublish(plan.id)}>Publish</Button>
+                      ) : (
+                        <Button size="sm" variant="outline" onClick={() => handleUnpublish(plan.id)}>Unpublish</Button>
                       )}
                       <Button
                         size="sm"
@@ -503,7 +523,7 @@ export default function MealPlanCreator() {
                         size="sm"
                         variant="outline"
                         onClick={() => setLocation(`/nutrition/meal-plans/${plan.id}`)}
-                        title="View"
+                        title="Preview plan"
                       >
                         <Eye className="w-4 h-4" />
                       </Button>

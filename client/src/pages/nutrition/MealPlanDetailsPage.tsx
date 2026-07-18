@@ -125,7 +125,7 @@ export default function MealPlanDetailsPage() {
 
   // Check if the current user already has a review
   const myExistingReview = useMemo(
-    () => data?.reviews?.find(r => user?.id && r.user.id === user.id),
+    () => data?.reviews?.find(r => user?.id && String(r.user.id) === String(user.id)),
     [data?.reviews, user?.id]
   );
 
@@ -219,7 +219,7 @@ export default function MealPlanDetailsPage() {
           <Card>
             <CardHeader>
               <CardTitle>Overview</CardTitle>
-              {user?.id === creator?.id ? (
+              {Boolean(user?.id && creator?.id) && String(user.id) === String(creator.id) ? (
                 <Button className="w-full justify-center sm:hidden" size="sm" variant="outline" onClick={() => setLocation("/nutrition/analytics")} aria-label="Open creator analytics">
                   <BarChart3 className="mr-2 h-4 w-4" />
                   Creator Analytics
@@ -231,7 +231,7 @@ export default function MealPlanDetailsPage() {
                     <User className="w-4 h-4" />
                     By <CreatorProfileLink creatorId={creator.id}>{creator.displayName || creator.username}</CreatorProfileLink>
                     <CreatorFollowButton creatorId={creator.id} compact />
-                    {user?.id === creator.id ? <Button className="hidden justify-center sm:inline-flex sm:w-auto" size="sm" variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-1 h-3.5 w-3.5" />Analytics</Button> : null}
+                    {Boolean(user?.id && creator?.id) && String(user.id) === String(creator.id) ? <Button className="hidden justify-center sm:inline-flex sm:w-auto" size="sm" variant="outline" onClick={() => setLocation("/nutrition/analytics")}><BarChart3 className="mr-1 h-3.5 w-3.5" />Analytics</Button> : null}
                   </span>
                 ) : null}
               </CardDescription>
@@ -319,7 +319,7 @@ export default function MealPlanDetailsPage() {
                     <div className="flex items-center justify-between gap-2">
                       <div className="font-semibold text-sm truncate">
                         {r.user.displayName || r.user.username}
-                        {user?.id === r.user.id && <span className="text-xs text-muted-foreground ml-1">(you)</span>}
+                        {Boolean(user?.id) && String(user.id) === String(r.user.id) && <span className="text-xs text-muted-foreground ml-1">(you)</span>}
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         {Array.from({ length: r.review.rating }).map((_, i) => (

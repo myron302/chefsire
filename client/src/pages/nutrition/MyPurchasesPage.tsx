@@ -151,7 +151,7 @@ export default function MyPurchasesPage() {
                 <div className="flex flex-wrap items-center gap-2">
                   <MealPlannerSocialActions target="shared-week" id={item.token} initialStats={item.social} compact saveActionLinks={{ creatorHref: item.sharer.id ? `/nutrition/creators/${item.sharer.id}` : undefined }} />
                   <Button size="sm" variant="outline" onClick={() => setLocation(`/meal-planner/shared/${item.token}`)}>View</Button>
-                  <Button size="sm" onClick={() => setLocation(`/meal-planner/shared/${item.token}`)}>Copy week</Button>
+                  <Button size="sm" onClick={() => setLocation(`/meal-planner/shared/${item.token}`)}>Open to copy</Button>
                   {item.sharer.id ? <Button size="sm" variant="outline" onClick={() => setLocation(`/nutrition/creators/${item.sharer.id}`)}>View creator</Button> : null}
                 </div>
               </div>
