@@ -2,6 +2,7 @@ import type React from "react";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
+import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -59,6 +60,7 @@ export function MealPlannerSocialActions({
   const { user } = useUser();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [stats, setStats] = useState<MealPlannerSocialStats>({ ...EMPTY_STATS, ...(initialStats || {}) });
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -83,6 +85,9 @@ export function MealPlannerSocialActions({
       if (!res.ok) throw new Error(next?.message || `Unable to update ${kind}`);
       setStats(next);
       onChange?.(next);
+      if (kind === "save") {
+        queryClient.invalidateQueries({ queryKey: ["/api/me/saved-meal-planner-items"] });
+      }
       if (kind === "save" && !active) {
         toast({
           title: target === "meal-plan" ? "Meal plan saved" : "Shared week saved",
@@ -91,7 +96,7 @@ export function MealPlannerSocialActions({
             <div className="flex flex-wrap gap-2">
               <ToastAction altText="View saved items" onClick={() => setLocation("/nutrition/my-purchases")}>View saved items</ToastAction>
               {target === "shared-week" ? (
-                <ToastAction altText="Copy this week" onClick={() => setLocation(saveActionLinks?.copyHref || `/meal-planner/shared/${id}`)}>Copy this week</ToastAction>
+                <ToastAction altText="Open week to copy" onClick={() => setLocation(saveActionLinks?.copyHref || `/meal-planner/shared/${id}`)}>Open week to copy</ToastAction>
               ) : null}
               <ToastAction altText="View creator" onClick={() => setLocation(saveActionLinks?.creatorHref || (target === "meal-plan" ? `/nutrition/meal-plans/${id}` : `/meal-planner/shared/${id}`))}>View creator</ToastAction>
             </div>
@@ -233,7 +238,7 @@ export function MealPlannerCommentsPanel({
                     <p className="text-sm font-semibold">{item.user.displayName || item.user.username || "Community member"}</p>
                     <p className="text-xs text-muted-foreground">{item.createdAt ? new Date(item.createdAt).toLocaleString() : "Just now"}</p>
                   </div>
-                  {user?.id === item.user.id ? (
+                  {Boolean(user?.id) && String(user.id) === String(item.user.id) ? (
                     <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => remove(item.id)} aria-label="Delete comment">
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -257,14 +262,14 @@ export function CreatorFollowButton({ creatorId, compact = false }: { creatorId?
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (!creatorId || !user || user.id === creatorId) return;
+    if (!creatorId || !user || String(user.id) === String(creatorId)) return;
     fetch(`/api/follows/status/${encodeURIComponent(creatorId)}`, { credentials: "include" })
       .then((res) => (res.ok ? res.json() : null))
       .then((payload) => payload && setStatus({ isFollowing: !!payload.isFollowing, isRequested: !!payload.isRequested }))
       .catch(() => undefined);
   }, [creatorId, user?.id]);
 
-  if (!creatorId || user?.id === creatorId) return null;
+  if (!creatorId || Boolean(user?.id && creatorId) && String(user.id) === String(creatorId)) return null;
 
   const toggle = async () => {
     if (!user) {

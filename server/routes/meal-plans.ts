@@ -207,6 +207,34 @@ router.post("/meal-plans/:id/publish", requireAuth, async (req: Request, res: Re
   }
 });
 
+// Unpublish meal plan
+router.post("/meal-plans/:id/unpublish", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const planId = req.params.id;
+
+    const [existing] = await db
+      .select()
+      .from(mealPlanBlueprints)
+      .where(and(eq(mealPlanBlueprints.id, planId), eq(mealPlanBlueprints.creatorId, userId)))
+      .limit(1);
+
+    if (!existing) return res.status(404).json({ message: "Meal plan not found" });
+    if (existing.status !== "published") return res.status(400).json({ message: "Only published plans can be unpublished" });
+
+    const [updated] = await db
+      .update(mealPlanBlueprints)
+      .set({ status: "draft" })
+      .where(eq(mealPlanBlueprints.id, planId))
+      .returning();
+
+    res.json({ blueprint: updated });
+  } catch (error) {
+    console.error("Error unpublishing meal plan:", error);
+    res.status(500).json({ message: "Failed to unpublish meal plan" });
+  }
+});
+
 // Browse published meal plans
 router.get("/meal-plans", optionalAuth, async (req: Request, res: Response) => {
   try {
