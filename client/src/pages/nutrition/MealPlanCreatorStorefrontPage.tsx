@@ -90,8 +90,10 @@ export default function MealPlanCreatorStorefrontPage() {
   const { creator, stats } = creatorQuery.data;
   const plans = plansQuery.data?.plans || [];
   const publicSharedWeeks = creatorQuery.data.publicSharedWeeks || [];
-  const topLikedPlans = [...plans].sort((a, b) => Number(b.social?.likeCount || 0) - Number(a.social?.likeCount || 0)).slice(0, 3);
-  const topSavedPlans = [...plans].sort((a, b) => Number(b.social?.saveCount || 0) - Number(a.social?.saveCount || 0)).slice(0, 3);
+  const topSellingPlans = [...plans].sort((a, b) => Number(b.blueprint.salesCount || 0) - Number(a.blueprint.salesCount || 0)).slice(0, 3);
+  const highestRatedPlans = [...plans].sort((a, b) => Number(b.avgRating || 0) - Number(a.avgRating || 0) || Number(b.reviewCount || 0) - Number(a.reviewCount || 0)).slice(0, 3);
+  const recentlyPublishedPlans = [...plans].sort((a: any, b: any) => new Date(b.blueprint.createdAt || 0).getTime() - new Date(a.blueprint.createdAt || 0).getTime()).slice(0, 3);
+  const recentlyUpdatedPlans = [...plans].sort((a: any, b: any) => new Date(b.blueprint.updatedAt || 0).getTime() - new Date(a.blueprint.updatedAt || 0).getTime()).slice(0, 3);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-4 sm:p-6">
@@ -131,8 +133,10 @@ export default function MealPlanCreatorStorefrontPage() {
 
 
       <div className="grid gap-4 md:grid-cols-2">
-        <SpotlightPlans title="Most Liked" description="Marketplace plans ranked by social likes." plans={topLikedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
-        <SpotlightPlans title="Most Saved" description="Marketplace plans shoppers are saving most." plans={topSavedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
+        <SpotlightPlans title="Top selling plans" description="Published plans ranked by completed purchases." plans={topSellingPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
+        <SpotlightPlans title="Highest rated plans" description="Published plans ranked by persisted reviews." plans={highestRatedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
+        <SpotlightPlans title="Recently published" description="Newest plans in this creator storefront." plans={recentlyPublishedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
+        <SpotlightPlans title="Recently updated" description="Plans with the freshest saved updates." plans={recentlyUpdatedPlans} onOpen={(planId) => setLocation(`/nutrition/meal-plans/${planId}`)} />
       </div>
 
       <Card id="creator-shared-weeks">
@@ -210,7 +214,7 @@ function SpotlightPlans({ title, description, plans, onOpen }: { title: string; 
           <div key={plan.blueprint.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
             <div className="min-w-0">
               <div className="truncate font-medium">{plan.blueprint.title}</div>
-              <div className="text-xs text-muted-foreground">{Number(plan.social?.likeCount || 0)} likes • {Number(plan.social?.saveCount || 0)} saves</div>
+              <div className="text-xs text-muted-foreground">{Number(plan.blueprint.salesCount || 0)} sales • {Number(plan.avgRating || 0).toFixed(1)} ★ • {Number(plan.social?.saveCount || 0)} saves</div>
             </div>
             <Button size="sm" variant="outline" onClick={() => onOpen(plan.blueprint.id)}>View</Button>
           </div>
