@@ -537,7 +537,7 @@ export default function Feed() {
           <div className="bg-white rounded-lg max-w-6xl w-full max-h-[90vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <div className="flex flex-col md:flex-row h-full max-h-[90vh]">
               <div className="md:w-2/3 bg-black flex items-center justify-center relative">
-                <Button variant="ghost" size="sm" className="absolute top-4 right-4 text-white hover:bg-white/20" onClick={() => setSelectedPost(null)}>
+                <Button variant="ghost" size="sm" className="absolute top-4 right-4 z-10 text-white hover:bg-white/20" onClick={() => setSelectedPost(null)}>
                   <X className="h-6 w-6" />
                 </Button>
                 <MediaCarousel
