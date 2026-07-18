@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/contexts/UserContext";
 import {
   ChefHat, Plus, DollarSign, Calendar, TrendingUp,
   Edit, Trash2, Eye, Crown, X, AlertTriangle, Store,
@@ -82,11 +83,12 @@ function getCompletenessScore(title: string, description: string) {
 export default function MealPlanCreator() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useUser();
+  const authenticatedUserId = user?.id ? String(user.id) : null;
+  const userHasPremium = Boolean(user?.nutritionPremium);
 
   const [plans, setPlans] = useState<MealPlanBlueprint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [userHasPremium, setUserHasPremium] = useState(false);
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
   // Create form
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -104,19 +106,7 @@ export default function MealPlanCreator() {
 
   useEffect(() => {
     fetchMyPlans();
-    checkPremiumStatus();
   }, []);
-
-  const checkPremiumStatus = async () => {
-    try {
-      const res = await fetch("/api/user", { credentials: "include" });
-      if (res.ok) {
-        const data = await res.json();
-        setUserHasPremium(data.nutritionPremium || false);
-        setCurrentUserId(data.id ? String(data.id) : null);
-      }
-    } catch {}
-  };
 
   const fetchMyPlans = async () => {
     try {
@@ -412,7 +402,7 @@ export default function MealPlanCreator() {
             <TrendingUp className="w-4 h-4 mr-2" />
             Analytics
           </Button>
-          <Button className="w-full justify-center" variant="outline" onClick={() => setLocation(currentUserId ? `/nutrition/creators/${currentUserId}` : "/nutrition/creators")}>
+          <Button className="w-full justify-center" variant="outline" onClick={() => setLocation(authenticatedUserId ? `/nutrition/creators/${authenticatedUserId}` : "/nutrition/creators")}>
             <Store className="w-4 h-4 mr-2" />
             View Storefront
           </Button>
