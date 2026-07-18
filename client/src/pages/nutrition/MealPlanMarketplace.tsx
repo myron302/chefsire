@@ -37,6 +37,12 @@ type MealPlanListing = {
     viewerHasSaved: boolean;
   };
   viewerIsFollowingCreator?: boolean;
+  creatorStats?: {
+    publishedPlans: number;
+    avgRating: number;
+    totalSaves: number;
+    totalFollowers: number;
+  };
   ranking?: { trendingScore: number; recentnessBoost: number };
 };
 
@@ -137,10 +143,12 @@ export default function MealPlanMarketplace() {
           <CreatorFollowButton creatorId={plan.creator.id} compact />
         </div>
         {plan.blueprint.description && <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{plan.blueprint.description}</p>}
-        <div className="grid grid-cols-2 gap-2 rounded-lg border bg-muted/20 p-2 text-xs mb-3">
-          <span>{Number((plan as any).creatorStats?.publishedPlans || 0)} plans</span><span>{Number((plan as any).creatorStats?.totalFollowers || 0)} followers</span>
-          <span>{Number((plan as any).creatorStats?.avgRating || 0).toFixed(1)} avg ★</span><span>{Number((plan as any).creatorStats?.totalSaves || 0)} saves</span>
-        </div>
+        {plan.creatorStats ? (
+          <div className="grid grid-cols-2 gap-2 rounded-lg border bg-muted/20 p-2 text-xs mb-3">
+            <span>{Number(plan.creatorStats.publishedPlans).toLocaleString()} plans</span><span>{Number(plan.creatorStats.totalFollowers).toLocaleString()} followers</span>
+            <span>{Number(plan.creatorStats.avgRating).toFixed(1)} avg ★</span><span>{Number(plan.creatorStats.totalSaves).toLocaleString()} saves</span>
+          </div>
+        ) : null}
         <div className="flex flex-wrap gap-2 mb-4"><ConversionBadges input={{ priceInCents: (plan.blueprint as any).priceInCents, avgRating: plan.avgRating, reviewCount: plan.reviewCount, salesCount: plan.blueprint.salesCount, createdAt: plan.blueprint.createdAt, social: plan.social, ranking: plan.ranking }} /><Badge variant="outline"><Calendar className="w-3 h-3 mr-1" />{plan.blueprint.duration} days</Badge>{plan.blueprint.difficulty && <Badge variant="secondary" className="capitalize">{plan.blueprint.difficulty}</Badge>}</div>
         <div className="flex items-center justify-between mb-4 text-sm"><span className="flex items-center gap-1"><Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />{plan.avgRating ? Number(plan.avgRating).toFixed(1) : "New"}</span><span className="text-lg font-bold text-green-600">${(((plan.blueprint as any).priceInCents || 0) / 100).toFixed(2)}</span></div>
         <MealPlannerSocialActions target="meal-plan" id={plan.blueprint.id} initialStats={plan.social} compact saveActionLinks={{ creatorHref: `/nutrition/creators/${plan.creator.id}` }} />
