@@ -4,11 +4,12 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/contexts/UserContext";
 import type { PostWithUser, Recipe } from "@shared/schema";
-import { MoreHorizontal, Plus, Minus, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { MoreHorizontal, Plus, Minus, CalendarDays } from "lucide-react";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { shareContent, getPostShareUrl } from "@/lib/share";
 import { Link } from "wouter";
 import { normalizeMediaUrl } from "@/lib/mediaUrl";
+import MediaCarousel from "@/components/posts/MediaCarousel";
 
 // Import UI primitives from their individual modules (do not import the directory)
 import { Card } from "@/components/ui/card";
@@ -124,12 +125,6 @@ function normalizeSteps(steps: string[]): string[] {
   return steps.map((s) => (s ?? "").trim()).filter(Boolean);
 }
 
-function getPostImageGallery(post: PostWithUser): string[] {
-  return [post.imageUrl, ...(post.additionalImages ?? [])]
-    .map((image) => normalizeMediaUrl(image))
-    .filter((image, index, images) => Boolean(image) && images.indexOf(image) === index);
-}
-
 interface PostCardProps {
   post: PostWithUser;
   currentUserId?: string;
@@ -182,11 +177,7 @@ export default function PostCard({
   const [showAddToMealPlan, setShowAddToMealPlan] = useState(false);
   const [planDay, setPlanDay] = useState('Monday');
   const [planMealType, setPlanMealType] = useState('dinner');
-  const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const touchStartXRef = useRef<number | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
-  const galleryImages = getPostImageGallery(post);
-  const activeImage = galleryImages[currentImageIndex] ?? post.imageUrl;
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -199,9 +190,6 @@ export default function PostCard({
     return () => document.removeEventListener("click", onDocClick);
   }, [menuOpen]);
 
-  useEffect(() => {
-    setCurrentImageIndex(0);
-  }, [post.id, post.imageUrl, JSON.stringify(post.additionalImages ?? [])]);
 
   const editMutation = useMutation({
     mutationFn: async (updatedData: { caption: string }) => {
@@ -506,28 +494,6 @@ export default function PostCard({
     setMenuOpen((s) => !s);
   };
 
-  const isVideo = (() => {
-    const url = normalizeMediaUrl(post.imageUrl);
-    if (!url) return false;
-    if (url.startsWith("data:video/")) return true;
-    const clean = url.toLowerCase().split("?")[0];
-    return /\.(mp4|webm|mov|avi|m4v|ogg|mkv)$/.test(clean);
-  })();
-  const hasGallery = !isVideo && galleryImages.length > 1;
-
-  const showPreviousImage = (e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    setCurrentImageIndex((current) =>
-      current === 0 ? galleryImages.length - 1 : current - 1
-    );
-  };
-
-  const showNextImage = (e?: React.MouseEvent) => {
-    e?.stopPropagation();
-    setCurrentImageIndex((current) =>
-      current === galleryImages.length - 1 ? 0 : current + 1
-    );
-  };
 
   return (
     <Card className="w-full bg-card border border-border shadow-sm">
@@ -625,82 +591,15 @@ export default function PostCard({
       </div>
 
       {/* Post Image/Video */}
-      <div
-        className="relative cursor-pointer"
+      <MediaCarousel
+        imageUrl={post.imageUrl}
+        additionalImages={post.additionalImages}
+        alt="Post content"
+        mediaClassName="w-full h-96 object-cover"
+        testId={`img-post-${post.id}`}
         onClick={() => onCardClick?.(post)}
-        onTouchStart={(e) => {
-          touchStartXRef.current = e.changedTouches[0]?.clientX ?? null;
-        }}
-        onTouchEnd={(e) => {
-          if (!hasGallery || touchStartXRef.current === null) return;
-          const endX = e.changedTouches[0]?.clientX ?? touchStartXRef.current;
-          const deltaX = endX - touchStartXRef.current;
-          touchStartXRef.current = null;
-
-          if (Math.abs(deltaX) < 40) return;
-          if (deltaX < 0) {
-            showNextImage();
-          } else {
-            showPreviousImage();
-          }
-        }}
-      >
-        {isVideo ? (
-          <video
-            src={normalizeMediaUrl(post.imageUrl)}
-            controls
-            muted
-            playsInline
-            preload="metadata"
-            className="w-full h-96 object-cover"
-          />
-        ) : (
-          <img
-            src={activeImage}
-            alt="Post content"
-            className="w-full h-96 object-cover"
-            data-testid={`img-post-${post.id}`}
-          />
-        )}
-
-        {hasGallery && (
-          <>
-            <div className="pointer-events-none absolute inset-x-0 top-0 flex justify-center gap-1 p-3">
-              {galleryImages.map((image, index) => (
-                <span
-                  key={`${image}-${index}`}
-                  className={`h-1.5 flex-1 rounded-full ${
-                    index === currentImageIndex ? "bg-white" : "bg-white/40"
-                  }`}
-                />
-              ))}
-            </div>
-
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              className="absolute left-3 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60"
-              onClick={showPreviousImage}
-            >
-              <ChevronLeft className="h-5 w-5" />
-            </Button>
-            <Button
-              type="button"
-              variant="secondary"
-              size="icon"
-              className="absolute right-3 top-1/2 h-9 w-9 -translate-y-1/2 rounded-full bg-black/45 text-white hover:bg-black/60"
-              onClick={showNextImage}
-            >
-              <ChevronRight className="h-5 w-5" />
-            </Button>
-
-            <div className="absolute bottom-3 right-3 rounded-full bg-black/60 px-2 py-1 text-xs font-medium text-white">
-              {currentImageIndex + 1} / {galleryImages.length}
-            </div>
-          </>
-        )}
-      </div>
+        mutedVideo
+      />
 
       {/* Post body / caption */}
       <div className="px-4 pt-3 pb-2">

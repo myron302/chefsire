@@ -16,6 +16,7 @@ import AISuggestions from "@/components/AISuggestions";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import { useUser } from "@/contexts/UserContext";
 import { Link } from "wouter";
+import MediaCarousel from "@/components/posts/MediaCarousel";
 
 // ─── Demo data — shown to guests when the DB has no real posts yet ───────────
 // These make the site feel alive for new visitors before the community grows.
@@ -539,11 +540,13 @@ export default function Feed() {
                 <Button variant="ghost" size="sm" className="absolute top-4 right-4 text-white hover:bg-white/20" onClick={() => setSelectedPost(null)}>
                   <X className="h-6 w-6" />
                 </Button>
-                {selectedPost.imageUrl?.includes("video") || selectedPost.imageUrl?.includes(".mp4") ? (
-                  <video src={selectedPost.imageUrl} controls className="w-full h-full object-contain" />
-                ) : (
-                  <img src={selectedPost.imageUrl} alt={selectedPost.caption || "Post"} className="w-full h-full object-contain" loading="lazy" decoding="async" />
-                )}
+                <MediaCarousel
+                  imageUrl={selectedPost.imageUrl}
+                  additionalImages={selectedPost.additionalImages}
+                  alt={selectedPost.caption || "Post"}
+                  className="w-full h-full"
+                  mediaClassName="w-full h-full object-contain"
+                />
               </div>
 
               <div className="md:w-1/3 p-6 overflow-y-auto">

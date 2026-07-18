@@ -11,6 +11,7 @@ import { useUser } from "@/contexts/UserContext";
 import { ProfileCompletion } from "@/components/ProfileCompletion";
 import { AnalyticsDashboard } from "@/components/AnalyticsDashboard";
 import PostCard from "@/components/post-card";
+import MediaCarousel from "@/components/posts/MediaCarousel";
 import CommentsSection from "./CommentsSection";
 import { shareContent, getPostShareUrl } from "@/lib/share";
 import {
@@ -1193,20 +1194,13 @@ export default function Profile() {
                 >
                   <X className="h-6 w-6" />
                 </Button>
-                {selectedPost.imageUrl?.includes("video") ||
-                selectedPost.imageUrl?.includes(".mp4") ? (
-                  <video
-                    src={selectedPost.imageUrl}
-                    controls
-                    className="w-full h-full object-contain"
-                  />
-                ) : (
-                  <img
-                    src={selectedPost.imageUrl}
-                    alt={selectedPost.caption || "Post"}
-                    className="w-full h-full object-contain"
-                  />
-                )}
+                <MediaCarousel
+                  imageUrl={selectedPost.imageUrl}
+                  additionalImages={selectedPost.additionalImages}
+                  alt={selectedPost.caption || "Post"}
+                  className="w-full h-full"
+                  mediaClassName="w-full h-full object-contain"
+                />
               </div>
 
               {/* Details section - 1/3 width */}
