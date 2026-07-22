@@ -3,6 +3,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { requireAuth } from "../middleware";
+import { geocodeLocation } from "./google";
+import { parseCoordinates } from "../services/catering-geo";
 
 const r = Router();
 
@@ -183,11 +185,15 @@ r.post("/:id/catering/enable", async (req, res) => {
       bio: z.string().optional(),
     });
     const body = schema.parse(req.body);
+    const geocoded = await geocodeLocation(body.location).catch(() => null);
+    const coordinates = parseCoordinates(body.location) ?? (geocoded && { latitude: geocoded.lat, longitude: geocoded.lng });
+    if (!coordinates) return res.status(422).json({ message: "We couldn't find that service location." });
     const updated = await storage.enableCatering(
       req.params.id,
       body.location,
       body.radius,
-      body.bio
+      body.bio,
+      coordinates,
     );
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering enabled", user: updated });
@@ -219,6 +225,12 @@ r.put("/:id/catering/settings", async (req, res) => {
       available: z.boolean().optional(),
     });
     const settings = schema.parse(req.body);
+    if (settings.location !== undefined) {
+      const geocoded = await geocodeLocation(settings.location).catch(() => null);
+      const coordinates = parseCoordinates(settings.location) ?? (geocoded && { latitude: geocoded.lat, longitude: geocoded.lng });
+      if (!coordinates) return res.status(422).json({ message: "We couldn't find that service location." });
+      (settings as typeof settings & { coordinates?: { latitude: number; longitude: number } }).coordinates = coordinates;
+    }
     const updated = await storage.updateCateringSettings(
       req.params.id,
       settings
