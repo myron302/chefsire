@@ -38,7 +38,6 @@ import {
   type PlannerGroceryDerivationState,
   type PlannerGrocerySuggestion,
 } from '@/components/meal-planner/plannerGroceryUtils';
-import { optimizeWeeklyPlan } from '@/components/meal-planner/auto-planner/autoPlannerEngine';
 import NutritionCoachPanel from '@/components/meal-planner/coach/NutritionCoachPanel';
 import NutritionCampaignPanel from '@/components/meal-planner/campaigns/NutritionCampaignPanel';
 import { usePlannerHydration } from '@/components/meal-planner/hooks/usePlannerHydration';
@@ -1240,20 +1239,26 @@ const NutritionMealPlanner = () => {
   };
 
 
-  const applyAutoPlannerPreview = (preview: any) => {
+  const applyAutoPlannerPreview = async (preview: any) => {
     if (!preview) return;
     const mode = preview.mode || 'balanced';
-    const prioritized = optimizeWeeklyPlan(weeklyMeals, weekDays, mealTypes, macroGoals.protein, mode, {
-      proteinPriority: 1, budgetPriority: 1, prepSimplicity: 1, varietyPriority: 1, pantryReusePriority: 1, groceryEfficiencyPriority: 1, fillEmptyOnly: true,
-    });
-    const nextWeeklyMeals = JSON.parse(JSON.stringify(weeklyMeals || {}));
-    prioritized.changes.forEach((change: any) => {
-      const day = change.slot.day;
-      const slot = change.slot.mealType;
-      nextWeeklyMeals[day] = { ...(nextWeeklyMeals[day] || {}), [slot]: [change.meal] };
-    });
-    setWeeklyMeals(nextWeeklyMeals);
-    toast({ title: 'Smart Auto-Plan applied', description: `Applied ${prioritized.changes.length} planner updates in ${mode} mode (local preview workflow).` });
+    const changes = Array.isArray(preview.changes) ? preview.changes : [];
+    if (!changes.length) return;
+    const previousMeals = weeklyMeals;
+    try {
+      const response = await fetch('/api/meal-planner/week/assistant-apply', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({ operations: changes.map((change: any) => ({ date: getDateForWeekday(change.slot.day), mealType: change.slot.mealType, meal: change.meal, currentMealId: change.operation?.currentMealId })) }),
+      });
+      if (!response.ok) throw new Error('Assistant changes were not saved');
+      await fetchMealPlans();
+      fetchGroceryList();
+      fetchDailyNutrition();
+      toast({ title: 'AI Plan Assistant applied', description: `Saved ${changes.length} reviewed ${mode} planner change${changes.length === 1 ? '' : 's'}.` });
+    } catch (error) {
+      setWeeklyMeals(previousMeals);
+      toast({ variant: 'destructive', description: 'Could not save the assistant changes. Your previous plan is still available.' });
+    }
   };
 
   const removeMealItem = async (day: string, mealType: string, itemIndex: number) => {

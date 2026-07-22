@@ -1714,6 +1714,53 @@ router.post("/week/entry", requireAuth, async (req: Request, res: Response) => {
 });
 
 // ============================================================
+// POST /api/meal-planner/week/assistant-apply
+// Applies a reviewed assistant proposal atomically. The assistant is only a
+// planner client; this endpoint remains the integrity boundary for meal IDs.
+// ============================================================
+router.post("/week/assistant-apply", requireAuth, async (req: Request, res: Response) => {
+  try {
+    const userId = req.user!.id;
+    const { operations } = req.body || {};
+    if (!Array.isArray(operations) || operations.length === 0 || operations.length > 21) {
+      return res.status(400).json({ message: "Provide between 1 and 21 reviewed planner operations" });
+    }
+    const normalized = operations.map((operation: any) => ({
+      date: new Date(operation?.date), mealType: String(operation?.mealType || "").toLowerCase(),
+      meal: operation?.meal || {}, currentMealId: operation?.currentMealId ? String(operation.currentMealId) : null,
+    }));
+    if (normalized.some((operation: any) => isNaN(operation.date.getTime()) || !["breakfast", "lunch", "dinner", "snack"].includes(operation.mealType) || !String(operation.meal?.name || "").trim())) {
+      return res.status(400).json({ message: "One or more planner operations are invalid" });
+    }
+    const recipeIds = normalized.map((operation: any) => operation.meal.recipeId || operation.meal.sourceRecipeId).filter(Boolean).map(String);
+    if (recipeIds.length) {
+      const found = await db.select({ id: recipes.id }).from(recipes).where(inArray(recipes.id, Array.from(new Set(recipeIds))));
+      if (found.length !== new Set(recipeIds).size) return res.status(400).json({ message: "A proposed recipe no longer exists and was not applied" });
+    }
+    const weekStart = startOfWeekMonday(normalized[0].date);
+    const weekEnd = endOfDay(addDays(weekStart, 6));
+    const result = await db.transaction(async (tx) => {
+      let [plan] = await tx.select().from(mealPlans).where(and(eq(mealPlans.userId, userId), lte(mealPlans.startDate, weekEnd), gte(mealPlans.endDate, weekStart), eq(mealPlans.isTemplate, false))).orderBy(desc(mealPlans.createdAt)).limit(1);
+      if (!plan) [plan] = await tx.insert(mealPlans).values({ userId, name: `Week of ${fmtISODate(weekStart)}`, startDate: startOfDay(weekStart), endDate: weekEnd, isTemplate: false }).returning();
+      for (const operation of normalized) {
+        if (operation.currentMealId) {
+          const owned = await tx.select({ id: mealPlanEntries.id }).from(mealPlanEntries).where(and(eq(mealPlanEntries.id, operation.currentMealId), eq(mealPlanEntries.mealPlanId, plan.id))).limit(1);
+          if (!owned.length) throw new Error("A meal changed before this proposal was applied");
+          await tx.delete(mealPlanEntries).where(eq(mealPlanEntries.id, operation.currentMealId));
+        }
+        const meal = operation.meal;
+        await tx.insert(mealPlanEntries).values({ mealPlanId: plan.id, recipeId: meal.recipeId || meal.sourceRecipeId || null, date: startOfDay(operation.date), mealType: operation.mealType, servings: 1, customName: String(meal.name).trim(), customCalories: toNonNegativeRoundedInt(meal.calories), customProtein: toNonNegativeRoundedInt(meal.protein), customCarbs: toNonNegativeRoundedInt(meal.carbs), customFat: toNonNegativeRoundedInt(meal.fat), mealItems: Array.isArray(meal.mealItems) ? meal.mealItems : null, source: "ai-plan-assistant", sourceRecipeId: meal.sourceRecipeId ? String(meal.sourceRecipeId) : null, sourceRecipeTitle: meal.sourceRecipeTitle ? String(meal.sourceRecipeTitle) : null, sourceRecipeImageUrl: meal.sourceRecipeImageUrl ? String(meal.sourceRecipeImageUrl) : null, sourceRecipeServings: meal.sourceRecipeServings ? toNonNegativeRoundedInt(meal.sourceRecipeServings) : null, sourceRecipeUrl: meal.sourceRecipeUrl ? String(meal.sourceRecipeUrl) : null });
+      }
+      return plan;
+    });
+    res.json({ message: "Assistant changes saved", planId: result.id, applied: normalized.length });
+  } catch (error) {
+    console.error("Error applying assistant plan:", error);
+    res.status(409).json({ message: "Could not apply the reviewed changes. Your previous plan was preserved." });
+  }
+});
+
+// ============================================================
 // DELETE /api/meal-planner/week/entry/:id
 // ============================================================
 router.delete("/week/entry/:id", requireAuth, async (req: Request, res: Response) => {
