@@ -233,6 +233,7 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
         isPrivate: user.isPrivate,
         nutritionPremium: user.nutritionPremium,
         nutritionTrialEndsAt: user.nutritionTrialEndsAt,
+        cateringLocation: user.cateringLocation,
       },
     });
   } catch (error) {
@@ -414,6 +415,7 @@ router.get("/auth/me", async (req, res) => {
         subscriptionTier: user.subscriptionTier,
         nutritionPremium: user.nutritionPremium,
         nutritionTrialEndsAt: user.nutritionTrialEndsAt,
+        cateringLocation: user.cateringLocation,
       },
     });
   } catch (error) {
