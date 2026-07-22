@@ -117,6 +117,8 @@ export function CateringMarketplace() {
   const applyLocation = useCallback((location: string) => {
     const normalizedLocation = location.trim();
     if (!hasValidLocation(normalizedLocation)) {
+      // Keep what the visitor typed, but stop presenting stale nearby results.
+      setSubmittedLocation('');
       setLocationStatus('unavailable');
       return;
     }
