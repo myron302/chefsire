@@ -5,6 +5,8 @@ import { sendCateringRequestNotification } from "../services/notification-servic
 import { db } from "../db";
 import { users } from "../../shared/schema";
 import { eq } from "drizzle-orm";
+import { geocodeLocation } from "./google";
+import { parseCoordinates, resolveVisitorLocation } from "../services/catering-geo";
 
 const r = Router();
 
@@ -18,7 +20,10 @@ r.post("/users/:id/enable", async (req, res, next) => {
     if (!location || typeof radius !== "number") {
       return res.status(400).json({ message: "location (string) and radius (number) are required" });
     }
-    const updated = await storage.enableCatering(req.params.id, String(location), Number(radius), bio);
+    const geocoded = await geocodeLocation(String(location)).catch(() => null);
+    const coordinates = parseCoordinates(String(location)) ?? (geocoded && { latitude: geocoded.lat, longitude: geocoded.lng });
+    if (!coordinates) return res.status(422).json({ message: "We couldn't find that service location." });
+    const updated = await storage.enableCatering(req.params.id, String(location), Number(radius), bio, coordinates);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering enabled successfully", user: updated });
   } catch (error) { next(error); }
@@ -41,7 +46,14 @@ r.post("/users/:id/disable", async (req, res, next) => {
  */
 r.put("/users/:id/settings", async (req, res, next) => {
   try {
-    const updated = await storage.updateCateringSettings(req.params.id, req.body || {});
+    const settings = req.body || {};
+    if (settings.location !== undefined) {
+      const geocoded = await geocodeLocation(String(settings.location)).catch(() => null);
+      const coordinates = parseCoordinates(String(settings.location)) ?? (geocoded && { latitude: geocoded.lat, longitude: geocoded.lng });
+      if (!coordinates) return res.status(422).json({ message: "We couldn't find that service location." });
+      settings.coordinates = coordinates;
+    }
+    const updated = await storage.updateCateringSettings(req.params.id, settings);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering settings updated", user: updated });
   } catch (error) { next(error); }
@@ -52,12 +64,18 @@ r.put("/users/:id/settings", async (req, res, next) => {
  */
 r.get("/chefs/search", async (req, res, next) => {
   try {
-    const location = String(req.query.location || "");
+    const location = String(req.query.location || "").trim();
     const radius   = Number(req.query.radius ?? 25);
     const limit    = Number(req.query.limit ?? 20);
     if (!location) return res.status(400).json({ message: "location is required" });
+    if (!Number.isFinite(radius) || radius <= 0 || !Number.isFinite(limit) || limit <= 0) return res.status(400).json({ message: "radius and limit must be positive numbers" });
+    const coordinates = await resolveVisitorLocation(location, async (value) => {
+      const geocoded = await geocodeLocation(value);
+      return { latitude: geocoded.lat, longitude: geocoded.lng };
+    });
+    if (!coordinates) return res.status(422).json({ message: "We couldn't find that city or ZIP code. Try another location." });
 
-    const chefs = await storage.findChefsInRadius(location, radius, limit);
+    const chefs = await storage.findChefsInRadius(coordinates, radius, limit);
     res.json({ chefs, searchParams: { location, radius }, total: chefs.length });
   } catch (error) { next(error); }
 });

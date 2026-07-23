@@ -39,7 +39,7 @@ googleRouter.get("/maps-script", (_req, res) => {
 // -------------------------
 // GEOCODE HELPER
 // -------------------------
-async function geocode(near: string) {
+export async function geocodeLocation(near: string) {
   const u = new URL("https://maps.googleapis.com/maps/api/geocode/json");
   u.searchParams.set("address", near);
   u.searchParams.set("key", GOOGLE_KEY);
@@ -84,12 +84,12 @@ googleRouter.get("/search", async (req, res) => {
         lng = ln;
       }
     } else if (near) {
-      const c = await geocode(near);
+      const c = await geocodeLocation(near);
       lat = c.lat;
       lng = c.lng;
     } else {
       // Default fallback to New York
-      const c = await geocode("New York, NY");
+      const c = await geocodeLocation("New York, NY");
       lat = c.lat;
       lng = c.lng;
       near = "New York, NY";

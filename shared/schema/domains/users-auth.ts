@@ -33,6 +33,8 @@ export const users = pgTable(
     postsCount: integer("posts_count").default(0),
     cateringEnabled: boolean("catering_enabled").default(false),
     cateringLocation: text("catering_location"),
+    cateringLatitude: decimal("catering_latitude", { precision: 10, scale: 7 }),
+    cateringLongitude: decimal("catering_longitude", { precision: 10, scale: 7 }),
     cateringRadius: integer("catering_radius").default(25),
     cateringBio: text("catering_bio"),
     cateringAvailable: boolean("catering_available").default(true),

@@ -67,6 +67,7 @@ import {
   type CommentLike,
   type InsertCommentLike,
 } from "@shared/schema";
+import { isProviderInRange, milesBetween, type Coordinates } from "./services/catering-geo";
 
 // Reuse the shared pool so there's only one connection pool in the process
 const _db = sharedPool ? drizzle(sharedPool) : null;
@@ -156,7 +157,8 @@ export interface IStorage {
     userId: string,
     location: string,
     radius: number,
-    bio?: string
+    bio?: string,
+    coordinates?: Coordinates
   ): Promise<User | undefined>;
   disableCatering(userId: string): Promise<User | undefined>;
   updateCateringSettings(userId: string, settings: {
@@ -164,8 +166,9 @@ export interface IStorage {
     radius?: number;
     bio?: string;
     available?: boolean;
+    coordinates?: Coordinates;
   }): Promise<User | undefined>;
-  findChefsInRadius(postalCode: string, radiusMiles: number, limit?: number): Promise<ChefWithCatering[]>;
+  findChefsInRadius(visitor: Coordinates, radiusMiles: number, limit?: number): Promise<ChefWithCatering[]>;
   createCateringInquiry(inquiry: InsertCateringInquiry): Promise<CateringInquiry>;
   getCateringInquiries(chefId: string): Promise<CateringInquiry[]>;
   updateCateringInquiry(id: string, updates: { status?: string; message?: string }): Promise<CateringInquiry | undefined>;
@@ -978,7 +981,8 @@ export class DrizzleStorage implements IStorage {
     userId: string,
     location: string,
     radius: number,
-    bio?: string
+    bio?: string,
+    coordinates?: Coordinates
   ): Promise<User | undefined> {
     const db = getDb();
     const result = await db
@@ -988,6 +992,8 @@ export class DrizzleStorage implements IStorage {
         cateringLocation: location,
         cateringRadius: radius,
         cateringBio: bio,
+        cateringLatitude: coordinates?.latitude?.toString(),
+        cateringLongitude: coordinates?.longitude?.toString(),
         cateringAvailable: true,
       })
       .where(eq(users.id, userId))
@@ -1012,6 +1018,7 @@ export class DrizzleStorage implements IStorage {
     radius?: number;
     bio?: string;
     available?: boolean;
+    coordinates?: Coordinates;
   }): Promise<User | undefined> {
     const db = getDb();
     const result = await db
@@ -1021,6 +1028,7 @@ export class DrizzleStorage implements IStorage {
         ...(settings.radius && { cateringRadius: settings.radius }),
         ...(settings.bio !== undefined && { cateringBio: settings.bio }),
         ...(settings.available !== undefined && { cateringAvailable: settings.available }),
+        ...(settings.coordinates && { cateringLatitude: settings.coordinates.latitude.toString(), cateringLongitude: settings.coordinates.longitude.toString() }),
       })
       .where(eq(users.id, userId))
       .returning();
@@ -1028,7 +1036,7 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async findChefsInRadius(_postalCode: string, radiusMiles: number, limit = 20): Promise<ChefWithCatering[]> {
+  async findChefsInRadius(visitor: Coordinates, radiusMiles: number, limit = 20): Promise<ChefWithCatering[]> {
     const db = getDb();
     const result = await db
       .select()
@@ -1036,17 +1044,24 @@ export class DrizzleStorage implements IStorage {
       .where(
         and(
           eq(users.cateringEnabled, true),
-          eq(users.cateringAvailable, true),
-          sql`${users.cateringRadius} >= ${radiusMiles}`
+          eq(users.cateringAvailable, true)
         )
       )
-      .limit(limit);
+      .limit(200);
 
-    return result.map((u) => ({
-      ...u,
-      availableForCatering: true,
-      distance: Math.floor(Math.random() * radiusMiles),
-    }));
+    return result
+      .map((u) => {
+        const latitude = Number(u.cateringLatitude);
+        const longitude = Number(u.cateringLongitude);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+        const distance = milesBetween(visitor, { latitude, longitude });
+        // A provider must be within the visitor's search radius and willing to travel that far.
+        if (!isProviderInRange(distance, radiusMiles, u.cateringRadius)) return null;
+        return { ...u, availableForCatering: true, distance };
+      })
+      .filter((chef): chef is ChefWithCatering => chef !== null)
+      .sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity))
+      .slice(0, limit);
   }
 
   async createCateringInquiry(inquiry: InsertCateringInquiry): Promise<CateringInquiry> {

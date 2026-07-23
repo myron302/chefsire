@@ -1,5 +1,5 @@
 // client/src/pages/services/catering.tsx
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -24,6 +24,9 @@ import {
   Heart,
   ArrowRight,
   Loader2,
+  LocateFixed,
+  RotateCcw,
+  Store,
 } from 'lucide-react';
 
 // Spoon Rating Component
@@ -96,26 +99,69 @@ const defaultBookingForm: CateringBookingForm = {
 };
 
 export function CateringMarketplace() {
-  const { user } = useUser();
+  const { user, loading: isUserLoading } = useUser();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSpecialty, setSelectedSpecialty] = useState('all');
   const [selectedPriceRange, setSelectedPriceRange] = useState('all');
-  const [userZipCode, setUserZipCode] = useState('');
-  const [submittedZip, setSubmittedZip] = useState('');
+  const [locationInput, setLocationInput] = useState('');
+  const [submittedLocation, setSubmittedLocation] = useState('');
+  const [locationStatus, setLocationStatus] = useState<'resolving' | 'unavailable' | 'ready'>('resolving');
   const [bookingForms, setBookingForms] = useState<Record<string, CateringBookingForm>>({});
   const [openDialogs, setOpenDialogs] = useState<Record<string, boolean>>({});
+  const hasResolvedInitialLocation = useRef(false);
+
+  const savedLocation = typeof user?.cateringLocation === 'string' ? user.cateringLocation.trim() : '';
+  const hasValidLocation = (location: string) => location.trim().length >= 2;
+
+  const applyLocation = useCallback((location: string) => {
+    const normalizedLocation = location.trim();
+    if (!hasValidLocation(normalizedLocation)) {
+      // Keep what the visitor typed, but stop presenting stale nearby results.
+      setSubmittedLocation('');
+      setLocationStatus('unavailable');
+      return;
+    }
+    setLocationInput(normalizedLocation);
+    setSubmittedLocation(normalizedLocation);
+    setLocationStatus('ready');
+  }, []);
+
+  useEffect(() => {
+    if (isUserLoading || hasResolvedInitialLocation.current) return;
+    hasResolvedInitialLocation.current = true;
+
+    if (hasValidLocation(savedLocation)) {
+      applyLocation(savedLocation);
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setLocationStatus('unavailable');
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => applyLocation(`${coords.latitude.toFixed(4)},${coords.longitude.toFixed(4)}`),
+      () => setLocationStatus('unavailable'),
+      { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+    );
+  }, [applyLocation, isUserLoading, savedLocation]);
 
   // Fetch chefs from real API
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ['/api/catering/chefs/search', submittedZip],
+  const { data, isLoading, isError, refetch } = useQuery({
+    queryKey: ['/api/catering/chefs/search', submittedLocation],
     queryFn: async () => {
-      const params = new URLSearchParams({ radius: '50', limit: '20' });
-      if (submittedZip) params.set('location', submittedZip);
+      // The API requires a non-empty `location`; radius and limit are optional numeric parameters.
+      const params = new URLSearchParams({ location: submittedLocation, radius: '50', limit: '20' });
       const res = await fetch(`/api/catering/chefs/search?${params}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load catering chefs');
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        throw new Error(error.message || 'Failed to load catering chefs');
+      }
       return res.json() as Promise<{ chefs: Chef[]; total: number }>;
     },
+    enabled: hasValidLocation(submittedLocation),
   });
 
   const chefs: Chef[] = data?.chefs ?? [];
@@ -256,23 +302,54 @@ export function CateringMarketplace() {
           <div>
             <Input
               type="text"
-              placeholder="Enter your zip code (e.g., 06360)"
-              value={userZipCode}
-              onChange={(e) => setUserZipCode(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') setSubmittedZip(userZipCode); }}
-              maxLength={5}
+              placeholder="Enter a city or ZIP code"
+              value={locationInput}
+              onChange={(e) => setLocationInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') applyLocation(locationInput); }}
             />
           </div>
 
-          <Button className="w-full" onClick={() => setSubmittedZip(userZipCode)}>
+          <Button className="w-full" onClick={() => applyLocation(locationInput)}>
             <Filter className="w-4 h-4 mr-2" />
             Apply Filters
           </Button>
         </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
+          <Button variant="outline" size="sm" onClick={() => {
+            if (!navigator.geolocation) return setLocationStatus('unavailable');
+            setLocationStatus('resolving');
+            navigator.geolocation.getCurrentPosition(
+              ({ coords }) => applyLocation(`${coords.latitude.toFixed(4)},${coords.longitude.toFixed(4)}`),
+              () => setLocationStatus('unavailable'),
+              { enableHighAccuracy: false, timeout: 10000, maximumAge: 300000 },
+            );
+          }} disabled={locationStatus === 'resolving'}>
+            {locationStatus === 'resolving' ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LocateFixed className="w-4 h-4 mr-2" />}
+            Use my location
+          </Button>
+          {locationStatus === 'unavailable' && <span>Location is unavailable. Enter a city or ZIP code to browse caterers.</span>}
+          {submittedLocation && <span className="flex items-center gap-1"><MapPin className="w-4 h-4" />Searching near {submittedLocation}</span>}
+        </div>
       </div>
 
+      {/* Browseable marketplace content remains useful before a location is selected. */}
+      <section className="mb-8" aria-labelledby="catering-categories">
+        <h2 id="catering-categories" className="text-xl font-semibold text-gray-900 mb-4">Catering for every occasion</h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {['Weddings', 'Corporate events', 'Private dining', 'Birthdays & celebrations'].map((category) => (
+            <Card key={category} className="bg-orange-50 border-orange-100"><CardContent className="p-4"><ChefHat className="w-5 h-5 text-orange-600 mb-2" /><p className="font-medium">{category}</p></CardContent></Card>
+          ))}
+        </div>
+      </section>
+
       {/* Chef Cards Grid */}
-      {isLoading ? (
+      {!hasValidLocation(submittedLocation) ? (
+        <div className="text-center py-12 rounded-lg border bg-muted/30">
+          <MapPin className="w-16 h-16 text-orange-300 mx-auto mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 mb-2">Find caterers in your area</h3>
+          <p className="text-gray-600">Allow location access or enter a city or ZIP code above. We will only search after a location is available.</p>
+        </div>
+      ) : isLoading ? (
         <div className="flex items-center justify-center py-16">
           <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
           <span className="ml-3 text-muted-foreground">Finding chefs near you...</span>
@@ -281,7 +358,8 @@ export function CateringMarketplace() {
         <div className="text-center py-12">
           <ChefHat className="w-16 h-16 text-gray-300 mx-auto mb-4" />
           <h3 className="text-lg font-medium text-gray-900 mb-2">Couldn't load chefs</h3>
-          <p className="text-gray-600">Please try again in a moment.</p>
+          <p className="text-gray-600 mb-4">Please try again in a moment. {submittedLocation && `We could not load caterers near ${submittedLocation}.`}</p>
+          <Button variant="outline" onClick={() => refetch()}><RotateCcw className="w-4 h-4 mr-2" />Try again</Button>
         </div>
       ) : (
         <>
@@ -484,14 +562,17 @@ export function CateringMarketplace() {
               <ChefHat className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-gray-900 mb-2">No chefs found</h3>
               <p className="text-gray-600">
-                {submittedZip
-                  ? 'No catering chefs are available in this area yet. Try a different zip code or adjust your filters.'
-                  : 'Enter your zip code above to find catering chefs near you.'}
+                {'No catering chefs are available in this area yet. Try another city or ZIP code, or adjust your filters.'}
               </p>
             </div>
           )}
         </>
       )}
+
+      <section className="grid md:grid-cols-2 gap-6 mt-10">
+        <Card><CardHeader><CardTitle>How ChefSire catering works</CardTitle></CardHeader><CardContent className="space-y-2 text-sm text-muted-foreground"><p>1. Share your event location and browse available caterers.</p><p>2. Compare specialties and service areas.</p><p>3. Send a booking request with your date, guest count, and event details.</p></CardContent></Card>
+        <Card className="bg-orange-50 border-orange-200"><CardHeader><CardTitle>Offer catering services?</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground mb-4">Create a business profile to offer your menus and receive event inquiries.</p><Link href="/settings"><Button><Store className="w-4 h-4 mr-2" />List your catering service</Button></Link></CardContent></Card>
+      </section>
     </div>
   );
 }

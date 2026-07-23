@@ -20,6 +20,7 @@ type User = {
   subscription?: 'free' | 'starter' | 'professional' | 'enterprise' | 'premium_plus' | string;
   trialEndDate?: string;
   productCount?: number;
+  cateringLocation?: string | null;
 };
 
 type UserContextType = {
@@ -77,6 +78,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
                 subscription: data.user.subscription || data.user.subscriptionTier || 'free',
                 trialEndDate: data.user.trialEndDate,
                 productCount: data.user.productCount || 0,
+                cateringLocation: data.user.cateringLocation ?? null,
               };
               localStorage.setItem("user", JSON.stringify(cleanUser));
               setUser(cleanUser);
@@ -99,8 +101,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
             try {
               const verifyRes = await fetch('/api/auth/me', { credentials: 'include' });
               if (verifyRes.ok) {
-                // Session valid — use localStorage user (already up to date)
-                setUser(parsed as User);
+                // Session valid — retain local fields while refreshing saved catering location.
+                const verified = await verifyRes.json().catch(() => ({}));
+                const refreshedUser = {
+                  ...parsed,
+                  cateringLocation: verified?.user?.cateringLocation ?? parsed.cateringLocation ?? null,
+                } as User;
+                localStorage.setItem("user", JSON.stringify(refreshedUser));
+                setUser(refreshedUser);
               } else {
                 // Cookie expired or missing — clear stale localStorage
                 localStorage.removeItem("user");
@@ -175,6 +183,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         subscription: data.user.subscription || data.user.subscriptionTier || 'free',
         trialEndDate: data.user.trialEndDate || data.user.subscriptionEndsAt,
         productCount: data.user.productCount || 0,
+        cateringLocation: data.user.cateringLocation ?? null,
       };
 
       persist(cleanUser);
