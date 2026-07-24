@@ -137,9 +137,12 @@ async function runMigrations() {
         // outside a transaction block (sending the whole file at once triggers
         // an implicit transaction in the Neon serverless driver).
         const statements = sql
+          // Strip line comments before splitting. Previously a statement that
+          // started with a comment was discarded along with its SQL.
+          .replace(/^\s*--.*$/gm, "")
           .split(/;/)
           .map((s) => s.trim())
-          .filter((s) => s.length > 0 && !s.startsWith("--"));
+          .filter((s) => s.length > 0);
 
         for (const stmt of statements) {
           await pool.query(stmt);
