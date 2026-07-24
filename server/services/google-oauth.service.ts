@@ -13,6 +13,25 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 const GOOGLE_CALLBACK_URL = process.env.GOOGLE_REDIRECT_URI || `${APP_URL}/api/auth/google/callback`;
 
+type PostgresError = Error & {
+  code?: string;
+  column?: string;
+};
+
+function databaseErrorDetails(error: unknown) {
+  const postgresError = error as PostgresError;
+  const message = error instanceof Error ? error.message : String(error);
+  // PostgreSQL includes the identifier in this message for undefined_column
+  // errors, but drivers do not consistently expose it through error.column.
+  const missingColumn = postgresError.column ?? message.match(/column ["']([^"']+)["'] does not exist/i)?.[1];
+
+  return {
+    code: postgresError.code,
+    missingColumn,
+    message,
+  };
+}
+
 // Generate a random username from email
 function generateUsername(email: string): string {
   const baseUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -103,19 +122,20 @@ export function setupGoogleOAuth() {
 
           return done(null, newUser);
         } catch (error) {
+          const databaseError = databaseErrorDetails(error);
           const errorDetails = {
             type: error?.constructor?.name,
-            message: error instanceof Error ? error.message : String(error),
+            ...databaseError,
             stack: error instanceof Error ? error.stack : undefined,
-            fullError: error
           };
 
           logToFile("💥 ERROR in Google OAuth callback", errorDetails);
 
           console.error("💥 ERROR in Google OAuth callback:");
           console.error("Error type:", error?.constructor?.name);
-          console.error("Error message:", error instanceof Error ? error.message : String(error));
-          console.error("Full error:", error);
+          console.error("PostgreSQL error code:", databaseError.code ?? "unavailable");
+          console.error("Missing database column:", databaseError.missingColumn ?? "unavailable");
+          console.error("Error message:", databaseError.message);
           if (error instanceof Error && error.stack) {
             console.error("Stack trace:", error.stack);
           }

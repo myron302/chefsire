@@ -448,12 +448,25 @@ router.get("/auth/google/signup", passport.authenticate("google", {
  * GET /auth/google/callback
  * Google OAuth callback
  */
-router.get("/auth/google/callback",
-  passport.authenticate("google", { failureRedirect: "/login?error=google-auth-failed", session: false }),
-  async (req, res) => {
-    try {
-      const user = req.user as any;
+router.get("/auth/google/callback", (req, res, next) => {
+  passport.authenticate("google", { session: false }, async (error, user) => {
+    if (error) {
+      const postgresError = error as Error & { code?: string; column?: string };
+      const message = error instanceof Error ? error.message : String(error);
+      const missingColumn = postgresError.column ?? message.match(/column ["']([^"']+)["'] does not exist/i)?.[1];
 
+      // Preserve the database diagnostics in server logs only. The browser gets
+      // a generic failure redirect below and never receives these details.
+      console.error("💥 Google OAuth authentication failed", {
+        errorType: error?.constructor?.name,
+        postgresCode: postgresError.code,
+        missingColumn,
+        message,
+      });
+      return res.redirect("/login?error=google-auth-failed");
+    }
+
+    try {
       if (!user) {
         return res.redirect("/login?error=no-user");
       }
@@ -484,8 +497,8 @@ router.get("/auth/google/callback",
       console.error("💥 Error in Google OAuth callback:", error);
       res.redirect("/login?error=oauth-error");
     }
-  }
-);
+  })(req, res, next);
+});
 
 /**
  * GET /auth/facebook
