@@ -177,8 +177,9 @@ r.get("/:id/suggested", async (req, res) => {
 /* ------------------------------------------------------------------ */
 /* Catering settings (per-user)                                        */
 /* ------------------------------------------------------------------ */
-r.post("/:id/catering/enable", async (req, res) => {
+r.post("/:id/catering/enable", requireAuth, async (req, res) => {
   try {
+    if (req.user!.id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const schema = z.object({
       location: z.string().min(3, "Postal/area required"),
       radius: z.number().min(5).max(100),
@@ -205,8 +206,9 @@ r.post("/:id/catering/enable", async (req, res) => {
   }
 });
 
-r.post("/:id/catering/disable", async (req, res) => {
+r.post("/:id/catering/disable", requireAuth, async (req, res) => {
   try {
+    if (req.user!.id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const updated = await storage.disableCatering(req.params.id);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering disabled", user: updated });
@@ -216,8 +218,9 @@ r.post("/:id/catering/disable", async (req, res) => {
   }
 });
 
-r.put("/:id/catering/settings", async (req, res) => {
+r.put("/:id/catering/settings", requireAuth, async (req, res) => {
   try {
+    if (req.user!.id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const schema = z.object({
       location: z.string().min(3).optional(),
       radius: z.number().min(5).max(100).optional(),

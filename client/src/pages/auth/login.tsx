@@ -5,11 +5,27 @@ import { Crown, Castle, Shield, AlertCircle } from "lucide-react";
 import { FcGoogle } from 'react-icons/fc';
 import { FaFacebook, FaInstagram, FaTiktok } from 'react-icons/fa';
 
+function safeInternalDestination(value: string | null): string | null {
+  if (!value || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
+  try {
+    const parsed = new URL(value, window.location.origin);
+    return parsed.origin === window.location.origin
+      ? `${parsed.pathname}${parsed.search}${parsed.hash}`
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export default function LoginPage() {
   const [errors, setErrors] = useState({ email: "", password: "", general: "" });
   const [loading, setLoading] = useState(false);
   const [, setLocation] = useLocation();
   const { login } = useUser();
+  const destination = safeInternalDestination(new URLSearchParams(window.location.search).get("next")) ?? "/feed";
+  const googleLoginUrl = destination === "/feed"
+    ? "/api/auth/google"
+    : `/api/auth/google?next=${encodeURIComponent(destination)}`;
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -41,7 +57,7 @@ export default function LoginPage() {
     }
 
     alert("Welcome back to your kingdom!");
-    setLocation("/feed");
+    setLocation(destination);
   };
 
   return (
@@ -164,7 +180,7 @@ export default function LoginPage() {
           {/* Social OAuth Buttons */}
           <div className="grid grid-cols-2 gap-3">
             <a
-              href="/api/auth/google"
+              href={googleLoginUrl}
               className="flex justify-center items-center gap-2 py-3 px-4 bg-white text-gray-700 rounded-2xl font-semibold hover:bg-gray-100 transition-all duration-200 shadow-md hover:shadow-lg"
             >
               <FcGoogle className="w-5 h-5" />

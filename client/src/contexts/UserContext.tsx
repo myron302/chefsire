@@ -20,7 +20,14 @@ type User = {
   subscription?: 'free' | 'starter' | 'professional' | 'enterprise' | 'premium_plus' | string;
   trialEndDate?: string;
   productCount?: number;
+  specialty?: string | null;
+  cateringEnabled?: boolean;
   cateringLocation?: string | null;
+  cateringLatitude?: string | null;
+  cateringLongitude?: string | null;
+  cateringRadius?: number | null;
+  cateringBio?: string | null;
+  cateringAvailable?: boolean;
 };
 
 type UserContextType = {
@@ -36,6 +43,7 @@ type UserContextType = {
     meta?: Record<string, unknown>
   ) => Promise<{ ok: boolean; error?: string }>;
   updateUser: (updates: Partial<User>) => void;
+  refreshUser: () => Promise<void>;
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -78,12 +86,21 @@ export function UserProvider({ children }: { children: ReactNode }) {
                 subscription: data.user.subscription || data.user.subscriptionTier || 'free',
                 trialEndDate: data.user.trialEndDate,
                 productCount: data.user.productCount || 0,
+                specialty: data.user.specialty ?? null,
+                cateringEnabled: data.user.cateringEnabled ?? false,
                 cateringLocation: data.user.cateringLocation ?? null,
+                cateringLatitude: data.user.cateringLatitude ?? null,
+                cateringLongitude: data.user.cateringLongitude ?? null,
+                cateringRadius: data.user.cateringRadius ?? 25,
+                cateringBio: data.user.cateringBio ?? null,
+                cateringAvailable: data.user.cateringAvailable ?? true,
               };
               localStorage.setItem("user", JSON.stringify(cleanUser));
               setUser(cleanUser);
-              // Clean up URL
-              window.history.replaceState({}, '', '/');
+              // Remove the OAuth marker without changing the requested destination.
+              params.delete('google-login');
+              const cleanSearch = params.toString();
+              window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash}`);
               return;
             }
           }
@@ -101,11 +118,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
             try {
               const verifyRes = await fetch('/api/auth/me', { credentials: 'include' });
               if (verifyRes.ok) {
-                // Session valid — retain local fields while refreshing saved catering location.
+                // Session valid — refresh server-owned profile fields.
                 const verified = await verifyRes.json().catch(() => ({}));
                 const refreshedUser = {
                   ...parsed,
-                  cateringLocation: verified?.user?.cateringLocation ?? parsed.cateringLocation ?? null,
+                  ...(verified?.user ?? {}),
+                  id: String(verified?.user?.id ?? parsed.id),
                 } as User;
                 localStorage.setItem("user", JSON.stringify(refreshedUser));
                 setUser(refreshedUser);
@@ -183,7 +201,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
         subscription: data.user.subscription || data.user.subscriptionTier || 'free',
         trialEndDate: data.user.trialEndDate || data.user.subscriptionEndsAt,
         productCount: data.user.productCount || 0,
+        specialty: data.user.specialty ?? null,
+        cateringEnabled: data.user.cateringEnabled ?? false,
         cateringLocation: data.user.cateringLocation ?? null,
+        cateringLatitude: data.user.cateringLatitude ?? null,
+        cateringLongitude: data.user.cateringLongitude ?? null,
+        cateringRadius: data.user.cateringRadius ?? 25,
+        cateringBio: data.user.cateringBio ?? null,
+        cateringAvailable: data.user.cateringAvailable ?? true,
       };
 
       persist(cleanUser);
@@ -290,8 +315,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const refreshUser = async () => {
+    const response = await fetch('/api/auth/me', { credentials: 'include' });
+    if (!response.ok) throw new Error('Unable to refresh your account');
+    const data = await response.json();
+    if (!data?.user) throw new Error('Unable to refresh your account');
+    persist({ ...data.user, id: String(data.user.id) } as User);
+  };
+
   return (
-    <UserContext.Provider value={{ user, loading, login, logout, signup, updateUser }}>
+    <UserContext.Provider value={{ user, loading, login, logout, signup, updateUser, refreshUser }}>
       {children}
     </UserContext.Provider>
   );
