@@ -114,7 +114,7 @@ r.post("/", async (req, res) => {
 r.put("/:id", requireAuth, async (req, res) => {
   try {
     // Security: users can only update their own profile
-    if (req.user!.id !== req.params.id) {
+    if ((req.user as { id: string }).id !== req.params.id) {
       return res.status(403).json({ message: "You can only update your own profile" });
     }
 
@@ -179,7 +179,7 @@ r.get("/:id/suggested", async (req, res) => {
 /* ------------------------------------------------------------------ */
 r.post("/:id/catering/enable", requireAuth, async (req, res) => {
   try {
-    if (req.user!.id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const schema = z.object({
       location: z.string().min(3, "Postal/area required"),
       radius: z.number().min(5).max(100),
@@ -208,7 +208,7 @@ r.post("/:id/catering/enable", requireAuth, async (req, res) => {
 
 r.post("/:id/catering/disable", requireAuth, async (req, res) => {
   try {
-    if (req.user!.id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const updated = await storage.disableCatering(req.params.id);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering disabled", user: updated });
@@ -220,7 +220,7 @@ r.post("/:id/catering/disable", requireAuth, async (req, res) => {
 
 r.put("/:id/catering/settings", requireAuth, async (req, res) => {
   try {
-    if (req.user!.id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const schema = z.object({
       location: z.string().min(3).optional(),
       radius: z.number().min(5).max(100).optional(),
@@ -484,7 +484,7 @@ r.get("/:id/nutrition/logs", async (req, res) => {
 r.delete("/:id", requireAuth, async (req, res) => {
   try {
     // Security: users can only delete their own account
-    if (req.user!.id !== req.params.id) {
+    if ((req.user as { id: string }).id !== req.params.id) {
       return res.status(403).json({ message: "You can only delete your own account" });
     }
 

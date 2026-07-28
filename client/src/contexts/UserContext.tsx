@@ -48,6 +48,29 @@ type UserContextType = {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
+const REQUIRED_CATERING_FIELDS = [
+  "specialty",
+  "cateringEnabled",
+  "cateringLocation",
+  "cateringLatitude",
+  "cateringLongitude",
+  "cateringRadius",
+  "cateringBio",
+  "cateringAvailable",
+] as const;
+
+function authenticatedUserFromPayload(payload: unknown): User {
+  if (!payload || typeof payload !== "object" || !("id" in payload) || !("email" in payload)) {
+    throw new Error("Incomplete authenticated user response");
+  }
+  const record = payload as Record<string, unknown>;
+  if (REQUIRED_CATERING_FIELDS.some((field) => !Object.prototype.hasOwnProperty.call(record, field))) {
+    throw new Error("Incomplete catering profile in authenticated user response");
+  }
+  // Preserve null, false, zero, and every other server-owned value verbatim.
+  return { ...record, id: String(record.id) } as User;
+}
+
 export const useUser = () => {
   const ctx = useContext(UserContext);
   if (!ctx) throw new Error("useUser must be used within a UserProvider");
@@ -70,31 +93,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.user) {
-              const cleanUser: User = {
-                id: String(data.user.id),
-                email: data.user.email,
-                username: data.user.username,
-                displayName: data.user.displayName,
-                royalTitle: data.user.royalTitle ?? null,
-                avatar: data.user.avatar ?? null,
-                bio: data.user.bio ?? null,
-                subscriptionTier: data.user.subscriptionTier,
-                subscriptionStatus: data.user.subscriptionStatus,
-                subscriptionEndsAt: data.user.subscriptionEndsAt,
-                nutritionPremium: data.user.nutritionPremium,
-                nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
-                subscription: data.user.subscription || data.user.subscriptionTier || 'free',
-                trialEndDate: data.user.trialEndDate,
-                productCount: data.user.productCount || 0,
-                specialty: data.user.specialty ?? null,
-                cateringEnabled: data.user.cateringEnabled ?? false,
-                cateringLocation: data.user.cateringLocation ?? null,
-                cateringLatitude: data.user.cateringLatitude ?? null,
-                cateringLongitude: data.user.cateringLongitude ?? null,
-                cateringRadius: data.user.cateringRadius ?? 25,
-                cateringBio: data.user.cateringBio ?? null,
-                cateringAvailable: data.user.cateringAvailable ?? true,
-              };
+              const cleanUser = authenticatedUserFromPayload(data.user);
               localStorage.setItem("user", JSON.stringify(cleanUser));
               setUser(cleanUser);
               // Remove the OAuth marker without changing the requested destination.
@@ -120,11 +119,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
               if (verifyRes.ok) {
                 // Session valid — refresh server-owned profile fields.
                 const verified = await verifyRes.json().catch(() => ({}));
-                const refreshedUser = {
-                  ...parsed,
-                  ...(verified?.user ?? {}),
-                  id: String(verified?.user?.id ?? parsed.id),
-                } as User;
+                const refreshedUser = authenticatedUserFromPayload(verified?.user);
                 localStorage.setItem("user", JSON.stringify(refreshedUser));
                 setUser(refreshedUser);
               } else {
@@ -185,31 +180,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         return { ok: false, error: "Unexpected server response" };
       }
 
-      const cleanUser: User = {
-        id: String(data.user.id),
-        email: data.user.email,
-        username: data.user.username,
-        displayName: data.user.displayName,
-        royalTitle: data.user.royalTitle ?? null,
-        avatar: data.user.avatar ?? null,
-        bio: data.user.bio ?? null,
-        subscriptionTier: data.user.subscriptionTier,
-        subscriptionStatus: data.user.subscriptionStatus,
-        subscriptionEndsAt: data.user.subscriptionEndsAt,
-        nutritionPremium: data.user.nutritionPremium,
-        nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
-        subscription: data.user.subscription || data.user.subscriptionTier || 'free',
-        trialEndDate: data.user.trialEndDate || data.user.subscriptionEndsAt,
-        productCount: data.user.productCount || 0,
-        specialty: data.user.specialty ?? null,
-        cateringEnabled: data.user.cateringEnabled ?? false,
-        cateringLocation: data.user.cateringLocation ?? null,
-        cateringLatitude: data.user.cateringLatitude ?? null,
-        cateringLongitude: data.user.cateringLongitude ?? null,
-        cateringRadius: data.user.cateringRadius ?? 25,
-        cateringBio: data.user.cateringBio ?? null,
-        cateringAvailable: data.user.cateringAvailable ?? true,
-      };
+      const cleanUser = authenticatedUserFromPayload(data.user);
 
       persist(cleanUser);
       return { ok: true };
@@ -320,7 +291,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (!response.ok) throw new Error('Unable to refresh your account');
     const data = await response.json();
     if (!data?.user) throw new Error('Unable to refresh your account');
-    persist({ ...data.user, id: String(data.user.id) } as User);
+    persist(authenticatedUserFromPayload(data.user));
   };
 
   return (

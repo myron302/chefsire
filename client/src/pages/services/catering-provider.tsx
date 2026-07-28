@@ -27,7 +27,7 @@ export default function CateringProviderPage() {
   }, [loading, navigate, user]);
   useEffect(() => {
     if (!user || form) return;
-    setForm({ displayName: user.displayName || user.username || "", avatar: user.avatar || "", specialty: user.specialty || "", location: user.cateringLocation || "", radius: String(user.cateringRadius || 25), bio: user.cateringBio || "", available: user.cateringAvailable ?? true, enabled: user.cateringEnabled ?? true });
+    setForm({ displayName: user.displayName || user.username || "", avatar: user.avatar || "", specialty: user.specialty ?? "", location: user.cateringLocation ?? "", radius: user.cateringRadius == null ? "" : String(user.cateringRadius), bio: user.cateringBio ?? "", available: user.cateringAvailable ?? false, enabled: user.cateringEnabled ?? false });
   }, [form, user]);
   const update = <K extends keyof ProviderForm>(key: K, value: ProviderForm[K]) => setForm((current) => current ? { ...current, [key]: value } : current);
 

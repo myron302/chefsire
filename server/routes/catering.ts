@@ -18,7 +18,7 @@ const r = Router();
  */
 r.post("/users/:id/enable", requireAuth, async (req, res, next) => {
   try {
-    if (req.user!.id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const { location, radius, bio } = req.body || {};
     if (!location || typeof radius !== "number") {
       return res.status(400).json({ message: "location (string) and radius (number) are required" });
@@ -37,7 +37,7 @@ r.post("/users/:id/enable", requireAuth, async (req, res, next) => {
  */
 r.post("/users/:id/disable", requireAuth, async (req, res, next) => {
   try {
-    if (req.user!.id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const updated = await storage.disableCatering(req.params.id);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering disabled successfully", user: updated });
@@ -50,7 +50,7 @@ r.post("/users/:id/disable", requireAuth, async (req, res, next) => {
  */
 r.put("/users/:id/settings", requireAuth, async (req, res, next) => {
   try {
-    if (req.user!.id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const settings = req.body || {};
     if (settings.location !== undefined) {
       const geocoded = await geocodeLocation(String(settings.location)).catch(() => null);
@@ -66,7 +66,7 @@ r.put("/users/:id/settings", requireAuth, async (req, res, next) => {
 
 r.put("/users/:id/profile", requireAuth, async (req, res, next) => {
   try {
-    if (req.user!.id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const profile = z.object({ displayName: z.string().trim().min(2).max(100), avatar: z.union([z.string().url(), z.literal("")]).optional(), specialty: z.string().trim().min(2).max(100), location: z.string().trim().min(2).max(200), radius: z.number().int().min(5).max(100), bio: z.string().trim().min(20).max(1000), available: z.boolean(), enabled: z.boolean() }).parse(req.body);
     const geocoded = await geocodeLocation(profile.location).catch(() => null);
     const coordinates = parseCoordinates(profile.location) ?? (geocoded && { latitude: geocoded.lat, longitude: geocoded.lng });
