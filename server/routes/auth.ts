@@ -18,12 +18,32 @@ import {
 } from "../middleware/rate-limit";
 import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
 import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
+import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 
 const RAW_SECRET =
   process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
 const JWT_SECRET = RAW_SECRET.trim() || "CHEFSIRE_DEV_FALLBACK_SECRET";
 
 const router = Router();
+const OAUTH_RETURN_COOKIE = "oauth_return_to";
+const oauthReturnCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax" as const,
+  path: "/api/auth/google/callback",
+  maxAge: 10 * 60 * 1000,
+};
+
+function safeInternalDestination(value: unknown): string | null {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//") || value.includes("\\")) return null;
+  try {
+    const parsed = new URL(value, "https://chefsire.internal");
+    if (parsed.origin !== "https://chefsire.internal") return null;
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return null;
+  }
+}
 
 // Configure multer for avatar uploads — writes to UPLOADS_DIR (canonical absolute path)
 const avatarStorage = multer.diskStorage({
@@ -222,19 +242,7 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
     res.json({
       success: true,
       token, // Also send token in response for optional use
-      user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        displayName: user.displayName,
-        royalTitle: user.royalTitle,
-        avatar: user.avatar,
-        bio: user.bio,
-        isPrivate: user.isPrivate,
-        nutritionPremium: user.nutritionPremium,
-        nutritionTrialEndsAt: user.nutritionTrialEndsAt,
-        cateringLocation: user.cateringLocation,
-      },
+      user: serializeAuthenticatedUser(user),
     });
   } catch (error) {
     console.error("💥 CRITICAL ERROR during login:", error);
@@ -403,20 +411,7 @@ router.get("/auth/me", async (req, res) => {
 
     res.json({
       success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        username: user.username,
-        displayName: user.displayName,
-        royalTitle: user.royalTitle,
-        avatar: user.avatar,
-        bio: user.bio,
-        isPrivate: user.isPrivate,
-        subscriptionTier: user.subscriptionTier,
-        nutritionPremium: user.nutritionPremium,
-        nutritionTrialEndsAt: user.nutritionTrialEndsAt,
-        cateringLocation: user.cateringLocation,
-      },
+      user: serializeAuthenticatedUser(user),
     });
   } catch (error) {
     console.error("Error fetching current user:", error);
@@ -431,9 +426,12 @@ router.get("/auth/me", async (req, res) => {
  * GET /auth/google
  * Initiates Google OAuth flow for LOGIN (silent if already authenticated)
  */
-router.get("/auth/google", passport.authenticate("google", {
-  scope: ["profile", "email"],
-}));
+router.get("/auth/google", (req, res, next) => {
+  const destination = safeInternalDestination(req.query.next);
+  if (destination) res.cookie(OAUTH_RETURN_COOKIE, destination, oauthReturnCookieOptions);
+  else res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
+  passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
+});
 
 /**
  * GET /auth/google/signup
@@ -449,6 +447,8 @@ router.get("/auth/google/signup", passport.authenticate("google", {
  * Google OAuth callback
  */
 router.get("/auth/google/callback", (req, res, next) => {
+  const destination = safeInternalDestination(req.cookies?.[OAUTH_RETURN_COOKIE]);
+  res.clearCookie(OAUTH_RETURN_COOKIE, { path: oauthReturnCookieOptions.path });
   passport.authenticate("google", { session: false }, async (error, user) => {
     if (error) {
       const postgresError = error as Error & { code?: string; column?: string };
@@ -491,8 +491,10 @@ router.get("/auth/google/callback", (req, res, next) => {
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       });
 
-      // Redirect to home page
-      res.redirect("/?google-login=success");
+      // Keep the established success marker while returning to a validated internal page.
+      const successUrl = new URL(destination ?? "/", "https://chefsire.internal");
+      successUrl.searchParams.set("google-login", "success");
+      res.redirect(`${successUrl.pathname}${successUrl.search}${successUrl.hash}`);
     } catch (error) {
       console.error("💥 Error in Google OAuth callback:", error);
       res.redirect("/login?error=oauth-error");

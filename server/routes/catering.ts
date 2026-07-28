@@ -7,6 +7,8 @@ import { users } from "../../shared/schema";
 import { eq } from "drizzle-orm";
 import { geocodeLocation } from "./google";
 import { parseCoordinates, resolveVisitorLocation } from "../services/catering-geo";
+import { requireAuth } from "../middleware";
+import { z } from "zod";
 
 const r = Router();
 
@@ -14,8 +16,9 @@ const r = Router();
  * POST /api/catering/users/:id/enable
  * Body: { location: string, radius: number, bio?: string }
  */
-r.post("/users/:id/enable", async (req, res, next) => {
+r.post("/users/:id/enable", requireAuth, async (req, res, next) => {
   try {
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const { location, radius, bio } = req.body || {};
     if (!location || typeof radius !== "number") {
       return res.status(400).json({ message: "location (string) and radius (number) are required" });
@@ -32,8 +35,9 @@ r.post("/users/:id/enable", async (req, res, next) => {
 /**
  * POST /api/catering/users/:id/disable
  */
-r.post("/users/:id/disable", async (req, res, next) => {
+r.post("/users/:id/disable", requireAuth, async (req, res, next) => {
   try {
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const updated = await storage.disableCatering(req.params.id);
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering disabled successfully", user: updated });
@@ -44,8 +48,9 @@ r.post("/users/:id/disable", async (req, res, next) => {
  * PUT /api/catering/users/:id/settings
  * Body: { location?, radius?, bio?, available? }
  */
-r.put("/users/:id/settings", async (req, res, next) => {
+r.put("/users/:id/settings", requireAuth, async (req, res, next) => {
   try {
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
     const settings = req.body || {};
     if (settings.location !== undefined) {
       const geocoded = await geocodeLocation(String(settings.location)).catch(() => null);
@@ -57,6 +62,22 @@ r.put("/users/:id/settings", async (req, res, next) => {
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering settings updated", user: updated });
   } catch (error) { next(error); }
+});
+
+r.put("/users/:id/profile", requireAuth, async (req, res, next) => {
+  try {
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
+    const profile = z.object({ displayName: z.string().trim().min(2).max(100), avatar: z.union([z.string().url(), z.literal("")]).optional(), specialty: z.string().trim().min(2).max(100), location: z.string().trim().min(2).max(200), radius: z.number().int().min(5).max(100), bio: z.string().trim().min(20).max(1000), available: z.boolean(), enabled: z.boolean() }).parse(req.body);
+    const geocoded = await geocodeLocation(profile.location).catch(() => null);
+    const coordinates = parseCoordinates(profile.location) ?? (geocoded && { latitude: geocoded.lat, longitude: geocoded.lng });
+    if (!coordinates) return res.status(422).json({ message: "We couldn't find that service location. Try a city, ZIP code, or latitude,longitude." });
+    const updated = await storage.updateUser(req.params.id, { displayName: profile.displayName, avatar: profile.avatar || null, specialty: profile.specialty, cateringEnabled: profile.enabled, cateringLocation: profile.location, cateringLatitude: coordinates.latitude.toString(), cateringLongitude: coordinates.longitude.toString(), cateringRadius: profile.radius, cateringBio: profile.bio, cateringAvailable: profile.available });
+    if (!updated) return res.status(404).json({ message: "User not found" });
+    res.json({ message: "Catering profile saved", user: updated });
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message || "Invalid catering profile", errors: error.issues });
+    next(error);
+  }
 });
 
 /**

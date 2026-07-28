@@ -20,7 +20,14 @@ type User = {
   subscription?: 'free' | 'starter' | 'professional' | 'enterprise' | 'premium_plus' | string;
   trialEndDate?: string;
   productCount?: number;
+  specialty?: string | null;
+  cateringEnabled?: boolean;
   cateringLocation?: string | null;
+  cateringLatitude?: string | null;
+  cateringLongitude?: string | null;
+  cateringRadius?: number | null;
+  cateringBio?: string | null;
+  cateringAvailable?: boolean;
 };
 
 type UserContextType = {
@@ -36,9 +43,33 @@ type UserContextType = {
     meta?: Record<string, unknown>
   ) => Promise<{ ok: boolean; error?: string }>;
   updateUser: (updates: Partial<User>) => void;
+  refreshUser: () => Promise<void>;
 };
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
+
+const REQUIRED_CATERING_FIELDS = [
+  "specialty",
+  "cateringEnabled",
+  "cateringLocation",
+  "cateringLatitude",
+  "cateringLongitude",
+  "cateringRadius",
+  "cateringBio",
+  "cateringAvailable",
+] as const;
+
+function authenticatedUserFromPayload(payload: unknown): User {
+  if (!payload || typeof payload !== "object" || !("id" in payload) || !("email" in payload)) {
+    throw new Error("Incomplete authenticated user response");
+  }
+  const record = payload as Record<string, unknown>;
+  if (REQUIRED_CATERING_FIELDS.some((field) => !Object.prototype.hasOwnProperty.call(record, field))) {
+    throw new Error("Incomplete catering profile in authenticated user response");
+  }
+  // Preserve null, false, zero, and every other server-owned value verbatim.
+  return { ...record, id: String(record.id) } as User;
+}
 
 export const useUser = () => {
   const ctx = useContext(UserContext);
@@ -62,28 +93,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
           if (res.ok) {
             const data = await res.json();
             if (data.success && data.user) {
-              const cleanUser: User = {
-                id: String(data.user.id),
-                email: data.user.email,
-                username: data.user.username,
-                displayName: data.user.displayName,
-                royalTitle: data.user.royalTitle ?? null,
-                avatar: data.user.avatar ?? null,
-                bio: data.user.bio ?? null,
-                subscriptionTier: data.user.subscriptionTier,
-                subscriptionStatus: data.user.subscriptionStatus,
-                subscriptionEndsAt: data.user.subscriptionEndsAt,
-                nutritionPremium: data.user.nutritionPremium,
-                nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
-                subscription: data.user.subscription || data.user.subscriptionTier || 'free',
-                trialEndDate: data.user.trialEndDate,
-                productCount: data.user.productCount || 0,
-                cateringLocation: data.user.cateringLocation ?? null,
-              };
+              const cleanUser = authenticatedUserFromPayload(data.user);
               localStorage.setItem("user", JSON.stringify(cleanUser));
               setUser(cleanUser);
-              // Clean up URL
-              window.history.replaceState({}, '', '/');
+              // Remove the OAuth marker without changing the requested destination.
+              params.delete('google-login');
+              const cleanSearch = params.toString();
+              window.history.replaceState({}, '', `${window.location.pathname}${cleanSearch ? `?${cleanSearch}` : ''}${window.location.hash}`);
               return;
             }
           }
@@ -101,12 +117,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
             try {
               const verifyRes = await fetch('/api/auth/me', { credentials: 'include' });
               if (verifyRes.ok) {
-                // Session valid — retain local fields while refreshing saved catering location.
+                // Session valid — refresh server-owned profile fields.
                 const verified = await verifyRes.json().catch(() => ({}));
-                const refreshedUser = {
-                  ...parsed,
-                  cateringLocation: verified?.user?.cateringLocation ?? parsed.cateringLocation ?? null,
-                } as User;
+                const refreshedUser = authenticatedUserFromPayload(verified?.user);
                 localStorage.setItem("user", JSON.stringify(refreshedUser));
                 setUser(refreshedUser);
               } else {
@@ -167,24 +180,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         return { ok: false, error: "Unexpected server response" };
       }
 
-      const cleanUser: User = {
-        id: String(data.user.id),
-        email: data.user.email,
-        username: data.user.username,
-        displayName: data.user.displayName,
-        royalTitle: data.user.royalTitle ?? null,
-        avatar: data.user.avatar ?? null,
-        bio: data.user.bio ?? null,
-        subscriptionTier: data.user.subscriptionTier,
-        subscriptionStatus: data.user.subscriptionStatus,
-        subscriptionEndsAt: data.user.subscriptionEndsAt,
-        nutritionPremium: data.user.nutritionPremium,
-        nutritionTrialEndsAt: data.user.nutritionTrialEndsAt,
-        subscription: data.user.subscription || data.user.subscriptionTier || 'free',
-        trialEndDate: data.user.trialEndDate || data.user.subscriptionEndsAt,
-        productCount: data.user.productCount || 0,
-        cateringLocation: data.user.cateringLocation ?? null,
-      };
+      const cleanUser = authenticatedUserFromPayload(data.user);
 
       persist(cleanUser);
       return { ok: true };
@@ -290,8 +286,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const refreshUser = async () => {
+    const response = await fetch('/api/auth/me', { credentials: 'include' });
+    if (!response.ok) throw new Error('Unable to refresh your account');
+    const data = await response.json();
+    if (!data?.user) throw new Error('Unable to refresh your account');
+    persist(authenticatedUserFromPayload(data.user));
+  };
+
   return (
-    <UserContext.Provider value={{ user, loading, login, logout, signup, updateUser }}>
+    <UserContext.Provider value={{ user, loading, login, logout, signup, updateUser, refreshUser }}>
       {children}
     </UserContext.Provider>
   );

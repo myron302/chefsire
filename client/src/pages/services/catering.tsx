@@ -571,7 +571,7 @@ export function CateringMarketplace() {
 
       <section className="grid md:grid-cols-2 gap-6 mt-10">
         <Card><CardHeader><CardTitle>How ChefSire catering works</CardTitle></CardHeader><CardContent className="space-y-2 text-sm text-muted-foreground"><p>1. Share your event location and browse available caterers.</p><p>2. Compare specialties and service areas.</p><p>3. Send a booking request with your date, guest count, and event details.</p></CardContent></Card>
-        <Card className="bg-orange-50 border-orange-200"><CardHeader><CardTitle>Offer catering services?</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground mb-4">Create a business profile to offer your menus and receive event inquiries.</p><Link href="/settings"><Button><Store className="w-4 h-4 mr-2" />List your catering service</Button></Link></CardContent></Card>
+        <Card className="bg-orange-50 border-orange-200"><CardHeader><CardTitle>Offer catering services?</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground mb-4">Create a business profile to offer your menus and receive event inquiries.</p><Link href={user ? "/services/catering/provider" : "/login?next=%2Fservices%2Fcatering%2Fprovider"}><Button><Store className="w-4 h-4 mr-2" />{user?.cateringEnabled ? "Edit your catering service" : "List your catering service"}</Button></Link></CardContent></Card>
       </section>
     </div>
   );
