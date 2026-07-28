@@ -18,7 +18,7 @@ import {
 } from "../middleware/rate-limit";
 import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
 import { isR2Configured, publicUrl, uploadToR2 } from "../lib/r2";
-import type { User } from "../../shared/schema";
+import { serializeAuthenticatedUser } from "../serializers/authenticated-user";
 
 const RAW_SECRET =
   process.env.JWT_SECRET || process.env.SESSION_SECRET || "";
@@ -43,31 +43,6 @@ function safeInternalDestination(value: unknown): string | null {
   } catch {
     return null;
   }
-}
-
-/** Keep password and OAuth session hydration on one non-sensitive user shape. */
-function serializeAuthenticatedUser(user: User) {
-  return {
-    id: user.id,
-    email: user.email,
-    username: user.username,
-    displayName: user.displayName,
-    royalTitle: user.royalTitle,
-    avatar: user.avatar,
-    bio: user.bio,
-    isPrivate: user.isPrivate,
-    subscriptionTier: user.subscriptionTier,
-    nutritionPremium: user.nutritionPremium,
-    nutritionTrialEndsAt: user.nutritionTrialEndsAt,
-    specialty: user.specialty,
-    cateringEnabled: user.cateringEnabled,
-    cateringLocation: user.cateringLocation,
-    cateringLatitude: user.cateringLatitude,
-    cateringLongitude: user.cateringLongitude,
-    cateringRadius: user.cateringRadius,
-    cateringBio: user.cateringBio,
-    cateringAvailable: user.cateringAvailable,
-  };
 }
 
 // Configure multer for avatar uploads — writes to UPLOADS_DIR (canonical absolute path)
