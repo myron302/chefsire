@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { requireAuth } from "../middleware";
 import { geocodeLocation } from "./google";
 import { parseCoordinates } from "../services/catering-geo";
+import { serializePublicUser } from "../serializers/public-user";
 
 const r = Router();
 
@@ -36,18 +37,7 @@ r.get("/search", async (req, res) => {
     const users = await storage.searchUsers(query.trim(), limit);
 
     // Remove sensitive fields
-    const sanitizedUsers = users.map(user => ({
-      id: user.id,
-      username: user.username,
-      displayName: user.displayName,
-      bio: user.bio,
-      avatar: user.avatar,
-      specialty: user.specialty,
-      isChef: user.isChef,
-      followersCount: user.followersCount,
-      followingCount: user.followingCount,
-      postsCount: user.postsCount,
-    }));
+    const sanitizedUsers = users.map(serializePublicUser);
 
     res.json({ users: sanitizedUsers });
   } catch (error) {
@@ -66,7 +56,7 @@ r.get("/:id", async (req, res) => {
       user = await storage.getUserByUsername(id);
     }
     if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
+    res.json(serializePublicUser(user));
   } catch (error) {
     console.error("GET /users/:id error", error);
     res.status(500).json({ message: "Failed to fetch user" });
@@ -77,7 +67,7 @@ r.get("/username/:username", async (req, res) => {
   try {
     const user = await storage.getUserByUsername(req.params.username);
     if (!user) return res.status(404).json({ message: "User not found" });
-    res.json(user);
+    res.json(serializePublicUser(user));
   } catch (error) {
     console.error("GET /users/username/:username error", error);
     res.status(500).json({ message: "Failed to fetch user" });
@@ -248,17 +238,18 @@ r.put("/:id/catering/settings", requireAuth, async (req, res) => {
   }
 });
 
-r.get("/:id/catering/status", async (req, res) => {
+r.get("/:id/catering/status", requireAuth, async (req, res) => {
   try {
+    if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only view your own catering status" });
     const user = await storage.getUser(req.params.id);
     if (!user) return res.status(404).json({ message: "User not found" });
     res.json({
-      cateringEnabled: (user as any).cateringEnabled || false,
-      cateringAvailable: (user as any).cateringAvailable || false,
-      cateringLocation: (user as any).cateringLocation,
-      cateringRadius: (user as any).cateringRadius,
-      cateringBio: (user as any).cateringBio,
-      isChef: (user as any).isChef,
+      cateringEnabled: user.cateringEnabled ?? false,
+      cateringAvailable: user.cateringAvailable ?? false,
+      cateringLocation: user.cateringLocation,
+      cateringRadius: user.cateringRadius,
+      cateringBio: user.cateringBio,
+      isChef: user.isChef,
     });
   } catch (error) {
     console.error("GET /users/:id/catering/status error", error);

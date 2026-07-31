@@ -12,6 +12,8 @@ import { Calendar } from '@/components/ui/calendar';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Link } from 'wouter';
+import type { PublicCateringProvider } from '@shared/catering';
+import { localCalendarDate } from './catering-provider-actions';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -29,54 +31,7 @@ import {
   Store,
 } from 'lucide-react';
 
-// Spoon Rating Component
-const SpoonRating = ({ rating, size = 'w-4 h-4' }: { rating: number; size?: string }) => {
-  const spoons = [];
-  const fullSpoons = Math.floor(rating);
-  const hasHalfSpoon = rating % 1 !== 0;
-
-  for (let i = 0; i < 5; i++) {
-    if (i < fullSpoons) {
-      spoons.push(
-        <svg key={i} className={`${size} text-orange-400 fill-current`} viewBox="0 0 24 24">
-          <path d="M12.5 2c-1.9 0-3.5 1.6-3.5 3.5 0 1.3.7 2.4 1.8 3l-.8 13.5c0 .6.4 1 1 1h3c.6 0 1-.4 1-1L14.2 8.5c1.1-.6 1.8-1.7 1.8-3C16 3.6 14.4 2 12.5 2z"/>
-        </svg>
-      );
-    } else if (i === fullSpoons && hasHalfSpoon) {
-      spoons.push(
-        <div key={i} className="relative">
-          <svg className={`${size} text-gray-300`} viewBox="0 0 24 24">
-            <path d="M12.5 2c-1.9 0-3.5 1.6-3.5 3.5 0 1.3.7 2.4 1.8 3l-.8 13.5c0 .6.4 1 1 1h3c.6 0 1-.4 1-1L14.2 8.5c1.1-.6 1.8-1.7 1.8-3C16 3.6 14.4 2 12.5 2z"/>
-          </svg>
-          <svg className={`${size} text-orange-400 fill-current absolute top-0 left-0`} viewBox="0 0 24 24" style={{clipPath: 'inset(0 50% 0 0)'}}>
-            <path d="M12.5 2c-1.9 0-3.5 1.6-3.5 3.5 0 1.3.7 2.4 1.8 3l-.8 13.5c0 .6.4 1 1 1h3c.6 0 1-.4 1-1L14.2 8.5c1.1-.6 1.8-1.7 1.8-3C16 3.6 14.4 2 12.5 2z"/>
-          </svg>
-        </div>
-      );
-    } else {
-      spoons.push(
-        <svg key={i} className={`${size} text-gray-300`} viewBox="0 0 24 24">
-          <path d="M12.5 2c-1.9 0-3.5 1.6-3.5 3.5 0 1.3.7 2.4 1.8 3l-.8 13.5c0 .6.4 1 1 1h3c.6 0 1-.4 1-1L14.2 8.5c1.1-.6 1.8-1.7 1.8-3C16 3.6 14.4 2 12.5 2z"/>
-        </svg>
-      );
-    }
-  }
-
-  return <div className="flex items-center space-x-1">{spoons}</div>;
-};
-
-interface Chef {
-  id: string;
-  displayName: string;
-  avatar: string | null;
-  specialty: string | null;
-  bio: string | null;
-  cateringBio: string | null;
-  cateringLocation: string | null;
-  cateringRadius: number;
-  cateringAvailable: boolean;
-  distance?: number;
-}
+type Chef = PublicCateringProvider;
 
 interface CateringBookingForm {
   eventDate: Date | undefined;
@@ -177,7 +132,8 @@ export function CateringMarketplace() {
         body: JSON.stringify({
           customerId: user.id,
           chefId,
-          eventDate: form.eventDate?.toISOString(),
+          eventDate: form.eventDate ? localCalendarDate(form.eventDate) : undefined,
+          timezoneOffsetMinutes: new Date().getTimezoneOffset(),
           guestCount: form.guestCount ? parseInt(form.guestCount) : undefined,
           eventType: form.eventType || undefined,
           message: [
@@ -383,7 +339,6 @@ export function CateringMarketplace() {
                           <p className="text-sm text-gray-600 mb-2">{chef.specialty}</p>
                         )}
                         <div className="flex items-center space-x-2">
-                          <SpoonRating rating={4.5} />
                           {chef.distance !== undefined && (
                             <span className="text-sm text-gray-500">{chef.distance} mi away</span>
                           )}
@@ -509,7 +464,11 @@ export function CateringMarketplace() {
                                   mode="single"
                                   selected={form.eventDate}
                                   onSelect={(date) => updateForm(chef.id, { eventDate: date ?? undefined })}
-                                  disabled={(date) => date < new Date()}
+                                  disabled={(date) => {
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    return date < today;
+                                  }}
                                   className="rounded-md border"
                                 />
                               </div>
@@ -547,8 +506,8 @@ export function CateringMarketplace() {
                         </DialogContent>
                       </Dialog>
 
-                      <Button variant="outline" size="sm">
-                        View Profile
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href={`/services/catering/provider/${chef.id}`}>View Profile</Link>
                       </Button>
                     </div>
                   </CardContent>
