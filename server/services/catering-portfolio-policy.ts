@@ -5,3 +5,7 @@ export function ownsPortfolioItem(viewerId: string, item: { providerId: string }
 export function hasExactPortfolioSet(existingIds: string[], requestedIds: string[]): boolean {
   return existingIds.length === requestedIds.length && existingIds.every((id) => requestedIds.includes(id));
 }
+
+export function canAddPortfolioItem(currentCount: number, limit: number): boolean {
+  return Number.isInteger(currentCount) && currentCount >= 0 && currentCount < limit;
+}

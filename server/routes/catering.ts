@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { sendCateringRequestNotification } from "../services/notification-service";
 import { db } from "../db";
 import { users } from "../../shared/schema";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import { geocodeLocation } from "./google";
 import { parseCoordinates, resolveVisitorLocation } from "../services/catering-geo";
 import { requireAuth } from "../middleware";
@@ -14,13 +14,14 @@ import { publicCateringLocation, serializePublicCateringProvider } from "../seri
 import { cateringQuoteDateSchema } from "../services/catering-date";
 import { canTransitionCateringInquiry, cateringInquiryRole } from "../services/catering-inquiry-policy";
 import { cateringPortfolioItems } from "@shared/schema";
-import { cateringPortfolioFieldsSchema, cateringPortfolioReorderSchema } from "@shared/catering-portfolio";
+import { CATERING_PORTFOLIO_ITEM_LIMIT, cateringPortfolioFieldsSchema, cateringPortfolioReorderSchema } from "@shared/catering-portfolio";
 import { imageUpload, storeUploadedImage } from "../services/image-upload";
 import { serializeCateringPortfolioItem } from "../serializers/catering-portfolio";
-import { hasExactPortfolioSet, ownsPortfolioItem } from "../services/catering-portfolio-policy";
+import { canAddPortfolioItem, hasExactPortfolioSet, ownsPortfolioItem } from "../services/catering-portfolio-policy";
 
 const r = Router();
 const providerIdSchema = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
+class PortfolioLimitError extends Error {}
 
 /**
  * POST /api/catering/users/:id/enable
@@ -147,13 +148,24 @@ r.post("/users/:id/portfolio", requireAuth, (req, res, next) => {
     try {
       if (uploadError) return res.status(400).json({ message: uploadError instanceof Error ? uploadError.message : "Invalid image" });
       if (!req.file) return res.status(400).json({ message: "An image is required" });
+      const file = req.file;
       const provider = await storage.getUser(req.params.id);
       if (!provider?.cateringEnabled) return res.status(409).json({ message: "Enable your catering profile before adding portfolio items" });
       const fields = cateringPortfolioFieldsSchema.parse(req.body);
-      const uploaded = await storeUploadedImage(req.file);
-      const [item] = await db.insert(cateringPortfolioItems).values({ providerId: req.params.id, image: uploaded.url, ...fields, description: fields.description ?? null }).returning();
+      const item = await db.transaction(async (tx: typeof db) => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${req.params.id}))`);
+        const [{ value: itemCount }] = await tx.select({ value: count() }).from(cateringPortfolioItems).where(eq(cateringPortfolioItems.providerId, req.params.id));
+        if (!canAddPortfolioItem(itemCount, CATERING_PORTFOLIO_ITEM_LIMIT)) throw new PortfolioLimitError();
+        const uploaded = await storeUploadedImage(file);
+        const [created] = await tx.insert(cateringPortfolioItems).values({ providerId: req.params.id, image: uploaded.url, ...fields, description: fields.description ?? null }).returning();
+        return created;
+      });
       res.status(201).json({ item: serializeCateringPortfolioItem(item) });
-    } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); }
+    } catch (error) {
+      if (error instanceof PortfolioLimitError) return res.status(409).json({ message: `Portfolio limit reached. You can upload up to ${CATERING_PORTFOLIO_ITEM_LIMIT} photos.` });
+      if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message });
+      next(error);
+    }
   });
 });
 
@@ -166,7 +178,7 @@ r.patch("/users/:id/portfolio/:itemId", requireAuth, async (req, res, next) => {
     const [existing] = await db.select().from(cateringPortfolioItems).where(eq(cateringPortfolioItems.id, req.params.itemId)).limit(1);
     if (!existing) return res.status(404).json({ message: "Portfolio item not found" });
     if (!ownsPortfolioItem(viewerId, existing)) return res.status(403).json({ message: "You do not own this portfolio item" });
-    const [item] = await db.update(cateringPortfolioItems).set({ ...fields, description: fields.description === undefined ? undefined : fields.description ?? null }).where(and(eq(cateringPortfolioItems.id, existing.id), eq(cateringPortfolioItems.providerId, viewerId))).returning();
+    const [item] = await db.update(cateringPortfolioItems).set({ ...fields, description: fields.description }).where(and(eq(cateringPortfolioItems.id, existing.id), eq(cateringPortfolioItems.providerId, viewerId))).returning();
     res.json({ item: serializeCateringPortfolioItem(item) });
   } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); }
 });
