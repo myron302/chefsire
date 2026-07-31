@@ -16,6 +16,7 @@ import {
   follows,
   followRequests,
   cateringInquiries,
+  cateringPortfolioItems,
 } from "./schema/domains/social-content";
 import {
   products,
@@ -37,6 +38,7 @@ export {
   follows,
   followRequests,
   cateringInquiries,
+  cateringPortfolioItems,
 } from "./schema/domains/social-content";
 export {
   products,

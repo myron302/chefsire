@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { ArrowLeft, CalendarDays, ChefHat, Loader2, MapPin, MessageCircle, Navigation, Share2, Store, Users } from "lucide-react";
 import type { PublicCateringProvider } from "@shared/catering";
+import type { CateringPortfolioItem } from "@shared/catering-portfolio";
+import { PortfolioGallery } from "@/components/catering/PortfolioGallery";
 import { useUser } from "@/contexts/UserContext";
 import { useToast } from "@/hooks/use-toast";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -46,6 +48,17 @@ export default function CateringPublicProvider({ params }: { params: { providerI
     queryKey: ["catering", "provider", params.providerId],
     queryFn: () => fetchProvider(params.providerId),
     retry: (count, error) => !(error instanceof ProviderRequestError && error.status < 500) && count < 2,
+  });
+
+  const portfolioQuery = useQuery({
+    queryKey: ["catering", "portfolio", params.providerId],
+    queryFn: async (): Promise<CateringPortfolioItem[]> => {
+      const response = await fetch(`/api/catering/providers/${encodeURIComponent(params.providerId)}/portfolio`);
+      if (!response.ok) throw new Error("Unable to load portfolio");
+      return (await response.json()).items;
+    },
+    enabled: providerQuery.isSuccess,
+    staleTime: 5 * 60 * 1000,
   });
 
   const messageMutation = useMutation({
@@ -103,6 +116,7 @@ export default function CateringPublicProvider({ params }: { params: { providerI
     <div className="mt-6 grid gap-6 md:grid-cols-3"><Card className="md:col-span-2"><CardHeader><CardTitle>About this catering service</CardTitle></CardHeader><CardContent>{provider.cateringBio ? <p className="whitespace-pre-wrap leading-7 text-muted-foreground">{provider.cateringBio}</p> : <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">This provider has not added a catering bio yet.</div>}</CardContent></Card>
       <Card><CardHeader><CardTitle>Service details</CardTitle></CardHeader><CardContent className="space-y-5"><div className="flex gap-3"><MapPin className="mt-0.5 h-5 w-5 shrink-0 text-orange-600" /><div><p className="font-medium">Service location</p><p className="text-sm text-muted-foreground">{provider.cateringLocation || "Not provided"}</p></div></div><div className="flex gap-3"><Navigation className="mt-0.5 h-5 w-5 shrink-0 text-orange-600" /><div><p className="font-medium">Travel radius</p><p className="text-sm text-muted-foreground">{provider.cateringRadius == null ? "Not provided" : `Up to ${provider.cateringRadius} miles`}</p></div></div><div className="flex gap-3"><Users className="mt-0.5 h-5 w-5 shrink-0 text-orange-600" /><div><p className="font-medium">Availability</p><p className="text-sm text-muted-foreground">{provider.cateringAvailable ? "Accepting event inquiries" : "Not accepting inquiries right now"}</p></div></div></CardContent></Card>
     </div>
+    <Card className="mt-6"><CardHeader><CardTitle>Portfolio</CardTitle></CardHeader><CardContent>{portfolioQuery.isLoading ? <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="status" aria-label="Loading portfolio"><Skeleton className="h-56" /><Skeleton className="h-72" /><Skeleton className="h-48" /></div> : portfolioQuery.isError ? <div className="rounded-lg border border-dashed p-6 text-center text-muted-foreground">The portfolio could not be loaded right now.</div> : <PortfolioGallery items={portfolioQuery.data ?? []} />}</CardContent></Card>
     <Card className="mt-6 hidden sm:block"><CardContent className="flex flex-wrap items-center justify-between gap-4 p-6"><div><p className="font-semibold">Planning an event?</p><p className="text-sm text-muted-foreground">{actionState.isAuthLoading ? "Checking your account…" : "Send real event details or begin a private conversation."}</p></div><div className="flex gap-3"><Button variant="outline" onClick={message} disabled={actionState.isAuthLoading || messageMutation.isPending || actionState.isSelf}><MessageCircle className="mr-2 h-4 w-4" />{actionState.isAuthLoading ? "Checking…" : "Message"}</Button><Button onClick={requestQuote} disabled={actionState.isAuthLoading || !provider.cateringAvailable || actionState.isSelf}><CalendarDays className="mr-2 h-4 w-4" />{actionState.isAuthLoading ? "Checking…" : "Request Quote"}</Button></div></CardContent></Card>
 
     <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 p-3 pb-[max(.75rem,env(safe-area-inset-bottom))] shadow-[0_-4px_16px_rgba(0,0,0,.08)] backdrop-blur sm:hidden"><div className="mx-auto grid max-w-lg grid-cols-3 gap-2"><Button variant="outline" size="sm" onClick={share}><Share2 className="mr-1 h-4 w-4" />Share</Button><Button variant="outline" size="sm" onClick={message} disabled={actionState.isAuthLoading || messageMutation.isPending || actionState.isSelf}><MessageCircle className="mr-1 h-4 w-4" />{actionState.isAuthLoading ? "Checking…" : "Message"}</Button><Button size="sm" onClick={requestQuote} disabled={actionState.isAuthLoading || !provider.cateringAvailable || actionState.isSelf}><CalendarDays className="mr-1 h-4 w-4" />{actionState.isAuthLoading ? "Checking…" : "Quote"}</Button></div></div>

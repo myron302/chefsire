@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { sendCateringRequestNotification } from "../services/notification-service";
 import { db } from "../db";
 import { users } from "../../shared/schema";
-import { eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { geocodeLocation } from "./google";
 import { parseCoordinates, resolveVisitorLocation } from "../services/catering-geo";
 import { requireAuth } from "../middleware";
@@ -13,6 +13,11 @@ import { insertCateringInquirySchema } from "@shared/schema";
 import { publicCateringLocation, serializePublicCateringProvider } from "../serializers/public-catering-provider";
 import { cateringQuoteDateSchema } from "../services/catering-date";
 import { canTransitionCateringInquiry, cateringInquiryRole } from "../services/catering-inquiry-policy";
+import { cateringPortfolioItems } from "@shared/schema";
+import { cateringPortfolioFieldsSchema, cateringPortfolioReorderSchema } from "@shared/catering-portfolio";
+import { imageUpload, storeUploadedImage } from "../services/image-upload";
+import { serializeCateringPortfolioItem } from "../serializers/catering-portfolio";
+import { hasExactPortfolioSet, ownsPortfolioItem } from "../services/catering-portfolio-policy";
 
 const r = Router();
 const providerIdSchema = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
@@ -119,6 +124,75 @@ r.get("/providers/:providerId", async (req, res, next) => {
     }
     res.json({ provider: serializePublicCateringProvider(provider) });
   } catch (error) { next(error); }
+});
+
+async function listedProvider(providerId: string) {
+  const provider = await storage.getUser(providerId);
+  return provider?.cateringEnabled ? provider : null;
+}
+
+r.get("/providers/:providerId/portfolio", async (req, res, next) => {
+  try {
+    const parsedId = providerIdSchema.safeParse(req.params.providerId);
+    if (!parsedId.success) return res.status(400).json({ message: "Invalid provider ID" });
+    if (!await listedProvider(parsedId.data)) return res.status(404).json({ message: "Provider not found" });
+    const items = await db.select().from(cateringPortfolioItems).where(eq(cateringPortfolioItems.providerId, parsedId.data)).orderBy(asc(cateringPortfolioItems.sortOrder), asc(cateringPortfolioItems.createdAt));
+    res.json({ items: items.map(serializeCateringPortfolioItem) });
+  } catch (error) { next(error); }
+});
+
+r.post("/users/:id/portfolio", requireAuth, (req, res, next) => {
+  if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only manage your own portfolio" });
+  imageUpload.single("image")(req, res, async (uploadError) => {
+    try {
+      if (uploadError) return res.status(400).json({ message: uploadError instanceof Error ? uploadError.message : "Invalid image" });
+      if (!req.file) return res.status(400).json({ message: "An image is required" });
+      const provider = await storage.getUser(req.params.id);
+      if (!provider?.cateringEnabled) return res.status(409).json({ message: "Enable your catering profile before adding portfolio items" });
+      const fields = cateringPortfolioFieldsSchema.parse(req.body);
+      const uploaded = await storeUploadedImage(req.file);
+      const [item] = await db.insert(cateringPortfolioItems).values({ providerId: req.params.id, image: uploaded.url, ...fields, description: fields.description ?? null }).returning();
+      res.status(201).json({ item: serializeCateringPortfolioItem(item) });
+    } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); }
+  });
+});
+
+r.patch("/users/:id/portfolio/:itemId", requireAuth, async (req, res, next) => {
+  try {
+    if (!z.string().uuid().safeParse(req.params.itemId).success) return res.status(400).json({ message: "Invalid portfolio item ID" });
+    const viewerId = (req.user as { id: string }).id;
+    if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own portfolio" });
+    const fields = cateringPortfolioFieldsSchema.partial().parse(req.body);
+    const [existing] = await db.select().from(cateringPortfolioItems).where(eq(cateringPortfolioItems.id, req.params.itemId)).limit(1);
+    if (!existing) return res.status(404).json({ message: "Portfolio item not found" });
+    if (!ownsPortfolioItem(viewerId, existing)) return res.status(403).json({ message: "You do not own this portfolio item" });
+    const [item] = await db.update(cateringPortfolioItems).set({ ...fields, description: fields.description === undefined ? undefined : fields.description ?? null }).where(and(eq(cateringPortfolioItems.id, existing.id), eq(cateringPortfolioItems.providerId, viewerId))).returning();
+    res.json({ item: serializeCateringPortfolioItem(item) });
+  } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); }
+});
+
+r.delete("/users/:id/portfolio/:itemId", requireAuth, async (req, res, next) => {
+  try {
+    if (!z.string().uuid().safeParse(req.params.itemId).success) return res.status(400).json({ message: "Invalid portfolio item ID" });
+    const viewerId = (req.user as { id: string }).id;
+    if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own portfolio" });
+    const [deleted] = await db.delete(cateringPortfolioItems).where(and(eq(cateringPortfolioItems.id, req.params.itemId), eq(cateringPortfolioItems.providerId, viewerId))).returning({ id: cateringPortfolioItems.id });
+    if (!deleted) return res.status(404).json({ message: "Portfolio item not found" });
+    res.status(204).end();
+  } catch (error) { next(error); }
+});
+
+r.put("/users/:id/portfolio/reorder", requireAuth, async (req, res, next) => {
+  try {
+    const viewerId = (req.user as { id: string }).id;
+    if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own portfolio" });
+    const { itemIds } = cateringPortfolioReorderSchema.parse(req.body);
+    const existing = await db.select({ id: cateringPortfolioItems.id }).from(cateringPortfolioItems).where(eq(cateringPortfolioItems.providerId, viewerId));
+    if (!hasExactPortfolioSet(existing.map(({ id }: { id: string }) => id), itemIds)) return res.status(400).json({ message: "Reorder must include every portfolio item exactly once" });
+    await db.transaction(async (tx: typeof db) => Promise.all(itemIds.map((id, sortOrder) => tx.update(cateringPortfolioItems).set({ sortOrder }).where(and(eq(cateringPortfolioItems.id, id), eq(cateringPortfolioItems.providerId, viewerId))))));
+    const items = itemIds.length ? await db.select().from(cateringPortfolioItems).where(inArray(cateringPortfolioItems.id, itemIds)).orderBy(asc(cateringPortfolioItems.sortOrder)) : [];
+    res.json({ items: items.map(serializeCateringPortfolioItem) });
+  } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); }
 });
 
 /**
