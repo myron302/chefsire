@@ -171,7 +171,8 @@ export interface IStorage {
   findChefsInRadius(visitor: Coordinates, radiusMiles: number, limit?: number): Promise<ChefWithCatering[]>;
   createCateringInquiry(inquiry: InsertCateringInquiry): Promise<CateringInquiry>;
   getCateringInquiries(chefId: string): Promise<CateringInquiry[]>;
-  updateCateringInquiry(id: string, updates: { status?: string; message?: string }): Promise<CateringInquiry | undefined>;
+  getCateringInquiry(id: string): Promise<CateringInquiry | undefined>;
+  updateCateringInquiry(id: string, updates: { status: string }): Promise<CateringInquiry | undefined>;
 
   // Marketplace
   createProduct(product: InsertProduct): Promise<Product>;
@@ -1079,15 +1080,21 @@ export class DrizzleStorage implements IStorage {
       .orderBy(desc(cateringInquiries.createdAt));
   }
 
+  async getCateringInquiry(id: string): Promise<CateringInquiry | undefined> {
+    const db = getDb();
+    const result = await db.select().from(cateringInquiries).where(eq(cateringInquiries.id, id)).limit(1);
+    return result[0];
+  }
+
   async updateCateringInquiry(
     id: string,
-    updates: { status?: string; message?: string }
+    updates: { status: string }
   ): Promise<CateringInquiry | undefined> {
     const db = getDb();
     const result = await db
       .update(cateringInquiries)
       .set(updates)
-      .where(eq(cateringInquiries.id, id))
+      .where(and(eq(cateringInquiries.id, id), eq(cateringInquiries.status, "pending")))
       .returning();
 
     return result[0];

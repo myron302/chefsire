@@ -37,3 +37,26 @@ test("public catering serialization uses professional persisted defaults", () =>
   assert.equal(serialized.cateringAvailable, false);
   assert.equal(serialized.cateringEnabled, false);
 });
+
+test("public catering locations preserve human-readable values", () => {
+  const serializeLocation = (cateringLocation: string) => serializePublicCateringProvider({
+    id: "provider", username: "chef", displayName: "Chef", avatar: null, specialty: null,
+    cateringBio: null, cateringLocation, cateringRadius: 25, cateringAvailable: true, cateringEnabled: true,
+  }).cateringLocation;
+
+  assert.equal(serializeLocation("Boston, MA"), "Boston, MA");
+  assert.equal(serializeLocation("06360"), "06360");
+  assert.equal(serializeLocation("123 Main Street, Hartford, CT"), "123 Main Street, Hartford, CT");
+  assert.equal(serializeLocation("somewhere near the river"), "somewhere near the river");
+});
+
+test("public catering locations redact every valid coordinate format", () => {
+  const serializeLocation = (cateringLocation: string) => serializePublicCateringProvider({
+    id: "provider", username: "chef", displayName: "Chef", avatar: null, specialty: null,
+    cateringBio: null, cateringLocation, cateringRadius: 25, cateringAvailable: true, cateringEnabled: true,
+  }).cateringLocation;
+
+  assert.equal(serializeLocation("41.7637,-72.6851"), null);
+  assert.equal(serializeLocation(" 41.7637, -72.6851 "), null);
+  assert.equal(serializeLocation("-33.8688,151.2093"), null);
+});

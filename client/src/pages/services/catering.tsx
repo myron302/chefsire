@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Link } from 'wouter';
 import type { PublicCateringProvider } from '@shared/catering';
+import { localCalendarDate } from './catering-provider-actions';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -131,7 +132,8 @@ export function CateringMarketplace() {
         body: JSON.stringify({
           customerId: user.id,
           chefId,
-          eventDate: form.eventDate?.toISOString(),
+          eventDate: form.eventDate ? localCalendarDate(form.eventDate) : undefined,
+          timezoneOffsetMinutes: new Date().getTimezoneOffset(),
           guestCount: form.guestCount ? parseInt(form.guestCount) : undefined,
           eventType: form.eventType || undefined,
           message: [
@@ -462,7 +464,11 @@ export function CateringMarketplace() {
                                   mode="single"
                                   selected={form.eventDate}
                                   onSelect={(date) => updateForm(chef.id, { eventDate: date ?? undefined })}
-                                  disabled={(date) => date < new Date()}
+                                  disabled={(date) => {
+                                    const today = new Date();
+                                    today.setHours(0, 0, 0, 0);
+                                    return date < today;
+                                  }}
                                   className="rounded-md border"
                                 />
                               </div>
