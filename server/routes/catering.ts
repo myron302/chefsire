@@ -9,8 +9,11 @@ import { geocodeLocation } from "./google";
 import { parseCoordinates, resolveVisitorLocation } from "../services/catering-geo";
 import { requireAuth } from "../middleware";
 import { z } from "zod";
+import { insertCateringInquirySchema } from "@shared/schema";
+import { serializePublicCateringProvider } from "../serializers/public-catering-provider";
 
 const r = Router();
+const providerIdSchema = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
 
 /**
  * POST /api/catering/users/:id/enable
@@ -97,17 +100,43 @@ r.get("/chefs/search", async (req, res, next) => {
     if (!coordinates) return res.status(422).json({ message: "We couldn't find that city or ZIP code. Try another location." });
 
     const chefs = await storage.findChefsInRadius(coordinates, radius, limit);
-    res.json({ chefs, searchParams: { location, radius }, total: chefs.length });
+    const publicChefs = chefs.map(serializePublicCateringProvider);
+    res.json({ chefs: publicChefs, searchParams: { location, radius }, total: publicChefs.length });
+  } catch (error) { next(error); }
+});
+
+/** Public, read-only provider profile. Disabled listings intentionally expose no profile data. */
+r.get("/providers/:providerId", async (req, res, next) => {
+  try {
+    const parsedId = providerIdSchema.safeParse(req.params.providerId);
+    if (!parsedId.success) return res.status(400).json({ message: "Invalid provider ID" });
+    const provider = await storage.getUser(parsedId.data);
+    if (!provider) return res.status(404).json({ message: "Provider not found" });
+    if (!provider.cateringEnabled) {
+      return res.status(410).json({ message: "This provider is not currently listed in the marketplace", code: "PROVIDER_UNAVAILABLE" });
+    }
+    res.json({ provider: serializePublicCateringProvider(provider) });
   } catch (error) { next(error); }
 });
 
 /**
  * POST /api/catering/inquiries
- * Body: { customerId, chefId, eventDate, guestCount?, eventType?, cuisinePreferences?, budget?, message }
+ * Body: { chefId, eventDate, guestCount?, eventType?, cuisinePreferences?, budget?, message }
+ * The authenticated user is always used as customerId.
  */
-r.post("/inquiries", async (req, res, next) => {
+r.post("/inquiries", requireAuth, async (req, res, next) => {
   try {
-    const inquiry = await storage.createCateringInquiry(req.body);
+    const customerId = (req.user as { id: string }).id;
+    const input = insertCateringInquirySchema.pick({
+      chefId: true, eventDate: true, guestCount: true, eventType: true,
+      cuisinePreferences: true, budget: true, message: true,
+    }).extend({ eventDate: z.coerce.date().min(new Date(), "Event date must be in the future") }).parse(req.body);
+    if (input.chefId === customerId) return res.status(400).json({ message: "You cannot request a quote from yourself" });
+    const provider = await storage.getUser(input.chefId);
+    if (!provider?.cateringEnabled || !provider.cateringAvailable) {
+      return res.status(409).json({ message: "This provider is not currently accepting inquiries" });
+    }
+    const inquiry = await storage.createCateringInquiry({ ...input, customerId });
 
     // Send notification to chef about new catering request
     const [customer] = await db
@@ -127,7 +156,10 @@ r.post("/inquiries", async (req, res, next) => {
     }
 
     res.status(201).json({ message: "Catering inquiry sent successfully", inquiry });
-  } catch (error) { next(error); }
+  } catch (error) {
+    if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message || "Invalid quote request", errors: error.issues });
+    next(error);
+  }
 });
 
 /**

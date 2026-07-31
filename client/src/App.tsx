@@ -53,6 +53,7 @@ const NutritionCampaignFeedPage = React.lazy(() => import("@/pages/nutrition/cam
 const AnalyticsPage = React.lazy(() => import("@/pages/analytics/AnalyticsPage"));
 const CateringMarketplace = React.lazy(() => import("@/pages/services/catering"));
 const CateringProvider = React.lazy(() => import("@/pages/services/catering-provider"));
+const CateringPublicProvider = React.lazy(() => import("@/pages/services/catering-public-provider"));
 const WeddingPlanning = React.lazy(() => import("@/pages/services/wedding-planning"));
 const WeddingPlanningBudgetPage = React.lazy(() => import("@/pages/services/wedding-planning/budget"));
 const WeddingPlanningCalendarPage = React.lazy(() => import("@/pages/services/wedding-planning/calendar"));
@@ -336,6 +337,7 @@ export default function App() {
                 </Route>
 
                 <Route path="/services/catering" component={CateringMarketplace} />
+                <Route path="/services/catering/provider/:providerId" component={CateringPublicProvider} />
                 <Route path="/services/catering/provider" component={CateringProvider} />
                 <Route path="/services/wedding-planning" component={WeddingPlanning} />
                 <Route path="/services/wedding-planning/checklist" component={WeddingPlanningChecklistPage} />
