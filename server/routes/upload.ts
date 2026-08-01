@@ -5,9 +5,9 @@ import path from "path";
 import { randomUUID } from "crypto";
 import { requireAuth } from "../middleware";
 import fs from "fs";
-import sharp from "sharp";
 import { UPLOADS_DIR, uploadUrlPath } from "../lib/uploads-dir";
 import { isR2Configured, publicUrl, uploadFileToR2, uploadToR2 } from "../lib/r2";
+import { imageUpload, storeUploadedImage } from "../services/image-upload";
 
 const router = Router();
 
@@ -169,24 +169,9 @@ router.post("/", requireAuth, (req, res) => {
 });
 
 // Memory-storage multer for image processing (25MB limit, images only)
-const imageMemoryUpload = multer({
-  storage: multer.memoryStorage(),
-  limits: {
-    fileSize: 25 * 1024 * 1024, // 25MB
-  },
-  fileFilter: (_req, file, cb) => {
-    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
-    if (allowed.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error('Only JPEG, PNG, WebP, and GIF images are accepted.'));
-    }
-  },
-});
-
 // POST /api/upload/image - Compressed image upload with thumbnail
 router.post("/image", requireAuth, (req, res) => {
-  imageMemoryUpload.single('file')(req, res, async (err) => {
+  imageUpload.single('file')(req, res, async (err) => {
     if (err) {
       if (err instanceof multer.MulterError && err.code === 'LIMIT_FILE_SIZE') {
         return res.status(400).json({ ok: false, error: "Image is too large. Maximum size is 25MB." });
@@ -199,70 +184,7 @@ router.post("/image", requireAuth, (req, res) => {
         return res.status(400).json({ ok: false, error: "No file uploaded" });
       }
 
-      // GIFs are saved as-is to preserve animation
-      if (req.file.mimetype === 'image/gif') {
-        const filename = `${randomUUID()}.gif`;
-        let url: string;
-        if (isR2Configured()) {
-          const key = `posts/${randomUUID()}.gif`;
-          await uploadToR2(key, req.file.buffer, req.file.mimetype);
-          url = publicUrl(key);
-        } else {
-          fs.writeFileSync(path.join(UPLOADS_DIR, filename), req.file.buffer);
-          url = uploadUrlPath(filename);
-        }
-        return res.json({ ok: true, url, thumbUrl: url });
-      }
-
-      const uuid = randomUUID();
-      const mainFilename = `${uuid}.webp`;
-      const thumbFilename = `${uuid}_thumb.webp`;
-      let url: string;
-      let thumbUrl: string;
-
-      if (isR2Configured()) {
-        const mainBuffer = await sharp(req.file.buffer)
-          .rotate()
-          .resize({ width: 1600, withoutEnlargement: true })
-          .webp({ quality: 80 })
-          .toBuffer();
-
-        const thumbBuffer = await sharp(req.file.buffer)
-          .rotate()
-          .resize({ width: 480, withoutEnlargement: true })
-          .webp({ quality: 75 })
-          .toBuffer();
-
-        const mainKey = `posts/${mainFilename}`;
-        const thumbKey = `posts/${thumbFilename}`;
-        await Promise.all([
-          uploadToR2(mainKey, mainBuffer, "image/webp"),
-          uploadToR2(thumbKey, thumbBuffer, "image/webp"),
-        ]);
-
-        url = publicUrl(mainKey);
-        thumbUrl = publicUrl(thumbKey);
-      } else {
-        const mainPath = path.join(UPLOADS_DIR, mainFilename);
-        const thumbPath = path.join(UPLOADS_DIR, thumbFilename);
-
-        await sharp(req.file.buffer)
-          .rotate()
-          .resize({ width: 1600, withoutEnlargement: true })
-          .webp({ quality: 80 })
-          .toFile(mainPath);
-
-        await sharp(req.file.buffer)
-          .rotate()
-          .resize({ width: 480, withoutEnlargement: true })
-          .webp({ quality: 75 })
-          .toFile(thumbPath);
-
-        url = uploadUrlPath(mainFilename);
-        thumbUrl = uploadUrlPath(thumbFilename);
-      }
-
-      res.json({ ok: true, url, thumbUrl });
+      res.json({ ok: true, ...await storeUploadedImage(req.file) });
     } catch (error: any) {
       console.error("Error processing image upload:", error);
       res.status(500).json({ ok: false, error: error.message || "Failed to process image" });

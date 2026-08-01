@@ -271,3 +271,20 @@ export const cateringInquiries = pgTable("catering_inquiries", {
   status: text("status").default("pending"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const cateringPortfolioItems = pgTable(
+  "catering_portfolio_items",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    image: text("image").notNull(),
+    title: varchar("title", { length: 120 }).notNull(),
+    description: text("description"),
+    category: varchar("category", { length: 40 }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+  },
+  (table) => ({
+    providerOrderIdx: index("catering_portfolio_provider_order_idx").on(table.providerId, table.sortOrder, table.createdAt),
+  }),
+);
