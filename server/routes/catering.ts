@@ -13,11 +13,13 @@ import { insertCateringInquirySchema } from "@shared/schema";
 import { publicCateringLocation, serializePublicCateringProvider } from "../serializers/public-catering-provider";
 import { cateringQuoteDateSchema } from "../services/catering-date";
 import { canTransitionCateringInquiry, cateringInquiryRole } from "../services/catering-inquiry-policy";
-import { cateringPortfolioItems } from "@shared/schema";
+import { cateringPackages, cateringPortfolioItems } from "@shared/schema";
 import { CATERING_PORTFOLIO_ITEM_LIMIT, cateringPortfolioFieldsSchema, cateringPortfolioReorderSchema } from "@shared/catering-portfolio";
 import { imageUpload, storeUploadedImage } from "../services/image-upload";
 import { serializeCateringPortfolioItem } from "../serializers/catering-portfolio";
 import { canAddPortfolioItem, hasExactPortfolioSet, ownsPortfolioItem } from "../services/catering-portfolio-policy";
+import { cateringPackageInputSchema, cateringPackagePatchSchema, cateringPackageReorderSchema, hasExactPackageSet } from "@shared/catering-packages";
+import { serializeCateringPackage } from "../serializers/catering-package";
 
 const r = Router();
 const providerIdSchema = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
@@ -142,6 +144,61 @@ r.get("/providers/:providerId/portfolio", async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+/** Public package collection: inactive records are filtered at the database boundary. */
+r.get("/providers/:providerId/packages", async (req, res, next) => { try {
+  const id = providerIdSchema.safeParse(req.params.providerId); if (!id.success) return res.status(400).json({ message: "Invalid provider ID" });
+  if (!await listedProvider(id.data)) return res.status(404).json({ message: "Provider not found" });
+  const packages = await db.select().from(cateringPackages).where(and(eq(cateringPackages.providerId, id.data), eq(cateringPackages.active, true))).orderBy(sql`${cateringPackages.featured} DESC`, asc(cateringPackages.displayOrder), asc(cateringPackages.createdAt));
+  res.json({ packages: packages.map(serializeCateringPackage) });
+} catch (error) { next(error); } });
+
+r.get("/users/:id/packages", requireAuth, async (req, res, next) => { try {
+  if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only manage your own packages" });
+  const packages = await db.select().from(cateringPackages).where(eq(cateringPackages.providerId, req.params.id)).orderBy(asc(cateringPackages.displayOrder), asc(cateringPackages.createdAt));
+  res.json({ packages: packages.map(serializeCateringPackage) });
+} catch (error) { next(error); } });
+
+r.post("/users/:id/packages", requireAuth, async (req, res, next) => { try {
+  const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own packages" });
+  if (!await listedProvider(viewerId)) return res.status(409).json({ message: "Enable your catering profile before creating packages" });
+  const input = cateringPackageInputSchema.parse(req.body); const [{ value }] = await db.select({ value: count() }).from(cateringPackages).where(eq(cateringPackages.providerId, viewerId));
+  const [created] = await db.insert(cateringPackages).values({ ...input, startingPrice: String(input.startingPrice), providerId: viewerId, displayOrder: value }).returning();
+  res.status(201).json({ package: serializeCateringPackage(created) });
+} catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message, errors: error.issues }); next(error); } });
+
+r.patch("/users/:id/packages/:packageId", requireAuth, async (req, res, next) => { try {
+  const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own packages" });
+  if (!z.string().uuid().safeParse(req.params.packageId).success) return res.status(400).json({ message: "Invalid package ID" });
+  const input = cateringPackagePatchSchema.parse(req.body); const values = { ...input, ...(input.startingPrice === undefined ? {} : { startingPrice: String(input.startingPrice) }), updatedAt: new Date() };
+  const [updated] = await db.update(cateringPackages).set(values).where(and(eq(cateringPackages.id, req.params.packageId), eq(cateringPackages.providerId, viewerId))).returning();
+  if (!updated) return res.status(404).json({ message: "Package not found" }); res.json({ package: serializeCateringPackage(updated) });
+} catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message, errors: error.issues }); next(error); } });
+
+r.delete("/users/:id/packages/:packageId", requireAuth, async (req, res, next) => { try {
+  const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own packages" });
+  if (!z.string().uuid().safeParse(req.params.packageId).success) return res.status(400).json({ message: "Invalid package ID" });
+  const [deleted] = await db.delete(cateringPackages).where(and(eq(cateringPackages.id, req.params.packageId), eq(cateringPackages.providerId, viewerId))).returning({ id: cateringPackages.id }); if (!deleted) return res.status(404).json({ message: "Package not found" }); res.status(204).end();
+} catch (error) { next(error); } });
+
+r.post("/users/:id/packages/:packageId/duplicate", requireAuth, async (req, res, next) => { try {
+  const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own packages" });
+  const [source] = await db.select().from(cateringPackages).where(and(eq(cateringPackages.id, req.params.packageId), eq(cateringPackages.providerId, viewerId))).limit(1); if (!source) return res.status(404).json({ message: "Package not found" });
+  const { id: _id, createdAt: _created, updatedAt: _updated, ...copy } = source; const [created] = await db.insert(cateringPackages).values({ ...copy, title: `${source.title} (Copy)`.slice(0, 120), active: false, featured: false, displayOrder: source.displayOrder + 1 }).returning(); res.status(201).json({ package: serializeCateringPackage(created) });
+} catch (error) { next(error); } });
+
+r.put("/users/:id/packages/reorder", requireAuth, async (req, res, next) => { try {
+  const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own packages" }); const { packageIds } = cateringPackageReorderSchema.parse(req.body);
+  const existing = await db.select({ id: cateringPackages.id }).from(cateringPackages).where(eq(cateringPackages.providerId, viewerId)); if (!hasExactPackageSet(existing.map(({ id }: { id: string }) => id), packageIds)) return res.status(400).json({ message: "Reorder must include every package exactly once" });
+  await db.transaction(async (tx: typeof db) => Promise.all(packageIds.map((id, displayOrder) => tx.update(cateringPackages).set({ displayOrder, updatedAt: new Date() }).where(and(eq(cateringPackages.id, id), eq(cateringPackages.providerId, viewerId)))))); res.json({ packageIds });
+} catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); } });
+
+r.post("/users/:id/packages/:packageId/cover", requireAuth, (req, res, next) => {
+  if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only manage your own packages" }); imageUpload.single("image")(req, res, async (uploadError) => { try {
+    if (uploadError || !req.file) return res.status(400).json({ message: uploadError instanceof Error ? uploadError.message : "An image is required" }); const uploaded = await storeUploadedImage(req.file);
+    const [updated] = await db.update(cateringPackages).set({ coverImage: uploaded.url, updatedAt: new Date() }).where(and(eq(cateringPackages.id, req.params.packageId), eq(cateringPackages.providerId, req.params.id))).returning(); if (!updated) return res.status(404).json({ message: "Package not found" }); res.json({ package: serializeCateringPackage(updated) });
+  } catch (error) { next(error); } });
+});
+
 r.post("/users/:id/portfolio", requireAuth, (req, res, next) => {
   if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only manage your own portfolio" });
   imageUpload.single("image")(req, res, async (uploadError) => {
@@ -216,7 +273,7 @@ r.post("/inquiries", requireAuth, async (req, res, next) => {
   try {
     const customerId = (req.user as { id: string }).id;
     const body = insertCateringInquirySchema.pick({
-      chefId: true, guestCount: true, eventType: true,
+      chefId: true, packageId: true, guestCount: true, eventType: true,
       cuisinePreferences: true, budget: true, message: true,
     }).and(z.object({ eventDate: z.string(), timezoneOffsetMinutes: z.number() })).parse(req.body);
     const { eventDate } = cateringQuoteDateSchema.parse(body);
@@ -227,6 +284,7 @@ r.post("/inquiries", requireAuth, async (req, res, next) => {
     if (!provider?.cateringEnabled || !provider.cateringAvailable) {
       return res.status(409).json({ message: "This provider is not currently accepting inquiries" });
     }
+    if (input.packageId) { const [selected] = await db.select({ id: cateringPackages.id }).from(cateringPackages).where(and(eq(cateringPackages.id, input.packageId), eq(cateringPackages.providerId, input.chefId), eq(cateringPackages.active, true))).limit(1); if (!selected) return res.status(400).json({ message: "Selected package is unavailable" }); }
     const inquiry = await storage.createCateringInquiry({ ...input, customerId });
 
     // Send notification to chef about new catering request

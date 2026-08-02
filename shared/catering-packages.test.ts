@@ -1,0 +1,6 @@
+import test from "node:test"; import assert from "node:assert/strict"; import { cateringPackageInputSchema, hasExactPackageSet, orderPublicPackages } from "./catering-packages";
+const valid = { title: "Wedding feast", description: "A complete seasonal wedding menu.", category: "Wedding Reception", pricingModel: "per_person", startingPrice: 75, minimumGuests: 20 };
+test("package validation accepts professional values", () => { assert.equal(cateringPackageInputSchema.parse(valid).currency, "USD"); });
+test("package validation rejects negative pricing and inverted guest ranges", () => { assert.equal(cateringPackageInputSchema.safeParse({ ...valid, startingPrice: -1 }).success, false); assert.equal(cateringPackageInputSchema.safeParse({ ...valid, minimumGuests: 20, maximumGuests: 10 }).success, false); });
+test("featured packages sort before display order", () => { const values = orderPublicPackages([{ featured: false, displayOrder: 0, id: "a" }, { featured: true, displayOrder: 9, id: "b" }]); assert.deepEqual(values.map((item) => item.id), ["b", "a"]); });
+test("reordering requires the exact owned set", () => { assert.equal(hasExactPackageSet(["a", "b"], ["b", "a"]), true); assert.equal(hasExactPackageSet(["a", "b"], ["a", "x"]), false); });

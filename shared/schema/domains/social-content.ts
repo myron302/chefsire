@@ -250,6 +250,17 @@ export const followRequests = pgTable("follow_requests", {
   respondedAt: timestamp("responded_at"),
 });
 
+export const cateringPackages = pgTable(
+  "catering_packages",
+  {
+    id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+    title: varchar("title", { length: 120 }).notNull(), description: text("description").notNull(), category: varchar("category", { length: 40 }).notNull(), coverImage: text("cover_image"), galleryImages: jsonb("gallery_images").$type<string[]>().default(sql`'[]'::jsonb`).notNull(),
+    pricingModel: varchar("pricing_model", { length: 30 }).notNull(), startingPrice: decimal("starting_price", { precision: 12, scale: 2 }).notNull(), currency: varchar("currency", { length: 3 }).default("USD").notNull(), minimumGuests: integer("minimum_guests").notNull(), maximumGuests: integer("maximum_guests"),
+    preparationStyle: varchar("preparation_style", { length: 100 }), serviceStyle: varchar("service_style", { length: 100 }), cuisines: jsonb("cuisines").$type<string[]>().default(sql`'[]'::jsonb`).notNull(), dietaryAccommodations: jsonb("dietary_accommodations").$type<string[]>().default(sql`'[]'::jsonb`).notNull(), includedServices: jsonb("included_services").$type<string[]>().default(sql`'[]'::jsonb`).notNull(), optionalAddOns: jsonb("optional_add_ons").$type<string[]>().default(sql`'[]'::jsonb`).notNull(), estimatedDuration: integer("estimated_duration"),
+    active: boolean("active").default(false).notNull(), featured: boolean("featured").default(false).notNull(), displayOrder: integer("display_order").default(0).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  }, (table) => ({ providerOrderIdx: index("catering_packages_provider_order_idx").on(table.providerId, table.displayOrder, table.createdAt) }),
+);
+
 export const cateringInquiries = pgTable("catering_inquiries", {
   id: varchar("id")
     .primaryKey()
@@ -260,6 +271,7 @@ export const cateringInquiries = pgTable("catering_inquiries", {
   chefId: varchar("chef_id")
     .references(() => users.id)
     .notNull(),
+  packageId: varchar("package_id").references(() => cateringPackages.id, { onDelete: "set null" }),
   eventDate: timestamp("event_date").notNull(),
   guestCount: integer("guest_count"),
   eventType: text("event_type"),
