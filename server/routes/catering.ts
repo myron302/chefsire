@@ -18,8 +18,9 @@ import { CATERING_PORTFOLIO_ITEM_LIMIT, cateringPortfolioFieldsSchema, cateringP
 import { imageUpload, storeUploadedImage } from "../services/image-upload";
 import { serializeCateringPortfolioItem } from "../serializers/catering-portfolio";
 import { canAddPortfolioItem, hasExactPortfolioSet, ownsPortfolioItem } from "../services/catering-portfolio-policy";
-import { cateringPackageInputSchema, cateringPackagePatchSchema, cateringPackageReorderSchema, hasExactPackageSet } from "@shared/catering-packages";
+import { cateringPackageInputSchema, cateringPackagePatchSchema, cateringPackageReorderSchema, hasExactPackageSet, validateMergedPackage } from "@shared/catering-packages";
 import { serializeCateringPackage } from "../serializers/catering-package";
+import { authorizePackageCoverUpload } from "../services/catering-package-policy";
 
 const r = Router();
 const providerIdSchema = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
@@ -169,7 +170,12 @@ r.post("/users/:id/packages", requireAuth, async (req, res, next) => { try {
 r.patch("/users/:id/packages/:packageId", requireAuth, async (req, res, next) => { try {
   const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own packages" });
   if (!z.string().uuid().safeParse(req.params.packageId).success) return res.status(400).json({ message: "Invalid package ID" });
-  const input = cateringPackagePatchSchema.parse(req.body); const values = { ...input, ...(input.startingPrice === undefined ? {} : { startingPrice: String(input.startingPrice) }), updatedAt: new Date() };
+  const [existing] = await db.select().from(cateringPackages).where(eq(cateringPackages.id, req.params.packageId)).limit(1);
+  if (!existing) return res.status(404).json({ message: "Package not found" });
+  if (existing.providerId !== viewerId) return res.status(403).json({ message: "You do not own this package" });
+  const input = cateringPackagePatchSchema.parse(req.body);
+  validateMergedPackage(serializeCateringPackage(existing), input);
+  const values = { ...input, ...(input.startingPrice === undefined ? {} : { startingPrice: String(input.startingPrice) }), updatedAt: new Date() };
   const [updated] = await db.update(cateringPackages).set(values).where(and(eq(cateringPackages.id, req.params.packageId), eq(cateringPackages.providerId, viewerId))).returning();
   if (!updated) return res.status(404).json({ message: "Package not found" }); res.json({ package: serializeCateringPackage(updated) });
 } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message, errors: error.issues }); next(error); } });
@@ -192,11 +198,25 @@ r.put("/users/:id/packages/reorder", requireAuth, async (req, res, next) => { tr
   await db.transaction(async (tx: typeof db) => Promise.all(packageIds.map((id, displayOrder) => tx.update(cateringPackages).set({ displayOrder, updatedAt: new Date() }).where(and(eq(cateringPackages.id, id), eq(cateringPackages.providerId, viewerId)))))); res.json({ packageIds });
 } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); } });
 
-r.post("/users/:id/packages/:packageId/cover", requireAuth, (req, res, next) => {
-  if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only manage your own packages" }); imageUpload.single("image")(req, res, async (uploadError) => { try {
-    if (uploadError || !req.file) return res.status(400).json({ message: uploadError instanceof Error ? uploadError.message : "An image is required" }); const uploaded = await storeUploadedImage(req.file);
-    const [updated] = await db.update(cateringPackages).set({ coverImage: uploaded.url, updatedAt: new Date() }).where(and(eq(cateringPackages.id, req.params.packageId), eq(cateringPackages.providerId, req.params.id))).returning(); if (!updated) return res.status(404).json({ message: "Package not found" }); res.json({ package: serializeCateringPackage(updated) });
-  } catch (error) { next(error); } });
+r.post("/users/:id/packages/:packageId/cover", requireAuth, async (req, res, next) => {
+  try {
+    const viewerId = (req.user as { id: string }).id;
+    const preliminary = authorizePackageCoverUpload(viewerId, req.params.id, req.params.packageId, undefined);
+    if (!preliminary.allowed && preliminary.status !== 404) return res.status(preliminary.status).json({ message: preliminary.message });
+    const [existing] = await db.select({ providerId: cateringPackages.providerId }).from(cateringPackages).where(eq(cateringPackages.id, req.params.packageId)).limit(1);
+    const decision = authorizePackageCoverUpload(viewerId, req.params.id, req.params.packageId, existing);
+    if (!decision.allowed) return res.status(decision.status).json({ message: decision.message });
+    imageUpload.single("image")(req, res, async (uploadError) => {
+      try {
+        if (uploadError || !req.file) return res.status(400).json({ message: uploadError instanceof Error ? uploadError.message : "An image is required" });
+        const uploaded = await storeUploadedImage(req.file);
+        const [updated] = await db.update(cateringPackages).set({ coverImage: uploaded.url, updatedAt: new Date() }).where(and(eq(cateringPackages.id, req.params.packageId), eq(cateringPackages.providerId, viewerId))).returning();
+        // A concurrent delete after storage can leave an orphan; media cleanup is intentionally handled by the existing lifecycle process.
+        if (!updated) return res.status(409).json({ message: "Package changed during upload; the stored media is pending cleanup" });
+        res.json({ package: serializeCateringPackage(updated) });
+      } catch (error) { next(error); }
+    });
+  } catch (error) { next(error); }
 });
 
 r.post("/users/:id/portfolio", requireAuth, (req, res, next) => {
