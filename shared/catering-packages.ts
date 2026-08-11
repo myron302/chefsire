@@ -83,6 +83,24 @@ export function validateMergedPackage(
   return cateringPackageInputSchema.parse({ ...existing, ...patch });
 }
 
+/** Canonical customer-facing price copy for package cards and details. */
+export function formatCateringPackagePrice(
+  value: Pick<CateringPackageInput, "currency" | "pricingModel" | "startingPrice">,
+  locales?: Intl.LocalesArgument,
+): string {
+  if (value.pricingModel === "custom") return "Custom pricing";
+  const amount = new Intl.NumberFormat(locales, {
+    style: "currency",
+    currency: value.currency,
+  }).format(value.startingPrice);
+  const suffix = value.pricingModel === "per_person"
+    ? "/person"
+    : value.pricingModel === "hourly"
+      ? "/hour"
+      : "";
+  return `From ${amount}${suffix}`;
+}
+
 /** Multiple featured packages are supported; display order and creation time break ties publicly. */
 export function orderPublicPackages<T extends { featured: boolean; displayOrder: number }>(packages: T[]) {
   return [...packages].sort((a, b) => Number(b.featured) - Number(a.featured) || a.displayOrder - b.displayOrder);

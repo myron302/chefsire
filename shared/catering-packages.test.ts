@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   cateringPackageInputSchema,
+  formatCateringPackagePrice,
   hasExactPackageSet,
   orderPublicPackages,
   packageMetadataPayload,
@@ -63,6 +64,14 @@ test("metadata save payload cannot overwrite newly uploaded cover or server fiel
 test("featured packages sort before display order", () => {
   const values = orderPublicPackages([{ featured: false, displayOrder: 0, id: "a" }, { featured: true, displayOrder: 9, id: "b" }]);
   assert.deepEqual(values.map((item) => item.id), ["b", "a"]);
+});
+
+test("formats each pricing model truthfully using persisted currency", () => {
+  assert.equal(formatCateringPackagePrice({ pricingModel: "per_person", startingPrice: 75, currency: "USD" }, "en-US"), "From $75.00/person");
+  assert.equal(formatCateringPackagePrice({ pricingModel: "flat_rate", startingPrice: 1500, currency: "USD" }, "en-US"), "From $1,500.00");
+  assert.equal(formatCateringPackagePrice({ pricingModel: "hourly", startingPrice: 100, currency: "USD" }, "en-US"), "From $100.00/hour");
+  assert.equal(formatCateringPackagePrice({ pricingModel: "custom", startingPrice: 0, currency: "USD" }, "en-US"), "Custom pricing");
+  assert.equal(formatCateringPackagePrice({ pricingModel: "flat_rate", startingPrice: 1500, currency: "EUR" }, "en-US"), "From €1,500.00");
 });
 
 test("reordering requires the exact owned set", () => {
