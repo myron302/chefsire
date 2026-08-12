@@ -9,5 +9,5 @@ export interface PublicCateringProvider {
   cateringAvailable: boolean;
   cateringEnabled: boolean;
   distance?: number;
+  availability?: import("./catering-availability").PublicAvailabilitySummary;
 }
-
