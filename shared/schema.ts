@@ -17,6 +17,7 @@ import {
   followRequests,
   cateringInquiries,
   cateringPortfolioItems,
+  cateringPackages,
 } from "./schema/domains/social-content";
 import {
   products,
@@ -39,6 +40,7 @@ export {
   followRequests,
   cateringInquiries,
   cateringPortfolioItems,
+  cateringPackages,
 } from "./schema/domains/social-content";
 export {
   products,
