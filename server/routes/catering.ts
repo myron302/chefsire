@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { sendCateringRequestNotification } from "../services/notification-service";
 import { db } from "../db";
 import { users } from "../../shared/schema";
-import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, sql, lte, gte } from "drizzle-orm";
 import { geocodeLocation } from "./google";
 import { parseCoordinates, resolveVisitorLocation } from "../services/catering-geo";
 import { requireAuth } from "../middleware";
@@ -13,7 +13,9 @@ import { insertCateringInquirySchema } from "@shared/schema";
 import { publicCateringLocation, serializePublicCateringProvider } from "../serializers/public-catering-provider";
 import { cateringQuoteDateSchema } from "../services/catering-date";
 import { canTransitionCateringInquiry, cateringInquiryRole } from "../services/catering-inquiry-policy";
-import { cateringPackages, cateringPortfolioItems } from "@shared/schema";
+import { cateringPackages, cateringPortfolioItems, cateringAvailabilitySettings, cateringAvailabilityExceptions, cateringAvailabilityWeeklyRules } from "@shared/schema";
+import { availabilityExceptionSchema, availabilitySettingsSchema, calendarDateSchema, weeklyRulesSchema } from "@shared/catering-availability";
+import { addCalendarDays, calendarDateInTimezone, resolveCateringAvailability } from "../services/catering-availability";
 import { CATERING_PORTFOLIO_ITEM_LIMIT, cateringPortfolioFieldsSchema, cateringPortfolioReorderSchema } from "@shared/catering-portfolio";
 import { imageUpload, storeUploadedImage } from "../services/image-upload";
 import { serializeCateringPortfolioItem } from "../serializers/catering-portfolio";
@@ -25,6 +27,13 @@ import { authorizePackageCoverUpload } from "../services/catering-package-policy
 const r = Router();
 const providerIdSchema = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
 class PortfolioLimitError extends Error {}
+const DEFAULT_AVAILABILITY = { acceptingBookings: true, minimumLeadDays: 0, maximumAdvanceDays: 365, timezone: "UTC" } as const;
+async function availabilityData(providerId: string) {
+  const [stored] = await db.select().from(cateringAvailabilitySettings).where(eq(cateringAvailabilitySettings.providerId, providerId)).limit(1);
+  const settings = stored ? { acceptingBookings: stored.acceptingBookings, minimumLeadDays: stored.minimumLeadDays, maximumAdvanceDays: stored.maximumAdvanceDays, timezone: stored.timezone } : { ...DEFAULT_AVAILABILITY };
+  const rules = await db.select({ dayOfWeek: cateringAvailabilityWeeklyRules.dayOfWeek, available: cateringAvailabilityWeeklyRules.available }).from(cateringAvailabilityWeeklyRules).where(eq(cateringAvailabilityWeeklyRules.providerId, providerId));
+  return { settings, rules };
+}
 
 /**
  * POST /api/catering/users/:id/enable
@@ -126,9 +135,48 @@ r.get("/providers/:providerId", async (req, res, next) => {
     if (!provider.cateringEnabled) {
       return res.status(410).json({ message: "This provider is not currently listed in the marketplace", code: "PROVIDER_UNAVAILABLE" });
     }
-    res.json({ provider: serializePublicCateringProvider(provider) });
+    const { settings } = await availabilityData(provider.id);
+    const today = calendarDateInTimezone(new Date(), settings.timezone);
+    res.json({ provider: { ...serializePublicCateringProvider(provider), availability: { acceptingBookings: provider.cateringAvailable && settings.acceptingBookings, earliestInquiryDate: provider.cateringAvailable && settings.acceptingBookings ? addCalendarDays(today, settings.minimumLeadDays) : null, latestInquiryDate: provider.cateringAvailable && settings.acceptingBookings ? addCalendarDays(today, settings.maximumAdvanceDays) : null } } });
   } catch (error) { next(error); }
 });
+
+/** Public result contains policy status only; exception reasons and timezone remain private. */
+r.get("/providers/:providerId/availability", async (req, res, next) => { try {
+  const id = providerIdSchema.safeParse(req.params.providerId); if (!id.success) return res.status(400).json({ message: "Invalid provider ID" });
+  const provider = await listedProvider(id.data); if (!provider) return res.status(404).json({ message: "Provider not found" });
+  const targetDate = calendarDateSchema.safeParse(req.query.date); if (!targetDate.success) return res.status(400).json({ message: "A valid date in YYYY-MM-DD format is required" });
+  const { settings, rules } = await availabilityData(id.data); settings.acceptingBookings = settings.acceptingBookings && Boolean(provider.cateringAvailable);
+  const exceptions = await db.select({ id: cateringAvailabilityExceptions.id, startDate: cateringAvailabilityExceptions.startDate, endDate: cateringAvailabilityExceptions.endDate, type: sql<"available" | "blocked">`${cateringAvailabilityExceptions.type}`.as("type"), reason: cateringAvailabilityExceptions.reason }).from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, id.data), lte(cateringAvailabilityExceptions.startDate, targetDate.data), gte(cateringAvailabilityExceptions.endDate, targetDate.data)));
+  const result = resolveCateringAvailability({ settings, rules, exceptions, targetDate: targetDate.data, currentDate: calendarDateInTimezone(new Date(), settings.timezone) });
+  res.json(result);
+} catch (error) { next(error); } });
+
+r.get("/users/:id/availability", requireAuth, async (req, res, next) => { try {
+  const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own availability" });
+  const { settings, rules } = await availabilityData(viewerId);
+  const exceptions = await db.select().from(cateringAvailabilityExceptions).where(eq(cateringAvailabilityExceptions.providerId, viewerId)).orderBy(asc(cateringAvailabilityExceptions.startDate));
+  res.json({ settings, rules, exceptions });
+} catch (error) { next(error); } });
+r.put("/users/:id/availability/settings", requireAuth, async (req, res, next) => { try {
+  const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own availability" });
+  const input = availabilitySettingsSchema.parse(req.body);
+  const [settings] = await db.insert(cateringAvailabilitySettings).values({ providerId: viewerId, ...input }).onConflictDoUpdate({ target: cateringAvailabilitySettings.providerId, set: { ...input, updatedAt: new Date() } }).returning(); res.json({ settings });
+} catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message, errors: error.issues }); next(error); } });
+r.put("/users/:id/availability/weekly", requireAuth, async (req, res, next) => { try {
+  const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own availability" });
+  const { rules } = weeklyRulesSchema.parse(req.body); await db.transaction(async (tx: typeof db) => { await tx.delete(cateringAvailabilityWeeklyRules).where(eq(cateringAvailabilityWeeklyRules.providerId, viewerId)); if (rules.length) await tx.insert(cateringAvailabilityWeeklyRules).values(rules.map((rule) => ({ providerId: viewerId, ...rule }))); }); res.json({ rules });
+} catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); } });
+r.post("/users/:id/availability/exceptions", requireAuth, async (req, res, next) => { try {
+  const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own availability" });
+  const input = availabilityExceptionSchema.parse(req.body); const [exception] = await db.insert(cateringAvailabilityExceptions).values({ providerId: viewerId, ...input }).onConflictDoNothing().returning();
+  if (!exception) return res.status(409).json({ message: "That availability exception already exists" }); res.status(201).json({ exception });
+} catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message, errors: error.issues }); next(error); } });
+r.delete("/users/:id/availability/exceptions/:exceptionId", requireAuth, async (req, res, next) => { try {
+  const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own availability" });
+  if (!z.string().uuid().safeParse(req.params.exceptionId).success) return res.status(400).json({ message: "Invalid exception ID" });
+  const [deleted] = await db.delete(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.id, req.params.exceptionId), eq(cateringAvailabilityExceptions.providerId, viewerId))).returning({ id: cateringAvailabilityExceptions.id }); if (!deleted) return res.status(404).json({ message: "Availability exception not found" }); res.status(204).end();
+} catch (error) { next(error); } });
 
 async function listedProvider(providerId: string) {
   const provider = await storage.getUser(providerId);
@@ -304,6 +352,11 @@ r.post("/inquiries", requireAuth, async (req, res, next) => {
     if (!provider?.cateringEnabled || !provider.cateringAvailable) {
       return res.status(409).json({ message: "This provider is not currently accepting inquiries" });
     }
+    const targetCalendarDate = body.eventDate;
+    const availability = await availabilityData(input.chefId);
+    const matchingExceptions = await db.select({ id: cateringAvailabilityExceptions.id, startDate: cateringAvailabilityExceptions.startDate, endDate: cateringAvailabilityExceptions.endDate, type: sql<"available" | "blocked">`${cateringAvailabilityExceptions.type}`.as("type"), reason: cateringAvailabilityExceptions.reason }).from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, input.chefId), lte(cateringAvailabilityExceptions.startDate, targetCalendarDate), gte(cateringAvailabilityExceptions.endDate, targetCalendarDate)));
+    const decision = resolveCateringAvailability({ settings: availability.settings, rules: availability.rules, exceptions: matchingExceptions, targetDate: targetCalendarDate, currentDate: calendarDateInTimezone(new Date(), availability.settings.timezone), packageId: input.packageId ?? undefined });
+    if (!decision.available) return res.status(422).json({ message: ({ not_accepting: "This provider is not accepting inquiries", lead_time: "This date does not meet the provider's minimum lead time", advance_window: "This date is beyond the provider's booking window", blocked: "This provider is unavailable on the selected date", weekly_unavailable: "This provider does not accept inquiries for that day of the week" } as Record<string, string>)[decision.reason], code: `AVAILABILITY_${decision.reason.toUpperCase()}` });
     if (input.packageId) { const [selected] = await db.select({ id: cateringPackages.id }).from(cateringPackages).where(and(eq(cateringPackages.id, input.packageId), eq(cateringPackages.providerId, input.chefId), eq(cateringPackages.active, true))).limit(1); if (!selected) return res.status(400).json({ message: "Selected package is unavailable" }); }
     const inquiry = await storage.createCateringInquiry({ ...input, customerId });
 

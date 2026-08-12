@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { PortfolioManager } from "@/components/catering/PortfolioManager";
 import { PackageManager } from "@/components/catering/PackageManager";
+import { AvailabilityManager } from "@/components/catering/AvailabilityManager";
 
 type ProviderForm = { displayName: string; avatar: string; specialty: string; location: string; radius: string; bio: string; available: boolean; enabled: boolean };
 
@@ -66,6 +67,7 @@ export default function CateringProviderPage() {
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3"><Button type="button" variant="outline" asChild><Link href="/services/catering">Cancel</Link></Button><Button type="submit" disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{saving ? "Saving…" : "Save catering profile"}</Button></div>
       </form></CardContent></Card>
     <div className="mt-6"><PortfolioManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} /></div>
+    <div className="mt-6"><AvailabilityManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} /></div>
     <div className="mt-6"><PackageManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} /></div>
   </main>;
 }
