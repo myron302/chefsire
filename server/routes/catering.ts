@@ -16,6 +16,7 @@ import { canTransitionCateringInquiry, cateringInquiryRole } from "../services/c
 import { cateringPackages, cateringPortfolioItems, cateringAvailabilitySettings, cateringAvailabilityExceptions, cateringAvailabilityWeeklyRules } from "@shared/schema";
 import { availabilityExceptionSchema, availabilitySettingsSchema, calendarDateSchema, weeklyRulesSchema } from "@shared/catering-availability";
 import { addCalendarDays, calendarDateInTimezone, resolveCateringAvailability } from "../services/catering-availability";
+import { isCateringProviderBookable } from "../services/catering-bookability";
 import { CATERING_PORTFOLIO_ITEM_LIMIT, cateringPortfolioFieldsSchema, cateringPortfolioReorderSchema } from "@shared/catering-portfolio";
 import { imageUpload, storeUploadedImage } from "../services/image-upload";
 import { serializeCateringPortfolioItem } from "../serializers/catering-portfolio";
@@ -28,9 +29,9 @@ const r = Router();
 const providerIdSchema = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
 class PortfolioLimitError extends Error {}
 const DEFAULT_AVAILABILITY = { acceptingBookings: true, minimumLeadDays: 0, maximumAdvanceDays: 365, timezone: "UTC" } as const;
-async function availabilityData(providerId: string) {
+async function availabilityData(providerId: string, legacyAvailable?: boolean | null) {
   const [stored] = await db.select().from(cateringAvailabilitySettings).where(eq(cateringAvailabilitySettings.providerId, providerId)).limit(1);
-  const settings = stored ? { acceptingBookings: stored.acceptingBookings, minimumLeadDays: stored.minimumLeadDays, maximumAdvanceDays: stored.maximumAdvanceDays, timezone: stored.timezone } : { ...DEFAULT_AVAILABILITY };
+  const settings = stored ? { acceptingBookings: stored.acceptingBookings, minimumLeadDays: stored.minimumLeadDays, maximumAdvanceDays: stored.maximumAdvanceDays, timezone: stored.timezone } : { ...DEFAULT_AVAILABILITY, acceptingBookings: Boolean(legacyAvailable) };
   const rules = await db.select({ dayOfWeek: cateringAvailabilityWeeklyRules.dayOfWeek, available: cateringAvailabilityWeeklyRules.available }).from(cateringAvailabilityWeeklyRules).where(eq(cateringAvailabilityWeeklyRules.providerId, providerId));
   return { settings, rules };
 }
@@ -90,11 +91,11 @@ r.put("/users/:id/settings", requireAuth, async (req, res, next) => {
 r.put("/users/:id/profile", requireAuth, async (req, res, next) => {
   try {
     if ((req.user as { id: string }).id !== req.params.id) return res.status(403).json({ message: "You can only update your own catering profile" });
-    const profile = z.object({ displayName: z.string().trim().min(2).max(100), avatar: z.union([z.string().url(), z.literal("")]).optional(), specialty: z.string().trim().min(2).max(100), location: z.string().trim().min(2).max(200), radius: z.number().int().min(5).max(100), bio: z.string().trim().min(20).max(1000), available: z.boolean(), enabled: z.boolean() }).parse(req.body);
+    const profile = z.object({ displayName: z.string().trim().min(2).max(100), avatar: z.union([z.string().url(), z.literal("")]).optional(), specialty: z.string().trim().min(2).max(100), location: z.string().trim().min(2).max(200), radius: z.number().int().min(5).max(100), bio: z.string().trim().min(20).max(1000), enabled: z.boolean() }).parse(req.body);
     const geocoded = await geocodeLocation(profile.location).catch(() => null);
     const coordinates = parseCoordinates(profile.location) ?? (geocoded && { latitude: geocoded.lat, longitude: geocoded.lng });
     if (!coordinates) return res.status(422).json({ message: "We couldn't find that service location. Try a city, ZIP code, or latitude,longitude." });
-    const updated = await storage.updateUser(req.params.id, { displayName: profile.displayName, avatar: profile.avatar || null, specialty: profile.specialty, cateringEnabled: profile.enabled, cateringLocation: profile.location, cateringLatitude: coordinates.latitude.toString(), cateringLongitude: coordinates.longitude.toString(), cateringRadius: profile.radius, cateringBio: profile.bio, cateringAvailable: profile.available });
+    const updated = await storage.updateUser(req.params.id, { displayName: profile.displayName, avatar: profile.avatar || null, specialty: profile.specialty, cateringEnabled: profile.enabled, cateringLocation: profile.location, cateringLatitude: coordinates.latitude.toString(), cateringLongitude: coordinates.longitude.toString(), cateringRadius: profile.radius, cateringBio: profile.bio });
     if (!updated) return res.status(404).json({ message: "User not found" });
     res.json({ message: "Catering profile saved", user: updated });
   } catch (error) {
@@ -135,9 +136,10 @@ r.get("/providers/:providerId", async (req, res, next) => {
     if (!provider.cateringEnabled) {
       return res.status(410).json({ message: "This provider is not currently listed in the marketplace", code: "PROVIDER_UNAVAILABLE" });
     }
-    const { settings } = await availabilityData(provider.id);
+    const { settings } = await availabilityData(provider.id, provider.cateringAvailable);
     const today = calendarDateInTimezone(new Date(), settings.timezone);
-    res.json({ provider: { ...serializePublicCateringProvider(provider), availability: { acceptingBookings: provider.cateringAvailable && settings.acceptingBookings, earliestInquiryDate: provider.cateringAvailable && settings.acceptingBookings ? addCalendarDays(today, settings.minimumLeadDays) : null, latestInquiryDate: provider.cateringAvailable && settings.acceptingBookings ? addCalendarDays(today, settings.maximumAdvanceDays) : null } } });
+    const acceptingBookings = isCateringProviderBookable({ ...provider, acceptingBookings: settings.acceptingBookings });
+    res.json({ provider: { ...serializePublicCateringProvider({ ...provider, cateringAvailable: acceptingBookings }), availability: { acceptingBookings, earliestInquiryDate: acceptingBookings ? addCalendarDays(today, settings.minimumLeadDays) : null, latestInquiryDate: acceptingBookings ? addCalendarDays(today, settings.maximumAdvanceDays) : null } } });
   } catch (error) { next(error); }
 });
 
@@ -146,7 +148,7 @@ r.get("/providers/:providerId/availability", async (req, res, next) => { try {
   const id = providerIdSchema.safeParse(req.params.providerId); if (!id.success) return res.status(400).json({ message: "Invalid provider ID" });
   const provider = await listedProvider(id.data); if (!provider) return res.status(404).json({ message: "Provider not found" });
   const targetDate = calendarDateSchema.safeParse(req.query.date); if (!targetDate.success) return res.status(400).json({ message: "A valid date in YYYY-MM-DD format is required" });
-  const { settings, rules } = await availabilityData(id.data); settings.acceptingBookings = settings.acceptingBookings && Boolean(provider.cateringAvailable);
+  const { settings, rules } = await availabilityData(id.data, provider.cateringAvailable);
   const exceptions = await db.select({ id: cateringAvailabilityExceptions.id, startDate: cateringAvailabilityExceptions.startDate, endDate: cateringAvailabilityExceptions.endDate, type: sql<"available" | "blocked">`${cateringAvailabilityExceptions.type}`.as("type"), reason: cateringAvailabilityExceptions.reason }).from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, id.data), lte(cateringAvailabilityExceptions.startDate, targetDate.data), gte(cateringAvailabilityExceptions.endDate, targetDate.data)));
   const result = resolveCateringAvailability({ settings, rules, exceptions, targetDate: targetDate.data, currentDate: calendarDateInTimezone(new Date(), settings.timezone) });
   res.json(result);
@@ -154,7 +156,8 @@ r.get("/providers/:providerId/availability", async (req, res, next) => { try {
 
 r.get("/users/:id/availability", requireAuth, async (req, res, next) => { try {
   const viewerId = (req.user as { id: string }).id; if (viewerId !== req.params.id) return res.status(403).json({ message: "You can only manage your own availability" });
-  const { settings, rules } = await availabilityData(viewerId);
+  const provider = await storage.getUser(viewerId);
+  const { settings, rules } = await availabilityData(viewerId, provider?.cateringAvailable);
   const exceptions = await db.select().from(cateringAvailabilityExceptions).where(eq(cateringAvailabilityExceptions.providerId, viewerId)).orderBy(asc(cateringAvailabilityExceptions.startDate));
   res.json({ settings, rules, exceptions });
 } catch (error) { next(error); } });
@@ -349,11 +352,12 @@ r.post("/inquiries", requireAuth, async (req, res, next) => {
     const input = { ...inquiryFields, eventDate };
     if (input.chefId === customerId) return res.status(400).json({ message: "You cannot request a quote from yourself" });
     const provider = await storage.getUser(input.chefId);
-    if (!provider?.cateringEnabled || !provider.cateringAvailable) {
+    if (!provider?.cateringEnabled) {
       return res.status(409).json({ message: "This provider is not currently accepting inquiries" });
     }
     const targetCalendarDate = body.eventDate;
-    const availability = await availabilityData(input.chefId);
+    const availability = await availabilityData(input.chefId, provider.cateringAvailable);
+    if (!isCateringProviderBookable({ ...provider, acceptingBookings: availability.settings.acceptingBookings })) return res.status(409).json({ message: "This provider is not currently accepting inquiries", code: "AVAILABILITY_NOT_ACCEPTING" });
     const matchingExceptions = await db.select({ id: cateringAvailabilityExceptions.id, startDate: cateringAvailabilityExceptions.startDate, endDate: cateringAvailabilityExceptions.endDate, type: sql<"available" | "blocked">`${cateringAvailabilityExceptions.type}`.as("type"), reason: cateringAvailabilityExceptions.reason }).from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, input.chefId), lte(cateringAvailabilityExceptions.startDate, targetCalendarDate), gte(cateringAvailabilityExceptions.endDate, targetCalendarDate)));
     const decision = resolveCateringAvailability({ settings: availability.settings, rules: availability.rules, exceptions: matchingExceptions, targetDate: targetCalendarDate, currentDate: calendarDateInTimezone(new Date(), availability.settings.timezone), packageId: input.packageId ?? undefined });
     if (!decision.available) return res.status(422).json({ message: ({ not_accepting: "This provider is not accepting inquiries", lead_time: "This date does not meet the provider's minimum lead time", advance_window: "This date is beyond the provider's booking window", blocked: "This provider is unavailable on the selected date", weekly_unavailable: "This provider does not accept inquiries for that day of the week" } as Record<string, string>)[decision.reason], code: `AVAILABILITY_${decision.reason.toUpperCase()}` });

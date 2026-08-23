@@ -14,7 +14,7 @@ import { PortfolioManager } from "@/components/catering/PortfolioManager";
 import { PackageManager } from "@/components/catering/PackageManager";
 import { AvailabilityManager } from "@/components/catering/AvailabilityManager";
 
-type ProviderForm = { displayName: string; avatar: string; specialty: string; location: string; radius: string; bio: string; available: boolean; enabled: boolean };
+type ProviderForm = { displayName: string; avatar: string; specialty: string; location: string; radius: string; bio: string; enabled: boolean };
 
 export default function CateringProviderPage() {
   const { user, loading, refreshUser } = useUser();
@@ -30,7 +30,7 @@ export default function CateringProviderPage() {
   }, [loading, navigate, user]);
   useEffect(() => {
     if (!user || form) return;
-    setForm({ displayName: user.displayName || user.username || "", avatar: user.avatar || "", specialty: user.specialty ?? "", location: user.cateringLocation ?? "", radius: user.cateringRadius == null ? "" : String(user.cateringRadius), bio: user.cateringBio ?? "", available: user.cateringAvailable ?? false, enabled: user.cateringEnabled ?? false });
+    setForm({ displayName: user.displayName || user.username || "", avatar: user.avatar || "", specialty: user.specialty ?? "", location: user.cateringLocation ?? "", radius: user.cateringRadius == null ? "" : String(user.cateringRadius), bio: user.cateringBio ?? "", enabled: user.cateringEnabled ?? false });
   }, [form, user]);
   const update = <K extends keyof ProviderForm>(key: K, value: ProviderForm[K]) => setForm((current) => current ? { ...current, [key]: value } : current);
 
@@ -47,7 +47,7 @@ export default function CateringProviderPage() {
       if (!response.ok) throw new Error(data.message || "Unable to save your catering profile.");
       await refreshUser();
       await queryClient.invalidateQueries({ queryKey: ["/api/catering/chefs/search"] });
-      toast({ title: "Catering profile saved", description: form.enabled && form.available ? "Your listing is ready for marketplace searches." : "Your listing is saved but not currently visible." });
+      toast({ title: "Catering profile saved", description: form.enabled ? "Your listing is ready for marketplace searches." : "Your listing is saved but not currently visible." });
       navigate("/services/catering");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save your catering profile."); }
     finally { setSaving(false); }
@@ -62,7 +62,7 @@ export default function CateringProviderPage() {
         <div className="space-y-2"><Label htmlFor="avatar">Profile image URL</Label><Input id="avatar" type="url" value={form.avatar} onChange={(e) => update("avatar", e.target.value)} placeholder="https://…" /></div>
         <div className="grid gap-5 sm:grid-cols-[1fr_180px]"><div className="space-y-2"><Label htmlFor="location">Service location *</Label><div className="relative"><MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" /><Input id="location" className="pl-9" value={form.location} onChange={(e) => update("location", e.target.value)} placeholder="City, state or ZIP code" minLength={2} maxLength={200} required /></div></div><div className="space-y-2"><Label htmlFor="radius">Travel radius (miles) *</Label><Input id="radius" type="number" min={5} max={100} step={1} value={form.radius} onChange={(e) => update("radius", e.target.value)} required /></div></div>
         <div className="space-y-2"><Label htmlFor="bio">Catering description *</Label><Textarea id="bio" rows={5} value={form.bio} onChange={(e) => update("bio", e.target.value)} minLength={20} maxLength={1000} required /><p className="text-xs text-muted-foreground">{form.bio.length}/1000 characters (minimum 20)</p></div>
-        <div className="rounded-lg border p-4 space-y-4"><div className="flex items-center justify-between gap-4"><div><Label htmlFor="enabled">Marketplace listing enabled</Label><p className="text-sm text-muted-foreground">Turn this off to hide your catering profile.</p></div><Switch id="enabled" checked={form.enabled} onCheckedChange={(value) => update("enabled", value)} /></div><div className="flex items-center justify-between gap-4"><div><Label htmlFor="available">Available for inquiries</Label><p className="text-sm text-muted-foreground">Only enabled and available providers appear in search.</p></div><Switch id="available" checked={form.available} onCheckedChange={(value) => update("available", value)} /></div></div>
+        <div className="rounded-lg border p-4"><div className="flex items-center justify-between gap-4"><div><Label htmlFor="enabled">Marketplace listing enabled</Label><p className="text-sm text-muted-foreground">Turn this off to hide your catering profile. Manage inquiry acceptance in Availability below.</p></div><Switch id="enabled" checked={form.enabled} onCheckedChange={(value) => update("enabled", value)} /></div></div>
         {error && <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive" role="alert">{error}</div>}
         <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-3"><Button type="button" variant="outline" asChild><Link href="/services/catering">Cancel</Link></Button><Button type="submit" disabled={saving}>{saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}{saving ? "Saving…" : "Save catering profile"}</Button></div>
       </form></CardContent></Card>
