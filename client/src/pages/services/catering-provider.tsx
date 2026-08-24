@@ -47,7 +47,7 @@ export default function CateringProviderPage() {
       if (!response.ok) throw new Error(data.message || "Unable to save your catering profile.");
       await refreshUser();
       await queryClient.invalidateQueries({ queryKey: ["/api/catering/chefs/search"] });
-      toast({ title: "Catering profile saved", description: form.enabled ? "Your listing is ready for marketplace searches." : "Your listing is saved but not currently visible." });
+      toast({ title: "Catering profile saved", description: form.enabled ? "Your catering profile was saved. Manage inquiry acceptance in the Availability section." : "Your catering profile was saved and is currently hidden from the marketplace." });
       navigate("/services/catering");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save your catering profile."); }
     finally { setSaving(false); }
