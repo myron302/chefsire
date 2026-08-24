@@ -11,6 +11,8 @@ import {
   decimal,
   index,
   uniqueIndex,
+  date,
+  check,
 } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 
@@ -260,6 +262,34 @@ export const cateringPackages = pgTable(
     active: boolean("active").default(false).notNull(), featured: boolean("featured").default(false).notNull(), displayOrder: integer("display_order").default(0).notNull(), createdAt: timestamp("created_at").defaultNow().notNull(), updatedAt: timestamp("updated_at").defaultNow().notNull(),
   }, (table) => ({ providerOrderIdx: index("catering_packages_provider_order_idx").on(table.providerId, table.displayOrder, table.createdAt) }),
 );
+
+export const cateringAvailabilitySettings = pgTable("catering_availability_settings", {
+  providerId: varchar("provider_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  acceptingBookings: boolean("accepting_bookings").default(true).notNull(),
+  minimumLeadDays: integer("minimum_lead_days").default(0).notNull(),
+  maximumAdvanceDays: integer("maximum_advance_days").default(365).notNull(),
+  timezone: varchar("timezone", { length: 100 }).default("UTC").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ windowCheck: check("catering_availability_window_check", sql`${t.minimumLeadDays} >= 0 AND ${t.maximumAdvanceDays} >= ${t.minimumLeadDays} AND ${t.maximumAdvanceDays} <= 1095`) }));
+
+export const cateringAvailabilityExceptions = pgTable("catering_availability_exceptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  startDate: date("start_date", { mode: "string" }).notNull(),
+  endDate: date("end_date", { mode: "string" }).notNull(),
+  type: varchar("type", { length: 16 }).notNull(),
+  reason: varchar("reason", { length: 300 }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ providerDatesIdx: index("catering_availability_exceptions_provider_dates_idx").on(t.providerId, t.startDate, t.endDate), duplicateUnique: uniqueIndex("catering_availability_exception_no_duplicate").on(t.providerId, t.startDate, t.endDate, t.type), rangeCheck: check("catering_availability_exception_range_check", sql`${t.endDate} >= ${t.startDate}`), typeCheck: check("catering_availability_exception_type_check", sql`${t.type} IN ('available', 'blocked')`) }));
+
+export const cateringAvailabilityWeeklyRules = pgTable("catering_availability_weekly_rules", {
+  providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  dayOfWeek: integer("day_of_week").notNull(),
+  available: boolean("available").default(true).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ providerDayUnique: uniqueIndex("catering_availability_weekly_provider_day_uidx").on(t.providerId, t.dayOfWeek), dayCheck: check("catering_availability_weekly_day_check", sql`${t.dayOfWeek} BETWEEN 0 AND 6`) }));
 
 export const cateringInquiries = pgTable("catering_inquiries", {
   id: varchar("id")

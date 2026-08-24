@@ -14,6 +14,7 @@ import {
   commentLikes,
   follows,
   cateringInquiries,
+  cateringAvailabilitySettings,
   products,
   mealPlans,
   mealPlanEntries,
@@ -1040,25 +1041,26 @@ export class DrizzleStorage implements IStorage {
   async findChefsInRadius(visitor: Coordinates, radiusMiles: number, limit = 20): Promise<ChefWithCatering[]> {
     const db = getDb();
     const result = await db
-      .select()
+      .select({ user: users, acceptingBookings: cateringAvailabilitySettings.acceptingBookings })
       .from(users)
+      .leftJoin(cateringAvailabilitySettings, eq(cateringAvailabilitySettings.providerId, users.id))
       .where(
         and(
           eq(users.cateringEnabled, true),
-          eq(users.cateringAvailable, true)
+          sql`COALESCE(${cateringAvailabilitySettings.acceptingBookings}, ${users.cateringAvailable}, false) = true`
         )
       )
       .limit(200);
 
     return result
-      .map((u) => {
+      .map(({ user: u, acceptingBookings }) => {
         const latitude = Number(u.cateringLatitude);
         const longitude = Number(u.cateringLongitude);
         if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
         const distance = milesBetween(visitor, { latitude, longitude });
         // A provider must be within the visitor's search radius and willing to travel that far.
         if (!isProviderInRange(distance, radiusMiles, u.cateringRadius)) return null;
-        return { ...u, availableForCatering: true, distance };
+        return { ...u, cateringAvailable: acceptingBookings ?? Boolean(u.cateringAvailable), availableForCatering: true, distance };
       })
       .filter((chef): chef is ChefWithCatering => chef !== null)
       .sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity))

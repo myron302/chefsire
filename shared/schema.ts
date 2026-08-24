@@ -18,6 +18,9 @@ import {
   cateringInquiries,
   cateringPortfolioItems,
   cateringPackages,
+  cateringAvailabilitySettings,
+  cateringAvailabilityExceptions,
+  cateringAvailabilityWeeklyRules,
 } from "./schema/domains/social-content";
 import {
   products,
@@ -41,6 +44,9 @@ export {
   cateringInquiries,
   cateringPortfolioItems,
   cateringPackages,
+  cateringAvailabilitySettings,
+  cateringAvailabilityExceptions,
+  cateringAvailabilityWeeklyRules,
 } from "./schema/domains/social-content";
 export {
   products,
