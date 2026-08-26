@@ -27,7 +27,9 @@ r.get("/providers/:providerId/reviews", async (req, res, next) => { try {
   const order = query.sort === "oldest" ? asc(cateringReviews.createdAt) : query.sort === "highest" ? desc(cateringReviews.rating) : query.sort === "lowest" ? asc(cateringReviews.rating) : desc(cateringReviews.createdAt);
   const [{ value }] = await db.select({ value: count() }).from(cateringReviews).where(and(...filters));
   const rows = await db.select({ id: cateringReviews.id, rating: cateringReviews.rating, title: cateringReviews.title, body: cateringReviews.body, verifiedEvent: cateringReviews.verifiedEvent, providerResponse: cateringReviews.providerResponse, respondedAt: cateringReviews.respondedAt, createdAt: cateringReviews.createdAt, updatedAt: cateringReviews.updatedAt, reviewerDisplayName: users.displayName, reviewerAvatar: users.avatar }).from(cateringReviews).innerJoin(users, eq(users.id, cateringReviews.reviewerId)).where(and(...filters)).orderBy(order, desc(cateringReviews.createdAt)).limit(query.limit).offset((query.page - 1) * query.limit);
-  res.json({ reviews: rows.map(serializePublicCateringReview), aggregate: await aggregate(id), pagination: { page: query.page, limit: query.limit, total: Number(value), totalPages: Math.ceil(Number(value) / query.limit) } });
+  const viewerId = (req.user as { id?: string } | undefined)?.id;
+  const [viewerReview] = viewerId ? await db.select({ id: cateringReviews.id, rating: cateringReviews.rating, title: cateringReviews.title, body: cateringReviews.body }).from(cateringReviews).where(and(eq(cateringReviews.providerId, id), eq(cateringReviews.reviewerId, viewerId))).limit(1) : [];
+  res.json({ reviews: rows.map(serializePublicCateringReview), viewerReview: viewerReview ?? null, aggregate: await aggregate(id), pagination: { page: query.page, limit: query.limit, total: Number(value), totalPages: Math.ceil(Number(value) / query.limit) } });
 } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); } });
 
 r.post("/reviews", requireAuth, mutationLimiter, async (req, res, next) => { try {
@@ -38,7 +40,7 @@ r.post("/reviews", requireAuth, mutationLimiter, async (req, res, next) => { try
   let inquiry = null; if (input.inquiryId) { [inquiry] = await db.select({ customerId: cateringInquiries.customerId, chefId: cateringInquiries.chefId, status: cateringInquiries.status }).from(cateringInquiries).where(eq(cateringInquiries.id, input.inquiryId)).limit(1); if (!inquiry) return res.status(400).json({ message: "Inquiry is not valid for this review" }); }
   let verifiedEvent = false; try { verifiedEvent = reviewVerification(inquiry, reviewerId, input.providerId); } catch { return res.status(403).json({ message: "Inquiry is not valid for this review" }); }
   const [created] = await db.insert(cateringReviews).values({ providerId: input.providerId, reviewerId, inquiryId: input.inquiryId ?? null, rating: input.rating, title: input.title ?? null, body: input.body, verifiedEvent }).onConflictDoNothing().returning();
-  if (!created) return res.status(409).json({ message: "You have already reviewed this provider" });
+  if (!created) return res.status(409).json({ message: "You have already reviewed this catering provider." });
   await db.insert(notifications).values({ userId: input.providerId, type: "catering_review", title: "New catering review", message: `A customer left a ${input.rating}-star review.`, linkUrl: "/services/catering/provider" }).catch(() => undefined);
   res.status(201).json({ id: created.id, verifiedEvent: created.verifiedEvent });
 } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message, errors: error.issues }); next(error); } });

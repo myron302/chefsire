@@ -11,3 +11,7 @@ export function reviewVerification(inquiry: { customerId: string; chefId: string
   if (inquiry.customerId !== reviewerId || inquiry.chefId !== providerId) throw new Error("INQUIRY_MISMATCH");
   return qualifiesAsVerifiedCateringEvent(inquiry);
 }
+
+export function canMutateCustomerReview(reviewReviewerId: string, sessionUserId: string): boolean {
+  return reviewReviewerId === sessionUserId;
+}

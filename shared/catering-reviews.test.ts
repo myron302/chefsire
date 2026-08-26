@@ -25,3 +25,16 @@ test("aggregate returns weighted average, count, distribution, and truthful empt
   assert.deepEqual(cateringReviewAggregate([]), { averageRating: null, reviewCount: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } });
   assert.deepEqual(cateringReviewAggregate([{ rating: 5, count: 2 }, { rating: 2, count: 1 }]), { averageRating: 4, reviewCount: 3, distribution: { 1: 0, 2: 1, 3: 0, 4: 0, 5: 2 } });
 });
+test("aggregate reflects review edits and deletions", () => {
+  const before = cateringReviewAggregate([{ rating: 2, count: 1 }, { rating: 4, count: 1 }]);
+  const afterEdit = cateringReviewAggregate([{ rating: 4, count: 1 }, { rating: 5, count: 1 }]);
+  const afterDelete = cateringReviewAggregate([{ rating: 5, count: 1 }]);
+  assert.equal(before.averageRating, 3);
+  assert.equal(afterEdit.averageRating, 4.5);
+  assert.equal(afterDelete.reviewCount, 1);
+});
+test("edit accepts customer content only and rejects a forced verified flag", () => {
+  assert.deepEqual(cateringReviewEditSchema.parse({ rating: 3, title: null, body: "Updated review body" }), { rating: 3, title: null, body: "Updated review body" });
+  assert.equal(cateringReviewEditSchema.safeParse({ rating: 5, verifiedEvent: true }).success, false);
+  assert.equal(cateringReviewEditSchema.safeParse({ rating: 5, reviewerId: "other" }).success, false);
+});
