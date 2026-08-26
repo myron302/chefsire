@@ -15,3 +15,7 @@ export function reviewVerification(inquiry: { customerId: string; chefId: string
 export function canMutateCustomerReview(reviewReviewerId: string, sessionUserId: string): boolean {
   return reviewReviewerId === sessionUserId;
 }
+
+export function cateringReviewViewerId(authenticatedUserId: string | undefined, providerId: string): string | null {
+  return authenticatedUserId && authenticatedUserId !== providerId ? authenticatedUserId : null;
+}

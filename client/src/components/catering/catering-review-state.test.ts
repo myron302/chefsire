@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { customerReviewAction, pageAfterReviewDeletion } from "./catering-review-state";
+import { cateringReviewQueryKey, cateringReviewViewerKey, clearResponseDraft, customerReviewAction, pageAfterReviewDeletion, responseEditorValue } from "./catering-review-state";
 
 test("customer without a review may create after ownership resolves", () => {
   assert.equal(customerReviewAction({ authLoading: false, viewerId: "customer", providerId: "chef", viewerReview: null }), "create");
@@ -16,4 +16,24 @@ test("deleting the only result on a later page moves back one page", () => {
   assert.equal(pageAfterReviewDeletion(3, 1), 2);
   assert.equal(pageAfterReviewDeletion(1, 1), 1);
   assert.equal(pageAfterReviewDeletion(3, 2), 3);
+});
+test("review cache keys separate anonymous and authenticated accounts", () => {
+  const anonymous = cateringReviewQueryKey("chef", cateringReviewViewerKey(), "newest", 1);
+  const userA = cateringReviewQueryKey("chef", cateringReviewViewerKey("a"), "newest", 1);
+  const userB = cateringReviewQueryKey("chef", cateringReviewViewerKey("b"), "newest", 1);
+  assert.notDeepEqual(anonymous, userA);
+  assert.notDeepEqual(userA, userB);
+  assert.deepEqual(userA.slice(0, 3), ["catering", "reviews", "chef"]);
+});
+test("logout and account changes recompute owner actions from the new viewer result", () => {
+  const owned = { id: "a-review", rating: 5, title: null, body: "Owned by A" };
+  assert.equal(customerReviewAction({ authLoading: false, viewerId: "a", providerId: "chef", viewerReview: owned }), "manage");
+  assert.equal(customerReviewAction({ authLoading: false, providerId: "chef", viewerReview: null }), "none");
+  assert.equal(customerReviewAction({ authLoading: false, viewerId: "b", providerId: "chef", viewerReview: null }), "create");
+});
+test("response deletion clears only its draft and cannot repopulate an empty editor", () => {
+  const cleared = clearResponseDraft({ first: "deleted response", second: "unrelated draft" }, "first");
+  assert.deepEqual(cleared, { second: "unrelated draft" });
+  assert.equal(responseEditorValue(cleared, "first", null), "");
+  assert.equal(responseEditorValue(cleared, "second", null), "unrelated draft");
 });

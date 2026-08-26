@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canMutateCustomerReview, reviewEligibility, reviewVerification } from "./catering-review-policy";
+import { canMutateCustomerReview, cateringReviewViewerId, reviewEligibility, reviewVerification } from "./catering-review-policy";
 
 test("rejects self reviews and unlisted providers", () => {
   assert.equal(reviewEligibility({ reviewerId: "one", providerId: "one", providerEnabled: true }).allowed, false);
@@ -18,4 +18,9 @@ test("only the reviewer may mutate customer review content", () => {
   assert.equal(canMutateCustomerReview("customer", "customer"), true);
   assert.equal(canMutateCustomerReview("customer", "another-customer"), false);
   assert.equal(canMutateCustomerReview("customer", "provider"), false);
+});
+test("viewer ownership lookup is anonymous-safe and never fabricates provider ownership", () => {
+  assert.equal(cateringReviewViewerId(undefined, "chef"), null);
+  assert.equal(cateringReviewViewerId("chef", "chef"), null);
+  assert.equal(cateringReviewViewerId("customer", "chef"), "customer");
 });

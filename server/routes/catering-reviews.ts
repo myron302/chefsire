@@ -5,9 +5,9 @@ import { z } from "zod";
 import { cateringInquiries, cateringReviews, notifications, users } from "@shared/schema";
 import { cateringReviewAggregate, cateringReviewCreateSchema, cateringReviewEditSchema, cateringReviewQuerySchema, cateringReviewResponseSchema } from "@shared/catering-reviews";
 import { db } from "../db";
-import { requireAuth } from "../middleware";
-import { serializePublicCateringReview } from "../serializers/catering-review";
-import { reviewEligibility, reviewVerification } from "../services/catering-review-policy";
+import { optionalAuth, requireAuth } from "../middleware";
+import { serializePublicCateringReview, serializeViewerCateringReview } from "../serializers/catering-review";
+import { cateringReviewViewerId, reviewEligibility, reviewVerification } from "../services/catering-review-policy";
 
 const r = Router();
 const mutationLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
@@ -19,7 +19,7 @@ const aggregate = async (id: string) => {
   return cateringReviewAggregate(rows.map((row) => ({ rating: row.rating, count: Number(row.value) })));
 };
 
-r.get("/providers/:providerId/reviews", async (req, res, next) => { try {
+r.get("/providers/:providerId/reviews", optionalAuth, async (req, res, next) => { try {
   const id = providerId.parse(req.params.providerId); const query = cateringReviewQuerySchema.parse(req.query);
   const [provider] = await db.select({ enabled: users.cateringEnabled }).from(users).where(eq(users.id, id)).limit(1);
   if (!provider?.enabled) return res.status(404).json({ message: "Provider not found" });
@@ -27,9 +27,9 @@ r.get("/providers/:providerId/reviews", async (req, res, next) => { try {
   const order = query.sort === "oldest" ? asc(cateringReviews.createdAt) : query.sort === "highest" ? desc(cateringReviews.rating) : query.sort === "lowest" ? asc(cateringReviews.rating) : desc(cateringReviews.createdAt);
   const [{ value }] = await db.select({ value: count() }).from(cateringReviews).where(and(...filters));
   const rows = await db.select({ id: cateringReviews.id, rating: cateringReviews.rating, title: cateringReviews.title, body: cateringReviews.body, verifiedEvent: cateringReviews.verifiedEvent, providerResponse: cateringReviews.providerResponse, respondedAt: cateringReviews.respondedAt, createdAt: cateringReviews.createdAt, updatedAt: cateringReviews.updatedAt, reviewerDisplayName: users.displayName, reviewerAvatar: users.avatar }).from(cateringReviews).innerJoin(users, eq(users.id, cateringReviews.reviewerId)).where(and(...filters)).orderBy(order, desc(cateringReviews.createdAt)).limit(query.limit).offset((query.page - 1) * query.limit);
-  const viewerId = (req.user as { id?: string } | undefined)?.id;
+  const viewerId = cateringReviewViewerId(req.user?.id, id);
   const [viewerReview] = viewerId ? await db.select({ id: cateringReviews.id, rating: cateringReviews.rating, title: cateringReviews.title, body: cateringReviews.body }).from(cateringReviews).where(and(eq(cateringReviews.providerId, id), eq(cateringReviews.reviewerId, viewerId))).limit(1) : [];
-  res.json({ reviews: rows.map(serializePublicCateringReview), viewerReview: viewerReview ?? null, aggregate: await aggregate(id), pagination: { page: query.page, limit: query.limit, total: Number(value), totalPages: Math.ceil(Number(value) / query.limit) } });
+  res.json({ reviews: rows.map(serializePublicCateringReview), viewerReview: serializeViewerCateringReview(viewerReview), aggregate: await aggregate(id), pagination: { page: query.page, limit: query.limit, total: Number(value), totalPages: Math.ceil(Number(value) / query.limit) } });
 } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); } });
 
 r.post("/reviews", requireAuth, mutationLimiter, async (req, res, next) => { try {
