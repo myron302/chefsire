@@ -16,6 +16,7 @@ import {
   follows,
   followRequests,
   cateringInquiries,
+  cateringBookings,
   cateringPortfolioItems,
   cateringPackages,
   cateringAvailabilitySettings,
@@ -43,6 +44,7 @@ export {
   follows,
   followRequests,
   cateringInquiries,
+  cateringBookings,
   cateringPortfolioItems,
   cateringPackages,
   cateringAvailabilitySettings,
@@ -805,6 +807,7 @@ export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Follow = typeof follows.$inferSelect;
 export type InsertFollow = z.infer<typeof insertFollowSchema>;
 export type CateringInquiry = typeof cateringInquiries.$inferSelect;
+export type CateringBooking = typeof cateringBookings.$inferSelect;
 export type CateringReview = typeof cateringReviews.$inferSelect;
 export type InsertCateringInquiry = z.infer<typeof insertCateringInquirySchema>;
 export type Product = typeof products.$inferSelect;

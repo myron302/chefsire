@@ -83,6 +83,7 @@ import weddingInsightsRouter from "./wedding-insights";
 // Catering marketplace
 import cateringRouter from "./catering";
 import cateringReviewsRouter from "./catering-reviews";
+import cateringBookingsRouter from "./catering-bookings";
 
 // Recipe imports (Paprika / AnyList / Plan to Eat / URL import)
 import importPaprikaRouter from "./import-paprika";
@@ -205,6 +206,7 @@ r.use("/upload", uploadRouter);
 
 // Catering
 r.use("/catering", cateringReviewsRouter);
+r.use("/catering", cateringBookingsRouter);
 r.use("/catering", cateringRouter);
 
 // Wedding Planning — subscription management (must come before other /wedding mounts so routes resolve)

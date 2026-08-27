@@ -27,6 +27,8 @@ export function ProviderDashboardOverview({ providerId, openSection }: { provide
     { title: "Listing visible", value: facts.listingEnabled ? "Yes" : "No", detail: facts.listingEnabled ? "Active in the marketplace" : "Hidden from customers", icon: Eye },
     { title: "Accepting inquiries", value: facts.acceptingInquiries ? "Yes" : "No", detail: facts.acceptingInquiries ? "New requests are open" : "New requests are paused", icon: MessageSquare },
     { title: "Pending inquiries", value: String(facts.inquiriesPending), detail: "Requests requiring a decision", icon: ClipboardList },
+    { title: "Pending confirmations", value: String(facts.bookingsPendingConfirmation), detail: "Persisted agreements awaiting a party", icon: CalendarDays },
+    { title: "Upcoming confirmed events", value: String(facts.bookingsUpcomingConfirmed), detail: "Confirmed, not paid or completed", icon: CheckCircle2 },
     { title: "Packages", value: `${facts.packagesActive} active`, detail: `${facts.packagesTotal} total`, icon: Package },
     { title: "Portfolio", value: String(facts.portfolioCount), detail: facts.portfolioCount ? "Published work samples" : "No work samples yet", icon: Images },
     { title: "Reviews", value: facts.reviewCount ? `${facts.averageRating?.toFixed(1)} / 5` : "No rating yet", detail: facts.reviewCount ? `${facts.reviewCount} review${facts.reviewCount === 1 ? "" : "s"}` : "No customer reviews yet", icon: Star },

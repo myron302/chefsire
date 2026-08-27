@@ -20,6 +20,8 @@ test("body, response, filters, and pagination are bounded", () => {
 test("an inquiry is never treated as proof of a completed event", () => {
   assert.equal(qualifiesAsVerifiedCateringEvent({ status: "pending" }), false);
   assert.equal(qualifiesAsVerifiedCateringEvent({ status: "accepted" }), false);
+  assert.equal(qualifiesAsVerifiedCateringEvent({ status: "confirmed" }), false);
+  assert.equal(qualifiesAsVerifiedCateringEvent({ status: "completed", completedAt: new Date() }), true);
 });
 test("aggregate returns weighted average, count, distribution, and truthful empty state", () => {
   assert.deepEqual(cateringReviewAggregate([]), { averageRating: null, reviewCount: 0, distribution: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 } });

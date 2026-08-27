@@ -6,10 +6,10 @@ export function reviewEligibility(input: { reviewerId: string; providerId: strin
   return { allowed: true } as const;
 }
 
-export function reviewVerification(inquiry: { customerId: string; chefId: string; status?: string | null } | null, reviewerId: string, providerId: string) {
+export function reviewVerification(inquiry: { customerId: string; chefId: string } | null, booking: { status?: string | null; completedAt?: unknown } | null, reviewerId: string, providerId: string) {
   if (!inquiry) return false;
   if (inquiry.customerId !== reviewerId || inquiry.chefId !== providerId) throw new Error("INQUIRY_MISMATCH");
-  return qualifiesAsVerifiedCateringEvent(inquiry);
+  return qualifiesAsVerifiedCateringEvent(booking);
 }
 
 export function canMutateCustomerReview(reviewReviewerId: string, sessionUserId: string): boolean {

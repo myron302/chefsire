@@ -2,7 +2,7 @@ import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
-import { cateringInquiries, cateringReviews, notifications, users } from "@shared/schema";
+import { cateringBookings, cateringInquiries, cateringReviews, notifications, users } from "@shared/schema";
 import { cateringReviewAggregate, cateringReviewCreateSchema, cateringReviewEditSchema, cateringReviewQuerySchema, cateringReviewResponseSchema } from "@shared/catering-reviews";
 import { db } from "../db";
 import { optionalAuth, requireAuth } from "../middleware";
@@ -16,7 +16,7 @@ const providerId = z.string().trim().min(1).max(128).regex(/^[A-Za-z0-9_-]+$/);
 
 const aggregate = async (id: string) => {
   const rows = await db.select({ rating: cateringReviews.rating, value: count() }).from(cateringReviews).where(eq(cateringReviews.providerId, id)).groupBy(cateringReviews.rating);
-  return cateringReviewAggregate(rows.map((row) => ({ rating: row.rating, count: Number(row.value) })));
+  return cateringReviewAggregate(rows.map((row: { rating: number; value: unknown }) => ({ rating: row.rating, count: Number(row.value) })));
 };
 
 r.get("/providers/:providerId/reviews", optionalAuth, async (req, res, next) => { try {
@@ -27,7 +27,7 @@ r.get("/providers/:providerId/reviews", optionalAuth, async (req, res, next) => 
   const order = query.sort === "oldest" ? asc(cateringReviews.createdAt) : query.sort === "highest" ? desc(cateringReviews.rating) : query.sort === "lowest" ? asc(cateringReviews.rating) : desc(cateringReviews.createdAt);
   const [{ value }] = await db.select({ value: count() }).from(cateringReviews).where(and(...filters));
   const rows = await db.select({ id: cateringReviews.id, rating: cateringReviews.rating, title: cateringReviews.title, body: cateringReviews.body, verifiedEvent: cateringReviews.verifiedEvent, providerResponse: cateringReviews.providerResponse, respondedAt: cateringReviews.respondedAt, createdAt: cateringReviews.createdAt, updatedAt: cateringReviews.updatedAt, reviewerDisplayName: users.displayName, reviewerAvatar: users.avatar }).from(cateringReviews).innerJoin(users, eq(users.id, cateringReviews.reviewerId)).where(and(...filters)).orderBy(order, desc(cateringReviews.createdAt)).limit(query.limit).offset((query.page - 1) * query.limit);
-  const viewerId = cateringReviewViewerId(req.user?.id, id);
+  const viewerId = cateringReviewViewerId((req.user as { id?: string } | undefined)?.id, id);
   const [viewerReview] = viewerId ? await db.select({ id: cateringReviews.id, rating: cateringReviews.rating, title: cateringReviews.title, body: cateringReviews.body }).from(cateringReviews).where(and(eq(cateringReviews.providerId, id), eq(cateringReviews.reviewerId, viewerId))).limit(1) : [];
   res.json({ reviews: rows.map(serializePublicCateringReview), viewerReview: serializeViewerCateringReview(viewerReview), aggregate: await aggregate(id), pagination: { page: query.page, limit: query.limit, total: Number(value), totalPages: Math.ceil(Number(value) / query.limit) } });
 } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); } });
@@ -37,8 +37,8 @@ r.post("/reviews", requireAuth, mutationLimiter, async (req, res, next) => { try
   const [provider] = await db.select({ enabled: users.cateringEnabled }).from(users).where(eq(users.id, input.providerId)).limit(1);
   const eligibility = reviewEligibility({ reviewerId, providerId: input.providerId, providerEnabled: Boolean(provider?.enabled) });
   if (!eligibility.allowed) return res.status(eligibility.reason.includes("yourself") ? 400 : 404).json({ message: eligibility.reason });
-  let inquiry = null; if (input.inquiryId) { [inquiry] = await db.select({ customerId: cateringInquiries.customerId, chefId: cateringInquiries.chefId, status: cateringInquiries.status }).from(cateringInquiries).where(eq(cateringInquiries.id, input.inquiryId)).limit(1); if (!inquiry) return res.status(400).json({ message: "Inquiry is not valid for this review" }); }
-  let verifiedEvent = false; try { verifiedEvent = reviewVerification(inquiry, reviewerId, input.providerId); } catch { return res.status(403).json({ message: "Inquiry is not valid for this review" }); }
+  let inquiry = null; let booking = null; if (input.inquiryId) { [inquiry] = await db.select({ customerId: cateringInquiries.customerId, chefId: cateringInquiries.chefId }).from(cateringInquiries).where(eq(cateringInquiries.id, input.inquiryId)).limit(1); if (!inquiry) return res.status(400).json({ message: "Inquiry is not valid for this review" }); [booking] = await db.select({ status: cateringBookings.status, completedAt: cateringBookings.completedAt }).from(cateringBookings).where(eq(cateringBookings.inquiryId, input.inquiryId)).limit(1); }
+  let verifiedEvent = false; try { verifiedEvent = reviewVerification(inquiry, booking, reviewerId, input.providerId); } catch { return res.status(403).json({ message: "Inquiry is not valid for this review" }); }
   const [created] = await db.insert(cateringReviews).values({ providerId: input.providerId, reviewerId, inquiryId: input.inquiryId ?? null, rating: input.rating, title: input.title ?? null, body: input.body, verifiedEvent }).onConflictDoNothing().returning();
   if (!created) return res.status(409).json({ message: "You have already reviewed this catering provider." });
   await db.insert(notifications).values({ userId: input.providerId, type: "catering_review", title: "New catering review", message: `A customer left a ${input.rating}-star review.`, linkUrl: "/services/catering/provider" }).catch(() => undefined);

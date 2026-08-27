@@ -9,11 +9,13 @@ test("rejects self reviews and unlisted providers", () => {
 });
 test("inquiry association requires both customer and provider ownership", () => {
   const inquiry = { customerId: "customer", chefId: "chef", status: "accepted" };
-  assert.equal(reviewVerification(inquiry, "customer", "chef"), false);
-  assert.throws(() => reviewVerification(inquiry, "attacker", "chef"), /INQUIRY_MISMATCH/);
-  assert.throws(() => reviewVerification(inquiry, "customer", "other"), /INQUIRY_MISMATCH/);
+  assert.equal(reviewVerification(inquiry, null, "customer", "chef"), false);
+  assert.equal(reviewVerification(inquiry, { status: "confirmed", completedAt: null }, "customer", "chef"), false);
+  assert.equal(reviewVerification(inquiry, { status: "completed", completedAt: new Date() }, "customer", "chef"), true);
+  assert.throws(() => reviewVerification(inquiry, null, "attacker", "chef"), /INQUIRY_MISMATCH/);
+  assert.throws(() => reviewVerification(inquiry, null, "customer", "other"), /INQUIRY_MISMATCH/);
 });
-test("ordinary reviews remain unverified", () => assert.equal(reviewVerification(null, "customer", "chef"), false));
+test("ordinary reviews remain unverified", () => assert.equal(reviewVerification(null, null, "customer", "chef"), false));
 test("only the reviewer may mutate customer review content", () => {
   assert.equal(canMutateCustomerReview("customer", "customer"), true);
   assert.equal(canMutateCustomerReview("customer", "another-customer"), false);

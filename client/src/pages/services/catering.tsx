@@ -16,6 +16,7 @@ import type { PublicCateringProvider } from '@shared/catering';
 import { localCalendarDate } from './catering-provider-actions';
 import { useUser } from '@/contexts/UserContext';
 import { useToast } from '@/hooks/use-toast';
+import { BookingManager } from '@/components/catering/BookingManager';
 import { 
   MapPin, 
   Users, 
@@ -181,6 +182,8 @@ export function CateringMarketplace() {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Catering Services</h1>
         <p className="text-gray-600">Book professional chefs for your events and special occasions</p>
       </div>
+
+      {user && <div className="mb-8"><BookingManager userId={user.id} mode="customer" /></div>}
 
       {/* Wedding Planning Hub Card */}
       <Link href="/catering/wedding-planning">
@@ -529,7 +532,7 @@ export function CateringMarketplace() {
       )}
 
       <section className="grid md:grid-cols-2 gap-6 mt-10">
-        <Card><CardHeader><CardTitle>How ChefSire catering works</CardTitle></CardHeader><CardContent className="space-y-2 text-sm text-muted-foreground"><p>1. Share your event location and browse available caterers.</p><p>2. Compare specialties and service areas.</p><p>3. Send a booking request with your date, guest count, and event details.</p></CardContent></Card>
+        <Card><CardHeader><CardTitle>How ChefSire catering works</CardTitle></CardHeader><CardContent className="space-y-2 text-sm text-muted-foreground"><p>1. Share your event location and browse available caterers.</p><p>2. Compare specialties and service areas.</p><p>3. Send an inquiry with your date, guest count, and event details.</p><p>4. A booking exists only after the provider offers terms and you explicitly confirm.</p></CardContent></Card>
         <Card className="bg-orange-50 border-orange-200"><CardHeader><CardTitle>Offer catering services?</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground mb-4">Create a business profile to offer your menus and receive event inquiries.</p><Link href={user ? "/services/catering/provider" : "/login?next=%2Fservices%2Fcatering%2Fprovider"}><Button><Store className="w-4 h-4 mr-2" />{user?.cateringEnabled ? "Edit your catering service" : "List your catering service"}</Button></Link></CardContent></Card>
       </section>
     </div>

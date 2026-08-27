@@ -1,0 +1,32 @@
+CREATE TABLE IF NOT EXISTS catering_bookings (
+  id varchar PRIMARY KEY DEFAULT gen_random_uuid(),
+  inquiry_id varchar NOT NULL REFERENCES catering_inquiries(id) ON DELETE RESTRICT,
+  provider_id varchar NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  customer_id varchar NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  package_id varchar REFERENCES catering_packages(id) ON DELETE SET NULL,
+  event_date date NOT NULL,
+  event_type text,
+  guest_count integer,
+  agreed_price numeric(12,2),
+  currency varchar(3) NOT NULL DEFAULT 'USD',
+  package_title_snapshot varchar(160),
+  package_pricing_model_snapshot varchar(30),
+  package_starting_price_snapshot numeric(12,2),
+  status varchar(24) NOT NULL DEFAULT 'pending_confirmation',
+  provider_confirmed_at timestamptz,
+  customer_confirmed_at timestamptz,
+  confirmed_at timestamptz,
+  cancelled_at timestamptz,
+  cancelled_by varchar(16),
+  cancellation_reason text,
+  completed_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT catering_bookings_inquiry_uidx UNIQUE (inquiry_id),
+  CONSTRAINT catering_bookings_status_check CHECK (status IN ('pending_confirmation', 'confirmed', 'cancelled', 'completed')),
+  CONSTRAINT catering_bookings_cancelled_by_check CHECK (cancelled_by IS NULL OR cancelled_by IN ('provider', 'customer')),
+  CONSTRAINT catering_bookings_guest_count_check CHECK (guest_count IS NULL OR guest_count > 0),
+  CONSTRAINT catering_bookings_agreed_price_check CHECK (agreed_price IS NULL OR agreed_price >= 0)
+);
+CREATE INDEX IF NOT EXISTS catering_bookings_provider_event_idx ON catering_bookings(provider_id, event_date, id);
+CREATE INDEX IF NOT EXISTS catering_bookings_customer_event_idx ON catering_bookings(customer_id, event_date, id);
