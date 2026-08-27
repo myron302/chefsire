@@ -15,7 +15,7 @@ import { PackageManager } from "@/components/catering/PackageManager";
 import { AvailabilityManager } from "@/components/catering/AvailabilityManager";
 import { CateringReviews } from "@/components/catering/CateringReviews";
 import { ProviderDashboardOverview, cateringDashboardKey } from "@/components/catering/ProviderDashboardOverview";
-import type { CateringDashboardSection } from "@shared/catering-dashboard";
+import { cateringDashboardSectionState, type CateringDashboardSection } from "@shared/catering-dashboard";
 import { formatCateringCalendarDate } from "@shared/catering-availability";
 
 type ProviderForm = { displayName: string; avatar: string; specialty: string; location: string; radius: string; bio: string; enabled: boolean };
@@ -81,10 +81,14 @@ export default function CateringProviderPage() {
       </form></CardContent></Card>}
     {section === "inquiries" && <InquiryManager providerId={user.id} />}
     {section === "portfolio" && <PortfolioManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} />}
-    {section === "availability" && <AvailabilityManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} />}
+    {section === "availability" && (cateringDashboardSectionState("availability", Boolean(user.cateringEnabled)) === "manager" ? <AvailabilityManager providerId={user.id} enabled /> : <ListingRequiredState title="Availability" description="Enable your marketplace listing before configuring inquiry availability." openProfile={() => setSection("profile")} />)}
     {section === "packages" && <PackageManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} />}
     {section === "reviews" && (user.cateringEnabled ? <Card><CardContent className="p-4 sm:p-6"><CateringReviews providerId={user.id} providerMode /></CardContent></Card> : <Card><CardContent className="p-6 text-muted-foreground">Enable and save your marketplace listing to manage public reviews.</CardContent></Card>)}
   </main>;
+}
+
+function ListingRequiredState({ title, description, openProfile }: { title: string; description: string; openProfile: () => void }) {
+  return <Card><CardHeader><CardTitle>{title}</CardTitle><CardDescription>{description}</CardDescription></CardHeader><CardContent><Button className="min-h-11" onClick={openProfile}>Enable marketplace listing</Button></CardContent></Card>;
 }
 
 type Inquiry = { id: string; status: string | null; eventDate: string; eventType: string | null; guestCount: number | null; message: string | null };

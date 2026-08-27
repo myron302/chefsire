@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cateringDashboardActions, isCateringAvailabilityConfigured, type CateringDashboardFacts } from "./catering-dashboard";
+import { cateringDashboardActions, cateringDashboardSectionState, isCateringAvailabilityConfigured, type CateringDashboardFacts, type CateringDashboardNavigationSection } from "./catering-dashboard";
 
 const ready: CateringDashboardFacts = { listingEnabled: true, acceptingInquiries: true, availabilityConfigured: true, profileComplete: true, inquiriesPending: 0, packagesTotal: 2, packagesActive: 1, portfolioCount: 1, reviewCount: 0, averageRating: null, reviewsAwaitingResponse: 0 };
 
@@ -32,6 +32,14 @@ test("every derived action targets a dashboard section", () => {
   const actions = cateringDashboardActions({ ...ready, profileComplete: false, acceptingInquiries: false, packagesTotal: 2, packagesActive: 0, portfolioCount: 0, inquiriesPending: 1, reviewsAwaitingResponse: 1 });
   assert.ok(actions.length > 0);
   for (const action of actions) assert.equal(sections.has(action.section), true);
+});
+test("every visible section has a renderable disabled-provider state", () => {
+  const sections: CateringDashboardNavigationSection[] = ["overview", "profile", "inquiries", "packages", "portfolio", "availability", "reviews"];
+  assert.deepEqual(sections.map((section) => [section, cateringDashboardSectionState(section, false)]), [
+    ["overview", "manager"], ["profile", "manager"], ["inquiries", "manager"], ["packages", "listing-required"],
+    ["portfolio", "listing-required"], ["availability", "listing-required"], ["reviews", "listing-required"],
+  ]);
+  assert.equal(cateringDashboardSectionState("availability", true), "manager");
 });
 test("all persisted availability sources count as meaningful configuration", () => {
   assert.equal(isCateringAvailabilityConfigured({ hasSettings: false, weeklyRuleCount: 0, exceptionCount: 0 }), false);

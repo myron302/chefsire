@@ -13,7 +13,13 @@ export type CateringDashboardFacts = {
 };
 
 export type CateringDashboardSection = "profile" | "inquiries" | "packages" | "portfolio" | "availability" | "reviews";
+export type CateringDashboardNavigationSection = "overview" | CateringDashboardSection;
 export type CateringDashboardAction = { section: CateringDashboardSection; label: string; detail: string };
+
+export function cateringDashboardSectionState(section: CateringDashboardNavigationSection, listingEnabled: boolean): "manager" | "listing-required" {
+  return !listingEnabled && (["packages", "portfolio", "availability", "reviews"] as CateringDashboardNavigationSection[]).includes(section)
+    ? "listing-required" : "manager";
+}
 
 /** Settings, weekly rules, and date exceptions are all meaningful persisted configuration. */
 export function isCateringAvailabilityConfigured(input: { hasSettings: boolean; weeklyRuleCount: number; exceptionCount: number }): boolean {
