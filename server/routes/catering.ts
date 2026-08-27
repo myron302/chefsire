@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { sendCateringRequestNotification } from "../services/notification-service";
 import { db } from "../db";
 import { users } from "../../shared/schema";
-import { and, asc, count, desc, eq, inArray, isNull, sql, lte, gte } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNull, sql, lte, gte } from "drizzle-orm";
 import { geocodeLocation } from "./google";
 import { parseCoordinates, resolveVisitorLocation } from "../services/catering-geo";
 import { requireAuth } from "../middleware";
@@ -47,7 +47,8 @@ r.get("/dashboard", requireAuth, async (req, res, next) => {
     if (!provider) return res.status(404).json({ message: "Provider not found" });
     const [storedAvailability] = await db.select().from(cateringAvailabilitySettings).where(eq(cateringAvailabilitySettings.providerId, providerId)).limit(1);
     const availability = storedAvailability ?? { ...DEFAULT_AVAILABILITY, acceptingBookings: Boolean(provider.cateringAvailable) };
-    const today = new Date().toISOString().slice(0, 10);
+    // Dashboard lifecycle facts use the same provider-local calendar policy as completion.
+    const today = calendarDateInTimezone(new Date(), availability.timezone);
     const [packages, portfolio, pending, reviewRows, awaiting, recentInquiries, weeklyRules, exceptions, bookingPending, bookingUpcoming, bookingReady] = await Promise.all([
       db.select({ active: cateringPackages.active, value: count() }).from(cateringPackages).where(eq(cateringPackages.providerId, providerId)).groupBy(cateringPackages.active),
       db.select({ value: count() }).from(cateringPortfolioItems).where(eq(cateringPortfolioItems.providerId, providerId)),
@@ -58,7 +59,7 @@ r.get("/dashboard", requireAuth, async (req, res, next) => {
       db.select({ value: count() }).from(cateringAvailabilityWeeklyRules).where(eq(cateringAvailabilityWeeklyRules.providerId, providerId)),
       db.select({ value: count() }).from(cateringAvailabilityExceptions).where(eq(cateringAvailabilityExceptions.providerId, providerId)),
       db.select({ value: count() }).from(cateringBookings).where(and(eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "pending_confirmation"))),
-      db.select({ value: count() }).from(cateringBookings).where(and(eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "confirmed"), gte(cateringBookings.eventDate, today))),
+      db.select({ value: count() }).from(cateringBookings).where(and(eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "confirmed"), gt(cateringBookings.eventDate, today))),
       db.select({ value: count() }).from(cateringBookings).where(and(eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "confirmed"), lte(cateringBookings.eventDate, today))),
     ]);
     const packageTotal = packages.reduce((sum: number, row: { value: unknown }) => sum + Number(row.value), 0);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { bookingActor, mayCancel, mayComplete, mayConfirm, mayInquiryProduceBooking, nextConfirmationStatus, qualifiesBookingForVerifiedReview } from "./catering-booking-policy";
+import { calendarDateInTimezone } from "./catering-availability";
 
 const pending = { status: "pending_confirmation", providerConfirmedAt: null, customerConfirmedAt: null } as const;
 test("accepted inquiry is qualifying but does not itself confirm a booking", () => {
@@ -28,4 +29,17 @@ test("cancel and completion transitions are conservative and terminal", () => {
 test("only persisted completion qualifies review verification", () => {
   assert.equal(qualifiesBookingForVerifiedReview({ status: "confirmed", completedAt: null } as never), false);
   assert.equal(qualifiesBookingForVerifiedReview({ status: "completed", completedAt: new Date() } as never), true);
+});
+test("provider-local dashboard today agrees with completion policy around midnight", () => {
+  const now = new Date("2026-08-27T12:30:00.000Z");
+  const expected = new Map([
+    ["America/New_York", "2026-08-27"], ["America/Los_Angeles", "2026-08-27"],
+    ["Pacific/Auckland", "2026-08-28"], ["Pacific/Kiritimati", "2026-08-28"], ["UTC", "2026-08-27"],
+  ]);
+  for (const [timezone, today] of expected) {
+    const dashboardToday = calendarDateInTimezone(now, timezone);
+    assert.equal(dashboardToday, today, timezone);
+    assert.equal(mayComplete({ status: "confirmed", eventDate: dashboardToday } as never, "provider", dashboardToday), true, timezone);
+    assert.equal(mayComplete({ status: "confirmed", eventDate: today === "2026-08-28" ? "2026-08-29" : "2026-08-28" } as never, "provider", dashboardToday), false, timezone);
+  }
 });

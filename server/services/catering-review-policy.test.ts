@@ -9,13 +9,29 @@ test("rejects self reviews and unlisted providers", () => {
 });
 test("inquiry association requires both customer and provider ownership", () => {
   const inquiry = { customerId: "customer", chefId: "chef", status: "accepted" };
-  assert.equal(reviewVerification(inquiry, null, "customer", "chef"), false);
-  assert.equal(reviewVerification(inquiry, { status: "confirmed", completedAt: null }, "customer", "chef"), false);
-  assert.equal(reviewVerification(inquiry, { status: "completed", completedAt: new Date() }, "customer", "chef"), true);
-  assert.throws(() => reviewVerification(inquiry, null, "attacker", "chef"), /INQUIRY_MISMATCH/);
-  assert.throws(() => reviewVerification(inquiry, null, "customer", "other"), /INQUIRY_MISMATCH/);
+  assert.equal(reviewVerification(inquiry, [], "customer", "chef"), false);
+  assert.throws(() => reviewVerification(inquiry, [], "attacker", "chef"), /INQUIRY_MISMATCH/);
+  assert.throws(() => reviewVerification(inquiry, [], "customer", "other"), /INQUIRY_MISMATCH/);
 });
-test("ordinary reviews remain unverified", () => assert.equal(reviewVerification(null, null, "customer", "chef"), false));
+test("normal UI review is verified from completed reviewer-provider evidence without inquiry ID", () => {
+  assert.equal(reviewVerification(null, [{ customerId: "customer", providerId: "chef", status: "completed", completedAt: new Date() }], "customer", "chef"), true);
+  assert.equal(reviewVerification(null, [], "customer", "chef"), false);
+});
+test("a pre-existing participant review upgrades only after explicit completion", () => {
+  const relationship = { customerId: "customer", providerId: "chef" };
+  assert.equal(reviewVerification(null, [{ ...relationship, status: "confirmed", completedAt: null }], "customer", "chef"), false);
+  assert.equal(reviewVerification(null, [{ ...relationship, status: "completed", completedAt: new Date() }], "customer", "chef"), true);
+});
+test("only completed state qualifies and multiple completed bookings remain unambiguous", () => {
+  const relationship = { customerId: "customer", providerId: "chef" };
+  for (const status of ["pending_confirmation", "confirmed", "cancelled"]) assert.equal(reviewVerification(null, [{ ...relationship, status, completedAt: status === "confirmed" ? new Date() : null }], "customer", "chef"), false);
+  assert.equal(reviewVerification(null, [{ ...relationship, status: "completed", completedAt: new Date() }, { ...relationship, status: "completed", completedAt: new Date() }], "customer", "chef"), true);
+});
+test("completed evidence is scoped to the exact customer and provider", () => {
+  const completed = { status: "completed", completedAt: new Date() };
+  assert.equal(reviewVerification(null, [{ ...completed, customerId: "other", providerId: "chef" }], "customer", "chef"), false);
+  assert.equal(reviewVerification(null, [{ ...completed, customerId: "customer", providerId: "other" }], "customer", "chef"), false);
+});
 test("only the reviewer may mutate customer review content", () => {
   assert.equal(canMutateCustomerReview("customer", "customer"), true);
   assert.equal(canMutateCustomerReview("customer", "another-customer"), false);

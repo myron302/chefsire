@@ -15,8 +15,9 @@ export type CateringDashboardFacts = {
   reviewsAwaitingResponse: number;
 };
 
-export type CateringDashboardSection = "profile" | "inquiries" | "bookings" | "packages" | "portfolio" | "availability" | "reviews";
-export type CateringDashboardNavigationSection = "overview" | CateringDashboardSection;
+export const CATERING_DASHBOARD_SECTIONS = ["overview", "profile", "inquiries", "bookings", "packages", "portfolio", "availability", "reviews"] as const;
+export type CateringDashboardNavigationSection = typeof CATERING_DASHBOARD_SECTIONS[number];
+export type CateringDashboardSection = Exclude<CateringDashboardNavigationSection, "overview">;
 export type CateringDashboardAction = { section: CateringDashboardSection; label: string; detail: string };
 
 export function cateringDashboardSectionState(section: CateringDashboardNavigationSection, listingEnabled: boolean): "manager" | "listing-required" {

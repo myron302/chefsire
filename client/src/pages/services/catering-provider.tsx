@@ -16,8 +16,9 @@ import { AvailabilityManager } from "@/components/catering/AvailabilityManager";
 import { CateringReviews } from "@/components/catering/CateringReviews";
 import { ProviderDashboardOverview, cateringDashboardKey } from "@/components/catering/ProviderDashboardOverview";
 import { BookingManager, cateringBookingsKey } from "@/components/catering/BookingManager";
-import { cateringDashboardSectionState, type CateringDashboardSection } from "@shared/catering-dashboard";
+import { CATERING_DASHBOARD_SECTIONS, cateringDashboardSectionState, type CateringDashboardNavigationSection } from "@shared/catering-dashboard";
 import { formatCateringCalendarDate } from "@shared/catering-availability";
+import { cateringProviderSectionFromHash, cateringProviderSectionHash } from "./catering-provider-navigation";
 
 type ProviderForm = { displayName: string; avatar: string; specialty: string; location: string; radius: string; bio: string; enabled: boolean };
 
@@ -30,16 +31,28 @@ export default function CateringProviderPage() {
   const [error, setError] = useState("");
   const [form, setForm] = useState<ProviderForm | null>(null);
   const [formUserId, setFormUserId] = useState<string | null>(null);
-  const [section, setSection] = useState<"overview" | CateringDashboardSection>("overview");
+  const [section, setSection] = useState<CateringDashboardNavigationSection>(() => cateringProviderSectionFromHash(typeof window === "undefined" ? "" : window.location.hash));
+
+  const selectSection = (next: CateringDashboardNavigationSection) => {
+    setSection(next);
+    const hash = cateringProviderSectionHash(next);
+    if (window.location.hash !== hash) window.history.pushState(null, "", hash);
+  };
 
   useEffect(() => {
     if (!loading && !user) navigate("/login?next=%2Fservices%2Fcatering%2Fprovider", { replace: true });
   }, [loading, navigate, user]);
   useEffect(() => {
+    const syncSection = () => setSection(cateringProviderSectionFromHash(window.location.hash));
+    window.addEventListener("hashchange", syncSection);
+    window.addEventListener("popstate", syncSection);
+    return () => { window.removeEventListener("hashchange", syncSection); window.removeEventListener("popstate", syncSection); };
+  }, []);
+  useEffect(() => {
     if (!user || formUserId === user.id) return;
     setForm({ displayName: user.displayName || user.username || "", avatar: user.avatar || "", specialty: user.specialty ?? "", location: user.cateringLocation ?? "", radius: user.cateringRadius == null ? "" : String(user.cateringRadius), bio: user.cateringBio ?? "", enabled: user.cateringEnabled ?? false });
     setFormUserId(user.id);
-    setSection("overview");
+    setSection(cateringProviderSectionFromHash(window.location.hash));
   }, [formUserId, user]);
   const update = <K extends keyof ProviderForm>(key: K, value: ProviderForm[K]) => setForm((current) => current ? { ...current, [key]: value } : current);
 
@@ -58,18 +71,18 @@ export default function CateringProviderPage() {
       await queryClient.invalidateQueries({ queryKey: ["/api/catering/chefs/search"] });
       toast({ title: "Catering profile saved", description: form.enabled ? "Your catering profile was saved. Manage inquiry acceptance in the Availability section." : "Your catering profile was saved and is currently hidden from the marketplace." });
       await queryClient.invalidateQueries({ queryKey: cateringDashboardKey(user.id) });
-      setSection("overview");
+      selectSection("overview");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save your catering profile."); }
     finally { setSaving(false); }
   };
 
   if (loading || !user || !form) return <div className="min-h-[50vh] flex items-center justify-center" role="status"><Loader2 className="h-7 w-7 animate-spin mr-2" /> Loading catering profile…</div>;
-  const sections = ["overview", "profile", "inquiries", "bookings", "packages", "portfolio", "availability", "reviews"] as const;
+  const sections = CATERING_DASHBOARD_SECTIONS;
   return <main className="mx-auto max-w-6xl px-3 py-6 sm:px-4 sm:py-10">
     <Link href="/services/catering" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-5"><ArrowLeft className="w-4 h-4 mr-1" /> Catering marketplace</Link>
     <div className="mb-6"><h1 className="text-2xl font-bold sm:text-3xl">Catering business command center</h1><p className="mt-1 text-muted-foreground">Manage your marketplace presence, requests, and customer-facing content.</p></div>
-    <nav aria-label="Catering dashboard sections" className="mb-6 flex flex-wrap gap-2">{sections.map((item) => <Button key={item} className="min-h-11 capitalize" variant={section === item ? "default" : "outline"} aria-current={section === item ? "page" : undefined} onClick={() => setSection(item)}>{item}</Button>)}</nav>
-    {section === "overview" && <ProviderDashboardOverview providerId={user.id} openSection={setSection} />}
+    <nav aria-label="Catering dashboard sections" className="mb-6 flex flex-wrap gap-2">{sections.map((item) => <Button key={item} className="min-h-11 capitalize" variant={section === item ? "default" : "outline"} aria-current={section === item ? "page" : undefined} onClick={() => selectSection(item)}>{item}</Button>)}</nav>
+    {section === "overview" && <ProviderDashboardOverview providerId={user.id} openSection={selectSection} />}
     {section === "profile" && <Card><CardHeader><div className="flex items-center gap-3"><div className="rounded-full bg-orange-100 p-3"><ChefHat className="h-6 w-6 text-orange-700" /></div><div><CardTitle>{user.cateringEnabled ? "Edit your catering service" : "List your catering service"}</CardTitle><CardDescription>These details power your real marketplace listing and service-area search.</CardDescription></div></div></CardHeader>
       <CardContent><form onSubmit={submit} className="space-y-6">
         <div className="grid gap-5 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="businessName">Business or display name *</Label><Input id="businessName" value={form.displayName} onChange={(e) => update("displayName", e.target.value)} minLength={2} maxLength={100} required /></div><div className="space-y-2"><Label htmlFor="specialty">Catering specialty *</Label><Input id="specialty" value={form.specialty} onChange={(e) => update("specialty", e.target.value)} placeholder="Italian, weddings, plant-based…" minLength={2} maxLength={100} required /></div></div>
@@ -83,7 +96,7 @@ export default function CateringProviderPage() {
     {section === "inquiries" && <InquiryManager providerId={user.id} />}
     {section === "bookings" && <BookingManager userId={user.id} mode="provider" />}
     {section === "portfolio" && <PortfolioManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} />}
-    {section === "availability" && (cateringDashboardSectionState("availability", Boolean(user.cateringEnabled)) === "manager" ? <AvailabilityManager providerId={user.id} enabled /> : <ListingRequiredState title="Availability" description="Enable your marketplace listing before configuring inquiry availability." openProfile={() => setSection("profile")} />)}
+    {section === "availability" && (cateringDashboardSectionState("availability", Boolean(user.cateringEnabled)) === "manager" ? <AvailabilityManager providerId={user.id} enabled /> : <ListingRequiredState title="Availability" description="Enable your marketplace listing before configuring inquiry availability." openProfile={() => selectSection("profile")} />)}
     {section === "packages" && <PackageManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} />}
     {section === "reviews" && (user.cateringEnabled ? <Card><CardContent className="p-4 sm:p-6"><CateringReviews providerId={user.id} providerMode /></CardContent></Card> : <Card><CardContent className="p-6 text-muted-foreground">Enable and save your marketplace listing to manage public reviews.</CardContent></Card>)}
   </main>;
