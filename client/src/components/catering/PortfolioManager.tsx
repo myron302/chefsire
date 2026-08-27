@@ -19,7 +19,7 @@ export function PortfolioManager({ providerId, enabled }: { providerId: string; 
   const [progress, setProgress] = useState<number | null>(null); const [file, setFile] = useState<File | null>(null); const [preview, setPreview] = useState<string>();
   const [draft, setDraft] = useState({ title: "", description: "", category: "Other" });
   const portfolio = useQuery({ queryKey: queryKey(providerId), queryFn: async (): Promise<CateringPortfolioItem[]> => (await api(`/api/catering/providers/${providerId}/portfolio`)).items, enabled, staleTime: 300000 });
-  const refresh = () => client.invalidateQueries({ queryKey: queryKey(providerId) });
+  const refresh = () => Promise.all([client.invalidateQueries({ queryKey: queryKey(providerId) }), client.invalidateQueries({ queryKey: ["catering", "dashboard", providerId] })]);
   const mutate = useMutation({ mutationFn: ({ url, method, body }: { url: string; method: string; body?: unknown }) => api(url, { method, body: body === undefined ? undefined : JSON.stringify(body) }), onSuccess: refresh, onError: (error: Error) => toast({ title: "Portfolio update failed", description: error.message, variant: "destructive" }) });
   const reorder = useMutation({
     mutationFn: (itemIds: string[]) => api(`/api/catering/users/${providerId}/portfolio/reorder`, { method: "PUT", body: JSON.stringify({ itemIds }) }),

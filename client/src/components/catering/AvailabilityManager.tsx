@@ -42,6 +42,7 @@ export function AvailabilityManager({ providerId, enabled }: { providerId: strin
     client.invalidateQueries({ queryKey: ["/api/catering/chefs/search"] }),
     client.invalidateQueries({ queryKey: ["catering", "provider", providerId] }),
     client.invalidateQueries({ queryKey: ["catering", "date-availability", providerId] }),
+    client.invalidateQueries({ queryKey: ["catering", "dashboard", providerId] }),
   ]);
 
   const settingsMutation = useMutation({
@@ -51,18 +52,18 @@ export function AvailabilityManager({ providerId, enabled }: { providerId: strin
   });
   const weeklyMutation = useMutation({
     mutationFn: (rules: WeeklyRule[]) => availabilityRequest(`/api/catering/users/${providerId}/availability/weekly`, "PUT", { rules }),
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKey(providerId) }),
+    onSuccess: invalidateAvailabilitySurfaces,
     onError: (error: Error) => { setWeeklyDraft(query.data?.rules ?? []); toast({ title: "Weekly availability not saved", description: error.message, variant: "destructive" }); },
   });
   const addMutation = useMutation({
     mutationFn: () => availabilityRequest(`/api/catering/users/${providerId}/availability/exceptions`, "POST", { ...range, endDate: range.endDate || range.startDate, reason: range.reason || null }),
-    onSuccess: () => { setRange({ startDate: "", endDate: "", type: "blocked", reason: "" }); client.invalidateQueries({ queryKey: queryKey(providerId) }); },
+    onSuccess: () => { setRange({ startDate: "", endDate: "", type: "blocked", reason: "" }); return invalidateAvailabilitySurfaces(); },
     onError: (error: Error) => toast({ title: "Dates not added", description: error.message, variant: "destructive" }),
   });
   const deleteMutation = useMutation({
     mutationFn: (id: string) => availabilityRequest(`/api/catering/users/${providerId}/availability/exceptions/${id}`, "DELETE"),
     onMutate: setDeletingId,
-    onSuccess: () => client.invalidateQueries({ queryKey: queryKey(providerId) }),
+    onSuccess: invalidateAvailabilitySurfaces,
     onError: (error: Error) => toast({ title: "Dates not removed", description: error.message, variant: "destructive" }),
     onSettled: () => setDeletingId(undefined),
   });
