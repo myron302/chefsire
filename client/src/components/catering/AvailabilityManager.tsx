@@ -42,6 +42,7 @@ export function AvailabilityManager({ providerId, enabled }: { providerId: strin
     client.invalidateQueries({ queryKey: ["/api/catering/chefs/search"] }),
     client.invalidateQueries({ queryKey: ["catering", "provider", providerId] }),
     client.invalidateQueries({ queryKey: ["catering", "date-availability", providerId] }),
+    client.invalidateQueries({ queryKey: ["catering", "dashboard", providerId] }),
   ]);
 
   const settingsMutation = useMutation({
