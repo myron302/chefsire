@@ -25,11 +25,13 @@ export function cateringDashboardActions(facts: CateringDashboardFacts): Caterin
   const actions: CateringDashboardAction[] = [];
   if (!facts.profileComplete) actions.push({ section: "profile", label: "Finish your catering profile", detail: "Add the required identity, specialty, location, and description details." });
   if (!facts.listingEnabled) actions.push({ section: "profile", label: "Enable your marketplace listing", detail: "Your catering service is currently hidden from customers." });
-  if (facts.listingEnabled && !facts.acceptingInquiries) actions.push({ section: "availability", label: "Start accepting inquiries", detail: "Your listing is visible, but new quote requests are paused." });
-  if (facts.packagesTotal === 0) actions.push({ section: "packages", label: "Add your first package", detail: "Give customers a concrete menu or service option." });
-  if (facts.portfolioCount === 0) actions.push({ section: "portfolio", label: "Add portfolio work", detail: "Show customers examples of your catering work." });
-  if (!facts.availabilityConfigured) actions.push({ section: "availability", label: "Configure availability", detail: "Set your business timezone, inquiry window, or weekly schedule." });
+  // An unconfigured provider gets one availability setup task; once configured, pausing is a distinct state.
+  if (facts.listingEnabled && facts.availabilityConfigured && !facts.acceptingInquiries) actions.push({ section: "availability", label: "Start accepting inquiries", detail: "Your listing is visible, but new quote requests are paused." });
+  if (facts.listingEnabled && facts.packagesTotal === 0) actions.push({ section: "packages", label: "Add your first package", detail: "Give customers a concrete menu or service option." });
+  else if (facts.listingEnabled && facts.packagesActive === 0) actions.push({ section: "packages", label: "Activate a package", detail: "You have saved packages, but none are currently visible to customers." });
+  if (facts.listingEnabled && facts.portfolioCount === 0) actions.push({ section: "portfolio", label: "Add portfolio work", detail: "Show customers examples of your catering work." });
+  if (facts.listingEnabled && !facts.availabilityConfigured) actions.push({ section: "availability", label: "Configure availability", detail: "Set your business timezone, inquiry window, or weekly schedule." });
   if (facts.inquiriesPending > 0) actions.push({ section: "inquiries", label: `Respond to ${facts.inquiriesPending} pending ${facts.inquiriesPending === 1 ? "inquiry" : "inquiries"}`, detail: "Review the request details and accept or decline when ready." });
-  if (facts.reviewsAwaitingResponse > 0) actions.push({ section: "reviews", label: `Respond to ${facts.reviewsAwaitingResponse} customer ${facts.reviewsAwaitingResponse === 1 ? "review" : "reviews"}`, detail: "A public provider response has not been posted yet." });
+  if (facts.listingEnabled && facts.reviewsAwaitingResponse > 0) actions.push({ section: "reviews", label: `Respond to ${facts.reviewsAwaitingResponse} customer ${facts.reviewsAwaitingResponse === 1 ? "review" : "reviews"}`, detail: "A public provider response has not been posted yet." });
   return actions;
 }
