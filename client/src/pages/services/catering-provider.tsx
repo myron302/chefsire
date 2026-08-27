@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { PortfolioManager } from "@/components/catering/PortfolioManager";
 import { PackageManager } from "@/components/catering/PackageManager";
 import { AvailabilityManager } from "@/components/catering/AvailabilityManager";
+import { CateringReviews } from "@/components/catering/CateringReviews";
 
 type ProviderForm = { displayName: string; avatar: string; specialty: string; location: string; radius: string; bio: string; enabled: boolean };
 
@@ -69,5 +70,6 @@ export default function CateringProviderPage() {
     <div className="mt-6"><PortfolioManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} /></div>
     <div className="mt-6"><AvailabilityManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} /></div>
     <div className="mt-6"><PackageManager providerId={user.id} enabled={Boolean(user.cateringEnabled)} /></div>
+    {user.cateringEnabled && <Card className="mt-6"><CardContent className="p-6"><CateringReviews providerId={user.id} providerMode /></CardContent></Card>}
   </main>;
 }

@@ -314,6 +314,27 @@ export const cateringInquiries = pgTable("catering_inquiries", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const cateringReviews = pgTable("catering_reviews", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  reviewerId: varchar("reviewer_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  inquiryId: varchar("inquiry_id").references(() => cateringInquiries.id, { onDelete: "set null" }),
+  rating: integer("rating").notNull(),
+  title: varchar("title", { length: 120 }),
+  body: text("body").notNull(),
+  verifiedEvent: boolean("verified_event").default(false).notNull(),
+  providerResponse: text("provider_response"),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  ratingCheck: check("catering_reviews_rating_check", sql`${t.rating} BETWEEN 1 AND 5`),
+  providerDateIdx: index("catering_reviews_provider_date_idx").on(t.providerId, t.createdAt),
+  providerRatingIdx: index("catering_reviews_provider_rating_idx").on(t.providerId, t.rating),
+  reviewerProviderUnique: uniqueIndex("catering_reviews_reviewer_provider_uidx").on(t.reviewerId, t.providerId),
+  inquiryUnique: uniqueIndex("catering_reviews_inquiry_uidx").on(t.inquiryId),
+}));
+
 export const cateringPortfolioItems = pgTable(
   "catering_portfolio_items",
   {

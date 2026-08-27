@@ -21,6 +21,7 @@ import {
   cateringAvailabilitySettings,
   cateringAvailabilityExceptions,
   cateringAvailabilityWeeklyRules,
+  cateringReviews,
 } from "./schema/domains/social-content";
 import {
   products,
@@ -47,6 +48,7 @@ export {
   cateringAvailabilitySettings,
   cateringAvailabilityExceptions,
   cateringAvailabilityWeeklyRules,
+  cateringReviews,
 } from "./schema/domains/social-content";
 export {
   products,
@@ -803,6 +805,7 @@ export type InsertComment = z.infer<typeof insertCommentSchema>;
 export type Follow = typeof follows.$inferSelect;
 export type InsertFollow = z.infer<typeof insertFollowSchema>;
 export type CateringInquiry = typeof cateringInquiries.$inferSelect;
+export type CateringReview = typeof cateringReviews.$inferSelect;
 export type InsertCateringInquiry = z.infer<typeof insertCateringInquirySchema>;
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
