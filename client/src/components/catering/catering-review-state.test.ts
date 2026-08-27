@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cateringReviewQueryFreshness, cateringReviewQueryKey, cateringReviewViewerKey, clearResponseDraft, customerReviewAction, pageAfterReviewDeletion, responseEditorValue } from "./catering-review-state";
+import { cateringReviewLocalReset, cateringReviewQueryFreshness, cateringReviewQueryKey, cateringReviewViewerKey, clearResponseDraft, customerReviewAction, pageAfterReviewDeletion, responseEditorValue } from "./catering-review-state";
 
 test("customer without a review may create after ownership resolves", () => {
   assert.equal(customerReviewAction({ authLoading: false, viewerId: "customer", providerId: "chef", viewerReview: null }), "create");
@@ -31,6 +31,23 @@ test("public catering reviews override infinite global freshness without polling
   assert.equal(cateringReviewQueryFreshness.refetchOnMount, true);
   assert.equal(cateringReviewQueryFreshness.refetchOnWindowFocus, false);
   assert.equal("refetchInterval" in cateringReviewQueryFreshness, false);
+});
+test("provider transition reset closes forms, clears provider drafts, and returns to page one", () => {
+  assert.deepEqual(cateringReviewLocalReset(), {
+    mode: "closed",
+    form: { rating: 0, title: "", body: "" },
+    deleteOpen: false,
+    responseDrafts: {},
+    page: 1,
+  });
+});
+test("provider and viewer remain independent query-key boundaries", () => {
+  const providerA = cateringReviewQueryKey("provider-a", cateringReviewViewerKey("viewer"), "highest", 3);
+  const providerB = cateringReviewQueryKey("provider-b", cateringReviewViewerKey("viewer"), "highest", cateringReviewLocalReset().page);
+  const changedViewer = cateringReviewQueryKey("provider-a", cateringReviewViewerKey("other"), "highest", cateringReviewLocalReset().page);
+  assert.notDeepEqual(providerA, providerB);
+  assert.notDeepEqual(providerA, changedViewer);
+  assert.equal(providerB.at(-1), 1);
 });
 test("logout and account changes recompute owner actions from the new viewer result", () => {
   const owned = { id: "a-review", rating: 5, title: null, body: "Owned by A" };

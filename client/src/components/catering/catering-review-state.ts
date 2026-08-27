@@ -1,4 +1,6 @@
 export type ViewerReview = { id: string; rating: number; title: string | null; body: string };
+export type CateringReviewForm = { rating: number; title: string; body: string };
+export type CateringReviewLocalReset = { mode: "closed"; form: CateringReviewForm; deleteOpen: false; responseDrafts: Record<string, string>; page: 1 };
 
 export const cateringReviewViewerKey = (viewerId?: string) => viewerId ? `user:${viewerId}` : "anonymous";
 export const cateringReviewQueryKey = (providerId: string, viewerKey: string, sort: string, page: number) => ["catering", "reviews", providerId, viewerKey, sort, page] as const;
@@ -7,6 +9,10 @@ export const cateringReviewQueryFreshness = {
   refetchOnMount: true,
   refetchOnWindowFocus: false,
 } as const;
+
+export function cateringReviewLocalReset(): CateringReviewLocalReset {
+  return { mode: "closed", form: { rating: 0, title: "", body: "" }, deleteOpen: false, responseDrafts: {}, page: 1 };
+}
 
 export function customerReviewAction(input: { authLoading: boolean; viewerId?: string; providerId: string; viewerReview: ViewerReview | null | undefined }) {
   if (input.authLoading || !input.viewerId || input.viewerId === input.providerId || input.viewerReview === undefined) return "none" as const;

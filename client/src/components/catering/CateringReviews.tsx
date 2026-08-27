@@ -10,11 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { cateringReviewQueryFreshness, cateringReviewQueryKey, cateringReviewViewerKey, clearResponseDraft, customerReviewAction, pageAfterReviewDeletion, responseEditorValue, type ViewerReview } from "./catering-review-state";
+import { cateringReviewLocalReset, cateringReviewQueryFreshness, cateringReviewQueryKey, cateringReviewViewerKey, clearResponseDraft, customerReviewAction, pageAfterReviewDeletion, responseEditorValue, type CateringReviewForm, type ViewerReview } from "./catering-review-state";
 
 type ReviewResult = { reviews: PublicCateringReview[]; viewerReview: ViewerReview | null; aggregate: CateringReviewAggregate; pagination: { page: number; totalPages: number; total: number } };
-type ReviewForm = { rating: number; title: string; body: string };
-const emptyForm: ReviewForm = { rating: 0, title: "", body: "" };
+const emptyForm: CateringReviewForm = cateringReviewLocalReset().form;
 
 function Stars({ value, onChange }: { value: number; onChange?: (rating: number) => void }) {
   return <div className="flex gap-1" role={onChange ? "radiogroup" : "img"} aria-label={`${value} out of 5 stars`}>
@@ -31,11 +30,11 @@ async function responseBody(result: Response) {
 export function CateringReviews({ providerId, providerMode = false }: { providerId: string; providerMode?: boolean }) {
   const { user, loading } = useUser(); const { toast } = useToast(); const queryClient = useQueryClient();
   const [sort, setSort] = useState("newest"); const [page, setPage] = useState(1);
-  const [mode, setMode] = useState<"closed" | "create" | "edit">("closed"); const [form, setForm] = useState<ReviewForm>(emptyForm);
+  const [mode, setMode] = useState<"closed" | "create" | "edit">("closed"); const [form, setForm] = useState<CateringReviewForm>(emptyForm);
   const [deleteOpen, setDeleteOpen] = useState(false); const [response, setResponse] = useState<Record<string, string>>({});
   const viewerKey = cateringReviewViewerKey(user?.id);
   const query = useQuery({ queryKey: cateringReviewQueryKey(providerId, viewerKey, sort, page), queryFn: async (): Promise<ReviewResult> => responseBody(await fetch(`/api/catering/providers/${encodeURIComponent(providerId)}/reviews?sort=${sort}&page=${page}&limit=10`, { credentials: "include" })), enabled: !loading, ...cateringReviewQueryFreshness });
-  useEffect(() => { setMode("closed"); setForm(emptyForm); setDeleteOpen(false); setResponse({}); }, [viewerKey]);
+  useEffect(() => { const reset = cateringReviewLocalReset(); setMode(reset.mode); setForm(reset.form); setDeleteOpen(reset.deleteOpen); setResponse(reset.responseDrafts); setPage(reset.page); }, [providerId, viewerKey]);
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["catering", "reviews", providerId] });
   const closeForm = () => { setMode("closed"); setForm(emptyForm); };
   const create = useMutation({ mutationFn: async () => responseBody(await fetch("/api/catering/reviews", { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ providerId, ...form, title: form.title || undefined }) })), onSuccess: async () => { closeForm(); setPage(1); await invalidate(); toast({ title: "Review published", description: "Your review is now visible on this provider’s profile." }); } });
