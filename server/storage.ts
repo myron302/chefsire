@@ -171,7 +171,7 @@ export interface IStorage {
   }): Promise<User | undefined>;
   findChefsInRadius(visitor: Coordinates, radiusMiles: number, limit?: number): Promise<ChefWithCatering[]>;
   createCateringInquiry(inquiry: InsertCateringInquiry): Promise<CateringInquiry>;
-  getCateringInquiries(chefId: string): Promise<CateringInquiry[]>;
+  getCateringInquiries(chefId: string, page: number, limit: number): Promise<{ inquiries: CateringInquiry[]; total: number }>;
   getCateringInquiry(id: string): Promise<CateringInquiry | undefined>;
   updateCateringInquiry(id: string, updates: { status: string }): Promise<CateringInquiry | undefined>;
 
@@ -1073,13 +1073,17 @@ export class DrizzleStorage implements IStorage {
     return result[0];
   }
 
-  async getCateringInquiries(chefId: string): Promise<CateringInquiry[]> {
+  async getCateringInquiries(chefId: string, page: number, limit: number): Promise<{ inquiries: CateringInquiry[]; total: number }> {
     const db = getDb();
-    return db
+    const [inquiries, totals] = await Promise.all([db
       .select()
       .from(cateringInquiries)
       .where(eq(cateringInquiries.chefId, chefId))
-      .orderBy(desc(cateringInquiries.createdAt));
+      .orderBy(desc(cateringInquiries.createdAt), desc(cateringInquiries.id))
+      .limit(limit)
+      .offset((page - 1) * limit),
+    db.select({ value: sql<number>`count(*)` }).from(cateringInquiries).where(eq(cateringInquiries.chefId, chefId))]);
+    return { inquiries, total: Number(totals[0]?.value ?? 0) };
   }
 
   async getCateringInquiry(id: string): Promise<CateringInquiry | undefined> {

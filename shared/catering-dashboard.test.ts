@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cateringDashboardActions, type CateringDashboardFacts } from "./catering-dashboard";
+import { cateringDashboardActions, isCateringAvailabilityConfigured, type CateringDashboardFacts } from "./catering-dashboard";
 
 const ready: CateringDashboardFacts = { listingEnabled: true, acceptingInquiries: true, availabilityConfigured: true, profileComplete: true, inquiriesPending: 0, packagesTotal: 2, packagesActive: 1, portfolioCount: 1, reviewCount: 0, averageRating: null, reviewsAwaitingResponse: 0 };
 
@@ -17,4 +17,12 @@ test("hidden and paused states remain distinct", () => {
 test("persisted empty and attention states produce truthful setup actions", () => {
   const actions = cateringDashboardActions({ ...ready, profileComplete: false, availabilityConfigured: false, packagesTotal: 0, packagesActive: 0, portfolioCount: 0, inquiriesPending: 2, reviewCount: 1, averageRating: 4, reviewsAwaitingResponse: 1 });
   assert.deepEqual(actions.map((item) => item.section), ["profile", "packages", "portfolio", "availability", "inquiries", "reviews"]);
+});
+test("all persisted availability sources count as meaningful configuration", () => {
+  assert.equal(isCateringAvailabilityConfigured({ hasSettings: false, weeklyRuleCount: 0, exceptionCount: 0 }), false);
+  assert.equal(isCateringAvailabilityConfigured({ hasSettings: true, weeklyRuleCount: 0, exceptionCount: 0 }), true);
+  assert.equal(isCateringAvailabilityConfigured({ hasSettings: false, weeklyRuleCount: 1, exceptionCount: 0 }), true);
+  assert.equal(isCateringAvailabilityConfigured({ hasSettings: true, weeklyRuleCount: 1, exceptionCount: 0 }), true);
+  assert.equal(isCateringAvailabilityConfigured({ hasSettings: false, weeklyRuleCount: 0, exceptionCount: 1 }), true);
+  assert.equal(isCateringAvailabilityConfigured({ hasSettings: false, weeklyRuleCount: 0, exceptionCount: 0 }), false);
 });

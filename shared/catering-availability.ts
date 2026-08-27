@@ -11,6 +11,15 @@ export function calendarDateParts(value: string) {
     ? { year, month, day } : null;
 }
 
+/** Formats a persisted catering calendar day without applying the viewer's timezone. */
+export function formatCateringCalendarDate(value: string | Date, locale = "en-US"): string {
+  const serialized = value instanceof Date ? value.toISOString() : value;
+  const parts = calendarDateParts(serialized.slice(0, 10));
+  if (!parts) return "Invalid date";
+  return new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric", timeZone: "UTC" })
+    .format(new Date(Date.UTC(parts.year, parts.month - 1, parts.day)));
+}
+
 export const calendarDateSchema = z.string().refine((value) => calendarDateParts(value) !== null, "Date must be a valid YYYY-MM-DD calendar date");
 export const availabilitySettingsSchema = z.object({
   acceptingBookings: z.boolean(), minimumLeadDays: z.number().int().min(0).max(1095),

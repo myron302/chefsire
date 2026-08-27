@@ -15,6 +15,11 @@ export type CateringDashboardFacts = {
 export type CateringDashboardSection = "profile" | "inquiries" | "packages" | "portfolio" | "availability" | "reviews";
 export type CateringDashboardAction = { section: CateringDashboardSection; label: string; detail: string };
 
+/** Settings, weekly rules, and date exceptions are all meaningful persisted configuration. */
+export function isCateringAvailabilityConfigured(input: { hasSettings: boolean; weeklyRuleCount: number; exceptionCount: number }): boolean {
+  return input.hasSettings || input.weeklyRuleCount > 0 || input.exceptionCount > 0;
+}
+
 /** Actions are intentionally based only on persisted setup and attention signals. */
 export function cateringDashboardActions(facts: CateringDashboardFacts): CateringDashboardAction[] {
   const actions: CateringDashboardAction[] = [];
@@ -28,4 +33,3 @@ export function cateringDashboardActions(facts: CateringDashboardFacts): Caterin
   if (facts.reviewsAwaitingResponse > 0) actions.push({ section: "reviews", label: `Respond to ${facts.reviewsAwaitingResponse} customer ${facts.reviewsAwaitingResponse === 1 ? "review" : "reviews"}`, detail: "A public provider response has not been posted yet." });
   return actions;
 }
-
