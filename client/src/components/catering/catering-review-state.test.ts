@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cateringReviewQueryKey, cateringReviewViewerKey, clearResponseDraft, customerReviewAction, pageAfterReviewDeletion, responseEditorValue } from "./catering-review-state";
+import { cateringReviewQueryFreshness, cateringReviewQueryKey, cateringReviewViewerKey, clearResponseDraft, customerReviewAction, pageAfterReviewDeletion, responseEditorValue } from "./catering-review-state";
 
 test("customer without a review may create after ownership resolves", () => {
   assert.equal(customerReviewAction({ authLoading: false, viewerId: "customer", providerId: "chef", viewerReview: null }), "create");
@@ -24,6 +24,13 @@ test("review cache keys separate anonymous and authenticated accounts", () => {
   assert.notDeepEqual(anonymous, userA);
   assert.notDeepEqual(userA, userB);
   assert.deepEqual(userA.slice(0, 3), ["catering", "reviews", "chef"]);
+});
+test("public catering reviews override infinite global freshness without polling", () => {
+  assert.equal(Number.isFinite(cateringReviewQueryFreshness.staleTime), true);
+  assert.equal(cateringReviewQueryFreshness.staleTime, 45_000);
+  assert.equal(cateringReviewQueryFreshness.refetchOnMount, true);
+  assert.equal(cateringReviewQueryFreshness.refetchOnWindowFocus, false);
+  assert.equal("refetchInterval" in cateringReviewQueryFreshness, false);
 });
 test("logout and account changes recompute owner actions from the new viewer result", () => {
   const owned = { id: "a-review", rating: 5, title: null, body: "Owned by A" };

@@ -2,6 +2,11 @@ export type ViewerReview = { id: string; rating: number; title: string | null; b
 
 export const cateringReviewViewerKey = (viewerId?: string) => viewerId ? `user:${viewerId}` : "anonymous";
 export const cateringReviewQueryKey = (providerId: string, viewerKey: string, sort: string, page: number) => ["catering", "reviews", providerId, viewerKey, sort, page] as const;
+export const cateringReviewQueryFreshness = {
+  staleTime: 45_000,
+  refetchOnMount: true,
+  refetchOnWindowFocus: false,
+} as const;
 
 export function customerReviewAction(input: { authLoading: boolean; viewerId?: string; providerId: string; viewerReview: ViewerReview | null | undefined }) {
   if (input.authLoading || !input.viewerId || input.viewerId === input.providerId || input.viewerReview === undefined) return "none" as const;

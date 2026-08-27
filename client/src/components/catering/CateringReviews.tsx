@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { cateringReviewQueryKey, cateringReviewViewerKey, clearResponseDraft, customerReviewAction, pageAfterReviewDeletion, responseEditorValue, type ViewerReview } from "./catering-review-state";
+import { cateringReviewQueryFreshness, cateringReviewQueryKey, cateringReviewViewerKey, clearResponseDraft, customerReviewAction, pageAfterReviewDeletion, responseEditorValue, type ViewerReview } from "./catering-review-state";
 
 type ReviewResult = { reviews: PublicCateringReview[]; viewerReview: ViewerReview | null; aggregate: CateringReviewAggregate; pagination: { page: number; totalPages: number; total: number } };
 type ReviewForm = { rating: number; title: string; body: string };
@@ -34,7 +34,7 @@ export function CateringReviews({ providerId, providerMode = false }: { provider
   const [mode, setMode] = useState<"closed" | "create" | "edit">("closed"); const [form, setForm] = useState<ReviewForm>(emptyForm);
   const [deleteOpen, setDeleteOpen] = useState(false); const [response, setResponse] = useState<Record<string, string>>({});
   const viewerKey = cateringReviewViewerKey(user?.id);
-  const query = useQuery({ queryKey: cateringReviewQueryKey(providerId, viewerKey, sort, page), queryFn: async (): Promise<ReviewResult> => responseBody(await fetch(`/api/catering/providers/${encodeURIComponent(providerId)}/reviews?sort=${sort}&page=${page}&limit=10`, { credentials: "include" })), enabled: !loading });
+  const query = useQuery({ queryKey: cateringReviewQueryKey(providerId, viewerKey, sort, page), queryFn: async (): Promise<ReviewResult> => responseBody(await fetch(`/api/catering/providers/${encodeURIComponent(providerId)}/reviews?sort=${sort}&page=${page}&limit=10`, { credentials: "include" })), enabled: !loading, ...cateringReviewQueryFreshness });
   useEffect(() => { setMode("closed"); setForm(emptyForm); setDeleteOpen(false); setResponse({}); }, [viewerKey]);
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["catering", "reviews", providerId] });
   const closeForm = () => { setMode("closed"); setForm(emptyForm); };
