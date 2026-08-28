@@ -1,7 +1,7 @@
 import type { AvailabilityException } from "@shared/catering-availability";
 import { resolveCateringDateOverride } from "./catering-availability";
 
-export type ExistingBookingDateDecision = { available: true; reason: "available" } | { available: false; reason: "explicitly_blocked" };
+export type ExistingBookingDateDecision = { available: true; reason: "available" } | { available: false; reason: "past_event" | "explicitly_blocked" };
 
 /**
  * An accepted inquiry that the provider explicitly offered is no longer subject to
@@ -9,7 +9,8 @@ export type ExistingBookingDateDecision = { available: true; reason: "available"
  * weekly schedule changes. Only an explicit block covering this exact date revokes
  * its confirmability; a block wins over a conflicting explicit available override.
  */
-export function evaluateExistingCateringBookingDate(input: { targetDate: string; exceptions: AvailabilityException[] }): ExistingBookingDateDecision {
+export function evaluateExistingCateringBookingDate(input: { targetDate: string; currentDate: string; exceptions: AvailabilityException[] }): ExistingBookingDateDecision {
+  if (input.targetDate < input.currentDate) return { available: false, reason: "past_event" };
   return resolveCateringDateOverride(input) === "blocked"
     ? { available: false, reason: "explicitly_blocked" }
     : { available: true, reason: "available" };

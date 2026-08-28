@@ -10,11 +10,16 @@ import { evaluateBookingDateForConfirmation, evaluateBookingDateForOffer } from 
 import { bookingActor, mayCancel, mayComplete, mayConfirm, mayInquiryProduceBooking, nextConfirmationStatus } from "../services/catering-booking-policy";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { CATERING_CUSTOMER_BOOKINGS_URL, CATERING_PROVIDER_BOOKINGS_URL } from "../services/catering-booking-links";
+import { lockCateringReviewRelationship } from "../services/catering-review-relationship-lock";
 
 const r = Router();
 async function bookingDateExceptions(executor: typeof db, providerId: string, targetDate: string) {
   const exceptions = await executor.select().from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, providerId), lte(cateringAvailabilityExceptions.startDate, targetDate), gte(cateringAvailabilityExceptions.endDate, targetDate)));
   return exceptions;
+}
+async function providerCalendarDate(executor: typeof db, providerId: string, now: Date) {
+  const [settings] = await executor.select({ timezone: cateringAvailabilitySettings.timezone }).from(cateringAvailabilitySettings).where(eq(cateringAvailabilitySettings.providerId, providerId)).limit(1);
+  return calendarDateInTimezone(now, settings?.timezone ?? "UTC");
 }
 
 r.get("/bookings", requireAuth, async (req, res, next) => { try {
@@ -41,7 +46,8 @@ r.post("/inquiries/:inquiryId/provider-confirm", requireAuth, async (req, res, n
     if (!mayInquiryProduceBooking(inquiry)) return { error: 409, message: "Only an accepted inquiry can be offered for booking" } as const;
     const [pkg] = inquiry.packageId ? await tx.select().from(cateringPackages).where(and(eq(cateringPackages.id, inquiry.packageId), eq(cateringPackages.providerId, providerId))).limit(1) : [];
     const eventDate = calendarDateInTimezone(inquiry.eventDate, "UTC");
-    if (!evaluateBookingDateForOffer({ targetDate: eventDate, exceptions: await bookingDateExceptions(tx, providerId, eventDate) }).available) return { error: 409, message: "This event date is explicitly blocked. Remove the date block before offering booking terms." } as const;
+    const offerDate = evaluateBookingDateForOffer({ targetDate: eventDate, currentDate: await providerCalendarDate(tx, providerId, now), exceptions: await bookingDateExceptions(tx, providerId, eventDate) });
+    if (!offerDate.available) return { error: 409, message: offerDate.reason === "past_event" ? "Booking terms cannot be offered after the event date." : "This event date is explicitly blocked. Remove the date block before offering booking terms." } as const;
     const [created] = await tx.insert(cateringBookings).values({ inquiryId, providerId, customerId: inquiry.customerId, packageId: pkg?.id ?? null, eventDate, eventType: inquiry.eventType, guestCount: inquiry.guestCount, agreedPrice: offer.agreedPrice?.toFixed(2), currency: offer.currency, packageTitleSnapshot: pkg?.title ?? null, packagePricingModelSnapshot: pkg?.pricingModel ?? null, packageStartingPriceSnapshot: pkg?.startingPrice ?? null, providerConfirmedAt: now }).onConflictDoNothing({ target: cateringBookings.inquiryId }).returning({ id: cateringBookings.id });
     const [booking] = await tx.select().from(cateringBookings).where(eq(cateringBookings.inquiryId, inquiryId)).limit(1);
     if (!booking || booking.providerId !== providerId) return { error: 409, message: "Booking could not be created" } as const;
@@ -62,7 +68,8 @@ r.post("/bookings/:id/customer-confirm", requireAuth, async (req, res, next) => 
     if (current.customerConfirmedAt) return { booking: current, notify: false } as const;
     if (!mayConfirm(current, "customer")) return { error: 409, message: "Booking can no longer be confirmed" } as const;
     const nextStatus = nextConfirmationStatus(current, "customer");
-    if (nextStatus === "confirmed" && !evaluateBookingDateForConfirmation({ targetDate: current.eventDate, exceptions: await bookingDateExceptions(tx, current.providerId, current.eventDate) }).available) return { error: 409, message: "The provider explicitly blocked this event date after offering the booking. Contact the provider to resolve it." } as const;
+    const confirmationDate = evaluateBookingDateForConfirmation({ targetDate: current.eventDate, currentDate: await providerCalendarDate(tx, current.providerId, now), exceptions: await bookingDateExceptions(tx, current.providerId, current.eventDate) });
+    if (nextStatus === "confirmed" && !confirmationDate.available) return { error: 409, message: confirmationDate.reason === "past_event" ? "This booking can no longer be confirmed because its event date has passed." : "The provider explicitly blocked this event date after offering the booking. Contact the provider to resolve it." } as const;
     const [updated] = await tx.update(cateringBookings).set({ customerConfirmedAt: now, status: nextStatus, confirmedAt: nextStatus === "confirmed" ? now : null, updatedAt: now }).where(and(eq(cateringBookings.id, id), eq(cateringBookings.customerId, customerId), eq(cateringBookings.status, "pending_confirmation"))).returning();
     return updated ? { booking: updated, notify: true } as const : { error: 409, message: "Booking changed before confirmation completed" } as const;
   });
@@ -90,7 +97,7 @@ r.post("/bookings/:id/complete", requireAuth, async (req, res, next) => { try {
   if (!current) return res.status(404).json({ message: "Booking not found" });
   const timezone = (await db.select({ timezone: cateringAvailabilitySettings.timezone }).from(cateringAvailabilitySettings).where(eq(cateringAvailabilitySettings.providerId, providerId)).limit(1))[0]?.timezone ?? "UTC";
   if (!mayComplete(current, "provider", calendarDateInTimezone(now, timezone))) return res.status(409).json({ message: "Only a confirmed event on or after its event date can be marked complete" });
-  const updated = await db.transaction(async (tx: typeof db) => { const [row] = await tx.update(cateringBookings).set({ status: "completed", completedAt: now, updatedAt: now }).where(and(eq(cateringBookings.id, id), eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "confirmed"))).returning(); if (!row) return null; await tx.update(cateringReviews).set({ verifiedEvent: true, updatedAt: now }).where(and(eq(cateringReviews.providerId, row.providerId), eq(cateringReviews.reviewerId, row.customerId), eq(cateringReviews.verifiedEvent, false))); return row; });
+  const updated = await db.transaction(async (tx: typeof db) => { await lockCateringReviewRelationship(tx, current.customerId, current.providerId); const [row] = await tx.update(cateringBookings).set({ status: "completed", completedAt: now, updatedAt: now }).where(and(eq(cateringBookings.id, id), eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "confirmed"))).returning(); if (!row) return null; await tx.update(cateringReviews).set({ verifiedEvent: true, updatedAt: now }).where(and(eq(cateringReviews.providerId, row.providerId), eq(cateringReviews.reviewerId, row.customerId), eq(cateringReviews.verifiedEvent, false))); return row; });
   if (!updated) return res.status(409).json({ message: "Booking changed before completion finished" });
   await db.insert(notifications).values({ userId: updated.customerId, type: "catering_booking_completed", title: "Catering event marked complete", message: "Your provider recorded the event as complete. A linked review can now be verified.", linkUrl: CATERING_CUSTOMER_BOOKINGS_URL }).catch(() => undefined);
   res.json({ booking: serializeCateringBooking(updated) });

@@ -8,6 +8,7 @@ import { db } from "../db";
 import { optionalAuth, requireAuth } from "../middleware";
 import { serializePublicCateringReview, serializeViewerCateringReview } from "../serializers/catering-review";
 import { cateringReviewViewerId, reviewEligibility, reviewVerification } from "../services/catering-review-policy";
+import { lockCateringReviewRelationship } from "../services/catering-review-relationship-lock";
 
 const r = Router();
 const mutationLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, standardHeaders: true, legacyHeaders: false });
@@ -38,9 +39,14 @@ r.post("/reviews", requireAuth, mutationLimiter, async (req, res, next) => { try
   const eligibility = reviewEligibility({ reviewerId, providerId: input.providerId, providerEnabled: Boolean(provider?.enabled) });
   if (!eligibility.allowed) return res.status(eligibility.reason.includes("yourself") ? 400 : 404).json({ message: eligibility.reason });
   let inquiry = null; if (input.inquiryId) { [inquiry] = await db.select({ customerId: cateringInquiries.customerId, chefId: cateringInquiries.chefId }).from(cateringInquiries).where(eq(cateringInquiries.id, input.inquiryId)).limit(1); if (!inquiry) return res.status(400).json({ message: "Inquiry is not valid for this review" }); }
-  const completedBookings = await db.select({ customerId: cateringBookings.customerId, providerId: cateringBookings.providerId, status: cateringBookings.status, completedAt: cateringBookings.completedAt }).from(cateringBookings).where(and(eq(cateringBookings.customerId, reviewerId), eq(cateringBookings.providerId, input.providerId), eq(cateringBookings.status, "completed")));
-  let verifiedEvent = false; try { verifiedEvent = reviewVerification(inquiry, completedBookings, reviewerId, input.providerId); } catch { return res.status(403).json({ message: "Inquiry is not valid for this review" }); }
-  const [created] = await db.insert(cateringReviews).values({ providerId: input.providerId, reviewerId, inquiryId: input.inquiryId ?? null, rating: input.rating, title: input.title ?? null, body: input.body, verifiedEvent }).onConflictDoNothing().returning();
+  if (inquiry) { try { reviewVerification(inquiry, [], reviewerId, input.providerId); } catch { return res.status(403).json({ message: "Inquiry is not valid for this review" }); } }
+  const created = await db.transaction(async (tx: typeof db) => {
+    await lockCateringReviewRelationship(tx, reviewerId, input.providerId);
+    const completedBookings = await tx.select({ customerId: cateringBookings.customerId, providerId: cateringBookings.providerId, status: cateringBookings.status, completedAt: cateringBookings.completedAt }).from(cateringBookings).where(and(eq(cateringBookings.customerId, reviewerId), eq(cateringBookings.providerId, input.providerId), eq(cateringBookings.status, "completed")));
+    const verifiedEvent = reviewVerification(inquiry, completedBookings, reviewerId, input.providerId);
+    const [review] = await tx.insert(cateringReviews).values({ providerId: input.providerId, reviewerId, inquiryId: input.inquiryId ?? null, rating: input.rating, title: input.title ?? null, body: input.body, verifiedEvent }).onConflictDoNothing().returning();
+    return review;
+  });
   if (!created) return res.status(409).json({ message: "You have already reviewed this catering provider." });
   await db.insert(notifications).values({ userId: input.providerId, type: "catering_review", title: "New catering review", message: `A customer left a ${input.rating}-star review.`, linkUrl: "/services/catering/provider" }).catch(() => undefined);
   res.status(201).json({ id: created.id, verifiedEvent: created.verifiedEvent });
