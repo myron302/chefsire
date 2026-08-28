@@ -1,26 +1,20 @@
 import { Router } from "express";
-import { and, count, desc, eq, or } from "drizzle-orm";
+import { and, count, desc, eq, gte, lte, or } from "drizzle-orm";
 import { z } from "zod";
-import { cateringAvailabilityExceptions, cateringAvailabilitySettings, cateringAvailabilityWeeklyRules, cateringBookings, cateringInquiries, cateringPackages, cateringReviews, notifications } from "@shared/schema";
+import { cateringAvailabilityExceptions, cateringAvailabilitySettings, cateringBookings, cateringInquiries, cateringPackages, cateringReviews, notifications } from "@shared/schema";
 import { cateringBookingCancelSchema, cateringBookingIdSchema, cateringBookingOfferSchema, cateringBookingPageSchema } from "@shared/catering-bookings";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
-import { calendarDateInTimezone, resolveCateringAvailability } from "../services/catering-availability";
+import { calendarDateInTimezone } from "../services/catering-availability";
+import { evaluateBookingDateForConfirmation, evaluateBookingDateForOffer } from "../services/catering-booking-availability";
 import { bookingActor, mayCancel, mayComplete, mayConfirm, mayInquiryProduceBooking, nextConfirmationStatus } from "../services/catering-booking-policy";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { CATERING_CUSTOMER_BOOKINGS_URL, CATERING_PROVIDER_BOOKINGS_URL } from "../services/catering-booking-links";
 
 const r = Router();
-const defaults = { acceptingBookings: true, minimumLeadDays: 0, maximumAdvanceDays: 365, timezone: "UTC" } as const;
-
-async function dateIsAvailable(providerId: string, targetDate: string, packageId: string | null) {
-  const [[settings], rules, exceptions] = await Promise.all([
-    db.select().from(cateringAvailabilitySettings).where(eq(cateringAvailabilitySettings.providerId, providerId)).limit(1),
-    db.select().from(cateringAvailabilityWeeklyRules).where(eq(cateringAvailabilityWeeklyRules.providerId, providerId)),
-    db.select().from(cateringAvailabilityExceptions).where(eq(cateringAvailabilityExceptions.providerId, providerId)),
-  ]);
-  const resolvedSettings = settings ?? defaults;
-  return resolveCateringAvailability({ settings: resolvedSettings, rules, exceptions, targetDate, currentDate: calendarDateInTimezone(new Date(), resolvedSettings.timezone), packageId: packageId ?? undefined }).available;
+async function bookingDateExceptions(executor: typeof db, providerId: string, targetDate: string) {
+  const exceptions = await executor.select().from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, providerId), lte(cateringAvailabilityExceptions.startDate, targetDate), gte(cateringAvailabilityExceptions.endDate, targetDate)));
+  return exceptions;
 }
 
 r.get("/bookings", requireAuth, async (req, res, next) => { try {
@@ -47,6 +41,7 @@ r.post("/inquiries/:inquiryId/provider-confirm", requireAuth, async (req, res, n
     if (!mayInquiryProduceBooking(inquiry)) return { error: 409, message: "Only an accepted inquiry can be offered for booking" } as const;
     const [pkg] = inquiry.packageId ? await tx.select().from(cateringPackages).where(and(eq(cateringPackages.id, inquiry.packageId), eq(cateringPackages.providerId, providerId))).limit(1) : [];
     const eventDate = calendarDateInTimezone(inquiry.eventDate, "UTC");
+    if (!evaluateBookingDateForOffer({ targetDate: eventDate, exceptions: await bookingDateExceptions(tx, providerId, eventDate) }).available) return { error: 409, message: "This event date is explicitly blocked. Remove the date block before offering booking terms." } as const;
     const [created] = await tx.insert(cateringBookings).values({ inquiryId, providerId, customerId: inquiry.customerId, packageId: pkg?.id ?? null, eventDate, eventType: inquiry.eventType, guestCount: inquiry.guestCount, agreedPrice: offer.agreedPrice?.toFixed(2), currency: offer.currency, packageTitleSnapshot: pkg?.title ?? null, packagePricingModelSnapshot: pkg?.pricingModel ?? null, packageStartingPriceSnapshot: pkg?.startingPrice ?? null, providerConfirmedAt: now }).onConflictDoNothing({ target: cateringBookings.inquiryId }).returning({ id: cateringBookings.id });
     const [booking] = await tx.select().from(cateringBookings).where(eq(cateringBookings.inquiryId, inquiryId)).limit(1);
     if (!booking || booking.providerId !== providerId) return { error: 409, message: "Booking could not be created" } as const;
@@ -61,14 +56,19 @@ r.post("/inquiries/:inquiryId/provider-confirm", requireAuth, async (req, res, n
 
 r.post("/bookings/:id/customer-confirm", requireAuth, async (req, res, next) => { try {
   const id = cateringBookingIdSchema.parse(req.params.id); const customerId = (req.user as { id: string }).id; const now = new Date();
-  const [current] = await db.select().from(cateringBookings).where(and(eq(cateringBookings.id, id), eq(cateringBookings.customerId, customerId))).limit(1);
-  if (!current) return res.status(404).json({ message: "Booking not found" });
-  if (current.customerConfirmedAt) return res.json({ booking: serializeCateringBooking(current) });
-  if (!mayConfirm(current, "customer")) return res.status(409).json({ message: "Booking can no longer be confirmed" });
-  const nextStatus = nextConfirmationStatus(current, "customer");
-  if (nextStatus === "confirmed" && !(await dateIsAvailable(current.providerId, current.eventDate, current.packageId))) return res.status(409).json({ message: "The provider is no longer available on this date. Contact the provider before confirming." });
-  const [updated] = await db.update(cateringBookings).set({ customerConfirmedAt: now, status: nextStatus, confirmedAt: nextStatus === "confirmed" ? now : null, updatedAt: now }).where(and(eq(cateringBookings.id, id), eq(cateringBookings.customerId, customerId), eq(cateringBookings.status, "pending_confirmation"))).returning();
-  if (!updated) return res.status(409).json({ message: "Booking changed before confirmation completed" });
+  const result = await db.transaction(async (tx: typeof db) => {
+    const [current] = await tx.select().from(cateringBookings).where(and(eq(cateringBookings.id, id), eq(cateringBookings.customerId, customerId))).limit(1);
+    if (!current) return { error: 404, message: "Booking not found" } as const;
+    if (current.customerConfirmedAt) return { booking: current, notify: false } as const;
+    if (!mayConfirm(current, "customer")) return { error: 409, message: "Booking can no longer be confirmed" } as const;
+    const nextStatus = nextConfirmationStatus(current, "customer");
+    if (nextStatus === "confirmed" && !evaluateBookingDateForConfirmation({ targetDate: current.eventDate, exceptions: await bookingDateExceptions(tx, current.providerId, current.eventDate) }).available) return { error: 409, message: "The provider explicitly blocked this event date after offering the booking. Contact the provider to resolve it." } as const;
+    const [updated] = await tx.update(cateringBookings).set({ customerConfirmedAt: now, status: nextStatus, confirmedAt: nextStatus === "confirmed" ? now : null, updatedAt: now }).where(and(eq(cateringBookings.id, id), eq(cateringBookings.customerId, customerId), eq(cateringBookings.status, "pending_confirmation"))).returning();
+    return updated ? { booking: updated, notify: true } as const : { error: 409, message: "Booking changed before confirmation completed" } as const;
+  });
+  if ("error" in result) return res.status(result.error).json({ message: result.message });
+  const updated = result.booking;
+  if (!result.notify) return res.json({ booking: serializeCateringBooking(updated) });
   await db.insert(notifications).values({ userId: updated.providerId, type: "catering_booking_confirmed", title: "Catering booking confirmed", message: "The customer explicitly accepted the booking terms.", linkUrl: CATERING_PROVIDER_BOOKINGS_URL }).catch(() => undefined);
   res.json({ booking: serializeCateringBooking(updated) });
 } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message }); next(error); } });

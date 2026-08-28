@@ -18,7 +18,7 @@ import { cateringReviewAggregate } from "@shared/catering-reviews";
 import { isCateringAvailabilityConfigured } from "@shared/catering-dashboard";
 import { canViewProviderInquiryPage, cateringInquiryPageMetadata, cateringInquiryPageSchema } from "../services/catering-inquiry-pagination";
 import { availabilityExceptionSchema, availabilitySettingsSchema, calendarDateSchema, weeklyRulesSchema } from "@shared/catering-availability";
-import { addCalendarDays, calendarDateInTimezone, resolveCateringAvailability } from "../services/catering-availability";
+import { addCalendarDays, calendarDateInTimezone, evaluateNewCateringInquiryAvailability } from "../services/catering-availability";
 import { isCateringProviderBookable } from "../services/catering-bookability";
 import { CATERING_PORTFOLIO_ITEM_LIMIT, cateringPortfolioFieldsSchema, cateringPortfolioReorderSchema } from "@shared/catering-portfolio";
 import { imageUpload, storeUploadedImage } from "../services/image-upload";
@@ -186,7 +186,7 @@ r.get("/providers/:providerId/availability", async (req, res, next) => { try {
   const targetDate = calendarDateSchema.safeParse(req.query.date); if (!targetDate.success) return res.status(400).json({ message: "A valid date in YYYY-MM-DD format is required" });
   const { settings, rules } = await availabilityData(id.data, provider.cateringAvailable);
   const exceptions = await db.select({ id: cateringAvailabilityExceptions.id, startDate: cateringAvailabilityExceptions.startDate, endDate: cateringAvailabilityExceptions.endDate, type: sql<"available" | "blocked">`${cateringAvailabilityExceptions.type}`.as("type"), reason: cateringAvailabilityExceptions.reason }).from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, id.data), lte(cateringAvailabilityExceptions.startDate, targetDate.data), gte(cateringAvailabilityExceptions.endDate, targetDate.data)));
-  const result = resolveCateringAvailability({ settings, rules, exceptions, targetDate: targetDate.data, currentDate: calendarDateInTimezone(new Date(), settings.timezone) });
+  const result = evaluateNewCateringInquiryAvailability({ settings, rules, exceptions, targetDate: targetDate.data, currentDate: calendarDateInTimezone(new Date(), settings.timezone) });
   res.json(result);
 } catch (error) { next(error); } });
 
@@ -395,7 +395,7 @@ r.post("/inquiries", requireAuth, async (req, res, next) => {
     const availability = await availabilityData(input.chefId, provider.cateringAvailable);
     if (!isCateringProviderBookable({ ...provider, acceptingBookings: availability.settings.acceptingBookings })) return res.status(409).json({ message: "This provider is not currently accepting inquiries", code: "AVAILABILITY_NOT_ACCEPTING" });
     const matchingExceptions = await db.select({ id: cateringAvailabilityExceptions.id, startDate: cateringAvailabilityExceptions.startDate, endDate: cateringAvailabilityExceptions.endDate, type: sql<"available" | "blocked">`${cateringAvailabilityExceptions.type}`.as("type"), reason: cateringAvailabilityExceptions.reason }).from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, input.chefId), lte(cateringAvailabilityExceptions.startDate, targetCalendarDate), gte(cateringAvailabilityExceptions.endDate, targetCalendarDate)));
-    const decision = resolveCateringAvailability({ settings: availability.settings, rules: availability.rules, exceptions: matchingExceptions, targetDate: targetCalendarDate, currentDate: calendarDateInTimezone(new Date(), availability.settings.timezone), packageId: input.packageId ?? undefined });
+    const decision = evaluateNewCateringInquiryAvailability({ settings: availability.settings, rules: availability.rules, exceptions: matchingExceptions, targetDate: targetCalendarDate, currentDate: calendarDateInTimezone(new Date(), availability.settings.timezone), packageId: input.packageId ?? undefined });
     if (!decision.available) return res.status(422).json({ message: ({ not_accepting: "This provider is not accepting inquiries", lead_time: "This date does not meet the provider's minimum lead time", advance_window: "This date is beyond the provider's booking window", blocked: "This provider is unavailable on the selected date", weekly_unavailable: "This provider does not accept inquiries for that day of the week" } as Record<string, string>)[decision.reason], code: `AVAILABILITY_${decision.reason.toUpperCase()}` });
     if (input.packageId) { const [selected] = await db.select({ id: cateringPackages.id }).from(cateringPackages).where(and(eq(cateringPackages.id, input.packageId), eq(cateringPackages.providerId, input.chefId), eq(cateringPackages.active, true))).limit(1); if (!selected) return res.status(400).json({ message: "Selected package is unavailable" }); }
     const inquiry = await storage.createCateringInquiry({ ...input, customerId });
