@@ -4,6 +4,9 @@ export type CateringDashboardFacts = {
   availabilityConfigured: boolean;
   profileComplete: boolean;
   inquiriesPending: number;
+  bookingsPendingConfirmation: number;
+  bookingsUpcomingConfirmed: number;
+  bookingsReadyToComplete: number;
   packagesTotal: number;
   packagesActive: number;
   portfolioCount: number;
@@ -12,8 +15,9 @@ export type CateringDashboardFacts = {
   reviewsAwaitingResponse: number;
 };
 
-export type CateringDashboardSection = "profile" | "inquiries" | "packages" | "portfolio" | "availability" | "reviews";
-export type CateringDashboardNavigationSection = "overview" | CateringDashboardSection;
+export const CATERING_DASHBOARD_SECTIONS = ["overview", "profile", "inquiries", "bookings", "packages", "portfolio", "availability", "reviews"] as const;
+export type CateringDashboardNavigationSection = typeof CATERING_DASHBOARD_SECTIONS[number];
+export type CateringDashboardSection = Exclude<CateringDashboardNavigationSection, "overview">;
 export type CateringDashboardAction = { section: CateringDashboardSection; label: string; detail: string };
 
 export function cateringDashboardSectionState(section: CateringDashboardNavigationSection, listingEnabled: boolean): "manager" | "listing-required" {
@@ -38,6 +42,8 @@ export function cateringDashboardActions(facts: CateringDashboardFacts): Caterin
   if (facts.listingEnabled && facts.portfolioCount === 0) actions.push({ section: "portfolio", label: "Add portfolio work", detail: "Show customers examples of your catering work." });
   if (facts.listingEnabled && !facts.availabilityConfigured) actions.push({ section: "availability", label: "Configure availability", detail: "Set your business timezone, inquiry window, or weekly schedule." });
   if (facts.inquiriesPending > 0) actions.push({ section: "inquiries", label: `Respond to ${facts.inquiriesPending} pending ${facts.inquiriesPending === 1 ? "inquiry" : "inquiries"}`, detail: "Review the request details and accept or decline when ready." });
+  if (facts.bookingsPendingConfirmation > 0) actions.push({ section: "bookings", label: `${facts.bookingsPendingConfirmation} booking ${facts.bookingsPendingConfirmation === 1 ? "confirmation is" : "confirmations are"} pending`, detail: "Open the booking record to review which party still needs to confirm." });
+  if (facts.bookingsReadyToComplete > 0) actions.push({ section: "bookings", label: `Mark ${facts.bookingsReadyToComplete} past ${facts.bookingsReadyToComplete === 1 ? "event" : "events"} complete`, detail: "Only mark an event complete when you know the catering service occurred." });
   if (facts.listingEnabled && facts.reviewsAwaitingResponse > 0) actions.push({ section: "reviews", label: `Respond to ${facts.reviewsAwaitingResponse} customer ${facts.reviewsAwaitingResponse === 1 ? "review" : "reviews"}`, detail: "A public provider response has not been posted yet." });
   return actions;
 }

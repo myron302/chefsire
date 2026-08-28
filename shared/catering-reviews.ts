@@ -37,6 +37,7 @@ export function cateringReviewAggregate(rows: Array<{ rating: number; count: num
   return { averageRating: reviewCount ? Math.round((sum / reviewCount) * 10) / 10 : null, reviewCount, distribution };
 }
 
-// An accepted inquiry proves an interaction, not that an event was completed.
-// A future booking/payment completion signal can be added here without trusting clients.
-export function qualifiesAsVerifiedCateringEvent(_inquiry: { status?: string | null }): boolean { return false; }
+// Inquiry state and elapsed dates never prove delivery; only explicit persisted completion does.
+export function qualifiesAsVerifiedCateringEvent(booking: { status?: string | null; completedAt?: unknown } | null | undefined): boolean {
+  return booking?.status === "completed" && Boolean(booking.completedAt);
+}

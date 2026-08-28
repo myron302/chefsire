@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { sendCateringRequestNotification } from "../services/notification-service";
 import { db } from "../db";
 import { users } from "../../shared/schema";
-import { and, asc, count, desc, eq, inArray, isNull, sql, lte, gte } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, inArray, isNull, sql, lte, gte } from "drizzle-orm";
 import { geocodeLocation } from "./google";
 import { parseCoordinates, resolveVisitorLocation } from "../services/catering-geo";
 import { requireAuth } from "../middleware";
@@ -13,12 +13,12 @@ import { insertCateringInquirySchema } from "@shared/schema";
 import { publicCateringLocation, serializePublicCateringProvider } from "../serializers/public-catering-provider";
 import { cateringQuoteDateSchema } from "../services/catering-date";
 import { canTransitionCateringInquiry, cateringInquiryRole } from "../services/catering-inquiry-policy";
-import { cateringPackages, cateringPortfolioItems, cateringAvailabilitySettings, cateringAvailabilityExceptions, cateringAvailabilityWeeklyRules, cateringInquiries, cateringReviews } from "@shared/schema";
+import { cateringBookings, cateringPackages, cateringPortfolioItems, cateringAvailabilitySettings, cateringAvailabilityExceptions, cateringAvailabilityWeeklyRules, cateringInquiries, cateringReviews } from "@shared/schema";
 import { cateringReviewAggregate } from "@shared/catering-reviews";
 import { isCateringAvailabilityConfigured } from "@shared/catering-dashboard";
 import { canViewProviderInquiryPage, cateringInquiryPageMetadata, cateringInquiryPageSchema } from "../services/catering-inquiry-pagination";
 import { availabilityExceptionSchema, availabilitySettingsSchema, calendarDateSchema, weeklyRulesSchema } from "@shared/catering-availability";
-import { addCalendarDays, calendarDateInTimezone, resolveCateringAvailability } from "../services/catering-availability";
+import { addCalendarDays, calendarDateInTimezone, evaluateNewCateringInquiryAvailability } from "../services/catering-availability";
 import { isCateringProviderBookable } from "../services/catering-bookability";
 import { CATERING_PORTFOLIO_ITEM_LIMIT, cateringPortfolioFieldsSchema, cateringPortfolioReorderSchema } from "@shared/catering-portfolio";
 import { imageUpload, storeUploadedImage } from "../services/image-upload";
@@ -47,7 +47,9 @@ r.get("/dashboard", requireAuth, async (req, res, next) => {
     if (!provider) return res.status(404).json({ message: "Provider not found" });
     const [storedAvailability] = await db.select().from(cateringAvailabilitySettings).where(eq(cateringAvailabilitySettings.providerId, providerId)).limit(1);
     const availability = storedAvailability ?? { ...DEFAULT_AVAILABILITY, acceptingBookings: Boolean(provider.cateringAvailable) };
-    const [packages, portfolio, pending, reviewRows, awaiting, recentInquiries, weeklyRules, exceptions] = await Promise.all([
+    // Dashboard lifecycle facts use the same provider-local calendar policy as completion.
+    const today = calendarDateInTimezone(new Date(), availability.timezone);
+    const [packages, portfolio, pending, reviewRows, awaiting, recentInquiries, weeklyRules, exceptions, bookingPending, bookingUpcoming, bookingReady] = await Promise.all([
       db.select({ active: cateringPackages.active, value: count() }).from(cateringPackages).where(eq(cateringPackages.providerId, providerId)).groupBy(cateringPackages.active),
       db.select({ value: count() }).from(cateringPortfolioItems).where(eq(cateringPortfolioItems.providerId, providerId)),
       db.select({ value: count() }).from(cateringInquiries).where(and(eq(cateringInquiries.chefId, providerId), eq(cateringInquiries.status, "pending"))),
@@ -56,11 +58,14 @@ r.get("/dashboard", requireAuth, async (req, res, next) => {
       db.select({ id: cateringInquiries.id, status: cateringInquiries.status, eventDate: cateringInquiries.eventDate, eventType: cateringInquiries.eventType, packageId: cateringInquiries.packageId, createdAt: cateringInquiries.createdAt }).from(cateringInquiries).where(eq(cateringInquiries.chefId, providerId)).orderBy(desc(cateringInquiries.createdAt), desc(cateringInquiries.id)).limit(5),
       db.select({ value: count() }).from(cateringAvailabilityWeeklyRules).where(eq(cateringAvailabilityWeeklyRules.providerId, providerId)),
       db.select({ value: count() }).from(cateringAvailabilityExceptions).where(eq(cateringAvailabilityExceptions.providerId, providerId)),
+      db.select({ value: count() }).from(cateringBookings).where(and(eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "pending_confirmation"))),
+      db.select({ value: count() }).from(cateringBookings).where(and(eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "confirmed"), gt(cateringBookings.eventDate, today))),
+      db.select({ value: count() }).from(cateringBookings).where(and(eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "confirmed"), lte(cateringBookings.eventDate, today))),
     ]);
     const packageTotal = packages.reduce((sum: number, row: { value: unknown }) => sum + Number(row.value), 0);
     const aggregate = cateringReviewAggregate(reviewRows.map((row: { rating: number; value: unknown }) => ({ rating: row.rating, count: Number(row.value) })));
     res.json({
-      facts: { listingEnabled: Boolean(provider.cateringEnabled), acceptingInquiries: Boolean(availability.acceptingBookings), availabilityConfigured: isCateringAvailabilityConfigured({ hasSettings: Boolean(storedAvailability), weeklyRuleCount: Number(weeklyRules[0]?.value ?? 0), exceptionCount: Number(exceptions[0]?.value ?? 0) }), profileComplete: Boolean(provider.displayName?.trim() && provider.specialty?.trim() && provider.cateringLocation?.trim() && provider.cateringBio && provider.cateringBio.trim().length >= 20), inquiriesPending: Number(pending[0]?.value ?? 0), packagesTotal: packageTotal, packagesActive: Number(packages.find((row: { active: boolean }) => row.active)?.value ?? 0), portfolioCount: Number(portfolio[0]?.value ?? 0), reviewCount: aggregate.reviewCount, averageRating: aggregate.averageRating, reviewsAwaitingResponse: Number(awaiting[0]?.value ?? 0) },
+      facts: { listingEnabled: Boolean(provider.cateringEnabled), acceptingInquiries: Boolean(availability.acceptingBookings), availabilityConfigured: isCateringAvailabilityConfigured({ hasSettings: Boolean(storedAvailability), weeklyRuleCount: Number(weeklyRules[0]?.value ?? 0), exceptionCount: Number(exceptions[0]?.value ?? 0) }), profileComplete: Boolean(provider.displayName?.trim() && provider.specialty?.trim() && provider.cateringLocation?.trim() && provider.cateringBio && provider.cateringBio.trim().length >= 20), inquiriesPending: Number(pending[0]?.value ?? 0), bookingsPendingConfirmation: Number(bookingPending[0]?.value ?? 0), bookingsUpcomingConfirmed: Number(bookingUpcoming[0]?.value ?? 0), bookingsReadyToComplete: Number(bookingReady[0]?.value ?? 0), packagesTotal: packageTotal, packagesActive: Number(packages.find((row: { active: boolean }) => row.active)?.value ?? 0), portfolioCount: Number(portfolio[0]?.value ?? 0), reviewCount: aggregate.reviewCount, averageRating: aggregate.averageRating, reviewsAwaitingResponse: Number(awaiting[0]?.value ?? 0) },
       availability: { minimumLeadDays: availability.minimumLeadDays, maximumAdvanceDays: availability.maximumAdvanceDays, timezone: availability.timezone },
       recentInquiries: recentInquiries.map((item: { eventDate: Date; createdAt: Date | null; [key: string]: unknown }) => ({ ...item, eventDate: item.eventDate.toISOString(), createdAt: item.createdAt?.toISOString() ?? null })),
     });
@@ -181,7 +186,7 @@ r.get("/providers/:providerId/availability", async (req, res, next) => { try {
   const targetDate = calendarDateSchema.safeParse(req.query.date); if (!targetDate.success) return res.status(400).json({ message: "A valid date in YYYY-MM-DD format is required" });
   const { settings, rules } = await availabilityData(id.data, provider.cateringAvailable);
   const exceptions = await db.select({ id: cateringAvailabilityExceptions.id, startDate: cateringAvailabilityExceptions.startDate, endDate: cateringAvailabilityExceptions.endDate, type: sql<"available" | "blocked">`${cateringAvailabilityExceptions.type}`.as("type"), reason: cateringAvailabilityExceptions.reason }).from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, id.data), lte(cateringAvailabilityExceptions.startDate, targetDate.data), gte(cateringAvailabilityExceptions.endDate, targetDate.data)));
-  const result = resolveCateringAvailability({ settings, rules, exceptions, targetDate: targetDate.data, currentDate: calendarDateInTimezone(new Date(), settings.timezone) });
+  const result = evaluateNewCateringInquiryAvailability({ settings, rules, exceptions, targetDate: targetDate.data, currentDate: calendarDateInTimezone(new Date(), settings.timezone) });
   res.json(result);
 } catch (error) { next(error); } });
 
@@ -390,7 +395,7 @@ r.post("/inquiries", requireAuth, async (req, res, next) => {
     const availability = await availabilityData(input.chefId, provider.cateringAvailable);
     if (!isCateringProviderBookable({ ...provider, acceptingBookings: availability.settings.acceptingBookings })) return res.status(409).json({ message: "This provider is not currently accepting inquiries", code: "AVAILABILITY_NOT_ACCEPTING" });
     const matchingExceptions = await db.select({ id: cateringAvailabilityExceptions.id, startDate: cateringAvailabilityExceptions.startDate, endDate: cateringAvailabilityExceptions.endDate, type: sql<"available" | "blocked">`${cateringAvailabilityExceptions.type}`.as("type"), reason: cateringAvailabilityExceptions.reason }).from(cateringAvailabilityExceptions).where(and(eq(cateringAvailabilityExceptions.providerId, input.chefId), lte(cateringAvailabilityExceptions.startDate, targetCalendarDate), gte(cateringAvailabilityExceptions.endDate, targetCalendarDate)));
-    const decision = resolveCateringAvailability({ settings: availability.settings, rules: availability.rules, exceptions: matchingExceptions, targetDate: targetCalendarDate, currentDate: calendarDateInTimezone(new Date(), availability.settings.timezone), packageId: input.packageId ?? undefined });
+    const decision = evaluateNewCateringInquiryAvailability({ settings: availability.settings, rules: availability.rules, exceptions: matchingExceptions, targetDate: targetCalendarDate, currentDate: calendarDateInTimezone(new Date(), availability.settings.timezone), packageId: input.packageId ?? undefined });
     if (!decision.available) return res.status(422).json({ message: ({ not_accepting: "This provider is not accepting inquiries", lead_time: "This date does not meet the provider's minimum lead time", advance_window: "This date is beyond the provider's booking window", blocked: "This provider is unavailable on the selected date", weekly_unavailable: "This provider does not accept inquiries for that day of the week" } as Record<string, string>)[decision.reason], code: `AVAILABILITY_${decision.reason.toUpperCase()}` });
     if (input.packageId) { const [selected] = await db.select({ id: cateringPackages.id }).from(cateringPackages).where(and(eq(cateringPackages.id, input.packageId), eq(cateringPackages.providerId, input.chefId), eq(cateringPackages.active, true))).limit(1); if (!selected) return res.status(400).json({ message: "Selected package is unavailable" }); }
     const inquiry = await storage.createCateringInquiry({ ...input, customerId });
@@ -427,8 +432,11 @@ r.get("/users/:id/inquiries", requireAuth, async (req, res, next) => {
     const viewerId = (req.user as { id: string }).id;
     if (!canViewProviderInquiryPage(viewerId, req.params.id)) return res.status(403).json({ message: "You can only view your own received inquiries" });
     const { page, limit } = cateringInquiryPageSchema.parse(req.query);
-    const result = await storage.getCateringInquiries(viewerId, page, limit);
-    res.json({ inquiries: result.inquiries, pagination: cateringInquiryPageMetadata(page, limit, result.total), total: result.total });
+    const [{ value }] = await db.select({ value: count() }).from(cateringInquiries).where(eq(cateringInquiries.chefId, viewerId));
+    const rows = await db.select({ inquiry: cateringInquiries, bookingId: cateringBookings.id, bookingStatus: cateringBookings.status, providerConfirmedAt: cateringBookings.providerConfirmedAt, customerConfirmedAt: cateringBookings.customerConfirmedAt }).from(cateringInquiries).leftJoin(cateringBookings, eq(cateringBookings.inquiryId, cateringInquiries.id)).where(eq(cateringInquiries.chefId, viewerId)).orderBy(desc(cateringInquiries.createdAt), desc(cateringInquiries.id)).limit(limit).offset((page - 1) * limit);
+    const total = Number(value);
+    const inquiries = rows.map(({ inquiry, bookingId, bookingStatus, providerConfirmedAt, customerConfirmedAt }) => ({ ...inquiry, booking: bookingId ? { id: bookingId, status: bookingStatus, providerConfirmedAt: providerConfirmedAt?.toISOString() ?? null, customerConfirmedAt: customerConfirmedAt?.toISOString() ?? null } : null }));
+    res.json({ inquiries, pagination: cateringInquiryPageMetadata(page, limit, total), total });
   } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message || "Invalid pagination" }); next(error); }
 });
 

@@ -314,6 +314,41 @@ export const cateringInquiries = pgTable("catering_inquiries", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+/** A persisted bilateral catering agreement, distinct from the quote inquiry. */
+export const cateringBookings = pgTable("catering_bookings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inquiryId: varchar("inquiry_id").references(() => cateringInquiries.id, { onDelete: "restrict" }).notNull(),
+  providerId: varchar("provider_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  customerId: varchar("customer_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  packageId: varchar("package_id").references(() => cateringPackages.id, { onDelete: "set null" }),
+  eventDate: date("event_date", { mode: "string" }).notNull(),
+  eventType: text("event_type"),
+  guestCount: integer("guest_count"),
+  agreedPrice: decimal("agreed_price", { precision: 12, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+  packageTitleSnapshot: varchar("package_title_snapshot", { length: 160 }),
+  packagePricingModelSnapshot: varchar("package_pricing_model_snapshot", { length: 30 }),
+  packageStartingPriceSnapshot: decimal("package_starting_price_snapshot", { precision: 12, scale: 2 }),
+  status: varchar("status", { length: 24 }).default("pending_confirmation").notNull(),
+  providerConfirmedAt: timestamp("provider_confirmed_at", { withTimezone: true }),
+  customerConfirmedAt: timestamp("customer_confirmed_at", { withTimezone: true }),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+  cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+  cancelledBy: varchar("cancelled_by", { length: 16 }),
+  cancellationReason: text("cancellation_reason"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  inquiryUnique: uniqueIndex("catering_bookings_inquiry_uidx").on(t.inquiryId),
+  providerEventIdx: index("catering_bookings_provider_event_idx").on(t.providerId, t.eventDate, t.id),
+  customerEventIdx: index("catering_bookings_customer_event_idx").on(t.customerId, t.eventDate, t.id),
+  statusCheck: check("catering_bookings_status_check", sql`${t.status} IN ('pending_confirmation', 'confirmed', 'cancelled', 'completed')`),
+  cancelledByCheck: check("catering_bookings_cancelled_by_check", sql`${t.cancelledBy} IS NULL OR ${t.cancelledBy} IN ('provider', 'customer')`),
+  guestCountCheck: check("catering_bookings_guest_count_check", sql`${t.guestCount} IS NULL OR ${t.guestCount} > 0`),
+  agreedPriceCheck: check("catering_bookings_agreed_price_check", sql`${t.agreedPrice} IS NULL OR ${t.agreedPrice} >= 0`),
+}));
+
 export const cateringReviews = pgTable("catering_reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
