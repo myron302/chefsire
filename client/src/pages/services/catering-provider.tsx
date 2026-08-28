@@ -19,7 +19,7 @@ import { BookingManager } from "@/components/catering/BookingManager";
 import { CATERING_DASHBOARD_SECTIONS, cateringDashboardSectionState, type CateringDashboardNavigationSection } from "@shared/catering-dashboard";
 import { formatCateringCalendarDate } from "@shared/catering-availability";
 import { cateringProviderSectionFromHash, cateringProviderSectionHash } from "./catering-provider-navigation";
-import { applyInquiryBookingProjection, cateringOfferInvalidationKeys, inquiryBookingPresentation, type InquiryBookingProjection } from "./catering-inquiry-booking-state";
+import { applyInquiryBookingProjection, cateringOfferInvalidationKeys, cateringProviderInquiryKey, inquiryBookingPresentation, type InquiryBookingProjection } from "./catering-inquiry-booking-state";
 
 type ProviderForm = { displayName: string; avatar: string; specialty: string; location: string; radius: string; bio: string; enabled: boolean };
 
@@ -112,10 +112,10 @@ function InquiryManager({ providerId, openBookings }: { providerId: string; open
   const client = useQueryClient();
   const [page, setPage] = useState(1);
   const limit = 20;
-  const key = ["catering", "inquiries", providerId, page, limit] as const;
+  const key = [...cateringProviderInquiryKey(providerId), page, limit] as const;
   useEffect(() => setPage(1), [providerId]);
   const query = useQuery({ queryKey: key, queryFn: async (): Promise<{ inquiries: Inquiry[]; pagination: { page: number; limit: number; total: number; totalPages: number } }> => { const response = await fetch(`/api/catering/users/${providerId}/inquiries?page=${page}&limit=${limit}`, { credentials: "include" }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || "Inquiries could not be loaded"); return body; }, staleTime: 60_000, refetchOnWindowFocus: true });
-  const mutation = useMutation({ mutationFn: async ({ id, status }: { id: string; status: "accepted" | "declined" }) => { const response = await fetch(`/api/catering/inquiries/${id}`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || "Inquiry could not be updated"); }, onSuccess: async () => { await Promise.all([client.invalidateQueries({ queryKey: ["catering", "inquiries", providerId] }), client.invalidateQueries({ queryKey: cateringDashboardKey(providerId) })]); } });
+  const mutation = useMutation({ mutationFn: async ({ id, status }: { id: string; status: "accepted" | "declined" }) => { const response = await fetch(`/api/catering/inquiries/${id}`, { method: "PUT", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || "Inquiry could not be updated"); }, onSuccess: async () => { await Promise.all([client.invalidateQueries({ queryKey: cateringProviderInquiryKey(providerId) }), client.invalidateQueries({ queryKey: cateringDashboardKey(providerId) })]); } });
   const offer = useMutation({ mutationFn: async (id: string): Promise<{ booking: InquiryBookingProjection }> => { const response = await fetch(`/api/catering/inquiries/${id}/provider-confirm`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: "{}" }); const body = await response.json().catch(() => ({})); if (!response.ok) throw new Error(body.message || "Booking terms could not be offered"); return body; }, onSuccess: async ({ booking }, inquiryId) => { client.setQueryData<{ inquiries: Inquiry[]; pagination: { page: number; limit: number; total: number; totalPages: number } }>(key, (current) => current ? { ...current, inquiries: applyInquiryBookingProjection(current.inquiries, inquiryId, booking) } : current); await Promise.all(cateringOfferInvalidationKeys(providerId).map((queryKey) => client.invalidateQueries({ queryKey }))); } });
   const inquiries = query.data?.inquiries;
   const pagination = query.data?.pagination;

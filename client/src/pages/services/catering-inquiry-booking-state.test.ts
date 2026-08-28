@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyInquiryBookingProjection, cateringOfferInvalidationKeys, inquiryBookingPresentation, type InquiryBookingProjection } from "./catering-inquiry-booking-state";
+import { applyInquiryBookingProjection, cateringBookingMutationInvalidationKeys, cateringOfferInvalidationKeys, inquiryBookingPresentation, type BookingLifecycleAction, type InquiryBookingProjection } from "./catering-inquiry-booking-state";
 
 const booking = (status: InquiryBookingProjection["status"]): InquiryBookingProjection => ({ id: "booking-1", status, providerConfirmedAt: "2026-08-28T10:00:00.000Z", customerConfirmedAt: status === "confirmed" || status === "completed" ? "2026-08-28T11:00:00.000Z" : null });
 test("accepted inquiry without a booking offers confirmation", () => assert.deepEqual(inquiryBookingPresentation(null), { canOffer: true, label: "Offer booking confirmation" }));
@@ -14,4 +14,23 @@ test("offer success targets inquiry, booking, and dashboard cache families", () 
 test("successful offer immediately applies the persisted projection to the visible inquiry", () => {
   const offered = booking("pending_confirmation");
   assert.deepEqual(applyInquiryBookingProjection([{ id: "inquiry-1", booking: null }, { id: "inquiry-2", booking: null }], "inquiry-2", offered), [{ id: "inquiry-1", booking: null }, { id: "inquiry-2", booking: offered }]);
+});
+test("provider cancellation and completion invalidate the provider inquiry and dashboard", () => {
+  for (const action of ["cancel", "complete"] as BookingLifecycleAction[]) {
+    const keys = cateringBookingMutationInvalidationKeys({ surfaceUserId: "provider-1", providerId: "provider-1", action });
+    assert.ok(keys.some((key) => key.join("/") === "catering/inquiries/provider-1"));
+    assert.ok(keys.some((key) => key.join("/") === "catering/dashboard/provider-1"));
+    assert.ok(keys.some((key) => key.join("/") === "catering/bookings/provider-1"));
+  }
+  assert.ok(cateringBookingMutationInvalidationKeys({ surfaceUserId: "provider-1", providerId: "provider-1", action: "complete" }).some((key) => key.join("/") === "catering/reviews/provider-1"));
+});
+test("customer confirmation and cancellation target the actual provider, never customer inquiries", () => {
+  for (const action of ["customer-confirm", "cancel"] as BookingLifecycleAction[]) {
+    const keys = cateringBookingMutationInvalidationKeys({ surfaceUserId: "customer-1", providerId: "provider-1", action });
+    assert.ok(keys.some((key) => key.join("/") === "catering/bookings/customer-1"));
+    assert.ok(keys.some((key) => key.join("/") === "catering/bookings/provider-1"));
+    assert.ok(keys.some((key) => key.join("/") === "catering/inquiries/provider-1"));
+    assert.ok(keys.some((key) => key.join("/") === "catering/dashboard/provider-1"));
+    assert.equal(keys.some((key) => key.join("/") === "catering/inquiries/customer-1"), false);
+  }
 });

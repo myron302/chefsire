@@ -10,8 +10,21 @@ export function inquiryBookingPresentation(booking: InquiryBookingProjection | n
   return { canOffer: false, label: "Event completed" } as const;
 }
 
+export const cateringProviderInquiryKey = (providerId: string) => ["catering", "inquiries", providerId] as const;
 export function cateringOfferInvalidationKeys(providerId: string) {
-  return [["catering", "inquiries", providerId], ["catering", "bookings", providerId], ["catering", "dashboard", providerId]] as const;
+  return [cateringProviderInquiryKey(providerId), ["catering", "bookings", providerId], ["catering", "dashboard", providerId]] as const;
+}
+
+export type BookingLifecycleAction = "customer-confirm" | "cancel" | "complete";
+export function cateringBookingMutationInvalidationKeys(input: { surfaceUserId: string; providerId: string; action: BookingLifecycleAction }) {
+  const keys: string[][] = [
+    ["catering", "bookings", input.surfaceUserId],
+    ["catering", "bookings", input.providerId],
+    [...cateringProviderInquiryKey(input.providerId)],
+    ["catering", "dashboard", input.providerId],
+  ];
+  if (input.action === "complete") keys.push(["catering", "reviews", input.providerId]);
+  return keys.filter((key, index) => keys.findIndex((candidate) => candidate.join("\0") === key.join("\0")) === index);
 }
 
 export function applyInquiryBookingProjection<T extends { id: string; booking: InquiryBookingProjection | null }>(inquiries: T[], inquiryId: string, booking: InquiryBookingProjection): T[] {

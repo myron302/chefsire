@@ -18,7 +18,7 @@ export const cateringBookingOfferSchema = z.object({
 export const cateringBookingCancelSchema = z.object({ reason: z.string().trim().max(1000).optional() }).strict();
 
 export type CateringBookingView = {
-  id: string; inquiryId: string; status: CateringBookingStatus; eventDate: string;
+  id: string; inquiryId: string; providerId: string; status: CateringBookingStatus; eventDate: string;
   eventType: string | null; guestCount: number | null; packageId: string | null;
   packageTitle: string | null; agreedPrice: string | null; currency: string;
   providerConfirmedAt: string | null; customerConfirmedAt: string | null; confirmedAt: string | null;

@@ -5,7 +5,7 @@ const iso = (value: Date | null) => value?.toISOString() ?? null;
 /** Explicit participant serializer. Cancellation reason intentionally remains private to the server. */
 export function serializeCateringBooking(row: CateringBooking): CateringBookingView {
   return {
-    id: row.id, inquiryId: row.inquiryId, status: row.status as CateringBookingView["status"], eventDate: row.eventDate,
+    id: row.id, inquiryId: row.inquiryId, providerId: row.providerId, status: row.status as CateringBookingView["status"], eventDate: row.eventDate,
     eventType: row.eventType, guestCount: row.guestCount, packageId: row.packageId,
     packageTitle: row.packageTitleSnapshot, agreedPrice: row.agreedPrice, currency: row.currency,
     providerConfirmedAt: iso(row.providerConfirmedAt), customerConfirmedAt: iso(row.customerConfirmedAt), confirmedAt: iso(row.confirmedAt),
