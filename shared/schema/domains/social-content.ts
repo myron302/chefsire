@@ -314,6 +314,41 @@ export const cateringInquiries = pgTable("catering_inquiries", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+/** Commercial snapshots are immutable after the offer is created. Operational planning lives below. */
+export const cateringBookings = pgTable("catering_bookings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  inquiryId: varchar("inquiry_id").notNull().references(() => cateringInquiries.id, { onDelete: "restrict" }),
+  providerId: varchar("provider_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  customerId: varchar("customer_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  status: varchar("status", { length: 24 }).notNull().default("pending_confirmation"),
+  eventDate: date("event_date", { mode: "string" }).notNull(),
+  eventType: varchar("event_type", { length: 120 }),
+  guestCount: integer("guest_count"),
+  packageSnapshot: jsonb("package_snapshot").$type<Record<string, unknown> | null>(),
+  agreedPrice: decimal("agreed_price", { precision: 12, scale: 2 }),
+  currency: varchar("currency", { length: 3 }).default("USD").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ inquiryUnique: uniqueIndex("catering_bookings_inquiry_uidx").on(t.inquiryId), participantIdx: index("catering_bookings_participant_idx").on(t.providerId, t.customerId) }));
+
+export const cateringBookingDetails = pgTable("catering_booking_details", {
+  bookingId: varchar("booking_id").primaryKey().references(() => cateringBookings.id, { onDelete: "cascade" }),
+  venueName: varchar("venue_name", { length: 160 }), venueAddress: varchar("venue_address", { length: 240 }),
+  venueCity: varchar("venue_city", { length: 100 }), venueState: varchar("venue_state", { length: 100 }), venuePostalCode: varchar("venue_postal_code", { length: 24 }),
+  venueInstructions: text("venue_instructions"), arrivalTime: varchar("arrival_time", { length: 5 }), serviceStartTime: varchar("service_start_time", { length: 5 }), serviceEndTime: varchar("service_end_time", { length: 5 }),
+  setupNotes: text("setup_notes"), accessNotes: text("access_notes"), kitchenAvailable: boolean("kitchen_available"), refrigerationAvailable: boolean("refrigeration_available"), powerAvailable: boolean("power_available"), waterAvailable: boolean("water_available"), indoorOutdoor: varchar("indoor_outdoor", { length: 16 }), customerNotes: text("customer_notes"), providerNotes: text("provider_notes"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+export const cateringBookingTasks = pgTable("catering_booking_tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), bookingId: varchar("booking_id").notNull().references(() => cateringBookings.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 160 }).notNull(), description: text("description"), status: varchar("status", { length: 16 }).default("pending").notNull(), visibility: varchar("visibility", { length: 16 }).default("provider").notNull(), dueDate: date("due_date", { mode: "string" }), dueTime: varchar("due_time", { length: 5 }), sortOrder: integer("sort_order").default(0).notNull(), createdBy: varchar("created_by").notNull().references(() => users.id, { onDelete: "restrict" }), source: varchar("source", { length: 16 }).default("provider").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(), completedAt: timestamp("completed_at", { withTimezone: true }), updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ bookingSortIdx: index("catering_booking_tasks_booking_sort_idx").on(t.bookingId, t.sortOrder, t.id) }));
+
+export const cateringBookingActivity = pgTable("catering_booking_activity", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`), bookingId: varchar("booking_id").notNull().references(() => cateringBookings.id, { onDelete: "cascade" }), actorUserId: varchar("actor_user_id").references(() => users.id, { onDelete: "set null" }), eventType: varchar("event_type", { length: 48 }).notNull(), metadata: jsonb("metadata").$type<Record<string, string>>().default(sql`'{}'::jsonb`).notNull(), visibility: varchar("visibility", { length: 16 }).default("shared").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({ pageIdx: index("catering_booking_activity_page_idx").on(t.bookingId, t.createdAt, t.id) }));
+
 export const cateringReviews = pgTable("catering_reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),

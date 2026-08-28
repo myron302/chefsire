@@ -22,6 +22,10 @@ import {
   cateringAvailabilityExceptions,
   cateringAvailabilityWeeklyRules,
   cateringReviews,
+  cateringBookings,
+  cateringBookingDetails,
+  cateringBookingTasks,
+  cateringBookingActivity,
 } from "./schema/domains/social-content";
 import {
   products,
@@ -49,6 +53,10 @@ export {
   cateringAvailabilityExceptions,
   cateringAvailabilityWeeklyRules,
   cateringReviews,
+  cateringBookings,
+  cateringBookingDetails,
+  cateringBookingTasks,
+  cateringBookingActivity,
 } from "./schema/domains/social-content";
 export {
   products,

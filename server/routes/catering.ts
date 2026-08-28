@@ -13,7 +13,7 @@ import { insertCateringInquirySchema } from "@shared/schema";
 import { publicCateringLocation, serializePublicCateringProvider } from "../serializers/public-catering-provider";
 import { cateringQuoteDateSchema } from "../services/catering-date";
 import { canTransitionCateringInquiry, cateringInquiryRole } from "../services/catering-inquiry-policy";
-import { cateringPackages, cateringPortfolioItems, cateringAvailabilitySettings, cateringAvailabilityExceptions, cateringAvailabilityWeeklyRules, cateringInquiries, cateringReviews } from "@shared/schema";
+import { cateringPackages, cateringPortfolioItems, cateringAvailabilitySettings, cateringAvailabilityExceptions, cateringAvailabilityWeeklyRules, cateringInquiries, cateringReviews, cateringBookings, cateringBookingActivity } from "@shared/schema";
 import { cateringReviewAggregate } from "@shared/catering-reviews";
 import { isCateringAvailabilityConfigured } from "@shared/catering-dashboard";
 import { canViewProviderInquiryPage, cateringInquiryPageMetadata, cateringInquiryPageSchema } from "../services/catering-inquiry-pagination";
@@ -428,7 +428,10 @@ r.get("/users/:id/inquiries", requireAuth, async (req, res, next) => {
     if (!canViewProviderInquiryPage(viewerId, req.params.id)) return res.status(403).json({ message: "You can only view your own received inquiries" });
     const { page, limit } = cateringInquiryPageSchema.parse(req.query);
     const result = await storage.getCateringInquiries(viewerId, page, limit);
-    res.json({ inquiries: result.inquiries, pagination: cateringInquiryPageMetadata(page, limit, result.total), total: result.total });
+    const inquiryIds = result.inquiries.map((item: { id: string }) => item.id);
+    const bookingRows = inquiryIds.length ? await db.select({ id: cateringBookings.id, inquiryId: cateringBookings.inquiryId, status: cateringBookings.status }).from(cateringBookings).where(inArray(cateringBookings.inquiryId, inquiryIds)) : [];
+    const bookingByInquiry = new Map(bookingRows.map((item: { inquiryId: string; id: string; status: string }) => [item.inquiryId, { id: item.id, status: item.status }]));
+    res.json({ inquiries: result.inquiries.map((item: { id: string; [key: string]: unknown }) => ({ ...item, booking: bookingByInquiry.get(item.id) ?? null })), pagination: cateringInquiryPageMetadata(page, limit, result.total), total: result.total });
   } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message || "Invalid pagination" }); next(error); }
 });
 
@@ -446,7 +449,14 @@ r.put("/inquiries/:id", requireAuth, async (req, res, next) => {
     if (!canTransitionCateringInquiry(role, inquiry.status, status)) return res.status(409).json({ message: "That status transition is not allowed" });
     const updated = await storage.updateCateringInquiry(req.params.id, { status });
     if (!updated) return res.status(409).json({ message: "The inquiry status changed before this request completed" });
-    res.json({ message: "Inquiry updated successfully", inquiry: updated });
+    let booking = null;
+    if (status === "accepted" && role === "provider") {
+      const eventDate = `${updated.eventDate.getUTCFullYear().toString().padStart(4, "0")}-${(updated.eventDate.getUTCMonth() + 1).toString().padStart(2, "0")}-${updated.eventDate.getUTCDate().toString().padStart(2, "0")}`;
+      [booking] = await db.insert(cateringBookings).values({ inquiryId: updated.id, providerId: updated.chefId, customerId: updated.customerId, status: "pending_confirmation", eventDate, eventType: updated.eventType, guestCount: updated.guestCount }).onConflictDoNothing({ target: cateringBookings.inquiryId }).returning();
+      if (!booking) [booking] = await db.select().from(cateringBookings).where(eq(cateringBookings.inquiryId, updated.id)).limit(1);
+      if (booking) await db.insert(cateringBookingActivity).values({ bookingId: booking.id, actorUserId: (req.user as { id: string }).id, eventType: "booking_offered", visibility: "shared" }).onConflictDoNothing();
+    }
+    res.json({ message: "Inquiry updated successfully", inquiry: updated, booking });
   } catch (error) {
     if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message || "Invalid inquiry update", errors: error.issues });
     next(error);
