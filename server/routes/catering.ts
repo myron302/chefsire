@@ -432,8 +432,11 @@ r.get("/users/:id/inquiries", requireAuth, async (req, res, next) => {
     const viewerId = (req.user as { id: string }).id;
     if (!canViewProviderInquiryPage(viewerId, req.params.id)) return res.status(403).json({ message: "You can only view your own received inquiries" });
     const { page, limit } = cateringInquiryPageSchema.parse(req.query);
-    const result = await storage.getCateringInquiries(viewerId, page, limit);
-    res.json({ inquiries: result.inquiries, pagination: cateringInquiryPageMetadata(page, limit, result.total), total: result.total });
+    const [{ value }] = await db.select({ value: count() }).from(cateringInquiries).where(eq(cateringInquiries.chefId, viewerId));
+    const rows = await db.select({ inquiry: cateringInquiries, bookingId: cateringBookings.id, bookingStatus: cateringBookings.status, providerConfirmedAt: cateringBookings.providerConfirmedAt, customerConfirmedAt: cateringBookings.customerConfirmedAt }).from(cateringInquiries).leftJoin(cateringBookings, eq(cateringBookings.inquiryId, cateringInquiries.id)).where(eq(cateringInquiries.chefId, viewerId)).orderBy(desc(cateringInquiries.createdAt), desc(cateringInquiries.id)).limit(limit).offset((page - 1) * limit);
+    const total = Number(value);
+    const inquiries = rows.map(({ inquiry, bookingId, bookingStatus, providerConfirmedAt, customerConfirmedAt }) => ({ ...inquiry, booking: bookingId ? { id: bookingId, status: bookingStatus, providerConfirmedAt: providerConfirmedAt?.toISOString() ?? null, customerConfirmedAt: customerConfirmedAt?.toISOString() ?? null } : null }));
+    res.json({ inquiries, pagination: cateringInquiryPageMetadata(page, limit, total), total });
   } catch (error) { if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message || "Invalid pagination" }); next(error); }
 });
 
