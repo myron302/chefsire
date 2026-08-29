@@ -1,0 +1,12 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { CateringBookingActivityView, CateringBookingDetailsView } from "@shared/catering-booking-operations";
+import { combineCateringActivityPages, historicalOperationalDetails, nextCateringActivityPage } from "./catering-booking-workspace-state";
+
+const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
+test("historical details are empty only when every represented field is absent", () => assert.deepEqual(historicalOperationalDetails(emptyDetails, "customer"), []));
+test("city, arrival, and service-end-only history remain visible", () => { for (const details of [{ venueCity: "Austin" }, { arrivalTime: "15:00" }, { serviceEndTime: "21:00" }]) assert.equal(historicalOperationalDetails({ ...emptyDetails, ...details }, "customer").length, 1); });
+test("false facility values remain meaningful persisted details", () => assert.deepEqual(historicalOperationalDetails({ ...emptyDetails, kitchenAvailable: false }, "customer"), [{ label: "Kitchen available", value: "No" }]));
+test("provider notes render only for providers", () => { const details = { ...emptyDetails, providerNotes: "Private staffing plan" }; assert.equal(historicalOperationalDetails(details, "provider")[0]?.value, "Private staffing plan"); assert.deepEqual(historicalOperationalDetails(details, "customer"), []); });
+test("activity pages append in order without duplicate IDs", () => { const activity = (id: string): CateringBookingActivityView => ({ id, eventType: "details_updated", metadata: {}, createdAt: "2026-08-29T00:00:00.000Z" }); assert.deepEqual(combineCateringActivityPages([{ activity: [activity("new"), activity("middle")] }, { activity: [activity("middle"), activity("old")] }]).map(({ id }) => id), ["new", "middle", "old"]); });
+test("activity pagination requests only an available next page", () => { assert.equal(nextCateringActivityPage({ page: 1, totalPages: 3 }), 2); assert.equal(nextCateringActivityPage({ page: 3, totalPages: 3 }), undefined); });
