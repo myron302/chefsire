@@ -10,6 +10,20 @@ export function hydrateWorkspaceForm<T>(state: WorkspaceFormState<T>, identity: 
 export function editWorkspaceForm<T>(state: WorkspaceFormState<T>, value: T): WorkspaceFormState<T> { return { ...state, value, dirty: true }; }
 export function saveWorkspaceForm<T>(identity: string, serverValue: T): WorkspaceFormState<T> { return { identity, value: serverValue, dirty: false }; }
 
+function shallowWorkspaceValueEqual<T>(left: T, right: T): boolean {
+  if (Object.is(left, right)) return true;
+  if (!left || !right || typeof left !== "object" || typeof right !== "object") return false;
+  const leftRecord = left as Record<string, unknown>; const rightRecord = right as Record<string, unknown>;
+  const keys = Object.keys(leftRecord);
+  return keys.length === Object.keys(rightRecord).length && keys.every((key) => Object.is(leftRecord[key], rightRecord[key]));
+}
+
+export function reconcileWorkspaceFormAfterSave<T>(current: WorkspaceFormState<T>, submittedIdentity: string, submittedValue: T, serverValue: T): WorkspaceFormState<T> {
+  if (current.identity !== submittedIdentity) return current;
+  return shallowWorkspaceValueEqual(current.value, submittedValue) ? saveWorkspaceForm(submittedIdentity, serverValue) : { ...current, dirty: true };
+}
+export function preserveWorkspaceFormAfterSaveFailure<T>(current: WorkspaceFormState<T>): WorkspaceFormState<T> { return current; }
+
 export function historicalOperationalDetails(details: CateringBookingDetailsView, role: "provider" | "customer"): OperationalDetailItem[] {
   const items: Array<OperationalDetailItem | null> = [
     details.venueName ? { label: "Venue", value: details.venueName } : null,
