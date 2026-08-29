@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { and, asc, count, desc, eq, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, max, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { cateringBookingActivity, cateringBookingDetails, cateringBookings, cateringBookingTasks, notifications } from "@shared/schema";
 import { cateringBookingIdSchema } from "@shared/catering-bookings";
-import { CATERING_BOOKING_TASK_LIMIT, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingWorkspacePath, cateringWorkspaceRole } from "@shared/catering-booking-operations";
+import { CATERING_BOOKING_TASK_LIMIT, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mergeCateringServiceTimes } from "@shared/catering-booking-operations";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { serializeBookingActivity, serializeBookingDetails, serializeBookingTask } from "../serializers/catering-booking-workspace";
-import { mayMutateWorkspace } from "../services/catering-booking-workspace-policy";
+import { mayMutateWorkspace, nextCateringTaskSortOrder, sharedTaskUpdateActivity } from "../services/catering-booking-workspace-policy";
 
 const r = Router();
 const taskIdSchema = z.string().uuid();
@@ -49,11 +49,15 @@ r.put("/bookings/:id/details", requireAuth, async (req, res, next) => { try {
   const now = new Date();
   const [details] = await db.transaction(async (tx: typeof db) => {
     if (!await lockActiveBooking(tx, id)) return [];
+    const [existing] = role === "provider" ? await tx.select({ serviceStartTime: cateringBookingDetails.serviceStartTime, serviceEndTime: cateringBookingDetails.serviceEndTime }).from(cateringBookingDetails).where(eq(cateringBookingDetails.bookingId, id)).limit(1) : [];
+    const serviceInput = role === "provider" ? { ...("serviceStartTime" in input ? { serviceStartTime: input.serviceStartTime } : {}), ...("serviceEndTime" in input ? { serviceEndTime: input.serviceEndTime } : {}) } : {};
+    const serviceTimes = mergeCateringServiceTimes(existing, serviceInput);
+    if (role === "provider" && !hasValidCateringServiceTimeRange(serviceTimes)) return [];
     const rows = await tx.insert(cateringBookingDetails).values({ bookingId: id, ...input, updatedAt: now }).onConflictDoUpdate({ target: cateringBookingDetails.bookingId, set: { ...input, updatedAt: now } }).returning();
     const visibility = role === "provider" && Object.keys(input).every((field) => field === "providerNotes") ? "provider" : "shared";
     await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: userId, eventType: "details_updated", visibility, metadata: {} }); return rows;
   });
-  if (!details) return res.status(409).json({ message: "Booking became read-only before the update completed" });
+  if (!details) return res.status(409).json({ message: "Booking is read-only or the resulting service time range is invalid" });
   res.json({ details: serializeBookingDetails(details, role) });
 } catch (error) { invalid(error, res, next); } });
 
@@ -64,8 +68,9 @@ r.post("/bookings/:id/tasks", requireAuth, async (req, res, next) => { try {
   const task = await db.transaction(async (tx: typeof db) => {
     if (!await lockActiveBooking(tx, id)) return null;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`catering-tasks:${id}`}))`);
-    const [{ value }] = await tx.select({ value: count() }).from(cateringBookingTasks).where(eq(cateringBookingTasks.bookingId, id)); if (Number(value) >= CATERING_BOOKING_TASK_LIMIT) return null;
-    const [row] = await tx.insert(cateringBookingTasks).values({ bookingId: id, createdBy: providerId, sortOrder: Number(value), ...input }).returning();
+    const [{ value, maxSortOrder }] = await tx.select({ value: count(), maxSortOrder: max(cateringBookingTasks.sortOrder) }).from(cateringBookingTasks).where(eq(cateringBookingTasks.bookingId, id)); if (Number(value) >= CATERING_BOOKING_TASK_LIMIT) return null;
+    const sortOrder = nextCateringTaskSortOrder(maxSortOrder == null ? null : Number(maxSortOrder));
+    const [row] = await tx.insert(cateringBookingTasks).values({ bookingId: id, createdBy: providerId, sortOrder, ...input }).returning();
     if (input.visibility === "shared") await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: providerId, eventType: "shared_requirement_added", visibility: "shared", metadata: { taskTitle: input.title } }); return row;
   });
   if (!task) return res.status(409).json({ message: `A booking may have at most ${CATERING_BOOKING_TASK_LIMIT} tasks` });
@@ -77,11 +82,21 @@ r.patch("/bookings/:id/tasks/:taskId", requireAuth, async (req, res, next) => { 
   const id = cateringBookingIdSchema.parse(req.params.id); const taskId = taskIdSchema.parse(req.params.taskId); const providerId = (req.user as { id: string }).id; const input = cateringBookingTaskUpdateSchema.parse(req.body ?? {}); const booking = await ownedBooking(id, providerId);
   if (!booking) return res.status(404).json({ message: "Booking workspace not found" }); const role = cateringWorkspaceRole(booking, providerId)!;
   if (!mayMutateWorkspace(booking.status as never, role, "tasks")) return res.status(409).json({ message: "Only the provider may edit tasks on an active workspace" });
-  const [before] = await db.select().from(cateringBookingTasks).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))).limit(1); if (!before) return res.status(404).json({ message: "Task not found" });
-  const now = new Date(); const completedAt = input.status === "completed" ? now : input.status === "pending" ? null : before.completedAt;
-  const [task] = await db.transaction(async (tx: typeof db) => { if (!await lockActiveBooking(tx, id)) return []; const [row] = await tx.update(cateringBookingTasks).set({ ...input, completedAt, updatedAt: now }).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))).returning(); const visible = (input.visibility ?? before.visibility) === "shared"; if (visible) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: providerId, eventType: input.status === "completed" ? "shared_requirement_completed" : "shared_requirement_updated", visibility: "shared", metadata: { taskTitle: input.title ?? before.title } }); return [row]; });
-  if (!task) return res.status(409).json({ message: "Booking became read-only before the task update completed" });
-  res.json({ task: serializeBookingTask(task) });
+  const result = await db.transaction(async (tx: typeof db) => {
+    if (!await lockActiveBooking(tx, id)) return { kind: "read_only" } as const;
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`catering-tasks:${id}`}))`);
+    const [current] = await tx.select().from(cateringBookingTasks).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))).limit(1);
+    if (!current) return { kind: "not_found" } as const;
+    const now = new Date(); const completedAt = input.status === "completed" ? now : input.status === "pending" ? null : current.completedAt;
+    const [task] = await tx.update(cateringBookingTasks).set({ ...input, completedAt, updatedAt: now }).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))).returning();
+    if (!task) return { kind: "not_found" } as const;
+    const activity = sharedTaskUpdateActivity(current, input);
+    if (activity) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: providerId, eventType: activity.eventType, visibility: "shared", metadata: { taskTitle: activity.taskTitle } });
+    return { kind: "updated", task } as const;
+  });
+  if (result.kind === "not_found") return res.status(404).json({ message: "Task not found" });
+  if (result.kind === "read_only") return res.status(409).json({ message: "Booking became read-only before the task update completed" });
+  res.json({ task: serializeBookingTask(result.task) });
 } catch (error) { invalid(error, res, next); } });
 
 r.delete("/bookings/:id/tasks/:taskId", requireAuth, async (req, res, next) => { try {

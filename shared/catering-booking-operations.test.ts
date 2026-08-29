@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES, CATERING_BOOKING_TASK_LIMIT, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingWorkspaceKey, cateringBookingWorkspacePath, cateringWorkspaceRole, mayEditCateringWorkspace } from "./catering-booking-operations";
+import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES, CATERING_BOOKING_TASK_LIMIT, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingWorkspaceKey, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "./catering-booking-operations";
 
 test("pending and confirmed workspaces are editable", () => { assert.equal(mayEditCateringWorkspace("pending_confirmation"), true); assert.equal(mayEditCateringWorkspace("confirmed"), true); });
 test("cancelled and completed workspaces are read-only", () => { assert.equal(mayEditCateringWorkspace("cancelled"), false); assert.equal(mayEditCateringWorkspace("completed"), false); });
@@ -10,6 +10,22 @@ test("customer details accept only customer notes", () => { assert.equal(caterin
 test("event-local wall-clock values require canonical HH:mm", () => { for (const value of ["00:00", "17:30", "23:59"]) assert.equal(cateringBookingProviderDetailsSchema.safeParse({ arrivalTime: value }).success, true); for (const value of ["5:30", "24:00", "17:60", "2026-01-01T17:30Z"]) assert.equal(cateringBookingProviderDetailsSchema.safeParse({ arrivalTime: value }).success, false); });
 test("service times cannot run backwards", () => { assert.equal(cateringBookingProviderDetailsSchema.safeParse({ serviceStartTime: "18:00", serviceEndTime: "17:00" }).success, false); });
 test("task creation rejects ownership and lifecycle fields", () => { assert.equal(cateringBookingTaskCreateSchema.safeParse({ title: "Confirm access", visibility: "shared", dueDate: "2026-09-01", dueTime: "09:00" }).success, true); for (const field of ["createdBy", "bookingId", "status", "completedAt", "providerId"]) assert.equal(cateringBookingTaskCreateSchema.safeParse({ title: "Task", [field]: "forged" }).success, false); });
+test("task due dates use canonical real-calendar validation", () => {
+  for (const dueDate of ["2026-01-31", "2028-02-29", null]) assert.equal(cateringBookingTaskCreateSchema.safeParse({ title: "Task", dueDate }).success, true);
+  for (const dueDate of ["2026-99-01", "2026-01-32", "2026-02-29", "2026-02-31"]) assert.equal(cateringBookingTaskCreateSchema.safeParse({ title: "Task", dueDate }).success, false);
+});
+test("merged service times reject invalid partial updates", () => {
+  const existing = { serviceStartTime: "17:00", serviceEndTime: "20:00" };
+  assert.equal(hasValidCateringServiceTimeRange(mergeCateringServiceTimes(existing, { serviceStartTime: "21:00" })), false);
+  assert.equal(hasValidCateringServiceTimeRange(mergeCateringServiceTimes(existing, { serviceEndTime: "16:00" })), false);
+  assert.equal(hasValidCateringServiceTimeRange(mergeCateringServiceTimes(existing, { serviceStartTime: "18:00" })), true);
+  assert.equal(hasValidCateringServiceTimeRange(mergeCateringServiceTimes(existing, { serviceStartTime: "21:00", serviceEndTime: "22:00" })), true);
+});
+test("merged service times preserve null, absent-row, and equal-time semantics", () => {
+  assert.equal(hasValidCateringServiceTimeRange(mergeCateringServiceTimes({ serviceStartTime: "21:00", serviceEndTime: "20:00" }, { serviceStartTime: null })), true);
+  assert.equal(hasValidCateringServiceTimeRange(mergeCateringServiceTimes(undefined, { serviceEndTime: "20:00" })), true);
+  assert.equal(hasValidCateringServiceTimeRange(mergeCateringServiceTimes({ serviceStartTime: "20:00", serviceEndTime: "20:00" }, {})), true);
+});
 test("task update supports explicit completion and reopening", () => { assert.equal(cateringBookingTaskUpdateSchema.safeParse({ status: "completed" }).success, true); assert.equal(cateringBookingTaskUpdateSchema.safeParse({ status: "pending" }).success, true); assert.equal(cateringBookingTaskUpdateSchema.safeParse({ status: "cancelled" }).success, false); });
 test("task update rejects an empty arbitrary patch", () => { assert.equal(cateringBookingTaskUpdateSchema.safeParse({}).success, false); assert.equal(cateringBookingTaskUpdateSchema.safeParse({ actorUserId: "attacker" }).success, false); });
 test("task reorder requires a unique complete-looking bounded ID list", () => { const id = "11111111-1111-4111-8111-111111111111"; assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [id] }).success, true); assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [id, id] }).success, false); assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [] }).success, false); });

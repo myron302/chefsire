@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { CateringBookingStatus, CateringBookingView } from "./catering-bookings";
+import { calendarDateSchema } from "./catering-availability";
 
 export const CATERING_BOOKING_TASK_LIMIT = 100;
 export const CATERING_BOOKING_TASK_STATUSES = ["pending", "completed"] as const;
@@ -8,7 +9,7 @@ export const CATERING_BOOKING_ACTIVITY_EVENT_TYPES = ["booking_offered", "custom
 
 const optionalText = (maximum: number) => z.string().trim().max(maximum).nullable().optional();
 const wallClock = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:mm event-local time").nullable();
-const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
+const calendarDate = calendarDateSchema.nullable();
 
 export const cateringBookingProviderDetailsSchema = z.object({
   venueName: optionalText(160), venueAddress: optionalText(240), venueCity: optionalText(120), venueState: optionalText(80), venuePostalCode: optionalText(24),
@@ -27,6 +28,16 @@ export const cateringBookingTaskUpdateSchema = z.object({
 }).strict().refine((value) => Object.keys(value).length > 0, "At least one task field is required");
 export const cateringBookingTaskReorderSchema = z.object({ taskIds: z.array(z.string().uuid()).min(1).max(CATERING_BOOKING_TASK_LIMIT) }).strict().refine((value) => new Set(value.taskIds).size === value.taskIds.length, "Task IDs must be unique");
 export const cateringBookingActivityPageSchema = z.object({ page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(50).default(20) });
+
+export function hasValidCateringServiceTimeRange(value: { serviceStartTime?: string | null; serviceEndTime?: string | null }): boolean {
+  return value.serviceStartTime == null || value.serviceEndTime == null || value.serviceStartTime <= value.serviceEndTime;
+}
+export function mergeCateringServiceTimes(existing: { serviceStartTime?: string | null; serviceEndTime?: string | null } | undefined, input: { serviceStartTime?: string | null; serviceEndTime?: string | null }) {
+  return {
+    serviceStartTime: "serviceStartTime" in input ? input.serviceStartTime : existing?.serviceStartTime,
+    serviceEndTime: "serviceEndTime" in input ? input.serviceEndTime : existing?.serviceEndTime,
+  };
+}
 
 export function mayEditCateringWorkspace(status: CateringBookingStatus): boolean { return status === "pending_confirmation" || status === "confirmed"; }
 export function cateringWorkspaceRole(booking: { providerId: string; customerId: string }, userId: string): "provider" | "customer" | null { return booking.providerId === userId ? "provider" : booking.customerId === userId ? "customer" : null; }
