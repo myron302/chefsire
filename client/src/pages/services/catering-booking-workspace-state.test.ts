@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { CateringBookingActivityView, CateringBookingDetailsView } from "@shared/catering-booking-operations";
-import { cateringTaskCreatePayload, combineCateringActivityPages, editWorkspaceForm, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, nextCateringActivityPage, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileWorkspaceFormAfterSave, saveWorkspaceForm } from "./catering-booking-workspace-state";
+import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDraftsEqual, closeTaskEditorAfterSave, combineCateringActivityPages, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, nextCateringActivityPage, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, type CateringTaskDraft, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
 
 const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
 test("historical details are empty only when every represented field is absent", () => assert.deepEqual(historicalOperationalDetails(emptyDetails, "customer"), []));
@@ -21,3 +21,51 @@ test("new provider fields participate in save reconciliation", () => { const sub
 test("task create payload includes metadata without date or time conversion", () => { assert.deepEqual(cateringTaskCreatePayload({ title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared" }), { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared" }); assert.deepEqual(cateringTaskCreatePayload(EMPTY_CATERING_TASK_DRAFT), { title: "", description: null, dueDate: null, dueTime: null, visibility: "provider" }); });
 test("structured task draft clears only when unchanged and survives newer metadata or failure", () => { const submitted = { title: "Confirm rentals", description: "First", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared" as const }; assert.deepEqual(reconcileWorkspaceFormAfterSave({ identity: "actor:booking", value: submitted, dirty: true }, "actor:booking", { ...submitted }, EMPTY_CATERING_TASK_DRAFT), { identity: "actor:booking", value: EMPTY_CATERING_TASK_DRAFT, dirty: false }); const newer = { ...submitted, description: "Next task draft" }; const current = { identity: "actor:booking", value: newer, dirty: true }; assert.deepEqual(reconcileWorkspaceFormAfterSave(current, "actor:booking", submitted, EMPTY_CATERING_TASK_DRAFT), current); assert.equal(preserveWorkspaceFormAfterSaveFailure(current), current); });
 test("task deadlines render every supported date and wall-clock combination", () => { assert.equal(formatCateringTaskDeadline("2026-09-15", "17:30"), "Due Sep 15, 2026 at 17:30"); assert.equal(formatCateringTaskDeadline("2026-09-15", null), "Due Sep 15, 2026"); assert.equal(formatCateringTaskDeadline(null, "17:30"), "Due at 17:30"); assert.equal(formatCateringTaskDeadline(null, null), null); });
+
+const editorDraft: CateringTaskDraft = { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared" };
+const submittedEdit: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: editorDraft };
+const openEditor = (draft: CateringTaskDraft = editorDraft, taskId = "task-1", identity = "actor:booking") => ({ identity, taskId, draft });
+
+test("a successful task patch closes the still-unchanged submitted editor", () => assert.equal(closeTaskEditorAfterSave(openEditor({ ...editorDraft }), submittedEdit), null));
+test("a failed task patch leaves the editor open", () => { const current = openEditor(); assert.equal(preserveTaskEditorAfterSaveFailure(current), current); assert.notEqual(current, null); });
+test("a failed task patch preserves every entered task edit field", () => {
+  const entered = { title: "Edited title", description: "Edited description", dueDate: "2026-10-01", dueTime: "08:15", visibility: "provider" as const };
+  const preserved = preserveTaskEditorAfterSaveFailure(openEditor(entered));
+  assert.equal(preserved?.draft.title, "Edited title");
+  assert.equal(preserved?.draft.description, "Edited description");
+  assert.equal(preserved?.draft.dueDate, "2026-10-01");
+  assert.equal(preserved?.draft.dueTime, "08:15");
+  assert.equal(preserved?.draft.visibility, "provider");
+  assert.equal(preserved?.taskId, "task-1");
+});
+test("an edit made while the task patch is in flight survives the success", () => {
+  const newerEdits: Array<Partial<CateringTaskDraft>> = [{ title: "Newer title" }, { description: "Newer description" }, { dueDate: "2026-12-24" }, { dueTime: "23:59" }, { visibility: "provider" }];
+  for (const newer of newerEdits) {
+    const current = openEditor({ ...editorDraft, ...newer });
+    assert.deepEqual(closeTaskEditorAfterSave(current, submittedEdit), current);
+  }
+});
+test("switching to another task survives a stale task patch success", () => { const current = openEditor(editorDraft, "task-2"); assert.deepEqual(closeTaskEditorAfterSave(current, submittedEdit), current); });
+test("a stale actor or booking response cannot close the current task editor", () => {
+  for (const identity of ["other-actor:booking", "actor:other-booking"]) { const current = openEditor(editorDraft, "task-1", identity); assert.deepEqual(closeTaskEditorAfterSave(current, submittedEdit), current); }
+  assert.equal(activeTaskEditor(openEditor(editorDraft, "task-1", "old-actor:old-booking"), "actor:booking"), null);
+  assert.deepEqual(activeTaskEditor(openEditor(), "actor:booking"), openEditor());
+});
+test("an unrelated mutation success never closes an open task editor", () => { const current = openEditor(); assert.deepEqual(closeTaskEditorAfterSave(current, { ...submittedEdit, taskId: "unrelated-task" }), current); assert.equal(closeTaskEditorAfterSave(null, submittedEdit), null); });
+test("task draft equality compares every editable task field", () => {
+  assert.equal(cateringTaskDraftsEqual(editorDraft, { ...editorDraft }), true);
+  for (const changed of [{ title: "changed" }, { description: "changed" }, { dueDate: "2026-01-01" }, { dueTime: "00:00" }] as Array<Partial<CateringTaskDraft>>) assert.equal(cateringTaskDraftsEqual(editorDraft, { ...editorDraft, ...changed }), false);
+  assert.equal(cateringTaskDraftsEqual(editorDraft, { ...editorDraft, visibility: "provider" }), false);
+});
+test("provider field edits apply to the current form value, never a stale render snapshot", () => {
+  const hydrated = { identity: "actor:booking", value: providerDraftFrom({ ...emptyDetails, venueName: "Server venue", accessNotes: "Server access" }), dirty: false };
+  const edited = editWorkspaceFormField(hydrated, "venueCity", "Austin");
+  assert.equal(edited.value?.venueCity, "Austin");
+  assert.equal(edited.value?.venueName, "Server venue");
+  assert.equal(edited.value?.accessNotes, "Server access");
+  assert.equal(edited.dirty, true);
+  const chained = editWorkspaceFormField(edited, "venueState", "TX");
+  assert.equal(chained.value?.venueCity, "Austin");
+  assert.equal(chained.value?.venueState, "TX");
+  assert.equal(editWorkspaceFormField<ProviderDetailsDraft, "venueCity">({ identity: "actor:booking", value: null, dirty: false }, "venueCity", "Austin").value, null);
+});

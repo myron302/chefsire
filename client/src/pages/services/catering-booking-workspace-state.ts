@@ -24,6 +24,10 @@ export function hydrateWorkspaceForm<T>(state: WorkspaceFormState<T>, identity: 
   return state.dirty ? state : { identity, value: serverValue, dirty: false };
 }
 export function editWorkspaceForm<T>(state: WorkspaceFormState<T>, value: T): WorkspaceFormState<T> { return { ...state, value, dirty: true }; }
+/** Applies one field to whatever the form currently holds, so a keystroke never resurrects a value from an earlier render. */
+export function editWorkspaceFormField<T extends object, K extends keyof T>(state: WorkspaceFormState<T | null>, field: K, value: T[K]): WorkspaceFormState<T | null> {
+  return state.value == null ? state : editWorkspaceForm(state, { ...state.value, [field]: value });
+}
 export function saveWorkspaceForm<T>(identity: string, serverValue: T): WorkspaceFormState<T> { return { identity, value: serverValue, dirty: false }; }
 
 function shallowWorkspaceValueEqual<T>(left: T, right: T): boolean {
@@ -39,6 +43,29 @@ export function reconcileWorkspaceFormAfterSave<T>(current: WorkspaceFormState<T
   return shallowWorkspaceValueEqual(current.value, submittedValue) ? saveWorkspaceForm(submittedIdentity, serverValue) : { ...current, dirty: true };
 }
 export function preserveWorkspaceFormAfterSaveFailure<T>(current: WorkspaceFormState<T>): WorkspaceFormState<T> { return current; }
+
+export type TaskEditorState = { identity: string; taskId: string; draft: CateringTaskDraft } | null;
+export type SubmittedTaskEdit = { identity: string; taskId: string; draft: CateringTaskDraft };
+const TASK_DRAFT_FIELDS = ["title", "description", "dueDate", "dueTime", "visibility"] as const;
+export function cateringTaskDraftsEqual(left: CateringTaskDraft, right: CateringTaskDraft): boolean {
+  return TASK_DRAFT_FIELDS.every((field) => Object.is(left[field], right[field]));
+}
+/** Ignores an editor left over from another actor or booking rather than letting it edit the current workspace. */
+export function activeTaskEditor(editor: TaskEditorState, identity: string): TaskEditorState {
+  return editor && editor.identity === identity ? editor : null;
+}
+/**
+ * Closes a task editor only when the successful PATCH is still the one on screen: same actor/booking, same task,
+ * and an untouched draft. Anything else keeps the provider's current editor exactly as it is.
+ */
+export function closeTaskEditorAfterSave(current: TaskEditorState, submitted: SubmittedTaskEdit): TaskEditorState {
+  if (!current) return current;
+  if (current.identity !== submitted.identity) return current;
+  if (current.taskId !== submitted.taskId) return current;
+  return cateringTaskDraftsEqual(current.draft, submitted.draft) ? null : current;
+}
+/** A failed PATCH leaves every entered field in place so the provider can correct and retry. */
+export function preserveTaskEditorAfterSaveFailure(current: TaskEditorState): TaskEditorState { return current; }
 export function historicalOperationalDetails(details: CateringBookingDetailsView, role: "provider" | "customer"): OperationalDetailItem[] {
   const items: Array<OperationalDetailItem | null> = [
     details.venueName ? { label: "Venue", value: details.venueName } : null,

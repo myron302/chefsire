@@ -11,13 +11,46 @@ export function nextCateringTaskSortOrder(maxSortOrder: number | null): number {
   return maxSortOrder == null ? 0 : maxSortOrder + 1;
 }
 
-export function sharedTaskUpdateActivity(current: { title: string; visibility: string; status: string }, input: { title?: string; visibility?: string; status?: string }) {
-  const visibility = input.visibility ?? current.visibility;
-  if (visibility !== "shared") return null;
-  return {
-    eventType: input.status === "completed" && current.status !== "completed" ? "shared_requirement_completed" as const : "shared_requirement_updated" as const,
-    taskTitle: input.title ?? current.title,
+/** Every task column a PATCH may persist. Activity is derived from these and nothing else. */
+export const CATERING_TASK_PATCH_FIELDS = ["title", "description", "dueDate", "dueTime", "visibility", "status"] as const;
+export type CateringTaskPatchField = typeof CATERING_TASK_PATCH_FIELDS[number];
+/** Persisted task state. Optional members let callers compare rows that predate a column without inventing values. */
+export type CateringTaskPersistedState = { title: string; visibility: string; status: string; description?: string | null; dueDate?: string | null; dueTime?: string | null };
+export type CateringTaskPatchInput = Partial<CateringTaskPersistedState>;
+
+/** Applies a validated patch to the authoritative locked row. Absent request fields keep the persisted value. */
+export function nextCateringTaskState(current: CateringTaskPersistedState, input: CateringTaskPatchInput): CateringTaskPersistedState {
+  const next = { title: current.title, visibility: current.visibility, status: current.status, description: current.description, dueDate: current.dueDate, dueTime: current.dueTime };
+  for (const field of CATERING_TASK_PATCH_FIELDS) if (field in input && input[field] !== undefined) (next as Record<string, unknown>)[field] = input[field];
+  return next;
+}
+
+/** Field presence in a request is not a change. Only a differing persisted value is. */
+export function cateringTaskPersistedChanges(current: CateringTaskPersistedState, next: CateringTaskPersistedState): CateringTaskPatchField[] {
+  return CATERING_TASK_PATCH_FIELDS.filter((field) => (next[field] ?? null) !== (current[field] ?? null));
+}
+
+/** Resolves a task patch against the locked row: what persists, whether anything changed, and the activity it earns. */
+export function cateringTaskUpdateOutcome(current: CateringTaskPersistedState, input: CateringTaskPatchInput) {
+  const next = nextCateringTaskState(current, input);
+  const changedFields = cateringTaskPersistedChanges(current, next);
+  const changed = changedFields.length > 0;
+  // A task that ends up provider-private never writes customer-visible history, whatever it used to be.
+  const activity = !changed || next.visibility !== "shared" ? null : {
+    eventType: next.status === "completed" && current.status !== "completed" ? "shared_requirement_completed" as const : "shared_requirement_updated" as const,
+    taskTitle: next.title,
   };
+  return { next, changedFields, changed, activity };
+}
+
+/** Completion timestamps move only on a real status transition, never on a repeated status. */
+export function nextCateringTaskCompletedAt(current: { status: string; completedAt: Date | null }, nextStatus: string, now: Date): Date | null {
+  if (nextStatus === current.status) return current.completedAt;
+  return nextStatus === "completed" ? now : null;
+}
+
+export function sharedTaskUpdateActivity(current: CateringTaskPersistedState, input: CateringTaskPatchInput) {
+  return cateringTaskUpdateOutcome(current, input).activity;
 }
 
 export const CATERING_SHARED_DETAIL_FIELDS = ["venueName", "venueAddress", "venueCity", "venueState", "venuePostalCode", "venueInstructions", "arrivalTime", "serviceStartTime", "serviceEndTime", "setupNotes", "accessNotes", "kitchenAvailable", "refrigerationAvailable", "powerAvailable", "waterAvailable", "indoorOutdoor"] as const;

@@ -8,7 +8,7 @@ import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { serializeBookingActivity, serializeBookingDetails, serializeBookingTask } from "../serializers/catering-booking-workspace";
-import { cateringDetailsActivityVisibility, mayMutateWorkspace, nextCateringTaskSortOrder, sharedTaskUpdateActivity } from "../services/catering-booking-workspace-policy";
+import { cateringDetailsActivityVisibility, cateringTaskUpdateOutcome, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder } from "../services/catering-booking-workspace-policy";
 
 const r = Router();
 const taskIdSchema = z.string().uuid();
@@ -87,11 +87,13 @@ r.patch("/bookings/:id/tasks/:taskId", requireAuth, async (req, res, next) => { 
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`catering-tasks:${id}`}))`);
     const [current] = await tx.select().from(cateringBookingTasks).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))).limit(1);
     if (!current) return { kind: "not_found" } as const;
-    const now = new Date(); const completedAt = input.status === "completed" ? now : input.status === "pending" ? null : current.completedAt;
-    const [task] = await tx.update(cateringBookingTasks).set({ ...input, completedAt, updatedAt: now }).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))).returning();
+    // Compare the authoritative locked row against the state the patch would persist. Request-field presence is not a change.
+    const outcome = cateringTaskUpdateOutcome(current, input);
+    if (!outcome.changed) return { kind: "updated", task: current } as const;
+    const now = new Date(); const completedAt = nextCateringTaskCompletedAt(current, outcome.next.status, now);
+    const [task] = await tx.update(cateringBookingTasks).set({ ...outcome.next, completedAt, updatedAt: now }).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))).returning();
     if (!task) return { kind: "not_found" } as const;
-    const activity = sharedTaskUpdateActivity(current, input);
-    if (activity) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: providerId, eventType: activity.eventType, visibility: "shared", metadata: { taskTitle: activity.taskTitle } });
+    if (outcome.activity) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: providerId, eventType: outcome.activity.eventType, visibility: "shared", metadata: { taskTitle: outcome.activity.taskTitle } });
     return { kind: "updated", task } as const;
   });
   if (result.kind === "not_found") return res.status(404).json({ message: "Task not found" });
