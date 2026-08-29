@@ -17,6 +17,9 @@ import {
   followRequests,
   cateringInquiries,
   cateringBookings,
+  cateringBookingDetails,
+  cateringBookingTasks,
+  cateringBookingActivity,
   cateringPortfolioItems,
   cateringPackages,
   cateringAvailabilitySettings,
@@ -45,6 +48,9 @@ export {
   followRequests,
   cateringInquiries,
   cateringBookings,
+  cateringBookingDetails,
+  cateringBookingTasks,
+  cateringBookingActivity,
   cateringPortfolioItems,
   cateringPackages,
   cateringAvailabilitySettings,
@@ -808,6 +814,9 @@ export type Follow = typeof follows.$inferSelect;
 export type InsertFollow = z.infer<typeof insertFollowSchema>;
 export type CateringInquiry = typeof cateringInquiries.$inferSelect;
 export type CateringBooking = typeof cateringBookings.$inferSelect;
+export type CateringBookingDetails = typeof cateringBookingDetails.$inferSelect;
+export type CateringBookingTask = typeof cateringBookingTasks.$inferSelect;
+export type CateringBookingActivity = typeof cateringBookingActivity.$inferSelect;
 export type CateringReview = typeof cateringReviews.$inferSelect;
 export type InsertCateringInquiry = z.infer<typeof insertCateringInquirySchema>;
 export type Product = typeof products.$inferSelect;
