@@ -10,6 +10,12 @@ export const EMPTY_CATERING_TASK_DRAFT: CateringTaskDraft = { title: "", descrip
 export function providerDraftFrom(details: CateringBookingDetailsView): ProviderDetailsDraft {
   return { venueName: details.venueName, venueAddress: details.venueAddress, venueCity: details.venueCity, venueState: details.venueState, venuePostalCode: details.venuePostalCode, venueInstructions: details.venueInstructions, arrivalTime: details.arrivalTime, serviceStartTime: details.serviceStartTime, serviceEndTime: details.serviceEndTime, setupNotes: details.setupNotes, accessNotes: details.accessNotes, kitchenAvailable: details.kitchenAvailable, refrigerationAvailable: details.refrigerationAvailable, powerAvailable: details.powerAvailable, waterAvailable: details.waterAvailable, indoorOutdoor: details.indoorOutdoor, providerNotes: details.providerNotes ?? null };
 }
+/**
+ * A native <input type="time"> emits "" when the provider clears the control, but the operational contract accepts an
+ * event-local HH:mm string or null and never "". Cleared times therefore become null at the draft boundary, with no
+ * Date object, no UTC conversion, and no browser-timezone reinterpretation of the value that is kept.
+ */
+export function normalizeOptionalWallClockInput(value: string): string | null { return value === "" ? null : value; }
 export function cateringTaskCreatePayload(draft: CateringTaskDraft) {
   return { title: draft.title, description: draft.description || null, dueDate: draft.dueDate || null, dueTime: draft.dueTime || null, visibility: draft.visibility };
 }
@@ -63,6 +69,27 @@ export function closeTaskEditorAfterSave(current: TaskEditorState, submitted: Su
   if (current.identity !== submitted.identity) return current;
   if (current.taskId !== submitted.taskId) return current;
   return cateringTaskDraftsEqual(current.draft, submitted.draft) ? null : current;
+}
+/** Opens the one workspace editor on a persisted task, so both visibility sections address the same editor state. */
+export function openTaskEditor(identity: string, task: { id: string; title: string; description: string | null; dueDate: string | null; dueTime: string | null; visibility: "provider" | "shared" }): TaskEditorState {
+  return { identity, taskId: task.id, draft: { title: task.title, description: task.description ?? "", dueDate: task.dueDate ?? "", dueTime: task.dueTime ?? "", visibility: task.visibility } };
+}
+/** Applies one field to whatever the editor currently holds, so a keystroke never resurrects a draft from an earlier render. */
+export function editTaskEditorField<K extends keyof CateringTaskDraft>(current: TaskEditorState, identity: string, taskId: string, field: K, value: CateringTaskDraft[K]): TaskEditorState {
+  if (!current || current.identity !== identity || current.taskId !== taskId) return current;
+  return { ...current, draft: { ...current.draft, [field]: value } };
+}
+/**
+ * Resolves the editor for one rendered task. The workspace owns a single editor, so whichever visibility section holds
+ * the task renders it: a persisted visibility change moves the task between sections without stranding the draft.
+ */
+export function taskEditorForTask(editor: TaskEditorState, identity: string, taskId: string): TaskEditorState {
+  const active = activeTaskEditor(editor, identity);
+  return active && active.taskId === taskId ? active : null;
+}
+/** The visibility split the workspace renders: private provider checklist and shared customer requirements. */
+export function splitCateringWorkspaceTasks<T extends { visibility: "provider" | "shared" }>(tasks: T[]): { privateTasks: T[]; requirements: T[] } {
+  return { privateTasks: tasks.filter((task) => task.visibility === "provider"), requirements: tasks.filter((task) => task.visibility === "shared") };
 }
 /** A failed PATCH leaves every entered field in place so the provider can correct and retry. */
 export function preserveTaskEditorAfterSaveFailure(current: TaskEditorState): TaskEditorState { return current; }

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { CateringBookingActivityView, CateringBookingDetailsView } from "@shared/catering-booking-operations";
-import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDraftsEqual, closeTaskEditorAfterSave, combineCateringActivityPages, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, nextCateringActivityPage, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, type CateringTaskDraft, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
+import { cateringBookingProviderDetailsSchema, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
+import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDraftsEqual, closeTaskEditorAfterSave, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
 
 const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
 test("historical details are empty only when every represented field is absent", () => assert.deepEqual(historicalOperationalDetails(emptyDetails, "customer"), []));
@@ -68,4 +68,124 @@ test("provider field edits apply to the current form value, never a stale render
   assert.equal(chained.value?.venueCity, "Austin");
   assert.equal(chained.value?.venueState, "TX");
   assert.equal(editWorkspaceFormField<ProviderDetailsDraft, "venueCity">({ identity: "actor:booking", value: null, dirty: false }, "venueCity", "Austin").value, null);
+});
+
+const timeFields = ["arrivalTime", "serviceStartTime", "serviceEndTime"] as const;
+const hydratedTimes = (times: Partial<Record<(typeof timeFields)[number], string | null>>) => ({ identity: "actor:booking", value: providerDraftFrom({ ...emptyDetails, arrivalTime: "15:00", serviceStartTime: "17:30", serviceEndTime: "21:00", ...times }), dirty: false });
+
+test("a valid wall-clock entry reaches the provider draft unchanged", () => {
+  for (const field of timeFields) for (const entered of ["00:00", "09:05", "17:30", "23:59"]) {
+    assert.equal(normalizeOptionalWallClockInput(entered), entered);
+    assert.equal(editWorkspaceFormField(hydratedTimes({}), field, normalizeOptionalWallClockInput(entered)).value?.[field], entered);
+  }
+});
+test("clearing a provider service time stores null rather than an empty string", () => {
+  for (const field of timeFields) {
+    assert.equal(normalizeOptionalWallClockInput(""), null);
+    const cleared = editWorkspaceFormField(hydratedTimes({}), field, normalizeOptionalWallClockInput(""));
+    assert.equal(cleared.value?.[field], null);
+    assert.equal(cleared.dirty, true);
+  }
+});
+test("a persisted service time can be cleared and submitted, and an empty string stays rejected", () => {
+  for (const field of timeFields) {
+    const cleared = editWorkspaceFormField(hydratedTimes({}), field, normalizeOptionalWallClockInput(""));
+    const submitted = cateringBookingProviderDetailsSchema.safeParse(cleared.value);
+    assert.equal(submitted.success, true);
+    assert.equal(submitted.success && submitted.data[field], null);
+    assert.equal(cateringBookingProviderDetailsSchema.safeParse({ ...cleared.value, [field]: "" }).success, false);
+  }
+});
+test("clearing one service time leaves the other operational values untouched", () => {
+  const cleared = editWorkspaceFormField(hydratedTimes({}), "serviceStartTime", normalizeOptionalWallClockInput(""));
+  assert.equal(cleared.value?.serviceStartTime, null);
+  assert.equal(cleared.value?.arrivalTime, "15:00");
+  assert.equal(cleared.value?.serviceEndTime, "21:00");
+});
+test("service times stay event-local wall clock, with no date, UTC, or browser-timezone conversion", () => {
+  for (let hour = 0; hour < 24; hour += 1) for (const minute of ["00", "30", "59"]) {
+    const entered = `${String(hour).padStart(2, "0")}:${minute}`;
+    assert.equal(normalizeOptionalWallClockInput(entered), entered);
+    for (const field of timeFields) assert.equal(editWorkspaceFormField(hydratedTimes({}), field, normalizeOptionalWallClockInput(entered)).value?.[field], entered);
+  }
+});
+
+const taskView = (id: string, visibility: "provider" | "shared", overrides: Partial<CateringBookingTaskView> = {}): CateringBookingTaskView => ({ id, title: "Confirm rentals", description: "Call supplier", status: "pending", visibility, dueDate: "2026-09-15", dueTime: "17:30", sortOrder: 0, createdAt: "2026-08-29T00:00:00.000Z", completedAt: null, updatedAt: "2026-08-29T00:00:00.000Z", ...overrides });
+const sectionsRenderingEditor = (editor: ReturnType<typeof openEditor> | null, identity: string, tasks: CateringBookingTaskView[]) => {
+  const { privateTasks, requirements } = splitCateringWorkspaceTasks(tasks);
+  return { checklist: privateTasks.filter((task) => taskEditorForTask(editor, identity, task.id)).map((task) => task.id), requirements: requirements.filter((task) => taskEditorForTask(editor, identity, task.id)).map((task) => task.id) };
+};
+
+test("opening the editor copies the persisted task without inventing values", () => {
+  assert.deepEqual(openTaskEditor("actor:booking", taskView("task-1", "provider")), { identity: "actor:booking", taskId: "task-1", draft: { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "provider" } });
+  assert.deepEqual(openTaskEditor("actor:booking", taskView("task-1", "shared", { description: null, dueDate: null, dueTime: null }))?.draft, { title: "Confirm rentals", description: "", dueDate: "", dueTime: "", visibility: "shared" });
+});
+test("one workspace editor is shared across the private and shared task sections", () => {
+  const tasks = [taskView("task-1", "provider"), taskView("task-2", "shared")];
+  assert.deepEqual(sectionsRenderingEditor(openEditor(editorDraft, "task-1"), "actor:booking", tasks), { checklist: ["task-1"], requirements: [] });
+  assert.deepEqual(sectionsRenderingEditor(openEditor(editorDraft, "task-2"), "actor:booking", tasks), { checklist: [], requirements: ["task-2"] });
+  assert.deepEqual(sectionsRenderingEditor(null, "actor:booking", tasks), { checklist: [], requirements: [] });
+  assert.deepEqual(sectionsRenderingEditor(openEditor(editorDraft, "task-1", "other-actor:booking"), "actor:booking", tasks), { checklist: [], requirements: [] });
+});
+test("a provider-to-shared patch with a newer in-flight edit keeps the editor and follows the task into requirements", () => {
+  const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility: "shared" } };
+  const newer = editTaskEditorField(openEditor({ ...submitted.draft }), "actor:booking", "task-1", "description", "Newer description");
+  const afterSuccess = closeTaskEditorAfterSave(newer, submitted);
+  assert.deepEqual(afterSuccess, newer);
+  assert.equal(afterSuccess?.draft.description, "Newer description");
+  assert.equal(afterSuccess?.draft.visibility, "shared");
+  assert.deepEqual(sectionsRenderingEditor(afterSuccess, "actor:booking", [taskView("task-1", "shared"), taskView("task-2", "provider")]), { checklist: [], requirements: ["task-1"] });
+});
+test("a shared-to-provider patch with a newer in-flight edit keeps the editor and follows the task into the checklist", () => {
+  const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility: "provider" } };
+  const newer = editTaskEditorField(openEditor({ ...submitted.draft }), "actor:booking", "task-1", "title", "Newer title");
+  const afterSuccess = closeTaskEditorAfterSave(newer, submitted);
+  assert.deepEqual(afterSuccess, newer);
+  assert.equal(afterSuccess?.draft.title, "Newer title");
+  assert.equal(afterSuccess?.draft.visibility, "provider");
+  assert.deepEqual(sectionsRenderingEditor(afterSuccess, "actor:booking", [taskView("task-1", "provider"), taskView("task-2", "shared")]), { checklist: ["task-1"], requirements: [] });
+});
+test("a visibility patch with no newer edit closes the editor in both directions", () => {
+  for (const visibility of ["shared", "provider"] as const) {
+    const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility } };
+    assert.equal(closeTaskEditorAfterSave(openEditor({ ...submitted.draft }), submitted), null);
+  }
+});
+test("a failed visibility patch preserves the editor and every entered field", () => {
+  const current = editTaskEditorField(openEditor({ ...editorDraft, visibility: "shared" }), "actor:booking", "task-1", "dueTime", "08:15");
+  const preserved = preserveTaskEditorAfterSaveFailure(current);
+  assert.deepEqual(preserved, current);
+  assert.equal(preserved?.draft.visibility, "shared");
+  assert.equal(preserved?.draft.dueTime, "08:15");
+  assert.deepEqual(sectionsRenderingEditor(preserved, "actor:booking", [taskView("task-1", "provider")]), { checklist: ["task-1"], requirements: [] });
+});
+test("switching tasks or workspaces during a visibility patch stays safe", () => {
+  const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility: "shared" } };
+  const otherTask = openEditor(editorDraft, "task-2");
+  assert.deepEqual(closeTaskEditorAfterSave(otherTask, submitted), otherTask);
+  const otherWorkspace = openEditor(editorDraft, "task-1", "actor:other-booking");
+  assert.deepEqual(closeTaskEditorAfterSave(otherWorkspace, submitted), otherWorkspace);
+  assert.equal(activeTaskEditor(otherWorkspace, "actor:booking"), null);
+});
+test("an unrelated mutation success never closes the hoisted task editor", () => {
+  const current = openEditor({ ...editorDraft, visibility: "shared" });
+  assert.deepEqual(closeTaskEditorAfterSave(current, { ...submittedEdit, taskId: "unrelated-task" }), current);
+  assert.deepEqual(closeTaskEditorAfterSave(current, { ...submittedEdit, identity: "actor:other-booking", draft: current.draft }), current);
+});
+test("task editor field edits apply to the current draft, never a stale render snapshot", () => {
+  const opened = openTaskEditor("actor:booking", taskView("task-1", "provider"));
+  const titled = editTaskEditorField(opened, "actor:booking", "task-1", "title", "Edited title");
+  const chained = editTaskEditorField(titled, "actor:booking", "task-1", "visibility", "shared");
+  assert.equal(chained?.draft.title, "Edited title");
+  assert.equal(chained?.draft.visibility, "shared");
+  assert.equal(chained?.draft.dueTime, "17:30");
+  assert.equal(editTaskEditorField(chained, "actor:booking", "task-2", "title", "Wrong task"), chained);
+  assert.equal(editTaskEditorField(chained, "actor:other-booking", "task-1", "title", "Wrong workspace"), chained);
+  assert.equal(editTaskEditorField(null, "actor:booking", "task-1", "title", "No editor"), null);
+});
+test("the workspace task split keeps every task in exactly one visibility section", () => {
+  const tasks = [taskView("task-1", "provider"), taskView("task-2", "shared"), taskView("task-3", "provider")];
+  assert.deepEqual(splitCateringWorkspaceTasks(tasks).privateTasks.map(({ id }) => id), ["task-1", "task-3"]);
+  assert.deepEqual(splitCateringWorkspaceTasks(tasks).requirements.map(({ id }) => id), ["task-2"]);
+  assert.deepEqual(splitCateringWorkspaceTasks([]), { privateTasks: [], requirements: [] });
 });
