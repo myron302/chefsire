@@ -23,6 +23,10 @@ export function reconcileWorkspaceFormAfterSave<T>(current: WorkspaceFormState<T
   return shallowWorkspaceValueEqual(current.value, submittedValue) ? saveWorkspaceForm(submittedIdentity, serverValue) : { ...current, dirty: true };
 }
 export function preserveWorkspaceFormAfterSaveFailure<T>(current: WorkspaceFormState<T>): WorkspaceFormState<T> { return current; }
+export function reconcileTaskTitleAfterCreate(currentTitle: string, submittedTitle: string | undefined): string {
+  return submittedTitle !== undefined && currentTitle === submittedTitle ? "" : currentTitle;
+}
+export function preserveTaskTitleAfterCreateFailure(currentTitle: string): string { return currentTitle; }
 
 export function historicalOperationalDetails(details: CateringBookingDetailsView, role: "provider" | "customer"): OperationalDetailItem[] {
   const items: Array<OperationalDetailItem | null> = [
