@@ -2,6 +2,16 @@ import type { CateringBookingActivityView, CateringBookingDetailsView } from "@s
 
 export type OperationalDetailItem = { label: string; value: string };
 export type WorkspaceFormState<T> = { identity: string; value: T; dirty: boolean };
+export type ProviderDetailsDraft = Pick<CateringBookingDetailsView, "venueName" | "venueAddress" | "venueCity" | "venueState" | "venuePostalCode" | "venueInstructions" | "arrivalTime" | "serviceStartTime" | "serviceEndTime" | "setupNotes" | "accessNotes" | "kitchenAvailable" | "refrigerationAvailable" | "powerAvailable" | "waterAvailable" | "indoorOutdoor" | "providerNotes">;
+export type CateringTaskDraft = { title: string; description: string; dueDate: string; dueTime: string; visibility: "provider" | "shared" };
+export const EMPTY_CATERING_TASK_DRAFT: CateringTaskDraft = { title: "", description: "", dueDate: "", dueTime: "", visibility: "provider" };
+
+export function providerDraftFrom(details: CateringBookingDetailsView): ProviderDetailsDraft {
+  return { venueName: details.venueName, venueAddress: details.venueAddress, venueCity: details.venueCity, venueState: details.venueState, venuePostalCode: details.venuePostalCode, venueInstructions: details.venueInstructions, arrivalTime: details.arrivalTime, serviceStartTime: details.serviceStartTime, serviceEndTime: details.serviceEndTime, setupNotes: details.setupNotes, accessNotes: details.accessNotes, kitchenAvailable: details.kitchenAvailable, refrigerationAvailable: details.refrigerationAvailable, powerAvailable: details.powerAvailable, waterAvailable: details.waterAvailable, indoorOutdoor: details.indoorOutdoor, providerNotes: details.providerNotes ?? null };
+}
+export function cateringTaskCreatePayload(draft: CateringTaskDraft) {
+  return { title: draft.title, description: draft.description || null, dueDate: draft.dueDate || null, dueTime: draft.dueTime || null, visibility: draft.visibility };
+}
 
 export function hydrateWorkspaceForm<T>(state: WorkspaceFormState<T>, identity: string, serverValue: T): WorkspaceFormState<T> {
   if (state.identity !== identity) return { identity, value: serverValue, dirty: false };
@@ -23,11 +33,6 @@ export function reconcileWorkspaceFormAfterSave<T>(current: WorkspaceFormState<T
   return shallowWorkspaceValueEqual(current.value, submittedValue) ? saveWorkspaceForm(submittedIdentity, serverValue) : { ...current, dirty: true };
 }
 export function preserveWorkspaceFormAfterSaveFailure<T>(current: WorkspaceFormState<T>): WorkspaceFormState<T> { return current; }
-export function reconcileTaskTitleAfterCreate(currentTitle: string, submittedTitle: string | undefined): string {
-  return submittedTitle !== undefined && currentTitle === submittedTitle ? "" : currentTitle;
-}
-export function preserveTaskTitleAfterCreateFailure(currentTitle: string): string { return currentTitle; }
-
 export function historicalOperationalDetails(details: CateringBookingDetailsView, role: "provider" | "customer"): OperationalDetailItem[] {
   const items: Array<OperationalDetailItem | null> = [
     details.venueName ? { label: "Venue", value: details.venueName } : null,
