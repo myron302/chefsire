@@ -1,4 +1,5 @@
 import type { CateringBookingActivityView, CateringBookingDetailsView } from "@shared/catering-booking-operations";
+import { formatCateringCalendarDate } from "@shared/catering-availability";
 
 export type OperationalDetailItem = { label: string; value: string };
 export type WorkspaceFormState<T> = { identity: string; value: T; dirty: boolean };
@@ -11,6 +12,11 @@ export function providerDraftFrom(details: CateringBookingDetailsView): Provider
 }
 export function cateringTaskCreatePayload(draft: CateringTaskDraft) {
   return { title: draft.title, description: draft.description || null, dueDate: draft.dueDate || null, dueTime: draft.dueTime || null, visibility: draft.visibility };
+}
+export function formatCateringTaskDeadline(dueDate: string | null, dueTime: string | null): string | null {
+  if (dueDate && dueTime) return `Due ${formatCateringCalendarDate(dueDate)} at ${dueTime}`;
+  if (dueDate) return `Due ${formatCateringCalendarDate(dueDate)}`;
+  return dueTime ? `Due at ${dueTime}` : null;
 }
 
 export function hydrateWorkspaceForm<T>(state: WorkspaceFormState<T>, identity: string, serverValue: T): WorkspaceFormState<T> {
