@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mayMutateWorkspace, nextCateringTaskSortOrder, sharedTaskUpdateActivity } from "./catering-booking-workspace-policy";
+import { cateringDetailsActivityVisibility, mayMutateWorkspace, nextCateringTaskSortOrder, sharedTaskUpdateActivity } from "./catering-booking-workspace-policy";
 
 test("provider can prepare pending and confirmed operational state", () => { for (const status of ["pending_confirmation", "confirmed"] as const) { assert.equal(mayMutateWorkspace(status, "provider", "provider-details"), true); assert.equal(mayMutateWorkspace(status, "provider", "tasks"), true); } });
 test("customer can edit only explicitly customer-owned notes", () => { assert.equal(mayMutateWorkspace("confirmed", "customer", "customer-notes"), true); assert.equal(mayMutateWorkspace("confirmed", "customer", "provider-details"), false); assert.equal(mayMutateWorkspace("confirmed", "customer", "tasks"), false); });
@@ -20,3 +20,7 @@ test("shared task activity derives from current locked state", () => {
   assert.deepEqual(sharedTaskUpdateActivity({ title: "Current", visibility: "shared", status: "pending" }, { status: "completed" }), { eventType: "shared_requirement_completed", taskTitle: "Current" });
 });
 test("shared to private task updates produce no shared activity", () => assert.equal(sharedTaskUpdateActivity({ title: "Private title", visibility: "shared", status: "pending" }, { visibility: "provider" }), null));
+test("full provider draft with only changed private notes creates provider activity", () => { const existing = { venueName: "Hall", kitchenAvailable: false, providerNotes: "Old" }; const input = { venueName: "Hall", kitchenAvailable: false, providerNotes: "New secret" }; assert.equal(cateringDetailsActivityVisibility(existing, input, "provider"), "provider"); });
+test("actual shared changes take precedence without exposing private values", () => { assert.equal(cateringDetailsActivityVisibility({ venueName: "Old", providerNotes: "Old secret" }, { venueName: "New", providerNotes: "New secret" }, "provider"), "shared"); });
+test("identical provider and customer detail saves create no activity", () => { assert.equal(cateringDetailsActivityVisibility({ venueName: "Hall", providerNotes: "Secret" }, { venueName: "Hall", providerNotes: "Secret" }, "provider"), null); assert.equal(cateringDetailsActivityVisibility({ customerNotes: "Note" }, { customerNotes: "Note" }, "customer"), null); });
+test("boolean and null shared transitions are detected exactly", () => { assert.equal(cateringDetailsActivityVisibility({ powerAvailable: false }, { powerAvailable: true }, "provider"), "shared"); assert.equal(cateringDetailsActivityVisibility({ powerAvailable: true }, { powerAvailable: false }, "provider"), "shared"); assert.equal(cateringDetailsActivityVisibility({ venueName: null }, { venueName: "Hall" }, "provider"), "shared"); assert.equal(cateringDetailsActivityVisibility({ venueName: "Hall" }, { venueName: null }, "provider"), "shared"); });

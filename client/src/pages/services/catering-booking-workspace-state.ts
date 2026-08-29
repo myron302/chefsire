@@ -1,6 +1,14 @@
 import type { CateringBookingActivityView, CateringBookingDetailsView } from "@shared/catering-booking-operations";
 
 export type OperationalDetailItem = { label: string; value: string };
+export type WorkspaceFormState<T> = { identity: string; value: T; dirty: boolean };
+
+export function hydrateWorkspaceForm<T>(state: WorkspaceFormState<T>, identity: string, serverValue: T): WorkspaceFormState<T> {
+  if (state.identity !== identity) return { identity, value: serverValue, dirty: false };
+  return state.dirty ? state : { identity, value: serverValue, dirty: false };
+}
+export function editWorkspaceForm<T>(state: WorkspaceFormState<T>, value: T): WorkspaceFormState<T> { return { ...state, value, dirty: true }; }
+export function saveWorkspaceForm<T>(identity: string, serverValue: T): WorkspaceFormState<T> { return { identity, value: serverValue, dirty: false }; }
 
 export function historicalOperationalDetails(details: CateringBookingDetailsView, role: "provider" | "customer"): OperationalDetailItem[] {
   const items: Array<OperationalDetailItem | null> = [

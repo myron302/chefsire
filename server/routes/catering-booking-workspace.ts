@@ -8,7 +8,7 @@ import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { serializeBookingActivity, serializeBookingDetails, serializeBookingTask } from "../serializers/catering-booking-workspace";
-import { mayMutateWorkspace, nextCateringTaskSortOrder, sharedTaskUpdateActivity } from "../services/catering-booking-workspace-policy";
+import { cateringDetailsActivityVisibility, mayMutateWorkspace, nextCateringTaskSortOrder, sharedTaskUpdateActivity } from "../services/catering-booking-workspace-policy";
 
 const r = Router();
 const taskIdSchema = z.string().uuid();
@@ -49,13 +49,13 @@ r.put("/bookings/:id/details", requireAuth, async (req, res, next) => { try {
   const now = new Date();
   const [details] = await db.transaction(async (tx: typeof db) => {
     if (!await lockActiveBooking(tx, id)) return [];
-    const [existing] = role === "provider" ? await tx.select({ serviceStartTime: cateringBookingDetails.serviceStartTime, serviceEndTime: cateringBookingDetails.serviceEndTime }).from(cateringBookingDetails).where(eq(cateringBookingDetails.bookingId, id)).limit(1) : [];
+    const [existing] = await tx.select().from(cateringBookingDetails).where(eq(cateringBookingDetails.bookingId, id)).limit(1);
     const serviceInput = role === "provider" ? { ...("serviceStartTime" in input ? { serviceStartTime: input.serviceStartTime } : {}), ...("serviceEndTime" in input ? { serviceEndTime: input.serviceEndTime } : {}) } : {};
     const serviceTimes = mergeCateringServiceTimes(existing, serviceInput);
     if (role === "provider" && !hasValidCateringServiceTimeRange(serviceTimes)) return [];
+    const visibility = cateringDetailsActivityVisibility(existing, input, role);
     const rows = await tx.insert(cateringBookingDetails).values({ bookingId: id, ...input, updatedAt: now }).onConflictDoUpdate({ target: cateringBookingDetails.bookingId, set: { ...input, updatedAt: now } }).returning();
-    const visibility = role === "provider" && Object.keys(input).every((field) => field === "providerNotes") ? "provider" : "shared";
-    await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: userId, eventType: "details_updated", visibility, metadata: {} }); return rows;
+    if (visibility) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: userId, eventType: "details_updated", visibility, metadata: {} }); return rows;
   });
   if (!details) return res.status(409).json({ message: "Booking is read-only or the resulting service time range is invalid" });
   res.json({ details: serializeBookingDetails(details, role) });
