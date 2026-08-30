@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_TASK_PATCH_FIELDS, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, cateringTaskVersionMatches, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, resolveCateringTaskPatch, sharedTaskUpdateActivity, type CateringTaskVersionedState } from "./catering-booking-workspace-policy";
+import { CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_PATCH_FIELDS, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, cateringTaskVersionMatches, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, sharedTaskUpdateActivity, type CateringTaskVersionedState } from "./catering-booking-workspace-policy";
 
 test("provider can prepare pending and confirmed operational state", () => { for (const status of ["pending_confirmation", "confirmed"] as const) { assert.equal(mayMutateWorkspace(status, "provider", "provider-details"), true); assert.equal(mayMutateWorkspace(status, "provider", "tasks"), true); } });
 test("customer can edit only explicitly customer-owned notes", () => { assert.equal(mayMutateWorkspace("confirmed", "customer", "customer-notes"), true); assert.equal(mayMutateWorkspace("confirmed", "customer", "provider-details"), false); assert.equal(mayMutateWorkspace("confirmed", "customer", "tasks"), false); });
@@ -183,4 +183,94 @@ test("a version-matching visibility move persists and stays privacy-safe", () =>
   const privateTask = lockedTask({ visibility: "provider" });
   const toShared = resolveCateringTaskPatch(privateTask, { visibility: "shared", expectedUpdatedAt: T1.toISOString() }, NOW);
   assert.deepEqual(toShared.kind === "update" ? toShared.activity : null, { eventType: "shared_requirement_updated", taskTitle: "Confirm rentals" });
+});
+
+/** Mirrors exactly what the DELETE route writes: nothing at all unless the resolution is a delete. */
+const applyDeleteResolution = (rows: CateringTaskVersionedState[], resolution: ReturnType<typeof resolveCateringTaskDelete>) => ({
+  rows: resolution.kind === "delete" ? [] : rows,
+  activity: resolution.kind === "delete" && resolution.activity ? [resolution.activity] : [],
+});
+
+test("a matching version deletes the task and records truthful shared history", () => {
+  const shared = lockedTask({ visibility: "shared" });
+  const resolution = resolveCateringTaskDelete(shared, T1.toISOString());
+  assert.equal(resolution.kind, "delete");
+  const applied = applyDeleteResolution([shared], resolution);
+  assert.deepEqual(applied.rows, []);
+  assert.deepEqual(applied.activity, [{ eventType: "shared_requirement_deleted", taskTitle: "Confirm rentals" }]);
+});
+test("deleting a private task removes it without writing customer-visible history", () => {
+  const applied = applyDeleteResolution([lockedTask({ visibility: "provider" })], resolveCateringTaskDelete(lockedTask({ visibility: "provider" }), T1.toISOString()));
+  assert.deepEqual(applied.rows, []);
+  assert.deepEqual(applied.activity, []);
+});
+test("a stale version conflicts instead of deleting, and writes nothing", () => {
+  const current = lockedTask({ updatedAt: T2, visibility: "shared" });
+  const resolution = resolveCateringTaskDelete(current, T1.toISOString());
+  assert.deepEqual(resolution, { kind: "conflict" });
+  assert.equal("activity" in resolution, false);
+  const applied = applyDeleteResolution([current], resolution);
+  assert.deepEqual(applied.rows, [current]);
+  assert.deepEqual(applied.activity, []);
+  for (const invalid of ["", "not-a-timestamp"]) assert.deepEqual(resolveCateringTaskDelete(current, invalid), { kind: "conflict" });
+});
+test("a stale delete preserves every field of the task the other tab actually saved", () => {
+  const edited = lockedTask({ updatedAt: T2, title: "Newer title", description: "Newer description", dueDate: "2026-10-01", dueTime: "08:15", visibility: "shared", status: "completed", completedAt: T2 });
+  const applied = applyDeleteResolution([edited], resolveCateringTaskDelete(edited, T1.toISOString()));
+  assert.equal(applied.rows.length, 1);
+  for (const field of [...CATERING_TASK_PATCH_FIELDS, "updatedAt", "completedAt"] as const) assert.deepEqual(applied.rows[0][field], edited[field]);
+});
+test("two tabs on one task: a stale delete is rejected and the newer task survives", () => {
+  const openedByBoth = lockedTask({ visibility: "shared" });
+  const tabBSaved = applyResolution(openedByBoth, resolveCateringTaskPatch(openedByBoth, { description: "Tab B description", expectedUpdatedAt: T1.toISOString() }, T2));
+  const tabADelete = resolveCateringTaskDelete(tabBSaved, T1.toISOString());
+  assert.deepEqual(tabADelete, { kind: "conflict" });
+  const afterTabA = applyDeleteResolution([tabBSaved], tabADelete);
+  assert.deepEqual(afterTabA.rows, [tabBSaved]);
+  assert.deepEqual(afterTabA.activity, []);
+  assert.equal(afterTabA.rows[0].description, "Tab B description");
+  assert.deepEqual(applyDeleteResolution([tabBSaved], resolveCateringTaskDelete(tabBSaved, T2.toISOString())).rows, []);
+});
+
+/** Mirrors exactly what the POST route writes: only a create outcome inserts a task or its activity. */
+const applyCreateOutcome = (outcome: ReturnType<typeof resolveCateringTaskCreate>) => ({
+  tasks: outcome.kind === "create" ? [{ sortOrder: outcome.sortOrder }] : [],
+  activity: outcome.kind === "create" && outcome.activity ? [outcome.activity] : [],
+});
+const newTask = { title: "Confirm rentals", visibility: "provider" as const };
+
+test("an active booking below the task limit creates the task", () => {
+  for (const taskCount of [0, 1, 99]) {
+    const outcome = resolveCateringTaskCreate({ taskCount, maxSortOrder: taskCount === 0 ? null : taskCount - 1 }, newTask);
+    assert.equal(outcome.kind, "create");
+    assert.equal(applyCreateOutcome(outcome).tasks.length, 1);
+  }
+  for (const [maxSortOrder, sortOrder] of [[null, 0], [0, 1], [5, 6]] as const) {
+    const outcome = resolveCateringTaskCreate({ taskCount: 3, maxSortOrder }, newTask);
+    assert.equal(outcome.kind === "create" && outcome.sortOrder, sortOrder);
+  }
+});
+test("a shared create earns truthful added activity and a private one earns none", () => {
+  assert.deepEqual(applyCreateOutcome(resolveCateringTaskCreate({ taskCount: 0, maxSortOrder: null }, { ...newTask, visibility: "shared" })).activity, [{ eventType: "shared_requirement_added", taskTitle: "Confirm rentals" }]);
+  assert.deepEqual(applyCreateOutcome(resolveCateringTaskCreate({ taskCount: 0, maxSortOrder: null }, newTask)).activity, []);
+});
+test("a full task collection is a limit outcome that inserts nothing", () => {
+  for (const taskCount of [100, 101]) {
+    const outcome = resolveCateringTaskCreate({ taskCount, maxSortOrder: taskCount - 1 }, { ...newTask, visibility: "shared" });
+    assert.deepEqual(outcome, { kind: "limit" });
+    assert.deepEqual(applyCreateOutcome(outcome), { tasks: [], activity: [] });
+  }
+});
+test("a booking that went read-only under the lock is its own outcome that inserts nothing", () => {
+  const outcome = resolveCateringTaskCreate(null, { ...newTask, visibility: "shared" });
+  assert.deepEqual(outcome, { kind: "read_only" });
+  assert.equal("sortOrder" in outcome, false);
+  assert.equal("activity" in outcome, false);
+  assert.deepEqual(applyCreateOutcome(outcome), { tasks: [], activity: [] });
+});
+test("a read-only create is never reported as a full task list", () => {
+  assert.notEqual(CATERING_TASK_CREATE_MESSAGES.read_only, CATERING_TASK_CREATE_MESSAGES.limit);
+  assert.match(CATERING_TASK_CREATE_MESSAGES.read_only, /read-only/);
+  assert.equal(/at most/.test(CATERING_TASK_CREATE_MESSAGES.read_only), false);
+  assert.match(CATERING_TASK_CREATE_MESSAGES.limit, /at most 100 tasks/);
 });

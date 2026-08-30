@@ -1,5 +1,5 @@
 import type { CateringBookingStatus } from "@shared/catering-bookings";
-import { cateringWorkspaceRole, mayEditCateringWorkspace } from "@shared/catering-booking-operations";
+import { CATERING_BOOKING_TASK_LIMIT, cateringWorkspaceRole, mayEditCateringWorkspace } from "@shared/catering-booking-operations";
 
 export { cateringWorkspaceRole, mayEditCateringWorkspace };
 export function mayMutateWorkspace(status: CateringBookingStatus, role: "provider" | "customer", resource: "provider-details" | "customer-notes" | "tasks"): boolean {
@@ -67,6 +67,32 @@ export function resolveCateringTaskPatch(current: CateringTaskVersionedState, in
   if (!outcome.changed) return { kind: "unchanged" } as const;
   return { kind: "update", next: outcome.next, completedAt: nextCateringTaskCompletedAt(current, outcome.next.status, now), updatedAt: now, activity: outcome.activity } as const;
 }
+
+/**
+ * Resolves a locked task delete. A stale precondition conflicts and carries no activity, so the route deletes nothing
+ * and writes no customer-visible history for a task the provider never saw in its current state.
+ */
+export function resolveCateringTaskDelete(current: { updatedAt: Date; title: string; visibility: string }, expectedUpdatedAt: string) {
+  if (!cateringTaskVersionMatches(current, expectedUpdatedAt)) return { kind: "conflict" } as const;
+  return { kind: "delete", activity: current.visibility === "shared" ? { eventType: "shared_requirement_deleted" as const, taskTitle: current.title } : null } as const;
+}
+
+/** The locked task collection a create is measured against; absent once the booking is no longer active. */
+export type CateringLockedTaskCounts = { taskCount: number; maxSortOrder: number | null };
+/**
+ * Resolves a locked task create into one of three distinct outcomes. A booking that went read-only and a full task
+ * collection are different refusals with different truthful messages, and only "create" inserts anything at all.
+ */
+export function resolveCateringTaskCreate(locked: CateringLockedTaskCounts | null, input: { title: string; visibility: string }) {
+  if (!locked) return { kind: "read_only" } as const;
+  if (locked.taskCount >= CATERING_BOOKING_TASK_LIMIT) return { kind: "limit" } as const;
+  return { kind: "create", sortOrder: nextCateringTaskSortOrder(locked.maxSortOrder), activity: input.visibility === "shared" ? { eventType: "shared_requirement_added" as const, taskTitle: input.title } : null } as const;
+}
+/** Each refused create says what actually happened; a read-only booking is never reported as a full task list. */
+export const CATERING_TASK_CREATE_MESSAGES = {
+  read_only: "Booking became read-only before the task could be created",
+  limit: `A booking may have at most ${CATERING_BOOKING_TASK_LIMIT} tasks`,
+} as const;
 
 export function sharedTaskUpdateActivity(current: CateringTaskPersistedState, input: CateringTaskPatchInput) {
   return cateringTaskUpdateOutcome(current, input).activity;

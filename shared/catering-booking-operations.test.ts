@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES, CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingTaskVersionSchema, cateringBookingWorkspaceKey, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "./catering-booking-operations";
+import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES, CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskDeleteSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingTaskVersionSchema, cateringBookingWorkspaceKey, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "./catering-booking-operations";
 
 test("pending and confirmed workspaces are editable", () => { assert.equal(mayEditCateringWorkspace("pending_confirmation"), true); assert.equal(mayEditCateringWorkspace("confirmed"), true); });
 test("cancelled and completed workspaces are read-only", () => { assert.equal(mayEditCateringWorkspace("cancelled"), false); assert.equal(mayEditCateringWorkspace("completed"), false); });
@@ -49,6 +49,14 @@ test("a client may never dictate the next task version", () => {
 test("the task conflict contract is a distinct truthful code and message", () => {
   assert.equal(CATERING_TASK_VERSION_CONFLICT_CODE, "task_version_conflict");
   assert.match(CATERING_TASK_VERSION_CONFLICT_MESSAGE, /changed since you started editing it/);
+  assert.equal(CATERING_WORKSPACE_READ_ONLY_CODE, "workspace_read_only");
+  assert.notEqual(CATERING_WORKSPACE_READ_ONLY_CODE, CATERING_TASK_VERSION_CONFLICT_CODE);
+});
+test("deleting a task requires the same serialized version contract as updating one", () => {
+  assert.deepEqual(cateringBookingTaskDeleteSchema.parse({ expectedUpdatedAt: TASK_VERSION }), { expectedUpdatedAt: TASK_VERSION });
+  assert.equal(cateringBookingTaskDeleteSchema.safeParse({}).success, false);
+  for (const invalid of ["", "not-a-timestamp", "2026-08-29", 0, null]) assert.equal(cateringBookingTaskDeleteSchema.safeParse({ expectedUpdatedAt: invalid }).success, false);
+  assert.equal(cateringBookingTaskDeleteSchema.safeParse({ expectedUpdatedAt: TASK_VERSION, taskId: "attacker" }).success, false);
 });
 test("task reorder requires a unique complete-looking bounded ID list", () => { const id = "11111111-1111-4111-8111-111111111111"; assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [id] }).success, true); assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [id, id] }).success, false); assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [] }).success, false); });
 test("task collection has a strict server-shared maximum", () => assert.equal(CATERING_BOOKING_TASK_LIMIT, 100));

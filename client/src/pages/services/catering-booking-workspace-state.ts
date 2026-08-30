@@ -1,4 +1,4 @@
-import { CATERING_TASK_VERSION_CONFLICT_CODE, type CateringBookingActivityView, type CateringBookingDetailsView } from "@shared/catering-booking-operations";
+import { CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, type CateringBookingActivityView, type CateringBookingDetailsView } from "@shared/catering-booking-operations";
 import { formatCateringCalendarDate } from "@shared/catering-availability";
 
 export type OperationalDetailItem = { label: string; value: string };
@@ -27,8 +27,19 @@ export function cateringTaskEditPayload(draft: CateringTaskDraft, expectedUpdate
 export function cateringTaskStatusPayload(task: { status: "pending" | "completed"; updatedAt: string }) {
   return { status: task.status === "completed" ? "pending" as const : "completed" as const, expectedUpdatedAt: task.updatedAt };
 }
+/** Deleting a task is a write against a version too, so it carries the version the provider confirmed deleting. */
+export function cateringTaskDeletePayload(task: { updatedAt: string }) { return { expectedUpdatedAt: task.updatedAt }; }
+export function cateringWorkspaceErrorCode(error: unknown): string | null {
+  const code = typeof error === "object" && error !== null ? (error as { code?: unknown }).code : undefined;
+  return typeof code === "string" ? code : null;
+}
 export function isCateringTaskVersionConflict(error: unknown): boolean {
-  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === CATERING_TASK_VERSION_CONFLICT_CODE;
+  return cateringWorkspaceErrorCode(error) === CATERING_TASK_VERSION_CONFLICT_CODE;
+}
+/** Both refusals mean the workspace on screen is behind the server, so the authoritative view is fetched again. */
+export function shouldRefetchWorkspaceAfterError(error: unknown): boolean {
+  const code = cateringWorkspaceErrorCode(error);
+  return code === CATERING_TASK_VERSION_CONFLICT_CODE || code === CATERING_WORKSPACE_READ_ONLY_CODE;
 }
 export function formatCateringTaskDeadline(dueDate: string | null, dueTime: string | null): string | null {
   if (dueDate && dueTime) return `Due ${formatCateringCalendarDate(dueDate)} at ${dueTime}`;

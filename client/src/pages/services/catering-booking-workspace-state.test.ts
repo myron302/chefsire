@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cateringBookingProviderDetailsSchema, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
-import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskStatusPayload, closeTaskEditorAfterSave, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, maySubmitTaskEditor, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
+import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, maySubmitTaskEditor, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
 
 const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
 test("historical details are empty only when every represented field is absent", () => assert.deepEqual(historicalOperationalDetails(emptyDetails, "customer"), []));
@@ -249,4 +249,26 @@ test("a success against a version the editor no longer holds cannot close it", (
   const rebased = openEditor(editorDraft, "task-1", "actor:booking", "2026-08-30T09:15:00.000Z");
   assert.deepEqual(closeTaskEditorAfterSave(rebased, submittedEdit), rebased);
   assert.equal(closeTaskEditorAfterSave(openEditor(), submittedEdit), null);
+});
+
+test("deleting a task sends the version of the task the provider confirmed deleting", () => {
+  assert.deepEqual(cateringTaskDeletePayload(taskView("task-1", "shared")), { expectedUpdatedAt: TASK_VERSION });
+  assert.deepEqual(cateringTaskDeletePayload(taskView("task-2", "provider", { updatedAt: "2026-08-30T09:15:00.000Z" })), { expectedUpdatedAt: "2026-08-30T09:15:00.000Z" });
+  const [older, newer] = [taskView("task-1", "shared"), taskView("task-2", "shared", { updatedAt: "2026-08-30T09:15:00.000Z" })];
+  assert.notDeepEqual(cateringTaskDeletePayload(older), cateringTaskDeletePayload(newer));
+});
+test("a workspace behind the server is refetched, and nothing else is", () => {
+  const withCode = (code: string) => Object.assign(new Error("refused"), { code });
+  assert.equal(shouldRefetchWorkspaceAfterError(withCode("task_version_conflict")), true);
+  assert.equal(shouldRefetchWorkspaceAfterError(withCode("workspace_read_only")), true);
+  for (const other of [withCode("other"), new Error("network"), null, undefined, "workspace_read_only"]) assert.equal(shouldRefetchWorkspaceAfterError(other), false);
+  assert.equal(isCateringTaskVersionConflict(withCode("workspace_read_only")), false);
+  assert.equal(cateringWorkspaceErrorCode(withCode("workspace_read_only")), "workspace_read_only");
+  assert.equal(cateringWorkspaceErrorCode(new Error("network")), null);
+});
+test("a refused task creation keeps the draft the provider typed", () => {
+  const typed = { identity: "actor:booking", value: { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared" as const }, dirty: true };
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(typed), typed);
+  assert.deepEqual(preserveWorkspaceFormAfterSaveFailure(typed).value, typed.value);
+  assert.notDeepEqual(preserveWorkspaceFormAfterSaveFailure(typed).value, EMPTY_CATERING_TASK_DRAFT);
 });
