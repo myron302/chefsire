@@ -3,12 +3,12 @@ import { and, asc, count, desc, eq, max, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { cateringBookingActivity, cateringBookingDetails, cateringBookings, cateringBookingTasks, notifications } from "@shared/schema";
 import { cateringBookingIdSchema } from "@shared/catering-bookings";
-import { CATERING_BOOKING_TASK_LIMIT, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mergeCateringServiceTimes } from "@shared/catering-booking-operations";
+import { CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mergeCateringServiceTimes } from "@shared/catering-booking-operations";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { serializeBookingActivity, serializeBookingDetails, serializeBookingTask } from "../serializers/catering-booking-workspace";
-import { cateringDetailsActivityVisibility, cateringTaskUpdateOutcome, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder } from "../services/catering-booking-workspace-policy";
+import { cateringDetailsActivityVisibility, mayMutateWorkspace, nextCateringTaskSortOrder, resolveCateringTaskPatch } from "../services/catering-booking-workspace-policy";
 
 const r = Router();
 const taskIdSchema = z.string().uuid();
@@ -87,16 +87,18 @@ r.patch("/bookings/:id/tasks/:taskId", requireAuth, async (req, res, next) => { 
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`catering-tasks:${id}`}))`);
     const [current] = await tx.select().from(cateringBookingTasks).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))).limit(1);
     if (!current) return { kind: "not_found" } as const;
-    // Compare the authoritative locked row against the state the patch would persist. Request-field presence is not a change.
-    const outcome = cateringTaskUpdateOutcome(current, input);
-    if (!outcome.changed) return { kind: "updated", task: current } as const;
-    const now = new Date(); const completedAt = nextCateringTaskCompletedAt(current, outcome.next.status, now);
-    const [task] = await tx.update(cateringBookingTasks).set({ ...outcome.next, completedAt, updatedAt: now }).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))).returning();
+    // Resolved against the authoritative locked row, never against anything read before the transaction: a stale
+    // expectedUpdatedAt conflicts, and request-field presence alone is still not a change.
+    const resolution = resolveCateringTaskPatch(current, input, new Date());
+    if (resolution.kind === "conflict") return { kind: "conflict" } as const;
+    if (resolution.kind === "unchanged") return { kind: "updated", task: current } as const;
+    const [task] = await tx.update(cateringBookingTasks).set({ ...resolution.next, completedAt: resolution.completedAt, updatedAt: resolution.updatedAt }).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))).returning();
     if (!task) return { kind: "not_found" } as const;
-    if (outcome.activity) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: providerId, eventType: outcome.activity.eventType, visibility: "shared", metadata: { taskTitle: outcome.activity.taskTitle } });
+    if (resolution.activity) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: providerId, eventType: resolution.activity.eventType, visibility: "shared", metadata: { taskTitle: resolution.activity.taskTitle } });
     return { kind: "updated", task } as const;
   });
   if (result.kind === "not_found") return res.status(404).json({ message: "Task not found" });
+  if (result.kind === "conflict") return res.status(409).json({ message: CATERING_TASK_VERSION_CONFLICT_MESSAGE, code: CATERING_TASK_VERSION_CONFLICT_CODE });
   if (result.kind === "read_only") return res.status(409).json({ message: "Booking became read-only before the task update completed" });
   res.json({ task: serializeBookingTask(result.task) });
 } catch (error) { invalid(error, res, next); } });

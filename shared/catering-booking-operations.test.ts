@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES, CATERING_BOOKING_TASK_LIMIT, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingWorkspaceKey, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "./catering-booking-operations";
+import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES, CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingTaskVersionSchema, cateringBookingWorkspaceKey, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "./catering-booking-operations";
 
 test("pending and confirmed workspaces are editable", () => { assert.equal(mayEditCateringWorkspace("pending_confirmation"), true); assert.equal(mayEditCateringWorkspace("confirmed"), true); });
 test("cancelled and completed workspaces are read-only", () => { assert.equal(mayEditCateringWorkspace("cancelled"), false); assert.equal(mayEditCateringWorkspace("completed"), false); });
@@ -26,8 +26,30 @@ test("merged service times preserve null, absent-row, and equal-time semantics",
   assert.equal(hasValidCateringServiceTimeRange(mergeCateringServiceTimes(undefined, { serviceEndTime: "20:00" })), true);
   assert.equal(hasValidCateringServiceTimeRange(mergeCateringServiceTimes({ serviceStartTime: "20:00", serviceEndTime: "20:00" }, {})), true);
 });
-test("task update supports explicit completion and reopening", () => { assert.equal(cateringBookingTaskUpdateSchema.safeParse({ status: "completed" }).success, true); assert.equal(cateringBookingTaskUpdateSchema.safeParse({ status: "pending" }).success, true); assert.equal(cateringBookingTaskUpdateSchema.safeParse({ status: "cancelled" }).success, false); });
-test("task update rejects an empty arbitrary patch", () => { assert.equal(cateringBookingTaskUpdateSchema.safeParse({}).success, false); assert.equal(cateringBookingTaskUpdateSchema.safeParse({ actorUserId: "attacker" }).success, false); });
+const TASK_VERSION = "2026-08-29T00:00:00.000Z";
+test("task update supports explicit completion and reopening", () => { assert.equal(cateringBookingTaskUpdateSchema.safeParse({ status: "completed", expectedUpdatedAt: TASK_VERSION }).success, true); assert.equal(cateringBookingTaskUpdateSchema.safeParse({ status: "pending", expectedUpdatedAt: TASK_VERSION }).success, true); assert.equal(cateringBookingTaskUpdateSchema.safeParse({ status: "cancelled", expectedUpdatedAt: TASK_VERSION }).success, false); });
+test("task update rejects an empty arbitrary patch", () => { assert.equal(cateringBookingTaskUpdateSchema.safeParse({}).success, false); assert.equal(cateringBookingTaskUpdateSchema.safeParse({ actorUserId: "attacker", expectedUpdatedAt: TASK_VERSION }).success, false); });
+test("every task update requires the version it was based on", () => {
+  for (const patch of [{ status: "completed" }, { title: "Confirm rentals" }, { visibility: "shared" }, { description: null }, { dueDate: null }, { dueTime: "17:30" }]) {
+    assert.equal(cateringBookingTaskUpdateSchema.safeParse(patch).success, false);
+    assert.equal(cateringBookingTaskUpdateSchema.safeParse({ ...patch, expectedUpdatedAt: TASK_VERSION }).success, true);
+  }
+  assert.equal(cateringBookingTaskUpdateSchema.safeParse({ expectedUpdatedAt: TASK_VERSION }).success, false);
+});
+test("the task version precondition must be a serialized updatedAt timestamp", () => {
+  assert.equal(cateringBookingTaskVersionSchema.safeParse(TASK_VERSION).success, true);
+  for (const invalid of ["", "not-a-timestamp", "2026-08-29", 0, null]) assert.equal(cateringBookingTaskUpdateSchema.safeParse({ status: "completed", expectedUpdatedAt: invalid }).success, false);
+});
+test("a client may never dictate the next task version", () => {
+  const parsed = cateringBookingTaskUpdateSchema.parse({ title: "Confirm rentals", expectedUpdatedAt: TASK_VERSION });
+  assert.equal("updatedAt" in parsed, false);
+  assert.equal(cateringBookingTaskUpdateSchema.safeParse({ title: "Confirm rentals", expectedUpdatedAt: TASK_VERSION, updatedAt: "2030-01-01T00:00:00.000Z" }).success, false);
+  assert.equal(cateringBookingTaskUpdateSchema.safeParse({ title: "Confirm rentals", expectedUpdatedAt: TASK_VERSION, completedAt: "2030-01-01T00:00:00.000Z" }).success, false);
+});
+test("the task conflict contract is a distinct truthful code and message", () => {
+  assert.equal(CATERING_TASK_VERSION_CONFLICT_CODE, "task_version_conflict");
+  assert.match(CATERING_TASK_VERSION_CONFLICT_MESSAGE, /changed since you started editing it/);
+});
 test("task reorder requires a unique complete-looking bounded ID list", () => { const id = "11111111-1111-4111-8111-111111111111"; assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [id] }).success, true); assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [id, id] }).success, false); assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [] }).success, false); });
 test("task collection has a strict server-shared maximum", () => assert.equal(CATERING_BOOKING_TASK_LIMIT, 100));
 test("activity pagination is bounded", () => { assert.deepEqual(cateringBookingActivityPageSchema.parse({}), { page: 1, limit: 20 }); assert.equal(cateringBookingActivityPageSchema.safeParse({ limit: 51 }).success, false); });

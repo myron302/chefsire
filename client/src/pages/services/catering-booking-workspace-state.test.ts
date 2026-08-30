@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cateringBookingProviderDetailsSchema, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
-import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDraftsEqual, closeTaskEditorAfterSave, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
+import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskStatusPayload, closeTaskEditorAfterSave, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, maySubmitTaskEditor, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
 
 const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
 test("historical details are empty only when every represented field is absent", () => assert.deepEqual(historicalOperationalDetails(emptyDetails, "customer"), []));
@@ -23,8 +23,9 @@ test("structured task draft clears only when unchanged and survives newer metada
 test("task deadlines render every supported date and wall-clock combination", () => { assert.equal(formatCateringTaskDeadline("2026-09-15", "17:30"), "Due Sep 15, 2026 at 17:30"); assert.equal(formatCateringTaskDeadline("2026-09-15", null), "Due Sep 15, 2026"); assert.equal(formatCateringTaskDeadline(null, "17:30"), "Due at 17:30"); assert.equal(formatCateringTaskDeadline(null, null), null); });
 
 const editorDraft: CateringTaskDraft = { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared" };
-const submittedEdit: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: editorDraft };
-const openEditor = (draft: CateringTaskDraft = editorDraft, taskId = "task-1", identity = "actor:booking") => ({ identity, taskId, draft });
+const TASK_VERSION = "2026-08-29T00:00:00.000Z";
+const submittedEdit: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: editorDraft, expectedUpdatedAt: TASK_VERSION };
+const openEditor = (draft: CateringTaskDraft = editorDraft, taskId = "task-1", identity = "actor:booking", expectedUpdatedAt = TASK_VERSION, conflict = false): OpenTaskEditorState => ({ identity, taskId, draft, expectedUpdatedAt, conflict });
 
 test("a successful task patch closes the still-unchanged submitted editor", () => assert.equal(closeTaskEditorAfterSave(openEditor({ ...editorDraft }), submittedEdit), null));
 test("a failed task patch leaves the editor open", () => { const current = openEditor(); assert.equal(preserveTaskEditorAfterSaveFailure(current), current); assert.notEqual(current, null); });
@@ -111,14 +112,15 @@ test("service times stay event-local wall clock, with no date, UTC, or browser-t
 });
 
 const taskView = (id: string, visibility: "provider" | "shared", overrides: Partial<CateringBookingTaskView> = {}): CateringBookingTaskView => ({ id, title: "Confirm rentals", description: "Call supplier", status: "pending", visibility, dueDate: "2026-09-15", dueTime: "17:30", sortOrder: 0, createdAt: "2026-08-29T00:00:00.000Z", completedAt: null, updatedAt: "2026-08-29T00:00:00.000Z", ...overrides });
-const sectionsRenderingEditor = (editor: ReturnType<typeof openEditor> | null, identity: string, tasks: CateringBookingTaskView[]) => {
+const sectionsRenderingEditor = (editor: OpenTaskEditorState | null, identity: string, tasks: CateringBookingTaskView[]) => {
   const { privateTasks, requirements } = splitCateringWorkspaceTasks(tasks);
   return { checklist: privateTasks.filter((task) => taskEditorForTask(editor, identity, task.id)).map((task) => task.id), requirements: requirements.filter((task) => taskEditorForTask(editor, identity, task.id)).map((task) => task.id) };
 };
 
-test("opening the editor copies the persisted task without inventing values", () => {
-  assert.deepEqual(openTaskEditor("actor:booking", taskView("task-1", "provider")), { identity: "actor:booking", taskId: "task-1", draft: { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "provider" } });
+test("opening the editor copies the persisted task and its authoritative version without inventing values", () => {
+  assert.deepEqual(openTaskEditor("actor:booking", taskView("task-1", "provider")), { identity: "actor:booking", taskId: "task-1", draft: { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "provider" }, expectedUpdatedAt: TASK_VERSION, conflict: false });
   assert.deepEqual(openTaskEditor("actor:booking", taskView("task-1", "shared", { description: null, dueDate: null, dueTime: null }))?.draft, { title: "Confirm rentals", description: "", dueDate: "", dueTime: "", visibility: "shared" });
+  assert.equal(openTaskEditor("actor:booking", taskView("task-1", "shared", { updatedAt: "2026-08-30T09:15:00.000Z" }))?.expectedUpdatedAt, "2026-08-30T09:15:00.000Z");
 });
 test("one workspace editor is shared across the private and shared task sections", () => {
   const tasks = [taskView("task-1", "provider"), taskView("task-2", "shared")];
@@ -128,7 +130,7 @@ test("one workspace editor is shared across the private and shared task sections
   assert.deepEqual(sectionsRenderingEditor(openEditor(editorDraft, "task-1", "other-actor:booking"), "actor:booking", tasks), { checklist: [], requirements: [] });
 });
 test("a provider-to-shared patch with a newer in-flight edit keeps the editor and follows the task into requirements", () => {
-  const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility: "shared" } };
+  const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility: "shared" }, expectedUpdatedAt: TASK_VERSION };
   const newer = editTaskEditorField(openEditor({ ...submitted.draft }), "actor:booking", "task-1", "description", "Newer description");
   const afterSuccess = closeTaskEditorAfterSave(newer, submitted);
   assert.deepEqual(afterSuccess, newer);
@@ -137,7 +139,7 @@ test("a provider-to-shared patch with a newer in-flight edit keeps the editor an
   assert.deepEqual(sectionsRenderingEditor(afterSuccess, "actor:booking", [taskView("task-1", "shared"), taskView("task-2", "provider")]), { checklist: [], requirements: ["task-1"] });
 });
 test("a shared-to-provider patch with a newer in-flight edit keeps the editor and follows the task into the checklist", () => {
-  const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility: "provider" } };
+  const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility: "provider" }, expectedUpdatedAt: TASK_VERSION };
   const newer = editTaskEditorField(openEditor({ ...submitted.draft }), "actor:booking", "task-1", "title", "Newer title");
   const afterSuccess = closeTaskEditorAfterSave(newer, submitted);
   assert.deepEqual(afterSuccess, newer);
@@ -147,7 +149,7 @@ test("a shared-to-provider patch with a newer in-flight edit keeps the editor an
 });
 test("a visibility patch with no newer edit closes the editor in both directions", () => {
   for (const visibility of ["shared", "provider"] as const) {
-    const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility } };
+    const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility }, expectedUpdatedAt: TASK_VERSION };
     assert.equal(closeTaskEditorAfterSave(openEditor({ ...submitted.draft }), submitted), null);
   }
 });
@@ -160,7 +162,7 @@ test("a failed visibility patch preserves the editor and every entered field", (
   assert.deepEqual(sectionsRenderingEditor(preserved, "actor:booking", [taskView("task-1", "provider")]), { checklist: ["task-1"], requirements: [] });
 });
 test("switching tasks or workspaces during a visibility patch stays safe", () => {
-  const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility: "shared" } };
+  const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: { ...editorDraft, visibility: "shared" }, expectedUpdatedAt: TASK_VERSION };
   const otherTask = openEditor(editorDraft, "task-2");
   assert.deepEqual(closeTaskEditorAfterSave(otherTask, submitted), otherTask);
   const otherWorkspace = openEditor(editorDraft, "task-1", "actor:other-booking");
@@ -188,4 +190,63 @@ test("the workspace task split keeps every task in exactly one visibility sectio
   assert.deepEqual(splitCateringWorkspaceTasks(tasks).privateTasks.map(({ id }) => id), ["task-1", "task-3"]);
   assert.deepEqual(splitCateringWorkspaceTasks(tasks).requirements.map(({ id }) => id), ["task-2"]);
   assert.deepEqual(splitCateringWorkspaceTasks([]), { privateTasks: [], requirements: [] });
+});
+
+test("every task update request carries the version it was based on", () => {
+  assert.deepEqual(cateringTaskEditPayload(editorDraft, TASK_VERSION), { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared", expectedUpdatedAt: TASK_VERSION });
+  assert.deepEqual(cateringTaskEditPayload(EMPTY_CATERING_TASK_DRAFT, TASK_VERSION), { title: "", description: null, dueDate: null, dueTime: null, visibility: "provider", expectedUpdatedAt: TASK_VERSION });
+  const editor = openTaskEditor("actor:booking", taskView("task-1", "provider", { updatedAt: "2026-08-30T09:15:00.000Z" }))!;
+  assert.equal(cateringTaskEditPayload(editor.draft, editor.expectedUpdatedAt).expectedUpdatedAt, "2026-08-30T09:15:00.000Z");
+  assert.deepEqual(cateringTaskStatusPayload(taskView("task-1", "provider")), { status: "completed", expectedUpdatedAt: TASK_VERSION });
+  assert.deepEqual(cateringTaskStatusPayload(taskView("task-1", "shared", { status: "completed", updatedAt: "2026-08-30T09:15:00.000Z" })), { status: "pending", expectedUpdatedAt: "2026-08-30T09:15:00.000Z" });
+});
+test("a submitted edit keeps the version its draft was based on, not whatever arrives later", () => {
+  const editor = openTaskEditor("actor:booking", taskView("task-1", "provider"))!;
+  const edited = editTaskEditorField(editor, "actor:booking", "task-1", "title", "Edited title")!;
+  assert.equal(edited.expectedUpdatedAt, TASK_VERSION);
+  assert.equal(editTaskEditorField(edited, "actor:booking", "task-1", "visibility", "shared")?.expectedUpdatedAt, TASK_VERSION);
+});
+test("only a task version conflict is recognised as one", () => {
+  assert.equal(isCateringTaskVersionConflict(Object.assign(new Error("stale"), { code: "task_version_conflict" })), true);
+  for (const other of [Object.assign(new Error("read only"), { code: "other" }), new Error("network"), null, undefined, "task_version_conflict"]) assert.equal(isCateringTaskVersionConflict(other), false);
+});
+test("a rejected precondition marks the editor stale without touching the draft", () => {
+  const current = editTaskEditorField(openEditor(), "actor:booking", "task-1", "title", "Edited title");
+  const conflicted = markTaskEditorConflict(current, submittedEdit);
+  assert.equal(conflicted?.conflict, true);
+  assert.equal(conflicted?.taskId, "task-1");
+  assert.equal(conflicted?.expectedUpdatedAt, TASK_VERSION);
+  assert.deepEqual(conflicted?.draft, { ...editorDraft, title: "Edited title" });
+  assert.equal(maySubmitTaskEditor(current), true);
+  assert.equal(maySubmitTaskEditor(conflicted), false);
+  assert.equal(maySubmitTaskEditor(null), false);
+});
+test("a stale draft survives a conflict and every further keystroke, and still may not be resubmitted", () => {
+  const conflicted = markTaskEditorConflict(openEditor(), submittedEdit);
+  const stillEditing = editTaskEditorField(conflicted, "actor:booking", "task-1", "description", "Typed after the conflict");
+  assert.equal(stillEditing?.conflict, true);
+  assert.equal(stillEditing?.draft.description, "Typed after the conflict");
+  assert.equal(stillEditing?.expectedUpdatedAt, TASK_VERSION);
+  assert.equal(maySubmitTaskEditor(stillEditing), false);
+  assert.deepEqual(sectionsRenderingEditor(stillEditing, "actor:booking", [taskView("task-1", "provider")]), { checklist: ["task-1"], requirements: [] });
+});
+test("reloading the latest task clears the conflict and rebases the editor on the newest version", () => {
+  const conflicted = markTaskEditorConflict(openEditor(), submittedEdit);
+  const reopened = openTaskEditor("actor:booking", taskView("task-1", "shared", { title: "Newer server title", updatedAt: "2026-08-30T09:15:00.000Z" }));
+  assert.equal(reopened?.conflict, false);
+  assert.equal(reopened?.expectedUpdatedAt, "2026-08-30T09:15:00.000Z");
+  assert.equal(reopened?.draft.title, "Newer server title");
+  assert.equal(maySubmitTaskEditor(reopened), true);
+  assert.notEqual(conflicted?.expectedUpdatedAt, reopened?.expectedUpdatedAt);
+});
+test("a conflict from another task, workspace, or already-rebased editor is ignored", () => {
+  assert.equal(markTaskEditorConflict(null, submittedEdit), null);
+  for (const current of [openEditor(editorDraft, "task-2"), openEditor(editorDraft, "task-1", "actor:other-booking"), openEditor(editorDraft, "task-1", "actor:booking", "2026-08-30T09:15:00.000Z")]) assert.deepEqual(markTaskEditorConflict(current, submittedEdit), current);
+  const already = openEditor(editorDraft, "task-1", "actor:booking", TASK_VERSION, true);
+  assert.equal(markTaskEditorConflict(already, submittedEdit), already);
+});
+test("a success against a version the editor no longer holds cannot close it", () => {
+  const rebased = openEditor(editorDraft, "task-1", "actor:booking", "2026-08-30T09:15:00.000Z");
+  assert.deepEqual(closeTaskEditorAfterSave(rebased, submittedEdit), rebased);
+  assert.equal(closeTaskEditorAfterSave(openEditor(), submittedEdit), null);
 });

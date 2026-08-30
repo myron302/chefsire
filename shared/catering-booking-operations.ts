@@ -23,9 +23,17 @@ export const cateringBookingCustomerDetailsSchema = z.object({ customerNotes: op
 export const cateringBookingTaskCreateSchema = z.object({
   title: z.string().trim().min(1).max(160), description: optionalText(2000), visibility: z.enum(CATERING_BOOKING_TASK_VISIBILITIES).default("provider"), dueDate: calendarDate.optional(), dueTime: wallClock.optional(),
 }).strict();
+/**
+ * Optimistic concurrency precondition for every task update: the serialized updatedAt the submitted edit was based on.
+ * It is a precondition only -- the server stays authoritative for the next updatedAt and never persists a client value.
+ */
+export const cateringBookingTaskVersionSchema = z.string().datetime();
+export const CATERING_TASK_VERSION_CONFLICT_CODE = "task_version_conflict";
+export const CATERING_TASK_VERSION_CONFLICT_MESSAGE = "This task changed since you started editing it. Reload the latest task before saving.";
 export const cateringBookingTaskUpdateSchema = z.object({
   title: z.string().trim().min(1).max(160).optional(), description: optionalText(2000), visibility: z.enum(CATERING_BOOKING_TASK_VISIBILITIES).optional(), dueDate: calendarDate.optional(), dueTime: wallClock.optional(), status: z.enum(CATERING_BOOKING_TASK_STATUSES).optional(),
-}).strict().refine((value) => Object.keys(value).length > 0, "At least one task field is required");
+  expectedUpdatedAt: cateringBookingTaskVersionSchema,
+}).strict().refine((value) => Object.keys(value).some((key) => key !== "expectedUpdatedAt"), "At least one task field is required");
 export const cateringBookingTaskReorderSchema = z.object({ taskIds: z.array(z.string().uuid()).min(1).max(CATERING_BOOKING_TASK_LIMIT) }).strict().refine((value) => new Set(value.taskIds).size === value.taskIds.length, "Task IDs must be unique");
 export const cateringBookingActivityPageSchema = z.object({ page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(50).default(20) });
 

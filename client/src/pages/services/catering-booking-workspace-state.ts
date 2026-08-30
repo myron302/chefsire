@@ -1,4 +1,4 @@
-import type { CateringBookingActivityView, CateringBookingDetailsView } from "@shared/catering-booking-operations";
+import { CATERING_TASK_VERSION_CONFLICT_CODE, type CateringBookingActivityView, type CateringBookingDetailsView } from "@shared/catering-booking-operations";
 import { formatCateringCalendarDate } from "@shared/catering-availability";
 
 export type OperationalDetailItem = { label: string; value: string };
@@ -18,6 +18,17 @@ export function providerDraftFrom(details: CateringBookingDetailsView): Provider
 export function normalizeOptionalWallClockInput(value: string): string | null { return value === "" ? null : value; }
 export function cateringTaskCreatePayload(draft: CateringTaskDraft) {
   return { title: draft.title, description: draft.description || null, dueDate: draft.dueDate || null, dueTime: draft.dueTime || null, visibility: draft.visibility };
+}
+/** Every task update carries the version it was based on, so a concurrent save is rejected instead of overwritten. */
+export function cateringTaskEditPayload(draft: CateringTaskDraft, expectedUpdatedAt: string) {
+  return { ...cateringTaskCreatePayload(draft), expectedUpdatedAt };
+}
+/** The checkbox toggle races other tabs too, so it sends the version of the task the provider actually clicked. */
+export function cateringTaskStatusPayload(task: { status: "pending" | "completed"; updatedAt: string }) {
+  return { status: task.status === "completed" ? "pending" as const : "completed" as const, expectedUpdatedAt: task.updatedAt };
+}
+export function isCateringTaskVersionConflict(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === CATERING_TASK_VERSION_CONFLICT_CODE;
 }
 export function formatCateringTaskDeadline(dueDate: string | null, dueTime: string | null): string | null {
   if (dueDate && dueTime) return `Due ${formatCateringCalendarDate(dueDate)} at ${dueTime}`;
@@ -50,8 +61,10 @@ export function reconcileWorkspaceFormAfterSave<T>(current: WorkspaceFormState<T
 }
 export function preserveWorkspaceFormAfterSaveFailure<T>(current: WorkspaceFormState<T>): WorkspaceFormState<T> { return current; }
 
-export type TaskEditorState = { identity: string; taskId: string; draft: CateringTaskDraft } | null;
-export type SubmittedTaskEdit = { identity: string; taskId: string; draft: CateringTaskDraft };
+/** `expectedUpdatedAt` is the authoritative task version the draft was opened from; `conflict` marks that version stale. */
+export type OpenTaskEditorState = { identity: string; taskId: string; draft: CateringTaskDraft; expectedUpdatedAt: string; conflict: boolean };
+export type TaskEditorState = OpenTaskEditorState | null;
+export type SubmittedTaskEdit = { identity: string; taskId: string; draft: CateringTaskDraft; expectedUpdatedAt: string };
 const TASK_DRAFT_FIELDS = ["title", "description", "dueDate", "dueTime", "visibility"] as const;
 export function cateringTaskDraftsEqual(left: CateringTaskDraft, right: CateringTaskDraft): boolean {
   return TASK_DRAFT_FIELDS.every((field) => Object.is(left[field], right[field]));
@@ -68,12 +81,24 @@ export function closeTaskEditorAfterSave(current: TaskEditorState, submitted: Su
   if (!current) return current;
   if (current.identity !== submitted.identity) return current;
   if (current.taskId !== submitted.taskId) return current;
+  if (current.expectedUpdatedAt !== submitted.expectedUpdatedAt) return current;
   return cateringTaskDraftsEqual(current.draft, submitted.draft) ? null : current;
 }
 /** Opens the one workspace editor on a persisted task, so both visibility sections address the same editor state. */
-export function openTaskEditor(identity: string, task: { id: string; title: string; description: string | null; dueDate: string | null; dueTime: string | null; visibility: "provider" | "shared" }): TaskEditorState {
-  return { identity, taskId: task.id, draft: { title: task.title, description: task.description ?? "", dueDate: task.dueDate ?? "", dueTime: task.dueTime ?? "", visibility: task.visibility } };
+export function openTaskEditor(identity: string, task: { id: string; title: string; description: string | null; dueDate: string | null; dueTime: string | null; visibility: "provider" | "shared"; updatedAt: string }): TaskEditorState {
+  return { identity, taskId: task.id, draft: { title: task.title, description: task.description ?? "", dueDate: task.dueDate ?? "", dueTime: task.dueTime ?? "", visibility: task.visibility }, expectedUpdatedAt: task.updatedAt, conflict: false };
 }
+/**
+ * A rejected concurrency precondition marks the editor's version stale without touching the draft. The provider keeps
+ * every entered field and an explicit reload, which reopens from the refetched task, is the only way back to saving.
+ */
+export function markTaskEditorConflict(current: TaskEditorState, submitted: SubmittedTaskEdit): TaskEditorState {
+  if (!current || current.identity !== submitted.identity || current.taskId !== submitted.taskId) return current;
+  if (current.expectedUpdatedAt !== submitted.expectedUpdatedAt || current.conflict) return current;
+  return { ...current, conflict: true };
+}
+/** A stale draft may never be resubmitted against the version it already lost to. */
+export function maySubmitTaskEditor(editor: TaskEditorState): boolean { return editor !== null && !editor.conflict; }
 /** Applies one field to whatever the editor currently holds, so a keystroke never resurrects a draft from an earlier render. */
 export function editTaskEditorField<K extends keyof CateringTaskDraft>(current: TaskEditorState, identity: string, taskId: string, field: K, value: CateringTaskDraft[K]): TaskEditorState {
   if (!current || current.identity !== identity || current.taskId !== taskId) return current;

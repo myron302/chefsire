@@ -49,6 +49,25 @@ export function nextCateringTaskCompletedAt(current: { status: string; completed
   return nextStatus === "completed" ? now : null;
 }
 
+/** The authoritative persisted version of a task row, used only as an optimistic concurrency precondition. */
+export type CateringTaskVersionedState = CateringTaskPersistedState & { updatedAt: Date; completedAt: Date | null };
+/** Matches the serialized updatedAt contract the workspace hands the client, comparing the instant rather than its spelling. */
+export function cateringTaskVersionMatches(current: { updatedAt: Date }, expectedUpdatedAt: string): boolean {
+  const expected = Date.parse(expectedUpdatedAt);
+  return Number.isFinite(expected) && expected === current.updatedAt.getTime();
+}
+/**
+ * Everything a task PATCH may do, decided against the authoritative row loaded inside the task lock. A stale
+ * precondition resolves to a conflict that carries no next state, no timestamps, and no activity, so the route has
+ * nothing to write: the row, its updatedAt, its completedAt, and the booking history all stay exactly as they were.
+ */
+export function resolveCateringTaskPatch(current: CateringTaskVersionedState, input: CateringTaskPatchInput & { expectedUpdatedAt: string }, now: Date) {
+  if (!cateringTaskVersionMatches(current, input.expectedUpdatedAt)) return { kind: "conflict" } as const;
+  const outcome = cateringTaskUpdateOutcome(current, input);
+  if (!outcome.changed) return { kind: "unchanged" } as const;
+  return { kind: "update", next: outcome.next, completedAt: nextCateringTaskCompletedAt(current, outcome.next.status, now), updatedAt: now, activity: outcome.activity } as const;
+}
+
 export function sharedTaskUpdateActivity(current: CateringTaskPersistedState, input: CateringTaskPatchInput) {
   return cateringTaskUpdateOutcome(current, input).activity;
 }

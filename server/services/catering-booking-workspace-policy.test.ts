@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_TASK_PATCH_FIELDS, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, sharedTaskUpdateActivity } from "./catering-booking-workspace-policy";
+import { CATERING_TASK_PATCH_FIELDS, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, cateringTaskVersionMatches, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, resolveCateringTaskPatch, sharedTaskUpdateActivity, type CateringTaskVersionedState } from "./catering-booking-workspace-policy";
 
 test("provider can prepare pending and confirmed operational state", () => { for (const status of ["pending_confirmation", "confirmed"] as const) { assert.equal(mayMutateWorkspace(status, "provider", "provider-details"), true); assert.equal(mayMutateWorkspace(status, "provider", "tasks"), true); } });
 test("customer can edit only explicitly customer-owned notes", () => { assert.equal(mayMutateWorkspace("confirmed", "customer", "customer-notes"), true); assert.equal(mayMutateWorkspace("confirmed", "customer", "provider-details"), false); assert.equal(mayMutateWorkspace("confirmed", "customer", "tasks"), false); });
@@ -94,4 +94,93 @@ test("completion timestamps move only on a real status transition", () => {
   assert.equal(nextCateringTaskCompletedAt({ status: "pending", completedAt: null }, "pending", now), null);
   assert.equal(nextCateringTaskCompletedAt({ status: "pending", completedAt: null }, "completed", now), now);
   assert.equal(nextCateringTaskCompletedAt({ status: "completed", completedAt: earlier }, "pending", now), null);
+});
+
+const T1 = new Date("2026-08-29T00:00:00.000Z");
+const T2 = new Date("2026-08-30T09:15:00.000Z");
+const NOW = new Date("2026-08-30T18:00:00.000Z");
+const lockedTask = (overrides: Partial<CateringTaskVersionedState> = {}): CateringTaskVersionedState => ({ title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared", status: "pending", completedAt: null, updatedAt: T1, ...overrides });
+/** Mirrors exactly what the PATCH route writes: nothing at all unless the resolution is an update. */
+const applyResolution = (row: CateringTaskVersionedState, resolution: ReturnType<typeof resolveCateringTaskPatch>): CateringTaskVersionedState => resolution.kind === "update" ? { ...row, ...resolution.next, completedAt: resolution.completedAt, updatedAt: resolution.updatedAt } : row;
+
+test("the task version precondition compares the instant, not its spelling", () => {
+  assert.equal(cateringTaskVersionMatches({ updatedAt: T1 }, "2026-08-29T00:00:00.000Z"), true);
+  assert.equal(cateringTaskVersionMatches({ updatedAt: T1 }, "2026-08-29T00:00:00Z"), true);
+  assert.equal(cateringTaskVersionMatches({ updatedAt: T1 }, T2.toISOString()), false);
+  assert.equal(cateringTaskVersionMatches({ updatedAt: T1 }, "2026-08-29T00:00:00.001Z"), false);
+  for (const invalid of ["", "not-a-timestamp"]) assert.equal(cateringTaskVersionMatches({ updatedAt: T1 }, invalid), false);
+});
+test("a matching precondition lets a real task change persist", () => {
+  const resolution = resolveCateringTaskPatch(lockedTask(), { title: "Confirm rentals and staffing", expectedUpdatedAt: T1.toISOString() }, NOW);
+  assert.equal(resolution.kind, "update");
+  const applied = applyResolution(lockedTask(), resolution);
+  assert.equal(applied.title, "Confirm rentals and staffing");
+  assert.equal(applied.updatedAt, NOW);
+  assert.deepEqual(resolution.kind === "update" ? resolution.activity : null, { eventType: "shared_requirement_updated", taskTitle: "Confirm rentals and staffing" });
+});
+test("a stale precondition conflicts and writes nothing at all", () => {
+  const current = lockedTask({ updatedAt: T2, status: "completed", completedAt: T2 });
+  const stale = { title: "Stale title", description: "Stale description", dueDate: "2026-01-01", dueTime: "08:15", visibility: "provider" as const, status: "pending" as const, expectedUpdatedAt: T1.toISOString() };
+  const resolution = resolveCateringTaskPatch(current, stale, NOW);
+  assert.deepEqual(resolution, { kind: "conflict" });
+  assert.equal("next" in resolution, false);
+  assert.equal("updatedAt" in resolution, false);
+  assert.equal("completedAt" in resolution, false);
+  assert.equal("activity" in resolution, false);
+  assert.deepEqual(applyResolution(current, resolution), current);
+});
+test("a stale precondition leaves every persisted task field exactly as it was", () => {
+  const current = lockedTask({ updatedAt: T2, status: "completed", completedAt: T2 });
+  const applied = applyResolution(current, resolveCateringTaskPatch(current, { title: "Stale", description: null, dueDate: null, dueTime: null, visibility: "provider", status: "pending", expectedUpdatedAt: T1.toISOString() }, NOW));
+  for (const field of [...CATERING_TASK_PATCH_FIELDS, "updatedAt", "completedAt"] as const) assert.deepEqual(applied[field], current[field]);
+});
+test("a stale shared task update records no activity and the update path never notifies", () => {
+  const current = lockedTask({ updatedAt: T2, visibility: "shared" });
+  const resolution = resolveCateringTaskPatch(current, { status: "completed", expectedUpdatedAt: T1.toISOString() }, NOW);
+  assert.equal(resolution.kind, "conflict");
+  assert.equal("activity" in resolution, false);
+  const completing = resolveCateringTaskPatch(current, { status: "completed", expectedUpdatedAt: T2.toISOString() }, NOW);
+  assert.deepEqual(completing.kind === "update" ? completing.activity : null, { eventType: "shared_requirement_completed", taskTitle: "Confirm rentals" });
+});
+test("two tabs editing one task: the stale full draft loses and the newer fields stay authoritative", () => {
+  const openedByBoth = lockedTask();
+  const tabBSaved = applyResolution(openedByBoth, resolveCateringTaskPatch(openedByBoth, { description: "Tab B description", expectedUpdatedAt: T1.toISOString() }, T2));
+  assert.equal(tabBSaved.description, "Tab B description");
+  assert.equal(tabBSaved.updatedAt, T2);
+  const tabAStaleFullDraft = { title: "Tab A title", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared" as const, status: "pending" as const, expectedUpdatedAt: T1.toISOString() };
+  const tabAResolution = resolveCateringTaskPatch(tabBSaved, tabAStaleFullDraft, NOW);
+  assert.deepEqual(tabAResolution, { kind: "conflict" });
+  const afterTabA = applyResolution(tabBSaved, tabAResolution);
+  assert.equal(afterTabA.description, "Tab B description");
+  assert.equal(afterTabA.title, "Confirm rentals");
+  assert.equal(afterTabA.updatedAt, T2);
+  const tabARetriesFromFresh = applyResolution(afterTabA, resolveCateringTaskPatch(afterTabA, { ...tabAStaleFullDraft, description: afterTabA.description, expectedUpdatedAt: T2.toISOString() }, NOW));
+  assert.equal(tabARetriesFromFresh.title, "Tab A title");
+  assert.equal(tabARetriesFromFresh.description, "Tab B description");
+});
+test("a status-only mutation is version-protected in both directions", () => {
+  const pending = lockedTask({ visibility: "provider" });
+  assert.deepEqual(resolveCateringTaskPatch(pending, { status: "completed", expectedUpdatedAt: T2.toISOString() }, NOW), { kind: "conflict" });
+  const completed = applyResolution(pending, resolveCateringTaskPatch(pending, { status: "completed", expectedUpdatedAt: T1.toISOString() }, NOW));
+  assert.equal(completed.status, "completed");
+  assert.equal(completed.completedAt, NOW);
+  assert.deepEqual(resolveCateringTaskPatch(completed, { status: "pending", expectedUpdatedAt: T1.toISOString() }, T2), { kind: "conflict" });
+  const reopened = applyResolution(completed, resolveCateringTaskPatch(completed, { status: "pending", expectedUpdatedAt: NOW.toISOString() }, T2));
+  assert.equal(reopened.status, "pending");
+  assert.equal(reopened.completedAt, null);
+});
+test("a version-matching no-op still writes nothing and bumps no timestamp", () => {
+  const current = lockedTask({ status: "completed", completedAt: T1 });
+  const resolution = resolveCateringTaskPatch(current, { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared", status: "completed", expectedUpdatedAt: T1.toISOString() }, NOW);
+  assert.deepEqual(resolution, { kind: "unchanged" });
+  assert.deepEqual(applyResolution(current, resolution), current);
+});
+test("a version-matching visibility move persists and stays privacy-safe", () => {
+  const shared = lockedTask({ visibility: "shared" });
+  const toPrivate = resolveCateringTaskPatch(shared, { visibility: "provider", expectedUpdatedAt: T1.toISOString() }, NOW);
+  assert.equal(toPrivate.kind === "update" && toPrivate.next.visibility, "provider");
+  assert.equal(toPrivate.kind === "update" ? toPrivate.activity : "missing", null);
+  const privateTask = lockedTask({ visibility: "provider" });
+  const toShared = resolveCateringTaskPatch(privateTask, { visibility: "shared", expectedUpdatedAt: T1.toISOString() }, NOW);
+  assert.deepEqual(toShared.kind === "update" ? toShared.activity : null, { eventType: "shared_requirement_updated", taskTitle: "Confirm rentals" });
 });
