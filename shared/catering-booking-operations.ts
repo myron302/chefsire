@@ -32,6 +32,8 @@ export const CATERING_TASK_VERSION_CONFLICT_CODE = "task_version_conflict";
 export const CATERING_TASK_VERSION_CONFLICT_MESSAGE = "This task changed since you started editing it. Reload the latest task before saving.";
 /** A booking that went cancelled or completed between the request's status check and the locked transaction. */
 export const CATERING_WORKSPACE_READ_ONLY_CODE = "workspace_read_only";
+/** A task that no longer exists in the authoritative locked collection, usually because another tab deleted it. */
+export const CATERING_TASK_NOT_FOUND_CODE = "catering_task_not_found";
 export const cateringBookingTaskUpdateSchema = z.object({
   title: z.string().trim().min(1).max(160).optional(), description: optionalText(2000), visibility: z.enum(CATERING_BOOKING_TASK_VISIBILITIES).optional(), dueDate: calendarDate.optional(), dueTime: wallClock.optional(), status: z.enum(CATERING_BOOKING_TASK_STATUSES).optional(),
   expectedUpdatedAt: cateringBookingTaskVersionSchema,

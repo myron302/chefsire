@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cateringBookingProviderDetailsSchema, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
-import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, maySubmitTaskEditor, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
+import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, isCateringTaskNotFound, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, maySubmitTaskEditor, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithTasks, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
 
 const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
 test("historical details are empty only when every represented field is absent", () => assert.deepEqual(historicalOperationalDetails(emptyDetails, "customer"), []));
@@ -271,4 +271,49 @@ test("a refused task creation keeps the draft the provider typed", () => {
   assert.equal(preserveWorkspaceFormAfterSaveFailure(typed), typed);
   assert.deepEqual(preserveWorkspaceFormAfterSaveFailure(typed).value, typed.value);
   assert.notDeepEqual(preserveWorkspaceFormAfterSaveFailure(typed).value, EMPTY_CATERING_TASK_DRAFT);
+});
+
+test("a task that no longer exists is classified apart from every other refusal", () => {
+  const withCode = (code: string) => Object.assign(new Error("refused"), { code });
+  assert.equal(isCateringTaskNotFound(withCode("catering_task_not_found")), true);
+  assert.equal(shouldRefetchWorkspaceAfterError(withCode("catering_task_not_found")), true);
+  assert.equal(isCateringTaskNotFound(withCode("task_version_conflict")), false);
+  assert.equal(isCateringTaskNotFound(withCode("workspace_read_only")), false);
+  assert.equal(isCateringTaskVersionConflict(withCode("catering_task_not_found")), false);
+  for (const ordinary of [Object.assign(new Error("Booking workspace not found"), {}), withCode("other"), null, undefined, "catering_task_not_found"]) {
+    assert.equal(isCateringTaskNotFound(ordinary), false);
+    assert.equal(shouldRefetchWorkspaceAfterError(ordinary), false);
+  }
+});
+test("a coded details read-only refusal refreshes the workspace and an invalid range does not", () => {
+  assert.equal(shouldRefetchWorkspaceAfterError(Object.assign(new Error("Booking became read-only before the event details could be saved"), { code: "workspace_read_only" })), true);
+  assert.equal(shouldRefetchWorkspaceAfterError(new Error("The resulting service time range is invalid: service end time must not precede service start time")), false);
+});
+test("a refused details save keeps the newer dirty draft for both participants", () => {
+  const provider = { identity: "actor:booking", value: providerDraftFrom({ ...emptyDetails, venueCity: "Dallas", serviceEndTime: "16:00" }), dirty: true };
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(provider), provider);
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(provider).value?.venueCity, "Dallas");
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(provider).value?.serviceEndTime, "16:00");
+  const customer = { identity: "actor:booking", value: "Please arrive early", dirty: true };
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(customer).value, "Please arrive early");
+});
+test("an editor closes once the authoritative task set says its task is gone", () => {
+  const open = openEditor(editorDraft, "task-1");
+  assert.equal(reconcileTaskEditorWithTasks(open, "actor:booking", ["task-2", "task-3"]), null);
+  assert.equal(reconcileTaskEditorWithTasks(open, "actor:booking", []), null);
+  assert.deepEqual(sectionsRenderingEditor(reconcileTaskEditorWithTasks(open, "actor:booking", []), "actor:booking", [taskView("task-2", "provider")]), { checklist: [], requirements: [] });
+});
+test("an editor whose task still exists survives the authoritative refresh, wherever the task now lives", () => {
+  for (const editor of [openEditor(editorDraft, "task-1"), markTaskEditorConflict(openEditor(), submittedEdit), editTaskEditorField(openEditor(), "actor:booking", "task-1", "visibility", "shared")]) {
+    assert.deepEqual(reconcileTaskEditorWithTasks(editor, "actor:booking", ["task-1", "task-2"]), editor);
+  }
+  const moved = editTaskEditorField(openEditor(), "actor:booking", "task-1", "title", "Newer title");
+  const survived = reconcileTaskEditorWithTasks(moved, "actor:booking", ["task-1"]);
+  assert.equal(survived?.draft.title, "Newer title");
+  assert.deepEqual(sectionsRenderingEditor(survived, "actor:booking", [taskView("task-1", "shared")]), { checklist: [], requirements: ["task-1"] });
+});
+test("another workspace's task set never closes the current editor", () => {
+  const open = openEditor(editorDraft, "task-1");
+  assert.equal(reconcileTaskEditorWithTasks(open, "actor:other-booking", []), open);
+  assert.equal(reconcileTaskEditorWithTasks(null, "actor:booking", ["task-1"]), null);
 });

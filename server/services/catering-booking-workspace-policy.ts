@@ -1,5 +1,5 @@
 import type { CateringBookingStatus } from "@shared/catering-bookings";
-import { CATERING_BOOKING_TASK_LIMIT, cateringWorkspaceRole, mayEditCateringWorkspace } from "@shared/catering-booking-operations";
+import { CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_NOT_FOUND_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "@shared/catering-booking-operations";
 
 export { cateringWorkspaceRole, mayEditCateringWorkspace };
 export function mayMutateWorkspace(status: CateringBookingStatus, role: "provider" | "customer", resource: "provider-details" | "customer-notes" | "tasks"): boolean {
@@ -98,6 +98,11 @@ export function sharedTaskUpdateActivity(current: CateringTaskPersistedState, in
   return cateringTaskUpdateOutcome(current, input).activity;
 }
 
+/** How a refused workspace write answers: the truthful message, plus the code the client classifies it by. */
+export type CateringWorkspaceRefusal = { message: string; code?: string };
+/** A task the actor may mutate but that no longer exists stays a 404, and never becomes a fabricated version conflict. */
+export const CATERING_TASK_NOT_FOUND_REFUSAL = { status: 404, message: "Task not found", code: CATERING_TASK_NOT_FOUND_CODE } as const;
+
 export const CATERING_SHARED_DETAIL_FIELDS = ["venueName", "venueAddress", "venueCity", "venueState", "venuePostalCode", "venueInstructions", "arrivalTime", "serviceStartTime", "serviceEndTime", "setupNotes", "accessNotes", "kitchenAvailable", "refrigerationAvailable", "powerAvailable", "waterAvailable", "indoorOutdoor"] as const;
 type CateringDetailComparison = Partial<Record<typeof CATERING_SHARED_DETAIL_FIELDS[number] | "providerNotes" | "customerNotes", unknown>>;
 
@@ -108,3 +113,25 @@ export function cateringDetailsActivityVisibility(existing: CateringDetailCompar
   if (sharedChanged) return "shared";
   return "providerNotes" in input && input.providerNotes !== (previous.providerNotes ?? null) ? "provider" : null;
 }
+
+/** The persisted or submitted operational details a save is resolved against. */
+export type CateringDetailsState = CateringDetailComparison & { serviceStartTime?: string | null; serviceEndTime?: string | null };
+/** Only a provider may change service times, so only a provider save can produce an invalid range. */
+function cateringSubmittedServiceTimes(input: CateringDetailsState, role: "provider" | "customer") {
+  if (role !== "provider") return {};
+  return { ...("serviceStartTime" in input ? { serviceStartTime: input.serviceStartTime } : {}), ...("serviceEndTime" in input ? { serviceEndTime: input.serviceEndTime } : {}) };
+}
+/**
+ * Resolves a locked details save into three distinct outcomes. A booking that went read-only under the lock and a
+ * service-time range that would not survive the merge are different refusals; only "save" writes a row or activity.
+ */
+export function resolveCateringDetailsSave(locked: { existing: CateringDetailsState | undefined } | null, input: CateringDetailsState, role: "provider" | "customer") {
+  if (!locked) return { kind: "read_only" } as const;
+  if (role === "provider" && !hasValidCateringServiceTimeRange(mergeCateringServiceTimes(locked.existing, cateringSubmittedServiceTimes(input, role)))) return { kind: "invalid_time_range" } as const;
+  return { kind: "save", activityVisibility: cateringDetailsActivityVisibility(locked.existing, input, role) } as const;
+}
+/** A read-only booking is never reported as a validation problem, and a validation problem never forces a read-only view. */
+export const CATERING_DETAILS_SAVE_REFUSALS: Record<"read_only" | "invalid_time_range", CateringWorkspaceRefusal> = {
+  read_only: { message: "Booking became read-only before the event details could be saved", code: CATERING_WORKSPACE_READ_ONLY_CODE },
+  invalid_time_range: { message: "The resulting service time range is invalid: service end time must not precede service start time" },
+};

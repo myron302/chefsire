@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_PATCH_FIELDS, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, cateringTaskVersionMatches, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, sharedTaskUpdateActivity, type CateringTaskVersionedState } from "./catering-booking-workspace-policy";
+import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, CATERING_TASK_PATCH_FIELDS, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, cateringTaskVersionMatches, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, sharedTaskUpdateActivity, type CateringTaskVersionedState } from "./catering-booking-workspace-policy";
 
 test("provider can prepare pending and confirmed operational state", () => { for (const status of ["pending_confirmation", "confirmed"] as const) { assert.equal(mayMutateWorkspace(status, "provider", "provider-details"), true); assert.equal(mayMutateWorkspace(status, "provider", "tasks"), true); } });
 test("customer can edit only explicitly customer-owned notes", () => { assert.equal(mayMutateWorkspace("confirmed", "customer", "customer-notes"), true); assert.equal(mayMutateWorkspace("confirmed", "customer", "provider-details"), false); assert.equal(mayMutateWorkspace("confirmed", "customer", "tasks"), false); });
@@ -273,4 +273,61 @@ test("a read-only create is never reported as a full task list", () => {
   assert.match(CATERING_TASK_CREATE_MESSAGES.read_only, /read-only/);
   assert.equal(/at most/.test(CATERING_TASK_CREATE_MESSAGES.read_only), false);
   assert.match(CATERING_TASK_CREATE_MESSAGES.limit, /at most 100 tasks/);
+});
+
+/** Mirrors exactly what the PUT /details route writes: nothing at all unless the resolution is a save. */
+const applyDetailsOutcome = (outcome: ReturnType<typeof resolveCateringDetailsSave>) => ({
+  updates: outcome.kind === "save" ? 1 : 0,
+  activity: outcome.kind === "save" && outcome.activityVisibility ? [outcome.activityVisibility] : [],
+});
+const persistedDetails = { venueCity: "Austin", serviceStartTime: "17:30", serviceEndTime: "21:00", providerNotes: null, customerNotes: null };
+
+test("an active provider details save persists and records shared history", () => {
+  const outcome = resolveCateringDetailsSave({ existing: persistedDetails }, { venueCity: "Dallas" }, "provider");
+  assert.equal(outcome.kind, "save");
+  assert.deepEqual(applyDetailsOutcome(outcome), { updates: 1, activity: ["shared"] });
+  const privateOnly = resolveCateringDetailsSave({ existing: persistedDetails }, { providerNotes: "Private staffing plan" }, "provider");
+  assert.deepEqual(applyDetailsOutcome(privateOnly), { updates: 1, activity: ["provider"] });
+});
+test("an active customer notes save persists and records shared history", () => {
+  const outcome = resolveCateringDetailsSave({ existing: persistedDetails }, { customerNotes: "Please arrive early" }, "customer");
+  assert.equal(outcome.kind, "save");
+  assert.deepEqual(applyDetailsOutcome(outcome), { updates: 1, activity: ["shared"] });
+  assert.deepEqual(applyDetailsOutcome(resolveCateringDetailsSave({ existing: persistedDetails }, { customerNotes: null }, "customer")), { updates: 1, activity: [] });
+});
+test("a booking that went read-only under the lock refuses both provider and customer saves", () => {
+  for (const [role, input] of [["provider", { venueCity: "Dallas" }], ["customer", { customerNotes: "Late" }]] as const) {
+    const outcome = resolveCateringDetailsSave(null, input, role);
+    assert.deepEqual(outcome, { kind: "read_only" });
+    assert.equal("activityVisibility" in outcome, false);
+    assert.deepEqual(applyDetailsOutcome(outcome), { updates: 0, activity: [] });
+  }
+});
+test("a service range that would not survive the merge is its own refusal", () => {
+  const outcome = resolveCateringDetailsSave({ existing: persistedDetails }, { serviceEndTime: "16:00" }, "provider");
+  assert.deepEqual(outcome, { kind: "invalid_time_range" });
+  assert.deepEqual(applyDetailsOutcome(outcome), { updates: 0, activity: [] });
+  assert.equal(resolveCateringDetailsSave({ existing: persistedDetails }, { serviceStartTime: null }, "provider").kind, "save");
+  assert.equal(resolveCateringDetailsSave({ existing: undefined }, { serviceEndTime: "16:00" }, "provider").kind, "save");
+  assert.equal(resolveCateringDetailsSave({ existing: persistedDetails }, { customerNotes: "Late" }, "customer").kind, "save");
+});
+test("a read-only details refusal carries the canonical code and an invalid range never does", () => {
+  assert.equal(CATERING_DETAILS_SAVE_REFUSALS.read_only.code, "workspace_read_only");
+  assert.equal(CATERING_DETAILS_SAVE_REFUSALS.invalid_time_range.code, undefined);
+  assert.notEqual(CATERING_DETAILS_SAVE_REFUSALS.read_only.message, CATERING_DETAILS_SAVE_REFUSALS.invalid_time_range.message);
+  assert.match(CATERING_DETAILS_SAVE_REFUSALS.read_only.message, /read-only/);
+  assert.equal(/service time range/.test(CATERING_DETAILS_SAVE_REFUSALS.read_only.message), false);
+  assert.match(CATERING_DETAILS_SAVE_REFUSALS.invalid_time_range.message, /service end time must not precede service start time/);
+  assert.equal(/read-only/.test(CATERING_DETAILS_SAVE_REFUSALS.invalid_time_range.message), false);
+});
+test("a task that no longer exists stays a truthful 404 and never becomes a version conflict", () => {
+  assert.equal(CATERING_TASK_NOT_FOUND_REFUSAL.status, 404);
+  assert.equal(CATERING_TASK_NOT_FOUND_REFUSAL.message, "Task not found");
+  assert.equal(CATERING_TASK_NOT_FOUND_REFUSAL.code, "catering_task_not_found");
+  assert.notEqual(CATERING_TASK_NOT_FOUND_REFUSAL.code, "task_version_conflict");
+  assert.notEqual(CATERING_TASK_NOT_FOUND_REFUSAL.code, CATERING_DETAILS_SAVE_REFUSALS.read_only.code);
+});
+test("a missing-task refusal carries nothing to write", () => {
+  const refusal: Record<string, unknown> = { ...CATERING_TASK_NOT_FOUND_REFUSAL };
+  for (const written of ["task", "next", "activity", "updatedAt", "completedAt", "sortOrder"]) assert.equal(written in refusal, false);
 });

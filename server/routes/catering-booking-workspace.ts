@@ -1,17 +1,18 @@
 import { Router } from "express";
 import { and, asc, count, desc, eq, max, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { cateringBookingActivity, cateringBookingDetails, cateringBookings, cateringBookingTasks, notifications } from "@shared/schema";
+import { cateringBookingActivity, cateringBookingDetails, cateringBookings, cateringBookingTasks, notifications, type CateringBookingDetails } from "@shared/schema";
 import { cateringBookingIdSchema } from "@shared/catering-bookings";
-import { CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskDeleteSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mergeCateringServiceTimes } from "@shared/catering-booking-operations";
+import { CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskDeleteSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingWorkspacePath, cateringWorkspaceRole } from "@shared/catering-booking-operations";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { serializeBookingActivity, serializeBookingDetails, serializeBookingTask } from "../serializers/catering-booking-workspace";
-import { CATERING_TASK_CREATE_MESSAGES, cateringDetailsActivityVisibility, mayMutateWorkspace, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch } from "../services/catering-booking-workspace-policy";
+import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, mayMutateWorkspace, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch } from "../services/catering-booking-workspace-policy";
 
 const r = Router();
 const taskIdSchema = z.string().uuid();
+type DetailsSaveResult = { kind: "read_only" } | { kind: "invalid_time_range" } | { kind: "updated"; details: CateringBookingDetails };
 async function ownedBooking(id: string, userId: string) {
   const [booking] = await db.select().from(cateringBookings).where(and(eq(cateringBookings.id, id), or(eq(cateringBookings.providerId, userId), eq(cateringBookings.customerId, userId)))).limit(1);
   return booking;
@@ -55,18 +56,18 @@ r.put("/bookings/:id/details", requireAuth, async (req, res, next) => { try {
   const input = role === "provider" ? cateringBookingProviderDetailsSchema.parse(req.body ?? {}) : cateringBookingCustomerDetailsSchema.parse(req.body ?? {});
   if (!mayMutateWorkspace(booking.status as never, role, role === "provider" ? "provider-details" : "customer-notes")) return res.status(409).json({ message: "Cancelled and completed workspaces are read-only" });
   const now = new Date();
-  const [details] = await db.transaction(async (tx: typeof db) => {
-    if (!await lockActiveBooking(tx, id)) return [];
-    const [existing] = await tx.select().from(cateringBookingDetails).where(eq(cateringBookingDetails.bookingId, id)).limit(1);
-    const serviceInput = role === "provider" ? { ...("serviceStartTime" in input ? { serviceStartTime: input.serviceStartTime } : {}), ...("serviceEndTime" in input ? { serviceEndTime: input.serviceEndTime } : {}) } : {};
-    const serviceTimes = mergeCateringServiceTimes(existing, serviceInput);
-    if (role === "provider" && !hasValidCateringServiceTimeRange(serviceTimes)) return [];
-    const visibility = cateringDetailsActivityVisibility(existing, input, role);
-    const rows = await tx.insert(cateringBookingDetails).values({ bookingId: id, ...input, updatedAt: now }).onConflictDoUpdate({ target: cateringBookingDetails.bookingId, set: { ...input, updatedAt: now } }).returning();
-    if (visibility) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: userId, eventType: "details_updated", visibility, metadata: {} }); return rows;
+  const result: DetailsSaveResult = await db.transaction(async (tx: typeof db) => {
+    const active = await lockActiveBooking(tx, id);
+    const [existing] = active ? await tx.select().from(cateringBookingDetails).where(eq(cateringBookingDetails.bookingId, id)).limit(1) : [];
+    // A booking that went read-only under the lock and an invalid resulting service range are different refusals.
+    const outcome = resolveCateringDetailsSave(active ? { existing } : null, input, role);
+    if (outcome.kind !== "save") return outcome;
+    const [row] = await tx.insert(cateringBookingDetails).values({ bookingId: id, ...input, updatedAt: now }).onConflictDoUpdate({ target: cateringBookingDetails.bookingId, set: { ...input, updatedAt: now } }).returning();
+    if (outcome.activityVisibility) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: userId, eventType: "details_updated", visibility: outcome.activityVisibility, metadata: {} });
+    return { kind: "updated", details: row } as const;
   });
-  if (!details) return res.status(409).json({ message: "Booking is read-only or the resulting service time range is invalid" });
-  res.json({ details: serializeBookingDetails(details, role) });
+  if (result.kind !== "updated") { const refusal = CATERING_DETAILS_SAVE_REFUSALS[result.kind]; return res.status(409).json({ message: refusal.message, code: refusal.code }); }
+  res.json({ details: serializeBookingDetails(result.details, role) });
 } catch (error) { invalid(error, res, next); } });
 
 r.post("/bookings/:id/tasks", requireAuth, async (req, res, next) => { try {
@@ -106,7 +107,7 @@ r.patch("/bookings/:id/tasks/:taskId", requireAuth, async (req, res, next) => { 
     if (resolution.activity) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: providerId, eventType: resolution.activity.eventType, visibility: "shared", metadata: { taskTitle: resolution.activity.taskTitle } });
     return { kind: "updated", task } as const;
   });
-  if (result.kind === "not_found") return res.status(404).json({ message: "Task not found" });
+  if (result.kind === "not_found") return res.status(CATERING_TASK_NOT_FOUND_REFUSAL.status).json({ message: CATERING_TASK_NOT_FOUND_REFUSAL.message, code: CATERING_TASK_NOT_FOUND_REFUSAL.code });
   if (result.kind === "conflict") return res.status(409).json({ message: CATERING_TASK_VERSION_CONFLICT_MESSAGE, code: CATERING_TASK_VERSION_CONFLICT_CODE });
   if (result.kind === "read_only") return res.status(409).json({ message: "Booking became read-only before the task update completed", code: CATERING_WORKSPACE_READ_ONLY_CODE });
   res.json({ task: serializeBookingTask(result.task) });
@@ -129,7 +130,7 @@ r.delete("/bookings/:id/tasks/:taskId", requireAuth, async (req, res, next) => {
     if (resolution.activity) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: providerId, eventType: resolution.activity.eventType, visibility: "shared", metadata: { taskTitle: resolution.activity.taskTitle } });
     return { kind: "deleted" } as const;
   });
-  if (result.kind === "not_found") return res.status(404).json({ message: "Task not found" });
+  if (result.kind === "not_found") return res.status(CATERING_TASK_NOT_FOUND_REFUSAL.status).json({ message: CATERING_TASK_NOT_FOUND_REFUSAL.message, code: CATERING_TASK_NOT_FOUND_REFUSAL.code });
   if (result.kind === "conflict") return res.status(409).json({ message: CATERING_TASK_VERSION_CONFLICT_MESSAGE, code: CATERING_TASK_VERSION_CONFLICT_CODE });
   if (result.kind === "read_only") return res.status(409).json({ message: "Booking became read-only before the task could be deleted", code: CATERING_WORKSPACE_READ_ONLY_CODE });
   res.status(204).end();

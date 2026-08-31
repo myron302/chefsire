@@ -1,4 +1,4 @@
-import { CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, type CateringBookingActivityView, type CateringBookingDetailsView } from "@shared/catering-booking-operations";
+import { CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, type CateringBookingActivityView, type CateringBookingDetailsView } from "@shared/catering-booking-operations";
 import { formatCateringCalendarDate } from "@shared/catering-availability";
 
 export type OperationalDetailItem = { label: string; value: string };
@@ -36,10 +36,14 @@ export function cateringWorkspaceErrorCode(error: unknown): string | null {
 export function isCateringTaskVersionConflict(error: unknown): boolean {
   return cateringWorkspaceErrorCode(error) === CATERING_TASK_VERSION_CONFLICT_CODE;
 }
-/** Both refusals mean the workspace on screen is behind the server, so the authoritative view is fetched again. */
+export function isCateringTaskNotFound(error: unknown): boolean {
+  return cateringWorkspaceErrorCode(error) === CATERING_TASK_NOT_FOUND_CODE;
+}
+/** Every coded refusal means the workspace on screen is behind the server, so the authoritative view is fetched again. */
+const WORKSPACE_REFRESHING_CODES: readonly string[] = [CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, CATERING_TASK_NOT_FOUND_CODE];
 export function shouldRefetchWorkspaceAfterError(error: unknown): boolean {
   const code = cateringWorkspaceErrorCode(error);
-  return code === CATERING_TASK_VERSION_CONFLICT_CODE || code === CATERING_WORKSPACE_READ_ONLY_CODE;
+  return code !== null && WORKSPACE_REFRESHING_CODES.includes(code);
 }
 export function formatCateringTaskDeadline(dueDate: string | null, dueTime: string | null): string | null {
   if (dueDate && dueTime) return `Due ${formatCateringCalendarDate(dueDate)} at ${dueTime}`;
@@ -107,6 +111,14 @@ export function markTaskEditorConflict(current: TaskEditorState, submitted: Subm
   if (!current || current.identity !== submitted.identity || current.taskId !== submitted.taskId) return current;
   if (current.expectedUpdatedAt !== submitted.expectedUpdatedAt || current.conflict) return current;
   return { ...current, conflict: true };
+}
+/**
+ * An editor whose task is gone from the authoritative task set closes: another tab deleted it, so there is no
+ * persisted task left for the draft to save against. Anything the refetch still lists keeps its editor and draft.
+ */
+export function reconcileTaskEditorWithTasks(current: TaskEditorState, identity: string, taskIds: readonly string[]): TaskEditorState {
+  if (!current || current.identity !== identity) return current;
+  return taskIds.includes(current.taskId) ? current : null;
 }
 /** A stale draft may never be resubmitted against the version it already lost to. */
 export function maySubmitTaskEditor(editor: TaskEditorState): boolean { return editor !== null && !editor.conflict; }
