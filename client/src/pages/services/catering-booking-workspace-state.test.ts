@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cateringBookingProviderDetailsSchema, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
-import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, isCateringTaskNotFound, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, maySubmitTaskEditor, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithTasks, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
+import { cateringBookingProviderDetailsSchema, mayEditCateringWorkspace, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
+import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, isCateringTaskNotFound, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, maySubmitTaskEditor, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithTasks, reconcileTaskEditorWithWorkspace, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
 
 const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
 test("historical details are empty only when every represented field is absent", () => assert.deepEqual(historicalOperationalDetails(emptyDetails, "customer"), []));
@@ -112,9 +112,14 @@ test("service times stay event-local wall clock, with no date, UTC, or browser-t
 });
 
 const taskView = (id: string, visibility: "provider" | "shared", overrides: Partial<CateringBookingTaskView> = {}): CateringBookingTaskView => ({ id, title: "Confirm rentals", description: "Call supplier", status: "pending", visibility, dueDate: "2026-09-15", dueTime: "17:30", sortOrder: 0, createdAt: "2026-08-29T00:00:00.000Z", completedAt: null, updatedAt: "2026-08-29T00:00:00.000Z", ...overrides });
-const sectionsRenderingEditor = (editor: OpenTaskEditorState | null, identity: string, tasks: CateringBookingTaskView[]) => {
+const sectionsRenderingEditor = (editor: OpenTaskEditorState | null, identity: string, tasks: CateringBookingTaskView[], editable = true) => {
   const { privateTasks, requirements } = splitCateringWorkspaceTasks(tasks);
-  return { checklist: privateTasks.filter((task) => taskEditorForTask(editor, identity, task.id)).map((task) => task.id), requirements: requirements.filter((task) => taskEditorForTask(editor, identity, task.id)).map((task) => task.id) };
+  return { checklist: privateTasks.filter((task) => taskEditorForTask(editor, identity, task.id, editable)).map((task) => task.id), requirements: requirements.filter((task) => taskEditorForTask(editor, identity, task.id, editable)).map((task) => task.id) };
+};
+/** The read-only rendering the workspace falls back to: every task is still listed, none of them in an editor. */
+const sectionsListingTasks = (tasks: CateringBookingTaskView[]) => {
+  const { privateTasks, requirements } = splitCateringWorkspaceTasks(tasks);
+  return { checklist: privateTasks.map((task) => task.id), requirements: requirements.map((task) => task.id) };
 };
 
 test("opening the editor copies the persisted task and its authoritative version without inventing values", () => {
@@ -217,9 +222,9 @@ test("a rejected precondition marks the editor stale without touching the draft"
   assert.equal(conflicted?.taskId, "task-1");
   assert.equal(conflicted?.expectedUpdatedAt, TASK_VERSION);
   assert.deepEqual(conflicted?.draft, { ...editorDraft, title: "Edited title" });
-  assert.equal(maySubmitTaskEditor(current), true);
-  assert.equal(maySubmitTaskEditor(conflicted), false);
-  assert.equal(maySubmitTaskEditor(null), false);
+  assert.equal(maySubmitTaskEditor(current, true), true);
+  assert.equal(maySubmitTaskEditor(conflicted, true), false);
+  assert.equal(maySubmitTaskEditor(null, true), false);
 });
 test("a stale draft survives a conflict and every further keystroke, and still may not be resubmitted", () => {
   const conflicted = markTaskEditorConflict(openEditor(), submittedEdit);
@@ -227,7 +232,7 @@ test("a stale draft survives a conflict and every further keystroke, and still m
   assert.equal(stillEditing?.conflict, true);
   assert.equal(stillEditing?.draft.description, "Typed after the conflict");
   assert.equal(stillEditing?.expectedUpdatedAt, TASK_VERSION);
-  assert.equal(maySubmitTaskEditor(stillEditing), false);
+  assert.equal(maySubmitTaskEditor(stillEditing, true), false);
   assert.deepEqual(sectionsRenderingEditor(stillEditing, "actor:booking", [taskView("task-1", "provider")]), { checklist: ["task-1"], requirements: [] });
 });
 test("reloading the latest task clears the conflict and rebases the editor on the newest version", () => {
@@ -236,7 +241,7 @@ test("reloading the latest task clears the conflict and rebases the editor on th
   assert.equal(reopened?.conflict, false);
   assert.equal(reopened?.expectedUpdatedAt, "2026-08-30T09:15:00.000Z");
   assert.equal(reopened?.draft.title, "Newer server title");
-  assert.equal(maySubmitTaskEditor(reopened), true);
+  assert.equal(maySubmitTaskEditor(reopened, true), true);
   assert.notEqual(conflicted?.expectedUpdatedAt, reopened?.expectedUpdatedAt);
 });
 test("a conflict from another task, workspace, or already-rebased editor is ignored", () => {
@@ -316,4 +321,64 @@ test("another workspace's task set never closes the current editor", () => {
   const open = openEditor(editorDraft, "task-1");
   assert.equal(reconcileTaskEditorWithTasks(open, "actor:other-booking", []), open);
   assert.equal(reconcileTaskEditorWithTasks(null, "actor:booking", ["task-1"]), null);
+});
+
+const workspaceTasks = [taskView("task-1", "provider"), taskView("task-2", "shared")];
+const persistedTaskIds = workspaceTasks.map((task) => task.id);
+/** The two statuses that turn a live workspace into history, and the `editable` each one makes the server report. */
+const readOnlyStatuses = ["cancelled", "completed"] as const;
+
+test("an open editor on an active workspace stays usable, and nothing about that behavior changed", () => {
+  for (const status of ["pending_confirmation", "confirmed"] as const) {
+    const editable = mayEditCateringWorkspace(status);
+    assert.equal(editable, true);
+    const open = openTaskEditor("actor:booking", taskView("task-1", "provider"));
+    const reconciled = reconcileTaskEditorWithWorkspace(open, "actor:booking", editable, persistedTaskIds);
+    assert.deepEqual(reconciled, open);
+    assert.deepEqual(sectionsRenderingEditor(reconciled, "actor:booking", workspaceTasks, editable), { checklist: ["task-1"], requirements: [] });
+    assert.equal(maySubmitTaskEditor(reconciled, editable), true);
+    const typed = editTaskEditorField(reconciled, "actor:booking", "task-1", "title", "Edited title");
+    assert.equal(typed?.draft.title, "Edited title");
+    assert.equal(maySubmitTaskEditor(typed, editable), true);
+    assert.deepEqual(sectionsRenderingEditor(typed, "actor:booking", workspaceTasks, editable), { checklist: ["task-1"], requirements: [] });
+  }
+});
+test("a booking that becomes cancelled or completed closes the editor the refetch found open", () => {
+  for (const status of readOnlyStatuses) {
+    const editable = mayEditCateringWorkspace(status);
+    assert.equal(editable, false);
+    const open = editTaskEditorField(openTaskEditor("actor:booking", taskView("task-1", "provider")), "actor:booking", "task-1", "title", "Edited title");
+    assert.equal(reconcileTaskEditorWithWorkspace(open, "actor:booking", editable, persistedTaskIds), null);
+    assert.equal(reconcileTaskEditorWithWorkspace(markTaskEditorConflict(openEditor(), submittedEdit), "actor:booking", editable, persistedTaskIds), null);
+  }
+});
+test("a retained editor renders no task form and no Save task control on a read-only workspace", () => {
+  const open = openTaskEditor("actor:booking", taskView("task-1", "provider"));
+  for (const editor of [open, editTaskEditorField(open, "actor:booking", "task-1", "visibility", "shared"), markTaskEditorConflict(openEditor(), submittedEdit)]) {
+    assert.deepEqual(sectionsRenderingEditor(editor, "actor:booking", workspaceTasks, false), { checklist: [], requirements: [] });
+    for (const task of workspaceTasks) assert.equal(taskEditorForTask(editor, "actor:booking", task.id, false), null);
+  }
+});
+test("no task mutation may be submitted from an editor stranded on a read-only workspace", () => {
+  const open = openTaskEditor("actor:booking", taskView("task-1", "provider"));
+  for (const editor of [open, editTaskEditorField(open, "actor:booking", "task-1", "title", "Edited title"), markTaskEditorConflict(openEditor(), submittedEdit), null]) {
+    assert.equal(maySubmitTaskEditor(editor, false), false);
+  }
+});
+test("a read-only workspace still renders its historical tasks and details", () => {
+  const closed = reconcileTaskEditorWithWorkspace(openTaskEditor("actor:booking", taskView("task-1", "provider")), "actor:booking", false, persistedTaskIds);
+  assert.equal(closed, null);
+  assert.deepEqual(sectionsListingTasks(workspaceTasks), { checklist: ["task-1"], requirements: ["task-2"] });
+  assert.equal(formatCateringTaskDeadline(workspaceTasks[0].dueDate, workspaceTasks[0].dueTime), "Due Sep 15, 2026 at 17:30");
+  assert.deepEqual(historicalOperationalDetails({ ...emptyDetails, venueCity: "Austin" }, "provider"), [{ label: "City", value: "Austin" }]);
+});
+test("a read-only refetch for another workspace never closes the current editor", () => {
+  const open = openEditor(editorDraft, "task-1");
+  assert.equal(reconcileTaskEditorWithWorkspace(open, "actor:other-booking", false, []), open);
+  assert.equal(reconcileTaskEditorWithWorkspace(null, "actor:booking", false, persistedTaskIds), null);
+});
+test("an editable refetch still closes an editor whose task the authoritative set dropped", () => {
+  const open = openEditor(editorDraft, "task-1");
+  assert.equal(reconcileTaskEditorWithWorkspace(open, "actor:booking", true, ["task-2"]), null);
+  assert.deepEqual(reconcileTaskEditorWithWorkspace(open, "actor:booking", true, persistedTaskIds), open);
 });

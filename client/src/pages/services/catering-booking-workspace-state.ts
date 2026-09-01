@@ -120,8 +120,20 @@ export function reconcileTaskEditorWithTasks(current: TaskEditorState, identity:
   if (!current || current.identity !== identity) return current;
   return taskIds.includes(current.taskId) ? current : null;
 }
-/** A stale draft may never be resubmitted against the version it already lost to. */
-export function maySubmitTaskEditor(editor: TaskEditorState): boolean { return editor !== null && !editor.conflict; }
+/**
+ * The authoritative workspace decides whether an open editor may stay open. A booking that became cancelled or
+ * completed answers `editable: false`, and every task write against it is refused, so the retained editor closes
+ * instead of rendering a form that cannot save. An editable workspace keeps the task-set reconciliation above.
+ */
+export function reconcileTaskEditorWithWorkspace(current: TaskEditorState, identity: string, editable: boolean, taskIds: readonly string[]): TaskEditorState {
+  if (!current || current.identity !== identity) return current;
+  return editable ? reconcileTaskEditorWithTasks(current, identity, taskIds) : null;
+}
+/**
+ * A stale draft may never be resubmitted against the version it already lost to, and neither may any draft on a
+ * workspace the server no longer accepts writes for: a booking that became cancelled or completed is history.
+ */
+export function maySubmitTaskEditor(editor: TaskEditorState, editable: boolean): boolean { return editable && editor !== null && !editor.conflict; }
 /** Applies one field to whatever the editor currently holds, so a keystroke never resurrects a draft from an earlier render. */
 export function editTaskEditorField<K extends keyof CateringTaskDraft>(current: TaskEditorState, identity: string, taskId: string, field: K, value: CateringTaskDraft[K]): TaskEditorState {
   if (!current || current.identity !== identity || current.taskId !== taskId) return current;
@@ -129,9 +141,11 @@ export function editTaskEditorField<K extends keyof CateringTaskDraft>(current: 
 }
 /**
  * Resolves the editor for one rendered task. The workspace owns a single editor, so whichever visibility section holds
- * the task renders it: a persisted visibility change moves the task between sections without stranding the draft.
+ * the task renders it: a persisted visibility change moves the task between sections without stranding the draft. A
+ * workspace that is not editable renders no editor at all, so a retained draft can never make history look writable.
  */
-export function taskEditorForTask(editor: TaskEditorState, identity: string, taskId: string): TaskEditorState {
+export function taskEditorForTask(editor: TaskEditorState, identity: string, taskId: string, editable: boolean): TaskEditorState {
+  if (!editable) return null;
   const active = activeTaskEditor(editor, identity);
   return active && active.taskId === taskId ? active : null;
 }
