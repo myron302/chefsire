@@ -1,18 +1,20 @@
 import { Router } from "express";
 import { and, asc, count, desc, eq, max, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { cateringBookingActivity, cateringBookingDetails, cateringBookings, cateringBookingTasks, notifications, type CateringBookingDetails } from "@shared/schema";
+import { cateringBookingActivity, cateringBookingDetails, cateringBookings, cateringBookingTasks, notifications, type CateringBookingDetails, type CateringBookingTask } from "@shared/schema";
 import { cateringBookingIdSchema } from "@shared/catering-bookings";
 import { CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskDeleteSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingWorkspacePath, cateringWorkspaceRole } from "@shared/catering-booking-operations";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { serializeBookingActivity, serializeBookingDetails, serializeBookingTask } from "../serializers/catering-booking-workspace";
-import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, mayMutateWorkspace, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch } from "../services/catering-booking-workspace-policy";
+import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, CATERING_TASK_REORDER_REFUSALS, mayMutateWorkspace, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, resolveCateringTaskReorder } from "../services/catering-booking-workspace-policy";
 
 const r = Router();
 const taskIdSchema = z.string().uuid();
 type DetailsSaveResult = { kind: "read_only" } | { kind: "invalid_time_range" } | { kind: "updated"; details: CateringBookingDetails };
+/** The reorder's four outcomes, named here so a refusal is narrowed to its own message rather than indexed loosely. */
+type TaskReorderResult = { kind: "read_only" } | { kind: "membership" } | { kind: "conflict" } | { kind: "reordered"; tasks: CateringBookingTask[] };
 async function ownedBooking(id: string, userId: string) {
   const [booking] = await db.select().from(cateringBookings).where(and(eq(cateringBookings.id, id), or(eq(cateringBookings.providerId, userId), eq(cateringBookings.customerId, userId)))).limit(1);
   return booking;
@@ -140,8 +142,25 @@ r.post("/bookings/:id/tasks/reorder", requireAuth, async (req, res, next) => { t
   const id = cateringBookingIdSchema.parse(req.params.id); const providerId = (req.user as { id: string }).id; const input = cateringBookingTaskReorderSchema.parse(req.body ?? {}); const booking = await ownedBooking(id, providerId);
   if (!booking) return res.status(404).json({ message: "Booking workspace not found" }); const role = cateringWorkspaceRole(booking, providerId)!;
   if (!mayMutateWorkspace(booking.status as never, role, "tasks")) return res.status(409).json({ message: "Only the provider may reorder tasks on an active workspace" });
-  const ok = await db.transaction(async (tx: typeof db) => { if (!await lockActiveBooking(tx, id)) return false; await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`catering-tasks:${id}`}))`); const rows = await tx.select({ id: cateringBookingTasks.id }).from(cateringBookingTasks).where(eq(cateringBookingTasks.bookingId, id)); if (rows.length !== input.taskIds.length || rows.some((row: { id: string }) => !input.taskIds.includes(row.id))) return false; await Promise.all(input.taskIds.map((taskId, sortOrder) => tx.update(cateringBookingTasks).set({ sortOrder, updatedAt: new Date() }).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id))))); return true; });
-  if (!ok) return res.status(409).json({ message: "Reorder must contain the complete current task set" }); res.status(204).end();
+  const result: TaskReorderResult = await db.transaction(async (tx: typeof db) => {
+    if (!await lockActiveBooking(tx, id)) return { kind: "read_only" } as const;
+    await lockTaskCollection(tx, id);
+    const rows = await tx.select({ id: cateringBookingTasks.id, updatedAt: cateringBookingTasks.updatedAt }).from(cateringBookingTasks).where(eq(cateringBookingTasks.bookingId, id));
+    // Membership, then every submitted version, both against the authoritative locked rows. A booking that went
+    // read-only, an incomplete set, and a stale version are three different refusals, and none of them writes.
+    const outcome = resolveCateringTaskReorder(rows, input.tasks);
+    if (outcome.kind !== "reorder") return outcome;
+    // Only past the precondition does anything persist, and the new sortOrder is the submitted position, never a
+    // client-supplied one. Sequential so the whole reorder lands as one atomic set of writes under the task lock.
+    const now = new Date();
+    for (const { id: taskId, sortOrder } of outcome.updates) await tx.update(cateringBookingTasks).set({ sortOrder, updatedAt: now }).where(and(eq(cateringBookingTasks.id, taskId), eq(cateringBookingTasks.bookingId, id)));
+    // The reorder bumped every task's version, so the response hands back the fresh authoritative ones.
+    const reordered = await tx.select().from(cateringBookingTasks).where(eq(cateringBookingTasks.bookingId, id)).orderBy(asc(cateringBookingTasks.sortOrder), asc(cateringBookingTasks.id));
+    return { kind: "reordered", tasks: reordered } as const;
+  });
+  if (result.kind === "conflict") return res.status(409).json({ message: CATERING_TASK_VERSION_CONFLICT_MESSAGE, code: CATERING_TASK_VERSION_CONFLICT_CODE });
+  if (result.kind !== "reordered") { const refusal = CATERING_TASK_REORDER_REFUSALS[result.kind]; return res.status(409).json({ message: refusal.message, code: refusal.code }); }
+  res.json({ tasks: result.tasks.map(serializeBookingTask) });
 } catch (error) { invalid(error, res, next); } });
 
 export default r;

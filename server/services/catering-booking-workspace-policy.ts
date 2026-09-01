@@ -94,6 +94,35 @@ export const CATERING_TASK_CREATE_MESSAGES = {
   limit: `A booking may have at most ${CATERING_BOOKING_TASK_LIMIT} tasks`,
 } as const;
 
+/** One submitted reorder entry: the task, and the version of it the client observed. Position carries the sort order. */
+export type CateringTaskReorderEntry = { id: string; expectedUpdatedAt: string };
+/** The authoritative version of one task in the locked collection a reorder is resolved against. */
+export type CateringLockedTaskVersion = { id: string; updatedAt: Date };
+/**
+ * Resolves a locked task reorder into four distinct outcomes, in the order the route must decide them: a booking that
+ * went read-only under the lock, a submission that is not the complete current task set, a stale version on any task,
+ * and only then the reorder itself. The advisory lock alone serializes two reorders but cannot tell that the second
+ * one was composed against an order the first already replaced, so every task carries a version precondition and one
+ * stale entry refuses the whole request. A refusal carries no updates, no timestamps and no activity, so the route has
+ * nothing to write: every sortOrder, every updatedAt, and the booking history all stay exactly as they were.
+ */
+export function resolveCateringTaskReorder(locked: readonly CateringLockedTaskVersion[] | null, submitted: readonly CateringTaskReorderEntry[]) {
+  if (!locked) return { kind: "read_only" } as const;
+  const submittedIds = new Set(submitted.map((entry) => entry.id));
+  // Exact membership in both directions, so neither a duplicate nor a task missing from the request can slip through.
+  if (submittedIds.size !== submitted.length || submitted.length !== locked.length || locked.some((task) => !submittedIds.has(task.id))) return { kind: "membership" } as const;
+  const versions = new Map(locked.map((task) => [task.id, task.updatedAt]));
+  // The same instant comparison a task PATCH and DELETE use, applied to every task the reorder moves.
+  if (submitted.some((entry) => !cateringTaskVersionMatches({ updatedAt: versions.get(entry.id)! }, entry.expectedUpdatedAt))) return { kind: "conflict" } as const;
+  // The submitted position is the sort order. A client-supplied sortOrder is never read, only the array index.
+  return { kind: "reorder", updates: submitted.map((entry, sortOrder) => ({ id: entry.id, sortOrder })) } as const;
+}
+/** A read-only booking is never reported as an incomplete task set, and neither is ever reported as a version conflict. */
+export const CATERING_TASK_REORDER_REFUSALS: Record<"read_only" | "membership", CateringWorkspaceRefusal> = {
+  read_only: { message: "Booking became read-only before the tasks could be reordered", code: CATERING_WORKSPACE_READ_ONLY_CODE },
+  membership: { message: "Reorder must contain the complete current task set" },
+};
+
 export function sharedTaskUpdateActivity(current: CateringTaskPersistedState, input: CateringTaskPatchInput) {
   return cateringTaskUpdateOutcome(current, input).activity;
 }

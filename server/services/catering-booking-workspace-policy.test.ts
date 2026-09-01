@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, CATERING_TASK_PATCH_FIELDS, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, cateringTaskVersionMatches, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, sharedTaskUpdateActivity, type CateringTaskVersionedState } from "./catering-booking-workspace-policy";
+import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, CATERING_TASK_PATCH_FIELDS, CATERING_TASK_REORDER_REFUSALS, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, cateringTaskVersionMatches, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, resolveCateringTaskReorder, sharedTaskUpdateActivity, type CateringLockedTaskVersion, type CateringTaskVersionedState } from "./catering-booking-workspace-policy";
 
 test("provider can prepare pending and confirmed operational state", () => { for (const status of ["pending_confirmation", "confirmed"] as const) { assert.equal(mayMutateWorkspace(status, "provider", "provider-details"), true); assert.equal(mayMutateWorkspace(status, "provider", "tasks"), true); } });
 test("customer can edit only explicitly customer-owned notes", () => { assert.equal(mayMutateWorkspace("confirmed", "customer", "customer-notes"), true); assert.equal(mayMutateWorkspace("confirmed", "customer", "provider-details"), false); assert.equal(mayMutateWorkspace("confirmed", "customer", "tasks"), false); });
@@ -330,4 +330,114 @@ test("a task that no longer exists stays a truthful 404 and never becomes a vers
 test("a missing-task refusal carries nothing to write", () => {
   const refusal: Record<string, unknown> = { ...CATERING_TASK_NOT_FOUND_REFUSAL };
   for (const written of ["task", "next", "activity", "updatedAt", "completedAt", "sortOrder"]) assert.equal(written in refusal, false);
+});
+
+const TASK_A = "11111111-1111-4111-8111-111111111111";
+const TASK_B = "22222222-2222-4222-8222-222222222222";
+const TASK_C = "33333333-3333-4333-8333-333333333333";
+/** One authoritative locked task collection: the ids, their versions, and the sortOrder currently persisted. */
+type ReorderRow = CateringLockedTaskVersion & { sortOrder: number };
+const lockedRows = (versions: Record<string, Date> = {}): ReorderRow[] =>
+  [TASK_A, TASK_B, TASK_C].map((id, sortOrder) => ({ id, sortOrder, updatedAt: versions[id] ?? T1 }));
+const submitOrder = (ids: readonly string[], versions: Record<string, string> = {}) => ids.map((id) => ({ id, expectedUpdatedAt: versions[id] ?? T1.toISOString() }));
+/** Mirrors exactly what the reorder route writes: nothing at all unless the resolution is a reorder. */
+const applyReorder = (rows: ReorderRow[], outcome: ReturnType<typeof resolveCateringTaskReorder>, now: Date): ReorderRow[] => {
+  if (outcome.kind !== "reorder") return rows;
+  const positions = new Map(outcome.updates.map(({ id, sortOrder }) => [id, sortOrder]));
+  return rows.map((row) => positions.has(row.id) ? { ...row, sortOrder: positions.get(row.id)!, updatedAt: now } : row);
+};
+const orderOf = (rows: ReorderRow[]) => [...rows].sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id)).map(({ id }) => id);
+const freshVersions = (rows: ReorderRow[]) => Object.fromEntries(rows.map((row) => [row.id, row.updatedAt.toISOString()]));
+
+test("a reorder matching every current version persists the submitted positions", () => {
+  const rows = lockedRows();
+  const outcome = resolveCateringTaskReorder(rows, submitOrder([TASK_C, TASK_A, TASK_B]));
+  assert.equal(outcome.kind, "reorder");
+  assert.deepEqual(outcome.kind === "reorder" ? outcome.updates : null, [{ id: TASK_C, sortOrder: 0 }, { id: TASK_A, sortOrder: 1 }, { id: TASK_B, sortOrder: 2 }]);
+  const applied = applyReorder(rows, outcome, T2);
+  assert.deepEqual(orderOf(applied), [TASK_C, TASK_A, TASK_B]);
+  for (const row of applied) assert.equal(row.updatedAt, T2);
+});
+test("the reorder position is the submitted array index, never a client-supplied sortOrder", () => {
+  const outcome = resolveCateringTaskReorder(lockedRows(), submitOrder([TASK_B, TASK_C, TASK_A]).map((entry) => ({ ...entry, sortOrder: 99 })));
+  assert.deepEqual(outcome.kind === "reorder" ? outcome.updates.map(({ sortOrder }) => sortOrder) : null, [0, 1, 2]);
+  assert.deepEqual(outcome.kind === "reorder" ? outcome.updates.map(({ id }) => id) : null, [TASK_B, TASK_C, TASK_A]);
+});
+test("a stale version on a single task conflicts and writes nothing at all", () => {
+  const rows = lockedRows({ [TASK_B]: T2 });
+  const outcome = resolveCateringTaskReorder(rows, submitOrder([TASK_C, TASK_B, TASK_A]));
+  assert.deepEqual(outcome, { kind: "conflict" });
+  assert.equal("updates" in outcome, false);
+  assert.equal("activity" in outcome, false);
+  assert.equal("updatedAt" in outcome, false);
+  assert.equal("sortOrder" in outcome, false);
+  const applied = applyReorder(rows, outcome, NOW);
+  assert.deepEqual(applied, rows);
+  assert.deepEqual(orderOf(applied), [TASK_A, TASK_B, TASK_C]);
+  for (const row of applied) assert.equal(row.sortOrder, rows.find((current) => current.id === row.id)!.sortOrder);
+  for (const row of applied) assert.deepEqual(row.updatedAt, rows.find((current) => current.id === row.id)!.updatedAt);
+});
+test("a stale reorder never notifies, because a reorder carries nothing to notify about at all", () => {
+  const refused: Record<string, unknown> = { ...resolveCateringTaskReorder(lockedRows({ [TASK_A]: T2 }), submitOrder([TASK_B, TASK_A, TASK_C])) };
+  const accepted: Record<string, unknown> = { ...resolveCateringTaskReorder(lockedRows(), submitOrder([TASK_B, TASK_A, TASK_C])) };
+  for (const written of ["activity", "notify", "notification", "task", "next", "completedAt", "updatedAt"]) {
+    assert.equal(written in refused, false);
+    assert.equal(written in accepted, false);
+  }
+});
+test("two clients reordering one collection: the stale second submission loses and the first stays authoritative", () => {
+  const readByBoth = lockedRows();
+  const bothSaw = freshVersions(readByBoth);
+  const afterA = applyReorder(readByBoth, resolveCateringTaskReorder(readByBoth, submitOrder([TASK_C, TASK_B, TASK_A], bothSaw)), T2);
+  assert.deepEqual(orderOf(afterA), [TASK_C, TASK_B, TASK_A]);
+  const bResolution = resolveCateringTaskReorder(afterA, submitOrder([TASK_B, TASK_A, TASK_C], bothSaw));
+  assert.deepEqual(bResolution, { kind: "conflict" });
+  const afterB = applyReorder(afterA, bResolution, NOW);
+  assert.deepEqual(orderOf(afterB), [TASK_C, TASK_B, TASK_A]);
+  for (const row of afterB) assert.equal(row.updatedAt, T2);
+  const bRetriesFromFresh = applyReorder(afterB, resolveCateringTaskReorder(afterB, submitOrder([TASK_B, TASK_A, TASK_C], freshVersions(afterB))), NOW);
+  assert.deepEqual(orderOf(bRetriesFromFresh), [TASK_B, TASK_A, TASK_C]);
+});
+test("a successful reorder leaves fresh authoritative versions the next reorder must quote", () => {
+  const rows = lockedRows();
+  const observed = freshVersions(rows);
+  const afterFirst = applyReorder(rows, resolveCateringTaskReorder(rows, submitOrder([TASK_B, TASK_C, TASK_A], observed)), T2);
+  for (const row of afterFirst) assert.notDeepEqual(row.updatedAt.toISOString(), observed[row.id]);
+  assert.deepEqual(resolveCateringTaskReorder(afterFirst, submitOrder([TASK_A, TASK_B, TASK_C], observed)), { kind: "conflict" });
+  assert.equal(resolveCateringTaskReorder(afterFirst, submitOrder([TASK_A, TASK_B, TASK_C], freshVersions(afterFirst))).kind, "reorder");
+});
+test("a reorder that is not the complete current task set is refused as membership, never as a conflict", () => {
+  const rows = lockedRows();
+  for (const submitted of [[TASK_A, TASK_B], [TASK_A, TASK_B, TASK_C, "44444444-4444-4444-8444-444444444444"], [TASK_A, TASK_A, TASK_B]]) {
+    assert.deepEqual(resolveCateringTaskReorder(rows, submitOrder(submitted)), { kind: "membership" });
+  }
+  // A membership refusal is decided before any version is read, so a stale version cannot mask a wrong task set.
+  assert.deepEqual(resolveCateringTaskReorder(lockedRows({ [TASK_A]: T2 }), submitOrder([TASK_A, TASK_B])), { kind: "membership" });
+  assert.deepEqual(applyReorder(rows, resolveCateringTaskReorder(rows, submitOrder([TASK_A, TASK_B])), NOW), rows);
+});
+test("a booking that went read-only under the lock refuses the reorder before membership or versions", () => {
+  assert.deepEqual(resolveCateringTaskReorder(null, submitOrder([TASK_A, TASK_B, TASK_C])), { kind: "read_only" });
+  assert.deepEqual(resolveCateringTaskReorder(null, submitOrder([TASK_A])), { kind: "read_only" });
+  assert.deepEqual(resolveCateringTaskReorder(null, submitOrder([TASK_A, TASK_B, TASK_C], { [TASK_A]: T2.toISOString() })), { kind: "read_only" });
+});
+test("the three reorder refusals stay distinct and carry the canonical codes", () => {
+  assert.equal(CATERING_TASK_REORDER_REFUSALS.read_only.code, "workspace_read_only");
+  assert.equal(CATERING_TASK_REORDER_REFUSALS.membership.code, undefined);
+  assert.equal(CATERING_TASK_REORDER_REFUSALS.membership.message, "Reorder must contain the complete current task set");
+  assert.match(CATERING_TASK_REORDER_REFUSALS.read_only.message, /read-only/);
+  assert.equal(/read-only/.test(CATERING_TASK_REORDER_REFUSALS.membership.message), false);
+  assert.notEqual(CATERING_TASK_REORDER_REFUSALS.read_only.code, "task_version_conflict");
+  assert.notEqual(CATERING_TASK_REORDER_REFUSALS.membership.message, CATERING_TASK_REORDER_REFUSALS.read_only.message);
+});
+test("reorder, patch, and delete share one instant comparison, and patch and delete are unchanged by it", () => {
+  const rows = lockedRows();
+  assert.equal(resolveCateringTaskReorder(rows, submitOrder([TASK_A, TASK_B, TASK_C], Object.fromEntries([TASK_A, TASK_B, TASK_C].map((id) => [id, "2026-08-29T00:00:00Z"])))).kind, "reorder");
+  for (const spelling of ["2026-08-29T00:00:00.001Z", "not-a-timestamp", ""]) {
+    assert.deepEqual(resolveCateringTaskReorder(rows, submitOrder([TASK_A, TASK_B, TASK_C], { [TASK_C]: spelling })), { kind: "conflict" });
+    assert.equal(cateringTaskVersionMatches({ updatedAt: T1 }, spelling), false);
+  }
+  assert.equal(resolveCateringTaskPatch(lockedTask(), { title: "Still works", expectedUpdatedAt: T1.toISOString() }, NOW).kind, "update");
+  assert.deepEqual(resolveCateringTaskPatch(lockedTask(), { title: "Stale", expectedUpdatedAt: T2.toISOString() }, NOW), { kind: "conflict" });
+  assert.equal(resolveCateringTaskDelete({ updatedAt: T1, title: "Confirm rentals", visibility: "shared" }, T1.toISOString()).kind, "delete");
+  assert.deepEqual(resolveCateringTaskDelete({ updatedAt: T1, title: "Confirm rentals", visibility: "shared" }, T2.toISOString()), { kind: "conflict" });
 });

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES, CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskDeleteSchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingTaskVersionSchema, cateringBookingWorkspaceKey, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "./catering-booking-operations";
+import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES, CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskDeleteSchema, cateringBookingTaskReorderEntrySchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingTaskVersionSchema, cateringBookingWorkspaceKey, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "./catering-booking-operations";
 
 test("pending and confirmed workspaces are editable", () => { assert.equal(mayEditCateringWorkspace("pending_confirmation"), true); assert.equal(mayEditCateringWorkspace("confirmed"), true); });
 test("cancelled and completed workspaces are read-only", () => { assert.equal(mayEditCateringWorkspace("cancelled"), false); assert.equal(mayEditCateringWorkspace("completed"), false); });
@@ -59,7 +59,29 @@ test("deleting a task requires the same serialized version contract as updating 
   for (const invalid of ["", "not-a-timestamp", "2026-08-29", 0, null]) assert.equal(cateringBookingTaskDeleteSchema.safeParse({ expectedUpdatedAt: invalid }).success, false);
   assert.equal(cateringBookingTaskDeleteSchema.safeParse({ expectedUpdatedAt: TASK_VERSION, taskId: "attacker" }).success, false);
 });
-test("task reorder requires a unique complete-looking bounded ID list", () => { const id = "11111111-1111-4111-8111-111111111111"; assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [id] }).success, true); assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [id, id] }).success, false); assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [] }).success, false); });
+const REORDER_ID = "11111111-1111-4111-8111-111111111111";
+const REORDER_OTHER_ID = "22222222-2222-4222-8222-222222222222";
+const reorderEntry = (id: string, expectedUpdatedAt = TASK_VERSION) => ({ id, expectedUpdatedAt });
+test("task reorder requires a unique complete-looking bounded task list", () => {
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ tasks: [reorderEntry(REORDER_ID)] }).success, true);
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ tasks: [reorderEntry(REORDER_ID), reorderEntry(REORDER_OTHER_ID)] }).success, true);
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ tasks: [reorderEntry(REORDER_ID), reorderEntry(REORDER_ID)] }).success, false);
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ tasks: [] }).success, false);
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ tasks: Array.from({ length: CATERING_BOOKING_TASK_LIMIT + 1 }, () => reorderEntry(REORDER_ID)) }).success, false);
+});
+test("every reordered task must carry a version precondition, and no client-supplied ordering is accepted", () => {
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ tasks: [{ id: REORDER_ID }] }).success, false);
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ tasks: [reorderEntry(REORDER_ID), { id: REORDER_OTHER_ID }] }).success, false);
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ tasks: [{ id: REORDER_ID, expectedUpdatedAt: "not-a-timestamp" }] }).success, false);
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ tasks: [{ ...reorderEntry(REORDER_ID), sortOrder: 0 }] }).success, false);
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ taskIds: [REORDER_ID] }).success, false);
+  assert.equal(cateringBookingTaskReorderSchema.safeParse({ tasks: [reorderEntry(REORDER_ID)], taskIds: [REORDER_ID] }).success, false);
+});
+test("a reorder entry carries the task and its version and nothing else", () => {
+  assert.deepEqual(cateringBookingTaskReorderEntrySchema.parse(reorderEntry(REORDER_ID)), { id: REORDER_ID, expectedUpdatedAt: TASK_VERSION });
+  assert.equal(cateringBookingTaskReorderEntrySchema.safeParse({ ...reorderEntry(REORDER_ID), status: "completed" }).success, false);
+  assert.equal(cateringBookingTaskReorderEntrySchema.safeParse({ ...reorderEntry(REORDER_ID), title: "Renamed" }).success, false);
+});
 test("task collection has a strict server-shared maximum", () => assert.equal(CATERING_BOOKING_TASK_LIMIT, 100));
 test("activity pagination is bounded", () => { assert.deepEqual(cateringBookingActivityPageSchema.parse({}), { page: 1, limit: 20 }); assert.equal(cateringBookingActivityPageSchema.safeParse({ limit: 51 }).success, false); });
 test("activity event types are an explicit finite allowlist", () => { assert.ok(CATERING_BOOKING_ACTIVITY_EVENT_TYPES.includes("booking_completed")); assert.equal(CATERING_BOOKING_ACTIVITY_EVENT_TYPES.includes("review_verified" as "booking_completed"), false); });

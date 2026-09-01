@@ -40,7 +40,12 @@ export const cateringBookingTaskUpdateSchema = z.object({
 }).strict().refine((value) => Object.keys(value).some((key) => key !== "expectedUpdatedAt"), "At least one task field is required");
 /** Deleting a task is a write like any other, so it carries the version of the task the provider confirmed deleting. */
 export const cateringBookingTaskDeleteSchema = z.object({ expectedUpdatedAt: cateringBookingTaskVersionSchema }).strict();
-export const cateringBookingTaskReorderSchema = z.object({ taskIds: z.array(z.string().uuid()).min(1).max(CATERING_BOOKING_TASK_LIMIT) }).strict().refine((value) => new Set(value.taskIds).size === value.taskIds.length, "Task IDs must be unique");
+/**
+ * Reordering is a write against every task it moves, so each entry carries the version the client observed. The array
+ * order is the requested sort order: a client-supplied sortOrder is never accepted, and `.strict()` rejects one.
+ */
+export const cateringBookingTaskReorderEntrySchema = z.object({ id: z.string().uuid(), expectedUpdatedAt: cateringBookingTaskVersionSchema }).strict();
+export const cateringBookingTaskReorderSchema = z.object({ tasks: z.array(cateringBookingTaskReorderEntrySchema).min(1).max(CATERING_BOOKING_TASK_LIMIT) }).strict().refine((value) => new Set(value.tasks.map((task) => task.id)).size === value.tasks.length, "Task IDs must be unique");
 export const cateringBookingActivityPageSchema = z.object({ page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(50).default(20) });
 
 export function hasValidCateringServiceTimeRange(value: { serviceStartTime?: string | null; serviceEndTime?: string | null }): boolean {
