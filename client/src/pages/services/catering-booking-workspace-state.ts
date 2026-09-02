@@ -80,8 +80,13 @@ export function reconcileWorkspaceFormAfterSave<T>(current: WorkspaceFormState<T
 }
 export function preserveWorkspaceFormAfterSaveFailure<T>(current: WorkspaceFormState<T>): WorkspaceFormState<T> { return current; }
 
-/** `expectedUpdatedAt` is the authoritative task version the draft was opened from; `conflict` marks that version stale. */
-export type OpenTaskEditorState = { identity: string; taskId: string; draft: CateringTaskDraft; expectedUpdatedAt: string; conflict: boolean };
+/**
+ * `expectedUpdatedAt` is the authoritative task version the draft was opened from; `conflict` marks that version stale.
+ * `snapshot` is the task exactly as it was when the editor opened or was reloaded, so "unsaved changes" is decided by
+ * comparing the draft against it rather than guessed from any one field. Neither the version nor the conflict flag is
+ * part of that comparison: a rejected precondition is not a user edit.
+ */
+export type OpenTaskEditorState = { identity: string; taskId: string; draft: CateringTaskDraft; snapshot: CateringTaskDraft; expectedUpdatedAt: string; conflict: boolean };
 export type TaskEditorState = OpenTaskEditorState | null;
 export type SubmittedTaskEdit = { identity: string; taskId: string; draft: CateringTaskDraft; expectedUpdatedAt: string };
 const TASK_DRAFT_FIELDS = ["title", "description", "dueDate", "dueTime", "visibility"] as const;
@@ -105,7 +110,27 @@ export function closeTaskEditorAfterSave(current: TaskEditorState, submitted: Su
 }
 /** Opens the one workspace editor on a persisted task, so both visibility sections address the same editor state. */
 export function openTaskEditor(identity: string, task: { id: string; title: string; description: string | null; dueDate: string | null; dueTime: string | null; visibility: "provider" | "shared"; updatedAt: string }): TaskEditorState {
-  return { identity, taskId: task.id, draft: { title: task.title, description: task.description ?? "", dueDate: task.dueDate ?? "", dueTime: task.dueTime ?? "", visibility: task.visibility }, expectedUpdatedAt: task.updatedAt, conflict: false };
+  const snapshot: CateringTaskDraft = { title: task.title, description: task.description ?? "", dueDate: task.dueDate ?? "", dueTime: task.dueTime ?? "", visibility: task.visibility };
+  return { identity, taskId: task.id, draft: { ...snapshot }, snapshot, expectedUpdatedAt: task.updatedAt, conflict: false };
+}
+/** Unsaved changes: every editable draft field compared against the snapshot the editor was opened or reloaded from. */
+export function isTaskEditorDirty(editor: TaskEditorState): boolean {
+  return editor !== null && !cateringTaskDraftsEqual(editor.draft, editor.snapshot);
+}
+/**
+ * Whether an editor may be opened on one task right now. The workspace owns a single editor, so opening one on another
+ * task replaces whatever is there: an editor holding unsaved changes, or one whose version was rejected, may not be
+ * discarded that way. Reopening the same task is always allowed — that is how "Reload latest task" rebases a stale
+ * draft — and a clean editor is replaced freely, so the UI is never locked harder than the draft actually needs.
+ */
+export function mayOpenTaskEditor(editor: TaskEditorState, identity: string, taskId: string): boolean {
+  const active = activeTaskEditor(editor, identity);
+  if (!active || active.taskId === taskId) return true;
+  return !isTaskEditorDirty(active) && !active.conflict;
+}
+/** Opening is refused rather than destructive, so a draft survives even a control that should have been disabled. */
+export function openTaskEditorIfAllowed(current: TaskEditorState, identity: string, task: { id: string; title: string; description: string | null; dueDate: string | null; dueTime: string | null; visibility: "provider" | "shared"; updatedAt: string }): TaskEditorState {
+  return mayOpenTaskEditor(current, identity, task.id) ? openTaskEditor(identity, task) : current;
 }
 /**
  * A rejected concurrency precondition marks the editor's version stale without touching the draft. The provider keeps
@@ -245,4 +270,24 @@ export function combineCateringActivityPages(pages: Array<{ activity: CateringBo
 
 export function nextCateringActivityPage(pagination: { page: number; totalPages: number }): number | undefined {
   return pagination.page < pagination.totalPages ? pagination.page + 1 : undefined;
+}
+
+/**
+ * The task-specific activity events, the only ones that ever carry a task title. Every one of them is recorded with
+ * shared visibility — a provider-private task records no activity at all — so the server's own visibility filter is
+ * what decides whether an actor receives the row, and rendering its stored title exposes nothing new.
+ */
+const CATERING_TASK_ACTIVITY_EVENT_TYPES: readonly string[] = ["shared_requirement_added", "shared_requirement_updated", "shared_requirement_completed", "shared_requirement_deleted"];
+/**
+ * The task title stored on one activity row at the time it happened, or null. It is read only from the metadata the
+ * actor was already served, never looked up from a current task, so a deleted task's history stays truthful and a
+ * renamed task keeps the name it had. Metadata is persisted JSON, so anything that is not a non-blank string — a
+ * missing key, an object, an array, a number, null — yields no title and the generic label stands alone.
+ */
+export function cateringActivityTaskTitle(activity: { eventType: string; metadata?: unknown }): string | null {
+  if (!CATERING_TASK_ACTIVITY_EVENT_TYPES.includes(activity.eventType)) return null;
+  const metadata = activity.metadata;
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return null;
+  const title = (metadata as Record<string, unknown>).taskTitle;
+  return typeof title === "string" && title.trim() !== "" ? title : null;
 }

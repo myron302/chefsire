@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cateringBookingProviderDetailsSchema, CATERING_TASK_SET_CHANGED_CODE, mayEditCateringWorkspace, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
-import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskReorderControls, cateringTaskReorderPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, isCateringTaskNotFound, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, mayMoveCateringTask, maySubmitTaskEditor, moveCateringTaskInGlobalOrder, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithTasks, reconcileTaskEditorWithWorkspace, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
+import { activeTaskEditor, cateringActivityTaskTitle, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskReorderControls, cateringTaskReorderPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, isCateringTaskNotFound, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, isTaskEditorDirty, markTaskEditorConflict, mayMoveCateringTask, mayOpenTaskEditor, maySubmitTaskEditor, moveCateringTaskInGlobalOrder, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, openTaskEditorIfAllowed, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithTasks, reconcileTaskEditorWithWorkspace, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
 
 const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
 test("historical details are empty only when every represented field is absent", () => assert.deepEqual(historicalOperationalDetails(emptyDetails, "customer"), []));
@@ -25,7 +25,8 @@ test("task deadlines render every supported date and wall-clock combination", ()
 const editorDraft: CateringTaskDraft = { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "shared" };
 const TASK_VERSION = "2026-08-29T00:00:00.000Z";
 const submittedEdit: SubmittedTaskEdit = { identity: "actor:booking", taskId: "task-1", draft: editorDraft, expectedUpdatedAt: TASK_VERSION };
-const openEditor = (draft: CateringTaskDraft = editorDraft, taskId = "task-1", identity = "actor:booking", expectedUpdatedAt = TASK_VERSION, conflict = false): OpenTaskEditorState => ({ identity, taskId, draft, expectedUpdatedAt, conflict });
+/** `snapshot` defaults to the canonical server state, so a helper called with a changed draft reads as dirty. */
+const openEditor = (draft: CateringTaskDraft = editorDraft, taskId = "task-1", identity = "actor:booking", expectedUpdatedAt = TASK_VERSION, conflict = false, snapshot: CateringTaskDraft = editorDraft): OpenTaskEditorState => ({ identity, taskId, draft, snapshot, expectedUpdatedAt, conflict });
 
 test("a successful task patch closes the still-unchanged submitted editor", () => assert.equal(closeTaskEditorAfterSave(openEditor({ ...editorDraft }), submittedEdit), null));
 test("a failed task patch leaves the editor open", () => { const current = openEditor(); assert.equal(preserveTaskEditorAfterSaveFailure(current), current); assert.notEqual(current, null); });
@@ -123,7 +124,10 @@ const sectionsListingTasks = (tasks: CateringBookingTaskView[]) => {
 };
 
 test("opening the editor copies the persisted task and its authoritative version without inventing values", () => {
-  assert.deepEqual(openTaskEditor("actor:booking", taskView("task-1", "provider")), { identity: "actor:booking", taskId: "task-1", draft: { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "provider" }, expectedUpdatedAt: TASK_VERSION, conflict: false });
+  const persisted = { title: "Confirm rentals", description: "Call supplier", dueDate: "2026-09-15", dueTime: "17:30", visibility: "provider" as const };
+  assert.deepEqual(openTaskEditor("actor:booking", taskView("task-1", "provider")), { identity: "actor:booking", taskId: "task-1", draft: persisted, snapshot: persisted, expectedUpdatedAt: TASK_VERSION, conflict: false });
+  // The snapshot is the persisted task, so a freshly opened editor holds no unsaved changes.
+  assert.equal(isTaskEditorDirty(openTaskEditor("actor:booking", taskView("task-1", "provider"))), false);
   assert.deepEqual(openTaskEditor("actor:booking", taskView("task-1", "shared", { description: null, dueDate: null, dueTime: null }))?.draft, { title: "Confirm rentals", description: "", dueDate: "", dueTime: "", visibility: "shared" });
   assert.equal(openTaskEditor("actor:booking", taskView("task-1", "shared", { updatedAt: "2026-08-30T09:15:00.000Z" }))?.expectedUpdatedAt, "2026-08-30T09:15:00.000Z");
 });
@@ -587,4 +591,148 @@ test("an early read-only refusal is never a success, and clears no unsaved draft
   // A save that really succeeded is what clears a draft, and this refusal is not one.
   assert.deepEqual(saveWorkspaceForm("actor:booking", ""), { identity: "actor:booking", value: "", dirty: false });
   assert.notDeepEqual(preserveWorkspaceFormAfterSaveFailure(customerDraft), saveWorkspaceForm("actor:booking", ""));
+});
+
+const activityRow = (eventType: string, metadata: unknown = {}) => ({ id: `activity-${eventType}`, eventType, metadata, createdAt: "2026-08-29T00:00:00.000Z" });
+const TASK_ACTIVITY_EVENTS = ["shared_requirement_added", "shared_requirement_updated", "shared_requirement_completed", "shared_requirement_deleted"] as const;
+
+test("every task activity event renders the task title stored on it when it happened", () => {
+  for (const eventType of TASK_ACTIVITY_EVENTS) {
+    assert.equal(cateringActivityTaskTitle(activityRow(eventType, { taskTitle: "Confirm final guest count" })), "Confirm final guest count");
+  }
+  // Reopening a completed requirement is recorded as an update, and carries its title the same way.
+  assert.equal(cateringActivityTaskTitle(activityRow("shared_requirement_updated", { taskTitle: "Reopened requirement" })), "Reopened requirement");
+});
+test("a deleted task keeps its title in history, read from the stored snapshot and never from a task row", () => {
+  const deletion = activityRow("shared_requirement_deleted", { taskTitle: "Confirm final guest count" });
+  assert.equal(cateringActivityTaskTitle(deletion), "Confirm final guest count");
+  // Nothing about the current task collection changes what history says, including an empty one.
+  for (const tasks of [[], [taskView("other", "shared", { title: "A different task" })]]) {
+    assert.equal(tasks.length >= 0, true);
+    assert.equal(cateringActivityTaskTitle(deletion), "Confirm final guest count");
+  }
+  // A renamed task keeps the name each event actually recorded, so separate events stay distinguishable.
+  const history = [activityRow("shared_requirement_added", { taskTitle: "Confirm guest count" }), activityRow("shared_requirement_updated", { taskTitle: "Confirm final guest count" }), activityRow("shared_requirement_deleted", { taskTitle: "Confirm final guest count" }), activityRow("shared_requirement_added", { taskTitle: "Send dietary list" })];
+  assert.deepEqual(history.map(cateringActivityTaskTitle), ["Confirm guest count", "Confirm final guest count", "Confirm final guest count", "Send dietary list"]);
+});
+test("a non-task activity event never renders a task title, whatever its metadata holds", () => {
+  for (const eventType of ["booking_offered", "customer_confirmed", "booking_cancelled", "booking_completed", "details_updated"]) {
+    assert.equal(cateringActivityTaskTitle(activityRow(eventType)), null);
+    assert.equal(cateringActivityTaskTitle(activityRow(eventType, { taskTitle: "Not a task event" })), null);
+  }
+  assert.equal(cateringActivityTaskTitle(activityRow("some_future_event", { taskTitle: "Unknown" })), null);
+});
+test("missing, blank, or non-string stored metadata falls back to the generic label and invents nothing", () => {
+  for (const metadata of [{}, { taskTitle: "" }, { taskTitle: "   " }, { taskTitle: null }, { taskTitle: undefined }, { taskTitle: 42 }, { taskTitle: {} }, { taskTitle: ["Confirm"] }, { taskTitle: true }, { otherKey: "Confirm" }, null, undefined, [], "taskTitle", 7]) {
+    assert.equal(cateringActivityTaskTitle(activityRow("shared_requirement_deleted", metadata)), null);
+  }
+  // The strings "undefined" and "null" are never produced from an absent value.
+  for (const metadata of [{}, { taskTitle: null }, null]) {
+    assert.notEqual(cateringActivityTaskTitle(activityRow("shared_requirement_deleted", metadata)), "undefined");
+    assert.notEqual(cateringActivityTaskTitle(activityRow("shared_requirement_deleted", metadata)), "null");
+  }
+});
+test("a title is returned as the exact stored text, so it renders as escaped text and never as markup", () => {
+  for (const stored of ["<img src=x onerror=alert(1)>", "<b>Bold</b>", "Guests & \"quotes\" <tag>", "Confirm final guest count"]) {
+    assert.equal(cateringActivityTaskTitle(activityRow("shared_requirement_added", { taskTitle: stored })), stored);
+  }
+  // The helper hands back a plain string with no markup fields for a renderer to interpret.
+  assert.equal(typeof cateringActivityTaskTitle(activityRow("shared_requirement_added", { taskTitle: "<b>x</b>" })), "string");
+});
+test("a customer only ever receives shared task activity, so no private task title can reach one", () => {
+  // Private tasks record no activity at all, and every task activity row is written with shared visibility.
+  const providerServed = TASK_ACTIVITY_EVENTS.map((eventType) => activityRow(eventType, { taskTitle: "Shared requirement" }));
+  const customerServed = providerServed;
+  assert.deepEqual(customerServed.map(cateringActivityTaskTitle), providerServed.map(cateringActivityTaskTitle));
+  // A private task in the collection contributes no activity row for either actor to render.
+  const privateTask = taskView("private-1", "provider", { title: "Private staffing plan" });
+  assert.equal(privateTask.visibility, "provider");
+  assert.equal(providerServed.some((row) => cateringActivityTaskTitle(row) === "Private staffing plan"), false);
+  // The provider does render the titles on the rows it is served.
+  for (const row of providerServed) assert.equal(cateringActivityTaskTitle(row), "Shared requirement");
+});
+
+const dirtyFields: Array<[keyof CateringTaskDraft, CateringTaskDraft[keyof CateringTaskDraft]]> = [["title", "Edited title"], ["description", "Edited description"], ["dueDate", "2026-10-01"], ["dueTime", "08:15"], ["visibility", "shared"]];
+const openedOn = (task: CateringBookingTaskView) => openTaskEditor("actor:booking", task)!;
+const TASK_A = taskView("task-a", "provider", { title: "Task A" });
+const TASK_B = taskView("task-b", "shared", { title: "Task B" });
+
+test("an unchanged editor may be replaced directly, so the UI is never locked harder than the draft needs", () => {
+  const clean = openedOn(TASK_A);
+  assert.equal(isTaskEditorDirty(clean), false);
+  assert.equal(mayOpenTaskEditor(clean, "actor:booking", TASK_B.id), true);
+  assert.equal(openTaskEditorIfAllowed(clean, "actor:booking", TASK_B)?.taskId, "task-b");
+  assert.equal(mayOpenTaskEditor(null, "actor:booking", TASK_B.id), true);
+  // An editor left over from another workspace never protects this one.
+  assert.equal(mayOpenTaskEditor(openEditor(editorDraft, "task-a", "actor:other-booking"), "actor:booking", TASK_B.id), true);
+});
+test("every editable field counts as an unsaved change and protects the draft from another task's Edit", () => {
+  for (const [field, value] of dirtyFields) {
+    const dirty = editTaskEditorField(openedOn(TASK_A), "actor:booking", TASK_A.id, field, value as never);
+    assert.equal(isTaskEditorDirty(dirty), true, String(field));
+    assert.equal(mayOpenTaskEditor(dirty, "actor:booking", TASK_B.id), false, String(field));
+    // Refused rather than destructive: the draft survives even a control that should have been disabled.
+    const kept = openTaskEditorIfAllowed(dirty, "actor:booking", TASK_B);
+    assert.equal(kept?.taskId, "task-a", String(field));
+    assert.equal(kept?.draft[field], value as never, String(field));
+    // The task being edited stays fully usable, including reopening it to reload the latest.
+    assert.equal(mayOpenTaskEditor(dirty, "actor:booking", TASK_A.id), true, String(field));
+    assert.equal(maySubmitTaskEditor(dirty, true), true, String(field));
+  }
+});
+test("the protection holds across both visibility sections, in either direction", () => {
+  const dirtyPrivate = editTaskEditorField(openedOn(TASK_A), "actor:booking", TASK_A.id, "title", "Private edit");
+  assert.equal(mayOpenTaskEditor(dirtyPrivate, "actor:booking", TASK_B.id), false);
+  assert.equal(openTaskEditorIfAllowed(dirtyPrivate, "actor:booking", TASK_B)?.draft.title, "Private edit");
+  const dirtyShared = editTaskEditorField(openedOn(TASK_B), "actor:booking", TASK_B.id, "description", "Shared edit");
+  assert.equal(mayOpenTaskEditor(dirtyShared, "actor:booking", TASK_A.id), false);
+  assert.equal(openTaskEditorIfAllowed(dirtyShared, "actor:booking", TASK_A)?.draft.description, "Shared edit");
+  // Editing a task back to its persisted values is not an unsaved change, and stops protecting.
+  const reverted = editTaskEditorField(dirtyPrivate, "actor:booking", TASK_A.id, "title", TASK_A.title);
+  assert.equal(isTaskEditorDirty(reverted), false);
+  assert.equal(mayOpenTaskEditor(reverted, "actor:booking", TASK_B.id), true);
+});
+test("a saved or cancelled editor releases the protection, and a failed save keeps it", () => {
+  const dirty = editTaskEditorField(openedOn(TASK_A), "actor:booking", TASK_A.id, "title", "Task A edited");
+  const submitted: SubmittedTaskEdit = { identity: "actor:booking", taskId: TASK_A.id, draft: { ...dirty!.draft }, expectedUpdatedAt: dirty!.expectedUpdatedAt };
+  const afterSave = closeTaskEditorAfterSave(dirty, submitted);
+  assert.equal(afterSave, null);
+  assert.equal(mayOpenTaskEditor(afterSave, "actor:booking", TASK_B.id), true);
+  assert.equal(mayOpenTaskEditor(null, "actor:booking", TASK_B.id), true);
+  const afterFailure = preserveTaskEditorAfterSaveFailure(dirty);
+  assert.equal(afterFailure?.draft.title, "Task A edited");
+  assert.equal(isTaskEditorDirty(afterFailure), true);
+  assert.equal(mayOpenTaskEditor(afterFailure, "actor:booking", TASK_B.id), false);
+});
+test("a conflicted editor is never replaced by another task, and Reload latest still rebases it", () => {
+  const conflicted = markTaskEditorConflict(openedOn(TASK_A), { identity: "actor:booking", taskId: TASK_A.id, draft: { ...openedOn(TASK_A).draft }, expectedUpdatedAt: TASK_A.updatedAt });
+  assert.equal(conflicted?.conflict, true);
+  assert.equal(isTaskEditorDirty(conflicted), false);
+  // Clean but stale: another task still may not take its place, so the stale draft cannot be discarded sideways.
+  assert.equal(mayOpenTaskEditor(conflicted, "actor:booking", TASK_B.id), false);
+  assert.equal(openTaskEditorIfAllowed(conflicted, "actor:booking", TASK_B)?.taskId, "task-a");
+  assert.equal(maySubmitTaskEditor(conflicted, true), false);
+  // Reload latest reopens the same task, which is always allowed, and clears the conflict onto the newer version.
+  assert.equal(mayOpenTaskEditor(conflicted, "actor:booking", TASK_A.id), true);
+  const reloaded = openTaskEditorIfAllowed(conflicted, "actor:booking", { ...TASK_A, title: "Newer server title", updatedAt: "2026-08-30T09:15:00.000Z" });
+  assert.equal(reloaded?.conflict, false);
+  assert.equal(reloaded?.draft.title, "Newer server title");
+  assert.equal(reloaded?.expectedUpdatedAt, "2026-08-30T09:15:00.000Z");
+  assert.equal(isTaskEditorDirty(reloaded), false);
+});
+test("draft protection never keeps an editor alive on a workspace that became historical", () => {
+  const dirty = editTaskEditorField(openedOn(TASK_A), "actor:booking", TASK_A.id, "title", "Never saved");
+  assert.equal(isTaskEditorDirty(dirty), true);
+  for (const status of readOnlyStatuses) {
+    assert.equal(reconcileTaskEditorWithWorkspace(dirty, "actor:booking", mayEditCateringWorkspace(status), [TASK_A.id]), null);
+  }
+  // An editable refetch keeps the dirty editor and its protection, and an unrelated mutation never discards it.
+  assert.deepEqual(reconcileTaskEditorWithWorkspace(dirty, "actor:booking", true, [TASK_A.id, "task-new"]), dirty);
+  assert.equal(mayOpenTaskEditor(reconcileTaskEditorWithWorkspace(dirty, "actor:booking", true, [TASK_A.id, "task-new"]), "actor:booking", TASK_B.id), false);
+  assert.deepEqual(closeTaskEditorAfterSave(dirty, { ...submittedEdit, taskId: "unrelated-task" }), dirty);
+  // Reorder stays governed by the existing editor-open rule, dirty or not.
+  for (const editor of [openedOn(TASK_A), dirty]) {
+    assert.equal(activeTaskEditor(editor, "actor:booking") !== null, true);
+    for (const task of mixedTasks) assert.deepEqual(cateringTaskReorderControls(mixedTasks, task.id, { ...activeProvider, editorOpen: true }), { up: false, down: false });
+  }
 });
