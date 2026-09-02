@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cateringBookingProviderDetailsSchema, mayEditCateringWorkspace, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
-import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, isCateringTaskNotFound, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, maySubmitTaskEditor, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithTasks, reconcileTaskEditorWithWorkspace, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
+import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskReorderControls, cateringTaskReorderPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, isCateringTaskNotFound, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, mayMoveCateringTask, maySubmitTaskEditor, moveCateringTaskInGlobalOrder, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithTasks, reconcileTaskEditorWithWorkspace, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
 
 const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
 test("historical details are empty only when every represented field is absent", () => assert.deepEqual(historicalOperationalDetails(emptyDetails, "customer"), []));
@@ -381,4 +381,111 @@ test("an editable refetch still closes an editor whose task the authoritative se
   const open = openEditor(editorDraft, "task-1");
   assert.equal(reconcileTaskEditorWithWorkspace(open, "actor:booking", true, ["task-2"]), null);
   assert.deepEqual(reconcileTaskEditorWithWorkspace(open, "actor:booking", true, persistedTaskIds), open);
+});
+
+/** A provider's authoritative collection: both sections interleaved, exactly as the workspace GET returns them. */
+const mixedTasks = [taskView("p1", "provider"), taskView("s1", "shared"), taskView("p2", "provider"), taskView("s2", "shared"), taskView("p3", "provider")];
+const idsOf = (tasks: readonly { id: string }[]) => tasks.map((task) => task.id);
+const sectionIds = (tasks: readonly CateringBookingTaskView[]) => { const { privateTasks, requirements } = splitCateringWorkspaceTasks([...tasks]); return { checklist: idsOf(privateTasks), requirements: idsOf(requirements) }; };
+const activeProvider = { role: "provider" as const, editable: true, editorOpen: false, pending: false };
+const controlsFor = (taskId: string, context: Partial<typeof activeProvider> = {}) => cateringTaskReorderControls(mixedTasks, taskId, { ...activeProvider, ...context });
+
+test("a provider on an active workspace gets reorder controls on every task, and nobody else does", () => {
+  for (const task of mixedTasks) assert.notEqual(controlsFor(task.id), null);
+  for (const task of mixedTasks) assert.equal(cateringTaskReorderControls(mixedTasks, task.id, { ...activeProvider, role: "customer" }), null);
+  for (const editable of [false]) for (const task of mixedTasks) {
+    assert.equal(cateringTaskReorderControls(mixedTasks, task.id, { ...activeProvider, editable }), null);
+    assert.equal(cateringTaskReorderControls(mixedTasks, task.id, { ...activeProvider, role: "customer", editable }), null);
+  }
+});
+test("a cancelled or completed workspace offers no reorder control to reach a historical ordering", () => {
+  for (const status of readOnlyStatuses) {
+    const editable = mayEditCateringWorkspace(status);
+    assert.equal(editable, false);
+    for (const task of mixedTasks) assert.equal(cateringTaskReorderControls(mixedTasks, task.id, { ...activeProvider, editable }), null);
+  }
+});
+test("the first and last task of each section truthfully cannot move further that way", () => {
+  assert.deepEqual(controlsFor("p1"), { up: false, down: true });
+  assert.deepEqual(controlsFor("p3"), { up: true, down: false });
+  assert.deepEqual(controlsFor("s1"), { up: false, down: true });
+  assert.deepEqual(controlsFor("s2"), { up: true, down: false });
+  assert.deepEqual(controlsFor("p2"), { up: true, down: true });
+  assert.equal(mayMoveCateringTask(mixedTasks, "p1", "up"), false);
+  assert.equal(moveCateringTaskInGlobalOrder(mixedTasks, "p1", "up"), null);
+  assert.equal(moveCateringTaskInGlobalOrder(mixedTasks, "s2", "down"), null);
+  assert.equal(moveCateringTaskInGlobalOrder(mixedTasks, "absent-task", "up"), null);
+  assert.deepEqual(cateringTaskReorderControls([taskView("only", "provider")], "only", activeProvider), { up: false, down: false });
+});
+test("moving a private task keeps every shared task in its exact place, and the reverse", () => {
+  const movedPrivate = moveCateringTaskInGlobalOrder(mixedTasks, "p3", "up")!;
+  assert.deepEqual(sectionIds(movedPrivate), { checklist: ["p1", "p3", "p2"], requirements: ["s1", "s2"] });
+  const movedShared = moveCateringTaskInGlobalOrder(mixedTasks, "s2", "up")!;
+  assert.deepEqual(sectionIds(movedShared), { checklist: ["p1", "p2", "p3"], requirements: ["s2", "s1"] });
+  // The other section's tasks keep their global positions outright, so their relative order cannot drift.
+  for (const [moved, untouched] of [[movedPrivate, ["s1", "s2"]], [movedShared, ["p1", "p2", "p3"]]] as const) {
+    for (const id of untouched) assert.equal(moved.findIndex((task) => task.id === id), mixedTasks.findIndex((task) => task.id === id));
+  }
+});
+test("a move submits the complete authoritative collection in the requested global order", () => {
+  const next = moveCateringTaskInGlobalOrder(mixedTasks, "p2", "down")!;
+  assert.equal(next.length, mixedTasks.length);
+  assert.deepEqual([...idsOf(next)].sort(), [...idsOf(mixedTasks)].sort());
+  assert.deepEqual(idsOf(next), ["p1", "s1", "p3", "s2", "p2"]);
+  assert.deepEqual(cateringTaskReorderPayload(next), { tasks: next.map((task) => ({ id: task.id, expectedUpdatedAt: task.updatedAt })) });
+  assert.deepEqual(idsOf(cateringTaskReorderPayload(next).tasks), idsOf(next));
+});
+test("every submitted entry carries that task's current version and nothing else", () => {
+  const versioned = mixedTasks.map((task, index) => ({ ...task, updatedAt: `2026-08-3${index}T00:00:00.000Z` }));
+  const payload = cateringTaskReorderPayload(moveCateringTaskInGlobalOrder(versioned, "s1", "down")!);
+  for (const entry of payload.tasks) {
+    assert.equal(entry.expectedUpdatedAt, versioned.find((task) => task.id === entry.id)!.updatedAt);
+    assert.deepEqual(Object.keys(entry).sort(), ["expectedUpdatedAt", "id"]);
+  }
+});
+test("a fresher authoritative collection is what the next move quotes, never the versions before it", () => {
+  const observed = mixedTasks;
+  const refetched = observed.map((task) => ({ ...task, updatedAt: "2026-09-01T12:00:00.000Z" }));
+  const stalePayload = cateringTaskReorderPayload(moveCateringTaskInGlobalOrder(observed, "p1", "down")!);
+  const freshPayload = cateringTaskReorderPayload(moveCateringTaskInGlobalOrder(refetched, "p1", "down")!);
+  for (const entry of stalePayload.tasks) assert.equal(entry.expectedUpdatedAt, "2026-08-29T00:00:00.000Z");
+  for (const entry of freshPayload.tasks) assert.equal(entry.expectedUpdatedAt, "2026-09-01T12:00:00.000Z");
+  assert.notDeepEqual(stalePayload, freshPayload);
+});
+test("reordering never changes a task's visibility, status, or any other persisted field", () => {
+  const next = moveCateringTaskInGlobalOrder(mixedTasks, "p1", "down")!;
+  for (const task of next) assert.deepEqual(task, mixedTasks.find((original) => original.id === task.id));
+  assert.deepEqual(sectionIds(next).checklist.concat(sectionIds(next).requirements).sort(), idsOf(mixedTasks).sort());
+  const payload: Record<string, unknown> = { ...cateringTaskReorderPayload(next) };
+  for (const absent of ["visibility", "status", "sortOrder", "title"]) assert.equal(absent in payload, false);
+  for (const entry of cateringTaskReorderPayload(next).tasks) for (const absent of ["visibility", "status", "sortOrder", "title"]) assert.equal(absent in entry, false);
+});
+test("an in-flight reorder disables both directions rather than accepting a duplicate submission", () => {
+  for (const task of mixedTasks) assert.deepEqual(controlsFor(task.id, { pending: true }), { up: false, down: false });
+  assert.notDeepEqual(controlsFor("p2", { pending: true }), controlsFor("p2"));
+});
+test("an open task editor disables reorder so nothing moves underneath a live draft", () => {
+  for (const task of mixedTasks) assert.deepEqual(controlsFor(task.id, { editorOpen: true }), { up: false, down: false });
+  // The editor itself is untouched by the disabled controls: its identity, draft, and conflict state all survive.
+  const conflicted = markTaskEditorConflict(openEditor(editorDraft, "p1"), { ...submittedEdit, taskId: "p1" });
+  assert.equal(conflicted?.conflict, true);
+  assert.deepEqual(activeTaskEditor(conflicted, "actor:booking"), conflicted);
+  assert.equal(maySubmitTaskEditor(conflicted, true), false);
+  const typed = editTaskEditorField(conflicted, "actor:booking", "p1", "title", "Typed while reorder was disabled");
+  assert.equal(typed?.draft.title, "Typed while reorder was disabled");
+  assert.equal(typed?.expectedUpdatedAt, TASK_VERSION);
+});
+test("a refused reorder refetches the authoritative workspace under every coded refusal, and never otherwise", () => {
+  for (const code of ["task_version_conflict", "workspace_read_only", "catering_task_not_found"]) {
+    assert.equal(shouldRefetchWorkspaceAfterError(Object.assign(new Error("refused"), { code })), true);
+  }
+  assert.equal(shouldRefetchWorkspaceAfterError(new Error("network")), false);
+  // A read-only refusal refetches and the refetched workspace then removes the controls outright.
+  for (const task of mixedTasks) assert.equal(cateringTaskReorderControls(mixedTasks, task.id, { ...activeProvider, editable: false }), null);
+});
+test("a private task never reaches the customer, so it can never appear in a customer's reorder", () => {
+  const customerVisible = mixedTasks.filter((task) => task.visibility === "shared");
+  assert.deepEqual(idsOf(customerVisible), ["s1", "s2"]);
+  assert.deepEqual(sectionIds(customerVisible), { checklist: [], requirements: ["s1", "s2"] });
+  for (const task of customerVisible) assert.equal(cateringTaskReorderControls(customerVisible, task.id, { ...activeProvider, role: "customer" }), null);
 });

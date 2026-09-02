@@ -153,6 +153,56 @@ export function taskEditorForTask(editor: TaskEditorState, identity: string, tas
 export function splitCateringWorkspaceTasks<T extends { visibility: "provider" | "shared" }>(tasks: T[]): { privateTasks: T[]; requirements: T[] } {
   return { privateTasks: tasks.filter((task) => task.visibility === "provider"), requirements: tasks.filter((task) => task.visibility === "shared") };
 }
+
+export type CateringTaskMoveDirection = "up" | "down";
+/** The authoritative fields a reorder needs from one task: which section it sits in, and the version to submit for it. */
+export type ReorderableCateringTask = { id: string; visibility: "provider" | "shared"; updatedAt: string };
+/**
+ * The nearest task in `direction` that shares the moved task's visibility section, or -1 when it is already the first
+ * or last task of its own section. The workspace renders the two sections separately, so a move is only ever meaningful
+ * against the section the task is actually displayed in.
+ */
+function adjacentSectionIndex(tasks: readonly { visibility: "provider" | "shared" }[], index: number, direction: CateringTaskMoveDirection): number {
+  const step = direction === "up" ? -1 : 1;
+  for (let cursor = index + step; cursor >= 0 && cursor < tasks.length; cursor += step) if (tasks[cursor].visibility === tasks[index].visibility) return cursor;
+  return -1;
+}
+/**
+ * Moves one task within its own visibility section and returns the COMPLETE task collection in the new global order,
+ * which is what the reorder endpoint requires. The move swaps the two tasks' global positions, so every task in the
+ * other section keeps the exact global position it already had: its relative order cannot change, none of its members
+ * can be dropped, and no task's visibility is touched. A task already at the edge of its section returns null, so the
+ * control that offers the move is disabled rather than submitting a reorder that would change nothing.
+ */
+export function moveCateringTaskInGlobalOrder<T extends ReorderableCateringTask>(tasks: readonly T[], taskId: string, direction: CateringTaskMoveDirection): T[] | null {
+  const index = tasks.findIndex((task) => task.id === taskId);
+  if (index === -1) return null;
+  const neighbor = adjacentSectionIndex(tasks, index, direction);
+  if (neighbor === -1) return null;
+  const next = [...tasks];
+  next[index] = tasks[neighbor]; next[neighbor] = tasks[index];
+  return next;
+}
+export function mayMoveCateringTask<T extends ReorderableCateringTask>(tasks: readonly T[], taskId: string, direction: CateringTaskMoveDirection): boolean {
+  return moveCateringTaskInGlobalOrder(tasks, taskId, direction) !== null;
+}
+/** Every task carries the version the provider observed, in the requested global order. The server reads position only. */
+export function cateringTaskReorderPayload(tasks: readonly ReorderableCateringTask[]) {
+  return { tasks: tasks.map((task) => ({ id: task.id, expectedUpdatedAt: task.updatedAt })) };
+}
+/** Whether each direction is usable for one rendered task; null when the workspace offers no reorder controls at all. */
+export type CateringTaskReorderControls = { up: boolean; down: boolean } | null;
+/**
+ * Resolves the reorder controls for one rendered task. Only a provider on an editable workspace gets them at all, so a
+ * customer and a cancelled or completed workspace render none. An open task editor or an in-flight request disables
+ * both directions rather than hiding them: the provider keeps seeing where the task can go, and cannot reorder
+ * underneath a draft or submit the same move twice.
+ */
+export function cateringTaskReorderControls<T extends ReorderableCateringTask>(tasks: readonly T[], taskId: string, context: { role: "provider" | "customer"; editable: boolean; editorOpen: boolean; pending: boolean }): CateringTaskReorderControls {
+  if (context.role !== "provider" || !context.editable) return null;
+  const usable = !context.editorOpen && !context.pending;
+  return { up: usable && mayMoveCateringTask(tasks, taskId, "up"), down: usable && mayMoveCateringTask(tasks, taskId, "down") };
+}
 /** A failed PATCH leaves every entered field in place so the provider can correct and retry. */
 export function preserveTaskEditorAfterSaveFailure(current: TaskEditorState): TaskEditorState { return current; }
 export function historicalOperationalDetails(details: CateringBookingDetailsView, role: "provider" | "customer"): OperationalDetailItem[] {
