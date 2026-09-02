@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend, type CateringComposerState } from "@/pages/services/catering-booking-communication-state";
+import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, EMPTY_CATERING_READ_MARK, type CateringComposerState, type CateringReadMarkState } from "@/pages/services/catering-booking-communication-state";
 
 type SendPayload = { text: string; clientRequestId: string };
 /**
@@ -17,14 +17,14 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   const cache = useQueryClient();
   const identity = `${userId}:${bookingId}`;
   const [composer, setComposer] = useState<CateringComposerState>(EMPTY_CATERING_COMPOSER);
-  const [markedId, setMarkedId] = useState<string | null>(null);
+  const [readMark, setReadMark] = useState<CateringReadMarkState>(EMPTY_CATERING_READ_MARK);
   // The scroll container's height before an older page loads, so restoring position after it lands is arithmetic
   // rather than a guess: prepending older messages must not move what the participant is currently reading.
   const threadRef = useRef<HTMLDivElement | null>(null);
   const restoreRef = useRef<number | null>(null);
   const messagesKey = cateringBookingMessagesKey(userId, bookingId);
 
-  useEffect(() => { setComposer((current) => hydrateCateringComposer(current, identity)); setMarkedId(null); }, [identity]);
+  useEffect(() => { setComposer((current) => hydrateCateringComposer(current, identity)); setReadMark((current) => hydrateCateringReadMark(current, identity)); }, [identity]);
 
   const query = useInfiniteQuery({
     queryKey: messagesKey,
@@ -71,16 +71,26 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   const markRead = useMutation({
     mutationFn: async (lastReadMessageId: string) => {
       const response = await fetch(`/api/catering/bookings/${bookingId}/messages/read`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ lastReadMessageId }) });
+      const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error("Read state could not be saved");
-      return response.json().catch(() => ({}));
+      return body as { lastReadMessageId?: string | null };
     },
-    onSuccess: (_body, lastReadMessageId) => { setMarkedId(lastReadMessageId); cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) }); },
+    // The server's marker is monotonic and authoritative: a request that lost to a newer boundary is answered with
+    // that newer one, so recording what came back keeps the client from re-attempting something already passed.
+    onSuccess: (body) => { setReadMark((current) => completeCateringReadMark(current, body?.lastReadMessageId ?? null)); cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) }); },
+    onError: (_error, attemptedId) => setReadMark((current) => failCateringReadMark(current, attemptedId)),
   });
 
-  // Simply having the conversation open marks it read once, and only while something is actually unread.
+  // Having the conversation open marks it read at most ONCE per boundary. The attempted boundary is recorded before
+  // the request goes out, so a failure cannot re-fire this effect: without that, a failed mark leaves unreadCount
+  // above zero and the marker unmoved, and the mutation returning to idle would immediately reissue the same request
+  // forever. A newer message is a new boundary and earns its own single attempt, so a failure blocks nothing later.
   useEffect(() => {
-    if (!markRead.isPending && shouldMarkCateringConversationRead(latestId, markedId, unreadCount)) markRead.mutate(latestId!);
-  }, [latestId, markedId, unreadCount, markRead.isPending]);
+    if (markRead.isPending) return;
+    if (!shouldAutoMarkCateringConversationRead(readMark, latestId, unreadCount)) return;
+    setReadMark((current) => startCateringReadMark(current, latestId!));
+    markRead.mutate(latestId!);
+  }, [latestId, readMark, unreadCount, markRead.isPending]);
 
   // Restore the reading position after older messages are prepended, so "load older" does not jump the thread.
   useEffect(() => {
@@ -130,6 +140,12 @@ export default function BookingCommunication({ bookingId, userId, role, editable
           </div>}
     </>}
     {query.isFetchNextPageError && <div className="space-y-2" role="alert"><p>Older messages could not be loaded.</p><Button variant="outline" className="min-h-11" disabled={query.isFetchingNextPage} onClick={loadOlder}>Retry loading older messages</Button></div>}
+    {/* A failed read receipt is low stakes, so it is reported quietly rather than as an alert -- but it is reported,
+        because silently leaving the unread badge on with no explanation is worse. Retry issues exactly one request. */}
+    {mayRetryCateringReadMark(readMark, latestId, unreadCount) && <div className="flex flex-wrap items-center gap-2" role="status">
+      <p className="text-sm text-muted-foreground">These messages could not be marked as read.</p>
+      <Button type="button" variant="outline" className="min-h-11" disabled={markRead.isPending} onClick={() => setReadMark(retryCateringReadMark)}>Mark as read</Button>
+    </div>}
     {editable
       ? <form className="space-y-2" onSubmit={submit}>
           <Label htmlFor="catering-message">Message your {role === "provider" ? "customer" : "caterer"}</Label>

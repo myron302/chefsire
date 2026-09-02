@@ -111,6 +111,10 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
     const booking = await ownedCateringBooking(id, userId);
     if (!booking) return res.status(404).json(NOT_FOUND);
     const role = cateringWorkspaceRole(booking, userId)!;
+    // A terminal booking refuses every upload, retry or not. This is deliberate and matches message idempotency
+    // exactly: there too the read-only guard runs before the token is examined, so a retry that arrives after the
+    // booking closed is refused rather than resolved historically. Nothing new is created either way, and the file
+    // the original request did persist is still in the (read-only) list, so refreshing shows the truth.
     if (!mayMutateCateringFiles(booking.status as never)) return res.status(409).json({ message: CATERING_FILE_READ_ONLY_MESSAGE, code: CATERING_WORKSPACE_READ_ONLY_CODE });
 
     // Extension, declared MIME and the actor's allowed visibilities are resolved first; each refusal is distinct, so
@@ -148,18 +152,24 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
       const active = await lockActiveCateringBooking(tx, id);
       if (!active) return { kind: "read_only" } as const;
       await lockFileCollection(tx, id);
+      // Idempotency is resolved BEFORE the collection limit, under the same lock. A booking sitting at the maximum
+      // is the exact situation a lost response is most likely to be retried in -- the successful upload is what
+      // filled the last slot -- and counting first would answer that retry with "booking full" for a file it had
+      // already accepted. Resolving first means a retry is never mistaken for a new upload.
+      const alreadyPersisted = fields.clientRequestId ? await duplicateFile(id, userId, fields.clientRequestId, tx) : undefined;
+      if (alreadyPersisted) return { kind: "duplicate", file: alreadyPersisted } as const;
       const [{ value }] = await tx.select({ value: count() }).from(cateringBookingFiles).where(and(eq(cateringBookingFiles.bookingId, id), isNull(cateringBookingFiles.deletedAt)));
       const slot = resolveCateringFileSlot({ activeCount: Number(value) });
       if (slot.kind !== "accepted") return slot;
-      // The retry token is unique per (booking, uploader) when present, so a retried upload claims no row here. The
-      // whole transaction is then abandoned -- including the activity row -- and the object this attempt wrote is
-      // compensated below, leaving exactly the one file the first attempt already persisted.
+      // The unique index is the backstop for the one case the lookup above cannot see: a concurrent request with the
+      // same token that has not committed yet. That insert claims no row, the whole transaction is abandoned --
+      // including the activity row -- and the object this attempt wrote is compensated below.
       const inserted = await tx.insert(cateringBookingFiles).values({
         id: fileId, bookingId: id, uploadedBy: userId, visibility: fields.visibility, storageProvider: provider, storageKey,
         originalFilename: upload.filename, contentType: upload.type.contentType, byteSize: content.byteSize, sha256,
         clientRequestId: fields.clientRequestId ?? null,
       }).onConflictDoNothing().returning();
-      if (inserted.length === 0) return { kind: "duplicate" } as const;
+      if (inserted.length === 0) return { kind: "duplicate", file: undefined } as const;
       const [row] = inserted;
       const activity = cateringFileActivity(fields.visibility, "uploaded");
       // Truthful operational history, with a display filename snapshot only -- never a storage key or a URL. A
@@ -175,9 +185,14 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
       if (result.kind === "limit") return res.status(409).json({ message: CATERING_FILE_LIMIT_MESSAGE, code: CATERING_FILE_LIMIT_CODE });
       if (result.kind === "duplicate") {
         // The retry is answered with the file the first attempt already persisted -- never a second copy, and never
-        // an invented success for a token that names no accepted upload.
-        const existing = await duplicateFile(id, userId, fields.clientRequestId!);
+        // an invented success for a token that names no accepted upload. `result.file` is set when the lookup inside
+        // the lock found it; it is absent only when a concurrent same-token request won the insert, so that one is
+        // read back now that it has committed.
+        const existing = result.file ?? await duplicateFile(id, userId, fields.clientRequestId!);
         if (!existing) return res.status(409).json({ message: "This upload could not be resolved. Reload the file list." });
+        // The original upload was accepted and its file has since been removed. Reporting it as an active file would
+        // be untrue, and reporting the retry as a new upload would be worse, so it says exactly what happened.
+        if (existing.deletedAt !== null) return res.status(409).json({ message: "This upload was already accepted, and that file has since been removed from the booking." });
         const names = await uploaderNames([existing.uploadedBy]);
         return res.status(200).json({ file: serializeBookingFile(existing, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, status: booking.status as never, names }), duplicate: true });
       }
@@ -203,9 +218,16 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
   }
 }
 
-/** Reads back the file an already-accepted upload retry token produced, scoped to this booking and this uploader. */
-async function duplicateFile(bookingId: string, uploadedBy: string, clientRequestId: string): Promise<CateringBookingFile | undefined> {
-  const [row] = await db.select().from(cateringBookingFiles)
+/**
+ * Reads back the file an already-accepted upload retry token produced.
+ *
+ * The scope is exactly (booking, uploader, clientRequestId), matching the unique index, so a token belonging to
+ * another actor or replayed against another booking resolves to nothing and is treated as a new upload rather than
+ * handed someone else's file. Tombstoned rows are included deliberately: the token WAS accepted, and the caller
+ * decides how to report a file that has since been removed.
+ */
+async function duplicateFile(bookingId: string, uploadedBy: string, clientRequestId: string, executor: typeof db = db): Promise<CateringBookingFile | undefined> {
+  const [row] = await executor.select().from(cateringBookingFiles)
     .where(and(eq(cateringBookingFiles.bookingId, bookingId), eq(cateringBookingFiles.uploadedBy, uploadedBy), eq(cateringBookingFiles.clientRequestId, clientRequestId)))
     .limit(1);
   return row;

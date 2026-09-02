@@ -62,6 +62,31 @@ export function selectCateringFile<F extends CateringSelectedFile>(draft: Cateri
 export function chooseCateringVisibility<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, visibility: CateringFileVisibility): CateringFileDraft<F> {
   return { ...draft, visibility };
 }
+/**
+ * The immutable snapshot of one submitted upload.
+ *
+ * The live draft and the attempt in flight are deliberately separate values, exactly as the message composer keeps
+ * them separate. The upload controls stay usable while a request is running, so a participant may well pick a
+ * replacement file or change the visibility before the earlier upload resolves -- and clearing the draft
+ * unconditionally on success would silently delete that newer selection.
+ */
+export type CateringFileAttempt = { requestId: string; visibility: CateringFileVisibility };
+
+/** Whether the live draft is still the one that was submitted: same selection token AND same chosen visibility. */
+export function cateringFileDraftMatchesAttempt<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, attempt: CateringFileAttempt): boolean {
+  return draft.requestId === attempt.requestId && draft.visibility === attempt.visibility;
+}
+/**
+ * Resolves an upload that succeeded. The draft is cleared only when it still corresponds exactly to the attempt
+ * that completed; a replacement file (which mints a new token) or a changed visibility both mean the draft belongs
+ * to the participant's NEXT intended upload and must survive untouched. `cleared` tells the component whether the
+ * file input's own DOM value may be reset, so a preserved selection is not wiped out of the control either.
+ */
+export function completeCateringFileUpload<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, attempt: CateringFileAttempt, role: "provider" | "customer"): { next: CateringFileDraft<F>; cleared: boolean } {
+  if (!cateringFileDraftMatchesAttempt(draft, attempt)) return { next: draft, cleared: false };
+  return { next: emptyCateringFileDraft<F>(role), cleared: true };
+}
+
 /** Upload is offered only once a valid file and an explicit visibility are both present on an editable booking. */
 export function mayUploadCateringFile<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, editable: boolean, pending: boolean): boolean {
   return editable && !pending && draft.file !== null && draft.visibility !== null && draft.error === null;

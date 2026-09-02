@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CATERING_MESSAGE_MAX_LENGTH } from "@shared/catering-booking-communication";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
-import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend } from "./catering-booking-communication-state";
+import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend } from "./catering-booking-communication-state";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 const OTHER_TOKEN = "22222222-2222-4222-8222-222222222222";
@@ -142,4 +142,88 @@ test("a booking that closed mid-composition is classified so the section can ref
 test("a message timestamp renders in the reader's locale and never throws on bad input", () => {
   assert.equal(formatCateringMessageTimestamp("not-a-date"), "");
   assert.equal(formatCateringMessageTimestamp("2026-09-01T12:00:00.000Z").length > 0, true);
+});
+
+/**
+ * Automatic read marking must be bounded. A failed mark leaves unreadCount above zero and the marker unmoved, so an
+ * effect keyed only on those would reissue the same request the instant the mutation returned to idle, forever.
+ */
+const readMark = (over: Partial<typeof EMPTY_CATERING_READ_MARK> = {}) => ({ ...EMPTY_CATERING_READ_MARK, identity: "actor:booking", ...over });
+/** One pass of the component's effect: attempt if allowed, then apply the outcome. Returns the requests it issued. */
+function runAutoMarkPasses(initial: ReturnType<typeof readMark>, latestId: string | null, unreadCount: number, passes: number, outcome: "success" | "failure") {
+  let state = initial;
+  const requests: string[] = [];
+  for (let pass = 0; pass < passes; pass += 1) {
+    if (!shouldAutoMarkCateringConversationRead(state, latestId, unreadCount)) continue;
+    requests.push(latestId!);
+    state = startCateringReadMark(state, latestId!);
+    state = outcome === "success" ? completeCateringReadMark(state, latestId) : failCateringReadMark(state, latestId!);
+  }
+  return { state, requests };
+}
+
+test("an unread conversation triggers exactly one automatic mark-read", () => {
+  const run = runAutoMarkPasses(readMark(), "m10", 3, 5, "success");
+  assert.deepEqual(run.requests, ["m10"]);
+  assert.equal(run.state.markedId, "m10");
+  assert.equal(run.state.failed, false);
+});
+test("a successful mark records the marker the server reports, not the one requested", () => {
+  // The server marker is monotonic, so a request that lost to a newer boundary is answered with that newer one.
+  const marked = completeCateringReadMark(startCateringReadMark(readMark(), "m15"), "m20");
+  assert.equal(marked.markedId, "m20");
+  // Nothing left to attempt for m20, so no further request is issued.
+  assert.equal(shouldAutoMarkCateringConversationRead(marked, "m20", 2), false);
+});
+test("a failed mark does not automatically fire again when the mutation returns to idle", () => {
+  const failed = failCateringReadMark(startCateringReadMark(readMark(), "m10"), "m10");
+  assert.equal(failed.failed, true);
+  // The boundary is still unread and still unmarked, and yet no further automatic attempt is permitted.
+  assert.equal(shouldMarkCateringConversationRead("m10", failed.markedId, 3), true);
+  assert.equal(shouldAutoMarkCateringConversationRead(failed, "m10", 3), false);
+});
+test("a persistently failing mark issues exactly one request across many rerenders", () => {
+  const run = runAutoMarkPasses(readMark(), "m10", 3, 50, "failure");
+  assert.deepEqual(run.requests, ["m10"]);
+});
+test("a newer message is a new candidate and earns its own single automatic attempt", () => {
+  // A failure for m10 must not block legitimate later progress.
+  const failed = failCateringReadMark(startCateringReadMark(readMark(), "m10"), "m10");
+  assert.equal(shouldAutoMarkCateringConversationRead(failed, "m11", 3), true);
+  const run = runAutoMarkPasses(failed, "m11", 3, 20, "failure");
+  assert.deepEqual(run.requests, ["m11"]);
+});
+test("a stale failure for a boundary that has moved on is ignored", () => {
+  const attempted = startCateringReadMark(readMark(), "m11");
+  assert.equal(failCateringReadMark(attempted, "m10"), attempted);
+});
+test("an explicit retry makes exactly one new request and cannot be double-clicked into two", () => {
+  const failed = failCateringReadMark(startCateringReadMark(readMark(), "m10"), "m10");
+  const retried = retryCateringReadMark(failed);
+  assert.equal(retried.failed, false);
+  const run = runAutoMarkPasses(retried, "m10", 3, 20, "failure");
+  assert.deepEqual(run.requests, ["m10"]);
+  // Retrying a state that has not failed changes nothing, so a second click issues nothing.
+  assert.equal(retryCateringReadMark(retried), retried);
+});
+test("the retry affordance appears only after a failure that still has something to mark", () => {
+  const failed = failCateringReadMark(startCateringReadMark(readMark(), "m10"), "m10");
+  assert.equal(mayRetryCateringReadMark(failed, "m10", 3), true);
+  // Nothing unread, nothing attempted, or already marked: no affordance.
+  assert.equal(mayRetryCateringReadMark(failed, "m10", 0), false);
+  assert.equal(mayRetryCateringReadMark(readMark(), "m10", 3), false);
+  assert.equal(mayRetryCateringReadMark(completeCateringReadMark(failed, "m10"), "m10", 3), false);
+});
+test("reopening the conversation or switching booking is a deliberate, bounded fresh start", () => {
+  const failed = failCateringReadMark(startCateringReadMark(readMark(), "m10"), "m10");
+  // Same conversation: the recorded attempt survives a rerender, so no loop on remount of the same identity.
+  assert.equal(hydrateCateringReadMark(failed, "actor:booking"), failed);
+  // A different actor or booking resets, and then allows exactly one attempt for that conversation.
+  const switched = hydrateCateringReadMark(failed, "actor:other-booking");
+  assert.deepEqual(switched, { identity: "actor:other-booking", markedId: null, attemptedId: null, failed: false });
+  assert.deepEqual(runAutoMarkPasses(switched, "m10", 3, 20, "failure").requests, ["m10"]);
+});
+test("nothing is attempted when there is nothing unread or no message at all", () => {
+  assert.deepEqual(runAutoMarkPasses(readMark(), "m10", 0, 10, "success").requests, []);
+  assert.deepEqual(runAutoMarkPasses(readMark(), null, 3, 10, "success").requests, []);
 });

@@ -62,15 +62,77 @@ test("a booking that goes terminal mid-send is refused inside the lock, not mere
 test("a retried upload resolves to the file it already created rather than a second copy", () => {
   // Uniqueness is (booking, uploader, clientRequestId), and only when a token was actually supplied.
   assert.equal(migration.includes("CREATE UNIQUE INDEX IF NOT EXISTS catering_booking_files_request_uidx ON catering_booking_files(booking_id, uploaded_by, client_request_id) WHERE client_request_id IS NOT NULL"), true);
-  // The losing insert claims no row, so the whole transaction -- the file row and its activity -- is abandoned.
-  assert.equal(filesRoute.includes(`if (inserted.length === 0) return { kind: "duplicate" } as const;`), true);
+  // The losing insert claims no row, so the whole transaction -- the file row and its activity -- is abandoned. This
+  // is the backstop for a concurrent same-token request; a retry that arrives after the first one committed is
+  // resolved by the lookup earlier in the transaction instead.
+  assert.equal(filesRoute.includes(`if (inserted.length === 0) return { kind: "duplicate", file: undefined } as const;`), true);
   const uploadTx = filesRoute.slice(filesRoute.indexOf("const result = await db.transaction"));
   assert.equal(uploadTx.indexOf("if (inserted.length === 0)") < uploadTx.indexOf(".insert(cateringBookingActivity)"), true);
   // The object this attempt wrote is compensated, and the response is the original file, never an invented success.
-  assert.equal(filesRoute.includes("const existing = await duplicateFile(id, userId, fields.clientRequestId!);"), true);
+  assert.equal(filesRoute.includes("const existing = result.file ?? await duplicateFile(id, userId, fields.clientRequestId!);"), true);
   assert.equal(filesRoute.includes("This upload could not be resolved."), true);
   const duplicateBranch = filesRoute.slice(filesRoute.indexOf(`if (result.kind !== "stored")`), filesRoute.indexOf("stored = null;\n\n    // Only a new shared file"));
   assert.equal(duplicateBranch.indexOf("await compensateStoredObject(stored);") < duplicateBranch.indexOf(`if (result.kind === "duplicate")`), true);
+});
+
+test("a retry is resolved BEFORE the file limit, so a full booking cannot reject an accepted upload", () => {
+  const uploadTx = filesRoute.slice(filesRoute.indexOf("const result = await db.transaction"));
+  // The exact failure this ordering prevents: the successful upload filled the last slot, so counting first would
+  // answer its own lost-response retry with "booking full".
+  const lookupAt = uploadTx.indexOf("duplicateFile(id, userId, fields.clientRequestId, tx)");
+  const countAt = uploadTx.indexOf("resolveCateringFileSlot");
+  assert.notEqual(lookupAt, -1);
+  assert.equal(lookupAt < countAt, true, "idempotency must resolve before the collection limit");
+  // Both happen under the same file collection lock, so a concurrent same-token upload is serialized against it.
+  assert.equal(uploadTx.indexOf("await lockFileCollection(tx, id)") < lookupAt, true);
+  assert.equal(uploadTx.includes(`if (alreadyPersisted) return { kind: "duplicate", file: alreadyPersisted } as const;`), true);
+});
+
+test("a resolved retry writes no second row, activity, notification or storage object", () => {
+  const uploadTx = filesRoute.slice(filesRoute.indexOf("const result = await db.transaction"));
+  // The duplicate return happens before the insert, so no row and no activity row are written.
+  const duplicateAt = uploadTx.indexOf(`return { kind: "duplicate", file: alreadyPersisted }`);
+  assert.equal(duplicateAt < uploadTx.indexOf(".insert(cateringBookingFiles)"), true);
+  assert.equal(duplicateAt < uploadTx.indexOf(".insert(cateringBookingActivity)"), true);
+  // The notification only ever runs on the "stored" path, which a duplicate never reaches.
+  const notifyAt = filesRoute.indexOf("shouldNotifyCateringFileUpload(fields.visibility)");
+  assert.equal(filesRoute.lastIndexOf("stored = null;", notifyAt) > filesRoute.indexOf(`if (result.kind !== "stored")`), true);
+  // And the object this retry uploaded is compensated rather than left behind as a second copy.
+  const duplicateBranch = filesRoute.slice(filesRoute.indexOf(`if (result.kind !== "stored")`), notifyAt);
+  assert.equal(duplicateBranch.indexOf("await compensateStoredObject(stored);") < duplicateBranch.indexOf(`if (result.kind === "duplicate")`), true);
+});
+
+test("a retry token cannot resolve to another actor's or another booking's file", () => {
+  const lookup = filesRoute.slice(filesRoute.indexOf("async function duplicateFile"));
+  // Scoped to exactly the columns the unique index covers.
+  assert.equal(lookup.includes("eq(cateringBookingFiles.bookingId, bookingId)"), true);
+  assert.equal(lookup.includes("eq(cateringBookingFiles.uploadedBy, uploadedBy)"), true);
+  assert.equal(lookup.includes("eq(cateringBookingFiles.clientRequestId, clientRequestId)"), true);
+  // The route only ever passes the authenticated actor and the authorized booking into it.
+  assert.equal(filesRoute.includes("duplicateFile(id, userId, fields.clientRequestId, tx)"), true);
+});
+
+test("a genuinely new token at the limit is still refused, and an under-limit upload is unchanged", () => {
+  const uploadTx = filesRoute.slice(filesRoute.indexOf("const result = await db.transaction"));
+  // Only a request whose token resolves to nothing reaches the count, and the limit still applies to it.
+  assert.equal(uploadTx.includes("const slot = resolveCateringFileSlot({ activeCount: Number(value) });"), true);
+  assert.equal(uploadTx.includes(`if (slot.kind !== "accepted") return slot;`), true);
+  assert.equal(resolveCateringFileSlot({ activeCount: CATERING_BOOKING_FILE_LIMIT }).kind, "limit");
+  assert.equal(resolveCateringFileSlot({ activeCount: CATERING_BOOKING_FILE_LIMIT - 1 }).kind, "accepted");
+});
+
+test("an upload retry after the booking goes terminal is refused, matching message idempotency", () => {
+  // Both surfaces run the read-only guard before the token is examined, so neither resolves historically and
+  // neither creates anything. The decision is stated in the route rather than left implicit.
+  assert.equal(filesRoute.includes("matches message idempotency"), true);
+  const guardAt = filesRoute.indexOf("if (!mayMutateCateringFiles(booking.status as never))");
+  assert.equal(guardAt < filesRoute.indexOf("const result = await db.transaction"), true);
+  assert.equal(communicationRoute.indexOf("if (!mayPostCateringBookingMessage(booking.status as never))") < communicationRoute.indexOf("await persistBookingMessage("), true);
+});
+
+test("a retry whose original file was since removed says so rather than inventing an active file", () => {
+  assert.equal(filesRoute.includes("if (existing.deletedAt !== null) return res.status(409)"), true);
+  assert.equal(filesRoute.includes("This upload was already accepted, and that file has since been removed"), true);
 });
 
 test("a booking that goes terminal mid-upload refuses and the already-stored object is removed", () => {

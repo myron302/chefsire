@@ -64,3 +64,37 @@ test("duplicate-send protection is unchanged: the send control is gated by the s
   // A fresh token per composition, reused by the retry path through the attempt record.
   assert.equal(source.includes("startCateringMessageSend(composer, crypto.randomUUID())"), true);
 });
+
+/**
+ * Automatic read marking must be bounded at the component level too: the effect has to record the attempted
+ * boundary before issuing the request, or a failure re-fires it the instant the mutation returns to idle.
+ */
+const readEffect = source.slice(source.indexOf("// Having the conversation open marks it read"), source.indexOf("// Restore the reading position"));
+
+test("the mark-read effect records the attempted boundary before issuing the request", () => {
+  assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(readMark, latestId, unreadCount)"), true);
+  // The attempt is recorded first, so a second pass for the same boundary is refused before any request is made.
+  assert.equal(readEffect.indexOf("startCateringReadMark(current, latestId!)") < readEffect.indexOf("markRead.mutate(latestId!)"), true);
+  // The old unbounded predicate, which knew nothing about attempts, must not be what gates the effect.
+  assert.equal(readEffect.includes("shouldMarkCateringConversationRead("), false, "the effect must gate on the attempted boundary, not only on unread state");
+});
+
+test("a failed mark-read is recorded rather than retried from the effect", () => {
+  const mutation = source.slice(source.indexOf("const markRead = useMutation"), source.indexOf("// Having the conversation open marks it read"));
+  assert.equal(mutation.includes("failCateringReadMark(current, attemptedId)"), true);
+  // Success takes the server's authoritative marker, which is monotonic, rather than the requested id.
+  assert.equal(mutation.includes("completeCateringReadMark(current, body?.lastReadMessageId ?? null)"), true);
+  assert.equal(mutation.includes("setMarkedId("), false, "the old success-only marker state must be gone");
+});
+
+test("the read-marker retry is offered quietly and accessibly, and issues no request itself", () => {
+  const retry = source.slice(source.indexOf("mayRetryCateringReadMark(readMark, latestId, unreadCount)"));
+  // A failed read receipt is not an error the user caused, so it is a status region rather than an alert.
+  assert.equal(retry.slice(0, retry.indexOf("</div>")).includes(`role="status"`), true);
+  const button = retry.slice(retry.indexOf("<Button"), retry.indexOf("</Button>"));
+  assert.equal(button.includes("min-h-11"), true);
+  assert.equal(button.includes("disabled={markRead.isPending}"), true);
+  // The control only clears the recorded attempt; the effect then issues exactly one request.
+  assert.equal(button.includes("setReadMark(retryCateringReadMark)"), true);
+  assert.equal(button.includes("markRead.mutate"), false, "the retry control must not issue a request directly");
+});

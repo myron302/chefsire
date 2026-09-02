@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CATERING_FILE_MAX_BYTES, CATERING_FILE_SIZE_MESSAGE, CATERING_FILE_TYPE_MESSAGE } from "@shared/catering-booking-files";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
-import { CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, emptyCateringFileDraft, initialCateringVisibility, isCateringFileReadOnly, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, validateCateringFileSelection } from "./catering-booking-files-state";
+import { CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDraftMatchesAttempt, completeCateringFileUpload, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, emptyCateringFileDraft, initialCateringVisibility, isCateringFileReadOnly, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, validateCateringFileSelection } from "./catering-booking-files-state";
 
 /** A described file rather than a browser `File`, which the draft is generic over precisely so this works. */
 type TestFile = { name: string; type: string; size: number };
@@ -97,4 +97,69 @@ test("a booking that closed mid-upload is classified so the section can refetch"
   assert.equal(isCateringFileReadOnly({ code: "other" }), false);
   assert.equal(isCateringFileReadOnly(undefined), false);
   assert.equal(CATERING_FILES_READ_ONLY_BANNER.includes("download"), true);
+});
+
+/**
+ * An upload in flight and the live draft are separate values. The controls stay usable while a request runs, so a
+ * completing older upload must never clear a replacement the participant has already chosen.
+ */
+const submitted = (draft: ReturnType<typeof emptyCateringFileDraft<TestFile>>) => ({ requestId: draft.requestId!, visibility: draft.visibility! });
+const readyDraft = (over: { name?: string; token?: string; visibility?: "provider" | "shared" } = {}) =>
+  chooseCateringVisibility(selectCateringFile(emptyCateringFileDraft<TestFile>("provider"), file({ name: over.name ?? "menu.pdf" }), over.token ?? "token-1"), over.visibility ?? "shared");
+
+test("a normal upload success clears a draft that is still the submitted one", () => {
+  const draft = readyDraft();
+  const resolved = completeCateringFileUpload(draft, submitted(draft), "provider");
+  assert.equal(resolved.cleared, true);
+  assert.equal(resolved.next.file, null);
+  assert.equal(resolved.next.requestId, null);
+  // A provider is asked to choose again deliberately rather than inheriting the last upload's visibility.
+  assert.equal(resolved.next.visibility, null);
+});
+test("selecting a replacement file during a pending upload survives that upload succeeding", () => {
+  const first = readyDraft({ name: "invoice-a.pdf", token: "token-1" });
+  const attempt = submitted(first);
+  // File B chosen while A is still uploading: a new selection mints a new token.
+  const replacement = chooseCateringVisibility(selectCateringFile(first, file({ name: "invoice-b.pdf" }), "token-2"), "shared");
+  const resolved = completeCateringFileUpload(replacement, attempt, "provider");
+  assert.equal(resolved.cleared, false);
+  assert.equal(resolved.next, replacement);
+  assert.equal(resolved.next.file?.name, "invoice-b.pdf");
+  assert.equal(resolved.next.requestId, "token-2");
+});
+test("changing visibility during a pending upload is not overwritten when that upload succeeds", () => {
+  const first = readyDraft({ visibility: "shared" });
+  const attempt = submitted(first);
+  // Same file and token, but the participant switched the visibility for their next upload.
+  const changed = chooseCateringVisibility(first, "provider");
+  const resolved = completeCateringFileUpload(changed, attempt, "provider");
+  assert.equal(resolved.cleared, false);
+  assert.equal(resolved.next.visibility, "provider");
+});
+test("the DOM input is only reset when the draft was actually cleared", () => {
+  const draft = readyDraft();
+  assert.equal(completeCateringFileUpload(draft, submitted(draft), "provider").cleared, true);
+  const replacement = selectCateringFile(draft, file({ name: "other.pdf" }), "token-2");
+  // `cleared` is what the component keys the input reset on, so a preserved selection stays in the control.
+  assert.equal(completeCateringFileUpload(replacement, submitted(draft), "provider").cleared, false);
+});
+test("a stale success for an attempt that is no longer the draft changes nothing", () => {
+  const draft = readyDraft({ token: "token-2" });
+  const resolved = completeCateringFileUpload(draft, { requestId: "token-1", visibility: "shared" }, "provider");
+  assert.equal(resolved.cleared, false);
+  assert.equal(resolved.next, draft);
+});
+test("the attempt match requires both the selection token and the chosen visibility", () => {
+  const draft = readyDraft({ token: "token-1", visibility: "shared" });
+  assert.equal(cateringFileDraftMatchesAttempt(draft, { requestId: "token-1", visibility: "shared" }), true);
+  assert.equal(cateringFileDraftMatchesAttempt(draft, { requestId: "token-1", visibility: "provider" }), false);
+  assert.equal(cateringFileDraftMatchesAttempt(draft, { requestId: "token-2", visibility: "shared" }), false);
+});
+test("idempotency is unaffected: one selection keeps one token across repeated upload attempts", () => {
+  const draft = readyDraft({ token: "token-1" });
+  // Pressing upload again on the same selection resends the same token, so the server resolves it to one file.
+  assert.equal(submitted(draft).requestId, "token-1");
+  assert.equal(submitted(chooseCateringVisibility(draft, "provider")).requestId, "token-1");
+  // Only a new selection is a new upload.
+  assert.equal(selectCateringFile(draft, file({ name: "next.pdf" }), "token-2").requestId, "token-2");
 });

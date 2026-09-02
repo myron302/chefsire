@@ -129,6 +129,66 @@ export function shouldMarkCateringConversationRead(latestId: string | null, mark
   return unreadCount > 0;
 }
 
+/**
+ * Automatic read-marking state, kept separate from the mutation's own pending/error flags.
+ *
+ * `markedId` is the last boundary the server confirmed. `attemptedId` is the last boundary an automatic attempt was
+ * made for, whether it succeeded or failed. They are different things, and conflating them is what produced an
+ * unbounded retry loop: a failed mark leaves `unreadCount` above zero and `markedId` unchanged, so an effect keyed
+ * only on those plus the mutation's pending flag re-fires the instant the mutation returns to idle, forever.
+ *
+ * Recording the attempt separately bounds it to one automatic request per candidate boundary. A failure for M10
+ * therefore stops, while a newer M11 is a new candidate and earns its own single attempt -- a failure never blocks
+ * legitimate later progress.
+ */
+export type CateringReadMarkState = { identity: string; markedId: string | null; attemptedId: string | null; failed: boolean };
+export const EMPTY_CATERING_READ_MARK: CateringReadMarkState = { identity: "", markedId: null, attemptedId: null, failed: false };
+
+/** Reopening the conversation, or switching actor or booking, is a legitimate fresh start for automatic marking. */
+export function hydrateCateringReadMark(state: CateringReadMarkState, identity: string): CateringReadMarkState {
+  return state.identity === identity ? state : { ...EMPTY_CATERING_READ_MARK, identity };
+}
+
+/**
+ * Whether an automatic mark-read request may be issued right now.
+ *
+ * On top of "is there anything to mark", this refuses a boundary that has already been attempted. That single
+ * condition is what makes the loop impossible: after one attempt for a given `latestId`, the effect cannot fire
+ * again for it however many times the component rerenders or the mutation's flags change.
+ */
+export function shouldAutoMarkCateringConversationRead(state: CateringReadMarkState, latestId: string | null, unreadCount: number): boolean {
+  if (!shouldMarkCateringConversationRead(latestId, state.markedId, unreadCount)) return false;
+  return latestId !== state.attemptedId;
+}
+
+/** Records that this boundary has been attempted, before the request goes out, so no second one can start. */
+export function startCateringReadMark(state: CateringReadMarkState, latestId: string): CateringReadMarkState {
+  return { ...state, attemptedId: latestId, failed: false };
+}
+/**
+ * A confirmed mark records the marker the SERVER reports, not the one that was requested. The server's marker is
+ * monotonic, so a request that lost to a newer boundary is answered with that newer one, and taking it at face
+ * value here keeps the client from re-attempting something the server has already moved past.
+ */
+export function completeCateringReadMark(state: CateringReadMarkState, authoritativeMarkedId: string | null): CateringReadMarkState {
+  return { ...state, markedId: authoritativeMarkedId, failed: false };
+}
+/** A failure is remembered rather than retried: the attempted boundary stays recorded, so the effect will not refire. */
+export function failCateringReadMark(state: CateringReadMarkState, attemptedId: string): CateringReadMarkState {
+  return state.attemptedId !== attemptedId ? state : { ...state, failed: true };
+}
+/**
+ * An explicit retry clears the recorded attempt, which lets the effect issue exactly one more request for whatever
+ * the current boundary is. It does not itself send anything, so a double click cannot produce two requests.
+ */
+export function retryCateringReadMark(state: CateringReadMarkState): CateringReadMarkState {
+  return state.failed ? { ...state, attemptedId: null, failed: false } : state;
+}
+/** Whether to offer the retry affordance: only after a failure that still has something left to mark. */
+export function mayRetryCateringReadMark(state: CateringReadMarkState, latestId: string | null, unreadCount: number): boolean {
+  return state.failed && shouldMarkCateringConversationRead(latestId, state.markedId, unreadCount);
+}
+
 export function cateringCommunicationErrorCode(error: unknown): string | null {
   const code = typeof error === "object" && error !== null ? (error as { code?: unknown }).code : undefined;
   return typeof code === "string" ? code : null;

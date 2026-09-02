@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, emptyCateringFileDraft, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, type CateringFileDraft } from "@/pages/services/catering-booking-files-state";
+import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, emptyCateringFileDraft, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, type CateringFileAttempt, type CateringFileDraft } from "@/pages/services/catering-booking-files-state";
 
 /**
  * The booking Files section, inside the Phase 2H workspace. A customer's rendering carries no provider-private
@@ -19,6 +19,10 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   const identity = `${userId}:${bookingId}`;
   const [draft, setDraft] = useState<CateringFileDraft>(() => emptyCateringFileDraft(role));
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Mirrors the live draft so a mutation callback, which fires long after its render, resolves against what the
+  // participant currently has selected rather than the draft captured when the upload started.
+  const draftRef = useRef(draft);
+  useEffect(() => { draftRef.current = draft; }, [draft]);
   const filesKey = cateringBookingFilesKey(userId, bookingId);
   const choices = cateringVisibilityChoices(role);
 
@@ -48,7 +52,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   };
 
   const upload = useMutation({
-    mutationFn: async ({ file, visibility, requestId }: { file: File; visibility: CateringFileVisibility; requestId: string }) => {
+    mutationFn: async ({ file, visibility, requestId }: { file: File; visibility: CateringFileVisibility; requestId: string } & CateringFileAttempt) => {
       const form = new FormData();
       form.append("file", file);
       form.append("visibility", visibility);
@@ -59,7 +63,19 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
       if (!response.ok) throw Object.assign(new Error(body.message || "Your file could not be uploaded"), { code: typeof body.code === "string" ? body.code : undefined });
       return body;
     },
-    onSuccess: () => { setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; invalidate(); },
+    // The draft is cleared only when it still corresponds to the attempt that just completed. The controls stay
+    // usable during an upload, so a participant may already have chosen a replacement file or a different visibility
+    // -- clearing unconditionally would delete that newer selection, and the DOM input would lose it too.
+    onSuccess: (_body, attempt) => {
+      // Resolved against the current draft outside the state updater, so the DOM reset is never a side effect inside
+      // a function React may invoke twice.
+      const resolved = completeCateringFileUpload(draftRef.current, attempt, role);
+      if (resolved.cleared && inputRef.current) inputRef.current.value = "";
+      setDraft(resolved.next);
+      invalidate();
+    },
+    // A failed upload leaves the draft entirely alone, so a newer selection survives a failure just as it does a
+    // success, and the participant can correct and upload again.
     onError: () => invalidate(),
   });
 
