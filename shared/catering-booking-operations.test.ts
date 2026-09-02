@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES, CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskDeleteSchema, cateringBookingTaskReorderEntrySchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingTaskVersionSchema, cateringBookingWorkspaceKey, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "./catering-booking-operations";
+import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES, CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_SET_CHANGED_CODE, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_TASK_VERSION_CONFLICT_MESSAGE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringBookingActivityPageSchema, cateringBookingCustomerDetailsSchema, cateringBookingProviderDetailsSchema, cateringBookingTaskCreateSchema, cateringBookingTaskDeleteSchema, cateringBookingTaskReorderEntrySchema, cateringBookingTaskReorderSchema, cateringBookingTaskUpdateSchema, cateringBookingTaskVersionSchema, cateringBookingWorkspaceKey, cateringBookingWorkspacePath, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "./catering-booking-operations";
 
 test("pending and confirmed workspaces are editable", () => { assert.equal(mayEditCateringWorkspace("pending_confirmation"), true); assert.equal(mayEditCateringWorkspace("confirmed"), true); });
 test("cancelled and completed workspaces are read-only", () => { assert.equal(mayEditCateringWorkspace("cancelled"), false); assert.equal(mayEditCateringWorkspace("completed"), false); });
@@ -87,3 +87,10 @@ test("activity pagination is bounded", () => { assert.deepEqual(cateringBookingA
 test("activity event types are an explicit finite allowlist", () => { assert.ok(CATERING_BOOKING_ACTIVITY_EVENT_TYPES.includes("booking_completed")); assert.equal(CATERING_BOOKING_ACTIVITY_EVENT_TYPES.includes("review_verified" as "booking_completed"), false); });
 test("workspace cache keys are actor and booking scoped", () => { assert.notDeepEqual(cateringBookingWorkspaceKey("provider", "booking"), cateringBookingWorkspaceKey("customer", "booking")); assert.notDeepEqual(cateringBookingWorkspaceKey("provider", "one"), cateringBookingWorkspaceKey("provider", "two")); });
 test("provider and customer deep links resolve separately", () => { assert.equal(cateringBookingWorkspacePath("provider", "abc"), "/services/catering/provider/bookings/abc"); assert.equal(cateringBookingWorkspacePath("customer", "abc"), "/services/catering/bookings/abc"); });
+
+test("every coded workspace refusal has a distinct stable value the client can classify by", () => {
+  const codes = [CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_SET_CHANGED_CODE];
+  assert.equal(new Set(codes).size, codes.length);
+  assert.equal(CATERING_TASK_SET_CHANGED_CODE, "catering_task_set_changed");
+  for (const code of codes) assert.equal(typeof code, "string");
+});

@@ -34,6 +34,12 @@ export const CATERING_TASK_VERSION_CONFLICT_MESSAGE = "This task changed since y
 export const CATERING_WORKSPACE_READ_ONLY_CODE = "workspace_read_only";
 /** A task that no longer exists in the authoritative locked collection, usually because another tab deleted it. */
 export const CATERING_TASK_NOT_FOUND_CODE = "catering_task_not_found";
+/**
+ * The authoritative task collection gained or lost a task since the client loaded it, so a reorder that was composed
+ * against the older collection is no longer the complete current set. Distinct from a version conflict: no submitted
+ * task is stale, the membership itself changed, and the client needs the new collection rather than a newer version.
+ */
+export const CATERING_TASK_SET_CHANGED_CODE = "catering_task_set_changed";
 export const cateringBookingTaskUpdateSchema = z.object({
   title: z.string().trim().min(1).max(160).optional(), description: optionalText(2000), visibility: z.enum(CATERING_BOOKING_TASK_VISIBILITIES).optional(), dueDate: calendarDate.optional(), dueTime: wallClock.optional(), status: z.enum(CATERING_BOOKING_TASK_STATUSES).optional(),
   expectedUpdatedAt: cateringBookingTaskVersionSchema,

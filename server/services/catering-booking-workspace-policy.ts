@@ -1,5 +1,5 @@
 import type { CateringBookingStatus } from "@shared/catering-bookings";
-import { CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_NOT_FOUND_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "@shared/catering-booking-operations";
+import { CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_SET_CHANGED_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, cateringWorkspaceRole, hasValidCateringServiceTimeRange, mayEditCateringWorkspace, mergeCateringServiceTimes } from "@shared/catering-booking-operations";
 
 export { cateringWorkspaceRole, mayEditCateringWorkspace };
 export function mayMutateWorkspace(status: CateringBookingStatus, role: "provider" | "customer", resource: "provider-details" | "customer-notes" | "tasks"): boolean {
@@ -117,10 +117,14 @@ export function resolveCateringTaskReorder(locked: readonly CateringLockedTaskVe
   // The submitted position is the sort order. A client-supplied sortOrder is never read, only the array index.
   return { kind: "reorder", updates: submitted.map((entry, sortOrder) => ({ id: entry.id, sortOrder })) } as const;
 }
-/** A read-only booking is never reported as an incomplete task set, and neither is ever reported as a version conflict. */
+/**
+ * A read-only booking is never reported as an incomplete task set, and neither is ever reported as a version conflict.
+ * Each carries its own stable code, so the client can tell a booking that closed from a collection that changed shape
+ * from a task that moved on, and refresh from the authoritative workspace instead of retrying the same stale set.
+ */
 export const CATERING_TASK_REORDER_REFUSALS: Record<"read_only" | "membership", CateringWorkspaceRefusal> = {
   read_only: { message: "Booking became read-only before the tasks could be reordered", code: CATERING_WORKSPACE_READ_ONLY_CODE },
-  membership: { message: "Reorder must contain the complete current task set" },
+  membership: { message: "Reorder must contain the complete current task set", code: CATERING_TASK_SET_CHANGED_CODE },
 };
 
 export function sharedTaskUpdateActivity(current: CateringTaskPersistedState, input: CateringTaskPatchInput) {

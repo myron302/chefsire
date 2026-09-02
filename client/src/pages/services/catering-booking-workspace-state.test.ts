@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { cateringBookingProviderDetailsSchema, mayEditCateringWorkspace, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
+import { cateringBookingProviderDetailsSchema, CATERING_TASK_SET_CHANGED_CODE, mayEditCateringWorkspace, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
 import { activeTaskEditor, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskReorderControls, cateringTaskReorderPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, isCateringTaskNotFound, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, markTaskEditorConflict, mayMoveCateringTask, maySubmitTaskEditor, moveCateringTaskInGlobalOrder, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithTasks, reconcileTaskEditorWithWorkspace, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
 
 const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
@@ -488,4 +488,59 @@ test("a private task never reaches the customer, so it can never appear in a cus
   assert.deepEqual(idsOf(customerVisible), ["s1", "s2"]);
   assert.deepEqual(sectionIds(customerVisible), { checklist: [], requirements: ["s1", "s2"] });
   for (const task of customerVisible) assert.equal(cateringTaskReorderControls(customerVisible, task.id, { ...activeProvider, role: "customer" }), null);
+});
+
+const refusal = (code?: string) => code === undefined ? new Error("Reorder must contain the complete current task set") : Object.assign(new Error("Reorder must contain the complete current task set"), { code });
+
+test("a reorder refused because the task collection changed is recognized as needing an authoritative refresh", () => {
+  assert.equal(shouldRefetchWorkspaceAfterError(refusal(CATERING_TASK_SET_CHANGED_CODE)), true);
+  assert.equal(cateringWorkspaceErrorCode(refusal(CATERING_TASK_SET_CHANGED_CODE)), "catering_task_set_changed");
+  // It is its own condition: never classified as a stale version, a missing task, or a closed workspace.
+  assert.equal(isCateringTaskVersionConflict(refusal(CATERING_TASK_SET_CHANGED_CODE)), false);
+  assert.equal(isCateringTaskNotFound(refusal(CATERING_TASK_SET_CHANGED_CODE)), false);
+});
+test("the other coded refusals keep their existing classification exactly", () => {
+  assert.equal(isCateringTaskVersionConflict(refusal("task_version_conflict")), true);
+  assert.equal(isCateringTaskNotFound(refusal("catering_task_not_found")), true);
+  for (const code of ["task_version_conflict", "workspace_read_only", "catering_task_not_found"]) assert.equal(shouldRefetchWorkspaceAfterError(refusal(code)), true);
+  assert.equal(isCateringTaskVersionConflict(refusal("catering_task_not_found")), false);
+  assert.equal(isCateringTaskNotFound(refusal("task_version_conflict")), false);
+});
+test("an uncoded or unrelated 409 never becomes a task-set-changed refresh on message alone", () => {
+  assert.equal(shouldRefetchWorkspaceAfterError(refusal()), false);
+  assert.equal(cateringWorkspaceErrorCode(refusal()), null);
+  for (const other of [new Error("Only the provider may reorder tasks on an active workspace"), refusal("some_other_code"), new Error("network"), null, undefined, "catering_task_set_changed"]) {
+    assert.equal(shouldRefetchWorkspaceAfterError(other), false);
+  }
+});
+test("after the refetch the next reorder carries the refreshed complete collection and its fresh versions", () => {
+  const loaded = [taskView("t1", "provider"), taskView("t2", "shared")];
+  assert.equal(shouldRefetchWorkspaceAfterError(refusal(CATERING_TASK_SET_CHANGED_CODE)), true);
+  // Client B created t3; the refetch is what puts it in the collection the next attempt is composed from.
+  const refetchedAfterCreate = [taskView("t1", "provider", { updatedAt: "2026-09-01T12:00:00.000Z" }), taskView("t2", "shared", { updatedAt: "2026-09-01T12:00:00.000Z" }), taskView("t3", "provider", { updatedAt: "2026-09-01T12:00:00.000Z" })];
+  const afterCreate = cateringTaskReorderPayload(moveCateringTaskInGlobalOrder(refetchedAfterCreate, "t3", "up")!);
+  assert.deepEqual(afterCreate.tasks.map((entry) => entry.id), ["t3", "t2", "t1"]);
+  assert.equal(afterCreate.tasks.length, refetchedAfterCreate.length);
+  for (const entry of afterCreate.tasks) assert.equal(entry.expectedUpdatedAt, "2026-09-01T12:00:00.000Z");
+  // Client B deleted t2; the refetched collection is smaller and the stale one is never resubmitted.
+  const refetchedAfterDelete = [taskView("t1", "provider", { updatedAt: "2026-09-02T08:00:00.000Z" }), taskView("t3", "provider", { updatedAt: "2026-09-02T08:00:00.000Z" })];
+  const afterDelete = cateringTaskReorderPayload(moveCateringTaskInGlobalOrder(refetchedAfterDelete, "t1", "down")!);
+  assert.deepEqual(afterDelete.tasks.map((entry) => entry.id), ["t3", "t1"]);
+  assert.equal(afterDelete.tasks.some((entry) => entry.id === "t2"), false);
+  for (const entry of afterDelete.tasks) assert.equal(entry.expectedUpdatedAt, "2026-09-02T08:00:00.000Z");
+  assert.notDeepEqual(afterDelete.tasks, cateringTaskReorderPayload(moveCateringTaskInGlobalOrder(loaded, "t1", "down") ?? []).tasks);
+});
+test("a task-set-changed refetch leaves every draft and the open task editor untouched", () => {
+  const providerDraft = { identity: "actor:booking", value: providerDraftFrom({ ...emptyDetails, venueCity: "Dallas" }), dirty: true };
+  const customerDraft = { identity: "actor:booking", value: "Please arrive early", dirty: true };
+  const taskDraft = { identity: "actor:booking", value: { ...editorDraft, title: "Half-typed task" }, dirty: true };
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(providerDraft).value?.venueCity, "Dallas");
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(customerDraft).value, "Please arrive early");
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(taskDraft).value.title, "Half-typed task");
+  const editing = editTaskEditorField(openEditor(), "actor:booking", "task-1", "title", "Edited title");
+  assert.equal(preserveTaskEditorAfterSaveFailure(editing)?.draft.title, "Edited title");
+  // The workspace is still editable, so the refetch keeps the editor open and still submittable.
+  assert.deepEqual(reconcileTaskEditorWithWorkspace(editing, "actor:booking", true, ["task-1", "task-3"]), editing);
+  assert.equal(maySubmitTaskEditor(editing, true), true);
+  assert.deepEqual(sectionsRenderingEditor(editing, "actor:booking", [taskView("task-1", "provider")], true), { checklist: ["task-1"], requirements: [] });
 });

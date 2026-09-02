@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_SET_CHANGED_CODE } from "@shared/catering-booking-operations";
 import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, CATERING_TASK_PATCH_FIELDS, CATERING_TASK_REORDER_REFUSALS, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, cateringTaskVersionMatches, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, resolveCateringTaskReorder, sharedTaskUpdateActivity, type CateringLockedTaskVersion, type CateringTaskVersionedState } from "./catering-booking-workspace-policy";
 
 test("provider can prepare pending and confirmed operational state", () => { for (const status of ["pending_confirmation", "confirmed"] as const) { assert.equal(mayMutateWorkspace(status, "provider", "provider-details"), true); assert.equal(mayMutateWorkspace(status, "provider", "tasks"), true); } });
@@ -348,6 +349,8 @@ const applyReorder = (rows: ReorderRow[], outcome: ReturnType<typeof resolveCate
 };
 const orderOf = (rows: ReorderRow[]) => [...rows].sort((left, right) => left.sortOrder - right.sortOrder || left.id.localeCompare(right.id)).map(({ id }) => id);
 const freshVersions = (rows: ReorderRow[]) => Object.fromEntries(rows.map((row) => [row.id, row.updatedAt.toISOString()]));
+/** Mirrors how the route answers a refused reorder from the refusal record; a conflict and a success answer elsewhere. */
+const reorderRefusalFor = (outcome: ReturnType<typeof resolveCateringTaskReorder>) => outcome.kind === "read_only" || outcome.kind === "membership" ? CATERING_TASK_REORDER_REFUSALS[outcome.kind] : null;
 
 test("a reorder matching every current version persists the submitted positions", () => {
   const rows = lockedRows();
@@ -422,7 +425,7 @@ test("a booking that went read-only under the lock refuses the reorder before me
 });
 test("the three reorder refusals stay distinct and carry the canonical codes", () => {
   assert.equal(CATERING_TASK_REORDER_REFUSALS.read_only.code, "workspace_read_only");
-  assert.equal(CATERING_TASK_REORDER_REFUSALS.membership.code, undefined);
+  assert.equal(CATERING_TASK_REORDER_REFUSALS.membership.code, CATERING_TASK_SET_CHANGED_CODE);
   assert.equal(CATERING_TASK_REORDER_REFUSALS.membership.message, "Reorder must contain the complete current task set");
   assert.match(CATERING_TASK_REORDER_REFUSALS.read_only.message, /read-only/);
   assert.equal(/read-only/.test(CATERING_TASK_REORDER_REFUSALS.membership.message), false);
@@ -440,4 +443,60 @@ test("reorder, patch, and delete share one instant comparison, and patch and del
   assert.deepEqual(resolveCateringTaskPatch(lockedTask(), { title: "Stale", expectedUpdatedAt: T2.toISOString() }, NOW), { kind: "conflict" });
   assert.equal(resolveCateringTaskDelete({ updatedAt: T1, title: "Confirm rentals", visibility: "shared" }, T1.toISOString()).kind, "delete");
   assert.deepEqual(resolveCateringTaskDelete({ updatedAt: T1, title: "Confirm rentals", visibility: "shared" }, T2.toISOString()), { kind: "conflict" });
+});
+
+test("a membership refusal carries a stable code of its own, distinct from every other refusal", () => {
+  assert.equal(CATERING_TASK_REORDER_REFUSALS.membership.code, "catering_task_set_changed");
+  assert.equal(CATERING_TASK_REORDER_REFUSALS.membership.code, CATERING_TASK_SET_CHANGED_CODE);
+  assert.equal(CATERING_TASK_REORDER_REFUSALS.membership.message, "Reorder must contain the complete current task set");
+  for (const other of ["task_version_conflict", "workspace_read_only", "catering_task_not_found"]) assert.notEqual(CATERING_TASK_REORDER_REFUSALS.membership.code, other);
+  assert.notEqual(CATERING_TASK_REORDER_REFUSALS.membership.code, CATERING_TASK_REORDER_REFUSALS.read_only.code);
+  assert.notEqual(CATERING_TASK_REORDER_REFUSALS.membership.code, CATERING_TASK_NOT_FOUND_REFUSAL.code);
+  assert.notEqual(CATERING_TASK_REORDER_REFUSALS.membership.code, CATERING_DETAILS_SAVE_REFUSALS.read_only.code);
+  // The message is unchanged, and the read-only refusal keeps its own separate code and wording.
+  assert.equal(CATERING_TASK_REORDER_REFUSALS.read_only.code, "workspace_read_only");
+  assert.equal(/complete current task set/.test(CATERING_TASK_REORDER_REFUSALS.read_only.message), false);
+});
+test("another client creating a task makes the loaded reorder a membership refusal, not a version conflict", () => {
+  const loadedByA = lockedRows().slice(0, 2);
+  const submittedByA = submitOrder([TASK_B, TASK_A], freshVersions(loadedByA));
+  // Client B created TASK_C after A loaded, so the authoritative locked collection now holds three tasks.
+  const outcome = resolveCateringTaskReorder(lockedRows(), submittedByA);
+  assert.deepEqual(outcome, { kind: "membership" });
+  assert.notEqual(outcome.kind, "conflict");
+  assert.equal(reorderRefusalFor(outcome)?.code, CATERING_TASK_SET_CHANGED_CODE);
+  assert.equal(reorderRefusalFor(outcome)?.message, "Reorder must contain the complete current task set");
+  // After refetching, A submits the complete current set with its fresh versions and is accepted.
+  const refetched = lockedRows();
+  assert.equal(resolveCateringTaskReorder(refetched, submitOrder([TASK_B, TASK_A, TASK_C], freshVersions(refetched))).kind, "reorder");
+});
+test("another client deleting a task makes the loaded reorder a membership refusal, not a version conflict", () => {
+  const loadedByA = lockedRows();
+  const submittedByA = submitOrder([TASK_C, TASK_B, TASK_A], freshVersions(loadedByA));
+  // Client B deleted TASK_C after A loaded, so the authoritative locked collection now holds two tasks.
+  const remaining = lockedRows().slice(0, 2);
+  const outcome = resolveCateringTaskReorder(remaining, submittedByA);
+  assert.deepEqual(outcome, { kind: "membership" });
+  assert.notEqual(outcome.kind, "conflict");
+  assert.equal(reorderRefusalFor(outcome)?.code, CATERING_TASK_SET_CHANGED_CODE);
+  assert.equal(reorderRefusalFor(outcome)?.message, "Reorder must contain the complete current task set");
+  assert.deepEqual(applyReorder(remaining, outcome, NOW), remaining);
+  assert.equal(resolveCateringTaskReorder(remaining, submitOrder([TASK_B, TASK_A], freshVersions(remaining))).kind, "reorder");
+});
+test("a membership refusal writes nothing: no order, no version, no activity, no notification", () => {
+  const remaining = lockedRows().slice(0, 2);
+  const outcome = resolveCateringTaskReorder(remaining, submitOrder([TASK_C, TASK_B, TASK_A]));
+  assert.deepEqual(outcome, { kind: "membership" });
+  const refused: Record<string, unknown> = { ...outcome };
+  for (const written of ["updates", "activity", "notify", "notification", "task", "sortOrder", "updatedAt", "completedAt"]) assert.equal(written in refused, false);
+  const applied = applyReorder(remaining, outcome, NOW);
+  assert.deepEqual(applied, remaining);
+  for (const row of applied) {
+    assert.equal(row.sortOrder, remaining.find((current) => current.id === row.id)!.sortOrder);
+    assert.deepEqual(row.updatedAt, remaining.find((current) => current.id === row.id)!.updatedAt);
+  }
+  assert.deepEqual(orderOf(applied), [TASK_A, TASK_B]);
+  // The refusal shape itself is what the route writes from, and it is the same one regardless of the request's order.
+  assert.deepEqual(resolveCateringTaskReorder(remaining, submitOrder([TASK_A, TASK_B, TASK_C])), { kind: "membership" });
+  assert.equal(CATERING_BOOKING_TASK_LIMIT, 100);
 });

@@ -1,4 +1,4 @@
-import { CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, type CateringBookingActivityView, type CateringBookingDetailsView } from "@shared/catering-booking-operations";
+import { CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_SET_CHANGED_CODE, CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, type CateringBookingActivityView, type CateringBookingDetailsView } from "@shared/catering-booking-operations";
 import { formatCateringCalendarDate } from "@shared/catering-availability";
 
 export type OperationalDetailItem = { label: string; value: string };
@@ -39,8 +39,12 @@ export function isCateringTaskVersionConflict(error: unknown): boolean {
 export function isCateringTaskNotFound(error: unknown): boolean {
   return cateringWorkspaceErrorCode(error) === CATERING_TASK_NOT_FOUND_CODE;
 }
-/** Every coded refusal means the workspace on screen is behind the server, so the authoritative view is fetched again. */
-const WORKSPACE_REFRESHING_CODES: readonly string[] = [CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, CATERING_TASK_NOT_FOUND_CODE];
+/**
+ * Every coded refusal means the workspace on screen is behind the server, so the authoritative view is fetched again.
+ * A reorder refused because the task collection itself changed shape is exactly that: retrying the same stale set can
+ * only be refused again, so the refetch is what lets the next attempt carry the complete current set and its versions.
+ */
+const WORKSPACE_REFRESHING_CODES: readonly string[] = [CATERING_TASK_VERSION_CONFLICT_CODE, CATERING_WORKSPACE_READ_ONLY_CODE, CATERING_TASK_NOT_FOUND_CODE, CATERING_TASK_SET_CHANGED_CODE];
 export function shouldRefetchWorkspaceAfterError(error: unknown): boolean {
   const code = cateringWorkspaceErrorCode(error);
   return code !== null && WORKSPACE_REFRESHING_CODES.includes(code);
