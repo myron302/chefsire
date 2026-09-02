@@ -1,0 +1,134 @@
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Download, Trash2 } from "lucide-react";
+import { cateringBookingFilesKey, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
+import { cateringBookingWorkspaceKey } from "@shared/catering-booking-operations";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, emptyCateringFileDraft, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, type CateringFileDraft } from "@/pages/services/catering-booking-files-state";
+
+/**
+ * The booking Files section, inside the Phase 2H workspace. A customer's rendering carries no provider-private
+ * count, no placeholder and no visibility control, because the server never serves them a provider-private file and
+ * the interface must not imply one could exist.
+ */
+export default function BookingFiles({ bookingId, userId, role, editable }: { bookingId: string; userId: string; role: "provider" | "customer"; editable: boolean }) {
+  const cache = useQueryClient();
+  const identity = `${userId}:${bookingId}`;
+  const [draft, setDraft] = useState<CateringFileDraft>(() => emptyCateringFileDraft(role));
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const filesKey = cateringBookingFilesKey(userId, bookingId);
+  const choices = cateringVisibilityChoices(role);
+
+  useEffect(() => { setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; }, [identity, role]);
+
+  const query = useInfiniteQuery({
+    queryKey: filesKey,
+    initialPageParam: undefined as string | undefined,
+    staleTime: 15_000,
+    refetchOnWindowFocus: true,
+    queryFn: async ({ pageParam }): Promise<CateringBookingFilePageView> => {
+      const search = pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : "";
+      const response = await fetch(`/api/catering/bookings/${bookingId}/files${search}`, { credentials: "include" });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw Object.assign(new Error(body.message || "Files could not be loaded"), { code: typeof body.code === "string" ? body.code : undefined });
+      return body;
+    },
+    getNextPageParam: (lastPage) => nextCateringFileCursor(lastPage),
+  });
+  const files = combineCateringFilePages(query.data?.pages ?? []);
+
+  // Both mutations invalidate only this actor's own booking file and workspace caches. Another participant's
+  // actor-scoped keys are deliberately untouched: this client has no legitimate way to refresh them.
+  const invalidate = () => {
+    cache.invalidateQueries({ queryKey: filesKey });
+    cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
+  };
+
+  const upload = useMutation({
+    mutationFn: async ({ file, visibility, requestId }: { file: File; visibility: CateringFileVisibility; requestId: string }) => {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("visibility", visibility);
+      // The same token for every attempt at this selection, so a retry resolves to the file already stored.
+      form.append("clientRequestId", requestId);
+      const response = await fetch(`/api/catering/bookings/${bookingId}/files`, { method: "POST", credentials: "include", body: form });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) throw Object.assign(new Error(body.message || "Your file could not be uploaded"), { code: typeof body.code === "string" ? body.code : undefined });
+      return body;
+    },
+    onSuccess: () => { setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; invalidate(); },
+    onError: () => invalidate(),
+  });
+
+  const remove = useMutation({
+    mutationFn: async (fileId: string) => {
+      const response = await fetch(`/api/catering/bookings/${bookingId}/files/${fileId}`, { method: "DELETE", credentials: "include" });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw Object.assign(new Error(body.message || "This file could not be removed"), { code: typeof body.code === "string" ? body.code : undefined });
+      }
+      return true;
+    },
+    onSettled: () => invalidate(),
+  });
+
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    if (!mayUploadCateringFile(draft, editable, upload.isPending) || !draft.file || !draft.visibility || !draft.requestId) return;
+    upload.mutate({ file: draft.file, visibility: draft.visibility, requestId: draft.requestId });
+  };
+
+  return <Card id="files"><CardHeader><CardTitle>Files</CardTitle><CardDescription>{role === "provider" ? "Booking documents. Files you mark provider-only are never shown to the customer." : "Documents shared between you and your caterer."}</CardDescription></CardHeader><CardContent className="space-y-4">
+    {query.isLoading && <p role="status">Loading files…</p>}
+    {query.isError && !query.isLoading && <div className="space-y-2" role="alert"><p>Files could not be loaded.</p><Button variant="outline" className="min-h-11" onClick={() => query.refetch()}>Retry loading files</Button></div>}
+    {!query.isLoading && !query.isError && (files.length === 0
+      ? <p className="text-muted-foreground">{CATERING_FILES_EMPTY}</p>
+      : <ul className="space-y-2">{files.map((file) => <FileRow key={file.id} file={file} bookingId={bookingId} role={role} editable={editable} pending={remove.isPending} onRemove={() => { if (window.confirm(`Remove “${file.filename}”?`)) remove.mutate(file.id); }} />)}</ul>)}
+    {query.hasNextPage && <Button variant="outline" className="min-h-11 w-full sm:w-auto" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>{query.isFetchingNextPage ? "Loading more files…" : "Load more files"}</Button>}
+    {query.isFetchNextPageError && <div className="space-y-2" role="alert"><p>More files could not be loaded.</p><Button variant="outline" className="min-h-11" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>Retry loading more files</Button></div>}
+    {remove.isError && <p role="alert" className="text-destructive">{remove.error.message}</p>}
+
+    {editable
+      ? <form className="space-y-3 border-t pt-4" onSubmit={submit}>
+          <div><Label htmlFor="catering-file">Add a file</Label>
+            <input id="catering-file" ref={inputRef} type="file" accept={CATERING_FILE_ACCEPT} className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2"
+              aria-describedby="catering-file-help"
+              onChange={(event) => { const chosen = event.target.files?.[0] ?? null; setDraft((current) => selectCateringFile(current, chosen, chosen ? crypto.randomUUID() : null)); }} />
+            <p id="catering-file-help" className="mt-1 text-sm text-muted-foreground">PDF, JPEG, PNG or WebP, up to 15 MB.</p>
+          </div>
+          {/* A provider chooses visibility explicitly; a customer is never shown this control, and never a hint of it. */}
+          {choices.length > 0 && <fieldset className="space-y-2"><legend className="text-sm font-medium">Who can see this file?</legend>
+            {choices.map((choice) => <label key={choice.value} className="flex min-h-11 items-start gap-2">
+              <input type="radio" name="catering-file-visibility" className="mt-1 h-5 w-5" value={choice.value} checked={draft.visibility === choice.value}
+                onChange={() => setDraft((current) => chooseCateringVisibility(current, choice.value))} />
+              <span className="min-w-0"><span className="block font-medium">{choice.label}</span><span className="block text-sm text-muted-foreground">{choice.description}</span></span>
+            </label>)}
+          </fieldset>}
+          {draft.error && <p role="alert" className="text-destructive">{draft.error}</p>}
+          <Button type="submit" className="min-h-11" disabled={!mayUploadCateringFile(draft, editable, upload.isPending)}>Upload file</Button>
+          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{upload.isPending ? "Uploading your file…" : upload.isSuccess ? "File uploaded." : ""}</p>
+          {upload.isError && <p role="alert" className="text-destructive">{upload.error.message}</p>}
+        </form>
+      : <p className="font-medium">{CATERING_FILES_READ_ONLY_BANNER}</p>}
+  </CardContent></Card>;
+}
+
+/** Presentation only. Download is an ordinary link to the authorized booking route, never a stored or signed URL. */
+function FileRow({ file, bookingId, role, editable, pending, onRemove }: { file: CateringBookingFileView; bookingId: string; role: "provider" | "customer"; editable: boolean; pending: boolean; onRemove: () => void }) {
+  const badge = cateringFileVisibilityBadge(file, role);
+  return <li className="flex min-w-0 flex-wrap items-start gap-3 rounded-lg border p-3">
+    <div className="min-w-0 flex-1">
+      <p className="break-words font-medium [overflow-wrap:anywhere]">{file.filename}</p>
+      <p className="text-sm text-muted-foreground">{cateringFileSummary(file)}</p>
+      <p className="break-words text-sm text-muted-foreground">Added by {file.mine ? "you" : file.uploaderName || (file.uploadedByRole === "provider" ? "your caterer" : "your customer")}</p>
+      {badge && <Badge variant="outline" className="mt-1">{badge}</Badge>}
+    </div>
+    <div className="flex flex-wrap gap-2">
+      <Button asChild variant="outline" className="min-h-11"><a href={cateringFileDownloadPath(bookingId, file.id)} download aria-label={`Download ${file.filename}`}><Download className="mr-2 h-4 w-4" aria-hidden="true" />Download</a></Button>
+      {editable && file.mayDelete && <Button type="button" variant="ghost" size="icon" className="min-h-11 min-w-11" disabled={pending} aria-label={`Remove ${file.filename}`} onClick={onRemove}><Trash2 className="h-4 w-4" aria-hidden="true" /></Button>}
+    </div>
+  </li>;
+}

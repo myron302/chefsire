@@ -5,7 +5,11 @@ import { calendarDateSchema } from "./catering-availability";
 export const CATERING_BOOKING_TASK_LIMIT = 100;
 export const CATERING_BOOKING_TASK_STATUSES = ["pending", "completed"] as const;
 export const CATERING_BOOKING_TASK_VISIBILITIES = ["provider", "shared"] as const;
-export const CATERING_BOOKING_ACTIVITY_EVENT_TYPES = ["booking_offered", "customer_confirmed", "booking_cancelled", "booking_completed", "details_updated", "shared_requirement_added", "shared_requirement_updated", "shared_requirement_completed", "shared_requirement_deleted"] as const;
+/**
+ * The finite activity allowlist. Phase 2I extends it with the four file events and nothing else: messages form their
+ * own chronological thread and deliberately write no activity, so a conversation never floods the booking history.
+ */
+export const CATERING_BOOKING_ACTIVITY_EVENT_TYPES = ["booking_offered", "customer_confirmed", "booking_cancelled", "booking_completed", "details_updated", "shared_requirement_added", "shared_requirement_updated", "shared_requirement_completed", "shared_requirement_deleted", "shared_file_uploaded", "shared_file_removed", "provider_file_uploaded", "provider_file_removed"] as const;
 
 const optionalText = (maximum: number) => z.string().trim().max(maximum).nullable().optional();
 const wallClock = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/, "Use 24-hour HH:mm event-local time").nullable();
@@ -70,7 +74,13 @@ export function cateringWorkspaceRole(booking: { providerId: string; customerId:
 export type CateringBookingDetailsView = { venueName: string | null; venueAddress: string | null; venueCity: string | null; venueState: string | null; venuePostalCode: string | null; venueInstructions: string | null; arrivalTime: string | null; serviceStartTime: string | null; serviceEndTime: string | null; setupNotes: string | null; accessNotes: string | null; kitchenAvailable: boolean | null; refrigerationAvailable: boolean | null; powerAvailable: boolean | null; waterAvailable: boolean | null; indoorOutdoor: "indoor" | "outdoor" | "both" | null; customerNotes: string | null; providerNotes?: string | null; updatedAt: string | null };
 export type CateringBookingTaskView = { id: string; title: string; description: string | null; status: "pending" | "completed"; visibility: "provider" | "shared"; dueDate: string | null; dueTime: string | null; sortOrder: number; createdAt: string; completedAt: string | null; updatedAt: string };
 export type CateringBookingActivityView = { id: string; eventType: typeof CATERING_BOOKING_ACTIVITY_EVENT_TYPES[number]; metadata: Record<string, string>; createdAt: string };
-export type CateringBookingWorkspaceView = { role: "provider" | "customer"; editable: boolean; booking: CateringBookingView; details: CateringBookingDetailsView; tasks: CateringBookingTaskView[]; activity: CateringBookingActivityView[]; activityPagination: { page: number; limit: number; total: number; totalPages: number } };
+/**
+ * Bounded Phase 2I summaries. Neither collection is inlined -- messages and files stay on their own paginated APIs --
+ * and both counts are capped rather than run as unbounded totals. `activeFileCount` is counted per actor, so a
+ * customer's summary never includes a provider-private file and cannot reveal that one exists.
+ */
+export type CateringBookingWorkspaceSummary = { unreadMessageCount: number; unreadMessageCountCapped: boolean; activeFileCount: number; activeFileCountCapped: boolean };
+export type CateringBookingWorkspaceView = { role: "provider" | "customer"; editable: boolean; booking: CateringBookingView; details: CateringBookingDetailsView; tasks: CateringBookingTaskView[]; activity: CateringBookingActivityView[]; activityPagination: { page: number; limit: number; total: number; totalPages: number }; summary: CateringBookingWorkspaceSummary };
 
 export function cateringBookingWorkspacePath(role: "provider" | "customer", bookingId: string): string { return role === "provider" ? `/services/catering/provider/bookings/${bookingId}` : `/services/catering/bookings/${bookingId}`; }
 export const cateringBookingWorkspaceKey = (userId: string, bookingId: string) => ["catering", "booking-workspace", userId, bookingId] as const;

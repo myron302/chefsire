@@ -13,8 +13,12 @@ import {
   uniqueIndex,
   date,
   check,
+  bigint,
+  uuid,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
+import { dmMessages, dmThreads } from "../messaging/dm";
 
 type RecipeNutrition = Record<string, unknown> & {
   calories?: number;
@@ -413,6 +417,93 @@ export const cateringBookingActivity = pgTable("catering_booking_activity", {
   bookingPageIdx: index("catering_booking_activity_booking_page_idx").on(t.bookingId, t.createdAt, t.id),
   eventTypeCheck: check("catering_booking_activity_event_type_check", sql`${t.eventType} IN ('booking_offered', 'customer_confirmed', 'booking_cancelled', 'booking_completed', 'details_updated', 'shared_requirement_added', 'shared_requirement_updated', 'shared_requirement_completed', 'shared_requirement_deleted')`),
   visibilityCheck: check("catering_booking_activity_visibility_check", sql`${t.visibility} IN ('provider', 'shared')`),
+}));
+
+/**
+ * Phase 2I: exactly one dedicated DM thread per catering booking. The link is the booking's authority over the
+ * thread -- a generic 1:1 DM between the same provider and customer is never reused as a booking conversation, and
+ * every generic DM mutation checks this table before touching a thread.
+ */
+export const cateringBookingConversations = pgTable("catering_booking_conversations", {
+  bookingId: varchar("booking_id").primaryKey().references(() => cateringBookings.id, { onDelete: "restrict" }),
+  threadId: varchar("thread_id").notNull().unique().references(() => dmThreads.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  threadIdx: index("catering_booking_conversations_thread_idx").on(t.threadId),
+}));
+
+/**
+ * Phase 2I message idempotency, scoped to (booking, sender, client request). It lives beside the booking rather
+ * than as a column on the shared dm_messages table, so generic DMs are completely unaffected by it.
+ */
+export const cateringBookingMessageRequests = pgTable("catering_booking_message_requests", {
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  senderId: varchar("sender_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  clientRequestId: uuid("client_request_id").notNull(),
+  messageId: varchar("message_id").references(() => dmMessages.id, { onDelete: "restrict" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  pk: primaryKey({ name: "catering_booking_message_requests_pkey", columns: [t.bookingId, t.senderId, t.clientRequestId] }),
+  messageIdx: index("catering_booking_message_requests_message_idx").on(t.messageId),
+}));
+
+/**
+ * Phase 2I authoritative booking file metadata. `storageKey` names an object in private storage and is never
+ * serialized to any actor: the only path to the bytes is the authorized download route. Deletion is a tombstone
+ * (`deletedAt`/`deletedBy`) so booking history stays truthful, and the cleanup columns record what happened to the
+ * stored object afterwards without ever making a deleted file visible again.
+ */
+export const cateringBookingFiles = pgTable("catering_booking_files", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  uploadedBy: varchar("uploaded_by").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  visibility: varchar("visibility", { length: 16 }).notNull(),
+  storageProvider: varchar("storage_provider", { length: 16 }).notNull(),
+  storageKey: text("storage_key").notNull(),
+  originalFilename: varchar("original_filename", { length: 255 }).notNull(),
+  contentType: varchar("content_type", { length: 128 }).notNull(),
+  byteSize: bigint("byte_size", { mode: "number" }).notNull(),
+  sha256: varchar("sha256", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  deletedBy: varchar("deleted_by").references(() => users.id, { onDelete: "restrict" }),
+  objectDeletedAt: timestamp("object_deleted_at", { withTimezone: true }),
+  cleanupAttempts: integer("cleanup_attempts").default(0).notNull(),
+  cleanupError: text("cleanup_error"),
+  /** Upload retry token, unique per (booking, uploader) when present, so a retried upload adds no second copy. */
+  clientRequestId: uuid("client_request_id"),
+}, (t) => ({
+  bookingPageIdx: index("catering_booking_files_booking_page_idx").on(t.bookingId, t.createdAt, t.id),
+  requestUnique: uniqueIndex("catering_booking_files_request_uidx").on(t.bookingId, t.uploadedBy, t.clientRequestId).where(sql`${t.clientRequestId} IS NOT NULL`),
+  storageKeyUnique: uniqueIndex("catering_booking_files_storage_key_uidx").on(t.storageKey),
+  bookingFileUnique: uniqueIndex("catering_booking_files_booking_id_uidx").on(t.bookingId, t.id),
+  visibilityCheck: check("catering_booking_files_visibility_check", sql`${t.visibility} IN ('provider', 'shared')`),
+  storageProviderCheck: check("catering_booking_files_storage_provider_check", sql`${t.storageProvider} IN ('r2', 'local')`),
+  byteSizeCheck: check("catering_booking_files_byte_size_check", sql`${t.byteSize} > 0 AND ${t.byteSize} <= 15728640`),
+  sha256Check: check("catering_booking_files_sha256_check", sql`${t.sha256} ~ '^[0-9a-f]{64}$'`),
+  cleanupAttemptsCheck: check("catering_booking_files_cleanup_attempts_check", sql`${t.cleanupAttempts} >= 0`),
+  deletedByCheck: check("catering_booking_files_deleted_by_check", sql`(${t.deletedAt} IS NULL AND ${t.deletedBy} IS NULL) OR (${t.deletedAt} IS NOT NULL AND ${t.deletedBy} IS NOT NULL)`),
+  objectDeletedCheck: check("catering_booking_files_object_deleted_check", sql`${t.objectDeletedAt} IS NULL OR ${t.deletedAt} IS NOT NULL`),
+}));
+
+/**
+ * An object that reached storage but whose metadata never persisted, and whose compensating delete also failed.
+ * The upload still answers the client with a failure -- this row exists so the stranded bytes can be reconciled
+ * rather than accumulating silently by design.
+ */
+export const cateringBookingStorageOrphans = pgTable("catering_booking_storage_orphans", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  storageProvider: varchar("storage_provider", { length: 16 }).notNull(),
+  storageKey: text("storage_key").notNull(),
+  reason: varchar("reason", { length: 40 }).notNull(),
+  cleanupAttempts: integer("cleanup_attempts").default(1).notNull(),
+  cleanupError: text("cleanup_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+}, (t) => ({
+  providerCheck: check("catering_booking_storage_orphans_provider_check", sql`${t.storageProvider} IN ('r2', 'local')`),
+  attemptsCheck: check("catering_booking_storage_orphans_attempts_check", sql`${t.cleanupAttempts} >= 0`),
 }));
 
 export const cateringReviews = pgTable("catering_reviews", {
