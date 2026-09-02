@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { z } from "zod";
 import { cateringBookingMessageRequests, notifications, users } from "@shared/schema";
-import { dmMessages, dmParticipants } from "@shared/schema.dm";
+import { dmMessages } from "@shared/schema.dm";
 import { cateringBookingIdSchema } from "@shared/catering-bookings";
 import { CATERING_COMMUNICATION_SECTION, CATERING_MESSAGE_NOTIFICATION, CATERING_UNREAD_COUNT_CEILING, cateringBookingMessagePageSchema, cateringBookingMessageReadSchema, cateringBookingMessageSendSchema, cateringBookingSectionPath, mayPostCateringBookingMessage } from "@shared/catering-booking-communication";
 import { cateringWorkspaceRole } from "@shared/catering-booking-operations";
@@ -81,6 +81,42 @@ r.get("/bookings/:id/messages", requireAuth, async (req, res, next) => { try {
   res.json({ messages: ordered.map((row) => serializeBookingMessage(row, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, names })), nextCursor, editable });
 } catch (error) { invalid(error, res, next); } });
 
+/**
+ * Advances one participant's read marker to `messageId`, and only ever forward.
+ *
+ * This is deliberately ONE conditional statement rather than read-compare-write. Two tabs marking different
+ * messages concurrently would race a read-then-write: both could read the old marker, both could decide they
+ * advance, and the later writer could win with the older message. Here the comparison lives in the WHERE clause, so
+ * the second statement blocks on the row the first is updating and -- under READ COMMITTED, which re-evaluates the
+ * predicate against the committed row version -- re-checks monotonicity against the value that actually won. A
+ * stale marker therefore matches nothing and updates no row, rather than regressing it.
+ *
+ * The three accepted cases are: no marker yet, a marker that is no longer a message of this thread (the shape the
+ * generic DM read route can leave behind, which cannot be compared), and a strictly later `(created_at, id)` pair --
+ * the same ordering message pagination and unread counting use, so an equal timestamp is decided by id.
+ *
+ * Lock ordering: this statement takes exactly one row lock, on `dm_participants`, and holds it only for its own
+ * duration. It acquires nothing else, so it cannot form a cycle with the send flow -- which takes the booking row
+ * lock, then the conversation advisory lock, then writes `dm_messages` and finally this same participant row, always
+ * in that order. No path acquires these in the opposite order, so no new deadlock is introduced.
+ */
+async function advanceReadMarker(executor: typeof db, threadId: string, userId: string, messageId: string): Promise<void> {
+  await executor.execute(sql`
+    UPDATE dm_participants AS p
+    SET last_read_message_id = m.id, last_read_at = m.created_at
+    FROM dm_messages AS m
+    WHERE m.id = ${messageId}
+      AND m.thread_id = ${threadId}
+      AND p.thread_id = ${threadId}
+      AND p.user_id = ${userId}
+      AND (
+        p.last_read_message_id IS NULL
+        OR NOT EXISTS (SELECT 1 FROM dm_messages AS b WHERE b.id = p.last_read_message_id AND b.thread_id = ${threadId})
+        OR (m.created_at, m.id) > (SELECT b.created_at, b.id FROM dm_messages AS b WHERE b.id = p.last_read_message_id)
+      )
+  `);
+}
+
 type BookingMessageSendResult =
   | { kind: "read_only" } | { kind: "membership" } | { kind: "duplicate" }
   | { kind: "sent"; threadId: string; message: SerializableBookingMessage };
@@ -115,10 +151,10 @@ async function persistBookingMessage(bookingId: string, booking: { id: string; p
         if (claimed.length === 0) throw new DuplicateBookingMessage();
       }
       // The sender's own read marker is the message they just sent, written from its stored `created_at` for the
-      // same reason the read route does: the pair, not a wall clock, is what unread is measured against.
-      await tx.update(dmParticipants)
-        .set({ lastReadMessageId: messageId, lastReadAt: sql`(SELECT m.created_at FROM dm_messages m WHERE m.id = ${messageId})` })
-        .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
+      // same reason the read route does: the pair, not a wall clock, is what unread is measured against. It goes
+      // through the same forward-only update, so the one invariant -- a read marker never moves backward -- holds on
+      // every path that touches it rather than only on the one the review happened to look at.
+      await advanceReadMarker(tx, threadId, userId, messageId);
       return { kind: "sent", threadId, message } as const;
     });
   } catch (error) {
@@ -199,21 +235,20 @@ r.post("/bookings/:id/messages/read", requireAuth, async (req, res, next) => { t
   if (marker.kind === "foreign_message") return res.status(400).json({ message: "That message does not belong to this booking conversation" });
   // An empty conversation has no message to be the boundary, and none is fabricated.
   if (marker.kind === "empty") return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });
-  // A "mark" always names a message that was just read back from this thread, so this cannot be missing; it is
-  // resolved explicitly rather than asserted, so a future change to the policy cannot silently produce a marker
-  // with no stored row behind it.
-  const selected = requested ?? latestRows[0];
-  if (!selected) return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });
+  // A "mark" always names a message that was just read back from this thread, so this cannot be missing. It is
+  // checked rather than asserted so a future change to the policy cannot produce a marker with no stored row behind
+  // it; the update below would also match nothing in that case, so this only avoids a pointless statement.
+  if (!(requested ?? latestRows[0])) return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });
   // The boundary is the SELECTED MESSAGE, never the wall clock. Writing `now` would mark as read every message that
   // happens to predate this request -- including one the other participant sent while this request was in flight,
-  // and any message the caller has not seen when they deliberately marked an older one. `lastReadAt` is therefore
-  // copied from the message's own stored `created_at` in SQL, so it keeps the full precision a JS Date round-trip
-  // would truncate, and `lastReadMessageId` carries the tiebreak that a timestamp alone cannot express.
-  await db.update(dmParticipants)
-    .set({ lastReadMessageId: marker.messageId, lastReadAt: sql`(SELECT m.created_at FROM dm_messages m WHERE m.id = ${marker.messageId})` })
-    .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
-  const unread = await unreadMessageCount(threadId, userId);
-  res.json({ lastReadMessageId: marker.messageId, lastReadAt: selected.createdAt.toISOString(), unreadCount: unread.count });
+  // and any message the caller has not seen when they deliberately marked an older one. `lastReadAt` is copied from
+  // the message's own stored `created_at`, so it keeps the full precision a JS Date round-trip would truncate, and
+  // `lastReadMessageId` carries the tiebreak a timestamp alone cannot express. The update only ever moves forward.
+  await advanceReadMarker(db, threadId, userId, marker.messageId);
+  // The response reports the AUTHORITATIVE marker, not the one this request asked for: a stale request from a second
+  // tab is a successful no-op, and telling it that it set a marker it did not set would simply be untrue.
+  const [current, unread] = await Promise.all([conversationParticipant(threadId, userId), unreadMessageCount(threadId, userId)]);
+  res.json({ lastReadMessageId: current?.lastReadMessageId ?? null, lastReadAt: current?.lastReadAt?.toISOString() ?? null, unreadCount: unread.count });
 } catch (error) { invalid(error, res, next); } });
 
 /**

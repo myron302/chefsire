@@ -19,6 +19,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./users-auth";
 import { dmMessages, dmThreads } from "../messaging/dm";
+import { CATERING_BOOKING_ACTIVITY_EVENT_SQL_LIST } from "../../catering-booking-activity-events";
 
 type RecipeNutrition = Record<string, unknown> & {
   calories?: number;
@@ -415,7 +416,9 @@ export const cateringBookingActivity = pgTable("catering_booking_activity", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (t) => ({
   bookingPageIdx: index("catering_booking_activity_booking_page_idx").on(t.bookingId, t.createdAt, t.id),
-  eventTypeCheck: check("catering_booking_activity_event_type_check", sql`${t.eventType} IN ('booking_offered', 'customer_confirmed', 'booking_cancelled', 'booking_completed', 'details_updated', 'shared_requirement_added', 'shared_requirement_updated', 'shared_requirement_completed', 'shared_requirement_deleted')`),
+  // Generated from the canonical allowlist rather than restated, so the schema constraint cannot fall behind the
+  // shared contract again. Every value is a compile-time constant from that array; nothing here is runtime input.
+  eventTypeCheck: check("catering_booking_activity_event_type_check", sql`${t.eventType} IN (${sql.raw(CATERING_BOOKING_ACTIVITY_EVENT_SQL_LIST)})`),
   visibilityCheck: check("catering_booking_activity_visibility_check", sql`${t.visibility} IN ('provider', 'shared')`),
 }));
 

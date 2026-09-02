@@ -121,6 +121,26 @@ export function isAfterCateringReadBoundary(message: { createdAt: Date; id: stri
 }
 
 /**
+ * Whether a selected message may become the participant's new read marker.
+ *
+ * Read progress is monotonic: a marker advances or stays put, never moves backward. Two tabs are enough to need
+ * this -- one marks M20 read, then a second tab with a stale view marks M15, and without a guard the row regresses
+ * and M16-M20 reappear as unread. A row with no marker yet is established by any valid message of the conversation.
+ *
+ * The ordering is `(created_at, id)`, identical to message pagination and to unread counting, so an equal timestamp
+ * is decided by id rather than treated as a tie. Marking the same message twice is a no-op, which is what makes the
+ * endpoint safely idempotent across tabs and devices.
+ *
+ * This is the decision the SQL performs; it is stated here so the semantics are pinned by a test as well as by a
+ * query. The route does NOT read-then-write against it -- that would race -- it issues one conditional UPDATE whose
+ * WHERE clause carries this same comparison, so the database is what enforces monotonicity.
+ */
+export function cateringReadMarkerAdvances(selected: { createdAt: Date; id: string }, current: { createdAt: Date; id: string } | null): boolean {
+  if (!current) return true;
+  return isAfterCateringReadBoundary(selected, current);
+}
+
+/**
  * Notification delivery for a booking message, decided from persisted state only. A muted counterpart participant
  * row is honoured -- that is the existing DM mute semantic, and a booking conversation is a DM thread -- and a
  * booking whose two roles are the same account notifies nobody.

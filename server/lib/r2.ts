@@ -76,18 +76,71 @@ export function publicUrl(key: string): string {
  *
  * They also use their own bucket. The bucket behind R2_BUCKET is the public media bucket -- R2_PUBLIC_BASE_URL exists
  * precisely so its objects can be served directly -- so writing a booking document there and calling it private would
- * not be true. R2_PRIVATE_BUCKET must therefore name a bucket with no public access binding. When it is absent,
- * `isPrivateR2Configured()` is false and callers fall back to private local storage instead of quietly downgrading a
- * booking document into the public namespace.
+ * not be true. R2_PRIVATE_BUCKET must therefore name a bucket with no public access binding, and it may not be the
+ * public bucket itself: that collision throws rather than being tolerated. When R2_PRIVATE_BUCKET is simply absent,
+ * `isPrivateR2Configured()` is false and callers fall back to private local storage -- an unconfigured deployment and
+ * an unsafely configured one are deliberately different outcomes.
  */
 export function isPrivateR2Configured(): boolean {
   const names = ["R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_PRIVATE_BUCKET"] as const;
   return names.every((name) => Boolean(process.env[name]?.trim()));
 }
 
+/**
+ * Bucket names are compared trimmed and case-folded. R2 and S3 bucket names are lowercase by specification, so a
+ * spelling that differs only in case or surrounding whitespace names the same bucket -- it must not be able to slip
+ * past this check and land booking documents in the publicly addressable bucket.
+ */
+function normalizeBucketName(bucket: string | undefined): string {
+  return (bucket ?? "").trim().toLowerCase();
+}
+
+export type PrivateBucketConflict = "same_as_public";
+/**
+ * Whether the configured private bucket is unusable, or null when it is safe.
+ *
+ * Only one conflict exists and it is decisive: a private bucket equal to R2_BUCKET is the bucket R2_PUBLIC_BASE_URL
+ * exists to serve, so every "private" booking document written there would be publicly addressable. A private
+ * bucket that is simply absent is NOT a conflict -- that is the legitimate local-fallback deployment.
+ */
+export function privateBucketConflict(privateBucket: string | undefined, publicBucket: string | undefined): PrivateBucketConflict | null {
+  const privateName = normalizeBucketName(privateBucket);
+  const publicName = normalizeBucketName(publicBucket);
+  if (privateName === "" || publicName === "") return null;
+  return privateName === publicName ? "same_as_public" : null;
+}
+
+/**
+ * Fails closed on a private bucket that collides with the public one.
+ *
+ * This is a configuration error, not something to route around: silently reporting private R2 as unavailable and
+ * falling back to local storage would leave an administrator believing their configured bucket is in use, while
+ * quietly changing where booking documents live. Neither bucket name is a secret, and naming them is what makes the
+ * misconfiguration fixable; no credential or endpoint is included.
+ */
+export function assertPrivateBucketIsolated(privateBucket: string | undefined, publicBucket: string | undefined): void {
+  if (!privateBucketConflict(privateBucket, publicBucket)) return;
+  throw new Error(
+    "R2_PRIVATE_BUCKET must be a distinct non-public bucket and cannot equal R2_BUCKET. " +
+    "R2_BUCKET is served publicly through R2_PUBLIC_BASE_URL, so private catering booking documents written there " +
+    `would be publicly addressable. Both are currently set to "${normalizeBucketName(privateBucket)}". ` +
+    "Create a separate R2 bucket with no public access binding and point R2_PRIVATE_BUCKET at it.",
+  );
+}
+
+/** Reads the two bucket names from the environment and fails closed on a collision. */
+export function assertPrivateR2Isolated(): void {
+  assertPrivateBucketIsolated(process.env.R2_PRIVATE_BUCKET, process.env.R2_BUCKET);
+}
+
+/**
+ * The single chokepoint every private R2 operation resolves its bucket through, so the collision check cannot be
+ * bypassed by calling a put/get/head/delete helper directly.
+ */
 function privateBucket(): string {
   const bucket = process.env.R2_PRIVATE_BUCKET?.trim();
   if (!bucket) throw new Error("R2_PRIVATE_BUCKET is required to store private booking documents");
+  assertPrivateR2Isolated();
   return bucket;
 }
 

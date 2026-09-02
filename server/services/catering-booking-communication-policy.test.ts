@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
 import { CATERING_UNREAD_COUNT_CEILING } from "@shared/catering-booking-communication";
-import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, CATERING_NOTIFICATION_FAILURE_ROLLS_BACK_SEND, boundedCount, boundedUnreadCount, cateringCommunicationGuard, cateringConversationParticipants, cateringCounterpart, cateringFilePageFrom, cateringMessagePageFrom, cateringUnreadBoundary, conversationMembershipMatchesBooking, isAfterCateringReadBoundary, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "./catering-booking-communication-policy";
+import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, CATERING_NOTIFICATION_FAILURE_ROLLS_BACK_SEND, boundedCount, boundedUnreadCount, cateringCommunicationGuard, cateringConversationParticipants, cateringCounterpart, cateringFilePageFrom, cateringMessagePageFrom, cateringReadMarkerAdvances, cateringUnreadBoundary, conversationMembershipMatchesBooking, isAfterCateringReadBoundary, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "./catering-booking-communication-policy";
 
 const BOOKING = { providerId: "provider", customerId: "customer" };
 
@@ -123,4 +123,53 @@ test("two messages sharing a created_at are separated by id, exactly as paginati
   // And the one that sorts before it stays read, so the pair is a total order rather than a tie.
   assert.equal(isAfterCateringReadBoundary({ createdAt: AT(T), id: "id-A" }, boundary), false);
   assert.equal(isAfterCateringReadBoundary({ createdAt: AT(T), id: "id-a" }, boundary), false);
+});
+
+const M = (id: string, iso = T) => ({ id, createdAt: AT(iso) });
+
+test("a participant with no marker yet is established by any valid message of the conversation", () => {
+  assert.equal(cateringReadMarkerAdvances(M("m10"), null), true);
+});
+test("a read marker advances forward and refuses to move backward", () => {
+  const older = M("m10", "2026-09-01T11:00:00.000Z");
+  const newer = M("m20", "2026-09-01T12:00:00.000Z");
+  assert.equal(cateringReadMarkerAdvances(newer, older), true);
+  // The stale second tab: it marked an older message, and the row must stay where it is.
+  assert.equal(cateringReadMarkerAdvances(older, newer), false);
+});
+test("marking the same message again is a no-op rather than a write", () => {
+  assert.equal(cateringReadMarkerAdvances(M("m10"), M("m10")), false);
+});
+test("equal timestamps advance or hold by id, matching pagination and unread ordering", () => {
+  // M11 shares M10's instant but sorts after it, so it advances; the reverse request does not regress.
+  assert.equal(cateringReadMarkerAdvances(M("id-b"), M("id-a")), true);
+  assert.equal(cateringReadMarkerAdvances(M("id-a"), M("id-b")), false);
+});
+test("two tabs marking out of order leave the marker at the newest message", () => {
+  const marks = [M("m20", "2026-09-01T12:00:00.000Z"), M("m15", "2026-09-01T11:30:00.000Z"), M("m18", "2026-09-01T11:45:00.000Z")];
+  // Applied in the order the tabs happen to arrive, the marker only ever ends up at the furthest one.
+  let current: { createdAt: Date; id: string } | null = null;
+  for (const mark of marks) if (cateringReadMarkerAdvances(mark, current)) current = mark;
+  assert.equal(current?.id, "m20");
+});
+test("a concurrent interleaving of marks is monotonic whatever order they land in", () => {
+  const marks = [M("m12", "2026-09-01T11:10:00.000Z"), M("m20", "2026-09-01T12:00:00.000Z"), M("m15", "2026-09-01T11:30:00.000Z"), M("m20", "2026-09-01T12:00:00.000Z")];
+  for (const permutation of [marks, [...marks].reverse(), [marks[2], marks[0], marks[1], marks[3]]]) {
+    let current: { createdAt: Date; id: string } | null = null;
+    for (const mark of permutation) if (cateringReadMarkerAdvances(mark, current)) current = mark;
+    assert.equal(current?.id, "m20");
+  }
+});
+test("a stale mark cannot make an already-read message unread again", () => {
+  const newer = M("m20", "2026-09-01T12:00:00.000Z");
+  const stale = M("m15", "2026-09-01T11:30:00.000Z");
+  // The marker holds at m20, so m16-m20 stay read: unread cannot grow because of a stale request.
+  assert.equal(cateringReadMarkerAdvances(stale, newer), false);
+  assert.equal(isAfterCateringReadBoundary(M("m18", "2026-09-01T11:45:00.000Z"), newer), false);
+});
+test("an explicit old marker still leaves newer unseen messages unread when it is the only marker", () => {
+  // Monotonicity does not undo the earlier fix: establishing an older boundary from nothing keeps newer unread.
+  const older = M("m09", "2026-09-01T11:00:00.000Z");
+  assert.equal(cateringReadMarkerAdvances(older, null), true);
+  assert.equal(isAfterCateringReadBoundary(M("m10"), older), true);
 });

@@ -137,13 +137,51 @@ test("a storage cleanup that fails after the tombstone never restores the file",
 test("the read marker is written from the selected message's stored created_at, never a wall clock", () => {
   const readRoute = communicationRoute.slice(communicationRoute.indexOf(`r.post("/bookings/:id/messages/read"`));
   // The write copies the message's own created_at in SQL, keeping full precision a Date round-trip would truncate.
-  assert.equal(readRoute.includes("lastReadAt: sql`(SELECT m.created_at FROM dm_messages m WHERE m.id = ${marker.messageId})`"), true);
+  assert.equal(communicationRoute.includes("SET last_read_message_id = m.id, last_read_at = m.created_at"), true);
   // No wall-clock instant is minted anywhere in the read path, so a concurrent message cannot be marked read by time.
   assert.equal(readRoute.includes("new Date()"), false, "the read marker must not be derived from the wall clock");
-  // The sender's own marker is written the same way.
-  assert.equal(communicationRoute.includes("lastReadAt: sql`(SELECT m.created_at FROM dm_messages m WHERE m.id = ${messageId})`"), true);
   // An empty conversation is answered without inventing a boundary.
   assert.equal(readRoute.includes(`if (marker.kind === "empty") return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });`), true);
+});
+
+test("the read marker is advanced by one conditional statement, so it cannot race backward", () => {
+  const advance = communicationRoute.slice(communicationRoute.indexOf("* Advances one participant's read marker"), communicationRoute.indexOf("type BookingMessageSendResult"));
+  // A single UPDATE whose WHERE carries the comparison. Read-compare-write would let two tabs both decide they
+  // advance and let the later writer win with the older message.
+  assert.equal(advance.includes("UPDATE dm_participants AS p"), true);
+  assert.equal(advance.includes("(m.created_at, m.id) > (SELECT b.created_at, b.id FROM dm_messages AS b WHERE b.id = p.last_read_message_id)"), true);
+  // The three accepted cases: no marker, a marker that is not a message of this thread, or a strictly later pair.
+  assert.equal(advance.includes("p.last_read_message_id IS NULL"), true);
+  assert.equal(advance.includes("NOT EXISTS (SELECT 1 FROM dm_messages AS b WHERE b.id = p.last_read_message_id AND b.thread_id ="), true);
+  // The marker is re-validated as a message of this thread inside the same statement.
+  assert.equal(advance.includes("AND m.thread_id ="), true);
+  // No read-then-write anywhere on either path.
+  assert.equal(communicationRoute.includes(".update(dmParticipants)"), false, "the read marker must not be written unconditionally");
+});
+
+test("every path that writes a read marker goes through the forward-only update", () => {
+  // The send path and the read route both call it, so the invariant holds wherever the marker is touched.
+  assert.equal((communicationRoute.match(/await advanceReadMarker\(/g) ?? []).length, 2);
+  assert.equal(communicationRoute.includes("await advanceReadMarker(tx, threadId, userId, messageId)"), true);
+  assert.equal(communicationRoute.includes("await advanceReadMarker(db, threadId, userId, marker.messageId)"), true);
+});
+
+test("a stale mark answers with the authoritative marker rather than the one it asked for", () => {
+  const readRoute = communicationRoute.slice(communicationRoute.indexOf(`r.post("/bookings/:id/messages/read"`));
+  // Reporting back the requested marker would claim a write that did not happen.
+  assert.equal(readRoute.includes("conversationParticipant(threadId, userId)"), true);
+  assert.equal(readRoute.includes("lastReadMessageId: current?.lastReadMessageId ?? null"), true);
+  assert.equal(readRoute.includes("lastReadAt: current?.lastReadAt?.toISOString() ?? null"), true);
+  assert.equal(readRoute.includes("lastReadMessageId: marker.messageId,"), false);
+});
+
+test("the read marker update introduces no new lock ordering", () => {
+  const advance = communicationRoute.slice(communicationRoute.indexOf("* Advances one participant's read marker"), communicationRoute.indexOf("type BookingMessageSendResult"));
+  // One row lock, on dm_participants, held only for its own statement. It takes no booking row lock and no advisory
+  // lock, so it cannot form a cycle with the send flow, which acquires those first and this participant row last.
+  assert.equal(advance.includes("FOR UPDATE"), false);
+  assert.equal(advance.includes("pg_advisory"), false);
+  assert.equal(advance.includes("Lock ordering:"), true);
 });
 
 test("unread is counted against the (created_at, id) pair, so equal timestamps cannot collapse", () => {

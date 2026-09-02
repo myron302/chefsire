@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Configured, putPrivateObject } from "./r2";
+import { assertPrivateR2Isolated, deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Configured, putPrivateObject } from "./r2";
 import { assertPrivateRootIsolated } from "./private-storage-path";
 import { UPLOADS_DIR } from "./uploads-dir";
 
@@ -27,6 +27,9 @@ function resolvePrivateRoot(): string {
   return root;
 }
 export const PRIVATE_STORAGE_ROOT: string = resolvePrivateRoot();
+// Surfaced at initialization as well as at first use, so an unsafe bucket collision is not discovered only when a
+// participant tries to upload. It throws only when BOTH buckets are set and equal, never for an unconfigured one.
+assertPrivateR2Isolated();
 
 /**
  * Resolves one server-generated storage key beneath the private root and refuses anything that escapes it. Keys are
@@ -41,8 +44,19 @@ export function resolvePrivatePath(storageKey: string): string {
   return resolved;
 }
 
-/** Which backend a new object is written to. R2 is used only when an explicitly private bucket is configured. */
-export function privateStorageProvider(): PrivateStorageProvider { return isPrivateR2Configured() ? "r2" : "local"; }
+/**
+ * Which backend a new object is written to.
+ *
+ * R2 is used only when an explicitly private bucket is configured, and only when that bucket is not the public one.
+ * A collision throws here, before a provider is chosen and long before any byte is written -- an unsafely configured
+ * deployment must never be quietly downgraded to local storage, because the administrator would go on believing
+ * their R2 bucket is in use. An absent R2_PRIVATE_BUCKET is the separate, legitimate local-fallback case.
+ */
+export function privateStorageProvider(): PrivateStorageProvider {
+  if (!isPrivateR2Configured()) return "local";
+  assertPrivateR2Isolated();
+  return "r2";
+}
 
 export async function writePrivateObject(provider: PrivateStorageProvider, storageKey: string, body: Buffer, contentType: string): Promise<void> {
   if (provider === "r2") return putPrivateObject(storageKey, body, contentType);
