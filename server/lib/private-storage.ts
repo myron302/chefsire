@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 import { deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Configured, putPrivateObject } from "./r2";
+import { assertPrivateRootIsolated } from "./private-storage-path";
+import { UPLOADS_DIR } from "./uploads-dir";
 
 /**
  * Private storage for booking documents. Nothing written here is reachable by URL: the local root is deliberately
@@ -10,14 +12,19 @@ import { deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Co
 export type PrivateStorageProvider = "r2" | "local";
 
 /**
- * The private local root. It defaults to a sibling of the public uploads directory rather than a child of it, so a
- * misconfigured static mount cannot expose booking documents. PRIVATE_STORAGE_DIR overrides it for deployments that
- * pin storage outside the application directory.
+ * The private local root.
+ *
+ * `server/app.ts` serves UPLOADS_DIR at `/uploads` through `express.static`, with no authentication, so any booking
+ * document that resolved inside that tree would be downloadable by anyone. Both the PRIVATE_STORAGE_DIR override
+ * and the default are therefore validated against the same canonical UPLOADS_DIR the app itself mounts, and an
+ * overlapping configuration throws rather than being quietly relocated: an operator who set an unsafe directory
+ * must be told, not silently given a different one while believing theirs is in use.
  */
 function resolvePrivateRoot(): string {
   const configured = process.env.PRIVATE_STORAGE_DIR?.trim();
-  if (configured) return path.resolve(configured);
-  return path.resolve(process.cwd(), "private-storage");
+  const root = configured ? path.resolve(configured) : path.resolve(process.cwd(), "private-storage");
+  assertPrivateRootIsolated(root, UPLOADS_DIR);
+  return root;
 }
 export const PRIVATE_STORAGE_ROOT: string = resolvePrivateRoot();
 

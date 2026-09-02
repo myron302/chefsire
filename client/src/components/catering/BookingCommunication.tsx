@@ -133,20 +133,30 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     {editable
       ? <form className="space-y-2" onSubmit={submit}>
           <Label htmlFor="catering-message">Message your {role === "provider" ? "customer" : "caterer"}</Label>
-          <Textarea id="catering-message" className="min-h-24" rows={3} value={composer.text} disabled={pending?.status === "sending"}
+          {/* Deliberately editable while a send is in flight and after one fails. The attempt holds its own text, and
+              a send only clears this box when it still holds exactly what was submitted, so nothing typed here is
+              ever destroyed by an attempt resolving. */}
+          <Textarea id="catering-message" className="min-h-24" rows={3} value={composer.text}
             onChange={(event) => setComposer((current) => editCateringComposer(current, event.target.value))} />
           <div className="flex flex-wrap gap-2">
             <Button type="submit" className="min-h-11" disabled={!maySendCateringMessage(composer, editable)}>Send message</Button>
             {pending?.status === "failed" && <>
               <Button type="button" variant="outline" className="min-h-11" onClick={retry}>Try again</Button>
-              <Button type="button" variant="ghost" className="min-h-11" onClick={() => setComposer(discardCateringMessageSend(composer))}>Discard</Button>
+              <Button type="button" variant="ghost" className="min-h-11" onClick={() => setComposer(discardCateringMessageSend(composer))}>Discard unsent message</Button>
             </>}
           </div>
           {/* One live region carries every send outcome, so a screen reader hears the result without moving focus. */}
           <p role="status" aria-live="polite" className="text-sm text-muted-foreground">
             {pending?.status === "sending" ? "Sending your message…" : send.isSuccess && !pending ? "Message sent." : ""}
           </p>
-          {pending?.status === "failed" && <p role="alert" className="text-destructive">{pending.error} Your message was kept — try again sends the same message, so you will not post it twice.</p>}
+          {pending?.status === "failed" && <div role="alert" className="space-y-1 rounded-md border border-destructive p-3">
+            <p className="text-destructive">{pending.error}</p>
+            {/* Naming the unsent text matters once the composer can hold something else: "Try again" sends this, and
+                anything typed above is left exactly as it is. */}
+            <p className="text-sm">Try again resends this unsent message, so it cannot be posted twice:</p>
+            <p className="break-words text-sm font-medium [overflow-wrap:anywhere]">“{pending.text}”</p>
+            {composer.text.trim() !== pending.text && <p className="text-sm">What you have typed above is kept separately and is not affected.</p>}
+          </div>}
         </form>
       : <p className="font-medium">{CATERING_COMMUNICATION_READ_ONLY_BANNER}</p>}
   </CardContent></Card>;

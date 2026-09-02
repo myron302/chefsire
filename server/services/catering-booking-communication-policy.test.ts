@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
 import { CATERING_UNREAD_COUNT_CEILING } from "@shared/catering-booking-communication";
-import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, CATERING_NOTIFICATION_FAILURE_ROLLS_BACK_SEND, boundedCount, boundedUnreadCount, cateringCommunicationGuard, cateringConversationParticipants, cateringCounterpart, cateringFilePageFrom, cateringMessagePageFrom, conversationMembershipMatchesBooking, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "./catering-booking-communication-policy";
+import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, CATERING_NOTIFICATION_FAILURE_ROLLS_BACK_SEND, boundedCount, boundedUnreadCount, cateringCommunicationGuard, cateringConversationParticipants, cateringCounterpart, cateringFilePageFrom, cateringMessagePageFrom, cateringUnreadBoundary, conversationMembershipMatchesBooking, isAfterCateringReadBoundary, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "./catering-booking-communication-policy";
 
 const BOOKING = { providerId: "provider", customerId: "customer" };
 
@@ -86,4 +86,41 @@ test("an existing DM mute is honoured for booking messages, and a missing counte
 });
 test("a notification that fails never rolls back a message that already persisted", () => {
   assert.equal(CATERING_NOTIFICATION_FAILURE_ROLLS_BACK_SEND, false);
+});
+
+const AT = (iso: string) => new Date(iso);
+const T = "2026-09-01T12:00:00.000Z";
+
+test("the unread boundary is the marker message, not a wall-clock timestamp", () => {
+  assert.deepEqual(cateringUnreadBoundary({ lastReadMessageId: "m10", lastReadAt: AT(T) }, true), { kind: "after_message", messageId: "m10" });
+  // A participant who has never read anything counts every message from the other side.
+  assert.deepEqual(cateringUnreadBoundary({ lastReadMessageId: null, lastReadAt: null }, false), { kind: "all" });
+  assert.deepEqual(cateringUnreadBoundary(undefined, false), { kind: "all" });
+});
+test("a marker that is not a message of this thread falls back rather than silently counting nothing", () => {
+  // The generic DM read route can leave a lastReadAt with no usable marker; such a row still counts sensibly.
+  assert.deepEqual(cateringUnreadBoundary({ lastReadMessageId: "from-another-thread", lastReadAt: AT(T) }, false), { kind: "after_timestamp", since: AT(T) });
+  assert.deepEqual(cateringUnreadBoundary({ lastReadMessageId: null, lastReadAt: AT(T) }, false), { kind: "after_timestamp", since: AT(T) });
+});
+test("a message sent after the marker stays unread, including one that arrives during the marking", () => {
+  const boundary = { createdAt: AT(T), id: "m10" };
+  // M11 exists, or lands, after M10; marking M10 read must leave it unread.
+  assert.equal(isAfterCateringReadBoundary({ createdAt: AT("2026-09-01T12:00:01.000Z"), id: "m11" }, boundary), true);
+  // The marker message itself is read, and anything before it stays read.
+  assert.equal(isAfterCateringReadBoundary({ createdAt: AT(T), id: "m10" }, boundary), false);
+  assert.equal(isAfterCateringReadBoundary({ createdAt: AT("2026-09-01T11:59:59.000Z"), id: "m09" }, boundary), false);
+});
+test("marking an older message deliberately leaves every newer message unread", () => {
+  // The caller marked M09; M10 and M11 are both still unread, which a wall-clock boundary would have hidden.
+  const older = { createdAt: AT("2026-09-01T11:00:00.000Z"), id: "m09" };
+  assert.equal(isAfterCateringReadBoundary({ createdAt: AT(T), id: "m10" }, older), true);
+  assert.equal(isAfterCateringReadBoundary({ createdAt: AT("2026-09-01T13:00:00.000Z"), id: "m11" }, older), true);
+});
+test("two messages sharing a created_at are separated by id, exactly as pagination orders them", () => {
+  const boundary = { createdAt: AT(T), id: "id-a" };
+  // M11 shares M10's timestamp to the millisecond but sorts after it; marking M10 read must not mark M11.
+  assert.equal(isAfterCateringReadBoundary({ createdAt: AT(T), id: "id-b" }, boundary), true);
+  // And the one that sorts before it stays read, so the pair is a total order rather than a tie.
+  assert.equal(isAfterCateringReadBoundary({ createdAt: AT(T), id: "id-A" }, boundary), false);
+  assert.equal(isAfterCateringReadBoundary({ createdAt: AT(T), id: "id-a" }, boundary), false);
 });

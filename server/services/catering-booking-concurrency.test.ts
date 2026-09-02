@@ -134,6 +134,36 @@ test("a storage cleanup that fails after the tombstone never restores the file",
   assert.equal(migration.includes("object_deleted_at IS NULL OR deleted_at IS NOT NULL"), true);
 });
 
+test("the read marker is written from the selected message's stored created_at, never a wall clock", () => {
+  const readRoute = communicationRoute.slice(communicationRoute.indexOf(`r.post("/bookings/:id/messages/read"`));
+  // The write copies the message's own created_at in SQL, keeping full precision a Date round-trip would truncate.
+  assert.equal(readRoute.includes("lastReadAt: sql`(SELECT m.created_at FROM dm_messages m WHERE m.id = ${marker.messageId})`"), true);
+  // No wall-clock instant is minted anywhere in the read path, so a concurrent message cannot be marked read by time.
+  assert.equal(readRoute.includes("new Date()"), false, "the read marker must not be derived from the wall clock");
+  // The sender's own marker is written the same way.
+  assert.equal(communicationRoute.includes("lastReadAt: sql`(SELECT m.created_at FROM dm_messages m WHERE m.id = ${messageId})`"), true);
+  // An empty conversation is answered without inventing a boundary.
+  assert.equal(readRoute.includes(`if (marker.kind === "empty") return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });`), true);
+});
+
+test("unread is counted against the (created_at, id) pair, so equal timestamps cannot collapse", () => {
+  const unread = communicationRoute.slice(communicationRoute.indexOf("export async function unreadMessageCount"));
+  // The same full-precision row comparison message pagination uses, against the marker's stored pair.
+  assert.equal(unread.includes("(${dmMessages.createdAt}, ${dmMessages.id}) > (SELECT b.created_at, b.id FROM dm_messages b WHERE b.id = ${boundary.messageId})"), true);
+  // The timestamp comparison survives only as the fallback for a row carrying no usable marker.
+  assert.equal(unread.includes(`boundary.kind === "after_timestamp"`), true);
+  assert.equal(unread.includes("cateringUnreadBoundary(participant, markerIsInThread)"), true);
+});
+
+test("generic DM unread computation is untouched by the booking read-boundary fix", () => {
+  const dmSource = read("../routes/dm.ts");
+  // Ordinary DMs keep their own approximate lastReadAt comparison; nothing here changed it, and booking threads
+  // are excluded from that listing anyway.
+  assert.equal(dmSource.includes("unreadByThread"), true);
+  assert.equal(dmSource.includes("new Date(me.lastReadAt).getTime()"), true);
+  assert.equal(dmSource.includes("unreadMessageCount"), false, "the booking unread helper must not leak into generic DMs");
+});
+
 test("message and file pages stay deterministic when rows share a created_at", () => {
   // The boundary is compared as the stored (created_at, id) pair, read back from the database at full precision,
   // so a client round-trip cannot truncate a timestamp into skipping or repeating a row at a page edge.

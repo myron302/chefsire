@@ -85,6 +85,42 @@ export function resolveCateringReadMarker(requested: string | undefined, latest:
 }
 
 /**
+ * The authoritative unread boundary for one participant, in the same `(created_at, id)` ordering Phase 2I message
+ * pagination uses.
+ *
+ * A wall-clock timestamp is never the boundary. Marking message M10 read must not mark an M11 that already exists,
+ * or one that arrives during the marking, merely because "now" is later than its `created_at` -- and when two
+ * messages share a `created_at` to the microsecond, the timestamp alone cannot separate them at all. So the marker
+ * message itself is the boundary, and its stored `(created_at, id)` pair is what later messages are compared
+ * against.
+ *
+ * `after_timestamp` remains only as a fallback for a participant row that carries a `lastReadAt` but no
+ * `lastReadMessageId` -- the shape the generic DM read route can leave behind -- so such a row still counts
+ * sensibly instead of reporting everything unread.
+ */
+export type CateringUnreadBoundary =
+  | { kind: "after_message"; messageId: string }
+  | { kind: "after_timestamp"; since: Date }
+  | { kind: "all" };
+export function cateringUnreadBoundary(participant: { lastReadMessageId: string | null; lastReadAt: Date | null } | undefined, markerIsInThread: boolean): CateringUnreadBoundary {
+  if (participant?.lastReadMessageId && markerIsInThread) return { kind: "after_message", messageId: participant.lastReadMessageId };
+  if (participant?.lastReadAt) return { kind: "after_timestamp", since: participant.lastReadAt };
+  return { kind: "all" };
+}
+
+/**
+ * Whether one message sorts strictly after a read boundary, comparing `(created_at, id)` as a pair. This is the
+ * ordering the unread query performs in SQL against the stored rows; it is stated here so the semantics -- above all
+ * the equal-timestamp case, where the id alone decides -- are pinned by a test rather than only by a query.
+ */
+export function isAfterCateringReadBoundary(message: { createdAt: Date; id: string }, boundary: { createdAt: Date; id: string }): boolean {
+  const messageAt = message.createdAt.getTime();
+  const boundaryAt = boundary.createdAt.getTime();
+  if (messageAt !== boundaryAt) return messageAt > boundaryAt;
+  return message.id > boundary.id;
+}
+
+/**
  * Notification delivery for a booking message, decided from persisted state only. A muted counterpart participant
  * row is honoured -- that is the existing DM mute semantic, and a booking conversation is a DM thread -- and a
  * booking whose two roles are the same account notifies nobody.

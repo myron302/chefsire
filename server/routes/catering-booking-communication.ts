@@ -12,7 +12,7 @@ import { requireAuth } from "../middleware";
 import { serializeBookingMessage, type SerializableBookingMessage } from "../serializers/catering-booking-message";
 import { lockActiveCateringBooking, ownedCateringBooking } from "../services/catering-booking-access";
 import { conversationMemberIds, conversationParticipant, ensureBookingConversation, findBookingConversation } from "../services/catering-booking-conversation";
-import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, boundedUnreadCount, cateringCounterpart, cateringMessagePageFrom, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "../services/catering-booking-communication-policy";
+import { CATERING_COMMUNICATION_READ_ONLY_REFUSAL, CATERING_MESSAGE_SEND_REFUSALS, boundedUnreadCount, cateringCounterpart, cateringMessagePageFrom, cateringUnreadBoundary, resolveCateringMessageSend, resolveCateringReadMarker, shouldNotifyBookingMessage } from "../services/catering-booking-communication-policy";
 
 const r = Router();
 const NOT_FOUND = { message: "Booking conversation not found" } as const;
@@ -47,9 +47,12 @@ async function senderNames(ids: readonly string[]): Promise<Map<string, string |
  * compared at full stored precision, so no row is ever skipped or served twice at a page boundary. A cursor naming a
  * message in any other thread resolves to nothing and is refused, so a foreign message id is not a usable boundary.
  */
+async function messageInThread(threadId: string, messageId: string): Promise<{ id: string; createdAt: Date } | undefined> {
+  const [row] = await db.select({ id: dmMessages.id, createdAt: dmMessages.createdAt }).from(dmMessages).where(and(eq(dmMessages.id, messageId), eq(dmMessages.threadId, threadId))).limit(1);
+  return row;
+}
 async function messageCursorExists(threadId: string, cursor: string): Promise<boolean> {
-  const [row] = await db.select({ id: dmMessages.id }).from(dmMessages).where(and(eq(dmMessages.id, cursor), eq(dmMessages.threadId, threadId))).limit(1);
-  return Boolean(row);
+  return Boolean(await messageInThread(threadId, cursor));
 }
 
 r.get("/bookings/:id/messages", requireAuth, async (req, res, next) => { try {
@@ -111,7 +114,11 @@ async function persistBookingMessage(bookingId: string, booking: { id: string; p
           .returning({ messageId: cateringBookingMessageRequests.messageId });
         if (claimed.length === 0) throw new DuplicateBookingMessage();
       }
-      await tx.update(dmParticipants).set({ lastReadMessageId: messageId, lastReadAt: message.createdAt }).where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
+      // The sender's own read marker is the message they just sent, written from its stored `created_at` for the
+      // same reason the read route does: the pair, not a wall clock, is what unread is measured against.
+      await tx.update(dmParticipants)
+        .set({ lastReadMessageId: messageId, lastReadAt: sql`(SELECT m.created_at FROM dm_messages m WHERE m.id = ${messageId})` })
+        .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
       return { kind: "sent", threadId, message } as const;
     });
   } catch (error) {
@@ -185,17 +192,28 @@ r.post("/bookings/:id/messages/read", requireAuth, async (req, res, next) => { t
   if (!threadId) return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });
   // The thread is derived from the booking, never supplied. A message id is accepted only if it belongs to THIS
   // booking's conversation, so a message borrowed from another thread can never become this booking's read marker.
-  const belongs = input.lastReadMessageId ? await messageCursorExists(threadId, input.lastReadMessageId) : false;
-  const [latest] = await db.select({ id: dmMessages.id }).from(dmMessages).where(eq(dmMessages.threadId, threadId)).orderBy(desc(dmMessages.createdAt), desc(dmMessages.id)).limit(1);
-  const marker = resolveCateringReadMarker(input.lastReadMessageId, latest, belongs);
+  const requested = input.lastReadMessageId ? await messageInThread(threadId, input.lastReadMessageId) : undefined;
+  // `db` is untyped at this repo's boundary, so the row shape is stated rather than inferred as `any`.
+  const latestRows: { id: string; createdAt: Date }[] = await db.select({ id: dmMessages.id, createdAt: dmMessages.createdAt }).from(dmMessages).where(eq(dmMessages.threadId, threadId)).orderBy(desc(dmMessages.createdAt), desc(dmMessages.id)).limit(1);
+  const marker = resolveCateringReadMarker(input.lastReadMessageId, latestRows[0], Boolean(requested));
   if (marker.kind === "foreign_message") return res.status(400).json({ message: "That message does not belong to this booking conversation" });
-  const now = new Date();
-  if (marker.kind === "mark") {
-    // Scoped to the actor's own participant row of this booking's thread: no request field names a participant.
-    await db.update(dmParticipants).set({ lastReadMessageId: marker.messageId, lastReadAt: now }).where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
-  }
+  // An empty conversation has no message to be the boundary, and none is fabricated.
+  if (marker.kind === "empty") return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });
+  // A "mark" always names a message that was just read back from this thread, so this cannot be missing; it is
+  // resolved explicitly rather than asserted, so a future change to the policy cannot silently produce a marker
+  // with no stored row behind it.
+  const selected = requested ?? latestRows[0];
+  if (!selected) return res.json({ lastReadMessageId: null, lastReadAt: null, unreadCount: 0 });
+  // The boundary is the SELECTED MESSAGE, never the wall clock. Writing `now` would mark as read every message that
+  // happens to predate this request -- including one the other participant sent while this request was in flight,
+  // and any message the caller has not seen when they deliberately marked an older one. `lastReadAt` is therefore
+  // copied from the message's own stored `created_at` in SQL, so it keeps the full precision a JS Date round-trip
+  // would truncate, and `lastReadMessageId` carries the tiebreak that a timestamp alone cannot express.
+  await db.update(dmParticipants)
+    .set({ lastReadMessageId: marker.messageId, lastReadAt: sql`(SELECT m.created_at FROM dm_messages m WHERE m.id = ${marker.messageId})` })
+    .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)));
   const unread = await unreadMessageCount(threadId, userId);
-  res.json({ lastReadMessageId: marker.kind === "mark" ? marker.messageId : null, lastReadAt: marker.kind === "mark" ? now.toISOString() : null, unreadCount: unread.count });
+  res.json({ lastReadMessageId: marker.messageId, lastReadAt: selected.createdAt.toISOString(), unreadCount: unread.count });
 } catch (error) { invalid(error, res, next); } });
 
 /**
@@ -204,9 +222,18 @@ r.post("/bookings/:id/messages/read", requireAuth, async (req, res, next) => { t
  */
 export async function unreadMessageCount(threadId: string, userId: string): Promise<{ count: number; capped: boolean }> {
   const participant = await conversationParticipant(threadId, userId);
-  const since = participant?.lastReadAt ?? null;
+  // The marker must still be a message of THIS thread; otherwise the timestamp fallback applies rather than a
+  // comparison against a row that is not there, which would silently count nothing.
+  const markerIsInThread = participant?.lastReadMessageId ? Boolean(await messageInThread(threadId, participant.lastReadMessageId)) : false;
+  const boundary = cateringUnreadBoundary(participant, markerIsInThread);
+  // `(created_at, id) > (marker's stored created_at, id)` -- the same pair, read back at full stored precision, that
+  // message pagination orders by. Two messages sharing a `created_at` are separated by their ids, so marking the
+  // earlier one read leaves the later one unread; a plain `created_at >` comparison would mark both.
+  const after = boundary.kind === "after_message"
+    ? sql`(${dmMessages.createdAt}, ${dmMessages.id}) > (SELECT b.created_at, b.id FROM dm_messages b WHERE b.id = ${boundary.messageId})`
+    : boundary.kind === "after_timestamp" ? sql`${dmMessages.createdAt} > ${boundary.since}` : undefined;
   const rows = await db.select({ id: dmMessages.id }).from(dmMessages)
-    .where(and(eq(dmMessages.threadId, threadId), ne(dmMessages.senderId, userId), since ? sql`${dmMessages.createdAt} > ${since}` : sql`true`))
+    .where(and(eq(dmMessages.threadId, threadId), ne(dmMessages.senderId, userId), after))
     .limit(CATERING_UNREAD_COUNT_CEILING + 1);
   return boundedUnreadCount(rows.length);
 }

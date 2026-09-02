@@ -45,6 +45,46 @@ test("only the send actually in flight clears the composer", () => {
   // A response for a send that is no longer the current one changes nothing.
   assert.equal(completeCateringMessageSend(started.next, OTHER_TOKEN), started.next);
 });
+test("a normal successful send clears a composer that still holds the submitted draft", () => {
+  // Surrounding whitespace still counts as the same draft, because that is what was actually submitted.
+  const started = startCateringMessageSend(composer("  hello  "), TOKEN)!;
+  assert.equal(completeCateringMessageSend(started.next, TOKEN).text, "");
+  assert.equal(completeCateringMessageSend(started.next, TOKEN).pending, null);
+});
+test("a send that succeeds while the participant has typed something new keeps the newer text", () => {
+  const started = startCateringMessageSend(composer("hello"), TOKEN)!;
+  const edited = editCateringComposer(started.next, "New draft");
+  const done = completeCateringMessageSend(edited, TOKEN);
+  assert.equal(done.text, "New draft");
+  // The attempt is finished either way, so the composer is free to send the newer draft next.
+  assert.equal(done.pending, null);
+});
+test("editing the composer after a failure never mutates the failed attempt's text", () => {
+  const failed = failCateringMessageSend(startCateringMessageSend(composer("Original message"), TOKEN)!.next, TOKEN, "Network error");
+  const edited = editCateringComposer(failed, "New draft");
+  // Two separate values: the live draft moved on, the attempt kept exactly what it was started with.
+  assert.equal(edited.text, "New draft");
+  assert.equal(edited.pending?.text, "Original message");
+  assert.equal(edited.pending?.status, "failed");
+});
+test("a successful retry sends the original text and does not destroy the newer composer edits", () => {
+  const failed = failCateringMessageSend(startCateringMessageSend(composer("Original message"), TOKEN)!.next, TOKEN, "Network error");
+  const edited = editCateringComposer(failed, "New draft");
+  const retried = retryCateringMessageSend(edited)!;
+  // The retry carries the original attempt, token and all -- not what is currently typed.
+  assert.deepEqual(retried.payload, { text: "Original message", clientRequestId: TOKEN });
+  assert.equal(retried.next.text, "New draft");
+  // And when it succeeds, "New draft" survives and can be sent separately afterwards.
+  const done = completeCateringMessageSend(retried.next, TOKEN);
+  assert.equal(done.text, "New draft");
+  assert.equal(done.pending, null);
+  assert.equal(maySendCateringMessage(done, true), true);
+});
+test("a send that succeeds after the participant cleared the box does not resurrect the submitted text", () => {
+  const started = startCateringMessageSend(composer("hello"), TOKEN)!;
+  const cleared = editCateringComposer(started.next, "");
+  assert.equal(completeCateringMessageSend(cleared, TOKEN).text, "");
+});
 test("a retry reuses the failed send's own token, which is what makes it idempotent on the server", () => {
   const started = startCateringMessageSend(composer("hi"), TOKEN)!;
   const failed = failCateringMessageSend(started.next, TOKEN, "Network error");

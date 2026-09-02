@@ -15,6 +15,12 @@ import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-oper
  * second one. A new composition always gets a new token, so two deliberate identical messages stay two messages.
  */
 export type PendingCateringMessage = { clientRequestId: string; text: string; status: "sending" | "failed"; error: string | null };
+/**
+ * `text` is the live, freely editable composer draft. `pending` is a separate, immutable record of the attempt that
+ * is in flight or has failed. They are deliberately not the same value: an attempt keeps the exact text it was
+ * started with so a retry re-sends that and nothing else, while the participant stays free to type something new
+ * without either mutating the attempt or having their new text destroyed when the attempt resolves.
+ */
 export type CateringComposerState = { identity: string; text: string; pending: PendingCateringMessage | null };
 export const EMPTY_CATERING_COMPOSER: CateringComposerState = { identity: "", text: "", pending: null };
 
@@ -47,17 +53,31 @@ export function startCateringMessageSend(state: CateringComposerState, clientReq
   if (!cateringMessageIsSendable(text) || state.pending !== null) return null;
   return { next: { ...state, pending: { clientRequestId, text, status: "sending", error: null } }, payload: { text, clientRequestId } };
 }
-/** Only the send that is actually in flight may clear the composer, so a stale response never wipes a new draft. */
+/**
+ * Resolves a send that succeeded.
+ *
+ * The composer is cleared ONLY when it still holds exactly the draft that was submitted. The live composer and the
+ * attempt in flight are two separate things: the attempt is immutable once started, while the composer stays
+ * editable, so a participant may well have typed something new while the request was in flight or after it failed.
+ * Clearing unconditionally would delete that newer text -- which is exactly what a successful retry used to do,
+ * since a retry re-sends the ORIGINAL attempt's text while the composer has moved on. The trim comparison means a
+ * draft that only differs by surrounding whitespace still counts as the submitted one.
+ */
 export function completeCateringMessageSend(state: CateringComposerState, clientRequestId: string): CateringComposerState {
   if (state.pending?.clientRequestId !== clientRequestId) return state;
+  const submitted = state.pending.text;
+  if (state.text.trim() !== submitted) return { ...state, pending: null };
   return { ...state, text: "", pending: null };
 }
-/** A failure keeps the text and the token, so "Try again" resends the same message rather than a new one. */
+/** A failure keeps the attempt's own text and token, so "Try again" resends that message rather than a new one. */
 export function failCateringMessageSend(state: CateringComposerState, clientRequestId: string, error: string): CateringComposerState {
   if (state.pending?.clientRequestId !== clientRequestId) return state;
   return { ...state, pending: { ...state.pending, status: "failed", error } };
 }
-/** Retrying reuses the failed send's own token, which is what makes the retry idempotent on the server. */
+/**
+ * Retrying reuses the failed attempt's own token AND its own text, which is what makes the retry idempotent on the
+ * server. Whatever the composer holds now is untouched, and stays untouched when the retry succeeds.
+ */
 export function retryCateringMessageSend(state: CateringComposerState): { next: CateringComposerState; payload: { text: string; clientRequestId: string } } | null {
   const pending = state.pending;
   if (!pending || pending.status !== "failed") return null;
