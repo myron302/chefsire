@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { CATERING_BOOKING_TASK_LIMIT, CATERING_TASK_SET_CHANGED_CODE } from "@shared/catering-booking-operations";
-import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, CATERING_TASK_PATCH_FIELDS, CATERING_TASK_REORDER_REFUSALS, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, cateringTaskVersionMatches, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, resolveCateringTaskReorder, sharedTaskUpdateActivity, type CateringLockedTaskVersion, type CateringTaskVersionedState } from "./catering-booking-workspace-policy";
+import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, CATERING_TASK_PATCH_FIELDS, CATERING_TASK_REORDER_REFUSALS, CATERING_WORKSPACE_READ_ONLY_REFUSAL, cateringWorkspaceGuard, cateringDetailsActivityVisibility, cateringTaskPersistedChanges, cateringTaskUpdateOutcome, cateringTaskVersionMatches, mayMutateWorkspace, nextCateringTaskCompletedAt, nextCateringTaskSortOrder, nextCateringTaskState, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, resolveCateringTaskReorder, sharedTaskUpdateActivity, type CateringLockedTaskVersion, type CateringTaskVersionedState } from "./catering-booking-workspace-policy";
 
 test("provider can prepare pending and confirmed operational state", () => { for (const status of ["pending_confirmation", "confirmed"] as const) { assert.equal(mayMutateWorkspace(status, "provider", "provider-details"), true); assert.equal(mayMutateWorkspace(status, "provider", "tasks"), true); } });
 test("customer can edit only explicitly customer-owned notes", () => { assert.equal(mayMutateWorkspace("confirmed", "customer", "customer-notes"), true); assert.equal(mayMutateWorkspace("confirmed", "customer", "provider-details"), false); assert.equal(mayMutateWorkspace("confirmed", "customer", "tasks"), false); });
@@ -499,4 +499,79 @@ test("a membership refusal writes nothing: no order, no version, no activity, no
   // The refusal shape itself is what the route writes from, and it is the same one regardless of the request's order.
   assert.deepEqual(resolveCateringTaskReorder(remaining, submitOrder([TASK_A, TASK_B, TASK_C])), { kind: "membership" });
   assert.equal(CATERING_BOOKING_TASK_LIMIT, 100);
+});
+
+const TERMINAL_STATUSES = ["cancelled", "completed"] as const;
+const ACTIVE_STATUSES = ["pending_confirmation", "confirmed"] as const;
+/** Every workspace mutation's early guard, as the routes call it: the resource each endpoint names. */
+const WORKSPACE_MUTATIONS = [
+  { endpoint: "provider details save", role: "provider" as const, resource: "provider-details" as const },
+  { endpoint: "customer notes save", role: "customer" as const, resource: "customer-notes" as const },
+  { endpoint: "task create", role: "provider" as const, resource: "tasks" as const },
+  { endpoint: "task PATCH", role: "provider" as const, resource: "tasks" as const },
+  { endpoint: "task DELETE", role: "provider" as const, resource: "tasks" as const },
+  { endpoint: "task reorder", role: "provider" as const, resource: "tasks" as const },
+];
+/** Mirrors what each route answers for a refused early guard, terminal booking coded and wrong actor not. */
+const earlyRefusal = (guard: "allowed" | "read_only" | "forbidden", forbidden: string) => guard === "allowed" ? null
+  : guard === "read_only" ? { status: CATERING_WORKSPACE_READ_ONLY_REFUSAL.status, message: CATERING_WORKSPACE_READ_ONLY_REFUSAL.message, code: CATERING_WORKSPACE_READ_ONLY_REFUSAL.code }
+  : { status: 409, message: forbidden, code: undefined };
+
+test("every workspace mutation refuses an already-cancelled or already-completed booking with the same coded 409", () => {
+  for (const status of TERMINAL_STATUSES) for (const { endpoint, role, resource } of WORKSPACE_MUTATIONS) {
+    const guard = cateringWorkspaceGuard(status, role, resource);
+    assert.equal(guard, "read_only", endpoint);
+    const refusal = earlyRefusal(guard, "unused")!;
+    assert.equal(refusal.status, 409, endpoint);
+    assert.equal(refusal.code, "workspace_read_only", endpoint);
+    assert.equal(refusal.message, "Cancelled and completed workspaces are read-only", endpoint);
+  }
+});
+test("the early terminal refusal carries the identical code the locked read-only race returns", () => {
+  assert.equal(CATERING_WORKSPACE_READ_ONLY_REFUSAL.code, CATERING_DETAILS_SAVE_REFUSALS.read_only.code);
+  assert.equal(CATERING_WORKSPACE_READ_ONLY_REFUSAL.code, CATERING_TASK_REORDER_REFUSALS.read_only.code);
+  assert.equal(CATERING_WORKSPACE_READ_ONLY_REFUSAL.status, 409);
+  // The messages stay timing-specific on purpose; only the code has to match.
+  assert.notEqual(CATERING_WORKSPACE_READ_ONLY_REFUSAL.message, CATERING_DETAILS_SAVE_REFUSALS.read_only.message);
+  assert.match(CATERING_WORKSPACE_READ_ONLY_REFUSAL.message, /read-only/);
+});
+test("a terminal booking is read-only whoever asks, and an active booking still refuses the wrong actor uncoded", () => {
+  for (const status of TERMINAL_STATUSES) for (const role of ["provider", "customer"] as const) {
+    assert.equal(cateringWorkspaceGuard(status, role, "tasks"), "read_only");
+  }
+  for (const status of ACTIVE_STATUSES) {
+    assert.equal(cateringWorkspaceGuard(status, "customer", "tasks"), "forbidden");
+    assert.equal(cateringWorkspaceGuard(status, "provider", "customer-notes"), "forbidden");
+    const refusal = earlyRefusal(cateringWorkspaceGuard(status, "customer", "tasks"), "Only the provider may edit tasks on an active workspace")!;
+    assert.equal(refusal.code, undefined);
+    assert.equal(refusal.status, 409);
+    assert.equal(refusal.message, "Only the provider may edit tasks on an active workspace");
+  }
+});
+test("an active booking still lets each participant through its own early guard", () => {
+  for (const status of ACTIVE_STATUSES) {
+    for (const resource of ["provider-details", "tasks"] as const) assert.equal(cateringWorkspaceGuard(status, "provider", resource), "allowed");
+    assert.equal(cateringWorkspaceGuard(status, "customer", "customer-notes"), "allowed");
+    for (const { role, resource } of WORKSPACE_MUTATIONS) assert.equal(cateringWorkspaceGuard(status, role, resource), "allowed");
+  }
+});
+test("the early terminal refusal carries nothing to write, so no row, activity, or notification follows it", () => {
+  const refusal: Record<string, unknown> = { ...CATERING_WORKSPACE_READ_ONLY_REFUSAL };
+  for (const written of ["details", "task", "tasks", "next", "updates", "activity", "notify", "notification", "sortOrder", "updatedAt", "completedAt"]) assert.equal(written in refusal, false);
+  assert.deepEqual(Object.keys(refusal).sort(), ["code", "message", "status"]);
+  // The guard itself is a classification and returns before any locked resolution is even reached.
+  for (const status of TERMINAL_STATUSES) assert.equal(typeof cateringWorkspaceGuard(status, "provider", "tasks"), "string");
+});
+test("no other workspace refusal is relabelled read-only by this change", () => {
+  assert.equal(CATERING_DETAILS_SAVE_REFUSALS.invalid_time_range.code, undefined);
+  assert.equal(CATERING_TASK_NOT_FOUND_REFUSAL.code, "catering_task_not_found");
+  assert.equal(CATERING_TASK_REORDER_REFUSALS.membership.code, CATERING_TASK_SET_CHANGED_CODE);
+  for (const code of [CATERING_DETAILS_SAVE_REFUSALS.invalid_time_range.code, CATERING_TASK_NOT_FOUND_REFUSAL.code, CATERING_TASK_REORDER_REFUSALS.membership.code]) {
+    assert.notEqual(code, CATERING_WORKSPACE_READ_ONLY_REFUSAL.code);
+  }
+  // The task limit and the version conflict keep their own distinct answers too.
+  assert.notEqual(CATERING_TASK_CREATE_MESSAGES.limit, CATERING_TASK_CREATE_MESSAGES.read_only);
+  assert.equal(/read-only/.test(CATERING_TASK_CREATE_MESSAGES.limit), false);
+  assert.equal(resolveCateringTaskPatch(lockedTask(), { title: "Stale", expectedUpdatedAt: T2.toISOString() }, NOW).kind, "conflict");
+  assert.equal(resolveCateringTaskDelete({ updatedAt: T1, title: "Confirm rentals", visibility: "shared" }, T2.toISOString()).kind, "conflict");
 });

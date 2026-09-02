@@ -544,3 +544,47 @@ test("a task-set-changed refetch leaves every draft and the open task editor unt
   assert.equal(maySubmitTaskEditor(editing, true), true);
   assert.deepEqual(sectionsRenderingEditor(editing, "actor:booking", [taskView("task-1", "provider")], true), { checklist: ["task-1"], requirements: [] });
 });
+
+const EARLY_READ_ONLY = Object.assign(new Error("Cancelled and completed workspaces are read-only"), { code: "workspace_read_only" });
+const LOCKED_READ_ONLY = Object.assign(new Error("Booking became read-only before the task update completed"), { code: "workspace_read_only" });
+
+test("an early terminal refusal is refresh-required to the client exactly like the locked read-only race", () => {
+  for (const error of [EARLY_READ_ONLY, LOCKED_READ_ONLY]) {
+    assert.equal(cateringWorkspaceErrorCode(error), "workspace_read_only");
+    assert.equal(shouldRefetchWorkspaceAfterError(error), true);
+    // It is its own condition and is never mistaken for a stale task or a changed collection.
+    assert.equal(isCateringTaskVersionConflict(error), false);
+    assert.equal(isCateringTaskNotFound(error), false);
+  }
+  // The two differ only in wording, which is what carries the truthful message to the provider.
+  assert.notEqual(EARLY_READ_ONLY.message, LOCKED_READ_ONLY.message);
+  // A wrong-actor refusal is uncoded, so it never triggers a refetch that could not help it.
+  assert.equal(shouldRefetchWorkspaceAfterError(new Error("Only the provider may edit tasks on an active workspace")), false);
+});
+test("the workspace the early refusal refetches removes every mutation control and closes a stranded editor", () => {
+  const stranded = editTaskEditorField(openEditor(), "actor:booking", "task-1", "title", "Typed before the booking closed");
+  for (const status of readOnlyStatuses) {
+    const editable = mayEditCateringWorkspace(status);
+    assert.equal(editable, false);
+    // The refetched terminal workspace closes the editor through the reconciliation already in place.
+    assert.equal(reconcileTaskEditorWithWorkspace(stranded, "actor:booking", editable, ["task-1"]), null);
+    assert.equal(maySubmitTaskEditor(stranded, editable), false);
+    assert.deepEqual(sectionsRenderingEditor(stranded, "actor:booking", [taskView("task-1", "provider")], editable), { checklist: [], requirements: [] });
+    // Reorder controls disappear with it; nothing on a historical workspace stays mutable.
+    for (const task of mixedTasks) assert.equal(cateringTaskReorderControls(mixedTasks, task.id, { ...activeProvider, editable }), null);
+  }
+});
+test("an early read-only refusal is never a success, and clears no unsaved draft as though it saved", () => {
+  const providerDraft = { identity: "actor:booking", value: providerDraftFrom({ ...emptyDetails, venueCity: "Dallas" }), dirty: true };
+  const customerDraft = { identity: "actor:booking", value: "Please arrive early", dirty: true };
+  const taskDraft = { identity: "actor:booking", value: { ...editorDraft, title: "Half-typed task" }, dirty: true };
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(providerDraft), providerDraft);
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(customerDraft), customerDraft);
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(taskDraft), taskDraft);
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(providerDraft).value?.venueCity, "Dallas");
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(customerDraft).value, "Please arrive early");
+  assert.equal(preserveWorkspaceFormAfterSaveFailure(taskDraft).dirty, true);
+  // A save that really succeeded is what clears a draft, and this refusal is not one.
+  assert.deepEqual(saveWorkspaceForm("actor:booking", ""), { identity: "actor:booking", value: "", dirty: false });
+  assert.notDeepEqual(preserveWorkspaceFormAfterSaveFailure(customerDraft), saveWorkspaceForm("actor:booking", ""));
+});

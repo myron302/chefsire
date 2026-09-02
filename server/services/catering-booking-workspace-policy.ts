@@ -6,6 +6,23 @@ export function mayMutateWorkspace(status: CateringBookingStatus, role: "provide
   if (!mayEditCateringWorkspace(status)) return false;
   return resource === "customer-notes" ? role === "customer" : role === "provider";
 }
+/**
+ * Why the early guard refused, before any transaction is opened. `mayMutateWorkspace` answers one boolean for two
+ * unrelated reasons, and the client must tell them apart: a booking that is already cancelled or completed means the
+ * workspace on screen is stale and needs an authoritative refresh, while a wrong actor means exactly the opposite —
+ * the workspace is fine and refetching it would change nothing. Status is decided first, so a terminal booking is
+ * reported as read-only whoever asked, and only an otherwise-editable booking can refuse an actor.
+ */
+export function cateringWorkspaceGuard(status: CateringBookingStatus, role: "provider" | "customer", resource: "provider-details" | "customer-notes" | "tasks"): "allowed" | "read_only" | "forbidden" {
+  if (!mayEditCateringWorkspace(status)) return "read_only";
+  return mayMutateWorkspace(status, role, resource) ? "allowed" : "forbidden";
+}
+/**
+ * The one early terminal-status refusal every workspace mutation answers with. It carries the same canonical code the
+ * locked read-only race already returns, so a booking that was already cancelled or completed when the request arrived
+ * and one that became so under the lock are indistinguishable to the client: both mean refetch the workspace.
+ */
+export const CATERING_WORKSPACE_READ_ONLY_REFUSAL = { status: 409, message: "Cancelled and completed workspaces are read-only", code: CATERING_WORKSPACE_READ_ONLY_CODE } as const;
 
 export function nextCateringTaskSortOrder(maxSortOrder: number | null): number {
   return maxSortOrder == null ? 0 : maxSortOrder + 1;

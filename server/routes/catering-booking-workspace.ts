@@ -8,7 +8,7 @@ import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { serializeBookingActivity, serializeBookingDetails, serializeBookingTask } from "../serializers/catering-booking-workspace";
-import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, CATERING_TASK_REORDER_REFUSALS, mayMutateWorkspace, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, resolveCateringTaskReorder } from "../services/catering-booking-workspace-policy";
+import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, CATERING_TASK_REORDER_REFUSALS, CATERING_WORKSPACE_READ_ONLY_REFUSAL, cateringWorkspaceGuard, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, resolveCateringTaskReorder } from "../services/catering-booking-workspace-policy";
 
 const r = Router();
 const taskIdSchema = z.string().uuid();
@@ -31,6 +31,15 @@ async function lockedTaskCounts(tx: typeof db, id: string) {
   await lockTaskCollection(tx, id);
   const [{ value, maxSortOrder }] = await tx.select({ value: count(), maxSortOrder: max(cateringBookingTasks.sortOrder) }).from(cateringBookingTasks).where(eq(cateringBookingTasks.bookingId, id));
   return { taskCount: Number(value), maxSortOrder: maxSortOrder == null ? null : Number(maxSortOrder) };
+}
+type WorkspaceResponse = Parameters<Parameters<typeof r.get>[1]>[1];
+/**
+ * Answers a refused early guard. A terminal booking always gets the canonical coded read-only refusal, so the client
+ * refetches; a wrong actor keeps its own truthful message and stays uncoded, because no refetch would change it.
+ */
+function refuseWorkspaceGuard(res: WorkspaceResponse, guard: "read_only" | "forbidden", forbidden: string) {
+  if (guard === "read_only") return res.status(CATERING_WORKSPACE_READ_ONLY_REFUSAL.status).json({ message: CATERING_WORKSPACE_READ_ONLY_REFUSAL.message, code: CATERING_WORKSPACE_READ_ONLY_REFUSAL.code });
+  return res.status(409).json({ message: forbidden });
 }
 function invalid(error: unknown, res: Parameters<Parameters<typeof r.get>[1]>[1], next: (error: unknown) => void) {
   if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message });
@@ -56,7 +65,8 @@ r.put("/bookings/:id/details", requireAuth, async (req, res, next) => { try {
   const id = cateringBookingIdSchema.parse(req.params.id); const userId = (req.user as { id: string }).id; const booking = await ownedBooking(id, userId);
   if (!booking) return res.status(404).json({ message: "Booking workspace not found" }); const role = cateringWorkspaceRole(booking, userId)!;
   const input = role === "provider" ? cateringBookingProviderDetailsSchema.parse(req.body ?? {}) : cateringBookingCustomerDetailsSchema.parse(req.body ?? {});
-  if (!mayMutateWorkspace(booking.status as never, role, role === "provider" ? "provider-details" : "customer-notes")) return res.status(409).json({ message: "Cancelled and completed workspaces are read-only" });
+  const guard = cateringWorkspaceGuard(booking.status as never, role, role === "provider" ? "provider-details" : "customer-notes");
+  if (guard !== "allowed") return refuseWorkspaceGuard(res, guard, "Only a booking participant may save these event details");
   const now = new Date();
   const result: DetailsSaveResult = await db.transaction(async (tx: typeof db) => {
     const active = await lockActiveBooking(tx, id);
@@ -75,7 +85,8 @@ r.put("/bookings/:id/details", requireAuth, async (req, res, next) => { try {
 r.post("/bookings/:id/tasks", requireAuth, async (req, res, next) => { try {
   const id = cateringBookingIdSchema.parse(req.params.id); const providerId = (req.user as { id: string }).id; const input = cateringBookingTaskCreateSchema.parse(req.body ?? {}); const booking = await ownedBooking(id, providerId);
   if (!booking) return res.status(404).json({ message: "Booking workspace not found" }); const role = cateringWorkspaceRole(booking, providerId)!;
-  if (!mayMutateWorkspace(booking.status as never, role, "tasks")) return res.status(409).json({ message: "Only the provider may edit tasks on an active workspace" });
+  const guard = cateringWorkspaceGuard(booking.status as never, role, "tasks");
+  if (guard !== "allowed") return refuseWorkspaceGuard(res, guard, "Only the provider may edit tasks on an active workspace");
   const result = await db.transaction(async (tx: typeof db) => {
     // A booking that went read-only under the lock and a full task collection are different refusals, never the same one.
     const outcome = resolveCateringTaskCreate(await lockActiveBooking(tx, id) ? await lockedTaskCounts(tx, id) : null, input);
@@ -93,7 +104,8 @@ r.post("/bookings/:id/tasks", requireAuth, async (req, res, next) => { try {
 r.patch("/bookings/:id/tasks/:taskId", requireAuth, async (req, res, next) => { try {
   const id = cateringBookingIdSchema.parse(req.params.id); const taskId = taskIdSchema.parse(req.params.taskId); const providerId = (req.user as { id: string }).id; const input = cateringBookingTaskUpdateSchema.parse(req.body ?? {}); const booking = await ownedBooking(id, providerId);
   if (!booking) return res.status(404).json({ message: "Booking workspace not found" }); const role = cateringWorkspaceRole(booking, providerId)!;
-  if (!mayMutateWorkspace(booking.status as never, role, "tasks")) return res.status(409).json({ message: "Only the provider may edit tasks on an active workspace" });
+  const guard = cateringWorkspaceGuard(booking.status as never, role, "tasks");
+  if (guard !== "allowed") return refuseWorkspaceGuard(res, guard, "Only the provider may edit tasks on an active workspace");
   const result = await db.transaction(async (tx: typeof db) => {
     if (!await lockActiveBooking(tx, id)) return { kind: "read_only" } as const;
     await lockTaskCollection(tx, id);
@@ -118,7 +130,8 @@ r.patch("/bookings/:id/tasks/:taskId", requireAuth, async (req, res, next) => { 
 r.delete("/bookings/:id/tasks/:taskId", requireAuth, async (req, res, next) => { try {
   const id = cateringBookingIdSchema.parse(req.params.id); const taskId = taskIdSchema.parse(req.params.taskId); const providerId = (req.user as { id: string }).id; const input = cateringBookingTaskDeleteSchema.parse(req.body ?? {}); const booking = await ownedBooking(id, providerId);
   if (!booking) return res.status(404).json({ message: "Booking workspace not found" }); const role = cateringWorkspaceRole(booking, providerId)!;
-  if (!mayMutateWorkspace(booking.status as never, role, "tasks")) return res.status(409).json({ message: "Only the provider may edit tasks on an active workspace" });
+  const guard = cateringWorkspaceGuard(booking.status as never, role, "tasks");
+  if (guard !== "allowed") return refuseWorkspaceGuard(res, guard, "Only the provider may edit tasks on an active workspace");
   const result = await db.transaction(async (tx: typeof db) => {
     if (!await lockActiveBooking(tx, id)) return { kind: "read_only" } as const;
     await lockTaskCollection(tx, id);
@@ -141,7 +154,8 @@ r.delete("/bookings/:id/tasks/:taskId", requireAuth, async (req, res, next) => {
 r.post("/bookings/:id/tasks/reorder", requireAuth, async (req, res, next) => { try {
   const id = cateringBookingIdSchema.parse(req.params.id); const providerId = (req.user as { id: string }).id; const input = cateringBookingTaskReorderSchema.parse(req.body ?? {}); const booking = await ownedBooking(id, providerId);
   if (!booking) return res.status(404).json({ message: "Booking workspace not found" }); const role = cateringWorkspaceRole(booking, providerId)!;
-  if (!mayMutateWorkspace(booking.status as never, role, "tasks")) return res.status(409).json({ message: "Only the provider may reorder tasks on an active workspace" });
+  const guard = cateringWorkspaceGuard(booking.status as never, role, "tasks");
+  if (guard !== "allowed") return refuseWorkspaceGuard(res, guard, "Only the provider may reorder tasks on an active workspace");
   const result: TaskReorderResult = await db.transaction(async (tx: typeof db) => {
     if (!await lockActiveBooking(tx, id)) return { kind: "read_only" } as const;
     await lockTaskCollection(tx, id);
