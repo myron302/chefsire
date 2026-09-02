@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type { CateringBookingActivity, CateringBookingDetails } from "@shared/schema";
+import { serializeBookingActivity, serializeBookingDetails } from "./catering-booking-workspace";
+
+const details = { bookingId: "booking", venueName: "Hall", venueAddress: "1 Main", venueCity: "City", venueState: "ST", venuePostalCode: "12345", venueInstructions: "Use front door", arrivalTime: "16:00", serviceStartTime: "17:00", serviceEndTime: "20:00", setupNotes: "Six tables", accessNotes: "Call host", kitchenAvailable: true, refrigerationAvailable: false, powerAvailable: true, waterAvailable: true, indoorOutdoor: "indoor", customerNotes: "Allergy list coming", providerNotes: "Internal staffing note", updatedAt: new Date("2026-08-29T12:00:00Z") } satisfies CateringBookingDetails;
+test("provider details serializer includes private provider notes", () => assert.equal(serializeBookingDetails(details, "provider").providerNotes, "Internal staffing note"));
+test("customer details serializer omits provider-private notes", () => { const value = serializeBookingDetails(details, "customer"); assert.equal("providerNotes" in value, false); assert.equal(JSON.stringify(value).includes("Internal staffing note"), false); });
+test("empty customer details do not manufacture event data", () => { const value = serializeBookingDetails(undefined, "customer"); assert.equal(value.venueName, null); assert.equal(value.updatedAt, null); assert.equal("providerNotes" in value, false); });
+test("activity serializer allowlists fields without actor identity", () => { const row = { id: "activity", bookingId: "booking", actorUserId: "private-user", eventType: "details_updated", visibility: "shared", metadata: {}, createdAt: new Date("2026-08-29T12:00:00Z") } satisfies CateringBookingActivity; const value = serializeBookingActivity(row); assert.deepEqual(Object.keys(value).sort(), ["createdAt", "eventType", "id", "metadata"]); assert.equal(JSON.stringify(value).includes("private-user"), false); });

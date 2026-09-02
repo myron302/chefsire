@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { and, count, desc, eq, gte, lte, or } from "drizzle-orm";
 import { z } from "zod";
-import { cateringAvailabilityExceptions, cateringAvailabilitySettings, cateringBookings, cateringInquiries, cateringPackages, cateringReviews, notifications } from "@shared/schema";
+import { cateringAvailabilityExceptions, cateringAvailabilitySettings, cateringBookingActivity, cateringBookings, cateringInquiries, cateringPackages, cateringReviews, notifications } from "@shared/schema";
 import { cateringBookingCancelSchema, cateringBookingIdSchema, cateringBookingOfferSchema, cateringBookingPageSchema } from "@shared/catering-bookings";
 import { db } from "../db";
 import { requireAuth } from "../middleware";
@@ -53,6 +53,7 @@ r.post("/inquiries/:inquiryId/provider-confirm", requireAuth, async (req, res, n
     if (!booking || booking.providerId !== providerId) return { error: 409, message: "Booking could not be created" } as const;
     if (booking.status === "pending_confirmation" && !booking.providerConfirmedAt) await tx.update(cateringBookings).set({ providerConfirmedAt: now, updatedAt: now }).where(and(eq(cateringBookings.id, booking.id), eq(cateringBookings.status, "pending_confirmation")));
     const newlyConfirmed = !booking.providerConfirmedAt;
+    if (created) await tx.insert(cateringBookingActivity).values({ bookingId: booking.id, actorUserId: providerId, eventType: "booking_offered", visibility: "shared", metadata: {} });
     const [fresh] = await tx.select().from(cateringBookings).where(eq(cateringBookings.id, booking.id)).limit(1); return { booking: fresh, notify: Boolean(created || newlyConfirmed) } as const;
   });
   if ("error" in result) return res.status(result.error).json({ message: result.message });
@@ -71,6 +72,7 @@ r.post("/bookings/:id/customer-confirm", requireAuth, async (req, res, next) => 
     const confirmationDate = evaluateBookingDateForConfirmation({ targetDate: current.eventDate, currentDate: await providerCalendarDate(tx, current.providerId, now), exceptions: await bookingDateExceptions(tx, current.providerId, current.eventDate) });
     if (nextStatus === "confirmed" && !confirmationDate.available) return { error: 409, message: confirmationDate.reason === "past_event" ? "This booking can no longer be confirmed because its event date has passed." : "The provider explicitly blocked this event date after offering the booking. Contact the provider to resolve it." } as const;
     const [updated] = await tx.update(cateringBookings).set({ customerConfirmedAt: now, status: nextStatus, confirmedAt: nextStatus === "confirmed" ? now : null, updatedAt: now }).where(and(eq(cateringBookings.id, id), eq(cateringBookings.customerId, customerId), eq(cateringBookings.status, "pending_confirmation"))).returning();
+    if (updated) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: customerId, eventType: "customer_confirmed", visibility: "shared", metadata: {} });
     return updated ? { booking: updated, notify: true } as const : { error: 409, message: "Booking changed before confirmation completed" } as const;
   });
   if ("error" in result) return res.status(result.error).json({ message: result.message });
@@ -85,7 +87,7 @@ r.post("/bookings/:id/cancel", requireAuth, async (req, res, next) => { try {
   const [current] = await db.select().from(cateringBookings).where(and(eq(cateringBookings.id, id), or(eq(cateringBookings.providerId, userId), eq(cateringBookings.customerId, userId)))).limit(1);
   if (!current) return res.status(404).json({ message: "Booking not found" }); const actor = bookingActor(current, userId)!;
   if (!mayCancel(current.status)) return res.status(409).json({ message: "Completed or cancelled bookings cannot be cancelled" });
-  const [updated] = await db.update(cateringBookings).set({ status: "cancelled", cancelledAt: now, cancelledBy: actor, cancellationReason: input.reason ?? null, updatedAt: now }).where(and(eq(cateringBookings.id, id), or(eq(cateringBookings.status, "pending_confirmation"), eq(cateringBookings.status, "confirmed")))).returning();
+  const updated = await db.transaction(async (tx: typeof db) => { const [row] = await tx.update(cateringBookings).set({ status: "cancelled", cancelledAt: now, cancelledBy: actor, cancellationReason: input.reason ?? null, updatedAt: now }).where(and(eq(cateringBookings.id, id), or(eq(cateringBookings.status, "pending_confirmation"), eq(cateringBookings.status, "confirmed")))).returning(); if (row) await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: userId, eventType: "booking_cancelled", visibility: "shared", metadata: {} }); return row; });
   if (!updated) return res.status(409).json({ message: "Booking changed before cancellation completed" });
   const recipient = actor === "provider" ? updated.customerId : updated.providerId; await db.insert(notifications).values({ userId: recipient, type: "catering_booking_cancelled", title: "Catering booking cancelled", message: "The catering booking was cancelled. Open it for current status.", linkUrl: actor === "provider" ? CATERING_CUSTOMER_BOOKINGS_URL : CATERING_PROVIDER_BOOKINGS_URL }).catch(() => undefined);
   res.json({ booking: serializeCateringBooking(updated) });
@@ -97,7 +99,7 @@ r.post("/bookings/:id/complete", requireAuth, async (req, res, next) => { try {
   if (!current) return res.status(404).json({ message: "Booking not found" });
   const timezone = (await db.select({ timezone: cateringAvailabilitySettings.timezone }).from(cateringAvailabilitySettings).where(eq(cateringAvailabilitySettings.providerId, providerId)).limit(1))[0]?.timezone ?? "UTC";
   if (!mayComplete(current, "provider", calendarDateInTimezone(now, timezone))) return res.status(409).json({ message: "Only a confirmed event on or after its event date can be marked complete" });
-  const updated = await db.transaction(async (tx: typeof db) => { await lockCateringReviewRelationship(tx, current.customerId, current.providerId); const [row] = await tx.update(cateringBookings).set({ status: "completed", completedAt: now, updatedAt: now }).where(and(eq(cateringBookings.id, id), eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "confirmed"))).returning(); if (!row) return null; await tx.update(cateringReviews).set({ verifiedEvent: true, updatedAt: now }).where(and(eq(cateringReviews.providerId, row.providerId), eq(cateringReviews.reviewerId, row.customerId), eq(cateringReviews.verifiedEvent, false))); return row; });
+  const updated = await db.transaction(async (tx: typeof db) => { await lockCateringReviewRelationship(tx, current.customerId, current.providerId); const [row] = await tx.update(cateringBookings).set({ status: "completed", completedAt: now, updatedAt: now }).where(and(eq(cateringBookings.id, id), eq(cateringBookings.providerId, providerId), eq(cateringBookings.status, "confirmed"))).returning(); if (!row) return null; await tx.update(cateringReviews).set({ verifiedEvent: true, updatedAt: now }).where(and(eq(cateringReviews.providerId, row.providerId), eq(cateringReviews.reviewerId, row.customerId), eq(cateringReviews.verifiedEvent, false))); await tx.insert(cateringBookingActivity).values({ bookingId: id, actorUserId: providerId, eventType: "booking_completed", visibility: "shared", metadata: {} }); return row; });
   if (!updated) return res.status(409).json({ message: "Booking changed before completion finished" });
   await db.insert(notifications).values({ userId: updated.customerId, type: "catering_booking_completed", title: "Catering event marked complete", message: "Your provider recorded the event as complete. A linked review can now be verified.", linkUrl: CATERING_CUSTOMER_BOOKINGS_URL }).catch(() => undefined);
   res.json({ booking: serializeCateringBooking(updated) });

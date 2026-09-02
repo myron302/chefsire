@@ -349,6 +349,72 @@ export const cateringBookings = pgTable("catering_bookings", {
   agreedPriceCheck: check("catering_bookings_agreed_price_check", sql`${t.agreedPrice} IS NULL OR ${t.agreedPrice} >= 0`),
 }));
 
+/** Mutable event-planning data layered on the immutable booking agreement. */
+export const cateringBookingDetails = pgTable("catering_booking_details", {
+  bookingId: varchar("booking_id").primaryKey().references(() => cateringBookings.id, { onDelete: "restrict" }),
+  venueName: varchar("venue_name", { length: 160 }),
+  venueAddress: varchar("venue_address", { length: 240 }),
+  venueCity: varchar("venue_city", { length: 120 }),
+  venueState: varchar("venue_state", { length: 80 }),
+  venuePostalCode: varchar("venue_postal_code", { length: 24 }),
+  venueInstructions: text("venue_instructions"),
+  arrivalTime: varchar("arrival_time", { length: 5 }),
+  serviceStartTime: varchar("service_start_time", { length: 5 }),
+  serviceEndTime: varchar("service_end_time", { length: 5 }),
+  setupNotes: text("setup_notes"),
+  accessNotes: text("access_notes"),
+  kitchenAvailable: boolean("kitchen_available"),
+  refrigerationAvailable: boolean("refrigeration_available"),
+  powerAvailable: boolean("power_available"),
+  waterAvailable: boolean("water_available"),
+  indoorOutdoor: varchar("indoor_outdoor", { length: 16 }),
+  customerNotes: text("customer_notes"),
+  providerNotes: text("provider_notes"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  indoorOutdoorCheck: check("catering_booking_details_indoor_outdoor_check", sql`${t.indoorOutdoor} IS NULL OR ${t.indoorOutdoor} IN ('indoor', 'outdoor', 'both')`),
+  arrivalTimeCheck: check("catering_booking_details_arrival_time_check", sql`${t.arrivalTime} IS NULL OR ${t.arrivalTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  serviceStartTimeCheck: check("catering_booking_details_service_start_time_check", sql`${t.serviceStartTime} IS NULL OR ${t.serviceStartTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+  serviceEndTimeCheck: check("catering_booking_details_service_end_time_check", sql`${t.serviceEndTime} IS NULL OR ${t.serviceEndTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+}));
+
+export const cateringBookingTasks = pgTable("catering_booking_tasks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  title: varchar("title", { length: 160 }).notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 16 }).default("pending").notNull(),
+  visibility: varchar("visibility", { length: 16 }).default("provider").notNull(),
+  dueDate: date("due_date", { mode: "string" }),
+  dueTime: varchar("due_time", { length: 5 }),
+  sortOrder: integer("sort_order").notNull(),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  bookingSortIdx: index("catering_booking_tasks_booking_sort_idx").on(t.bookingId, t.sortOrder, t.id),
+  bookingTaskUnique: uniqueIndex("catering_booking_tasks_booking_id_uidx").on(t.bookingId, t.id),
+  statusCheck: check("catering_booking_tasks_status_check", sql`${t.status} IN ('pending', 'completed')`),
+  visibilityCheck: check("catering_booking_tasks_visibility_check", sql`${t.visibility} IN ('provider', 'shared')`),
+  sortOrderCheck: check("catering_booking_tasks_sort_order_check", sql`${t.sortOrder} >= 0`),
+  dueTimeCheck: check("catering_booking_tasks_due_time_check", sql`${t.dueTime} IS NULL OR ${t.dueTime} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`),
+}));
+
+export const cateringBookingActivity = pgTable("catering_booking_activity", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
+  actorUserId: varchar("actor_user_id").references(() => users.id, { onDelete: "restrict" }).notNull(),
+  eventType: varchar("event_type", { length: 40 }).notNull(),
+  visibility: varchar("visibility", { length: 16 }).default("shared").notNull(),
+  metadata: jsonb("metadata").$type<Record<string, string>>().default(sql`'{}'::jsonb`).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (t) => ({
+  bookingPageIdx: index("catering_booking_activity_booking_page_idx").on(t.bookingId, t.createdAt, t.id),
+  eventTypeCheck: check("catering_booking_activity_event_type_check", sql`${t.eventType} IN ('booking_offered', 'customer_confirmed', 'booking_cancelled', 'booking_completed', 'details_updated', 'shared_requirement_added', 'shared_requirement_updated', 'shared_requirement_completed', 'shared_requirement_deleted')`),
+  visibilityCheck: check("catering_booking_activity_visibility_check", sql`${t.visibility} IN ('provider', 'shared')`),
+}));
+
 export const cateringReviews = pgTable("catering_reviews", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   providerId: varchar("provider_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
