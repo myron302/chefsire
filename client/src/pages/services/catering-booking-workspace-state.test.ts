@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { cateringBookingProviderDetailsSchema, CATERING_TASK_SET_CHANGED_CODE, mayEditCateringWorkspace, type CateringBookingActivityView, type CateringBookingDetailsView, type CateringBookingTaskView } from "@shared/catering-booking-operations";
-import { activeTaskEditor, cateringActivityTaskTitle, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskReorderControls, cateringTaskReorderPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, isCateringTaskNotFound, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, isTaskEditorDirty, markTaskEditorConflict, mayMoveCateringTask, mayOpenTaskEditor, maySubmitTaskEditor, moveCateringTaskInGlobalOrder, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, openTaskEditorIfAllowed, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reconcileTaskEditorWithTasks, reconcileTaskEditorWithWorkspace, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
+import { activeTaskEditor, cateringActivityTaskTitle, cateringTaskCreatePayload, cateringTaskDeletePayload, cateringTaskDraftsEqual, cateringTaskEditPayload, cateringTaskReorderControls, cateringTaskReorderPayload, cateringTaskStatusPayload, cateringWorkspaceErrorCode, closeTaskEditorAfterSave, isCateringTaskNotFound, combineCateringActivityPages, editTaskEditorField, editWorkspaceForm, editWorkspaceFormField, EMPTY_CATERING_TASK_DRAFT, formatCateringTaskDeadline, historicalOperationalDetails, hydrateWorkspaceForm, isCateringTaskVersionConflict, isTaskEditorDirty, markTaskEditorConflict, mayMoveCateringTask, mayOpenTaskEditor, mayReloadConflictedTask, maySubmitTaskEditor, moveCateringTaskInGlobalOrder, nextCateringActivityPage, normalizeOptionalWallClockInput, openTaskEditor, openTaskEditorIfAllowed, preserveTaskEditorAfterSaveFailure, preserveWorkspaceFormAfterSaveFailure, providerDraftFrom, reloadableTaskForEditor, reconcileTaskEditorWithTasks, reconcileTaskEditorWithWorkspace, reconcileWorkspaceFormAfterSave, saveWorkspaceForm, shouldRefetchWorkspaceAfterError, splitCateringWorkspaceTasks, taskEditorForTask, type CateringTaskDraft, type OpenTaskEditorState, type ProviderDetailsDraft, type SubmittedTaskEdit } from "./catering-booking-workspace-state";
 
 const emptyDetails: CateringBookingDetailsView = { venueName: null, venueAddress: null, venueCity: null, venueState: null, venuePostalCode: null, venueInstructions: null, arrivalTime: null, serviceStartTime: null, serviceEndTime: null, setupNotes: null, accessNotes: null, kitchenAvailable: null, refrigerationAvailable: null, powerAvailable: null, waterAvailable: null, indoorOutdoor: null, customerNotes: null, updatedAt: null };
 test("historical details are empty only when every represented field is absent", () => assert.deepEqual(historicalOperationalDetails(emptyDetails, "customer"), []));
@@ -735,4 +735,111 @@ test("draft protection never keeps an editor alive on a workspace that became hi
     assert.equal(activeTaskEditor(editor, "actor:booking") !== null, true);
     for (const task of mixedTasks) assert.deepEqual(cateringTaskReorderControls(mixedTasks, task.id, { ...activeProvider, editorOpen: true }), { up: false, down: false });
   }
+});
+
+/** The rejected save: Task A as the provider loaded it, and the version the server refused. */
+const CONFLICT_TASK = taskView("task-a", "provider", { title: "Confirm rentals", updatedAt: "2026-08-29T00:00:00.000Z" });
+/** What the other client actually persisted, which only reaches the client once the refetch lands. */
+const REFRESHED_TASK = taskView("task-a", "shared", { title: "Newer server title", description: "Newer description", dueDate: "2026-10-01", dueTime: "08:15", updatedAt: "2026-08-30T09:15:00.000Z" });
+const conflictedEditor = () => {
+  const opened = openTaskEditor("actor:booking", CONFLICT_TASK);
+  const typed = editTaskEditorField(opened, "actor:booking", CONFLICT_TASK.id, "title", "My unsaved title");
+  return markTaskEditorConflict(typed, { identity: "actor:booking", taskId: CONFLICT_TASK.id, draft: { ...typed!.draft }, expectedUpdatedAt: CONFLICT_TASK.updatedAt });
+};
+
+test("a rejected precondition keeps the editor, the unsaved draft, and marks it stale", () => {
+  const conflicted = conflictedEditor();
+  assert.notEqual(conflicted, null);
+  assert.equal(conflicted?.conflict, true);
+  assert.equal(conflicted?.draft.title, "My unsaved title");
+  assert.equal(conflicted?.expectedUpdatedAt, CONFLICT_TASK.updatedAt);
+  assert.equal(isTaskEditorDirty(conflicted), true);
+  assert.equal(maySubmitTaskEditor(conflicted, true), false);
+  // The conflict is what starts the authoritative refresh.
+  assert.equal(shouldRefetchWorkspaceAfterError(Object.assign(new Error("stale"), { code: "task_version_conflict" })), true);
+});
+test("the pre-refetch workspace can never clear the conflict, however many times reload is attempted", () => {
+  const conflicted = conflictedEditor();
+  const stillStale = [CONFLICT_TASK];
+  assert.equal(reloadableTaskForEditor(conflicted, "actor:booking", stillStale), null);
+  assert.equal(mayReloadConflictedTask(conflicted, "actor:booking", stillStale, CONFLICT_TASK.id), false);
+  // Attempting it anyway changes nothing: the draft, the rejected version, and the conflict all survive.
+  const afterAttempt = reloadableTaskForEditor(conflicted, "actor:booking", stillStale) ?? conflicted;
+  assert.equal(afterAttempt, conflicted);
+  assert.equal(conflicted?.conflict, true);
+  assert.equal(conflicted?.draft.title, "My unsaved title");
+  assert.equal(conflicted?.expectedUpdatedAt, CONFLICT_TASK.updatedAt);
+  // A task object identical in version to the refused one is the stale snapshot, whatever else it carries.
+  assert.equal(reloadableTaskForEditor(conflicted, "actor:booking", [{ ...CONFLICT_TASK, title: "Locally rerendered" }]), null);
+});
+test("once the authoritative refresh lands, reload rebases the editor onto that newer task", () => {
+  const conflicted = conflictedEditor();
+  const refreshed = [REFRESHED_TASK];
+  assert.deepEqual(reloadableTaskForEditor(conflicted, "actor:booking", refreshed), REFRESHED_TASK);
+  assert.equal(mayReloadConflictedTask(conflicted, "actor:booking", refreshed, CONFLICT_TASK.id), true);
+  const reloaded = openTaskEditor("actor:booking", reloadableTaskForEditor(conflicted, "actor:booking", refreshed)!);
+  assert.equal(reloaded?.conflict, false);
+  assert.equal(reloaded?.expectedUpdatedAt, "2026-08-30T09:15:00.000Z");
+  assert.notEqual(reloaded?.expectedUpdatedAt, CONFLICT_TASK.updatedAt);
+  assert.deepEqual(reloaded?.draft, { title: "Newer server title", description: "Newer description", dueDate: "2026-10-01", dueTime: "08:15", visibility: "shared" });
+  assert.equal(isTaskEditorDirty(reloaded), false);
+  assert.equal(maySubmitTaskEditor(reloaded, true), true);
+  // The next save carries the refreshed version, and the one that lost is never sent again.
+  const payload = cateringTaskEditPayload(reloaded!.draft, reloaded!.expectedUpdatedAt);
+  assert.equal(payload.expectedUpdatedAt, "2026-08-30T09:15:00.000Z");
+  assert.notEqual(payload.expectedUpdatedAt, CONFLICT_TASK.updatedAt);
+});
+test("a completed refetch alone never touches the unsaved draft; only an explicit reload replaces it", () => {
+  const conflicted = conflictedEditor();
+  const refreshed = [REFRESHED_TASK];
+  // The workspace is editable and still lists the task, so reconciliation leaves the editor exactly as it is.
+  assert.deepEqual(reconcileTaskEditorWithWorkspace(conflicted, "actor:booking", true, [REFRESHED_TASK.id]), conflicted);
+  assert.equal(conflicted?.draft.title, "My unsaved title");
+  assert.equal(conflicted?.conflict, true);
+  // Reload becomes available, but nothing happens until the provider chooses it.
+  assert.equal(mayReloadConflictedTask(conflicted, "actor:booking", refreshed, CONFLICT_TASK.id), true);
+  assert.equal(conflicted?.draft.title, "My unsaved title");
+  assert.equal(openTaskEditor("actor:booking", REFRESHED_TASK)?.draft.title, "Newer server title");
+});
+test("a task deleted during the refresh is never reloadable, and the editor closes through reconciliation", () => {
+  const conflicted = conflictedEditor();
+  for (const tasks of [[], [taskView("other-task", "shared")]]) {
+    assert.equal(reloadableTaskForEditor(conflicted, "actor:booking", tasks), null);
+    assert.equal(mayReloadConflictedTask(conflicted, "actor:booking", tasks, CONFLICT_TASK.id), false);
+  }
+  assert.equal(reconcileTaskEditorWithWorkspace(conflicted, "actor:booking", true, ["other-task"]), null);
+  assert.equal(reconcileTaskEditorWithWorkspace(conflicted, "actor:booking", true, []), null);
+  // A task-not-found refusal is what triggers that refresh, and it stays its own classification.
+  assert.equal(isCateringTaskNotFound(Object.assign(new Error("gone"), { code: "catering_task_not_found" })), true);
+  assert.equal(shouldRefetchWorkspaceAfterError(Object.assign(new Error("gone"), { code: "catering_task_not_found" })), true);
+});
+test("reload is offered only for the conflicted task, and never to an unconflicted or foreign editor", () => {
+  const conflicted = conflictedEditor();
+  const refreshed = [REFRESHED_TASK, taskView("task-b", "shared")];
+  assert.equal(mayReloadConflictedTask(conflicted, "actor:booking", refreshed, "task-b"), false);
+  assert.equal(mayReloadConflictedTask(conflicted, "actor:other-booking", refreshed, CONFLICT_TASK.id), false);
+  // An editor with no rejected precondition has nothing to reload, however far the workspace has moved on.
+  const clean = editTaskEditorField(openTaskEditor("actor:booking", CONFLICT_TASK), "actor:booking", CONFLICT_TASK.id, "title", "Just typing");
+  assert.equal(reloadableTaskForEditor(clean, "actor:booking", refreshed), null);
+  assert.equal(reloadableTaskForEditor(null, "actor:booking", refreshed), null);
+  // Background mutation or fetch state is not part of this at all: only the authoritative version decides.
+  assert.equal(mayReloadConflictedTask(conflicted, "actor:booking", [CONFLICT_TASK], CONFLICT_TASK.id), false);
+  assert.equal(mayReloadConflictedTask(conflicted, "actor:booking", refreshed, CONFLICT_TASK.id), true);
+});
+test("conflict recovery leaves every other editor protection exactly as it was", () => {
+  const conflicted = conflictedEditor();
+  // A conflicted editor still cannot be bypassed by opening another task, and reopening its own is still allowed.
+  assert.equal(mayOpenTaskEditor(conflicted, "actor:booking", "task-b"), false);
+  assert.equal(openTaskEditorIfAllowed(conflicted, "actor:booking", TASK_B)?.taskId, CONFLICT_TASK.id);
+  assert.equal(mayOpenTaskEditor(conflicted, "actor:booking", CONFLICT_TASK.id), true);
+  // A dirty non-conflicted editor still protects, and a clean one still switches.
+  const dirty = editTaskEditorField(openTaskEditor("actor:booking", TASK_A), "actor:booking", TASK_A.id, "title", "Dirty");
+  assert.equal(mayOpenTaskEditor(dirty, "actor:booking", TASK_B.id), false);
+  assert.equal(mayOpenTaskEditor(openTaskEditor("actor:booking", TASK_A), "actor:booking", TASK_B.id), true);
+  // A terminal workspace still closes the conflicted editor rather than keeping it alive to be reloaded.
+  for (const status of readOnlyStatuses) assert.equal(reconcileTaskEditorWithWorkspace(conflicted, "actor:booking", mayEditCateringWorkspace(status), [REFRESHED_TASK.id]), null);
+  // Reorder stays disabled while any editor is open, conflicted or not.
+  for (const task of mixedTasks) assert.deepEqual(cateringTaskReorderControls(mixedTasks, task.id, { ...activeProvider, editorOpen: true }), { up: false, down: false });
+  // The task-set-changed refresh keeps its own classification.
+  assert.equal(shouldRefetchWorkspaceAfterError(Object.assign(new Error("changed"), { code: CATERING_TASK_SET_CHANGED_CODE })), true);
 });

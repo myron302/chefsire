@@ -133,6 +133,30 @@ export function openTaskEditorIfAllowed(current: TaskEditorState, identity: stri
   return mayOpenTaskEditor(current, identity, task.id) ? openTaskEditor(identity, task) : current;
 }
 /**
+ * The authoritative task a conflicted editor may reload from, or null while there is nothing newer to reload.
+ *
+ * A rejected precondition starts a workspace refetch, but the refetch is asynchronous and the workspace on screen
+ * still holds the very version the server just refused. Reloading from that would clear the conflict, replace the
+ * preserved draft with the same stale version, and lose the next save to the same conflict again. So the reload is
+ * resolved from the current authoritative collection by task id, and offered only once that collection actually
+ * carries a version other than the one that lost: a task whose `updatedAt` still equals the rejected
+ * `expectedUpdatedAt` is by definition the pre-refetch snapshot. Deriving this from the data rather than from a
+ * query's fetching flag is what keeps an unrelated background refetch from either enabling or disabling the control,
+ * and a task the refresh no longer lists is never reloadable, so a deleted task is never reopened.
+ */
+export function reloadableTaskForEditor<T extends { id: string; updatedAt: string }>(editor: TaskEditorState, identity: string, tasks: readonly T[]): T | null {
+  const active = activeTaskEditor(editor, identity);
+  if (!active || !active.conflict) return null;
+  const authoritative = tasks.find((task) => task.id === active.taskId);
+  if (!authoritative || authoritative.updatedAt === active.expectedUpdatedAt) return null;
+  return authoritative;
+}
+/** Whether "Reload latest task" may be offered for one rendered task: only the conflicted one, only once refreshed. */
+export function mayReloadConflictedTask<T extends { id: string; updatedAt: string }>(editor: TaskEditorState, identity: string, tasks: readonly T[], taskId: string): boolean {
+  const reloadable = reloadableTaskForEditor(editor, identity, tasks);
+  return reloadable !== null && reloadable.id === taskId;
+}
+/**
  * A rejected concurrency precondition marks the editor's version stale without touching the draft. The provider keeps
  * every entered field and an explicit reload, which reopens from the refetched task, is the only way back to saving.
  */
