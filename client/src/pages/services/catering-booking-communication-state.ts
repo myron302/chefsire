@@ -165,34 +165,57 @@ export function cateringReadableBoundary(state: CateringViewedState, identity: s
 }
 
 /**
- * Whether the end of the thread is genuinely on the participant's screen.
+ * Whether the end of the thread is genuinely on the participant's screen, FOR A NAMED MESSAGE BOUNDARY.
  *
  * Two things have to be true, and one alone is not evidence of the other. The message list is its own scroll
  * container, so an IntersectionObserver rooted on it answers only "is the sentinel inside the container's own
  * viewport" -- true for any thread short enough not to scroll, no matter where the container itself is. And the
  * Communication section sits below several other workspace sections, so on a phone a short thread can satisfy that
- * intra-container test while the whole card is still far below the fold. Marking read on it alone reports messages
- * as read that were never on screen.
+ * intra-container test while the whole card is still far below the fold. The second observation, of the container
+ * against the document viewport, is what supplies the missing half.
  *
- * The second observation, of the container against the document viewport, is what supplies the missing half. Both
- * are held here rather than derived from one observer because they answer different questions and change
- * independently: scrolling the page moves the container, scrolling the thread moves the sentinel.
+ * Both halves being true is still not enough on its own, because IntersectionObserver reports asynchronously and a
+ * boolean carries no record of WHAT it saw. Message A is visible, both observers report true, a refetch appends
+ * message B and pushes the sentinel below the fold -- and in the window before the observers report false, the
+ * evidence collected for A reads as evidence for B. B would be recorded viewed, and the explicit read mutation
+ * would mark a message nobody had seen.
+ *
+ * So the evidence is stamped with the boundary it was collected for. `observedId` is the `latestId` that was
+ * current when the observation arrived, and an observation for a different boundary discards whatever was held and
+ * starts the new boundary from nothing. Whether the end of the thread is on screen is then a question that can only
+ * be asked ABOUT a boundary, never in the abstract -- which is what makes a change of `latestId` invalidate prior
+ * evidence immediately and synchronously, with no dependence on a later observer callback arriving to say false.
  */
-export type CateringThreadVisibility = { sentinelInThread: boolean; threadOnScreen: boolean };
-export const EMPTY_CATERING_THREAD_VISIBILITY: CateringThreadVisibility = { sentinelInThread: false, threadOnScreen: false };
+export type CateringThreadVisibility = { observedId: string | null; sentinelInThread: boolean; threadOnScreen: boolean };
+export const EMPTY_CATERING_THREAD_VISIBILITY: CateringThreadVisibility = { observedId: null, sentinelInThread: false, threadOnScreen: false };
 
-export function recordCateringSentinelVisibility(state: CateringThreadVisibility, visible: boolean): CateringThreadVisibility {
-  return state.sentinelInThread === visible ? state : { ...state, sentinelInThread: visible };
+/**
+ * Moves the evidence onto `latestId`, discarding anything collected for a different boundary. Evidence already
+ * stamped with this boundary is returned untouched -- and as the SAME object, so a repeating observer callback
+ * cannot churn React state.
+ */
+function rebaseCateringVisibility(state: CateringThreadVisibility, latestId: string | null): CateringThreadVisibility {
+  return state.observedId === latestId ? state : { observedId: latestId, sentinelInThread: false, threadOnScreen: false };
 }
-export function recordCateringThreadVisibility(state: CateringThreadVisibility, visible: boolean): CateringThreadVisibility {
-  return state.threadOnScreen === visible ? state : { ...state, threadOnScreen: visible };
+export function recordCateringSentinelVisibility(state: CateringThreadVisibility, latestId: string | null, visible: boolean): CateringThreadVisibility {
+  const base = rebaseCateringVisibility(state, latestId);
+  return base.sentinelInThread === visible ? base : { ...base, sentinelInThread: visible };
+}
+export function recordCateringThreadVisibility(state: CateringThreadVisibility, latestId: string | null, visible: boolean): CateringThreadVisibility {
+  const base = rebaseCateringVisibility(state, latestId);
+  return base.threadOnScreen === visible ? base : { ...base, threadOnScreen: visible };
 }
 /**
- * The conjunction, and the only thing permitted to advance the viewed boundary. Defaulting both halves to false is
- * what makes an environment with no IntersectionObserver, or a section never scrolled to, leave messages UNREAD
- * rather than falsely read: an unproven observation is not an observation.
+ * The whole conjunction, and the only thing permitted to advance the viewed boundary: both observations, both
+ * positive, and both collected for THIS boundary. A null `latestId` (nothing loaded) can never be viewed, so an
+ * unloaded message can never be marked read.
+ *
+ * Defaulting every part to false or null is what makes an environment with no IntersectionObserver, a section never
+ * scrolled to, or a boundary whose evidence has not yet been re-collected leave messages UNREAD rather than falsely
+ * read: an unproven observation is not an observation.
  */
-export function cateringThreadEndIsOnScreen(state: CateringThreadVisibility): boolean {
+export function cateringThreadEndIsOnScreen(state: CateringThreadVisibility, latestId: string | null): boolean {
+  if (latestId === null || state.observedId !== latestId) return false;
   return state.sentinelInThread && state.threadOnScreen;
 }
 

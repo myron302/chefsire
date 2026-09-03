@@ -259,10 +259,11 @@ test("the read marker is advanced by one conditional statement, so it cannot rac
 });
 
 test("every path that writes a read marker goes through the forward-only update", () => {
-  // The send path and the read route both call it, so the invariant holds wherever the marker is touched.
-  assert.equal((communicationRoute.match(/await advanceReadMarker\(/g) ?? []).length, 2);
-  assert.equal(communicationRoute.includes("await advanceReadMarker(tx, threadId, userId, messageId)"), true);
+  // Exactly one caller now: the explicit read route. Sending no longer touches the marker at all, so the forward-only
+  // update is both the only way it moves and the only place the invariant has to hold.
+  assert.equal((communicationRoute.match(/await advanceReadMarker\(/g) ?? []).length, 1);
   assert.equal(communicationRoute.includes("await advanceReadMarker(db, threadId, userId, marker.messageId)"), true);
+  assert.equal(communicationRoute.includes("advanceReadMarker(tx,"), false, "the send transaction must not advance a read marker");
 });
 
 test("a stale mark answers with the authoritative marker rather than the one it asked for", () => {
@@ -276,8 +277,8 @@ test("a stale mark answers with the authoritative marker rather than the one it 
 
 test("the read marker update introduces no new lock ordering", () => {
   const advance = communicationRoute.slice(communicationRoute.indexOf("* Advances one participant's read marker"), communicationRoute.indexOf("type BookingMessageSendResult"));
-  // One row lock, on dm_participants, held only for its own statement. It takes no booking row lock and no advisory
-  // lock, so it cannot form a cycle with the send flow, which acquires those first and this participant row last.
+  // One row lock, on dm_participants, held only for its own statement, and now outside the send transaction
+  // entirely. It takes no booking row lock and no advisory lock, so it cannot form a cycle with the send flow.
   assert.equal(advance.includes("FOR UPDATE"), false);
   assert.equal(advance.includes("pg_advisory"), false);
   assert.equal(advance.includes("Lock ordering:"), true);

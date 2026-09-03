@@ -95,10 +95,14 @@ r.get("/bookings/:id/messages", requireAuth, async (req, res, next) => { try {
  * generic DM read route can leave behind, which cannot be compared), and a strictly later `(created_at, id)` pair --
  * the same ordering message pagination and unread counting use, so an equal timestamp is decided by id.
  *
+ * This is the ONLY thing that advances a booking read marker, and it is reached from exactly one caller: the
+ * explicit read route. The send path deliberately does not call it -- see `persistBookingMessage` for why sending
+ * is not evidence of reading.
+ *
  * Lock ordering: this statement takes exactly one row lock, on `dm_participants`, and holds it only for its own
- * duration. It acquires nothing else, so it cannot form a cycle with the send flow -- which takes the booking row
- * lock, then the conversation advisory lock, then writes `dm_messages` and finally this same participant row, always
- * in that order. No path acquires these in the opposite order, so no new deadlock is introduced.
+ * duration. It acquires nothing else and now runs outside the send transaction entirely, so it cannot form a cycle
+ * with the send flow -- which takes the booking row lock, then the conversation advisory lock, then writes
+ * `dm_messages`. No path acquires these in the opposite order, so no deadlock is introduced.
  */
 async function advanceReadMarker(executor: typeof db, threadId: string, userId: string, messageId: string): Promise<void> {
   await executor.execute(sql`
@@ -150,11 +154,18 @@ async function persistBookingMessage(bookingId: string, booking: { id: string; p
           .returning({ messageId: cateringBookingMessageRequests.messageId });
         if (claimed.length === 0) throw new DuplicateBookingMessage();
       }
-      // The sender's own read marker is the message they just sent, written from its stored `created_at` for the
-      // same reason the read route does: the pair, not a wall clock, is what unread is measured against. It goes
-      // through the same forward-only update, so the one invariant -- a read marker never moves backward -- holds on
-      // every path that touches it rather than only on the one the review happened to look at.
-      await advanceReadMarker(tx, threadId, userId, messageId);
+      // Sending deliberately does NOT touch the sender's read marker.
+      //
+      // The marker records which INCOMING messages the actor has actually been shown. Sending is not evidence of
+      // having seen anything: a customer sitting at the top of a thread with five unread provider messages, who
+      // types a reply, has read none of them -- yet advancing their marker to the message they just sent would
+      // sweep all five behind the boundary and report them read. Nor does it buy anything, because
+      // `unreadMessageCount` already excludes the actor's own messages with `ne(senderId, userId)`: an outgoing
+      // message can never count towards its own sender's unread total whether a marker moves or not.
+      //
+      // So the only path that may advance this actor's boundary is the explicit read route below, which acts on
+      // client evidence that a specific message was displayed. Fetching a page, loading the workspace, creating the
+      // conversation and sending a reply all leave read state exactly as they found it.
       return { kind: "sent", threadId, message } as const;
     });
   } catch (error) {

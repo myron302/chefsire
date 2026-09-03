@@ -90,36 +90,45 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     onError: (_error, attemptedId) => setReadMark((current) => failCateringReadMark(current, attemptedId)),
   });
 
-  // Watches the end of the thread, which takes TWO observations rather than one.
+  // Watches the end of the thread, which takes TWO observations rather than one -- and each of them has to be
+  // stamped with the message boundary it was collected for.
   //
   // The sentinel observer roots on the scroll container, so it answers "is the end of the list inside the thread's
   // own viewport". That is necessary but nowhere near sufficient: any thread short enough not to scroll satisfies
   // it permanently, wherever the container itself happens to be. Communication sits below several other workspace
   // sections, so on a phone that is routinely far below the fold -- and marking read on the container test alone
-  // reported messages as read that had never been on screen.
+  // reported messages as read that had never been on screen. The thread observer supplies the missing half by
+  // watching the container against the document viewport, with a null root.
   //
-  // The thread observer supplies the missing half by watching the container against the document viewport, with a
-  // null root. Only the conjunction advances the boundary. Both are re-created when the thread mounts or its
-  // contents change so neither ever watches a stale node, and both are disconnected on cleanup.
+  // Both being true is still not enough, because a boolean does not record WHAT it saw. So each callback stamps its
+  // observation with the `latestId` it closed over, and an observation for a different boundary discards the
+  // evidence held for the old one. That is what stops evidence collected while message A was the newest from
+  // authorizing message B, which arrives asynchronously and may well have pushed the sentinel out of view.
+  //
+  // Re-creating both observers whenever `latestId` changes is what supplies the fresh evidence: `observe()` always
+  // delivers an initial observation, so a reader genuinely sitting at the bottom gets a new positive for B, and a
+  // reader whom B pushed below the fold gets a negative instead. Both are disconnected on cleanup, so neither an
+  // old observer nor a record queued by one survives into the new boundary.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const thread = threadRef.current;
     if (!sentinel || !thread || typeof IntersectionObserver === "undefined") return;
     const sentinelObserver = new IntersectionObserver((entries) => {
-      setVisibility((current) => recordCateringSentinelVisibility(current, entries.some((entry) => entry.isIntersecting)));
+      setVisibility((current) => recordCateringSentinelVisibility(current, latestId, entries.some((entry) => entry.isIntersecting)));
     }, { root: threadRef.current ?? null, threshold: 0.01 });
     const threadObserver = new IntersectionObserver((entries) => {
-      setVisibility((current) => recordCateringThreadVisibility(current, entries.some((entry) => entry.isIntersecting)));
+      setVisibility((current) => recordCateringThreadVisibility(current, latestId, entries.some((entry) => entry.isIntersecting)));
     }, { root: null, threshold: 0.01 });
     sentinelObserver.observe(sentinel);
     threadObserver.observe(thread);
     return () => { sentinelObserver.disconnect(); threadObserver.disconnect(); };
   }, [latestId, messages.length]);
 
-  // The boundary advances only while BOTH observations hold. Neither one alone is evidence the participant saw
-  // anything, and an environment that reports neither leaves the messages unread rather than falsely read.
+  // The boundary advances only while BOTH observations hold AND both were collected for this exact `latestId`.
+  // Asking the question about a named boundary rather than in the abstract is what makes a change of `latestId`
+  // invalidate prior evidence immediately, in the same render, rather than waiting for an observer to report false.
   useEffect(() => {
-    if (!cateringThreadEndIsOnScreen(visibility)) return;
+    if (!cateringThreadEndIsOnScreen(visibility, latestId)) return;
     setViewed((current) => recordCateringViewedBoundary(current, latestId));
   }, [visibility, latestId]);
 

@@ -145,7 +145,7 @@ test("the thread container is observed against the document viewport, not only i
 
 test("neither observation alone advances the read boundary", () => {
   // The boundary moves through the conjunction and nothing else: no observer callback records it directly any more.
-  assert.equal(viewEffect.includes("cateringThreadEndIsOnScreen(visibility)"), true);
+  assert.equal(viewEffect.includes("cateringThreadEndIsOnScreen(visibility, latestId)"), true);
   const sentinelCallback = viewEffect.slice(viewEffect.indexOf("const sentinelObserver"), viewEffect.indexOf("const threadObserver"));
   assert.equal(sentinelCallback.includes("recordCateringViewedBoundary"), false, "the sentinel alone must not advance the boundary");
   const threadCallback = viewEffect.slice(viewEffect.indexOf("const threadObserver"), viewEffect.indexOf("sentinelObserver.observe"));
@@ -157,7 +157,7 @@ test("neither observation alone advances the read boundary", () => {
 
 test("the boundary advances from the conjunction, and refuses when it does not hold", () => {
   const conjunction = source.slice(source.indexOf("// The boundary advances only while BOTH observations hold"), source.indexOf("// Marking read happens at most ONCE per boundary"));
-  assert.equal(conjunction.includes("if (!cateringThreadEndIsOnScreen(visibility)) return;"), true);
+  assert.equal(conjunction.includes("if (!cateringThreadEndIsOnScreen(visibility, latestId)) return;"), true);
   assert.equal(conjunction.includes("recordCateringViewedBoundary(current, latestId)"), true);
   // Re-evaluated when either half changes or when newer messages arrive, so a reader sitting at the bottom of a
   // visible thread still tracks them.
@@ -198,4 +198,41 @@ test("the sentinel is presentational and adds no accessibility surface", () => {
 test("the viewed boundary is actor and booking scoped and resets with the conversation", () => {
   assert.equal(source.includes("setViewed((current) => hydrateCateringViewed(current, identity))"), true);
   assert.equal(source.includes("cateringReadableBoundary(viewed, identity)"), true);
+});
+
+
+/**
+ * IntersectionObserver reports asynchronously, so a boolean alone carries no record of WHAT it saw. Evidence
+ * collected while message A was newest must never authorize marking a message B that arrived afterwards -- and may
+ * well have pushed the sentinel out of view in the process.
+ */
+test("each observation is stamped with the boundary it was collected for", () => {
+  // Both callbacks pass the `latestId` they closed over, so the evidence records its own boundary.
+  assert.equal(viewEffect.includes("recordCateringSentinelVisibility(current, latestId, entries.some((entry) => entry.isIntersecting))"), true);
+  assert.equal(viewEffect.includes("recordCateringThreadVisibility(current, latestId, entries.some((entry) => entry.isIntersecting))"), true);
+  // And the conjunction is asked about a named boundary rather than in the abstract, which is what makes a change
+  // of latestId invalidate prior evidence in the same render instead of waiting for a callback to report false.
+  assert.equal(viewEffect.includes("cateringThreadEndIsOnScreen(visibility, latestId)"), true);
+  assert.equal(/cateringThreadEndIsOnScreen\(visibility\)/.test(source), false, "the boundary-free form must be gone");
+});
+
+test("a boundary change re-creates both observers, which is what supplies fresh evidence", () => {
+  // `latestId` is a dependency, so new observers are constructed for the new boundary; `observe()` always delivers
+  // an initial observation, so a reader still at the bottom gets a fresh positive and one pushed below the fold
+  // gets a negative. Neither inherits the old boundary's answer.
+  assert.equal(viewEffect.includes("}, [latestId, messages.length]);"), true);
+  assert.equal(viewEffect.includes("sentinelObserver.observe(sentinel)"), true);
+  assert.equal(viewEffect.includes("threadObserver.observe(thread)"), true);
+  // Old observers are torn down, so neither they nor a record they queued survive into the new boundary.
+  assert.equal(viewEffect.includes("sentinelObserver.disconnect(); threadObserver.disconnect();"), true);
+});
+
+test("the component never marks a boundary read from anything but this evidence", () => {
+  // The only writer of the viewed boundary is the conjunction effect. No other path records one.
+  assert.equal((source.match(/recordCateringViewedBoundary\(/g) ?? []).length, 1);
+  // The mark-read effect still reads the viewed boundary rather than the fetched one, and remains bounded to one
+  // attempt per boundary, so re-observing the same boundary cannot re-issue the mutation.
+  assert.equal(readEffect.includes("latestId"), false);
+  assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(readMark, viewedId, unreadCount)"), true);
+  assert.equal(readEffect.indexOf("startCateringReadMark(current, viewedId!)") < readEffect.indexOf("markRead.mutate(viewedId!)"), true);
 });
