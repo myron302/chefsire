@@ -117,12 +117,72 @@ test("a sentinel at the end of the thread is what advances the viewed boundary",
   assert.equal(viewEffect.includes("recordCateringViewedBoundary(current, latestId)"), true);
   // Rooted on the scroll container, so "visible" means visible inside the thread rather than merely in the page.
   assert.equal(viewEffect.includes("root: threadRef.current ?? null"), true);
-  // Re-created as the thread changes so it never observes a detached node, and disconnected on cleanup.
+  // Re-created as the thread changes so it never observes a detached node, and both are disconnected on cleanup.
   assert.equal(viewEffect.includes("}, [latestId, messages.length]);"), true);
-  assert.equal(viewEffect.includes("observer.disconnect()"), true);
+  assert.equal(viewEffect.includes("sentinelObserver.disconnect(); threadObserver.disconnect();"), true);
   // Environments without IntersectionObserver simply record nothing, which leaves messages unread rather than
   // falsely marking them read.
   assert.equal(viewEffect.includes(`typeof IntersectionObserver === "undefined"`), true);
+});
+
+/**
+ * Intra-container intersection is not evidence of being on screen.
+ *
+ * An observer rooted on the thread answers only "is the sentinel inside the thread's own viewport". Any thread
+ * short enough not to scroll satisfies that permanently, wherever the container itself is -- and Communication sits
+ * below several other workspace sections, so on a phone the whole card is routinely below the fold. Read state then
+ * advanced for messages nobody had seen. The container is therefore observed against the document viewport too, and
+ * only the conjunction may advance the boundary.
+ */
+test("the thread container is observed against the document viewport, not only its own", () => {
+  // Two observers, watching two different nodes, against two different roots.
+  assert.equal((viewEffect.match(/new IntersectionObserver/g) ?? []).length, 2);
+  assert.equal(viewEffect.includes("root: threadRef.current ?? null"), true, "the sentinel is judged within the thread");
+  assert.equal(viewEffect.includes("root: null"), true, "the thread is judged against the document viewport");
+  assert.equal(viewEffect.includes("sentinelObserver.observe(sentinel)"), true);
+  assert.equal(viewEffect.includes("threadObserver.observe(thread)"), true);
+});
+
+test("neither observation alone advances the read boundary", () => {
+  // The boundary moves through the conjunction and nothing else: no observer callback records it directly any more.
+  assert.equal(viewEffect.includes("cateringThreadEndIsOnScreen(visibility)"), true);
+  const sentinelCallback = viewEffect.slice(viewEffect.indexOf("const sentinelObserver"), viewEffect.indexOf("const threadObserver"));
+  assert.equal(sentinelCallback.includes("recordCateringViewedBoundary"), false, "the sentinel alone must not advance the boundary");
+  const threadCallback = viewEffect.slice(viewEffect.indexOf("const threadObserver"), viewEffect.indexOf("sentinelObserver.observe"));
+  assert.equal(threadCallback.includes("recordCateringViewedBoundary"), false, "the container alone must not advance the boundary");
+  // Each callback records only its own half.
+  assert.equal(sentinelCallback.includes("recordCateringSentinelVisibility"), true);
+  assert.equal(threadCallback.includes("recordCateringThreadVisibility"), true);
+});
+
+test("the boundary advances from the conjunction, and refuses when it does not hold", () => {
+  const conjunction = source.slice(source.indexOf("// The boundary advances only while BOTH observations hold"), source.indexOf("// Marking read happens at most ONCE per boundary"));
+  assert.equal(conjunction.includes("if (!cateringThreadEndIsOnScreen(visibility)) return;"), true);
+  assert.equal(conjunction.includes("recordCateringViewedBoundary(current, latestId)"), true);
+  // Re-evaluated when either half changes or when newer messages arrive, so a reader sitting at the bottom of a
+  // visible thread still tracks them.
+  assert.equal(conjunction.includes("}, [visibility, latestId]);"), true);
+});
+
+test("an environment that cannot observe leaves messages unread rather than falsely read", () => {
+  // Both halves start false, so nothing is marked read until each is positively observed.
+  assert.equal(source.includes("useState<CateringThreadVisibility>(EMPTY_CATERING_THREAD_VISIBILITY)"), true);
+  // A missing container is as disqualifying as a missing sentinel: there is no second observation to make.
+  assert.equal(viewEffect.includes("if (!sentinel || !thread || typeof IntersectionObserver === \"undefined\") return;"), true);
+});
+
+test("the visibility state resets with the conversation, so it never carries across bookings", () => {
+  const hydrate = source.slice(source.indexOf("useEffect(() => { setComposer("), source.indexOf("const query = useInfiniteQuery"));
+  assert.equal(hydrate.includes("setVisibility(EMPTY_CATERING_THREAD_VISIBILITY)"), true);
+  assert.equal(hydrate.includes("}, [identity]);"), true);
+});
+
+test("the thread container being observed is the same one the scroll restore uses", () => {
+  // One ref, one node: the element judged against the viewport is literally the scroll container the messages are
+  // rendered into, not a wrapper that could be visible while the list is not.
+  assert.equal(viewEffect.includes("const thread = threadRef.current;"), true);
+  assert.equal(source.includes(`<div ref={threadRef} className="max-h-96 overflow-y-auto`), true);
+  assert.equal(source.indexOf("<div ref={threadRef}") < source.indexOf("<div ref={sentinelRef}"), true, "the sentinel sits inside the observed container");
 });
 
 test("the sentinel is presentational and adds no accessibility surface", () => {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CATERING_MESSAGE_MAX_LENGTH } from "@shared/catering-booking-communication";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
-import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, cateringReadableBoundary, completeCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend } from "./catering-booking-communication-state";
+import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, cateringReadableBoundary, completeCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend , EMPTY_CATERING_THREAD_VISIBILITY, cateringThreadEndIsOnScreen, recordCateringSentinelVisibility, recordCateringThreadVisibility } from "./catering-booking-communication-state";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 const OTHER_TOKEN = "22222222-2222-4222-8222-222222222222";
@@ -273,4 +273,36 @@ test("a viewed boundary from another actor or booking is never reused", () => {
   assert.deepEqual(hydrateCateringViewed(seen, "other:booking"), { identity: "other:booking", viewedId: null });
   // Same conversation: what was displayed stays displayed across rerenders.
   assert.equal(hydrateCateringViewed(seen, "actor:booking"), seen);
+});
+
+
+/**
+ * "The end of the thread is on screen" is a conjunction of two independent observations, and the reason it has to
+ * be is concrete: the message list is its own scroll container, so intersection within it is satisfied by any
+ * thread short enough not to scroll -- including one sitting entirely below the fold, which Communication routinely
+ * is, several workspace sections down. Advancing the read boundary on that alone marked messages read unseen.
+ */
+test("nothing is on screen until both halves have been positively observed", () => {
+  assert.equal(cateringThreadEndIsOnScreen(EMPTY_CATERING_THREAD_VISIBILITY), false);
+  // The regression, exactly: the sentinel intersects its container while the container is below the fold.
+  const sentinelOnly = recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, true);
+  assert.equal(cateringThreadEndIsOnScreen(sentinelOnly), false, "intra-container intersection alone proves nothing");
+  // And the mirror case: the card is on screen but the reader is scrolled up inside a long thread.
+  const threadOnly = recordCateringThreadVisibility(EMPTY_CATERING_THREAD_VISIBILITY, true);
+  assert.equal(cateringThreadEndIsOnScreen(threadOnly), false);
+  // Only together.
+  assert.equal(cateringThreadEndIsOnScreen(recordCateringThreadVisibility(sentinelOnly, true)), true);
+});
+
+test("either half going away withdraws the observation, and the halves do not interfere", () => {
+  const both = recordCateringThreadVisibility(recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, true), true);
+  // Scrolling the page away from the card, or scrolling up within the thread, each stop it independently.
+  assert.equal(cateringThreadEndIsOnScreen(recordCateringThreadVisibility(both, false)), false);
+  assert.equal(cateringThreadEndIsOnScreen(recordCateringSentinelVisibility(both, false)), false);
+  // Each recorder writes only its own half.
+  assert.equal(recordCateringSentinelVisibility(both, false).threadOnScreen, true);
+  assert.equal(recordCateringThreadVisibility(both, false).sentinelInThread, true);
+  // An unchanged observation returns the same object, so a repeating observer callback cannot churn React state.
+  assert.equal(recordCateringSentinelVisibility(both, true), both);
+  assert.equal(recordCateringThreadVisibility(both, true), both);
 });

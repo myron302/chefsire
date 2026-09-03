@@ -1,29 +1,46 @@
 import fs from "fs";
 import path from "path";
 import { assertPrivateR2Isolated, deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Configured, putPrivateObject } from "./r2";
-import { assertPrivateRootIsolated, canonicalizePath, isSameOrInside } from "./private-storage-path";
+import { assertPrivateRootIsolatedFrom, canonicalizePath, isSameOrInside, type PublicStaticRoot } from "./private-storage-path";
+import { CLIENT_STATIC_DIR_CANDIDATES } from "./public-static-dirs";
 import { UPLOADS_DIR } from "./uploads-dir";
 
 /**
  * Private storage for booking documents. Nothing written here is reachable by URL: the local root is deliberately
- * outside the directory Express serves at /uploads, and the R2 side uses a bucket with no public base URL. Every
- * read is therefore gated by the authorized download route rather than by knowledge of a key.
+ * outside every directory Express serves statically -- the uploads tree and the built client tree alike -- and the
+ * R2 side uses a bucket with no public base URL. Every read is therefore gated by the authorized download route
+ * rather than by knowledge of a key.
  */
 export type PrivateStorageProvider = "r2" | "local";
 
 /**
+ * Every directory `server/app.ts` hands to `express.static`, each named for the startup message.
+ *
+ * There are two such mounts and neither is authenticated: UPLOADS_DIR at `/uploads`, and the built client bundle at
+ * `/`. A booking document under EITHER is downloadable by anyone who can guess its path, so both are checked. The
+ * client candidates come from the same module app.ts itself resolves its static directory with, so this list cannot
+ * drift from what is really being served, and all candidates are checked rather than only the one that exists right
+ * now -- which candidate wins depends on the working directory, not on the storage configuration.
+ */
+function publicStaticRoots(): PublicStaticRoot[] {
+  return [
+    { label: "public uploads directory served at /uploads", path: UPLOADS_DIR },
+    ...CLIENT_STATIC_DIR_CANDIDATES.map((dir) => ({ label: "built client directory served at /", path: dir })),
+  ];
+}
+
+/**
  * The private local root.
  *
- * `server/app.ts` serves UPLOADS_DIR at `/uploads` through `express.static`, with no authentication, so any booking
- * document that resolved inside that tree would be downloadable by anyone. Both the PRIVATE_STORAGE_DIR override
- * and the default are therefore validated against the same canonical UPLOADS_DIR the app itself mounts, and an
- * overlapping configuration throws rather than being quietly relocated: an operator who set an unsafe directory
- * must be told, not silently given a different one while believing theirs is in use.
+ * Both the PRIVATE_STORAGE_DIR override and the default are validated against every public static root above, and
+ * an overlapping configuration throws rather than being quietly relocated: an operator who set an unsafe directory
+ * must be told, not silently given a different one while believing theirs is in use. There is deliberately no
+ * fallback to a public location -- refusing to start is the only outcome that cannot leak a booking document.
  */
 function resolvePrivateRoot(): string {
   const configured = process.env.PRIVATE_STORAGE_DIR?.trim();
   const root = configured ? path.resolve(configured) : path.resolve(process.cwd(), "private-storage");
-  assertPrivateRootIsolated(root, UPLOADS_DIR);
+  assertPrivateRootIsolatedFrom(root, publicStaticRoots());
   return root;
 }
 export const PRIVATE_STORAGE_ROOT: string = resolvePrivateRoot();

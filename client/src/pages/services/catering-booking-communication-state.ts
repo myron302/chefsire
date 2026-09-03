@@ -165,6 +165,38 @@ export function cateringReadableBoundary(state: CateringViewedState, identity: s
 }
 
 /**
+ * Whether the end of the thread is genuinely on the participant's screen.
+ *
+ * Two things have to be true, and one alone is not evidence of the other. The message list is its own scroll
+ * container, so an IntersectionObserver rooted on it answers only "is the sentinel inside the container's own
+ * viewport" -- true for any thread short enough not to scroll, no matter where the container itself is. And the
+ * Communication section sits below several other workspace sections, so on a phone a short thread can satisfy that
+ * intra-container test while the whole card is still far below the fold. Marking read on it alone reports messages
+ * as read that were never on screen.
+ *
+ * The second observation, of the container against the document viewport, is what supplies the missing half. Both
+ * are held here rather than derived from one observer because they answer different questions and change
+ * independently: scrolling the page moves the container, scrolling the thread moves the sentinel.
+ */
+export type CateringThreadVisibility = { sentinelInThread: boolean; threadOnScreen: boolean };
+export const EMPTY_CATERING_THREAD_VISIBILITY: CateringThreadVisibility = { sentinelInThread: false, threadOnScreen: false };
+
+export function recordCateringSentinelVisibility(state: CateringThreadVisibility, visible: boolean): CateringThreadVisibility {
+  return state.sentinelInThread === visible ? state : { ...state, sentinelInThread: visible };
+}
+export function recordCateringThreadVisibility(state: CateringThreadVisibility, visible: boolean): CateringThreadVisibility {
+  return state.threadOnScreen === visible ? state : { ...state, threadOnScreen: visible };
+}
+/**
+ * The conjunction, and the only thing permitted to advance the viewed boundary. Defaulting both halves to false is
+ * what makes an environment with no IntersectionObserver, or a section never scrolled to, leave messages UNREAD
+ * rather than falsely read: an unproven observation is not an observation.
+ */
+export function cateringThreadEndIsOnScreen(state: CateringThreadVisibility): boolean {
+  return state.sentinelInThread && state.threadOnScreen;
+}
+
+/**
  * Automatic read-marking state, kept separate from the mutation's own pending/error flags.
  *
  * `markedId` is the last boundary the server confirmed. `attemptedId` is the last boundary an automatic attempt was

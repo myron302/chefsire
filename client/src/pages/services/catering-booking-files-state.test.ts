@@ -104,12 +104,19 @@ test("a booking that closed mid-upload is classified so the section can refetch"
  * completing older upload must never clear a replacement the participant has already chosen.
  */
 const submitted = (draft: ReturnType<typeof emptyCateringFileDraft<TestFile>>) => ({ requestId: draft.requestId!, visibility: draft.visibility! });
+/**
+ * A deterministic stand-in for `crypto.randomUUID`. The component passes the real one; minting is injected rather
+ * than called inside the reducer so these assertions can name the token that comes out, and so that resolving an
+ * upload stays a pure function of its inputs.
+ */
+let minted = 0;
+const mint = () => `minted-${++minted}`;
 const readyDraft = (over: { name?: string; token?: string; visibility?: "provider" | "shared" } = {}) =>
   chooseCateringVisibility(selectCateringFile(emptyCateringFileDraft<TestFile>("provider"), file({ name: over.name ?? "menu.pdf" }), over.token ?? "token-1"), over.visibility ?? "shared");
 
 test("a normal upload success clears a draft that is still the submitted one", () => {
   const draft = readyDraft();
-  const resolved = completeCateringFileUpload(draft, submitted(draft), "provider");
+  const resolved = completeCateringFileUpload(draft, submitted(draft), "provider", mint);
   assert.equal(resolved.cleared, true);
   assert.equal(resolved.next.file, null);
   assert.equal(resolved.next.requestId, null);
@@ -121,7 +128,7 @@ test("selecting a replacement file during a pending upload survives that upload 
   const attempt = submitted(first);
   // File B chosen while A is still uploading: a new selection mints a new token.
   const replacement = chooseCateringVisibility(selectCateringFile(first, file({ name: "invoice-b.pdf" }), "token-2"), "shared");
-  const resolved = completeCateringFileUpload(replacement, attempt, "provider");
+  const resolved = completeCateringFileUpload(replacement, attempt, "provider", mint);
   assert.equal(resolved.cleared, false);
   assert.equal(resolved.next, replacement);
   assert.equal(resolved.next.file?.name, "invoice-b.pdf");
@@ -132,20 +139,20 @@ test("changing visibility during a pending upload is not overwritten when that u
   const attempt = submitted(first);
   // Same file and token, but the participant switched the visibility for their next upload.
   const changed = chooseCateringVisibility(first, "provider");
-  const resolved = completeCateringFileUpload(changed, attempt, "provider");
+  const resolved = completeCateringFileUpload(changed, attempt, "provider", mint);
   assert.equal(resolved.cleared, false);
   assert.equal(resolved.next.visibility, "provider");
 });
 test("the DOM input is only reset when the draft was actually cleared", () => {
   const draft = readyDraft();
-  assert.equal(completeCateringFileUpload(draft, submitted(draft), "provider").cleared, true);
+  assert.equal(completeCateringFileUpload(draft, submitted(draft), "provider", mint).cleared, true);
   const replacement = selectCateringFile(draft, file({ name: "other.pdf" }), "token-2");
   // `cleared` is what the component keys the input reset on, so a preserved selection stays in the control.
-  assert.equal(completeCateringFileUpload(replacement, submitted(draft), "provider").cleared, false);
+  assert.equal(completeCateringFileUpload(replacement, submitted(draft), "provider", mint).cleared, false);
 });
 test("a stale success for an attempt that is no longer the draft changes nothing", () => {
   const draft = readyDraft({ token: "token-2" });
-  const resolved = completeCateringFileUpload(draft, { requestId: "token-1", visibility: "shared" }, "provider");
+  const resolved = completeCateringFileUpload(draft, { requestId: "token-1", visibility: "shared" }, "provider", mint);
   assert.equal(resolved.cleared, false);
   assert.equal(resolved.next, draft);
 });
@@ -162,4 +169,113 @@ test("idempotency is unaffected: one selection keeps one token across repeated u
   assert.equal(submitted(chooseCateringVisibility(draft, "provider")).requestId, "token-1");
   // Only a new selection is a new upload.
   assert.equal(selectCateringFile(draft, file({ name: "next.pdf" }), "token-2").requestId, "token-2");
+});
+
+
+/**
+ * The idempotency token of a SUCCEEDED upload is spent. The server resolves a repeat of that token to the file it
+ * already stored rather than performing the upload again -- which is exactly right for a retry, and exactly wrong
+ * for a draft the participant edited while the first upload was in flight. A preserved draft therefore has to be
+ * handed a new token, or pressing Upload reports success for a file that was never created.
+ */
+test("a draft preserved after a success is given a NEW token, so its upload is a real upload", () => {
+  const first = readyDraft({ token: "token-1", visibility: "shared" });
+  const attempt = submitted(first);
+  // The provider switches to provider-only while the shared upload is still in flight.
+  const changed = chooseCateringVisibility(first, "provider");
+  const resolved = completeCateringFileUpload(changed, attempt, "provider", mint);
+  assert.equal(resolved.cleared, false);
+  // The decisive assertion: the spent token is gone, so the next request cannot resolve to the stored file.
+  assert.notEqual(resolved.next.requestId, "token-1");
+  assert.equal(resolved.next.requestId, `minted-${minted}`);
+  // And nothing else about the participant's draft is disturbed.
+  assert.equal(resolved.next.visibility, "provider");
+  assert.equal(resolved.next.file, changed.file);
+  assert.equal(resolved.next.error, null);
+});
+
+test("without the new token the next upload would hit server idempotency on the spent one", () => {
+  const first = readyDraft({ token: "token-1", visibility: "shared" });
+  const changed = chooseCateringVisibility(first, "provider");
+  const resolved = completeCateringFileUpload(changed, submitted(first), "provider", mint);
+  // What the component would submit next. Under the old behaviour this was still `token-1`: the server would answer
+  // with the ALREADY SHARED file, the interface would report success, and no provider-only file would exist.
+  const next = submitted(resolved.next as typeof changed);
+  assert.notEqual(next.requestId, "token-1");
+  assert.equal(next.visibility, "provider");
+  // Two different intents now carry two different tokens, which is what makes them two files.
+  assert.notEqual(next.requestId, submitted(first).requestId);
+});
+
+test("a token is minted only when the preserved draft is still carrying the completed one", () => {
+  const before = minted;
+  const first = readyDraft({ token: "token-1" });
+  // A replacement selection already minted its own token when it was chosen; re-minting would discard it.
+  const replacement = chooseCateringVisibility(selectCateringFile(first, file({ name: "b.pdf" }), "token-2"), "shared");
+  const resolved = completeCateringFileUpload(replacement, submitted(first), "provider", mint);
+  assert.equal(resolved.next.requestId, "token-2");
+  assert.equal(minted, before, "no token may be minted for a draft that already has a fresh one");
+  // A draft that matched is cleared outright, and a cleared draft holds no token at all.
+  const matching = completeCateringFileUpload(first, submitted(first), "provider", mint);
+  assert.equal(matching.next.requestId, null);
+  assert.equal(minted, before, "clearing needs no token either");
+});
+
+test("retry idempotency is untouched: a failure never re-mints, so Try again resolves to one file", () => {
+  const draft = readyDraft({ token: "token-1" });
+  // Resolution happens on success alone. A failed or unresolved attempt leaves the draft -- and its token -- exactly
+  // as they were, so pressing Upload again resends `token-1` and an upload that actually succeeded is not doubled.
+  assert.equal(draft.requestId, "token-1");
+  assert.equal(submitted(draft).requestId, "token-1");
+  assert.equal(submitted(chooseCateringVisibility(draft, "provider")).requestId, "token-1");
+  // Repeated attempts at the same unresolved selection stay one upload.
+  assert.equal(submitted(draft).requestId, submitted(draft).requestId);
+});
+
+test("every editable draft field is covered, not visibility alone", () => {
+  // The rule is "same token but no longer the submitted draft", so it does not enumerate fields. Both of the ways a
+  // draft can currently be edited are checked here, and a field added later is covered without amending anything.
+  const first = readyDraft({ token: "token-1", visibility: "shared" });
+  const attempt = submitted(first);
+  // Visibility edited in place: same token, so it is re-minted.
+  assert.notEqual(completeCateringFileUpload(chooseCateringVisibility(first, "provider"), attempt, "provider", mint).next.requestId, "token-1");
+  // File replaced: `selectCateringFile` mints on selection, so that token is kept rather than replaced again.
+  const replaced = chooseCateringVisibility(selectCateringFile(first, file({ name: "c.pdf" }), "token-9"), "shared");
+  assert.equal(completeCateringFileUpload(replaced, attempt, "provider", mint).next.requestId, "token-9");
+  // Clearing the selection drops the token, and a draft with no token is not the submitted one either.
+  const cleared = selectCateringFile(first, null);
+  assert.equal(cleared.requestId, null);
+  assert.equal(completeCateringFileUpload(cleared, attempt, "provider", mint).next.requestId, null);
+});
+
+test("two deliberate uploads of the same document remain two files", () => {
+  const first = readyDraft({ token: "token-1", visibility: "shared" });
+  const changed = chooseCateringVisibility(first, "provider");
+  const second = completeCateringFileUpload(changed, submitted(first), "provider", mint).next;
+  const third = completeCateringFileUpload(second as typeof changed, submitted(second as typeof changed), "provider", mint).next;
+  // The second upload cleared, so it holds no token; the three intents never shared one.
+  assert.equal(third.requestId, null);
+  assert.notEqual(second.requestId, first.requestId);
+});
+
+test("a stale success for a token nobody is holding still changes nothing and mints nothing", () => {
+  const before = minted;
+  const draft = readyDraft({ token: "token-3" });
+  const resolved = completeCateringFileUpload(draft, { requestId: "token-1", visibility: "shared" }, "provider", mint);
+  assert.equal(resolved.next, draft, "the draft object itself is preserved, not rebuilt");
+  assert.equal(resolved.cleared, false);
+  assert.equal(minted, before);
+});
+
+test("minting is injected rather than reached for, so resolving an upload stays pure", () => {
+  // Called exactly once, and only on the re-mint path: the reducer never reaches for global crypto itself, which is
+  // what lets the component keep the DOM reset and the token mint outside React's state updater.
+  let calls = 0;
+  const counted = () => { calls += 1; return "fresh"; };
+  const first = readyDraft({ token: "token-1", visibility: "shared" });
+  assert.equal(completeCateringFileUpload(chooseCateringVisibility(first, "provider"), submitted(first), "provider", counted).next.requestId, "fresh");
+  assert.equal(calls, 1);
+  completeCateringFileUpload(first, submitted(first), "provider", counted);
+  completeCateringFileUpload(readyDraft({ token: "other" }), submitted(first), "provider", counted);
+  assert.equal(calls, 1, "no token is minted on the clear or stale paths");
 });

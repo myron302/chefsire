@@ -5,9 +5,11 @@ import path from "path";
  * Path safety for private booking storage, kept free of every other import so it can be reasoned about and tested
  * deterministically -- no environment, no module-level side effects.
  *
- * The invariant it protects is narrow and concrete. `server/app.ts` mounts `express.static(UPLOADS_DIR)` at
- * `/uploads`, which serves any file at or beneath the canonical public uploads root to anyone, with no
- * authentication at all. A booking document is private only if its bytes can never land inside that tree.
+ * The invariant it protects is narrow and concrete. `server/app.ts` mounts TWO unauthenticated `express.static`
+ * roots: the uploads directory at `/uploads`, and the built client bundle at `/`. Either one serves any file at or
+ * beneath it to anyone. A booking document is private only if its bytes can never land inside EITHER tree, so the
+ * check below takes the whole set of public static roots rather than the uploads directory alone -- a private root
+ * under the client build directory is exactly as exposed as one under uploads.
  *
  * "Inside" has to mean physically inside, not lexically inside. `PRIVATE_STORAGE_DIR=/safe-looking/private` passes
  * any purely lexical test even when `/safe-looking/private` is a symlink to the public uploads directory -- and the
@@ -94,24 +96,47 @@ export function privateRootConflict(privateRoot: string, publicUploadsRoot: stri
   return null;
 }
 
-const CONFLICT_REASONS: Record<PrivateRootConflict, string> = {
-  same: "it resolves to the public uploads directory itself",
-  inside_public: "it resolves inside the public uploads directory",
-  contains_public: "it contains the public uploads directory",
-  unresolvable: "its real filesystem location could not be established, so it cannot be shown to be private",
+const CONFLICT_REASONS: Record<PrivateRootConflict, (label: string) => string> = {
+  same: (label) => `it resolves to the ${label} itself`,
+  inside_public: (label) => `it resolves inside the ${label}`,
+  contains_public: (label) => `it contains the ${label}`,
+  unresolvable: () => "its real filesystem location could not be established, so it cannot be shown to be private",
 };
+
+/**
+ * One unauthenticated static root, named so an operator reading a startup failure knows which mount is at issue.
+ * The set is enumerated in `public-static-dirs.ts`, which `server/app.ts` itself consumes.
+ */
+export type PublicStaticRoot = { label: string; path: string };
+
+/**
+ * The first public static root the private root conflicts with, or null when it is isolated from all of them.
+ *
+ * Every root is checked, not merely the one currently being served: which client build directory Express picks
+ * depends on the process working directory, so a private root that is safe today only because a candidate does not
+ * exist yet is not safe. An `unresolvable` answer counts as a conflict for the same fail-closed reason a single
+ * root does -- an unverifiable relationship is not evidence of separation.
+ */
+export function firstPrivateRootConflict(privateRoot: string, publicRoots: readonly PublicStaticRoot[]): { root: PublicStaticRoot; conflict: PrivateRootConflict } | null {
+  for (const root of publicRoots) {
+    const conflict = privateRootConflict(privateRoot, root.path);
+    if (conflict) return { root, conflict };
+  }
+  return null;
+}
 
 /**
  * Fails closed on an unsafe private root.
  *
- * An explicitly configured PRIVATE_STORAGE_DIR that overlaps the public uploads tree is a configuration error, not
+ * An explicitly configured PRIVATE_STORAGE_DIR that overlaps any publicly served tree is a configuration error, not
  * something to work around: silently relocating the storage would leave the operator believing their chosen
  * directory is in use, and continuing would serve booking documents from an unauthenticated static mount. The
- * message names both canonical paths, so an alias is diagnosable even when the configured spelling looked fine.
+ * message names the offending mount and both canonical paths, so an alias is diagnosable even when the configured
+ * spelling looked fine.
  */
-export function assertPrivateRootIsolated(privateRoot: string, publicUploadsRoot: string): void {
-  const conflict = privateRootConflict(privateRoot, publicUploadsRoot);
-  if (!conflict) return;
+export function assertPrivateRootIsolatedFrom(privateRoot: string, publicRoots: readonly PublicStaticRoot[]): void {
+  const found = firstPrivateRootConflict(privateRoot, publicRoots);
+  if (!found) return;
   const describe = (target: string) => {
     try {
       const real = canonicalizePath(target);
@@ -121,9 +146,14 @@ export function assertPrivateRootIsolated(privateRoot: string, publicUploadsRoot
     }
   };
   throw new Error(
-    `Private booking storage cannot be used because ${CONFLICT_REASONS[conflict]}. ` +
-    `Booking documents must never resolve inside the publicly served uploads tree. ` +
-    `Private root: ${describe(privateRoot)}; public uploads root: ${describe(publicUploadsRoot)}. ` +
-    `Set PRIVATE_STORAGE_DIR to a directory that neither contains nor is contained by the uploads directory.`,
+    `Private booking storage cannot be used because ${CONFLICT_REASONS[found.conflict](found.root.label)}. ` +
+    `Booking documents must never resolve inside a publicly served static tree. ` +
+    `Private root: ${describe(privateRoot)}; ${found.root.label}: ${describe(found.root.path)}. ` +
+    `Set PRIVATE_STORAGE_DIR to a directory that neither contains nor is contained by any publicly served directory.`,
   );
+}
+
+/** The single-root form, kept for the uploads tree the private root was first checked against. */
+export function assertPrivateRootIsolated(privateRoot: string, publicUploadsRoot: string): void {
+  assertPrivateRootIsolatedFrom(privateRoot, [{ label: "public uploads directory", path: publicUploadsRoot }]);
 }

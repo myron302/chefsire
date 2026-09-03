@@ -65,11 +65,14 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     },
     // The draft is cleared only when it still corresponds to the attempt that just completed. The controls stay
     // usable during an upload, so a participant may already have chosen a replacement file or a different visibility
-    // -- clearing unconditionally would delete that newer selection, and the DOM input would lose it too.
+    // -- clearing unconditionally would delete that newer selection, and the DOM input would lose it too. A draft
+    // that survives is given a FRESH idempotency token when it is still carrying the completed attempt's, because
+    // that token is now spent: reusing it would make the next Upload resolve to the file already stored and report
+    // success for a file that was never created.
     onSuccess: (_body, attempt) => {
-      // Resolved against the current draft outside the state updater, so the DOM reset is never a side effect inside
-      // a function React may invoke twice.
-      const resolved = completeCateringFileUpload(draftRef.current, attempt, role);
+      // Resolved against the current draft outside the state updater, so neither the DOM reset nor minting a token
+      // is a side effect inside a function React may invoke twice.
+      const resolved = completeCateringFileUpload(draftRef.current, attempt, role, () => crypto.randomUUID());
       if (resolved.cleared && inputRef.current) inputRef.current.value = "";
       setDraft(resolved.next);
       invalidate();

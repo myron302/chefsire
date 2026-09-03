@@ -17,7 +17,7 @@ const source = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.
 const uploadMutation = source.slice(source.indexOf("const upload = useMutation"), source.indexOf("const remove = useMutation"));
 
 test("an upload success clears the draft only through the attempt comparison", () => {
-  assert.equal(uploadMutation.includes("completeCateringFileUpload(draftRef.current, attempt, role)"), true);
+  assert.equal(uploadMutation.includes("completeCateringFileUpload(draftRef.current, attempt, role, () => crypto.randomUUID())"), true);
   // The old unconditional reset is gone: it is what deleted a replacement selection.
   assert.equal(uploadMutation.includes("onSuccess: () => { setDraft(emptyCateringFileDraft(role));"), false);
   assert.equal(/onSuccess:[^}]*setDraft\(emptyCateringFileDraft\(role\)\)/.test(uploadMutation), false, "success must not reset the draft unconditionally");
@@ -70,4 +70,26 @@ test("upload and pending controls remain accessible", () => {
 test("no duplicate upload can be caused by the draft/attempt split", () => {
   // The submit guard still refuses while a request is pending, so the split introduces no second request.
   assert.equal(source.includes("if (!mayUploadCateringFile(draft, editable, upload.isPending) || !draft.file || !draft.visibility || !draft.requestId) return;"), true);
+});
+
+test("a preserved draft is handed a fresh idempotency token by the component", () => {
+  // The mint is injected as a callback rather than being reached for inside the reducer, and it is the real UUID
+  // source -- the same one a new file selection uses, so a re-minted draft is indistinguishable from a fresh one.
+  assert.equal(uploadMutation.includes("() => crypto.randomUUID()"), true);
+  assert.equal(source.includes("crypto.randomUUID()"), true);
+  // Minting happens outside the state updater for the same reason the DOM reset does: React may invoke an updater
+  // twice, and a token minted in there would differ between the two invocations.
+  assert.equal(/setDraft\(\(current\)[\s\S]*crypto\.randomUUID/.test(uploadMutation), false);
+  // The submit path reads the token off the live draft, so the re-minted one is what the next upload carries.
+  const submit = source.slice(source.indexOf("const submit = (event: FormEvent)"), source.indexOf("return <Card id=\"files\""));
+  assert.equal(submit.includes("requestId: draft.requestId"), true);
+});
+
+test("a failed upload still leaves the draft and its token untouched, so Try again stays idempotent", () => {
+  // Only onSuccess resolves the draft. onError does nothing but refresh the list, which is what keeps a retry of an
+  // unresolved attempt carrying the same token.
+  const onError = uploadMutation.slice(uploadMutation.indexOf("onError:"));
+  assert.equal(onError.includes("setDraft"), false, "a failure must not rewrite the draft");
+  assert.equal(onError.includes("randomUUID"), false, "a failure must not mint a new token");
+  assert.equal(onError.includes("invalidate()"), true);
 });

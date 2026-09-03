@@ -77,14 +77,32 @@ export function cateringFileDraftMatchesAttempt<F extends CateringSelectedFile>(
   return draft.requestId === attempt.requestId && draft.visibility === attempt.visibility;
 }
 /**
- * Resolves an upload that succeeded. The draft is cleared only when it still corresponds exactly to the attempt
- * that completed; a replacement file (which mints a new token) or a changed visibility both mean the draft belongs
- * to the participant's NEXT intended upload and must survive untouched. `cleared` tells the component whether the
- * file input's own DOM value may be reset, so a preserved selection is not wiped out of the control either.
+ * Resolves an upload that succeeded.
+ *
+ * The draft is cleared only when it still corresponds exactly to the attempt that completed; a draft the
+ * participant has since edited belongs to their NEXT intended upload and must survive untouched. `cleared` tells
+ * the component whether the file input's own DOM value may be reset, so a preserved selection is not wiped out of
+ * the control either.
+ *
+ * A preserved draft that still carries the COMPLETED attempt's token is re-minted, and that is the whole point of
+ * the mint parameter. `requestId` is the server's idempotency key: the moment an upload succeeds under it, that
+ * token is spent, and any later request carrying it is answered with the already-stored file rather than being
+ * performed. So a draft edited during a successful upload -- the provider who switches "Share with customer" to
+ * "Provider only" while the first upload is still in flight -- would, on pressing Upload, resolve to the ALREADY
+ * SHARED file while the interface reported success for a provider-only file that was never created. Re-minting is
+ * what makes the preserved draft a genuinely new upload.
+ *
+ * It is re-minted only when necessary. A draft whose token already differs from the attempt's is a fresh selection
+ * that minted its own token, and keeps it. Nothing here touches a failed or unresolved attempt: retry idempotency
+ * depends on that token being reused, and this runs on success alone.
+ *
+ * The condition is deliberately "same token but no longer matching" rather than a check against the visibility
+ * field specifically, so any editable field added to the draft later is covered without amending this function.
  */
-export function completeCateringFileUpload<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, attempt: CateringFileAttempt, role: "provider" | "customer"): { next: CateringFileDraft<F>; cleared: boolean } {
-  if (!cateringFileDraftMatchesAttempt(draft, attempt)) return { next: draft, cleared: false };
-  return { next: emptyCateringFileDraft<F>(role), cleared: true };
+export function completeCateringFileUpload<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, attempt: CateringFileAttempt, role: "provider" | "customer", mintRequestId: () => string): { next: CateringFileDraft<F>; cleared: boolean } {
+  if (cateringFileDraftMatchesAttempt(draft, attempt)) return { next: emptyCateringFileDraft<F>(role), cleared: true };
+  if (draft.requestId !== attempt.requestId) return { next: draft, cleared: false };
+  return { next: { ...draft, requestId: mintRequestId() }, cleared: false };
 }
 
 /** Upload is offered only once a valid file and an explicit visibility are both present on an editable booking. */
