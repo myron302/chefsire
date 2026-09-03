@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringReadableBoundary, cateringThreadEndIsOnScreen, recordCateringSentinelVisibility, recordCateringThreadVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringComposerState, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
+import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringReadableBoundary, cateringThreadEndIsOnScreen, recordCateringSentinelVisibility, recordCateringViewportVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringComposerState, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
 
 type SendPayload = { text: string; clientRequestId: string };
 /**
@@ -90,15 +90,19 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     onError: (_error, attemptedId) => setReadMark((current) => failCateringReadMark(current, attemptedId)),
   });
 
-  // Watches the end of the thread, which takes TWO observations rather than one -- and each of them has to be
-  // stamped with the message boundary it was collected for.
+  // Watches the end-of-thread sentinel, which takes TWO observations OF THAT SAME ELEMENT, and each of them has to
+  // be stamped with the message boundary it was collected for.
   //
-  // The sentinel observer roots on the scroll container, so it answers "is the end of the list inside the thread's
-  // own viewport". That is necessary but nowhere near sufficient: any thread short enough not to scroll satisfies
-  // it permanently, wherever the container itself happens to be. Communication sits below several other workspace
-  // sections, so on a phone that is routinely far below the fold -- and marking read on the container test alone
-  // reported messages as read that had never been on screen. The thread observer supplies the missing half by
-  // watching the container against the document viewport, with a null root.
+  // The two observers differ only in their root. Rooted on the scroll container, the answer is "is the end of the
+  // list inside the thread's own viewport" -- necessary but nowhere near sufficient, because any thread short
+  // enough not to scroll satisfies it permanently, wherever the container itself happens to be. Rooted on the
+  // document, the answer is "is the end of the list inside the browser viewport".
+  //
+  // The second observer must watch the SENTINEL, not the container. Observing the container was not enough: a
+  // reader scrolled to the bottom of a tall thread whose top edge has just scrolled into view makes the container
+  // intersect the document viewport while the sentinel is still physically below the fold. Both halves read true
+  // and the newest message was recorded viewed without ever being on screen. Only the sentinel's own position
+  // answers the question that is actually being asked.
   //
   // Both being true is still not enough, because a boolean does not record WHAT it saw. So each callback stamps its
   // observation with the `latestId` it closed over, and an observation for a different boundary discards the
@@ -112,16 +116,18 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const thread = threadRef.current;
+    // The container is required as the first observer's ROOT. Without it that observer would silently fall back to
+    // the document and both would answer the same question, so an absent container fails closed instead.
     if (!sentinel || !thread || typeof IntersectionObserver === "undefined") return;
-    const sentinelObserver = new IntersectionObserver((entries) => {
+    const threadRootObserver = new IntersectionObserver((entries) => {
       setVisibility((current) => recordCateringSentinelVisibility(current, latestId, entries.some((entry) => entry.isIntersecting)));
-    }, { root: threadRef.current ?? null, threshold: 0.01 });
-    const threadObserver = new IntersectionObserver((entries) => {
-      setVisibility((current) => recordCateringThreadVisibility(current, latestId, entries.some((entry) => entry.isIntersecting)));
+    }, { root: thread, threshold: 0.01 });
+    const viewportObserver = new IntersectionObserver((entries) => {
+      setVisibility((current) => recordCateringViewportVisibility(current, latestId, entries.some((entry) => entry.isIntersecting)));
     }, { root: null, threshold: 0.01 });
-    sentinelObserver.observe(sentinel);
-    threadObserver.observe(thread);
-    return () => { sentinelObserver.disconnect(); threadObserver.disconnect(); };
+    threadRootObserver.observe(sentinel);
+    viewportObserver.observe(sentinel);
+    return () => { threadRootObserver.disconnect(); viewportObserver.disconnect(); };
   }, [latestId, messages.length]);
 
   // The boundary advances only while BOTH observations hold AND both were collected for this exact `latestId`.

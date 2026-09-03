@@ -315,3 +315,46 @@ export function cateringActivityTaskTitle(activity: { eventType: string; metadat
   const title = (metadata as Record<string, unknown>).taskTitle;
   return typeof title === "string" && title.trim() !== "" ? title : null;
 }
+
+
+/**
+ * Deep-linked workspace sections.
+ *
+ * A booking notification links to `.../bookings/<id>#communication` or `#files`. On a COLD load that fragment is
+ * resolved by the browser while the workspace is still showing its loading state, so the target element does not
+ * exist yet -- and nothing resolves it a second time once the data lands. The participant is told they have a new
+ * message and dropped at the top of the page instead.
+ *
+ * The fix is a second resolution after the workspace mounts, which needs two pure pieces: which section a fragment
+ * names, and whether that section has already been landed on. The landing record is what stops an ordinary rerender
+ * from re-scrolling or re-stealing focus, and it is why this is a value rather than a bare boolean.
+ */
+export const CATERING_WORKSPACE_SECTION_IDS = ["communication", "files", "activity"] as const;
+
+/** The section a location fragment names, or null for an absent, empty or unrecognised one. */
+export function cateringWorkspaceSectionFromHash(hash: string): string | null {
+  const id = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (id === "") return null;
+  // An allowlist rather than a `getElementById` on whatever the fragment says: a hostile or stale link must not be
+  // able to name an arbitrary element for the workspace to scroll to and focus.
+  return (CATERING_WORKSPACE_SECTION_IDS as readonly string[]).includes(id) ? id : null;
+}
+
+/** Which fragment has already been landed on. Held in a ref by the component, so recording one causes no render. */
+export type CateringSectionLanding = { landedOn: string | null };
+export const EMPTY_CATERING_SECTION_LANDING: CateringSectionLanding = { landedOn: null };
+
+/**
+ * Whether to scroll and focus. A null section (no fragment, or one naming nothing) never lands, and a section
+ * already landed on never lands again -- so a refetch, a rerender, or the effect re-running does nothing at all.
+ */
+export function shouldLandOnCateringSection(state: CateringSectionLanding, section: string | null): boolean {
+  return section !== null && state.landedOn !== section;
+}
+/**
+ * Records the landing. Navigating away and back re-lands, because the fragment in between differs: this remembers
+ * the last fragment acted on, not every fragment ever seen, which is what keeps back/forward working.
+ */
+export function recordCateringSectionLanding(state: CateringSectionLanding, section: string | null): CateringSectionLanding {
+  return state.landedOn === section ? state : { landedOn: section };
+}

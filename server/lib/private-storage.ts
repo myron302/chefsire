@@ -100,11 +100,40 @@ export async function writePrivateObject(provider: PrivateStorageProvider, stora
   // rather than writing through it. O_EXCL is not usable here because an overwrite of an existing object is legal.
   const handle = await fs.promises.open(target, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | O_NOFOLLOW, 0o600);
   try {
-    await handle.write(body);
+    await writeWholeBuffer(handle, body);
     // An object that already existed keeps whatever mode it had, so the permissions are asserted rather than assumed.
     await handle.chmod(0o600);
   } finally {
     await handle.close();
+  }
+}
+
+/**
+ * Writes every byte of `body`, or throws.
+ *
+ * `FileHandle.write` is not obliged to persist the whole buffer in one call -- it reports `bytesWritten`, which may
+ * be short, and a single unchecked call is how a truncated document is produced. That failure is silent in the
+ * worst possible way: the metadata row still records the original byte size and SHA-256, the route still answers
+ * 201, and the shortfall is only discovered when someone downloads the file. So the result is looped on until the
+ * whole buffer is accounted for, and only then does the write count as successful.
+ *
+ * `writeFile` is not used here because the secure open is the point: the handle carries O_NOFOLLOW and the mode
+ * this module depends on, and re-opening by path to reach a simpler API would give back the very symlink window
+ * that flag exists to close. Looping on the handle keeps the hardened descriptor and adds the completeness
+ * guarantee to it.
+ *
+ * A call that reports zero progress throws rather than spinning: a descriptor that accepts nothing is not going to
+ * start, and an infinite loop inside a request is worse than a failed upload. Every other error propagates
+ * untouched, so the caller's compensation path treats it as the uncertain write it is.
+ */
+async function writeWholeBuffer(handle: fs.promises.FileHandle, body: Buffer): Promise<void> {
+  let written = 0;
+  while (written < body.length) {
+    // Explicit offset and length, and an explicit file position, so a resumed write continues from exactly the next
+    // byte rather than relying on the descriptor's implicit cursor after a partial write.
+    const { bytesWritten } = await handle.write(body, written, body.length - written, written);
+    if (bytesWritten <= 0) throw new Error("Private storage write made no progress");
+    written += bytesWritten;
   }
 }
 

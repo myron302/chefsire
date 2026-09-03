@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CATERING_MESSAGE_MAX_LENGTH } from "@shared/catering-booking-communication";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
-import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, cateringReadableBoundary, completeCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend , EMPTY_CATERING_THREAD_VISIBILITY, cateringThreadEndIsOnScreen, recordCateringSentinelVisibility, recordCateringThreadVisibility } from "./catering-booking-communication-state";
+import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, cateringReadableBoundary, completeCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend , EMPTY_CATERING_THREAD_VISIBILITY, cateringThreadEndIsOnScreen, recordCateringSentinelVisibility, recordCateringViewportVisibility } from "./catering-booking-communication-state";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 const OTHER_TOKEN = "22222222-2222-4222-8222-222222222222";
@@ -288,7 +288,7 @@ test("a viewed boundary from another actor or booking is never reused", () => {
  */
 const A = "message-a";
 const B = "message-b";
-const bothFor = (id: string) => recordCateringThreadVisibility(recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, id, true), id, true);
+const bothFor = (id: string) => recordCateringViewportVisibility(recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, id, true), id, true);
 
 test("nothing is on screen until both halves have been positively observed", () => {
   assert.equal(cateringThreadEndIsOnScreen(EMPTY_CATERING_THREAD_VISIBILITY, A), false);
@@ -297,7 +297,7 @@ test("nothing is on screen until both halves have been positively observed", () 
   const sentinelOnly = recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, A, true);
   assert.equal(cateringThreadEndIsOnScreen(sentinelOnly, A), false, "intra-container intersection alone proves nothing");
   // And the mirror case: the card is on screen but the reader is scrolled up inside a long thread.
-  const threadOnly = recordCateringThreadVisibility(EMPTY_CATERING_THREAD_VISIBILITY, A, true);
+  const threadOnly = recordCateringViewportVisibility(EMPTY_CATERING_THREAD_VISIBILITY, A, true);
   assert.equal(cateringThreadEndIsOnScreen(threadOnly, A), false);
   // Only together.
   assert.equal(cateringThreadEndIsOnScreen(bothFor(A), A), true);
@@ -306,14 +306,14 @@ test("nothing is on screen until both halves have been positively observed", () 
 test("either half going away withdraws the observation, and the halves do not interfere", () => {
   const both = bothFor(A);
   // Scrolling the page away from the card, or scrolling up within the thread, each stop it independently.
-  assert.equal(cateringThreadEndIsOnScreen(recordCateringThreadVisibility(both, A, false), A), false);
+  assert.equal(cateringThreadEndIsOnScreen(recordCateringViewportVisibility(both, A, false), A), false);
   assert.equal(cateringThreadEndIsOnScreen(recordCateringSentinelVisibility(both, A, false), A), false);
   // Each recorder writes only its own half.
-  assert.equal(recordCateringSentinelVisibility(both, A, false).threadOnScreen, true);
-  assert.equal(recordCateringThreadVisibility(both, A, false).sentinelInThread, true);
+  assert.equal(recordCateringSentinelVisibility(both, A, false).sentinelInViewport, true);
+  assert.equal(recordCateringViewportVisibility(both, A, false).sentinelInThread, true);
   // An unchanged observation returns the same object, so a repeating observer callback cannot churn React state.
   assert.equal(recordCateringSentinelVisibility(both, A, true), both);
-  assert.equal(recordCateringThreadVisibility(both, A, true), both);
+  assert.equal(recordCateringViewportVisibility(both, A, true), both);
 });
 
 test("6. evidence collected for A can never authorize marking B viewed", () => {
@@ -323,7 +323,7 @@ test("6. evidence collected for A can never authorize marking B viewed", () => {
   assert.equal(cateringThreadEndIsOnScreen(evidence, A), true);
   assert.equal(cateringThreadEndIsOnScreen(evidence, B), false, "stale evidence must not carry to a new boundary");
   // Both booleans are still true; what disqualifies it is that they were not collected for B.
-  assert.equal(evidence.sentinelInThread && evidence.threadOnScreen, true);
+  assert.equal(evidence.sentinelInThread && evidence.sentinelInViewport, true);
   assert.equal(evidence.observedId, A);
 });
 
@@ -336,7 +336,7 @@ test("7. a boundary change invalidates prior positive evidence immediately, with
   // positive for B cannot combine with A's leftover other half.
   const sentinelForB = recordCateringSentinelVisibility(evidence, B, true);
   assert.equal(sentinelForB.observedId, B);
-  assert.equal(sentinelForB.threadOnScreen, false, "the other half must not survive the rebase");
+  assert.equal(sentinelForB.sentinelInViewport, false, "the other half must not survive the rebase");
   assert.equal(cateringThreadEndIsOnScreen(sentinelForB, B), false);
 });
 
@@ -347,7 +347,7 @@ test("8. fresh dual-positive observations for B allow B to become viewed", () =>
   assert.equal(cateringThreadEndIsOnScreen(forB, B), true);
   // Rebuilt from A's evidence rather than from nothing, the answer is the same -- what matters is that both halves
   // were re-observed for B.
-  const rebuilt = recordCateringThreadVisibility(recordCateringSentinelVisibility(bothFor(A), B, true), B, true);
+  const rebuilt = recordCateringViewportVisibility(recordCateringSentinelVisibility(bothFor(A), B, true), B, true);
   assert.equal(cateringThreadEndIsOnScreen(rebuilt, B), true);
   // And A, now behind the boundary, is no longer what the evidence speaks to.
   assert.equal(cateringThreadEndIsOnScreen(rebuilt, A), false);
@@ -356,7 +356,7 @@ test("8. fresh dual-positive observations for B allow B to become viewed", () =>
 test("9. one observer positive for B is never enough, whichever one it is", () => {
   const sentinelOnly = recordCateringSentinelVisibility(bothFor(A), B, true);
   assert.equal(cateringThreadEndIsOnScreen(sentinelOnly, B), false);
-  const threadOnly = recordCateringThreadVisibility(bothFor(A), B, true);
+  const threadOnly = recordCateringViewportVisibility(bothFor(A), B, true);
   assert.equal(cateringThreadEndIsOnScreen(threadOnly, B), false);
   // A negative arriving for the new boundary is likewise not evidence of anything.
   assert.equal(cateringThreadEndIsOnScreen(recordCateringSentinelVisibility(bothFor(A), B, false), B), false);
@@ -367,7 +367,7 @@ test("10 & 14. with no evidence at all, and for an unloaded boundary, nothing is
   assert.equal(cateringThreadEndIsOnScreen(EMPTY_CATERING_THREAD_VISIBILITY, A), false);
   assert.equal(EMPTY_CATERING_THREAD_VISIBILITY.observedId, null);
   assert.equal(EMPTY_CATERING_THREAD_VISIBILITY.sentinelInThread, false);
-  assert.equal(EMPTY_CATERING_THREAD_VISIBILITY.threadOnScreen, false);
+  assert.equal(EMPTY_CATERING_THREAD_VISIBILITY.sentinelInViewport, false);
   // A null latestId -- nothing loaded -- can never be viewed, so an unloaded message can never be marked read.
   assert.equal(cateringThreadEndIsOnScreen(bothFor(A), null), false);
   assert.equal(cateringThreadEndIsOnScreen(EMPTY_CATERING_THREAD_VISIBILITY, null), false);
@@ -377,13 +377,13 @@ test("10 & 14. with no evidence at all, and for an unloaded boundary, nothing is
 
 test("11 & 12. below the document fold and below the thread viewport both stay unread", () => {
   // Short thread, sentinel intersects its own container, but the card is below the page fold.
-  const belowFold = recordCateringThreadVisibility(recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, A, true), A, false);
+  const belowFold = recordCateringViewportVisibility(recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, A, true), A, false);
   assert.equal(cateringThreadEndIsOnScreen(belowFold, A), false);
   // Card on screen, but the reader is scrolled up inside a long thread so the end of it is not.
-  const scrolledUp = recordCateringThreadVisibility(recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, A, false), A, true);
+  const scrolledUp = recordCateringViewportVisibility(recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, A, false), A, true);
   assert.equal(cateringThreadEndIsOnScreen(scrolledUp, A), false);
   // Scrolling the card into view afterwards is a legitimate read of A -- the evidence is still A's.
-  assert.equal(cateringThreadEndIsOnScreen(recordCateringThreadVisibility(belowFold, A, true), A), true);
+  assert.equal(cateringThreadEndIsOnScreen(recordCateringViewportVisibility(belowFold, A, true), A), true);
 });
 
 test("repeated identical observations produce no new state, so no mutation loop is possible", () => {
@@ -393,10 +393,52 @@ test("repeated identical observations produce no new state, so no mutation loop 
   let state = both;
   for (let i = 0; i < 5; i += 1) {
     state = recordCateringSentinelVisibility(state, A, true);
-    state = recordCateringThreadVisibility(state, A, true);
+    state = recordCateringViewportVisibility(state, A, true);
   }
   assert.equal(state, both);
   // Recording the same viewed boundary twice is likewise a no-op.
   const viewed = recordCateringViewedBoundary(hydrateCateringViewed(EMPTY_CATERING_VIEWED, "actor:booking"), A);
   assert.equal(recordCateringViewedBoundary(viewed, A), viewed);
+});
+
+
+/**
+ * The document-viewport half must be about the SENTINEL, not the thread container.
+ *
+ * Observing the container was the original second half, and it let this through: a tall thread the reader is
+ * scrolled to the bottom of, whose top edge has just come into view. The container intersects the browser viewport,
+ * the sentinel intersects the container's own viewport, and the sentinel is still physically below the fold. Both
+ * booleans true, nothing seen. Both observations are now of the sentinel, differing only in their root.
+ */
+test("1. container partially visible but sentinel below the browser viewport stays unread", () => {
+  // The exact failure case: in-thread yes, in-browser-viewport no.
+  const state = recordCateringViewportVisibility(recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, A, true), A, false);
+  assert.equal(state.sentinelInThread, true);
+  assert.equal(state.sentinelInViewport, false);
+  assert.equal(cateringThreadEndIsOnScreen(state, A), false);
+});
+
+test("2 & 3. one root positive is never enough, whichever root it is", () => {
+  const threadOnly = recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, A, true);
+  assert.equal(cateringThreadEndIsOnScreen(threadOnly, A), false, "thread scroll viewport alone");
+  const viewportOnly = recordCateringViewportVisibility(EMPTY_CATERING_THREAD_VISIBILITY, A, true);
+  assert.equal(cateringThreadEndIsOnScreen(viewportOnly, A), false, "browser viewport alone");
+});
+
+test("4. the sentinel visible in BOTH roots is what allows viewed", () => {
+  assert.equal(cateringThreadEndIsOnScreen(bothFor(A), A), true);
+  // And either root going false withdraws it again -- scrolling the page away, or scrolling up inside the thread.
+  assert.equal(cateringThreadEndIsOnScreen(recordCateringViewportVisibility(bothFor(A), A, false), A), false);
+  assert.equal(cateringThreadEndIsOnScreen(recordCateringSentinelVisibility(bothFor(A), A, false), A), false);
+});
+
+test("5 & 6. stale dual-root evidence for A cannot mark B, which needs fresh dual-root evidence", () => {
+  const staleForA = bothFor(A);
+  assert.equal(cateringThreadEndIsOnScreen(staleForA, B), false);
+  // One fresh root for B does not combine with A's leftover other root.
+  const oneFreshRoot = recordCateringSentinelVisibility(staleForA, B, true);
+  assert.equal(oneFreshRoot.sentinelInViewport, false, "the other root must not survive the rebase");
+  assert.equal(cateringThreadEndIsOnScreen(oneFreshRoot, B), false);
+  // Both roots re-observed for B is what allows it.
+  assert.equal(cateringThreadEndIsOnScreen(recordCateringViewportVisibility(oneFreshRoot, B, true), B), true);
 });

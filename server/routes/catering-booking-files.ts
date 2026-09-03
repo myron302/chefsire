@@ -144,6 +144,25 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
     // the original request did persist is still in the (read-only) list, so refreshing shows the truth.
     if (!mayMutateCateringFiles(booking.status as never)) return res.status(409).json({ message: CATERING_FILE_READ_ONLY_MESSAGE, code: CATERING_WORKSPACE_READ_ONLY_CODE });
 
+    // An already-accepted token is resolved HERE, before a single byte is written.
+    //
+    // This is the situation a retry exists for: the first upload committed its object and its metadata row, the
+    // response was lost, and the client resent the same token. Writing another object first made recovery depend on
+    // storage being healthy at exactly the moment it is most likely not to be -- a full disk or an unreachable
+    // bucket failed the retry even though the file was already safely persisted, which is precisely what the token
+    // was meant to prevent. Nothing about this request's bytes can change an outcome that already happened, so the
+    // token is resolved before the write rather than after it.
+    //
+    // Resolving early creates no object, no metadata row, no activity event, no notification and consumes no quota
+    // slot -- it returns the persisted file and stops. The lookup inside the transaction stays exactly as it was:
+    // it is the concurrency backstop for two simultaneous FIRST attempts, which this uncommitted-at-read-time check
+    // cannot see, and the unique index is the backstop behind that. The terminal-state guard above still runs
+    // first, so a retry arriving after the booking closed is refused rather than resolved historically.
+    if (fields.clientRequestId) {
+      const accepted = await duplicateFile(id, userId, fields.clientRequestId);
+      if (accepted) return respondWithAcceptedUpload(res, booking, userId, accepted);
+    }
+
     // Extension, declared MIME and the actor's allowed visibilities are resolved first; each refusal is distinct, so
     // a customer asking for provider visibility is never reported as a rejected file type.
     const upload = resolveCateringUpload({ role, visibility: fields.visibility, originalName: file.originalname ?? "", declaredMimeType: file.mimetype ?? "", byteSize: file.size });
@@ -240,11 +259,7 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
         // read back now that it has committed.
         const existing = result.file ?? await duplicateFile(id, userId, fields.clientRequestId!);
         if (!existing) return res.status(409).json({ message: "This upload could not be resolved. Reload the file list." });
-        // The original upload was accepted and its file has since been removed. Reporting it as an active file would
-        // be untrue, and reporting the retry as a new upload would be worse, so it says exactly what happened.
-        if (existing.deletedAt !== null) return res.status(409).json({ message: "This upload was already accepted, and that file has since been removed from the booking." });
-        const names = await uploaderNames([existing.uploadedBy]);
-        return res.status(200).json({ file: serializeBookingFile(existing, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, status: booking.status as never, names }), duplicate: true });
+        return respondWithAcceptedUpload(res, booking, userId, existing);
       }
       return res.status(409).json({ message: CATERING_FILE_READ_ONLY_MESSAGE, code: CATERING_WORKSPACE_READ_ONLY_CODE });
     }
@@ -266,6 +281,19 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
     if (stored) await compensateStoredObject(stored);
     invalid(error, res, next);
   }
+}
+
+/**
+ * Answers a retry with the file its token already produced. Both resolution points -- the early lookup before any
+ * storage write, and the in-transaction lookup under the collection lock -- answer through this, so a retry gets
+ * the same response whichever one caught it.
+ */
+async function respondWithAcceptedUpload(res: Res, booking: { providerId: string; customerId: string; status: string }, userId: string, existing: CateringBookingFile) {
+  // The original upload was accepted and its file has since been removed. Reporting it as an active file would be
+  // untrue, and reporting the retry as a new upload would be worse, so it says exactly what happened.
+  if (existing.deletedAt !== null) return res.status(409).json({ message: "This upload was already accepted, and that file has since been removed from the booking." });
+  const names = await uploaderNames([existing.uploadedBy]);
+  return res.status(200).json({ file: serializeBookingFile(existing, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, status: booking.status as never, names }), duplicate: true });
 }
 
 /**
