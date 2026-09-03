@@ -13,6 +13,15 @@ export const CATERING_FILE_STORAGE_PROVIDERS = ["r2", "local"] as const;
 /** Launch maximum per booking file, enforced by multer, by the content check, and by a database constraint. */
 export const CATERING_FILE_MAX_BYTES = 15 * 1024 * 1024;
 /** Launch maximum of live (non-tombstoned) files per booking, enforced under the booking file collection lock. */
+/**
+ * Launch maximum of live (non-tombstoned) files per booking, applied PER VISIBILITY BUCKET -- up to this many
+ * shared files, and independently up to this many provider-private files.
+ *
+ * The buckets are isolated because a shared outcome must never depend on provider-only state. A single combined
+ * quota leaked exactly that: a customer who could enumerate the shared files and was then refused the next shared
+ * upload could infer that undisclosed provider-private files were occupying the remaining slots. The value is
+ * unchanged, so the shared quota a customer experiences is exactly what it was before.
+ */
 export const CATERING_BOOKING_FILE_LIMIT = 100;
 export const CATERING_FILE_PAGE_DEFAULT = 20;
 export const CATERING_FILE_PAGE_MAXIMUM = 50;
@@ -62,6 +71,27 @@ export const cateringFileUploadFieldsSchema = z.object({
   visibility: z.enum(CATERING_FILE_VISIBILITIES),
   clientRequestId: z.string().uuid().optional(),
 }).strict();
+
+/**
+ * The complete multipart shape of a booking file upload, used to bound the parser itself.
+ *
+ * Multer accumulates every part into memory BEFORE the route can check who is asking, so these limits -- not the
+ * schema above -- are what stops an authenticated caller from spending process memory on a booking they do not own.
+ * They are derived from the real contract rather than picked generously: exactly one file part, exactly the two
+ * text fields above, and nothing else.
+ */
+export const CATERING_UPLOAD_MULTIPART = {
+  /** The one `file` part. */
+  files: 1,
+  /** `visibility` and `clientRequestId`. */
+  fields: 2,
+  /** The two fields plus the file. */
+  parts: 3,
+  /** Longest accepted value is a 36-character UUID; this leaves room without allowing a payload. */
+  fieldSize: 256,
+  /** Longest accepted name is `clientRequestId`, at 15 characters. */
+  fieldNameSize: 64,
+} as const;
 export const cateringBookingFilePageSchema = z.object({
   cursor: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(CATERING_FILE_PAGE_MAXIMUM).default(CATERING_FILE_PAGE_DEFAULT),
@@ -101,9 +131,32 @@ export function mayDeleteCateringFile(actorId: string, file: { uploadedBy: strin
 
 export const CATERING_FILE_NOT_FOUND_MESSAGE = "File not found";
 export const CATERING_FILE_READ_ONLY_MESSAGE = "Cancelled and completed bookings are read-only";
-export const CATERING_FILE_LIMIT_MESSAGE = `A booking may hold at most ${CATERING_BOOKING_FILE_LIMIT} files`;
+/**
+ * The refusal for a full bucket, worded for the bucket that is actually full.
+ *
+ * A customer only ever uploads shared files, so they only ever see the shared message -- and it reflects the shared
+ * count alone. Nothing a customer can provoke mentions, or depends on, provider-only storage.
+ */
+export const CATERING_FILE_LIMIT_MESSAGES: Record<CateringFileVisibility, string> = {
+  shared: `A booking may hold at most ${CATERING_BOOKING_FILE_LIMIT} shared files`,
+  provider: `A booking may hold at most ${CATERING_BOOKING_FILE_LIMIT} provider-only files`,
+};
+export function cateringFileLimitMessage(visibility: CateringFileVisibility): string {
+  return CATERING_FILE_LIMIT_MESSAGES[visibility];
+}
+
 export const CATERING_FILE_TYPE_MESSAGE = "Only PDF, JPEG, PNG and WebP files are accepted";
 export const CATERING_FILE_SIZE_MESSAGE = `A booking file may be at most ${CATERING_FILE_MAX_BYTES / (1024 * 1024)} MB`;
+/** Bounded refusals for a multipart request that exceeded the parser limits above. None discloses any internals. */
+export const CATERING_UPLOAD_MULTIPART_MESSAGES = {
+  file: "Upload exactly one file",
+  size: CATERING_FILE_SIZE_MESSAGE,
+  fields: "Too many form fields were sent with this upload",
+  parts: "Too many parts were sent with this upload",
+  fieldValue: "A form field value was too long",
+  fieldName: "A form field name was too long",
+  rejected: "This upload request was rejected",
+} as const;
 /** A storage cleanup that failed after the metadata tombstone never restores the file; it stays gone to every actor. */
 export const CATERING_FILE_CLEANUP_PENDING_CODE = "catering_file_cleanup_pending";
 export const CATERING_FILE_LIMIT_CODE = "catering_file_limit";

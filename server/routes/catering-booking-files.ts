@@ -5,7 +5,7 @@ import { and, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { cateringBookingActivity, cateringBookingFiles, cateringBookingStorageOrphans, notifications, users, type CateringBookingFile } from "@shared/schema";
 import { cateringBookingIdSchema } from "@shared/catering-bookings";
-import { CATERING_FILE_COUNT_CEILING, CATERING_FILE_LIMIT_CODE, CATERING_FILE_LIMIT_MESSAGE, CATERING_FILE_MAX_BYTES, CATERING_FILE_NOTIFICATION, CATERING_FILE_NOT_FOUND_MESSAGE, CATERING_FILE_READ_ONLY_MESSAGE, CATERING_FILE_SIZE_MESSAGE, CATERING_FILE_TYPE_MESSAGE, cateringBookingFilePageSchema, cateringFileUploadFieldsSchema, mayMutateCateringFiles, type CateringFileVisibility } from "@shared/catering-booking-files";
+import { CATERING_FILE_COUNT_CEILING, CATERING_FILE_LIMIT_CODE, CATERING_FILE_MAX_BYTES, CATERING_UPLOAD_MULTIPART, CATERING_UPLOAD_MULTIPART_MESSAGES, cateringFileLimitMessage, CATERING_FILE_NOTIFICATION, CATERING_FILE_NOT_FOUND_MESSAGE, CATERING_FILE_READ_ONLY_MESSAGE, CATERING_FILE_SIZE_MESSAGE, CATERING_FILE_TYPE_MESSAGE, cateringBookingFilePageSchema, cateringFileUploadFieldsSchema, mayMutateCateringFiles, type CateringFileVisibility } from "@shared/catering-booking-files";
 import { CATERING_FILES_SECTION, cateringBookingSectionPath } from "@shared/catering-booking-communication";
 import { CATERING_WORKSPACE_READ_ONLY_CODE, cateringWorkspaceRole } from "@shared/catering-booking-operations";
 import { db } from "../db";
@@ -29,8 +29,30 @@ type Res = Parameters<Parameters<typeof r.get>[1]>[1];
  */
 const bookingFileUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: CATERING_FILE_MAX_BYTES, files: 1 },
+  // Every dimension of the multipart body is bounded, not just the file. Multer accumulates parts into memory
+  // BEFORE `handleUpload` can load the booking and check ownership, so without field/part caps an authenticated
+  // caller could spend process memory on a booking they do not own simply by naming a well-formed UUID. The values
+  // come from the real contract -- one file, `visibility`, `clientRequestId` -- rather than being picked generously.
+  limits: {
+    fileSize: CATERING_FILE_MAX_BYTES,
+    files: CATERING_UPLOAD_MULTIPART.files,
+    fields: CATERING_UPLOAD_MULTIPART.fields,
+    parts: CATERING_UPLOAD_MULTIPART.parts,
+    fieldSize: CATERING_UPLOAD_MULTIPART.fieldSize,
+    fieldNameSize: CATERING_UPLOAD_MULTIPART.fieldNameSize,
+  },
 }).single("file");
+
+/** Each parser limit answers with its own bounded message. Nothing here reveals a limit's value or any internals. */
+const MULTIPART_REFUSALS: Record<string, string> = {
+  LIMIT_FILE_SIZE: CATERING_UPLOAD_MULTIPART_MESSAGES.size,
+  LIMIT_FILE_COUNT: CATERING_UPLOAD_MULTIPART_MESSAGES.file,
+  LIMIT_UNEXPECTED_FILE: CATERING_UPLOAD_MULTIPART_MESSAGES.file,
+  LIMIT_FIELD_COUNT: CATERING_UPLOAD_MULTIPART_MESSAGES.fields,
+  LIMIT_PART_COUNT: CATERING_UPLOAD_MULTIPART_MESSAGES.parts,
+  LIMIT_FIELD_VALUE: CATERING_UPLOAD_MULTIPART_MESSAGES.fieldValue,
+  LIMIT_FIELD_KEY: CATERING_UPLOAD_MULTIPART_MESSAGES.fieldName,
+};
 
 function invalid(error: unknown, res: Res, next: (error: unknown) => void) {
   if (error instanceof z.ZodError) return res.status(400).json({ message: error.issues[0]?.message });
@@ -91,9 +113,12 @@ r.get("/bookings/:id/files", requireAuth, async (req, res, next) => { try {
 r.post("/bookings/:id/files", requireAuth, (req, res, next) => {
   bookingFileUpload(req, res, (uploadError: unknown) => {
     if (uploadError) {
-      const code = (uploadError as { code?: string }).code;
-      if (code === "LIMIT_FILE_SIZE") return res.status(400).json({ message: CATERING_FILE_SIZE_MESSAGE });
-      if (code === "LIMIT_FILE_COUNT" || code === "LIMIT_UNEXPECTED_FILE") return res.status(400).json({ message: "Upload exactly one file" });
+      // A parser refusal is a client validation failure, answered with a bounded message and never forwarded to the
+      // Express error handler -- a Multer limit must not surface as a 500 or carry a stack trace. Anything that is
+      // NOT a Multer error is a genuine server fault and still goes to `next`, so the two stay distinguishable.
+      if (uploadError instanceof multer.MulterError) {
+        return res.status(400).json({ message: MULTIPART_REFUSALS[uploadError.code] ?? CATERING_UPLOAD_MULTIPART_MESSAGES.rejected });
+      }
       return next(uploadError);
     }
     void handleUpload(req, res, next);
@@ -105,7 +130,9 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
   try {
     const id = cateringBookingIdSchema.parse(req.params.id);
     const userId = (req.user as { id: string }).id;
-    const fields = cateringFileUploadFieldsSchema.parse({ visibility: req.body?.visibility, ...(req.body?.clientRequestId ? { clientRequestId: req.body.clientRequestId } : {}) });
+    // Parsed from the body itself rather than cherry-picked, so `.strict()` REJECTS an unexpected field instead of
+    // silently dropping it. Multer's field cap already refuses a flood; this refuses a wrong shape.
+    const fields = cateringFileUploadFieldsSchema.parse(req.body ?? {});
     const file = (req as { file?: Express.Multer.File }).file;
     if (!file) return res.status(400).json({ message: "A file is required" });
     const booking = await ownedCateringBooking(id, userId);
@@ -173,7 +200,13 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
       // already accepted. Resolving first means a retry is never mistaken for a new upload.
       const alreadyPersisted = fields.clientRequestId ? await duplicateFile(id, userId, fields.clientRequestId, tx) : undefined;
       if (alreadyPersisted) return { kind: "duplicate", file: alreadyPersisted } as const;
-      const [{ value }] = await tx.select({ value: count() }).from(cateringBookingFiles).where(and(eq(cateringBookingFiles.bookingId, id), isNull(cateringBookingFiles.deletedAt)));
+      // The quota is counted PER VISIBILITY BUCKET, not across the booking. Counting every active row made a
+      // customer-visible outcome depend on provider-only state: with 90 shared and 10 provider-private files a
+      // customer who can enumerate the 90 would be refused their next shared upload, and could infer from that
+      // refusal alone that undisclosed provider files exist. Scoping the count to the bucket being uploaded into
+      // means a customer's result is identical whether or not any private file exists.
+      const [{ value }] = await tx.select({ value: count() }).from(cateringBookingFiles)
+        .where(and(eq(cateringBookingFiles.bookingId, id), isNull(cateringBookingFiles.deletedAt), eq(cateringBookingFiles.visibility, fields.visibility)));
       const slot = resolveCateringFileSlot({ activeCount: Number(value) });
       if (slot.kind !== "accepted") return slot;
       // The unique index is the backstop for the one case the lookup above cannot see: a concurrent request with the
@@ -197,7 +230,9 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
       // The metadata never persisted, so the object that was written has no owning row and must not survive.
       await compensateStoredObject(stored);
       stored = null;
-      if (result.kind === "limit") return res.status(409).json({ message: CATERING_FILE_LIMIT_MESSAGE, code: CATERING_FILE_LIMIT_CODE });
+      // Worded for the bucket that is actually full. A customer only ever uploads shared files, so the message they
+      // can provoke never mentions -- and never depends on -- provider-only storage.
+      if (result.kind === "limit") return res.status(409).json({ message: cateringFileLimitMessage(fields.visibility), code: CATERING_FILE_LIMIT_CODE });
       if (result.kind === "duplicate") {
         // The retry is answered with the file the first attempt already persisted -- never a second copy, and never
         // an invented success for a token that names no accepted upload. `result.file` is set when the lookup inside

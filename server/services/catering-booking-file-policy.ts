@@ -63,7 +63,12 @@ export function resolveCateringUpload(request: CateringUploadRequest) {
   return { kind: "accepted", type, filename: sanitizeCateringFilename(request.originalName, type.extension) } as const;
 }
 
-/** Resolved under the booking file collection lock: a booking that closed and a full collection are different refusals. */
+/**
+ * Resolved under the booking file collection lock: a booking that closed and a full bucket are different refusals.
+ *
+ * `activeCount` is the count for the visibility bucket being uploaded into, never the booking's total. The caller
+ * scopes it, which is what keeps a customer's shared-upload outcome independent of provider-private files.
+ */
 export function resolveCateringFileSlot(locked: { activeCount: number } | null) {
   if (!locked) return { kind: "read_only" } as const;
   if (locked.activeCount >= CATERING_BOOKING_FILE_LIMIT) return { kind: "limit" } as const;
