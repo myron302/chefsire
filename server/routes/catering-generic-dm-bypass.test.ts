@@ -116,15 +116,20 @@ test("ordinary DMs are untouched: the guard only ever fires for a thread with a 
  * attachment URLs, no idempotency ledger, and notifications carrying message body text.
  */
 const SOCKET_GUARD = "refuseBookingLinkedThread(socket, threadId)";
-/** Each `socket.on("<event>", ...)` handler, as event name plus body. */
+/**
+ * Each socket listener, as event name plus body. Two registration shapes are recognised: a plain
+ * `socket.on("<event>", ...)`, and `onAsyncSocketEvent(socket, "<event>", ...)` -- the async error boundary a
+ * listener with no try/catch of its own is registered through. Matching both is what stops a handler slipping out
+ * of this suite's coverage simply by changing how it is registered.
+ */
+const REGISTRATION = /(?:socket\.on\(\s*"([a-z]+)"|onAsyncSocketEvent(?:<[^>]*>)?\(\s*socket,\s*"([a-z]+)")/g;
 function socketHandlers(): { event: string; body: string }[] {
-  const handlers: { event: string; body: string }[] = [];
-  for (const match of socketSource.matchAll(/socket\.on\(\s*"([a-z]+)"/g)) {
-    const start = match.index!;
-    const next = socketSource.indexOf('socket.on(', start + 10);
-    handlers.push({ event: match[1], body: socketSource.slice(start, next === -1 ? undefined : next) });
-  }
-  return handlers;
+  const starts: { event: string; start: number }[] = [];
+  for (const match of socketSource.matchAll(REGISTRATION)) starts.push({ event: match[1] ?? match[2], start: match.index! });
+  return starts.map((entry, index) => ({
+    event: entry.event,
+    body: socketSource.slice(entry.start, starts[index + 1]?.start),
+  }));
 }
 
 test("the socket transport exposes the thread operations this suite is inspecting", () => {

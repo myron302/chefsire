@@ -25,10 +25,38 @@ import { bookingLinkedThread } from "../services/catering-booking-conversation";
  * carries the same shared code and message, so the two transports cannot drift into different answers.
  */
 async function refuseBookingLinkedThread(socket: any, threadId: string): Promise<boolean> {
-  const linked = await bookingLinkedThread(threadId);
+  let linked: { bookingId: string } | null;
+  try {
+    linked = await bookingLinkedThread(threadId);
+  } catch {
+    // The lookup itself failed -- a transient database outage, say. We cannot tell whether this thread belongs to a
+    // booking, so the operation is REFUSED rather than allowed to fall through into generic DM behaviour: proceeding
+    // on an unknown answer is exactly how a booking conversation would be reached during an outage. The rejection is
+    // consumed here, so it can never escape a listener and reach the process-level `unhandledRejection` handler,
+    // which exits the process. The client is told only that the check was unavailable -- no query, driver detail or
+    // stack trace is disclosed.
+    socket.emit("error", { error: "thread_check_unavailable", code: "thread_check_unavailable", message: "This conversation could not be verified right now. Please try again." });
+    return true;
+  }
   if (!linked) return false;
   socket.emit("error", { error: CATERING_BOOKING_THREAD_CODE, code: CATERING_BOOKING_THREAD_CODE, message: CATERING_BOOKING_THREAD_MESSAGE });
   return true;
+}
+
+/**
+ * Registers an async socket listener behind an error boundary.
+ *
+ * Socket.IO does not consume the promise an async listener returns, so a rejection inside one becomes an unhandled
+ * rejection -- and this process exits on those. A typing indicator must never be able to restart ChefSire. The
+ * boundary answers with the same bounded `error` event shape the other handlers use and never forwards the
+ * underlying message, so a database failure cannot become a disclosure either.
+ */
+function onAsyncSocketEvent<T>(socket: any, event: string, failure: string, handler: (payload: T) => Promise<void>): void {
+  socket.on(event, (payload: T) => {
+    void Promise.resolve()
+      .then(() => handler(payload))
+      .catch(() => { socket.emit("error", { error: failure }); });
+  });
 }
 
 function userIdFromSocket(socket: any): string | null {
@@ -89,8 +117,10 @@ export function attachDmRealtime(httpServer: HttpServer) {
 
     // Typing indicator
     // Not a mutation, but it emits into a thread room without requiring membership, so it is refused too: the rule
-    // is simply that a booking-linked thread is not usable through this transport at all.
-    socket.on("typing", async ({ threadId, typing }: { threadId: string; typing: boolean }) => {
+    // is simply that a booking-linked thread is not usable through this transport at all. Registered through the
+    // async error boundary because this listener has no try/catch of its own, and an unhandled rejection here would
+    // exit the process.
+    onAsyncSocketEvent<{ threadId: string; typing: boolean }>(socket, "typing", "typing failed", async ({ threadId, typing }) => {
       if (await refuseBookingLinkedThread(socket, threadId)) return;
       socket.to(threadId).emit("typing", { threadId, userId, typing });
     });

@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { assertPrivateR2Isolated, deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Configured, putPrivateObject } from "./r2";
-import { assertPrivateRootIsolated } from "./private-storage-path";
+import { assertPrivateRootIsolated, canonicalizePath, isSameOrInside } from "./private-storage-path";
 import { UPLOADS_DIR } from "./uploads-dir";
 
 /**
@@ -38,11 +38,24 @@ assertPrivateR2Isolated();
  */
 export function resolvePrivatePath(storageKey: string): string {
   if (storageKey.includes("\0") || path.isAbsolute(storageKey)) throw new Error("Invalid private storage key");
-  const resolved = path.resolve(PRIVATE_STORAGE_ROOT, storageKey);
+  const lexical = path.resolve(PRIVATE_STORAGE_ROOT, storageKey);
   const root = PRIVATE_STORAGE_ROOT.endsWith(path.sep) ? PRIVATE_STORAGE_ROOT : PRIVATE_STORAGE_ROOT + path.sep;
-  if (resolved !== PRIVATE_STORAGE_ROOT && !resolved.startsWith(root)) throw new Error("Invalid private storage key");
-  return resolved;
+  if (lexical !== PRIVATE_STORAGE_ROOT && !lexical.startsWith(root)) throw new Error("Invalid private storage key");
+  // Lexical containment alone is not enough. It stops `../` traversal, but a DESCENDANT of the private root can
+  // itself be a symlink -- `<root>/catering-bookings` pointing at UPLOADS_DIR, say -- and the lexical path would
+  // still start with the root while the write landed under the public static mount. So the path is resolved
+  // physically as well: both sides are canonicalized (which follows every symlink in either path, at any depth,
+  // and rebuilds the not-yet-created suffix beneath the deepest real ancestor), and the real target must still be
+  // inside the real root. Canonicalization is done per call rather than cached, so a symlink introduced AFTER
+  // startup is caught on the very next operation. A canonicalization that fails for any reason other than a
+  // missing path throws, so an unresolvable path is refused rather than assumed safe.
+  const realTarget = canonicalizePath(lexical);
+  if (!isSameOrInside(realTarget, canonicalizePath(PRIVATE_STORAGE_ROOT))) throw new Error("Invalid private storage key");
+  return realTarget;
 }
+
+/** Present only where the platform supports it; on Windows the flag does not exist and the constant is absent. */
+const O_NOFOLLOW = (fs.constants as { O_NOFOLLOW?: number }).O_NOFOLLOW ?? 0;
 
 /**
  * Which backend a new object is written to.
@@ -62,19 +75,41 @@ export async function writePrivateObject(provider: PrivateStorageProvider, stora
   if (provider === "r2") return putPrivateObject(storageKey, body, contentType);
   const target = resolvePrivatePath(storageKey);
   await fs.promises.mkdir(path.dirname(target), { recursive: true });
-  await fs.promises.writeFile(target, body, { mode: 0o600 });
+  // Re-validated AFTER the directories exist. `mkdir -p` succeeds silently over an existing symlinked component, so
+  // a link that was created between the first check and now would otherwise go unnoticed; this narrows the window
+  // to the gap between this check and the open below.
+  resolvePrivatePath(storageKey);
+  // O_NOFOLLOW closes that remaining gap for the final component: if the file itself is a symlink the open fails
+  // rather than writing through it. O_EXCL is not usable here because an overwrite of an existing object is legal.
+  const handle = await fs.promises.open(target, fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_TRUNC | O_NOFOLLOW, 0o600);
+  try {
+    await handle.write(body);
+    // An object that already existed keeps whatever mode it had, so the permissions are asserted rather than assumed.
+    await handle.chmod(0o600);
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function readPrivateObject(provider: PrivateStorageProvider, storageKey: string): Promise<Buffer> {
   if (provider === "r2") return getPrivateObject(storageKey);
-  return fs.promises.readFile(resolvePrivatePath(storageKey));
+  // Physically contained by `resolvePrivatePath`, and O_NOFOLLOW refuses a final component that is itself a link,
+  // so a download can never be served from outside the private root.
+  const handle = await fs.promises.open(resolvePrivatePath(storageKey), fs.constants.O_RDONLY | O_NOFOLLOW);
+  try {
+    return await handle.readFile();
+  } finally {
+    await handle.close();
+  }
 }
 
 export async function statPrivateObject(provider: PrivateStorageProvider, storageKey: string): Promise<{ byteSize: number } | null> {
   if (provider === "r2") return headPrivateObject(storageKey);
   try {
-    const stat = await fs.promises.stat(resolvePrivatePath(storageKey));
-    return { byteSize: stat.size };
+    // `lstat`, not `stat`: a private object is a regular file. A symlink sitting where one should be describes
+    // something outside this tree, so it is reported as absent rather than measured through.
+    const stat = await fs.promises.lstat(resolvePrivatePath(storageKey));
+    return stat.isFile() ? { byteSize: stat.size } : null;
   } catch {
     return null;
   }
@@ -83,9 +118,14 @@ export async function statPrivateObject(provider: PrivateStorageProvider, storag
 /** Deleting an object that is already gone succeeds: cleanup is idempotent, so a retry never reports a false failure. */
 export async function removePrivateObject(provider: PrivateStorageProvider, storageKey: string): Promise<void> {
   if (provider === "r2") return deletePrivateObject(storageKey);
+  // Resolution happens outside the catch, so an unsafe path is REFUSED rather than swallowed as a missing file.
+  // `unlink` never follows its final component, so it removes a link rather than the thing a link points at, and
+  // the containment check above is what stops a symlinked parent directing it outside the root.
+  const target = resolvePrivatePath(storageKey);
   try {
-    await fs.promises.unlink(resolvePrivatePath(storageKey));
+    await fs.promises.unlink(target);
   } catch (error) {
+    // Deleting something already gone stays a success, so cleanup retries never report a false failure.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 }
