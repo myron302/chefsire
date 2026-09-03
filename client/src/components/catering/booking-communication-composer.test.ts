@@ -69,18 +69,18 @@ test("duplicate-send protection is unchanged: the send control is gated by the s
  * Automatic read marking must be bounded at the component level too: the effect has to record the attempted
  * boundary before issuing the request, or a failure re-fires it the instant the mutation returns to idle.
  */
-const readEffect = source.slice(source.indexOf("// Having the conversation open marks it read"), source.indexOf("// Restore the reading position"));
+const readEffect = source.slice(source.indexOf("// Marking read happens at most ONCE per boundary"), source.indexOf("// Restore the reading position"));
 
 test("the mark-read effect records the attempted boundary before issuing the request", () => {
-  assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(readMark, latestId, unreadCount)"), true);
+  assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(readMark, viewedId, unreadCount)"), true);
   // The attempt is recorded first, so a second pass for the same boundary is refused before any request is made.
-  assert.equal(readEffect.indexOf("startCateringReadMark(current, latestId!)") < readEffect.indexOf("markRead.mutate(latestId!)"), true);
+  assert.equal(readEffect.indexOf("startCateringReadMark(current, viewedId!)") < readEffect.indexOf("markRead.mutate(viewedId!)"), true);
   // The old unbounded predicate, which knew nothing about attempts, must not be what gates the effect.
   assert.equal(readEffect.includes("shouldMarkCateringConversationRead("), false, "the effect must gate on the attempted boundary, not only on unread state");
 });
 
 test("a failed mark-read is recorded rather than retried from the effect", () => {
-  const mutation = source.slice(source.indexOf("const markRead = useMutation"), source.indexOf("// Having the conversation open marks it read"));
+  const mutation = source.slice(source.indexOf("const markRead = useMutation"), source.indexOf("// Watches the end of the thread"));
   assert.equal(mutation.includes("failCateringReadMark(current, attemptedId)"), true);
   // Success takes the server's authoritative marker, which is monotonic, rather than the requested id.
   assert.equal(mutation.includes("completeCateringReadMark(current, body?.lastReadMessageId ?? null)"), true);
@@ -88,7 +88,7 @@ test("a failed mark-read is recorded rather than retried from the effect", () =>
 });
 
 test("the read-marker retry is offered quietly and accessibly, and issues no request itself", () => {
-  const retry = source.slice(source.indexOf("mayRetryCateringReadMark(readMark, latestId, unreadCount)"));
+  const retry = source.slice(source.indexOf("mayRetryCateringReadMark(readMark, viewedId, unreadCount)"));
   // A failed read receipt is not an error the user caused, so it is a status region rather than an alert.
   assert.equal(retry.slice(0, retry.indexOf("</div>")).includes(`role="status"`), true);
   const button = retry.slice(retry.indexOf("<Button"), retry.indexOf("</Button>"));
@@ -97,4 +97,45 @@ test("the read-marker retry is offered quietly and accessibly, and issues no req
   // The control only clears the recorded attempt; the effect then issues exactly one request.
   assert.equal(button.includes("setReadMark(retryCateringReadMark)"), true);
   assert.equal(button.includes("markRead.mutate"), false, "the retry control must not issue a request directly");
+});
+
+/**
+ * Read state must reflect what was displayed, not what was fetched. A first page that overflows the viewport used
+ * to be marked read the moment the component mounted.
+ */
+const viewEffect = source.slice(source.indexOf("// Watches the end of the thread"), source.indexOf("// Marking read happens at most ONCE per boundary"));
+
+test("the read boundary comes from what was displayed, never from the newest fetched message", () => {
+  assert.equal(source.includes("const viewedId = cateringReadableBoundary(viewed, identity);"), true);
+  // Nothing in the mark path may reach for latestId any more.
+  assert.equal(readEffect.includes("latestId"), false, "the mark effect must not use the fetched boundary");
+  assert.equal(source.includes("mayRetryCateringReadMark(readMark, viewedId, unreadCount)"), true);
+});
+
+test("a sentinel at the end of the thread is what advances the viewed boundary", () => {
+  assert.equal(viewEffect.includes("new IntersectionObserver"), true);
+  assert.equal(viewEffect.includes("recordCateringViewedBoundary(current, latestId)"), true);
+  // Rooted on the scroll container, so "visible" means visible inside the thread rather than merely in the page.
+  assert.equal(viewEffect.includes("root: threadRef.current ?? null"), true);
+  // Re-created as the thread changes so it never observes a detached node, and disconnected on cleanup.
+  assert.equal(viewEffect.includes("}, [latestId, messages.length]);"), true);
+  assert.equal(viewEffect.includes("observer.disconnect()"), true);
+  // Environments without IntersectionObserver simply record nothing, which leaves messages unread rather than
+  // falsely marking them read.
+  assert.equal(viewEffect.includes(`typeof IntersectionObserver === "undefined"`), true);
+});
+
+test("the sentinel is presentational and adds no accessibility surface", () => {
+  const sentinel = source.slice(source.indexOf("<div ref={sentinelRef}"));
+  const tag = sentinel.slice(0, sentinel.indexOf("/>"));
+  assert.equal(tag.includes(`aria-hidden="true"`), true);
+  assert.equal(tag.includes("tabIndex"), false);
+  assert.equal(tag.includes("role="), false);
+  // It sits inside the scroll container, after the message list.
+  assert.equal(source.indexOf("</ol>") < source.indexOf("<div ref={sentinelRef}"), true);
+});
+
+test("the viewed boundary is actor and booking scoped and resets with the conversation", () => {
+  assert.equal(source.includes("setViewed((current) => hydrateCateringViewed(current, identity))"), true);
+  assert.equal(source.includes("cateringReadableBoundary(viewed, identity)"), true);
 });

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, EMPTY_CATERING_READ_MARK, type CateringComposerState, type CateringReadMarkState } from "@/pages/services/catering-booking-communication-state";
+import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringReadableBoundary, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, type CateringComposerState, type CateringReadMarkState, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
 
 type SendPayload = { text: string; clientRequestId: string };
 /**
@@ -18,13 +18,17 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   const identity = `${userId}:${bookingId}`;
   const [composer, setComposer] = useState<CateringComposerState>(EMPTY_CATERING_COMPOSER);
   const [readMark, setReadMark] = useState<CateringReadMarkState>(EMPTY_CATERING_READ_MARK);
+  const [viewed, setViewed] = useState<CateringViewedState>(EMPTY_CATERING_VIEWED);
+  // Marks the end of the thread. When it is on screen the newest loaded message is genuinely displayed, which is
+  // the only thing that may advance the read boundary -- fetching a page is not reading it.
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
   // The scroll container's height before an older page loads, so restoring position after it lands is arithmetic
   // rather than a guess: prepending older messages must not move what the participant is currently reading.
   const threadRef = useRef<HTMLDivElement | null>(null);
   const restoreRef = useRef<number | null>(null);
   const messagesKey = cateringBookingMessagesKey(userId, bookingId);
 
-  useEffect(() => { setComposer((current) => hydrateCateringComposer(current, identity)); setReadMark((current) => hydrateCateringReadMark(current, identity)); }, [identity]);
+  useEffect(() => { setComposer((current) => hydrateCateringComposer(current, identity)); setReadMark((current) => hydrateCateringReadMark(current, identity)); setViewed((current) => hydrateCateringViewed(current, identity)); }, [identity]);
 
   const query = useInfiniteQuery({
     queryKey: messagesKey,
@@ -43,6 +47,8 @@ export default function BookingCommunication({ bookingId, userId, role, editable
 
   const messages = combineCateringMessagePages(query.data?.pages ?? []);
   const latestId = latestCateringMessageId(messages);
+  // The boundary a read mark may use: the newest message actually shown, never the newest one fetched.
+  const viewedId = cateringReadableBoundary(viewed, identity);
 
   const send = useMutation({
     mutationFn: async (payload: SendPayload) => {
@@ -81,16 +87,31 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     onError: (_error, attemptedId) => setReadMark((current) => failCateringReadMark(current, attemptedId)),
   });
 
-  // Having the conversation open marks it read at most ONCE per boundary. The attempted boundary is recorded before
-  // the request goes out, so a failure cannot re-fire this effect: without that, a failed mark leaves unreadCount
-  // above zero and the marker unmoved, and the mutation returning to idle would immediately reissue the same request
-  // forever. A newer message is a new boundary and earns its own single attempt, so a failure blocks nothing later.
+  // Watches the end of the thread. While the sentinel is on screen the newest loaded message is displayed, so the
+  // viewed boundary tracks it -- including when a refetch appends newer messages while the reader sits at the
+  // bottom. The observer roots on the scroll container, so "visible" means visible within the thread, not merely
+  // within the page. Re-created when the thread mounts or its contents change so it never watches a stale node.
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) setViewed((current) => recordCateringViewedBoundary(current, latestId));
+    }, { root: threadRef.current ?? null, threshold: 0.01 });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [latestId, messages.length]);
+
+  // Marking read happens at most ONCE per boundary, and only for a boundary the actor has actually been shown.
+  // The attempted boundary is recorded before the request goes out, so a failure cannot re-fire this effect:
+  // without that, a failed mark leaves unreadCount above zero and the marker unmoved, and the mutation returning to
+  // idle would immediately reissue the same request forever. A newly displayed message is a new boundary and earns
+  // its own single attempt, so a failure blocks nothing later.
   useEffect(() => {
     if (markRead.isPending) return;
-    if (!shouldAutoMarkCateringConversationRead(readMark, latestId, unreadCount)) return;
-    setReadMark((current) => startCateringReadMark(current, latestId!));
-    markRead.mutate(latestId!);
-  }, [latestId, readMark, unreadCount, markRead.isPending]);
+    if (!shouldAutoMarkCateringConversationRead(readMark, viewedId, unreadCount)) return;
+    setReadMark((current) => startCateringReadMark(current, viewedId!));
+    markRead.mutate(viewedId!);
+  }, [viewedId, readMark, unreadCount, markRead.isPending]);
 
   // Restore the reading position after older messages are prepended, so "load older" does not jump the thread.
   useEffect(() => {
@@ -137,12 +158,15 @@ export default function BookingCommunication({ bookingId, userId, role, editable
               {/* `break-words` plus `min-w-0` is what keeps a long URL or an unbroken word inside the card on a phone. */}
               <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{item.text}</p>
             </li>)}</ol>
+            {/* Presentational only and never focusable or announced: its sole job is to tell the observer that the
+                end of the thread is on screen. */}
+            <div ref={sentinelRef} aria-hidden="true" className="h-px w-full" />
           </div>}
     </>}
     {query.isFetchNextPageError && <div className="space-y-2" role="alert"><p>Older messages could not be loaded.</p><Button variant="outline" className="min-h-11" disabled={query.isFetchingNextPage} onClick={loadOlder}>Retry loading older messages</Button></div>}
     {/* A failed read receipt is low stakes, so it is reported quietly rather than as an alert -- but it is reported,
         because silently leaving the unread badge on with no explanation is worse. Retry issues exactly one request. */}
-    {mayRetryCateringReadMark(readMark, latestId, unreadCount) && <div className="flex flex-wrap items-center gap-2" role="status">
+    {mayRetryCateringReadMark(readMark, viewedId, unreadCount) && <div className="flex flex-wrap items-center gap-2" role="status">
       <p className="text-sm text-muted-foreground">These messages could not be marked as read.</p>
       <Button type="button" variant="outline" className="min-h-11" disabled={markRead.isPending} onClick={() => setReadMark(retryCateringReadMark)}>Mark as read</Button>
     </div>}

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CATERING_MESSAGE_MAX_LENGTH } from "@shared/catering-booking-communication";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
-import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend } from "./catering-booking-communication-state";
+import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, cateringReadableBoundary, completeCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend } from "./catering-booking-communication-state";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 const OTHER_TOKEN = "22222222-2222-4222-8222-222222222222";
@@ -226,4 +226,51 @@ test("reopening the conversation or switching booking is a deliberate, bounded f
 test("nothing is attempted when there is nothing unread or no message at all", () => {
   assert.deepEqual(runAutoMarkPasses(readMark(), "m10", 0, 10, "success").requests, []);
   assert.deepEqual(runAutoMarkPasses(readMark(), null, 3, 10, "success").requests, []);
+});
+
+/**
+ * Fetching a message is not reading it. The read boundary must be the newest message actually DISPLAYED, or a
+ * conversation whose first page overflows the viewport would be marked read the instant it mounted.
+ */
+const viewedState = (over: Partial<typeof EMPTY_CATERING_VIEWED> = {}) => ({ ...EMPTY_CATERING_VIEWED, identity: "actor:booking", ...over });
+
+test("nothing is viewed until the end of the thread is actually on screen", () => {
+  const fresh = viewedState();
+  // Messages are loaded, but none has been displayed, so there is no boundary a read mark may use.
+  assert.equal(cateringReadableBoundary(fresh, "actor:booking"), null);
+  assert.equal(shouldAutoMarkCateringConversationRead(readMark(), cateringReadableBoundary(fresh, "actor:booking"), 5), false);
+});
+test("opening a conversation scrolled above the newest message leaves the unread count intact", () => {
+  // The sentinel never intersected, so nothing was recorded and no request may be issued for m20.
+  const fresh = viewedState();
+  const run = runAutoMarkPasses(readMark(), cateringReadableBoundary(fresh, "actor:booking"), 5, 10, "success");
+  assert.deepEqual(run.requests, []);
+  assert.equal(run.state.markedId, null);
+});
+test("reaching the end of the thread records the newest displayed message and allows one mark", () => {
+  const seen = recordCateringViewedBoundary(viewedState(), "m20");
+  assert.equal(cateringReadableBoundary(seen, "actor:booking"), "m20");
+  assert.deepEqual(runAutoMarkPasses(readMark(), "m20", 5, 10, "success").requests, ["m20"]);
+});
+test("the boundary never advances past what was displayed, and repeats are idempotent", () => {
+  const seen = recordCateringViewedBoundary(viewedState(), "m20");
+  // Observing the same boundary again changes nothing, so no second request is provoked.
+  assert.equal(recordCateringViewedBoundary(seen, "m20"), seen);
+  // A message that arrived but was never displayed cannot be recorded by anything other than the observer.
+  assert.equal(cateringReadableBoundary(seen, "actor:booking"), "m20");
+  // When the reader is at the bottom and newer messages append, the boundary follows them.
+  assert.equal(recordCateringViewedBoundary(seen, "m21").viewedId, "m21");
+});
+test("an empty conversation records no viewed boundary", () => {
+  const empty = viewedState();
+  // Returned by reference, so nothing loaded provokes no state change and therefore no rerender loop.
+  assert.equal(recordCateringViewedBoundary(empty, null), empty);
+  assert.equal(cateringReadableBoundary(empty, "actor:booking"), null);
+});
+test("a viewed boundary from another actor or booking is never reused", () => {
+  const seen = recordCateringViewedBoundary(viewedState(), "m20");
+  assert.equal(cateringReadableBoundary(seen, "other:booking"), null);
+  assert.deepEqual(hydrateCateringViewed(seen, "other:booking"), { identity: "other:booking", viewedId: null });
+  // Same conversation: what was displayed stays displayed across rerenders.
+  assert.equal(hydrateCateringViewed(seen, "actor:booking"), seen);
 });

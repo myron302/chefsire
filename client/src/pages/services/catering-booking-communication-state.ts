@@ -130,6 +130,41 @@ export function shouldMarkCateringConversationRead(latestId: string | null, mark
 }
 
 /**
+ * The newest message the actor has actually been shown.
+ *
+ * Fetching a page is not reading it. The initial page routinely exceeds the scroll viewport, and unread messages
+ * can span pages that have not been requested at all, so marking `latestId` read on mount told the server a
+ * participant had seen messages that were merely in memory -- and, because the server marker is monotonic, that
+ * claim could not be walked back.
+ *
+ * The boundary therefore advances only when the newest loaded message is genuinely on screen, which the component
+ * observes with a sentinel at the end of the thread. That is deliberately conservative: a participant who reads
+ * halfway and leaves advances nothing, which leaves messages unread rather than falsely marking them read.
+ */
+export type CateringViewedState = { identity: string; viewedId: string | null };
+export const EMPTY_CATERING_VIEWED: CateringViewedState = { identity: "", viewedId: null };
+
+export function hydrateCateringViewed(state: CateringViewedState, identity: string): CateringViewedState {
+  return state.identity === identity ? state : { identity, viewedId: null };
+}
+/**
+ * Records that the end of the thread is on screen, so the newest LOADED message has been displayed. A null
+ * `latestId` (nothing loaded) records nothing: an empty conversation has no viewed boundary to speak of.
+ */
+export function recordCateringViewedBoundary(state: CateringViewedState, latestId: string | null): CateringViewedState {
+  if (latestId === null || latestId === state.viewedId) return state;
+  return { ...state, viewedId: latestId };
+}
+/**
+ * The boundary a read mark may use: the newest DISPLAYED message, never the newest fetched one. Returning null
+ * while nothing has been displayed is what keeps an unread count intact for a participant who opened the
+ * conversation scrolled above the unread messages.
+ */
+export function cateringReadableBoundary(state: CateringViewedState, identity: string): string | null {
+  return state.identity === identity ? state.viewedId : null;
+}
+
+/**
  * Automatic read-marking state, kept separate from the mutation's own pending/error flags.
  *
  * `markedId` is the last boundary the server confirmed. `attemptedId` is the last boundary an automatic attempt was

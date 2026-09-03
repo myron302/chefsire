@@ -8,6 +8,28 @@ import {
   dmMessages,
 } from "../../shared/schema.dm.ts";
 import { users, notifications } from "../../shared/schema";
+import { CATERING_BOOKING_THREAD_CODE, CATERING_BOOKING_THREAD_MESSAGE } from "../../shared/catering-booking-communication";
+import { bookingLinkedThread } from "../services/catering-booking-conversation";
+
+/**
+ * A DM thread that belongs to a catering booking is owned by the Phase 2I booking API and is closed to the generic
+ * DM socket transport, exactly as it is closed to the generic DM HTTP routes.
+ *
+ * This transport is otherwise a complete bypass of every booking rule. It authorizes on `dm_participants`
+ * membership alone, so through it a booking conversation could be sent to after cancellation or completion, have its
+ * read marker set to an arbitrary client-supplied id (non-monotonic, and not even required to be a message of the
+ * thread), receive arbitrary attachment URLs the booking file contract forbids, skip the message idempotency ledger
+ * entirely, and emit notifications carrying message body text that booking notifications deliberately never include.
+ *
+ * The booking-link determination is the SAME canonical `bookingLinkedThread` the HTTP guard uses, and the refusal
+ * carries the same shared code and message, so the two transports cannot drift into different answers.
+ */
+async function refuseBookingLinkedThread(socket: any, threadId: string): Promise<boolean> {
+  const linked = await bookingLinkedThread(threadId);
+  if (!linked) return false;
+  socket.emit("error", { error: CATERING_BOOKING_THREAD_CODE, code: CATERING_BOOKING_THREAD_CODE, message: CATERING_BOOKING_THREAD_MESSAGE });
+  return true;
+}
 
 function userIdFromSocket(socket: any): string | null {
   return (socket.handshake.auth?.userId ||
@@ -49,6 +71,10 @@ export function attachDmRealtime(httpServer: HttpServer) {
           return;
         }
 
+        // After the membership check, so a stranger guessing thread ids gets the same uniform "forbidden" for a
+        // booking thread as for any other thread they are not in, and learns nothing from the refusal.
+        if (await refuseBookingLinkedThread(socket, threadId)) return;
+
         socket.join(threadId);
         socket.emit("joined", { threadId });
       } catch (e: any) {
@@ -62,7 +88,10 @@ export function attachDmRealtime(httpServer: HttpServer) {
     });
 
     // Typing indicator
-    socket.on("typing", ({ threadId, typing }: { threadId: string; typing: boolean }) => {
+    // Not a mutation, but it emits into a thread room without requiring membership, so it is refused too: the rule
+    // is simply that a booking-linked thread is not usable through this transport at all.
+    socket.on("typing", async ({ threadId, typing }: { threadId: string; typing: boolean }) => {
+      if (await refuseBookingLinkedThread(socket, threadId)) return;
       socket.to(threadId).emit("typing", { threadId, userId, typing });
     });
 
@@ -90,6 +119,9 @@ export function attachDmRealtime(httpServer: HttpServer) {
             socket.emit("error", { error: "forbidden" });
             return;
           }
+
+          // Refused before anything is written, so no message row can exist by the time it answers.
+          if (await refuseBookingLinkedThread(socket, threadId)) return;
 
           // Persist message
           const [msg] = await db
@@ -159,6 +191,10 @@ export function attachDmRealtime(httpServer: HttpServer) {
             socket.emit("error", { error: "forbidden" });
             return;
           }
+
+          // Refused before the participant row is touched: this handler would otherwise write an arbitrary
+          // client-supplied marker with a wall-clock timestamp, defeating the monotonic booking read semantics.
+          if (await refuseBookingLinkedThread(socket, threadId)) return;
 
           await db
             .update(dmParticipants)

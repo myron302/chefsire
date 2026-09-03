@@ -23,6 +23,7 @@ const accessService = read("catering-booking-access.ts");
 const communicationRoute = read("../routes/catering-booking-communication.ts");
 const filesRoute = read("../routes/catering-booking-files.ts");
 const migration = read("../migrations/20260902_catering_booking_communication_files.sql");
+const privateStorage = read("../lib/private-storage.ts");
 const BOOKING = { providerId: "provider", customerId: "customer" };
 
 test("two simultaneous first requests cannot create two conversations for one booking", () => {
@@ -176,11 +177,47 @@ test("a download that races a tombstone finds nothing, for either participant", 
   assert.equal(filesRoute.includes("cateringFileVisibleTo(row, role) ? row : null"), true);
 });
 
+test("the compensation identity is established BEFORE the object write, not after it", () => {
+  const upload = filesRoute.slice(filesRoute.indexOf("const fileId = randomUUID();"), filesRoute.indexOf("const result = await db.transaction"));
+  // A PUT that reports a timeout may still have committed remotely. Recording the key only on a successful return
+  // left those bytes with nothing that knew they might exist.
+  assert.equal(upload.indexOf("stored = { provider, storageKey, bookingId: id") < upload.indexOf("await writePrivateObject("), true);
+});
+
+test("an uncertain write compensates for the key it knows rather than abandoning it", () => {
+  const upload = filesRoute.slice(filesRoute.indexOf("const fileId = randomUUID();"), filesRoute.indexOf("const result = await db.transaction"));
+  const writeCatch = upload.slice(upload.indexOf("} catch (writeError) {"));
+  // The same key is compensated, recorded as uncertain, and the failure is rethrown -- never a fresh key, and never
+  // a success.
+  assert.equal(writeCatch.includes(`stored.reason = "uncertain_upload";`), true);
+  assert.equal(writeCatch.includes("await compensateStoredObject(stored);"), true);
+  assert.equal(writeCatch.includes("throw writeError;"), true);
+  assert.equal(writeCatch.includes("cateringFileStorageKey("), false, "an uncertain write must not be retried under a new key");
+  // The compensating delete is idempotent, so attempting it for a write that truly failed is never an error.
+  assert.equal(privateStorage.includes("if ((error as NodeJS.ErrnoException).code !== \"ENOENT\") throw error;"), true);
+});
+
+test("all four storage outcomes are deterministic", () => {
+  const handler = filesRoute.slice(filesRoute.indexOf("async function handleUpload"));
+  // storage failure before commit, and storage uncertain: both compensate the known key and answer with a failure.
+  assert.equal(handler.includes("} catch (writeError) {"), true);
+  // storage success + DB failure: the transaction returns non-stored, and the object is compensated.
+  assert.equal(handler.includes(`if (result.kind !== "stored")`), true);
+  // storage uncertain + cleanup failure: the orphan ledger keeps the key for the reconciliation job.
+  assert.equal(handler.includes("cateringBookingStorageOrphans"), true);
+  // normal success: the compensation identity is cleared so nothing is deleted afterwards.
+  assert.equal(handler.includes("stored = null;"), true);
+});
+
 test("an object stored with no owning metadata row is compensated, and an unreconcilable one is recorded", () => {
   assert.equal(filesRoute.includes("await removePrivateObject(stored.provider, stored.storageKey);"), true);
   // Only when the compensating delete ALSO fails is a ledger row written, so orphans never accumulate silently.
   assert.equal(filesRoute.includes("cateringBookingStorageOrphans"), true);
-  assert.equal(filesRoute.includes(`const reason = "orphaned_upload";`), true);
+  // The reason travels with the compensation identity, so the ledger distinguishes an upload whose metadata failed
+  // from one whose write outcome was never confirmed.
+  assert.equal(filesRoute.includes(`reason: "orphaned_upload"`), true);
+  assert.equal(filesRoute.includes(`stored.reason = "uncertain_upload";`), true);
+  assert.equal(filesRoute.includes("const reason = stored.reason;"), true);
   assert.equal(migration.includes("CREATE TABLE IF NOT EXISTS catering_booking_storage_orphans"), true);
 });
 

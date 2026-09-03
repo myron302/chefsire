@@ -101,7 +101,7 @@ r.post("/bookings/:id/files", requireAuth, (req, res, next) => {
 });
 
 async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], res: Res, next: (error: unknown) => void) {
-  let stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string } | null = null;
+  let stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; reason: string } | null = null;
   try {
     const id = cateringBookingIdSchema.parse(req.params.id);
     const userId = (req.user as { id: string }).id;
@@ -142,8 +142,23 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
     const storageKey = cateringFileStorageKey(id, fileId, upload.type.extension);
     const provider = privateStorageProvider();
     const sha256 = createHash("sha256").update(content.body).digest("hex");
-    await writePrivateObject(provider, storageKey, content.body, upload.type.contentType);
-    stored = { provider, storageKey, bookingId: id };
+    // The compensation identity is established BEFORE the write, not after it. A PUT that reports a timeout or a
+    // network failure may still have committed the object remotely, and recording the key only on a successful
+    // return would leave those bytes with nothing that knows they might exist. Assigning first means every outcome
+    // -- committed, uncertain, or never written -- resolves to the same known key, and the compensating delete is
+    // idempotent, so attempting it for a write that truly failed costs nothing and is never an error.
+    stored = { provider, storageKey, bookingId: id, reason: "orphaned_upload" };
+    try {
+      await writePrivateObject(provider, storageKey, content.body, upload.type.contentType);
+    } catch (writeError) {
+      // Uncertain rather than known-failed: the object may exist. Compensate for the key we know, record it if that
+      // cannot be confirmed, and answer with a failure -- never a success, and never a fresh key that abandons this
+      // one. Rethrown so the outer handler answers the request; the compensation has already happened here.
+      stored.reason = "uncertain_upload";
+      await compensateStoredObject(stored);
+      stored = null;
+      throw writeError;
+    }
 
     const result = await db.transaction(async (tx: typeof db) => {
       // Both the terminal-state check and the collection limit are authoritative here, under the booking row lock
@@ -238,11 +253,11 @@ async function duplicateFile(bookingId: string, uploadedBy: string, clientReques
  * they can be reconciled later: silent permanent orphan accumulation is not an acceptable design, and neither is
  * pretending the compensation succeeded.
  */
-async function compensateStoredObject(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string }): Promise<void> {
+async function compensateStoredObject(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; reason: string }): Promise<void> {
   try {
     await removePrivateObject(stored.provider, stored.storageKey);
   } catch (deleteError) {
-    const reason = "orphaned_upload";
+    const reason = stored.reason;
     const message = deleteError instanceof Error ? deleteError.message : String(deleteError);
     try {
       await db.insert(cateringBookingStorageOrphans).values({ bookingId: stored.bookingId, storageProvider: stored.provider, storageKey: stored.storageKey, reason, cleanupError: message });
