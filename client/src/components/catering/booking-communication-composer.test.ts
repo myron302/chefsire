@@ -116,7 +116,7 @@ test("a sentinel at the end of the thread is what advances the viewed boundary",
   assert.equal(viewEffect.includes("new IntersectionObserver"), true);
   assert.equal(viewEffect.includes("recordCateringViewedBoundary(current, latestId)"), true);
   // Re-created as the thread changes so it never observes a detached node, and both are disconnected on cleanup.
-  assert.equal(viewEffect.includes("}, [latestId, messages.length]);"), true);
+  assert.equal(viewEffect.includes("}, [latestId, pageKey]);"), true);
   assert.equal(viewEffect.includes("threadRootObserver.disconnect(); viewportObserver.disconnect();"), true);
   // Environments without IntersectionObserver simply record nothing, which leaves messages unread rather than
   // falsely marking them read.
@@ -149,7 +149,7 @@ test("both observers watch the SENTINEL, differing only in their root", () => {
 
 test("neither observation alone advances the read boundary", () => {
   // The boundary moves through the conjunction and nothing else: no observer callback records it directly.
-  assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)"), true);
+  assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages, pageKey)"), true);
   const threadCallback = viewEffect.slice(viewEffect.indexOf("const threadRootObserver"), viewEffect.indexOf("const viewportObserver"));
   assert.equal(threadCallback.includes("recordCateringViewedBoundary"), false, "thread-root visibility alone must not advance the boundary");
   const viewportCallback = viewEffect.slice(viewEffect.indexOf("const viewportObserver"), viewEffect.indexOf("threadRootObserver.observe"));
@@ -161,11 +161,11 @@ test("neither observation alone advances the read boundary", () => {
 
 test("the boundary advances from the conjunction, and refuses when it does not hold", () => {
   const conjunction = source.slice(source.indexOf("// The boundary advances only while BOTH observations hold"), source.indexOf("// Marking read happens at most ONCE per boundary"));
-  assert.equal(conjunction.includes("if (!mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)) return;"), true);
+  assert.equal(conjunction.includes("if (!mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages, pageKey)) return;"), true);
   assert.equal(conjunction.includes("recordCateringViewedBoundary(current, latestId)"), true);
   // Re-evaluated when either half changes, when newer messages arrive, or when pagination is exhausted, so a
   // reader sitting at the bottom of a fully loaded visible thread still tracks them.
-  assert.equal(conjunction.includes("}, [visibility, latestId, hasOlderPages]);"), true);
+  assert.equal(conjunction.includes("}, [visibility, latestId, hasOlderPages, pageKey]);"), true);
 });
 
 test("an environment that cannot observe leaves messages unread rather than falsely read", () => {
@@ -203,19 +203,21 @@ test("the viewed boundary is actor and booking scoped and resets with the conver
  */
 test("each observation is stamped with the boundary it was collected for", () => {
   // Both callbacks pass the `latestId` they closed over, so the evidence records its own boundary.
-  assert.equal(viewEffect.includes("recordCateringSentinelVisibility(current, latestId, entries.some((entry) => entry.isIntersecting))"), true);
-  assert.equal(viewEffect.includes("recordCateringViewportVisibility(current, latestId, entries.some((entry) => entry.isIntersecting))"), true);
+  assert.equal(viewEffect.includes("recordCateringSentinelVisibility(current, latestId, pageKey, entries.some((entry) => entry.isIntersecting))"), true);
+  assert.equal(viewEffect.includes("recordCateringViewportVisibility(current, latestId, pageKey, entries.some((entry) => entry.isIntersecting))"), true);
   // And the conjunction is asked about a named boundary rather than in the abstract, which is what makes a change
   // of latestId invalidate prior evidence in the same render instead of waiting for a callback to report false.
-  assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)"), true);
+  assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages, pageKey)"), true);
   assert.equal(/cateringThreadEndIsOnScreen\(visibility\)/.test(source), false, "the boundary-free form must be gone");
+  // And the rendered page set is part of the stamp, so a prepend cannot reuse evidence about the shorter thread.
+  assert.equal(source.includes("const pageKey = cateringMessagePageKey(query.data?.pages, hasOlderPages);"), true);
 });
 
 test("a boundary change re-creates both observers, which is what supplies fresh evidence", () => {
   // `latestId` is a dependency, so new observers are constructed for the new boundary; `observe()` always delivers
   // an initial observation, so a reader still at the bottom gets a fresh positive and one pushed below the fold
   // gets a negative. Neither inherits the old boundary's answer.
-  assert.equal(viewEffect.includes("}, [latestId, messages.length]);"), true);
+  assert.equal(viewEffect.includes("}, [latestId, pageKey]);"), true);
   assert.equal(viewEffect.includes("threadRootObserver.observe(sentinel)"), true);
   assert.equal(viewEffect.includes("viewportObserver.observe(sentinel)"), true);
   // Old observers are torn down, so neither they nor a record they queued survive into the new boundary.
@@ -243,9 +245,10 @@ test("the viewed boundary is gated on pagination being exhausted", () => {
   // The pagination cursor's own answer, not a heuristic, and it is the query's `hasNextPage`.
   assert.equal(source.includes("const hasOlderPages = Boolean(query.hasNextPage);"), true);
   const conjunction = source.slice(source.indexOf("// The boundary advances only while BOTH observations hold"), source.indexOf("// Marking read happens at most ONCE per boundary"));
-  assert.equal(conjunction.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)"), true);
-  // Re-evaluated when the cursor is exhausted, so the boundary becomes eligible without needing a new message.
-  assert.equal(conjunction.includes("hasOlderPages]);"), true);
+  assert.equal(conjunction.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages, pageKey)"), true);
+  // Re-evaluated when the cursor is exhausted -- but the page set is part of the stamp, so exhausting it invalidates
+  // the evidence gathered before the prepend rather than unlocking the boundary with it.
+  assert.equal(conjunction.includes("hasOlderPages, pageKey]);"), true);
 });
 
 test("nothing is auto-fetched to satisfy the pagination gate: paging stays manual", () => {

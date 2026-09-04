@@ -77,9 +77,6 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // Both mutations invalidate only this actor's own booking file and workspace caches. Another participant's
   // actor-scoped keys are deliberately untouched: this client has no legitimate way to refresh them.
   const invalidate = () => {
-    // This actor's own upload or removal already refreshes the workspace here, so the boundary change its refetch
-    // produces is absorbed below rather than announced a second time.
-    ownMutationRef.current = true;
     cache.invalidateQueries({ queryKey: filesKey });
     cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
   };
@@ -108,6 +105,11 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
       const resolved = completeCateringFileUpload(draftRef.current, attempt, role, () => crypto.randomUUID());
       if (resolved.cleared && inputRef.current) inputRef.current.value = "";
       setDraft(resolved.next);
+      // Armed only for an upload that actually created a file. A retry answered from the idempotency ledger
+      // (`duplicate`) added nothing, so the next boundary change is not this request's doing and must not be
+      // absorbed. Arming on anything less than a real creation is how a FAILED mutation used to leave the flag set
+      // for a counterpart's change to consume.
+      if (!(_body as { duplicate?: boolean } | undefined)?.duplicate) ownMutationRef.current = true;
       invalidate();
     },
     // A failed upload leaves the draft entirely alone, so a newer selection survives a failure just as it does a
@@ -124,6 +126,9 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
       }
       return true;
     },
+    // Success alone arms the suppression; `onSettled` runs after a failure too, and a failed delete changes no
+    // boundary, so arming there would leave the flag waiting to swallow a counterpart's next change.
+    onSuccess: () => { ownMutationRef.current = true; },
     onSettled: () => invalidate(),
   });
 

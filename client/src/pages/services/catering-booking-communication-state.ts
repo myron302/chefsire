@@ -165,6 +165,27 @@ export function cateringReadableBoundary(state: CateringViewedState, identity: s
 }
 
 /**
+ * A fingerprint of the RENDERED message set: how many pages are loaded, how many messages they hold, and whether
+ * an older page can still be fetched.
+ *
+ * `latestId` alone does not identify what is on screen. Loading older messages prepends them without changing the
+ * newest one, so evidence gathered before the prepend stayed stamped with the same boundary and remained valid for
+ * a thread that now renders entirely different content. That mattered because exhausting pagination is itself a
+ * gate: with `hasOlderPages` true the boundary is blocked, and the moment it flipped to false the conjunction
+ * re-ran against visibility booleans collected for the SHORTER thread -- while scroll restoration deliberately kept
+ * the reader where they were, so the newly prepended messages had never been on screen at all. The whole backlog
+ * was swept read on the strength of an observation about a different rendering.
+ *
+ * Including `hasOlderPages` in the key is what makes that transition invalidate evidence rather than unlock it.
+ */
+export function cateringMessagePageKey(pages: readonly { messages: readonly unknown[] }[] | undefined, hasOlderPages: boolean): string {
+  const suffix = hasOlderPages ? "more" : "end";
+  if (!pages || pages.length === 0) return `0:0:${suffix}`;
+  const count = pages.reduce((total, page) => total + page.messages.length, 0);
+  return `${pages.length}:${count}:${suffix}`;
+}
+
+/**
  * Whether the end-of-thread sentinel is genuinely on the participant's screen, FOR A NAMED MESSAGE BOUNDARY.
  *
  * Two observations are needed, of the SAME element, against two different coordinate systems. The message list is
@@ -185,31 +206,33 @@ export function cateringReadableBoundary(state: CateringViewedState, identity: s
  * evidence collected for A reads as evidence for B. B would be recorded viewed, and the explicit read mutation
  * would mark a message nobody had seen.
  *
- * So the evidence is stamped with the boundary it was collected for. `observedId` is the `latestId` that was
- * current when the observation arrived, and an observation for a different boundary discards whatever was held and
- * starts the new boundary from nothing. Whether the sentinel is on screen is then a question that can only be asked
- * ABOUT a boundary, never in the abstract -- which is what makes a change of `latestId` invalidate prior evidence
- * immediately and synchronously, with no dependence on a later observer callback arriving to say false.
+ * So the evidence is stamped with WHAT it was collected for: `observedId`, the `latestId` current when the
+ * observation arrived, and `pageKey`, the rendered message set it was looking at. An observation for a different
+ * boundary OR a different page set discards whatever was held and starts from nothing. Whether the sentinel is on
+ * screen is then a question that can only be asked about a specific rendering, never in the abstract -- which is
+ * what makes a new message, or a prepended page, invalidate prior evidence immediately and synchronously, with no
+ * dependence on a later observer callback arriving to say false.
  */
-export type CateringThreadVisibility = { observedId: string | null; sentinelInThread: boolean; sentinelInViewport: boolean };
-export const EMPTY_CATERING_THREAD_VISIBILITY: CateringThreadVisibility = { observedId: null, sentinelInThread: false, sentinelInViewport: false };
+export type CateringThreadVisibility = { observedId: string | null; pageKey: string | null; sentinelInThread: boolean; sentinelInViewport: boolean };
+export const EMPTY_CATERING_THREAD_VISIBILITY: CateringThreadVisibility = { observedId: null, pageKey: null, sentinelInThread: false, sentinelInViewport: false };
 
 /**
  * Moves the evidence onto `latestId`, discarding anything collected for a different boundary. Evidence already
  * stamped with this boundary is returned untouched -- and as the SAME object, so a repeating observer callback
  * cannot churn React state.
  */
-function rebaseCateringVisibility(state: CateringThreadVisibility, latestId: string | null): CateringThreadVisibility {
-  return state.observedId === latestId ? state : { observedId: latestId, sentinelInThread: false, sentinelInViewport: false };
+function rebaseCateringVisibility(state: CateringThreadVisibility, latestId: string | null, pageKey: string): CateringThreadVisibility {
+  if (state.observedId === latestId && state.pageKey === pageKey) return state;
+  return { observedId: latestId, pageKey, sentinelInThread: false, sentinelInViewport: false };
 }
 /** The sentinel's visibility inside the thread's own scroll container (`root: threadRef.current`). */
-export function recordCateringSentinelVisibility(state: CateringThreadVisibility, latestId: string | null, visible: boolean): CateringThreadVisibility {
-  const base = rebaseCateringVisibility(state, latestId);
+export function recordCateringSentinelVisibility(state: CateringThreadVisibility, latestId: string | null, pageKey: string, visible: boolean): CateringThreadVisibility {
+  const base = rebaseCateringVisibility(state, latestId, pageKey);
   return base.sentinelInThread === visible ? base : { ...base, sentinelInThread: visible };
 }
 /** The SAME sentinel's visibility in the browser/document viewport (`root: null`) -- never the container's. */
-export function recordCateringViewportVisibility(state: CateringThreadVisibility, latestId: string | null, visible: boolean): CateringThreadVisibility {
-  const base = rebaseCateringVisibility(state, latestId);
+export function recordCateringViewportVisibility(state: CateringThreadVisibility, latestId: string | null, pageKey: string, visible: boolean): CateringThreadVisibility {
+  const base = rebaseCateringVisibility(state, latestId, pageKey);
   return base.sentinelInViewport === visible ? base : { ...base, sentinelInViewport: visible };
 }
 /**
@@ -221,8 +244,10 @@ export function recordCateringViewportVisibility(state: CateringThreadVisibility
  * scrolled to, or a boundary whose evidence has not yet been re-collected leave messages UNREAD rather than falsely
  * read: an unproven observation is not an observation.
  */
-export function cateringThreadEndIsOnScreen(state: CateringThreadVisibility, latestId: string | null): boolean {
+export function cateringThreadEndIsOnScreen(state: CateringThreadVisibility, latestId: string | null, pageKey: string): boolean {
   if (latestId === null || state.observedId !== latestId) return false;
+  // Evidence about a different rendering of this thread is not evidence about this one.
+  if (state.pageKey !== pageKey) return false;
   return state.sentinelInThread && state.sentinelInViewport;
 }
 
@@ -244,9 +269,9 @@ export function cateringThreadEndIsOnScreen(state: CateringThreadVisibility, lat
  * stays unread, which is the truthful outcome. Once the participant has loaded back through the history and the
  * cursor is exhausted, fresh dual visibility for the newest boundary makes it eligible in the ordinary way.
  */
-export function mayRecordCateringViewedBoundary(state: CateringThreadVisibility, latestId: string | null, hasOlderPages: boolean): boolean {
+export function mayRecordCateringViewedBoundary(state: CateringThreadVisibility, latestId: string | null, hasOlderPages: boolean, pageKey: string): boolean {
   if (hasOlderPages) return false;
-  return cateringThreadEndIsOnScreen(state, latestId);
+  return cateringThreadEndIsOnScreen(state, latestId, pageKey);
 }
 
 /**

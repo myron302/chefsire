@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringReadableBoundary, cateringThreadEndIsOnScreen, mayRecordCateringViewedBoundary, recordCateringSentinelVisibility, recordCateringViewportVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringComposerState, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
+import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringMessagePageKey, cateringReadableBoundary, cateringThreadEndIsOnScreen, mayRecordCateringViewedBoundary, recordCateringSentinelVisibility, recordCateringViewportVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringComposerState, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
 
 type SendPayload = { text: string; clientRequestId: string };
 /**
@@ -74,6 +74,11 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   const messages = combineCateringMessagePages(query.data?.pages ?? []);
   // What the booking-scoped endpoint itself last said about whether this booking can still be written to, and the
   // state this section acts on. The parent prop is only a fallback until the endpoint has answered once.
+  const hasOlderPages = Boolean(query.hasNextPage);
+  // What is currently RENDERED, not just which message is newest. Prepending an older page leaves `latestId`
+  // untouched, so without this an observation made before the prepend would still read as evidence about the
+  // thread that exists after it.
+  const pageKey = cateringMessagePageKey(query.data?.pages, hasOlderPages);
   const observedEditable = observedCateringEditable(query.data?.pages);
   const canSend = effectiveCateringEditable(editable, observedEditable);
   const latestId = latestCateringMessageId(messages);
@@ -168,10 +173,12 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   // evidence held for the old one. That is what stops evidence collected while message A was the newest from
   // authorizing message B, which arrives asynchronously and may well have pushed the sentinel out of view.
   //
-  // Re-creating both observers whenever `latestId` changes is what supplies the fresh evidence: `observe()` always
-  // delivers an initial observation, so a reader genuinely sitting at the bottom gets a new positive for B, and a
-  // reader whom B pushed below the fold gets a negative instead. Both are disconnected on cleanup, so neither an
-  // old observer nor a record queued by one survives into the new boundary.
+  // Re-creating both observers whenever `latestId` OR the rendered page set changes is what supplies the fresh
+  // evidence: `observe()` always delivers an initial observation, so a reader genuinely sitting at the bottom gets
+  // a new positive and a reader pushed below the fold gets a negative instead. Both are disconnected on cleanup, so
+  // neither an old observer nor a record queued by one survives into the new rendering. Scroll restoration keeps
+  // the reader's visual position after a prepend, but it produces no evidence of its own -- only what the
+  // re-created observers report about the thread as it now stands counts.
   useEffect(() => {
     const sentinel = sentinelRef.current;
     const thread = threadRef.current;
@@ -179,15 +186,15 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     // the document and both would answer the same question, so an absent container fails closed instead.
     if (!sentinel || !thread || typeof IntersectionObserver === "undefined") return;
     const threadRootObserver = new IntersectionObserver((entries) => {
-      setVisibility((current) => recordCateringSentinelVisibility(current, latestId, entries.some((entry) => entry.isIntersecting)));
+      setVisibility((current) => recordCateringSentinelVisibility(current, latestId, pageKey, entries.some((entry) => entry.isIntersecting)));
     }, { root: thread, threshold: 0.01 });
     const viewportObserver = new IntersectionObserver((entries) => {
-      setVisibility((current) => recordCateringViewportVisibility(current, latestId, entries.some((entry) => entry.isIntersecting)));
+      setVisibility((current) => recordCateringViewportVisibility(current, latestId, pageKey, entries.some((entry) => entry.isIntersecting)));
     }, { root: null, threshold: 0.01 });
     threadRootObserver.observe(sentinel);
     viewportObserver.observe(sentinel);
     return () => { threadRootObserver.disconnect(); viewportObserver.disconnect(); };
-  }, [latestId, messages.length]);
+  }, [latestId, pageKey]);
 
   // The boundary advances only while BOTH observations hold, both were collected for this exact `latestId`, AND
   // there is no older page still unfetched. Asking the visibility question about a named boundary rather than in
@@ -195,11 +202,10 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   // rather than waiting for an observer to report false. The pagination condition is the separate one: the read
   // marker is chronological, so recording the newest loaded id while older pages are unfetched would sweep unread
   // messages nobody has rendered behind the boundary. Nothing is auto-fetched to satisfy it.
-  const hasOlderPages = Boolean(query.hasNextPage);
   useEffect(() => {
-    if (!mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)) return;
+    if (!mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages, pageKey)) return;
     setViewed((current) => recordCateringViewedBoundary(current, latestId));
-  }, [visibility, latestId, hasOlderPages]);
+  }, [visibility, latestId, hasOlderPages, pageKey]);
 
   // Marking read happens at most ONCE per boundary, and only for a boundary the actor has actually been shown.
   // The attempted boundary is recorded before the request goes out, so a failure cannot re-fire this effect:

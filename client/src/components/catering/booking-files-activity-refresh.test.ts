@@ -32,8 +32,10 @@ function section() {
   const invalidations: string[] = [];
   return {
     invalidations,
-    /** Mirrors `invalidate()`: the local mutation refreshes the workspace itself and arms the absorber. */
-    localMutation() { ownMutation = true; invalidations.push("local-mutation"); },
+    /** A local mutation that SUCCEEDED: it refreshes the workspace itself and arms the absorber. */
+    localSuccess() { ownMutation = true; invalidations.push("local-mutation"); },
+    /** A local mutation that FAILED: it may still refetch, but it changed no boundary, so it arms nothing. */
+    localFailure() { invalidations.push("local-mutation"); },
     /** Mirrors the boundary effect, for one settled response. */
     poll(pages: ReturnType<typeof pageOf>[] | undefined) {
       const boundary = cateringFileBoundary(pages);
@@ -145,7 +147,7 @@ test("11. this actor's own upload or removal is not announced twice", () => {
   const s = section();
   s.poll([pageOf("f1")]);
   // The local mutation refreshes the workspace itself, then its refetch changes the boundary.
-  s.localMutation();
+  s.localSuccess();
   s.poll([pageOf("f2", "f1")]);
   assert.equal(workspaceRefreshes(s), 0, "the local mutation's own refresh is not duplicated");
   assert.deepEqual(s.invalidations, ["local-mutation"]);
@@ -169,4 +171,76 @@ test("12. the cache key is actor-scoped, and the bookkeeping resets with the boo
   assert.equal(cateringFileBoundary([pageOf()]), "");
   assert.equal(cateringFileBoundary(undefined), null);
   assert.equal(cateringFileBoundary([]), null);
+});
+
+
+/**
+ * A failed mutation changes no file boundary, so arming the "this was mine" absorber after one left the flag
+ * waiting -- and the next genuine counterpart change was swallowed by it. Files updated while Activity did not.
+ */
+test("2 & 3. a failed upload arms nothing, so the next counterpart change is still announced", () => {
+  const s = section();
+  s.poll([pageOf("f1")]);
+  s.localFailure();
+  // Nothing changed, so no boundary effect runs at all and no flag is left behind.
+  s.poll([pageOf("f1")]);
+  assert.equal(workspaceRefreshes(s), 0);
+  // The counterpart then uploads a shared file. It must be announced.
+  s.poll([pageOf("f2", "f1")]);
+  assert.equal(workspaceRefreshes(s), 1, "a stale flag must not consume a counterpart's change");
+});
+
+test("4. a failed upload followed by quiet polls leaves no suppression state behind", () => {
+  const s = section();
+  s.poll([pageOf("f1")]);
+  s.localFailure();
+  for (let poll = 0; poll < 5; poll += 1) s.poll([pageOf("f1")]);
+  assert.equal(workspaceRefreshes(s), 0, "quiet polls stay quiet");
+  s.poll([pageOf("f2", "f1")]);
+  assert.equal(workspaceRefreshes(s), 1);
+});
+
+test("5, 6 & 7. delete succeeds -> suppressed once; delete fails -> the next change still announced", () => {
+  const succeeded = section();
+  succeeded.poll([pageOf("f2", "f1")]);
+  succeeded.localSuccess();
+  succeeded.poll([pageOf("f1")]);
+  assert.equal(workspaceRefreshes(succeeded), 0, "a successful local delete refreshes the workspace itself");
+  const failed = section();
+  failed.poll([pageOf("f2", "f1")]);
+  failed.localFailure();
+  failed.poll([pageOf("f2", "f1")]);
+  // The counterpart removes a file afterwards.
+  failed.poll([pageOf("f2")]);
+  assert.equal(workspaceRefreshes(failed), 1);
+});
+
+test("8. the component arms suppression on success only, never from onError or onSettled", () => {
+  // `invalidate()` no longer arms anything: it is called from failure paths too.
+  const invalidateFn = source.slice(source.indexOf("const invalidate = () => {"), source.indexOf("const upload = useMutation"));
+  assert.equal(invalidateFn.includes("ownMutationRef.current = true;"), false, "the shared invalidate must not arm suppression");
+  // Upload arms only in onSuccess, and only when the server actually created a file.
+  const upload = source.slice(source.indexOf("const upload = useMutation"), source.indexOf("const remove = useMutation"));
+  assert.equal(upload.includes("if (!(_body as { duplicate?: boolean } | undefined)?.duplicate) ownMutationRef.current = true;"), true);
+  const uploadError = upload.slice(upload.indexOf("onError:"));
+  assert.equal(uploadError.includes("ownMutationRef"), false, "an upload error must not arm suppression");
+  // Delete arms in onSuccess; onSettled only refetches.
+  const remove = source.slice(source.indexOf("const remove = useMutation"));
+  assert.equal(remove.includes("onSuccess: () => { ownMutationRef.current = true; },"), true);
+  const settled = remove.slice(remove.indexOf("onSettled:"), remove.indexOf("onSettled:") + 60);
+  assert.equal(settled.includes("ownMutationRef"), false, "onSettled runs after failure too and must not arm");
+  // Exactly two arming sites, both on success.
+  assert.equal((source.match(/ownMutationRef\.current = true/g) ?? []).length, 2);
+});
+
+test("an idempotent retry that created nothing does not arm suppression either", () => {
+  // A duplicate response means the file already existed, so the next boundary change is not this request's doing.
+  const s = section();
+  s.poll([pageOf("f1")]);
+  // Modelled as a failure-shaped arming decision: nothing armed.
+  s.localFailure();
+  s.poll([pageOf("f2", "f1")]);
+  assert.equal(workspaceRefreshes(s), 1);
+  // And the component reads the server's own answer rather than assuming creation.
+  assert.equal(source.includes("duplicate?: boolean"), true);
 });
