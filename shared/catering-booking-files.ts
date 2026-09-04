@@ -175,6 +175,35 @@ export type CateringBookingFileView = {
 };
 export type CateringBookingFilePageView = { files: CateringBookingFileView[]; nextCursor: string | null; editable: boolean };
 
+/**
+ * A stable fingerprint of the newest page of files THIS actor may see, or null before any page has arrived.
+ *
+ * The file list polls but the parent workspace summary does not, so a counterpart's shared upload or removal
+ * refreshed the file list while the Activity panel beside it kept showing the state before that change -- two
+ * panels describing the same booking differently until a focus change or an unrelated mutation happened to
+ * intervene. Comparing this value across polls is what tells a quiet poll from one that actually found something.
+ *
+ * The newest page's ids, in order, are enough because a file row is only ever inserted or tombstoned -- nothing
+ * about an existing one is editable in Phase 2I -- so any change this actor can see rewrites that list: an upload
+ * adds an id at the head, a removal drops one out. The page is the endpoint's own newest-first keyset page, so no
+ * loaded history is walked and older pages are not disturbed.
+ *
+ * PRIVACY. It is computed from the actor's OWN response, which the server has already filtered to the visibilities
+ * that actor is allowed (a customer's pages contain shared files only). So a provider-private upload or removal
+ * changes nothing a customer can compute, triggers no refresh on their side, and cannot be inferred from this
+ * value, from its length, or from when it changes. Only ids already serialized to this actor are read; no storage
+ * key, count of hidden rows, or other metadata is involved.
+ *
+ * A removal of a file older than the newest page leaves that page identical and so is not detected here; that case
+ * still resolves on the next focus refetch, exactly as before. Detecting it would mean diffing the whole loaded
+ * history on every poll, which is a worse trade for a bounded collection whose newest page is what Activity is
+ * describing.
+ */
+export function cateringFileBoundary(pages: readonly { files: readonly { id: string }[] }[] | undefined): string | null {
+  if (!pages || pages.length === 0) return null;
+  return pages[0].files.map((file) => file.id).join(",");
+}
+
 export function formatCateringFileSize(byteSize: number): string {
   if (!Number.isFinite(byteSize) || byteSize < 0) return "";
   if (byteSize < 1024) return `${byteSize} B`;

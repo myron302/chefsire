@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, Trash2 } from "lucide-react";
-import { cateringBookingFilesKey, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
+import { cateringBookingFilesKey, cateringFileBoundary, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
 import { cateringBookingWorkspaceKey, cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,10 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Whether this section has already told the workspace that the booking went terminal.
   const terminalSeenRef = useRef(false);
+  // The newest-page fingerprint this component has already accounted for, so a poll that found a real change can be
+  // told from a quiet one, and a change this actor caused itself can be absorbed rather than announced twice.
+  const boundaryRef = useRef<string | null>(null);
+  const ownMutationRef = useRef(false);
   // Mirrors the live draft so a mutation callback, which fires long after its render, resolves against what the
   // participant currently has selected rather than the draft captured when the upload started.
   const draftRef = useRef(draft);
@@ -28,7 +32,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   const filesKey = cateringBookingFilesKey(userId, bookingId);
   const choices = cateringVisibilityChoices(role);
 
-  useEffect(() => { setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; }, [identity, role]);
+  useEffect(() => { setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; boundaryRef.current = null; ownMutationRef.current = false; }, [identity, role]);
 
   const query = useInfiniteQuery({
     queryKey: filesKey,
@@ -62,6 +66,9 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     getNextPageParam: (lastPage) => nextCateringFileCursor(lastPage),
   });
   const files = combineCateringFilePages(query.data?.pages ?? []);
+  // The fingerprint of the newest page this actor may see. Only ids already serialized to them are read, so a
+  // provider-private change is invisible here for a customer exactly as it is everywhere else.
+  const fileBoundary = cateringFileBoundary(query.data?.pages);
   // The same authoritative reading the conversation uses: the files endpoint re-derives `editable` from the
   // persisted booking status on every poll, so it is what the upload and delete controls obey.
   const observedEditable = observedCateringEditable(query.data?.pages);
@@ -70,6 +77,9 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // Both mutations invalidate only this actor's own booking file and workspace caches. Another participant's
   // actor-scoped keys are deliberately untouched: this client has no legitimate way to refresh them.
   const invalidate = () => {
+    // This actor's own upload or removal already refreshes the workspace here, so the boundary change its refetch
+    // produces is absorbed below rather than announced a second time.
+    ownMutationRef.current = true;
     cache.invalidateQueries({ queryKey: filesKey });
     cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
   };
@@ -116,6 +126,25 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     },
     onSettled: () => invalidate(),
   });
+
+  // A poll that finds the newest page genuinely different has discovered a counterpart's shared upload or removal.
+  // The server wrote a `shared_file_uploaded` / `shared_file_removed` activity row for it, and the parent workspace
+  // that renders Activity does not poll -- so without this the file list and the Activity panel beside it describe
+  // the same booking differently until a focus change intervenes. Nothing is fabricated locally: the workspace
+  // refetches its own authoritative activity.
+  //
+  // It fires only on a CHANGE. The first successful load just records a baseline, an unchanged fingerprint does
+  // nothing at all, and a change this actor caused itself is absorbed because `invalidate()` already refreshed the
+  // workspace for it. It cannot loop: the workspace refetch changes the parent's data, never this page's ids.
+  useEffect(() => {
+    if (fileBoundary === null || boundaryRef.current === fileBoundary) return;
+    const baseline = boundaryRef.current === null;
+    const own = ownMutationRef.current;
+    boundaryRef.current = fileBoundary;
+    ownMutationRef.current = false;
+    if (baseline || own) return;
+    cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
+  }, [fileBoundary]);
 
   // The first time this section's own endpoint reports the booking terminal, the parent workspace summary is stale
   // -- it was fetched once and does not poll. Refreshing it lets the whole workspace converge on the same answer
