@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CATERING_MESSAGE_MAX_LENGTH } from "@shared/catering-booking-communication";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
-import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, cateringReadableBoundary, completeCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend , EMPTY_CATERING_THREAD_VISIBILITY, cateringThreadEndIsOnScreen, recordCateringSentinelVisibility, recordCateringViewportVisibility } from "./catering-booking-communication-state";
+import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, cateringReadableBoundary, completeCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend , EMPTY_CATERING_THREAD_VISIBILITY, cateringThreadEndIsOnScreen, mayRecordCateringViewedBoundary, recordCateringSentinelVisibility, recordCateringViewportVisibility } from "./catering-booking-communication-state";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 const OTHER_TOKEN = "22222222-2222-4222-8222-222222222222";
@@ -441,4 +441,66 @@ test("5 & 6. stale dual-root evidence for A cannot mark B, which needs fresh dua
   assert.equal(cateringThreadEndIsOnScreen(oneFreshRoot, B), false);
   // Both roots re-observed for B is what allows it.
   assert.equal(cateringThreadEndIsOnScreen(recordCateringViewportVisibility(oneFreshRoot, B, true), B), true);
+});
+
+
+/**
+ * Visibility of the newest LOADED message is not visibility of everything behind it.
+ *
+ * Messages arrive newest-first and older pages are fetched on demand, so a conversation whose unread backlog is
+ * larger than the first page loads the newest messages and leaves older unread ones unfetched. The server's read
+ * marker is chronological -- it sweeps everything at or before the boundary's `(created_at, id)` pair -- so
+ * recording the newest loaded id in that state marks those unloaded messages read without ever rendering them.
+ */
+test("1. the newest sentinel visible while older pages remain unfetched is NOT viewable", () => {
+  const seen = bothFor(A);
+  // Visibility itself is genuine and fresh; what disqualifies it is the unfetched history behind it.
+  assert.equal(cateringThreadEndIsOnScreen(seen, A), true);
+  assert.equal(mayRecordCateringViewedBoundary(seen, A, true), false, "an unfetched older page blocks the boundary");
+});
+
+test("2. the newest sentinel visible with pagination exhausted is allowed", () => {
+  assert.equal(mayRecordCateringViewedBoundary(bothFor(A), A, false), true);
+});
+
+test("3. exhausting pagination does not rescue stale evidence from an earlier boundary", () => {
+  // Evidence collected while A was newest, then B arrives and the cursor happens to exhaust. The boundary binding
+  // still applies: B needs its own observations.
+  const staleForA = bothFor(A);
+  assert.equal(mayRecordCateringViewedBoundary(staleForA, B, false), false);
+  assert.equal(mayRecordCateringViewedBoundary(staleForA, B, true), false);
+  // One fresh root for B is still not enough, exhausted cursor or not.
+  const oneRoot = recordCateringSentinelVisibility(staleForA, B, true);
+  assert.equal(mayRecordCateringViewedBoundary(oneRoot, B, false), false);
+});
+
+test("4 & 5. loading older pages marks nothing by itself; exhaustion plus fresh evidence does", () => {
+  // Mid-pagination, with the reader looking at the newest message: still nothing.
+  let state = bothFor(A);
+  assert.equal(mayRecordCateringViewedBoundary(state, A, true), false);
+  // Prepending an older page moves the reader away from the end, and the re-created observers say so. Exhausting
+  // the cursor in that state still records nothing, because the sentinel is no longer on screen.
+  state = recordCateringSentinelVisibility(state, A, false);
+  assert.equal(mayRecordCateringViewedBoundary(state, A, false), false, "loading a page must not itself mark read");
+  // Only once the participant is back at the end, with both roots positive for this exact boundary, is it eligible.
+  state = recordCateringSentinelVisibility(state, A, true);
+  assert.equal(mayRecordCateringViewedBoundary(state, A, false), true);
+});
+
+test("6. an ineligible boundary yields no readable id, so older unread messages stay counted", () => {
+  const identity = "actor:booking";
+  let viewed = hydrateCateringViewed(EMPTY_CATERING_VIEWED, identity);
+  // The component only records when the gate allows it, so a blocked boundary leaves the readable id null and the
+  // mark-read effect has nothing to send -- the server's unread count keeps the backlog.
+  if (mayRecordCateringViewedBoundary(bothFor(A), A, true)) viewed = recordCateringViewedBoundary(viewed, A);
+  assert.equal(cateringReadableBoundary(viewed, identity), null);
+  assert.equal(shouldAutoMarkCateringConversationRead(hydrateCateringReadMark(EMPTY_CATERING_READ_MARK, identity), null, 7), false);
+  // And once it is eligible, the ordinary path resumes.
+  if (mayRecordCateringViewedBoundary(bothFor(A), A, false)) viewed = recordCateringViewedBoundary(viewed, A);
+  assert.equal(cateringReadableBoundary(viewed, identity), A);
+});
+
+test("an unloaded conversation is never viewable regardless of the cursor", () => {
+  assert.equal(mayRecordCateringViewedBoundary(bothFor(A), null, false), false);
+  assert.equal(mayRecordCateringViewedBoundary(EMPTY_CATERING_THREAD_VISIBILITY, null, false), false);
 });

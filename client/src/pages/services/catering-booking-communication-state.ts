@@ -227,6 +227,29 @@ export function cateringThreadEndIsOnScreen(state: CateringThreadVisibility, lat
 }
 
 /**
+ * Whether the newest LOADED message may be recorded as viewed.
+ *
+ * Dual-sentinel visibility proves the newest loaded boundary is on screen. It says nothing about what is behind it.
+ * Messages arrive newest-first and older pages are fetched on demand, so a conversation whose unread backlog is
+ * larger than the first page presents this exact shape: the newest messages are loaded and visible, and older
+ * unread ones are still sitting in pages nobody has asked for.
+ *
+ * The read marker is CHRONOLOGICAL -- the server sweeps everything at or before the boundary message's
+ * `(created_at, id)` pair. So recording the newest loaded id in that state marks the unloaded older messages read
+ * too, and they vanish from the unread count without ever having been rendered, let alone seen.
+ *
+ * `hasOlderPages` is therefore a third condition alongside the two visibility observations, and it is the
+ * pagination cursor's own answer rather than a heuristic: while the query can still fetch an older page, no
+ * boundary is eligible. Nothing is auto-fetched to satisfy it -- pagination stays manual, and the backlog simply
+ * stays unread, which is the truthful outcome. Once the participant has loaded back through the history and the
+ * cursor is exhausted, fresh dual visibility for the newest boundary makes it eligible in the ordinary way.
+ */
+export function mayRecordCateringViewedBoundary(state: CateringThreadVisibility, latestId: string | null, hasOlderPages: boolean): boolean {
+  if (hasOlderPages) return false;
+  return cateringThreadEndIsOnScreen(state, latestId);
+}
+
+/**
  * Automatic read-marking state, kept separate from the mutation's own pending/error flags.
  *
  * `markedId` is the last boundary the server confirmed. `attemptedId` is the last boundary an automatic attempt was

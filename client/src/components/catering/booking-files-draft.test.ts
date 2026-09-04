@@ -93,3 +93,21 @@ test("a failed upload still leaves the draft and its token untouched, so Try aga
   assert.equal(onError.includes("randomUUID"), false, "a failure must not mint a new token");
   assert.equal(onError.includes("invalidate()"), true);
 });
+
+test("the component records the attempt on submit, so a later intent change mints a new token", () => {
+  const submit = source.slice(source.indexOf("const submit = (event: FormEvent)"), source.indexOf("return <Card id=\"files\""));
+  // Recorded before the request goes out: from that moment the token's fate is unknowable from the client, and an
+  // ambiguous failure is exactly a request that may already have been accepted.
+  assert.equal(submit.includes("setDraft(markCateringFileAttempted);"), true);
+  assert.equal(submit.indexOf("setDraft(markCateringFileAttempted)") < submit.indexOf("upload.mutate("), true);
+  // The submitted token is the draft's own, so an exact retry of the same intent stays idempotent.
+  assert.equal(submit.includes("requestId: draft.requestId"), true);
+});
+
+test("a visibility change goes through the state machine with a real mint function", () => {
+  assert.equal(source.includes("chooseCateringVisibility(current, choice.value, () => crypto.randomUUID())"), true);
+  // The same UUID source a new file selection uses, so a re-minted draft is indistinguishable from a fresh one.
+  assert.equal(source.includes("selectCateringFile(current, chosen, chosen ? crypto.randomUUID() : null)"), true);
+  // Nothing else rewrites the token: minting belongs to selection, visibility change, and the success path alone.
+  assert.equal((source.match(/crypto\.randomUUID\(\)/g) ?? []).length, 3);
+});

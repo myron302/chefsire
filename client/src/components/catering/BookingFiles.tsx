@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, emptyCateringFileDraft, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, type CateringFileAttempt, type CateringFileDraft } from "@/pages/services/catering-booking-files-state";
+import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, emptyCateringFileDraft, markCateringFileAttempted, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, type CateringFileAttempt, type CateringFileDraft } from "@/pages/services/catering-booking-files-state";
 
 /**
  * The booking Files section, inside the Phase 2H workspace. A customer's rendering carries no provider-private
@@ -97,6 +97,10 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (!mayUploadCateringFile(draft, editable, upload.isPending) || !draft.file || !draft.visibility || !draft.requestId) return;
+    // The token is now possibly spent: the outcome of this request is not knowable from here, and an ambiguous
+    // failure is exactly a request that may already have been accepted. Recording that is what makes a later
+    // change of visibility mint a new token instead of retrying a changed intent under the old one.
+    setDraft(markCateringFileAttempted);
     upload.mutate({ file: draft.file, visibility: draft.visibility, requestId: draft.requestId });
   };
 
@@ -122,7 +126,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
           {choices.length > 0 && <fieldset className="space-y-2"><legend className="text-sm font-medium">Who can see this file?</legend>
             {choices.map((choice) => <label key={choice.value} className="flex min-h-11 items-start gap-2">
               <input type="radio" name="catering-file-visibility" className="mt-1 h-5 w-5" value={choice.value} checked={draft.visibility === choice.value}
-                onChange={() => setDraft((current) => chooseCateringVisibility(current, choice.value))} />
+                onChange={() => setDraft((current) => chooseCateringVisibility(current, choice.value, () => crypto.randomUUID()))} />
               <span className="min-w-0"><span className="block font-medium">{choice.label}</span><span className="block text-sm text-muted-foreground">{choice.description}</span></span>
             </label>)}
           </fieldset>}

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringReadableBoundary, cateringThreadEndIsOnScreen, recordCateringSentinelVisibility, recordCateringViewportVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringComposerState, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
+import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringReadableBoundary, cateringThreadEndIsOnScreen, mayRecordCateringViewedBoundary, recordCateringSentinelVisibility, recordCateringViewportVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringComposerState, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
 
 type SendPayload = { text: string; clientRequestId: string };
 /**
@@ -130,13 +130,17 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     return () => { threadRootObserver.disconnect(); viewportObserver.disconnect(); };
   }, [latestId, messages.length]);
 
-  // The boundary advances only while BOTH observations hold AND both were collected for this exact `latestId`.
-  // Asking the question about a named boundary rather than in the abstract is what makes a change of `latestId`
-  // invalidate prior evidence immediately, in the same render, rather than waiting for an observer to report false.
+  // The boundary advances only while BOTH observations hold, both were collected for this exact `latestId`, AND
+  // there is no older page still unfetched. Asking the visibility question about a named boundary rather than in
+  // the abstract is what makes a change of `latestId` invalidate prior evidence immediately, in the same render,
+  // rather than waiting for an observer to report false. The pagination condition is the separate one: the read
+  // marker is chronological, so recording the newest loaded id while older pages are unfetched would sweep unread
+  // messages nobody has rendered behind the boundary. Nothing is auto-fetched to satisfy it.
+  const hasOlderPages = Boolean(query.hasNextPage);
   useEffect(() => {
-    if (!cateringThreadEndIsOnScreen(visibility, latestId)) return;
+    if (!mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)) return;
     setViewed((current) => recordCateringViewedBoundary(current, latestId));
-  }, [visibility, latestId]);
+  }, [visibility, latestId, hasOlderPages]);
 
   // Marking read happens at most ONCE per boundary, and only for a boundary the actor has actually been shown.
   // The attempted boundary is recorded before the request goes out, so a failure cannot re-fire this effect:

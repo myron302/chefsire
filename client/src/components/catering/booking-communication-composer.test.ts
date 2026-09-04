@@ -149,7 +149,7 @@ test("both observers watch the SENTINEL, differing only in their root", () => {
 
 test("neither observation alone advances the read boundary", () => {
   // The boundary moves through the conjunction and nothing else: no observer callback records it directly.
-  assert.equal(viewEffect.includes("cateringThreadEndIsOnScreen(visibility, latestId)"), true);
+  assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)"), true);
   const threadCallback = viewEffect.slice(viewEffect.indexOf("const threadRootObserver"), viewEffect.indexOf("const viewportObserver"));
   assert.equal(threadCallback.includes("recordCateringViewedBoundary"), false, "thread-root visibility alone must not advance the boundary");
   const viewportCallback = viewEffect.slice(viewEffect.indexOf("const viewportObserver"), viewEffect.indexOf("threadRootObserver.observe"));
@@ -161,11 +161,11 @@ test("neither observation alone advances the read boundary", () => {
 
 test("the boundary advances from the conjunction, and refuses when it does not hold", () => {
   const conjunction = source.slice(source.indexOf("// The boundary advances only while BOTH observations hold"), source.indexOf("// Marking read happens at most ONCE per boundary"));
-  assert.equal(conjunction.includes("if (!cateringThreadEndIsOnScreen(visibility, latestId)) return;"), true);
+  assert.equal(conjunction.includes("if (!mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)) return;"), true);
   assert.equal(conjunction.includes("recordCateringViewedBoundary(current, latestId)"), true);
-  // Re-evaluated when either half changes or when newer messages arrive, so a reader sitting at the bottom of a
-  // visible thread still tracks them.
-  assert.equal(conjunction.includes("}, [visibility, latestId]);"), true);
+  // Re-evaluated when either half changes, when newer messages arrive, or when pagination is exhausted, so a
+  // reader sitting at the bottom of a fully loaded visible thread still tracks them.
+  assert.equal(conjunction.includes("}, [visibility, latestId, hasOlderPages]);"), true);
 });
 
 test("an environment that cannot observe leaves messages unread rather than falsely read", () => {
@@ -207,7 +207,7 @@ test("each observation is stamped with the boundary it was collected for", () =>
   assert.equal(viewEffect.includes("recordCateringViewportVisibility(current, latestId, entries.some((entry) => entry.isIntersecting))"), true);
   // And the conjunction is asked about a named boundary rather than in the abstract, which is what makes a change
   // of latestId invalidate prior evidence in the same render instead of waiting for a callback to report false.
-  assert.equal(viewEffect.includes("cateringThreadEndIsOnScreen(visibility, latestId)"), true);
+  assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)"), true);
   assert.equal(/cateringThreadEndIsOnScreen\(visibility\)/.test(source), false, "the boundary-free form must be gone");
 });
 
@@ -230,4 +230,31 @@ test("the component never marks a boundary read from anything but this evidence"
   assert.equal(readEffect.includes("latestId"), false);
   assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(readMark, viewedId, unreadCount)"), true);
   assert.equal(readEffect.indexOf("startCateringReadMark(current, viewedId!)") < readEffect.indexOf("markRead.mutate(viewedId!)"), true);
+});
+
+
+/**
+ * Dual-sentinel visibility proves the newest LOADED boundary is on screen. It says nothing about what is behind it,
+ * and the server's read marker is chronological -- it sweeps everything at or before the boundary message. So a
+ * conversation whose unread backlog is larger than the first page would have its unloaded older messages marked
+ * read the moment the reader saw the newest one.
+ */
+test("the viewed boundary is gated on pagination being exhausted", () => {
+  // The pagination cursor's own answer, not a heuristic, and it is the query's `hasNextPage`.
+  assert.equal(source.includes("const hasOlderPages = Boolean(query.hasNextPage);"), true);
+  const conjunction = source.slice(source.indexOf("// The boundary advances only while BOTH observations hold"), source.indexOf("// Marking read happens at most ONCE per boundary"));
+  assert.equal(conjunction.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)"), true);
+  // Re-evaluated when the cursor is exhausted, so the boundary becomes eligible without needing a new message.
+  assert.equal(conjunction.includes("hasOlderPages]);"), true);
+});
+
+test("nothing is auto-fetched to satisfy the pagination gate: paging stays manual", () => {
+  // `fetchNextPage` is reachable only from the two explicit controls, never from an effect.
+  assert.equal((source.match(/query\.fetchNextPage\(\)/g) ?? []).length, 1);
+  assert.equal(source.includes("const loadOlder = () => {"), true);
+  const conjunction = source.slice(source.indexOf("// The boundary advances only while BOTH observations hold"), source.indexOf("// Marking read happens at most ONCE per boundary"));
+  assert.equal(conjunction.includes("fetchNextPage"), false, "the read path must never fetch a page itself");
+  assert.equal(readEffect.includes("fetchNextPage"), false);
+  // The observer effect does not either.
+  assert.equal(viewEffect.includes("fetchNextPage"), false);
 });

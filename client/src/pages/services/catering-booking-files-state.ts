@@ -36,14 +36,20 @@ export function initialCateringVisibility(role: "provider" | "customer"): Cateri
  */
 export type CateringSelectedFile = { name: string; type: string; size: number };
 /**
- * `requestId` is minted once per selected file and reused for every attempt at uploading THAT selection, so pressing
- * Upload again after a failure -- or after a timeout that actually succeeded -- resolves to the file the server
- * already stored instead of adding a second copy. Choosing a different file mints a new token, so two deliberate
- * uploads of the same document stay two files.
+ * `requestId` is the server's idempotency token, and it belongs to ONE UPLOAD INTENT: this file, at this
+ * visibility. Every attempt at that same intent reuses it, so pressing Upload again after a failure -- or after a
+ * timeout that actually succeeded -- resolves to the file the server already stored instead of adding a second
+ * copy. Anything that changes the intent mints a new one, so two deliberate uploads stay two files.
+ *
+ * `attempted` records whether the current token has ever been SUBMITTED, and it is what makes "changed intent"
+ * decidable. A token that has never left the browser is unspent: editing the draft can keep it, and no extra token
+ * is minted on an ordinary edit. Once submitted, the outcome may be unknown -- an ambiguous failure is exactly a
+ * request that may or may not have been accepted -- so that token has to be treated as possibly spent, and any
+ * change of intent after it must carry a new one.
  */
-export type CateringFileDraft<F extends CateringSelectedFile = File> = { file: F | null; visibility: CateringFileVisibility | null; error: string | null; requestId: string | null };
+export type CateringFileDraft<F extends CateringSelectedFile = File> = { file: F | null; visibility: CateringFileVisibility | null; error: string | null; requestId: string | null; attempted: boolean };
 export function emptyCateringFileDraft<F extends CateringSelectedFile = File>(role: "provider" | "customer"): CateringFileDraft<F> {
-  return { file: null, visibility: initialCateringVisibility(role), error: null, requestId: null };
+  return { file: null, visibility: initialCateringVisibility(role), error: null, requestId: null, attempted: false };
 }
 
 /** The same extension/MIME/size agreement the server requires, checked here only to fail fast and say why. */
@@ -56,11 +62,37 @@ export function validateCateringFileSelection(file: CateringSelectedFile): strin
   return cateringFileTypeForUpload(extension, file.type) ? null : CATERING_FILE_TYPE_MESSAGE;
 }
 export function selectCateringFile<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, file: F | null, requestId: string | null = null): CateringFileDraft<F> {
-  if (!file) return { ...draft, file: null, error: null, requestId: null };
-  return { ...draft, file, error: validateCateringFileSelection(file), requestId };
+  // A replacement file is a different intent and arrives with its own freshly minted token, so the new draft has
+  // never been submitted whatever the old one had done.
+  if (!file) return { ...draft, file: null, error: null, requestId: null, attempted: false };
+  return { ...draft, file, error: validateCateringFileSelection(file), requestId, attempted: false };
 }
-export function chooseCateringVisibility<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, visibility: CateringFileVisibility): CateringFileDraft<F> {
-  return { ...draft, visibility };
+/**
+ * Chooses the visibility, minting a new token when the one being carried may already be spent.
+ *
+ * Visibility is part of the upload intent, not a detail of it: "share this with the customer" and "keep this
+ * provider-only" are two different requests. After an AMBIGUOUS failure -- a timeout, a dropped connection -- the
+ * submitted token may well have been accepted server-side. Changing the visibility and pressing Upload with that
+ * same token would then hit the server's early accepted-token lookup, which answers with the ORIGINAL upload at
+ * the ORIGINAL visibility; the interface would clear the draft and report success for a provider-only file that
+ * does not exist and never will.
+ *
+ * So a change of visibility on a draft whose token has been submitted mints a new one, and the draft becomes
+ * unattempted again. A token that has never been submitted is unspent and is kept -- switching between the two
+ * radio buttons before ever pressing Upload costs nothing. An unchanged visibility returns the SAME object, so a
+ * rerender or a re-fired change event mints nothing at all.
+ */
+export function chooseCateringVisibility<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, visibility: CateringFileVisibility, mintRequestId: () => string): CateringFileDraft<F> {
+  if (draft.visibility === visibility) return draft;
+  if (!draft.attempted || draft.requestId === null) return { ...draft, visibility };
+  return { ...draft, visibility, requestId: mintRequestId(), attempted: false };
+}
+/**
+ * Records that the draft's token has been submitted. From here the outcome is not knowable from the client alone,
+ * so the token counts as possibly spent until the draft is cleared or a change of intent replaces it.
+ */
+export function markCateringFileAttempted<F extends CateringSelectedFile>(draft: CateringFileDraft<F>): CateringFileDraft<F> {
+  return draft.attempted ? draft : { ...draft, attempted: true };
 }
 /**
  * The immutable snapshot of one submitted upload.
@@ -102,7 +134,7 @@ export function cateringFileDraftMatchesAttempt<F extends CateringSelectedFile>(
 export function completeCateringFileUpload<F extends CateringSelectedFile>(draft: CateringFileDraft<F>, attempt: CateringFileAttempt, role: "provider" | "customer", mintRequestId: () => string): { next: CateringFileDraft<F>; cleared: boolean } {
   if (cateringFileDraftMatchesAttempt(draft, attempt)) return { next: emptyCateringFileDraft<F>(role), cleared: true };
   if (draft.requestId !== attempt.requestId) return { next: draft, cleared: false };
-  return { next: { ...draft, requestId: mintRequestId() }, cleared: false };
+  return { next: { ...draft, requestId: mintRequestId(), attempted: false }, cleared: false };
 }
 
 /** Upload is offered only once a valid file and an explicit visibility are both present on an editable booking. */
