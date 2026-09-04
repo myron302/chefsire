@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cateringBookingMessagesKey, type CateringBookingMessagePageView } from "@shared/catering-booking-communication";
-import { cateringBookingWorkspaceKey, cateringWorkspacePollInterval } from "@shared/catering-booking-operations";
+import { cateringBookingWorkspaceKey, cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -32,9 +32,11 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   // The newest message this component has already accounted for, so a poll that delivers one can be told apart
   // from a poll that delivers nothing.
   const deliveredRef = useRef<string | null>(null);
+  // Whether this section has already told the workspace that the booking went terminal.
+  const terminalSeenRef = useRef(false);
   const messagesKey = cateringBookingMessagesKey(userId, bookingId);
 
-  useEffect(() => { setComposer((current) => hydrateCateringComposer(current, identity)); setReadMark((current) => hydrateCateringReadMark(current, identity)); setViewed((current) => hydrateCateringViewed(current, identity)); setVisibility(EMPTY_CATERING_THREAD_VISIBILITY); deliveredRef.current = null; }, [identity]);
+  useEffect(() => { setComposer((current) => hydrateCateringComposer(current, identity)); setReadMark((current) => hydrateCateringReadMark(current, identity)); setViewed((current) => hydrateCateringViewed(current, identity)); setVisibility(EMPTY_CATERING_THREAD_VISIBILITY); deliveredRef.current = null; terminalSeenRef.current = false; }, [identity]);
 
   const query = useInfiniteQuery({
     queryKey: messagesKey,
@@ -50,7 +52,12 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     // server's throughout. Nothing here marks anything read: this is delivery, and reading is proved separately.
     // A cancelled or completed booking is immutable, so its conversation is settled and polling it forever would be
     // pure traffic. The recurring poll alone stops: the query still loads, paginates and refetches on focus.
-    refetchInterval: cateringWorkspacePollInterval(editable),
+    //
+    // The decision reads THIS query's own freshest answer rather than the parent prop, and reads it from the query
+    // passed in rather than a closure, so the poll stops on the very response that reports the booking terminal --
+    // no refocus, no failed send, no unrelated invalidation needed.
+    refetchInterval: (polled: { state: { data?: { pages: { editable?: boolean }[] } } }) =>
+      cateringWorkspacePollInterval(effectiveCateringEditable(editable, observedCateringEditable(polled.state.data?.pages))),
     // Stated rather than inherited. A hidden tab has no reader to serve, so it polls nothing; the query refreshes
     // on the focus transition instead, which is what `refetchOnWindowFocus` above is for.
     refetchIntervalInBackground: false,
@@ -65,6 +72,10 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   });
 
   const messages = combineCateringMessagePages(query.data?.pages ?? []);
+  // What the booking-scoped endpoint itself last said about whether this booking can still be written to, and the
+  // state this section acts on. The parent prop is only a fallback until the endpoint has answered once.
+  const observedEditable = observedCateringEditable(query.data?.pages);
+  const canSend = effectiveCateringEditable(editable, observedEditable);
   const latestId = latestCateringMessageId(messages);
   // The boundary a read mark may use: the newest message actually shown, never the newest one fetched.
   const viewedId = cateringReadableBoundary(viewed, identity);
@@ -126,6 +137,17 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     deliveredRef.current = latestId;
     cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
   }, [latestId]);
+
+  // The first time this section's own endpoint reports the booking terminal, the parent workspace summary is stale
+  // -- it was fetched once and does not poll. Refreshing it lets the whole workspace converge on the same answer
+  // rather than only this section knowing. Latched in a ref so it fires once per newly observed transition and
+  // never on the polls that follow, and it cannot loop: the workspace refetch changes the parent prop, not this
+  // endpoint's answer.
+  useEffect(() => {
+    if (observedEditable !== false || terminalSeenRef.current) return;
+    terminalSeenRef.current = true;
+    cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
+  }, [observedEditable]);
 
   // Watches the end-of-thread sentinel, which takes TWO observations OF THAT SAME ELEMENT, and each of them has to
   // be stamped with the message boundary it was collected for.
@@ -207,12 +229,16 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    // Guarded here as well as by the control, so no send can be initiated once the endpoint has reported the
+    // booking terminal -- whatever a stale parent prop still says.
+    if (!maySendCateringMessage(composer, canSend)) return;
     const started = startCateringMessageSend(composer, crypto.randomUUID());
     if (!started) return;
     setComposer(started.next);
     send.mutate(started.payload);
   };
   const retry = () => {
+    if (!canSend) return;
     const retried = retryCateringMessageSend(composer);
     if (!retried) return;
     setComposer(retried.next);
@@ -248,7 +274,7 @@ export default function BookingCommunication({ bookingId, userId, role, editable
       <p className="text-sm text-muted-foreground">These messages could not be marked as read.</p>
       <Button type="button" variant="outline" className="min-h-11" disabled={markRead.isPending} onClick={() => setReadMark(retryCateringReadMark)}>Mark as read</Button>
     </div>}
-    {editable
+    {canSend
       ? <form className="space-y-2" onSubmit={submit}>
           <Label htmlFor="catering-message">Message your {role === "provider" ? "customer" : "caterer"}</Label>
           {/* Deliberately editable while a send is in flight and after one fails. The attempt holds its own text, and
@@ -257,7 +283,7 @@ export default function BookingCommunication({ bookingId, userId, role, editable
           <Textarea id="catering-message" className="min-h-24" rows={3} value={composer.text}
             onChange={(event) => setComposer((current) => editCateringComposer(current, event.target.value))} />
           <div className="flex flex-wrap gap-2">
-            <Button type="submit" className="min-h-11" disabled={!maySendCateringMessage(composer, editable)}>Send message</Button>
+            <Button type="submit" className="min-h-11" disabled={!maySendCateringMessage(composer, canSend)}>Send message</Button>
             {pending?.status === "failed" && <>
               <Button type="button" variant="outline" className="min-h-11" onClick={retry}>Try again</Button>
               <Button type="button" variant="ghost" className="min-h-11" onClick={() => setComposer(discardCateringMessageSend(composer))}>Discard unsent message</Button>

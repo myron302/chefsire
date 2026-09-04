@@ -64,12 +64,12 @@ test("upload and pending controls remain accessible", () => {
   assert.equal(form.includes("Uploading your file…"), true);
   const uploadButton = form.slice(form.indexOf("<Button type=\"submit\""), form.indexOf("Upload file"));
   assert.equal(uploadButton.includes("min-h-11"), true);
-  assert.equal(uploadButton.includes("disabled={!mayUploadCateringFile(draft, editable, upload.isPending)}"), true);
+  assert.equal(uploadButton.includes("disabled={!mayUploadCateringFile(draft, canMutate, upload.isPending)}"), true);
 });
 
 test("no duplicate upload can be caused by the draft/attempt split", () => {
   // The submit guard still refuses while a request is pending, so the split introduces no second request.
-  assert.equal(source.includes("if (!mayUploadCateringFile(draft, editable, upload.isPending) || !draft.file || !draft.visibility || !draft.requestId) return;"), true);
+  assert.equal(source.includes("if (!mayUploadCateringFile(draft, canMutate, upload.isPending) || !draft.file || !draft.visibility || !draft.requestId) return;"), true);
 });
 
 test("a preserved draft is handed a fresh idempotency token by the component", () => {

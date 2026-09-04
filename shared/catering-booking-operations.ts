@@ -53,6 +53,37 @@ export const CATERING_TASK_VERSION_CONFLICT_MESSAGE = "This task changed since y
 export const CATERING_WORKSPACE_POLL_MS = 15_000;
 
 /**
+ * The editable state a booking-scoped list endpoint reported, or undefined before any page has arrived.
+ *
+ * The workspace summary that renders these sections is fetched once and does not poll, so its `editable` flag goes
+ * stale the moment the counterpart cancels the booking or the provider completes it. The section's OWN polled
+ * endpoint knows better: it re-derives the flag from the persisted booking status on every request. Reading it is
+ * what stops a section from presenting a terminal booking as still editable until a failed send, a refocus, or an
+ * unrelated invalidation happens to reveal it.
+ *
+ * Any page reporting false makes the answer false. Pages are refetched together and terminal state is irreversible
+ * server-side -- a cancelled or completed booking never becomes active again -- so a single false is authoritative
+ * and cannot be contradicted by a stale sibling page. Nothing is inferred beyond what the endpoint said: with no
+ * pages loaded the answer is undefined, not a guess.
+ */
+export function observedCateringEditable(pages: readonly { editable?: boolean }[] | undefined): boolean | undefined {
+  if (!pages || pages.length === 0) return undefined;
+  return !pages.some((page) => page.editable === false);
+}
+
+/**
+ * The state a section acts on: what its own endpoint last said, falling back to the parent's prop only until the
+ * endpoint has said anything at all.
+ *
+ * Because the authoritative answer wins outright rather than being combined, a stale parent `true` cannot re-enable
+ * a section the endpoint has already reported terminal -- and when the parent workspace later refreshes it simply
+ * converges on the same answer.
+ */
+export function effectiveCateringEditable(parentEditable: boolean, observed: boolean | undefined): boolean {
+  return observed ?? parentEditable;
+}
+
+/**
  * The polling cadence for one workspace section, or `false` when it must not poll at all.
  *
  * A cancelled or completed booking is immutable: no message can be sent into it, no file uploaded or removed. Its

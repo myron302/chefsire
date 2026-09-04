@@ -26,7 +26,8 @@ const queryOptions = source.slice(source.indexOf("const query = useInfiniteQuery
 const stripComments = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
 
 test("the file list actively refreshes on a timer while the tab stays open", () => {
-  assert.equal(queryOptions.includes("refetchInterval: cateringWorkspacePollInterval(editable)"), true);
+  assert.equal(queryOptions.includes("refetchInterval: (polled:"), true);
+  assert.equal(queryOptions.includes("cateringWorkspacePollInterval(effectiveCateringEditable(editable, observedCateringEditable(polled.state.data?.pages)))"), true);
   assert.equal(cateringWorkspacePollInterval(true), CATERING_WORKSPACE_POLL_MS);
   assert.equal(queryOptions.includes("refetchOnWindowFocus: true"), true);
   // A hidden tab has no reader to serve, so background polling stays off; the focus transition covers the return.
@@ -38,8 +39,8 @@ test("both live workspace sections share ONE cadence rather than duplicating the
   // The constant lives on the workspace contract both sections belong to, and both import it from there, so the
   // two cadences cannot drift into two different policies.
   for (const [label, text] of [["files", source], ["communication", comms]] as const) {
-    assert.equal(text.includes('cateringBookingWorkspaceKey, cateringWorkspacePollInterval } from "@shared/catering-booking-operations"'), true, label);
-    assert.equal(text.includes("refetchInterval: cateringWorkspacePollInterval(editable)"), true, label);
+    assert.equal(text.includes('cateringBookingWorkspaceKey, cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations"'), true, label);
+    assert.equal(text.includes("cateringWorkspacePollInterval(effectiveCateringEditable(editable, observedCateringEditable(polled.state.data?.pages)))"), true, label);
     // No second literal cadence anywhere.
     assert.equal(/refetchInterval:\s*\d/.test(text), false, label);
   }
@@ -118,7 +119,7 @@ test("a terminal booking still lists its files, stays non-writable, and stops po
     assert.equal(code.includes(inferred), false, inferred);
   }
   assert.equal(source.includes("CATERING_FILES_READ_ONLY_BANNER"), true);
-  assert.equal(source.includes("mayUploadCateringFile(draft, editable, upload.isPending)"), true);
+  assert.equal(source.includes("mayUploadCateringFile(draft, canMutate, upload.isPending)"), true);
   // And the server refuses the write regardless of what the client renders.
   assert.equal(route.includes("mayMutateCateringFiles(booking.status as never)"), true);
 });

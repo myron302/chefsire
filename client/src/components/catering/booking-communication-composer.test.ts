@@ -60,7 +60,7 @@ test("send, retry and discard controls remain reachable and accessible", () => {
 });
 
 test("duplicate-send protection is unchanged: the send control is gated by the state machine", () => {
-  assert.equal(composerForm.includes("disabled={!maySendCateringMessage(composer, editable)}"), true);
+  assert.equal(composerForm.includes("disabled={!maySendCateringMessage(composer, canSend)}"), true);
   // A fresh token per composition, reused by the retry path through the attempt record.
   assert.equal(source.includes("startCateringMessageSend(composer, crypto.randomUUID())"), true);
 });

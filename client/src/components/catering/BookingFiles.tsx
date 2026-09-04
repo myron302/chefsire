@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, Trash2 } from "lucide-react";
 import { cateringBookingFilesKey, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
-import { cateringBookingWorkspaceKey, cateringWorkspacePollInterval } from "@shared/catering-booking-operations";
+import { cateringBookingWorkspaceKey, cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +19,8 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   const identity = `${userId}:${bookingId}`;
   const [draft, setDraft] = useState<CateringFileDraft>(() => emptyCateringFileDraft(role));
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Whether this section has already told the workspace that the booking went terminal.
+  const terminalSeenRef = useRef(false);
   // Mirrors the live draft so a mutation callback, which fires long after its render, resolves against what the
   // participant currently has selected rather than the draft captured when the upload started.
   const draftRef = useRef(draft);
@@ -26,7 +28,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   const filesKey = cateringBookingFilesKey(userId, bookingId);
   const choices = cateringVisibilityChoices(role);
 
-  useEffect(() => { setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; }, [identity, role]);
+  useEffect(() => { setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; }, [identity, role]);
 
   const query = useInfiniteQuery({
     queryKey: filesKey,
@@ -44,7 +46,10 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     // actor may see, and can neither widen that nor imply any mutation.
     // A cancelled or completed booking is immutable, so its file list is settled and polling it forever would be
     // pure traffic. The recurring poll alone stops: the query still loads, paginates and refetches on focus.
-    refetchInterval: cateringWorkspacePollInterval(editable),
+    // Read from this query's own freshest answer rather than the parent prop, and from the query passed in rather
+    // than a closure, so polling stops on the very response that reports the booking terminal.
+    refetchInterval: (polled: { state: { data?: { pages: { editable?: boolean }[] } } }) =>
+      cateringWorkspacePollInterval(effectiveCateringEditable(editable, observedCateringEditable(polled.state.data?.pages))),
     // A hidden tab has no reader to serve; the focus transition covers the return.
     refetchIntervalInBackground: false,
     queryFn: async ({ pageParam }): Promise<CateringBookingFilePageView> => {
@@ -57,6 +62,10 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     getNextPageParam: (lastPage) => nextCateringFileCursor(lastPage),
   });
   const files = combineCateringFilePages(query.data?.pages ?? []);
+  // The same authoritative reading the conversation uses: the files endpoint re-derives `editable` from the
+  // persisted booking status on every poll, so it is what the upload and delete controls obey.
+  const observedEditable = observedCateringEditable(query.data?.pages);
+  const canMutate = effectiveCateringEditable(editable, observedEditable);
 
   // Both mutations invalidate only this actor's own booking file and workspace caches. Another participant's
   // actor-scoped keys are deliberately untouched: this client has no legitimate way to refresh them.
@@ -108,9 +117,20 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     onSettled: () => invalidate(),
   });
 
+  // The first time this section's own endpoint reports the booking terminal, the parent workspace summary is stale
+  // -- it was fetched once and does not poll. Refreshing it lets the whole workspace converge on the same answer
+  // rather than only this section knowing. Latched in a ref so it fires once per newly observed transition and
+  // never on the polls that follow, and it cannot loop: the workspace refetch changes the parent prop, not this
+  // endpoint's answer.
+  useEffect(() => {
+    if (observedEditable !== false || terminalSeenRef.current) return;
+    terminalSeenRef.current = true;
+    cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
+  }, [observedEditable]);
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!mayUploadCateringFile(draft, editable, upload.isPending) || !draft.file || !draft.visibility || !draft.requestId) return;
+    if (!mayUploadCateringFile(draft, canMutate, upload.isPending) || !draft.file || !draft.visibility || !draft.requestId) return;
     // The token is now possibly spent: the outcome of this request is not knowable from here, and an ambiguous
     // failure is exactly a request that may already have been accepted. Recording that is what makes a later
     // change of visibility mint a new token instead of retrying a changed intent under the old one.
@@ -123,12 +143,12 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     {query.isError && !query.isLoading && <div className="space-y-2" role="alert"><p>Files could not be loaded.</p><Button variant="outline" className="min-h-11" onClick={() => query.refetch()}>Retry loading files</Button></div>}
     {!query.isLoading && !query.isError && (files.length === 0
       ? <p className="text-muted-foreground">{CATERING_FILES_EMPTY}</p>
-      : <ul className="space-y-2">{files.map((file) => <FileRow key={file.id} file={file} bookingId={bookingId} role={role} editable={editable} pending={remove.isPending} onRemove={() => { if (window.confirm(`Remove “${file.filename}”?`)) remove.mutate(file.id); }} />)}</ul>)}
+      : <ul className="space-y-2">{files.map((file) => <FileRow key={file.id} file={file} bookingId={bookingId} role={role} editable={canMutate} pending={remove.isPending} onRemove={() => { if (window.confirm(`Remove “${file.filename}”?`)) remove.mutate(file.id); }} />)}</ul>)}
     {query.hasNextPage && <Button variant="outline" className="min-h-11 w-full sm:w-auto" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>{query.isFetchingNextPage ? "Loading more files…" : "Load more files"}</Button>}
     {query.isFetchNextPageError && <div className="space-y-2" role="alert"><p>More files could not be loaded.</p><Button variant="outline" className="min-h-11" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>Retry loading more files</Button></div>}
     {remove.isError && <p role="alert" className="text-destructive">{remove.error.message}</p>}
 
-    {editable
+    {canMutate
       ? <form className="space-y-3 border-t pt-4" onSubmit={submit}>
           <div><Label htmlFor="catering-file">Add a file</Label>
             <input id="catering-file" ref={inputRef} type="file" accept={CATERING_FILE_ACCEPT} className="flex min-h-11 w-full rounded-md border border-input bg-background px-3 py-2"
@@ -145,7 +165,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
             </label>)}
           </fieldset>}
           {draft.error && <p role="alert" className="text-destructive">{draft.error}</p>}
-          <Button type="submit" className="min-h-11" disabled={!mayUploadCateringFile(draft, editable, upload.isPending)}>Upload file</Button>
+          <Button type="submit" className="min-h-11" disabled={!mayUploadCateringFile(draft, canMutate, upload.isPending)}>Upload file</Button>
           <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{upload.isPending ? "Uploading your file…" : upload.isSuccess ? "File uploaded." : ""}</p>
           {upload.isError && <p role="alert" className="text-destructive">{upload.error.message}</p>}
         </form>

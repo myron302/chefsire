@@ -28,7 +28,8 @@ const viewEffect = source.slice(source.indexOf("// Watches the end-of-thread sen
 const readEffect = source.slice(source.indexOf("// Marking read happens at most ONCE per boundary"), source.indexOf("// Restore the reading position"));
 
 test("1. the booking message query actively refreshes on a timer, not only on staleness", () => {
-  assert.equal(queryOptions.includes("refetchInterval: cateringWorkspacePollInterval(editable)"), true);
+  assert.equal(queryOptions.includes("refetchInterval: (polled:"), true);
+  assert.equal(queryOptions.includes("cateringWorkspacePollInterval(effectiveCateringEditable(editable, observedCateringEditable(polled.state.data?.pages)))"), true);
   assert.equal(cateringWorkspacePollInterval(true), CATERING_WORKSPACE_POLL_MS);
   // A bounded, unhurried cadence -- and one shared constant rather than a number buried in the component.
   assert.equal(CATERING_WORKSPACE_POLL_MS, 15_000);
@@ -171,14 +172,14 @@ test("6. once the refreshed summary reports unread, the ordinary explicit read p
   assert.equal(readEffect.indexOf("startCateringReadMark(current, viewedId!)") < readEffect.indexOf("markRead.mutate(viewedId!)"), true);
 });
 
-test("9. a terminal booking still reads and polls, but remains non-writable", () => {
-  // Reading never closes, only sending does: the query, the poll and the read path are unconditional, and the
-  // composer is what `editable` gates.
-  assert.equal(stripComments(queryOptions).includes("enabled:"), false, "a historical conversation must still load and refresh");
-  assert.equal(source.includes("{editable\n      ? <form className=\"space-y-2\" onSubmit={submit}>"), true);
+test("9. a terminal booking still reads, but remains non-writable", () => {
+  // Reading never closes, only sending does: the query and the read path are unconditional, and the composer is
+  // what the effective editable state gates.
+  assert.equal(stripComments(queryOptions).includes("enabled:"), false, "a historical conversation must still load");
+  assert.equal(source.includes("{canSend\n      ? <form className=\"space-y-2\" onSubmit={submit}>"), true);
   assert.equal(source.includes(": <p className=\"font-medium\">{CATERING_COMMUNICATION_READ_ONLY_BANNER}</p>}"), true);
-  // The send control is additionally gated by the state machine, which takes `editable` too.
-  assert.equal(source.includes("disabled={!maySendCateringMessage(composer, editable)}"), true);
+  // The send control is additionally gated by the state machine, which takes the same effective value.
+  assert.equal(source.includes("disabled={!maySendCateringMessage(composer, canSend)}"), true);
   // A booking that closed while the composer was open refetches the workspace, so the banner replaces the form.
   assert.equal(source.includes("if (isCateringCommunicationReadOnly(error)) {"), true);
 });
@@ -198,14 +199,17 @@ test("an active booking polls at the configured cadence; a terminal one does not
 test("closure is taken from the parent workspace's authoritative flag, never re-inferred", () => {
   // `editable` is the same prop that renders the read-only banner and gates every mutation control.
   assert.equal(source.includes("editable, unreadCount }: { bookingId: string; userId: string; role: \"provider\" | \"customer\"; editable: boolean; unreadCount: number }"), true);
+  // And it is only ever the FALLBACK: the endpoint's own answer wins when it has one.
+  assert.equal(source.includes("const canSend = effectiveCateringEditable(editable, observedEditable);"), true);
   // No second opinion about BOOKING closure anywhere in the component. (`pending?.status` is the send attempt's
   // own state, not the booking's, so closure-specific tokens are what this checks.)
   const code = stripComments(source);
   for (const inferred of ["cancelled", "completed", "booking.status", "mayMutateCateringFiles", "CATERING_BOOKING_STATUSES"]) {
     assert.equal(code.includes(inferred), false, inferred);
   }
-  // The polling policy is handed the flag directly, with nothing derived in between.
-  assert.equal(code.includes("cateringWorkspacePollInterval(editable)"), true);
+  // The polling policy is handed the endpoint's own answer, with the parent prop only as the fallback inside
+  // `effectiveCateringEditable` -- nothing else derives closure.
+  assert.equal(code.includes("effectiveCateringEditable(editable, observedCateringEditable("), true);
 });
 
 test("only the recurring poll stops: a terminal conversation still loads, paginates and refetches on focus", () => {
@@ -223,7 +227,7 @@ test("only the recurring poll stops: a terminal conversation still loads, pagina
 test("no mutation capability is reintroduced for a terminal booking", () => {
   // The composer is replaced by the banner, and the send control is additionally gated by the state machine.
   assert.equal(source.includes("CATERING_COMMUNICATION_READ_ONLY_BANNER"), true);
-  assert.equal(source.includes("disabled={!maySendCateringMessage(composer, editable)}"), true);
+  assert.equal(source.includes("disabled={!maySendCateringMessage(composer, canSend)}"), true);
   // Marking a historical conversation read is still allowed -- reading is not a mutation of the booking.
   assert.equal(source.includes("`/api/catering/bookings/${bookingId}/messages/read`"), true);
 });
