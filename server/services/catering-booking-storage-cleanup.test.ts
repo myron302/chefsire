@@ -90,9 +90,11 @@ test("a completion write cannot double-count or resurrect a row under concurrenc
   }
   // Attempt counters are incremented in SQL, so concurrent runs cannot lose each other's increments.
   // The increment is still SQL-side, and it is charged for one claimed execution under a matching token, so two
-  // workers cannot consume the same row's attempt for one scheduled opportunity.
-  assert.equal(service.includes("sql`${cateringBookingFiles.cleanupAttempts} + 1`"), true);
-  assert.equal(service.includes("sql`${cateringBookingStorageOrphans.cleanupAttempts} + 1`"), true);
+  // workers cannot consume the same row's attempt for one scheduled opportunity. It now goes through one clamped
+  // helper, so no path can carry a row past the ceiling.
+  assert.equal(service.includes("sql`LEAST(${column} + 1, ${CATERING_CLEANUP_MAX_ATTEMPTS})`"), true);
+  assert.equal(service.includes("chargeAttempt(cateringBookingFiles.cleanupAttempts)"), true);
+  assert.equal(service.includes("chargeAttempt(cateringBookingStorageOrphans.cleanupAttempts)"), true);
   assert.equal(service.includes(`.for("update", { skipLocked: true })`), true);
 });
 

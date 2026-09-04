@@ -41,6 +41,34 @@ test("1. parent true and endpoint true: the section is editable and polls", () =
   assert.equal(cateringWorkspacePollInterval(effectiveCateringEditable(true, observed)), 15_000);
 });
 
+/**
+ * Closure is a conjunction, not a precedence.
+ *
+ * Preferring the endpoint with `observed ?? parentEditable` got the mirror case wrong: the parent workspace
+ * refetches too -- on focus, after a mutation, or because a section told it the booking went terminal -- and when IT
+ * reported the booking cancelled while a cached child page still said `true`, that stale `true` masked the closure
+ * until the child's own next request happened to land. A booking never returns from cancelled or completed, so a
+ * `false` from either side is permanent.
+ */
+test("the full truth table: editable only while NO known source says false", () => {
+  assert.equal(effectiveCateringEditable(true, undefined), true);
+  assert.equal(effectiveCateringEditable(true, true), true);
+  assert.equal(effectiveCateringEditable(true, false), false);
+  assert.equal(effectiveCateringEditable(false, undefined), false);
+  assert.equal(effectiveCateringEditable(false, true), false, "a cached child true must not mask a terminal parent");
+  assert.equal(effectiveCateringEditable(false, false), false);
+});
+
+test("a parent that flips to false wins even against a cached child page that still says true", () => {
+  // The exact reported sequence: the child fetched editable=true, then the parent refetched and learned the
+  // booking is cancelled. The stale cached page must not keep the section live.
+  const cached = observedCateringEditable([page(true)]);
+  assert.equal(cached, true);
+  assert.equal(effectiveCateringEditable(false, cached), false);
+  // And polling stops on that same evaluation rather than waiting for the child's next response.
+  assert.equal(cateringWorkspacePollInterval(effectiveCateringEditable(false, cached)), false);
+});
+
 test("2 & 8. a later poll reporting false wins immediately, and a stale parent true cannot undo it", () => {
   // The decisive case: the parent summary still says true because it never refetched.
   const observed = observedCateringEditable([page(false)]);
@@ -59,8 +87,8 @@ test("the parent prop is used only until the endpoint has answered, and nothing 
   assert.equal(effectiveCateringEditable(false, undefined), false);
   // A page that omits the field asserts nothing about closure; it is not read as terminal.
   assert.equal(observedCateringEditable([{}]), true);
-  // And when the parent later refreshes, both inputs agree rather than fighting.
-  assert.equal(effectiveCateringEditable(false, false), false);
+  // An absent answer is not a false: it is the one case where the prop stands alone.
+  assert.equal(effectiveCateringEditable(true, undefined), true);
 });
 
 test("3, 5 & 9-10. the composer goes read-only at once, history stays, drafts survive, no send can start", () => {
@@ -140,4 +168,24 @@ test("the server remains the final authority whatever the client believes", () =
     assert.equal(source.includes("editable: true"), false, label);
     assert.equal(source.includes("editable: false"), false, label);
   }
+});
+
+
+test("both sections disable every mutation control the moment either source reports terminal", () => {
+  // Neither component re-derives closure; both hand the two authoritative inputs to the one shared rule, so the
+  // conjunction applies identically to the composer, the upload form and each row's delete control.
+  assert.equal(comms.includes("const canSend = effectiveCateringEditable(editable, observedEditable);"), true);
+  assert.equal(files.includes("const canMutate = effectiveCateringEditable(editable, observedEditable);"), true);
+  for (const [label, source, gate] of [["communication", comms, "canSend"], ["files", files, "canMutate"]] as const) {
+    // The polling decision uses the same rule, so it stops on whichever source reports terminal first.
+    assert.equal(source.includes(`cateringWorkspacePollInterval(effectiveCateringEditable(editable, observedCateringEditable(polled.state.data?.pages)))`), true, label);
+    assert.equal(source.includes(`{${gate}\n`), true, label);
+  }
+  // Terminal history and files stay readable, and drafts survive: neither terminal path clears them.
+  assert.equal(comms.includes("CATERING_COMMUNICATION_READ_ONLY_BANNER"), true);
+  assert.equal(files.includes("CATERING_FILES_READ_ONLY_BANNER"), true);
+  const commsTerminal = comms.slice(comms.indexOf("// The first time this section's own endpoint reports"), comms.indexOf("// Watches the end-of-thread sentinel"));
+  assert.equal(commsTerminal.includes("setComposer"), false);
+  const filesTerminal = files.slice(files.indexOf("// The first time this section's own endpoint reports"), files.indexOf("const submit = (event: FormEvent)"));
+  assert.equal(filesTerminal.includes("setDraft"), false);
 });

@@ -37,15 +37,23 @@ function cluster(rows: Row[]) {
     /** The short claim transaction: eligible rows are leased and stamped, and the lease survives the commit. */
     claim(limit = 10): { id: string; token: string }[] {
       const token = `worker-${++tokens}`;
-      const taken = rows.filter((row) => !row.done && row.attempts < CATERING_CLEANUP_MAX_ATTEMPTS && (row.token === null || row.until <= now)).slice(0, limit);
-      for (const row of taken) {
+      const eligible = rows.filter((row) => !row.done && row.attempts < CATERING_CLEANUP_MAX_ATTEMPTS && (row.token === null || row.until <= now)).slice(0, limit);
+      const claimed: Row[] = [];
+      for (const row of eligible) {
         // Taking over a row that still holds a token means its previous execution never concluded, so the
         // abandoned attempt is charged here rather than being lost.
-        if (row.token !== null) row.attempts += 1;
+        if (row.token !== null) {
+          row.attempts = Math.min(row.attempts + 1, CATERING_CLEANUP_MAX_ATTEMPTS);
+          row.token = null; row.until = 0;
+          // If that charge reached the ceiling the row is finished: the stale lease is released and it is NOT
+          // handed to a worker, because another delete would spend an attempt past the maximum.
+          if (row.attempts >= CATERING_CLEANUP_MAX_ATTEMPTS) continue;
+        }
         row.token = token;
         row.until = now + CATERING_CLEANUP_LEASE_SECONDS;
+        claimed.push(row);
       }
-      return taken.map((row) => ({ id: row.id, token }));
+      return claimed.map((row) => ({ id: row.id, token }));
     },
     /** Finalization, conditioned on the token: a stale worker matches nothing and changes nothing. */
     succeed(id: string, token: string): boolean {
@@ -57,7 +65,9 @@ function cluster(rows: Row[]) {
     fail(id: string, token: string): boolean {
       const row = this.row(id);
       if (row.token !== token) return false;
-      row.attempts += 1; row.token = null; row.until = 0;
+      // Charged in SQL as LEAST(attempts + 1, max), so the ceiling holds by construction.
+      row.attempts = Math.min(row.attempts + 1, CATERING_CLEANUP_MAX_ATTEMPTS);
+      row.token = null; row.until = 0;
       return true;
     },
   };
@@ -121,6 +131,75 @@ test("8. a worker that crashes after claiming holds the row until the lease expi
   assert.notEqual(second.token, first.token, "the reclaim issues a NEW token");
   // The abandoned execution is charged on reclaim, so a repeatedly crashing worker cannot retry forever.
   assert.equal(c.row("a").attempts, 1);
+});
+
+/**
+ * Charging an abandoned execution can itself reach the ceiling. Handing that row to a worker anyway spent an
+ * ELEVENTH attempt on a delete the ceiling existed to stop.
+ */
+test("ceiling 1. a lease that lapses at attempts=9 charges to 10 and is not handed out again", () => {
+  const c = cluster([pending("a", { attempts: 9 })]);
+  const [held] = c.claim();
+  assert.equal(held.id, "a");
+  c.advance(CATERING_CLEANUP_LEASE_SECONDS + 1);
+  // The reclaim charges the abandoned execution, which exhausts the row -- so nothing is returned to work on.
+  assert.deepEqual(c.claim(), [], "an exhausted reclaim must not become a new candidate");
+  assert.equal(c.row("a").attempts, CATERING_CLEANUP_MAX_ATTEMPTS);
+  // The stale lease is released, so the row is pending-but-exhausted rather than looking claimed forever.
+  assert.equal(c.row("a").token, null);
+  assert.equal(c.row("a").done, false, "no storage delete was attempted, so nothing was completed");
+  // And it stays excluded from here on.
+  assert.deepEqual(c.claim(), []);
+});
+
+test("ceiling 2. a lease that lapses at attempts=8 charges to 9, may run once more, and lands exactly on 10", () => {
+  const c = cluster([pending("a", { attempts: 8 })]);
+  const [first] = c.claim();
+  c.advance(CATERING_CLEANUP_LEASE_SECONDS + 1);
+  const [second] = c.claim();
+  assert.equal(second.id, "a", "one more valid claim is allowed");
+  assert.equal(c.row("a").attempts, 9);
+  assert.notEqual(second.token, first.token);
+  // That execution fails, which brings it to exactly the ceiling.
+  c.fail("a", second.token);
+  assert.equal(c.row("a").attempts, CATERING_CLEANUP_MAX_ATTEMPTS);
+  assert.deepEqual(c.claim(), [], "no further claim is possible");
+});
+
+test("ceiling 3-6. no interleaving of crashes, failures, stale tokens or replicas can pass the ceiling", () => {
+  const c = cluster([pending("a")]);
+  for (let round = 0; round < 60; round += 1) {
+    const claimed = c.claim();
+    // Replicas pile on, a stale token from an earlier round tries to finalize, and the round ends in a crash or a
+    // failure depending on parity.
+    for (let replica = 0; replica < 3; replica += 1) c.claim();
+    assert.equal(c.fail("a", "stale-token"), false);
+    assert.equal(c.succeed("a", "stale-token"), false);
+    if (claimed.length > 0 && round % 2 === 0) c.fail("a", claimed[0].token);
+    c.advance(CATERING_CLEANUP_LEASE_SECONDS + 1);
+    assert.equal(c.row("a").attempts <= CATERING_CLEANUP_MAX_ATTEMPTS, true, `attempts passed the ceiling in round ${round}`);
+  }
+  assert.equal(c.row("a").attempts, CATERING_CLEANUP_MAX_ATTEMPTS);
+});
+
+test("ceiling 4 & 7. a normal failure at 9 lands on 10, and a success charges nothing", () => {
+  const failing = cluster([pending("a", { attempts: 9 })]);
+  const [claim] = failing.claim();
+  assert.equal(failing.row("a").attempts, 9, "a fresh claim charges nothing");
+  failing.fail("a", claim.token);
+  assert.equal(failing.row("a").attempts, CATERING_CLEANUP_MAX_ATTEMPTS);
+  const succeeding = cluster([pending("b", { attempts: 9 })]);
+  const [ok] = succeeding.claim();
+  succeeding.succeed("b", ok.token);
+  assert.equal(succeeding.row("b").attempts, 9, "a successful cleanup charges no attempt");
+  assert.equal(succeeding.row("b").done, true);
+});
+
+test("ceiling 9. maxed rows are excluded by the eligibility predicate itself", () => {
+  const c = cluster([pending("maxed", { attempts: CATERING_CLEANUP_MAX_ATTEMPTS }), pending("ready", { attempts: 1 })]);
+  assert.deepEqual(c.claim().map((row) => row.id), ["ready"]);
+  assert.equal(c.row("maxed").attempts, CATERING_CLEANUP_MAX_ATTEMPTS);
+  assert.equal(c.row("maxed").token, null);
 });
 
 test("9. a slow worker returning after its lease was reclaimed finalizes nothing", () => {
@@ -191,6 +270,13 @@ test("BOTH queues claim with a durable lease, not a transaction-local lock alone
     assert.equal(body.includes("const claimToken = randomUUID();") || service.slice(at - 120, at).includes("randomUUID"), true, claim);
     // An abandoned execution is charged on reclaim, and a fresh row is charged nothing.
     assert.equal(body.includes("rows.filter((row) => row.previousToken !== null)"), true, claim);
+    // A reclaim that reaches the ceiling releases the lease and is excluded from the returned candidates, so no
+    // further storage delete is attempted for it.
+    assert.equal(body.includes("row.cleanupAttempts + 1 >= CATERING_CLEANUP_MAX_ATTEMPTS"), true, claim);
+    assert.equal(body.includes("cleanupClaimToken: null, cleanupClaimedUntil: null })"), true, claim);
+    assert.equal(body.includes("const claimable = rows.filter((row) => !exhausted.includes(row.id));"), true, claim);
+    assert.equal(body.includes("return claimable.map("), true, claim);
+    assert.equal(body.includes("return rows.map("), false, claim);
     // No storage call happens inside the claim transaction.
     assert.equal(body.includes("removePrivateObject"), false, claim);
   }
@@ -245,4 +331,15 @@ test("tombstoned files stay invisible whatever cleanup does", () => {
   }
   // Every key it acts on is read from a persisted row inside this module.
   assert.equal(service.includes("candidate.storageKey"), true);
+});
+
+
+test("every increment goes through the clamped charge, so the ceiling holds by construction", () => {
+  // One helper, clamped in SQL, used by the abandoned charge, the exhausting charge and both failure paths -- so
+  // the invariant does not depend on every caller remembering to check.
+  assert.equal(service.includes("sql`LEAST(${column} + 1, ${CATERING_CLEANUP_MAX_ATTEMPTS})`"), true);
+  // Six call sites: the exhausting charge, the abandoned charge and the failure charge, in each of the two queues.
+  assert.equal((service.match(/chargeAttempt\(/g) ?? []).length, 6);
+  // No raw increment survives anywhere.
+  assert.equal(/cleanupAttempts\} \+ 1`/.test(service), false, "every increment must be clamped");
 });

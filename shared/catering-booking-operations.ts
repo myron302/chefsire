@@ -72,15 +72,25 @@ export function observedCateringEditable(pages: readonly { editable?: boolean }[
 }
 
 /**
- * The state a section acts on: what its own endpoint last said, falling back to the parent's prop only until the
- * endpoint has said anything at all.
+ * The state a section acts on: editable only while NO authoritative source says otherwise.
  *
- * Because the authoritative answer wins outright rather than being combined, a stale parent `true` cannot re-enable
- * a section the endpoint has already reported terminal -- and when the parent workspace later refreshes it simply
- * converges on the same answer.
+ * Both inputs are authoritative about closure and neither is newer than the other by construction, so this is a
+ * conjunction rather than a precedence. Preferring the endpoint's answer with `observed ?? parentEditable` got the
+ * mirror case wrong: the parent workspace refetches too -- on window focus, after a mutation, or because a section
+ * told it the booking went terminal -- and when IT reports the booking cancelled while a cached child page still
+ * says `true`, that stale `true` masked the closure until the child's own next request happened to land.
+ *
+ * A booking never returns from cancelled or completed, so a `false` from either side is permanent and cannot be
+ * contradicted by anything that arrives later. Treating it that way is both correct and the safe direction: the
+ * worst case of trusting a false is a control disabled slightly early on a booking the server would refuse anyway.
+ *
+ * The prop still stands alone until the endpoint has answered at all, which is what `undefined` means here -- an
+ * absent answer is not a `false`.
  */
 export function effectiveCateringEditable(parentEditable: boolean, observed: boolean | undefined): boolean {
-  return observed ?? parentEditable;
+  if (!parentEditable) return false;
+  if (observed === false) return false;
+  return true;
 }
 
 /**

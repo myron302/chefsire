@@ -90,11 +90,28 @@ const errorMessage = (error: unknown) => (error instanceof Error ? error.message
  * over a row whose lease EXPIRED while still holding a token means the previous execution was abandoned, so that
  * reclaim charges the abandoned attempt as it re-leases. A fresh, never-claimed row is charged nothing at claim
  * time. The result is that a crashing worker cannot retry forever and a healthy worker is never double-charged.
+ *
+ * THE CEILING IS EXACT. `cleanup_attempts <= CATERING_CLEANUP_MAX_ATTEMPTS` holds on every path. The eligibility
+ * predicate admits only rows below the ceiling, but charging an abandoned execution can itself reach it -- a row at
+ * 9 whose lease lapsed becomes 10 as it is reclaimed. Handing that row to a worker anyway would spend an eleventh
+ * attempt on a storage delete the ceiling was meant to stop, so a reclaim that exhausts a row charges the abandoned
+ * attempt, releases the stale lease and does NOT return it: the row stays pending-but-exhausted, visible to an
+ * operator, with no further delete attempted. Every increment is additionally written as `LEAST(attempts + 1, max)`,
+ * so the invariant holds even if some future path forgets it.
  */
 
 /** A row that is unclaimed, or whose lease has lapsed. The comparison uses the database clock, never the app's. */
 const leaseIsAvailable = (until: typeof cateringBookingFiles.cleanupClaimedUntil | typeof cateringBookingStorageOrphans.cleanupClaimedUntil) =>
   or(isNull(until), lte(until, sql`now()`));
+/**
+ * One attempt, charged in SQL and clamped at the ceiling. Every increment goes through this, so
+ * `cleanup_attempts <= CATERING_CLEANUP_MAX_ATTEMPTS` is guaranteed by the write itself rather than by every caller
+ * remembering to check -- and a row already at the ceiling still records its error instead of having the whole
+ * write refused.
+ */
+const chargeAttempt = (column: typeof cateringBookingFiles.cleanupAttempts | typeof cateringBookingStorageOrphans.cleanupAttempts) =>
+  sql`LEAST(${column} + 1, ${CATERING_CLEANUP_MAX_ATTEMPTS})`;
+
 /** The expiry stamped on a fresh claim, likewise from the database clock. */
 const leaseExpiry = sql`now() + (${CATERING_CLEANUP_LEASE_SECONDS} * interval '1 second')`;
 
@@ -104,8 +121,8 @@ export type CateringOrphanClaim = CateringCleanupClaim & { fileId: string | null
 async function claimTombstones(limit: number): Promise<CateringCleanupClaim[]> {
   const claimToken = randomUUID();
   return db.transaction(async (tx: typeof db) => {
-    const rows: { id: string; storageProvider: string; storageKey: string; previousToken: string | null }[] = await tx
-      .select({ id: cateringBookingFiles.id, storageProvider: cateringBookingFiles.storageProvider, storageKey: cateringBookingFiles.storageKey, previousToken: cateringBookingFiles.cleanupClaimToken })
+    const rows: { id: string; storageProvider: string; storageKey: string; previousToken: string | null; cleanupAttempts: number }[] = await tx
+      .select({ id: cateringBookingFiles.id, storageProvider: cateringBookingFiles.storageProvider, storageKey: cateringBookingFiles.storageKey, previousToken: cateringBookingFiles.cleanupClaimToken, cleanupAttempts: cateringBookingFiles.cleanupAttempts })
       .from(cateringBookingFiles)
       .where(and(
         isNotNull(cateringBookingFiles.deletedAt),
@@ -117,27 +134,37 @@ async function claimTombstones(limit: number): Promise<CateringCleanupClaim[]> {
       .limit(limit)
       .for("update", { skipLocked: true });
     if (rows.length === 0) return [];
-    const ids = rows.map((row) => row.id);
+    // A row still carrying a token whose lease lapsed is one whose previous execution never concluded, so that
+    // abandoned attempt is charged now. If charging it reaches the ceiling the row is finished: the stale lease is
+    // released and it is NOT handed to a worker, because attempting another delete would spend an attempt beyond
+    // the maximum. It stays pending-but-exhausted for an operator to look at.
+    const abandoned = rows.filter((row) => row.previousToken !== null);
+    const exhausted = abandoned.filter((row) => row.cleanupAttempts + 1 >= CATERING_CLEANUP_MAX_ATTEMPTS).map((row) => row.id);
+    if (exhausted.length > 0) {
+      await tx.update(cateringBookingFiles)
+        .set({ cleanupAttempts: chargeAttempt(cateringBookingFiles.cleanupAttempts), cleanupClaimToken: null, cleanupClaimedUntil: null })
+        .where(inArray(cateringBookingFiles.id, exhausted));
+    }
+    const claimable = rows.filter((row) => !exhausted.includes(row.id));
+    if (claimable.length === 0) return [];
     await tx.update(cateringBookingFiles)
       .set({ cleanupClaimToken: claimToken, cleanupClaimedUntil: leaseExpiry })
-      .where(inArray(cateringBookingFiles.id, ids));
-    // A row still carrying a token whose lease lapsed is one whose previous execution never concluded. Charging it
-    // here is what stops a worker that dies mid-delete from retrying forever; a never-claimed row is charged nothing.
-    const abandoned = rows.filter((row) => row.previousToken !== null).map((row) => row.id);
-    if (abandoned.length > 0) {
+      .where(inArray(cateringBookingFiles.id, claimable.map((row) => row.id)));
+    const charged = claimable.filter((row) => row.previousToken !== null).map((row) => row.id);
+    if (charged.length > 0) {
       await tx.update(cateringBookingFiles)
-        .set({ cleanupAttempts: sql`${cateringBookingFiles.cleanupAttempts} + 1` })
-        .where(inArray(cateringBookingFiles.id, abandoned));
+        .set({ cleanupAttempts: chargeAttempt(cateringBookingFiles.cleanupAttempts) })
+        .where(inArray(cateringBookingFiles.id, charged));
     }
-    return rows.map((row) => ({ id: row.id, storageProvider: row.storageProvider, storageKey: row.storageKey, claimToken }));
+    return claimable.map((row) => ({ id: row.id, storageProvider: row.storageProvider, storageKey: row.storageKey, claimToken }));
   });
 }
 
 async function claimOrphans(limit: number): Promise<CateringOrphanClaim[]> {
   const claimToken = randomUUID();
   return db.transaction(async (tx: typeof db) => {
-    const rows: { id: string; storageProvider: string; storageKey: string; fileId: string | null; previousToken: string | null }[] = await tx
-      .select({ id: cateringBookingStorageOrphans.id, storageProvider: cateringBookingStorageOrphans.storageProvider, storageKey: cateringBookingStorageOrphans.storageKey, fileId: cateringBookingStorageOrphans.fileId, previousToken: cateringBookingStorageOrphans.cleanupClaimToken })
+    const rows: { id: string; storageProvider: string; storageKey: string; fileId: string | null; previousToken: string | null; cleanupAttempts: number }[] = await tx
+      .select({ id: cateringBookingStorageOrphans.id, storageProvider: cateringBookingStorageOrphans.storageProvider, storageKey: cateringBookingStorageOrphans.storageKey, fileId: cateringBookingStorageOrphans.fileId, previousToken: cateringBookingStorageOrphans.cleanupClaimToken, cleanupAttempts: cateringBookingStorageOrphans.cleanupAttempts })
       .from(cateringBookingStorageOrphans)
       .where(and(
         isNull(cateringBookingStorageOrphans.resolvedAt),
@@ -148,17 +175,29 @@ async function claimOrphans(limit: number): Promise<CateringOrphanClaim[]> {
       .limit(limit)
       .for("update", { skipLocked: true });
     if (rows.length === 0) return [];
-    const ids = rows.map((row) => row.id);
+    // A row still carrying a token whose lease lapsed is one whose previous execution never concluded, so that
+    // abandoned attempt is charged now. If charging it reaches the ceiling the row is finished: the stale lease is
+    // released and it is NOT handed to a worker, because attempting another delete would spend an attempt beyond
+    // the maximum. It stays pending-but-exhausted for an operator to look at.
+    const abandoned = rows.filter((row) => row.previousToken !== null);
+    const exhausted = abandoned.filter((row) => row.cleanupAttempts + 1 >= CATERING_CLEANUP_MAX_ATTEMPTS).map((row) => row.id);
+    if (exhausted.length > 0) {
+      await tx.update(cateringBookingStorageOrphans)
+        .set({ cleanupAttempts: chargeAttempt(cateringBookingStorageOrphans.cleanupAttempts), cleanupClaimToken: null, cleanupClaimedUntil: null })
+        .where(inArray(cateringBookingStorageOrphans.id, exhausted));
+    }
+    const claimable = rows.filter((row) => !exhausted.includes(row.id));
+    if (claimable.length === 0) return [];
     await tx.update(cateringBookingStorageOrphans)
       .set({ cleanupClaimToken: claimToken, cleanupClaimedUntil: leaseExpiry })
-      .where(inArray(cateringBookingStorageOrphans.id, ids));
-    const abandoned = rows.filter((row) => row.previousToken !== null).map((row) => row.id);
-    if (abandoned.length > 0) {
+      .where(inArray(cateringBookingStorageOrphans.id, claimable.map((row) => row.id)));
+    const charged = claimable.filter((row) => row.previousToken !== null).map((row) => row.id);
+    if (charged.length > 0) {
       await tx.update(cateringBookingStorageOrphans)
-        .set({ cleanupAttempts: sql`${cateringBookingStorageOrphans.cleanupAttempts} + 1` })
-        .where(inArray(cateringBookingStorageOrphans.id, abandoned));
+        .set({ cleanupAttempts: chargeAttempt(cateringBookingStorageOrphans.cleanupAttempts) })
+        .where(inArray(cateringBookingStorageOrphans.id, charged));
     }
-    return rows.map((row) => ({ id: row.id, storageProvider: row.storageProvider, storageKey: row.storageKey, fileId: row.fileId, claimToken }));
+    return claimable.map((row) => ({ id: row.id, storageProvider: row.storageProvider, storageKey: row.storageKey, fileId: row.fileId, claimToken }));
   });
 }
 
@@ -209,7 +248,7 @@ export async function reconcileCateringFileTombstones(limit = CATERING_CLEANUP_B
     } catch (error) {
       // One attempt for this claimed execution, charged once, and the lease released so a later run can retry.
       await db.update(cateringBookingFiles)
-        .set({ cleanupAttempts: sql`${cateringBookingFiles.cleanupAttempts} + 1`, cleanupError: errorMessage(error), cleanupClaimToken: null, cleanupClaimedUntil: null })
+        .set({ cleanupAttempts: chargeAttempt(cateringBookingFiles.cleanupAttempts), cleanupError: errorMessage(error), cleanupClaimToken: null, cleanupClaimedUntil: null })
         .where(and(eq(cateringBookingFiles.id, candidate.id), eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken)))
         .catch(() => undefined);
       failed += 1;
@@ -251,7 +290,7 @@ export async function reconcileCateringStorageOrphans(limit = CATERING_CLEANUP_B
     } catch (error) {
       // Includes a failed ownership lookup: an unanswerable question leaves the object alone and retries later.
       await db.update(cateringBookingStorageOrphans)
-        .set({ cleanupAttempts: sql`${cateringBookingStorageOrphans.cleanupAttempts} + 1`, cleanupError: errorMessage(error), cleanupClaimToken: null, cleanupClaimedUntil: null })
+        .set({ cleanupAttempts: chargeAttempt(cateringBookingStorageOrphans.cleanupAttempts), cleanupError: errorMessage(error), cleanupClaimToken: null, cleanupClaimedUntil: null })
         .where(and(eq(cateringBookingStorageOrphans.id, candidate.id), eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken)))
         .catch(() => undefined);
       failed += 1;
