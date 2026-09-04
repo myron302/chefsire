@@ -82,6 +82,12 @@ CREATE TABLE IF NOT EXISTS catering_booking_storage_orphans (
   CONSTRAINT catering_booking_storage_orphans_attempts_check CHECK (cleanup_attempts >= 0)
 );
 CREATE INDEX IF NOT EXISTS catering_booking_storage_orphans_pending_idx ON catering_booking_storage_orphans(created_at) WHERE resolved_at IS NULL;
+-- The id the upload generated for the object, so reconciliation can ask whether that metadata row committed after
+-- all rather than deleting bytes a committed file may own. Deliberately not a foreign key: an orphan is precisely
+-- an object whose metadata row may not exist. Additive and idempotent, so re-running this migration is safe.
+ALTER TABLE catering_booking_storage_orphans ADD COLUMN IF NOT EXISTS file_id varchar;
+-- No new index is needed for the owner lookup: catering_booking_files.storage_key is already UNIQUE, so a storage
+-- key identifies at most one file row exactly.
 
 -- Phase 2I extends the Phase 2H activity allowlist by exactly the four file events. Messages write no activity.
 ALTER TABLE catering_booking_activity DROP CONSTRAINT IF EXISTS catering_booking_activity_event_type_check;

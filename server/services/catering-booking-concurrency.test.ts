@@ -217,7 +217,8 @@ test("an object stored with no owning metadata row is compensated, and an unreco
   // from one whose write outcome was never confirmed.
   assert.equal(filesRoute.includes(`reason: "orphaned_upload"`), true);
   assert.equal(filesRoute.includes(`stored.reason = "uncertain_upload";`), true);
-  assert.equal(filesRoute.includes("const reason = stored.reason;"), true);
+  // The reason travels on the compensation identity into the one place that writes the ledger.
+  assert.equal(filesRoute.includes("reason: stored.reason"), true);
   assert.equal(migration.includes("CREATE TABLE IF NOT EXISTS catering_booking_storage_orphans"), true);
 });
 

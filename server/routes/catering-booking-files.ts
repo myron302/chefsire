@@ -126,7 +126,7 @@ r.post("/bookings/:id/files", requireAuth, (req, res, next) => {
 });
 
 async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], res: Res, next: (error: unknown) => void) {
-  let stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; reason: string } | null = null;
+  let stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; uploadedBy: string; reason: string } | null = null;
   try {
     const id = cateringBookingIdSchema.parse(req.params.id);
     const userId = (req.user as { id: string }).id;
@@ -193,7 +193,7 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
     // return would leave those bytes with nothing that knows they might exist. Assigning first means every outcome
     // -- committed, uncertain, or never written -- resolves to the same known key, and the compensating delete is
     // idempotent, so attempting it for a write that truly failed costs nothing and is never an error.
-    stored = { provider, storageKey, bookingId: id, reason: "orphaned_upload" };
+    stored = { provider, storageKey, bookingId: id, fileId, uploadedBy: userId, reason: "orphaned_upload" };
     try {
       await writePrivateObject(provider, storageKey, content.body, upload.type.contentType);
     } catch (writeError) {
@@ -277,10 +277,65 @@ async function handleUpload(req: Parameters<Parameters<typeof r.post>[1]>[0], re
     const names = await uploaderNames([result.file.uploadedBy]);
     res.status(201).json({ file: serializeBookingFile(result.file, { providerId: booking.providerId, customerId: booking.customerId, actorId: userId, status: booking.status as never, names }) });
   } catch (error) {
-    // A throw after the object landed is the orphan case the compensating delete exists for.
-    if (stored) await compensateStoredObject(stored);
+    // A throw after the object landed is the orphan case the compensating delete exists for -- but ONLY once it is
+    // established that the metadata did not commit. A transaction whose COMMIT succeeded and whose connection then
+    // dropped rejects here exactly like one that rolled back, and deleting the object in that case would strand a
+    // committed, active file row pointing at bytes that no longer exist.
+    if (stored) await compensateUncertainUpload(stored);
     invalid(error, res, next);
   }
+}
+
+/** Whether the metadata for one upload is known to have committed, known not to have, or could not be determined. */
+type UploadCommitState = "committed" | "absent" | "unknown";
+
+/**
+ * Asks the database, on a fresh operation outside the failed transaction, whether this upload's row committed.
+ *
+ * The match is on the server-generated identity assigned before the write -- the file id, the booking, the uploader
+ * and the exact storage provider and key -- so it can only ever resolve to THIS upload. A filename is never part of
+ * it, another booking's or another actor's row cannot satisfy it, and a row whose storage key differs is not this
+ * object's owner however similar it looks.
+ *
+ * A query that itself fails answers "unknown" rather than "absent": the difference between "no row" and "no answer"
+ * is the whole point, and collapsing them is what would destroy committed bytes during an outage.
+ */
+async function uploadCommitState(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; uploadedBy: string }): Promise<UploadCommitState> {
+  try {
+    const [row] = await db.select({ id: cateringBookingFiles.id }).from(cateringBookingFiles)
+      .where(and(
+        eq(cateringBookingFiles.id, stored.fileId),
+        eq(cateringBookingFiles.bookingId, stored.bookingId),
+        eq(cateringBookingFiles.uploadedBy, stored.uploadedBy),
+        eq(cateringBookingFiles.storageProvider, stored.provider),
+        eq(cateringBookingFiles.storageKey, stored.storageKey),
+      ))
+      .limit(1);
+    return row ? "committed" : "absent";
+  } catch {
+    return "unknown";
+  }
+}
+
+/**
+ * Resolves an upload that failed AFTER its object was written, without ever destroying bytes that may be owned.
+ *
+ * Three outcomes, and they are deliberately different:
+ *
+ *  - `absent`: the database answered, and this upload's row is not there. Nothing owns the object, so it is
+ *    compensated exactly as before.
+ *  - `committed`: the COMMIT actually succeeded and the driver simply never got to say so. The row is live, the
+ *    retry will resolve to it through the accepted-token lookup, and its bytes must still be there when the
+ *    participant downloads it. The object is left untouched and nothing is recorded -- there is no orphan.
+ *  - `unknown`: the verification could not run at all. Deleting is unrecoverable and leaving bytes is not, so the
+ *    object survives and an `uncertain_commit` ledger row records enough identity for reconciliation to decide
+ *    later. If even that write fails the object still survives; a stranded object is logged, never guessed at.
+ */
+async function compensateUncertainUpload(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; uploadedBy: string; reason: string }): Promise<void> {
+  const state = await uploadCommitState(stored);
+  if (state === "committed") return;
+  if (state === "absent") return compensateStoredObject(stored);
+  await recordStorageOrphan({ ...stored, reason: "uncertain_commit" }, "commit state could not be verified");
 }
 
 /**
@@ -316,18 +371,25 @@ async function duplicateFile(bookingId: string, uploadedBy: string, clientReques
  * they can be reconciled later: silent permanent orphan accumulation is not an acceptable design, and neither is
  * pretending the compensation succeeded.
  */
-async function compensateStoredObject(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; reason: string }): Promise<void> {
+async function compensateStoredObject(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; reason: string }): Promise<void> {
   try {
     await removePrivateObject(stored.provider, stored.storageKey);
   } catch (deleteError) {
-    const reason = stored.reason;
-    const message = deleteError instanceof Error ? deleteError.message : String(deleteError);
-    try {
-      await db.insert(cateringBookingStorageOrphans).values({ bookingId: stored.bookingId, storageProvider: stored.provider, storageKey: stored.storageKey, reason, cleanupError: message });
-    } catch (ledgerError) {
-      // The ledger is the last place this can be recorded, so a failure there is logged rather than swallowed.
-      console.error("catering booking file orphan could not be recorded", { bookingId: stored.bookingId, storageProvider: stored.provider, reason, cleanupError: message, ledgerError });
-    }
+    await recordStorageOrphan(stored, deleteError instanceof Error ? deleteError.message : String(deleteError));
+  }
+}
+
+/**
+ * Records one object for later reconciliation, carrying the file id the upload generated so the cleanup pass can
+ * tell an object nothing owns from one whose metadata turned out to have committed after all.
+ */
+async function recordStorageOrphan(stored: { provider: PrivateStorageProvider; storageKey: string; bookingId: string; fileId: string; reason: string }, cleanupError: string): Promise<void> {
+  try {
+    await db.insert(cateringBookingStorageOrphans).values({ bookingId: stored.bookingId, storageProvider: stored.provider, storageKey: stored.storageKey, fileId: stored.fileId, reason: stored.reason, cleanupError });
+  } catch (ledgerError) {
+    // The ledger is the last place this can be recorded, so a failure there is logged rather than swallowed. The
+    // object is still on disk either way: nothing is deleted on a path that could not establish ownership.
+    console.error("catering booking file orphan could not be recorded", { bookingId: stored.bookingId, storageProvider: stored.provider, reason: stored.reason, cleanupError, ledgerError });
   }
 }
 

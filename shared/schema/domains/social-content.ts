@@ -499,6 +499,11 @@ export const cateringBookingStorageOrphans = pgTable("catering_booking_storage_o
   bookingId: varchar("booking_id").references(() => cateringBookings.id, { onDelete: "restrict" }).notNull(),
   storageProvider: varchar("storage_provider", { length: 16 }).notNull(),
   storageKey: text("storage_key").notNull(),
+  // The id the upload generated for this object, when one was generated. It is deliberately NOT a foreign key: an
+  // orphan is by definition an object whose metadata row may not exist, and a reference would forbid recording the
+  // very case this table is for. It is what lets reconciliation ask "did that row commit after all?" rather than
+  // deleting bytes that may belong to a committed file.
+  fileId: varchar("file_id"),
   reason: varchar("reason", { length: 40 }).notNull(),
   cleanupAttempts: integer("cleanup_attempts").default(1).notNull(),
   cleanupError: text("cleanup_error"),

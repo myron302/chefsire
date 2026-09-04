@@ -34,7 +34,7 @@ test("1. the accepted-token lookup happens before any storage write", () => {
   // The decisive ordering: resolved, and returned from, before a single byte is written.
   assert.equal(at(EARLY_LOOKUP) < at(WRITE), true, "the retry must be resolved before writePrivateObject");
   // And before the compensation identity is even assigned, so a retry never enters the orphan-tracking path.
-  assert.equal(at(EARLY_LOOKUP) < at(`stored = { provider, storageKey, bookingId: id, reason: "orphaned_upload" }`), true);
+  assert.equal(at(EARLY_LOOKUP) < at(`stored = { provider, storageKey, bookingId: id, fileId, uploadedBy: userId, reason: "orphaned_upload" }`), true);
 });
 
 test("2. an accepted retry needs nothing from storage, so it survives storage being unavailable", () => {

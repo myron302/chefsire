@@ -78,8 +78,11 @@ test("a completion write cannot double-count or resurrect a row under concurrenc
   assert.equal(service.includes("eq(cateringBookingFiles.id, candidate.id), isNotNull(cateringBookingFiles.deletedAt), isNull(cateringBookingFiles.objectDeletedAt)"), true);
   assert.equal(service.includes("eq(cateringBookingStorageOrphans.id, candidate.id), isNull(cateringBookingStorageOrphans.resolvedAt)"), true);
   // Attempt counters are incremented in SQL, so concurrent runs cannot lose each other's increments.
+  // The increment is still SQL-side, but it now happens under the claim rather than on the failure path, so two
+  // workers cannot consume the same row's attempt for one scheduled opportunity.
   assert.equal(service.includes("sql`${cateringBookingFiles.cleanupAttempts} + 1`"), true);
   assert.equal(service.includes("sql`${cateringBookingStorageOrphans.cleanupAttempts} + 1`"), true);
+  assert.equal(service.includes(`.for("update", { skipLocked: true })`), true);
 });
 
 test("cleanup never restores a deleted file to user visibility", () => {
@@ -101,8 +104,11 @@ test("the batch is bounded, and a permanently failing record cannot starve the q
 });
 
 test("outcomes from both queues combine into one truthful total", () => {
-  assert.deepEqual(combineCateringCleanupOutcomes({ scanned: 2, removed: 1, failed: 1 }, { scanned: 3, removed: 3, failed: 0 }), { scanned: 5, removed: 4, failed: 1 });
-  assert.deepEqual(combineCateringCleanupOutcomes(), { scanned: 0, removed: 0, failed: 0 });
+  assert.deepEqual(
+    combineCateringCleanupOutcomes({ scanned: 2, removed: 1, failed: 1, retained: 0 }, { scanned: 3, removed: 2, failed: 0, retained: 1 }),
+    { scanned: 5, removed: 3, failed: 1, retained: 1 },
+  );
+  assert.deepEqual(combineCateringCleanupOutcomes(), { scanned: 0, removed: 0, failed: 0, retained: 0 });
 });
 
 test("reconciliation is server-internal and can never be steered by a client", () => {
