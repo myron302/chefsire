@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { assertPrivateR2Isolated, deletePrivateObject, getPrivateObject, headPrivateObject, isPrivateR2Configured, putPrivateObject } from "./r2";
-import { assertPrivateRootIsolatedFrom, canonicalizePath, isSameOrInside, type PublicStaticRoot } from "./private-storage-path";
+import { assertPrivateRootIsolatedFrom, canonicalizePath, firstPrivateRootConflict, isSameOrInside, type PublicStaticRoot } from "./private-storage-path";
 import { CLIENT_STATIC_DIR_CANDIDATES } from "./public-static-dirs";
 import { UPLOADS_DIR } from "./uploads-dir";
 
@@ -49,25 +49,76 @@ export const PRIVATE_STORAGE_ROOT: string = resolvePrivateRoot();
 assertPrivateR2Isolated();
 
 /**
+ * The private root's CURRENT physical location, re-proved isolated from every public static root, or a refusal.
+ *
+ * Containment of a target inside the canonicalized root is not on its own a privacy guarantee, because it says
+ * nothing about where that root now physically is. If PRIVATE_STORAGE_ROOT is itself replaced with a symlink to
+ * UPLOADS_DIR or to the client build tree after startup, the target and the root canonicalize THROUGH THE SAME
+ * LINK: the target still resolves inside the resolved root, the containment check passes, and every byte lands in
+ * an unauthenticated `express.static` mount. The startup assertion cannot see that -- it ran against the directory
+ * as it was then -- so the isolation question has to be re-asked on every access, not once per process.
+ *
+ * It is re-asked against the same authoritative root set `server/app.ts` serves from, and every root is
+ * re-canonicalized on each call, so a PUBLIC root re-pointed to overlap the private one is caught by the same
+ * check. `firstPrivateRootConflict` is used rather than the asserting form because its verbose operator message
+ * names both filesystem paths: correct for a startup failure an administrator reads in the logs, wrong for a
+ * per-request refusal that reaches a client. An unresolvable root counts as a conflict, so canonicalization failure
+ * on either side fails closed rather than being assumed private.
+ */
+function currentPrivateRoot(): string {
+  if (firstPrivateRootConflict(PRIVATE_STORAGE_ROOT, publicStaticRoots())) throw new Error("Invalid private storage key");
+  try {
+    return canonicalizePath(PRIVATE_STORAGE_ROOT);
+  } catch {
+    // Unreachable while the check above succeeded, but a root whose location cannot be established is refused
+    // rather than guessed at, and the refusal discloses nothing about the filesystem.
+    throw new Error("Invalid private storage key");
+  }
+}
+
+/**
  * Resolves one server-generated storage key beneath the private root and refuses anything that escapes it. Keys are
- * only ever produced by the server from UUIDs, so this is a second line of defence rather than the first: an absolute
- * path, a traversal segment, or a NUL byte is rejected instead of resolved.
+ * only ever produced by the server from UUIDs, so the key checks are a second line of defence rather than the
+ * first: an absolute path, a traversal segment, or a NUL byte is rejected instead of resolved.
+ *
+ * Every local filesystem operation goes through here, so this is where both halves of the guarantee are proved
+ * together, immediately before the syscall:
+ *
+ *   1. the private root is STILL isolated from every public static root, re-canonicalized now (`currentPrivateRoot`);
+ *   2. the requested object physically resolves inside that same freshly proved root.
+ *
+ * Neither half is sufficient alone. Without (1) a swapped root passes (2) trivially, because both sides resolve
+ * through the swapped link. Without (2) a descendant of the root -- `<root>/catering-bookings` symlinked at
+ * UPLOADS_DIR, say -- would still be lexically inside it while the write landed under the public mount.
+ *
+ * Nothing is cached: both are re-derived per call, which is what catches a link introduced after startup on the
+ * very next operation rather than on the next deploy.
+ *
+ * RESIDUAL RACE, stated honestly: these are pathname checks, so a directory component can in principle be swapped
+ * in the window between the last check here and the syscall that follows. That window cannot be closed in this
+ * stack without fd-relative traversal (`openat`/`O_PATH` walking), which Node's `fs` does not expose. What is done
+ * instead is to narrow it as far as the API allows -- `writePrivateObject` re-validates AFTER its `mkdir -p`, and
+ * every open carries O_NOFOLLOW so the FINAL component can never be a link even if it changed a moment ago -- so
+ * the remaining exposure is a mid-path directory swapped within microseconds by something that already has write
+ * access to the private tree's parents.
  */
 export function resolvePrivatePath(storageKey: string): string {
   if (storageKey.includes("\0") || path.isAbsolute(storageKey)) throw new Error("Invalid private storage key");
+  // Proved BEFORE the target is resolved, so a root that has been re-pointed at a public tree is refused rather
+  // than becoming the very thing containment is measured against.
+  const realRoot = currentPrivateRoot();
   const lexical = path.resolve(PRIVATE_STORAGE_ROOT, storageKey);
   const root = PRIVATE_STORAGE_ROOT.endsWith(path.sep) ? PRIVATE_STORAGE_ROOT : PRIVATE_STORAGE_ROOT + path.sep;
   if (lexical !== PRIVATE_STORAGE_ROOT && !lexical.startsWith(root)) throw new Error("Invalid private storage key");
   // Lexical containment alone is not enough. It stops `../` traversal, but a DESCENDANT of the private root can
   // itself be a symlink -- `<root>/catering-bookings` pointing at UPLOADS_DIR, say -- and the lexical path would
   // still start with the root while the write landed under the public static mount. So the path is resolved
-  // physically as well: both sides are canonicalized (which follows every symlink in either path, at any depth,
-  // and rebuilds the not-yet-created suffix beneath the deepest real ancestor), and the real target must still be
-  // inside the real root. Canonicalization is done per call rather than cached, so a symlink introduced AFTER
-  // startup is caught on the very next operation. A canonicalization that fails for any reason other than a
-  // missing path throws, so an unresolvable path is refused rather than assumed safe.
+  // physically as well: it is canonicalized (which follows every symlink in the path, at any depth, and rebuilds
+  // the not-yet-created suffix beneath the deepest real ancestor), and the real target must still be inside the
+  // real root proved above. A canonicalization that fails for any reason other than a missing path throws, so an
+  // unresolvable path is refused rather than assumed safe.
   const realTarget = canonicalizePath(lexical);
-  if (!isSameOrInside(realTarget, canonicalizePath(PRIVATE_STORAGE_ROOT))) throw new Error("Invalid private storage key");
+  if (!isSameOrInside(realTarget, realRoot)) throw new Error("Invalid private storage key");
   return realTarget;
 }
 
