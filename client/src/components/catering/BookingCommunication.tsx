@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { cateringBookingMessagesKey, type CateringBookingMessagePageView } from "@shared/catering-booking-communication";
+import { CATERING_MESSAGE_POLL_MS, cateringBookingMessagesKey, type CateringBookingMessagePageView } from "@shared/catering-booking-communication";
 import { cateringBookingWorkspaceKey } from "@shared/catering-booking-operations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,15 +29,29 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   // rather than a guess: prepending older messages must not move what the participant is currently reading.
   const threadRef = useRef<HTMLDivElement | null>(null);
   const restoreRef = useRef<number | null>(null);
+  // The newest message this component has already accounted for, so a poll that delivers one can be told apart
+  // from a poll that delivers nothing.
+  const deliveredRef = useRef<string | null>(null);
   const messagesKey = cateringBookingMessagesKey(userId, bookingId);
 
-  useEffect(() => { setComposer((current) => hydrateCateringComposer(current, identity)); setReadMark((current) => hydrateCateringReadMark(current, identity)); setViewed((current) => hydrateCateringViewed(current, identity)); setVisibility(EMPTY_CATERING_THREAD_VISIBILITY); }, [identity]);
+  useEffect(() => { setComposer((current) => hydrateCateringComposer(current, identity)); setReadMark((current) => hydrateCateringReadMark(current, identity)); setViewed((current) => hydrateCateringViewed(current, identity)); setVisibility(EMPTY_CATERING_THREAD_VISIBILITY); deliveredRef.current = null; }, [identity]);
 
   const query = useInfiniteQuery({
     queryKey: messagesKey,
     initialPageParam: undefined as string | undefined,
     staleTime: 15_000,
     refetchOnWindowFocus: true,
+    // Booking threads are excluded from the generic DM socket on purpose, so this query is the ONLY delivery
+    // mechanism for an incoming message. `refetchOnWindowFocus` alone fires only on a focus transition, and two
+    // participants with their tabs focused never have one -- they would sit on stale messages indefinitely.
+    //
+    // Polling refetches every page already loaded, deriving each page's cursor from the freshly returned page
+    // before it, so loaded history is refreshed in place rather than discarded and the keyset ordering is the
+    // server's throughout. Nothing here marks anything read: this is delivery, and reading is proved separately.
+    refetchInterval: CATERING_MESSAGE_POLL_MS,
+    // Stated rather than inherited. A hidden tab has no reader to serve, so it polls nothing; the query refreshes
+    // on the focus transition instead, which is what `refetchOnWindowFocus` above is for.
+    refetchIntervalInBackground: false,
     queryFn: async ({ pageParam }): Promise<CateringBookingMessagePageView> => {
       const search = pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : "";
       const response = await fetch(`/api/catering/bookings/${bookingId}/messages${search}`, { credentials: "include" });
@@ -89,6 +103,18 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     onSuccess: (body) => { setReadMark((current) => completeCateringReadMark(current, body?.lastReadMessageId ?? null)); cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) }); },
     onError: (_error, attemptedId) => setReadMark((current) => failCateringReadMark(current, attemptedId)),
   });
+
+  // A poll that brings a genuinely new message also makes the workspace's unread badge stale -- and that badge is
+  // what gates automatic read marking, so leaving it behind would deliver the message while suppressing the read
+  // receipt for it. The refresh is tied to `latestId` actually CHANGING rather than to every poll, so a quiet
+  // conversation costs nothing, and it cannot loop: refetching the workspace changes `unreadCount`, never
+  // `latestId`. The first id seen is only recorded -- the workspace that rendered this component is already current.
+  useEffect(() => {
+    if (latestId === null || deliveredRef.current === latestId) return;
+    const firstLoad = deliveredRef.current === null;
+    deliveredRef.current = latestId;
+    if (!firstLoad) cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
+  }, [latestId]);
 
   // Watches the end-of-thread sentinel, which takes TWO observations OF THAT SAME ELEMENT, and each of them has to
   // be stamped with the message boundary it was collected for.
