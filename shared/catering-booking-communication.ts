@@ -54,21 +54,6 @@ export const CATERING_COMMUNICATION_READ_ONLY_MESSAGE = "Cancelled and completed
 export const CATERING_BOOKING_THREAD_CODE = "catering_booking_thread";
 export const CATERING_BOOKING_THREAD_MESSAGE = "This conversation belongs to a catering booking. Open the booking workspace to read or send messages.";
 
-/**
- * How often an open booking workspace re-reads its own conversation, in milliseconds.
- *
- * Booking-linked threads are deliberately excluded from the generic DM socket -- that exclusion is what stops the
- * socket transport from bypassing the booking participant, lifecycle and idempotency rules -- so unlike the
- * ordinary DM page there is no live delivery channel here. Without a timer, two participants sitting in the same
- * workspace with their tabs focused would never see each other's messages: `refetchOnWindowFocus` only fires on a
- * focus TRANSITION, and a tab that never loses focus never has one.
- *
- * Fifteen seconds is deliberately unhurried, and matches the query's `staleTime` so a poll and the staleness
- * boundary agree rather than fighting. A booking conversation is correspondence about an event, not a chat room;
- * the ordinary DM page polls far faster because it also has a socket and a different interaction rhythm.
- */
-export const CATERING_MESSAGE_POLL_MS = 15_000;
-
 export const CATERING_COMMUNICATION_SECTION = "communication";
 export const CATERING_FILES_SECTION = "files";
 /** A booking notification deep-links into the workspace section it is about, never a generic inbox. */

@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { CATERING_MESSAGE_POLL_MS, cateringBookingMessagesKey, type CateringBookingMessagePageView } from "@shared/catering-booking-communication";
-import { cateringBookingWorkspaceKey } from "@shared/catering-booking-operations";
+import { cateringBookingMessagesKey, type CateringBookingMessagePageView } from "@shared/catering-booking-communication";
+import { CATERING_WORKSPACE_POLL_MS, cateringBookingWorkspaceKey } from "@shared/catering-booking-operations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -48,7 +48,7 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     // Polling refetches every page already loaded, deriving each page's cursor from the freshly returned page
     // before it, so loaded history is refreshed in place rather than discarded and the keyset ordering is the
     // server's throughout. Nothing here marks anything read: this is delivery, and reading is proved separately.
-    refetchInterval: CATERING_MESSAGE_POLL_MS,
+    refetchInterval: CATERING_WORKSPACE_POLL_MS,
     // Stated rather than inherited. A hidden tab has no reader to serve, so it polls nothing; the query refreshes
     // on the focus transition instead, which is what `refetchOnWindowFocus` above is for.
     refetchIntervalInBackground: false,
@@ -104,16 +104,25 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     onError: (_error, attemptedId) => setReadMark((current) => failCateringReadMark(current, attemptedId)),
   });
 
-  // A poll that brings a genuinely new message also makes the workspace's unread badge stale -- and that badge is
-  // what gates automatic read marking, so leaving it behind would deliver the message while suppressing the read
-  // receipt for it. The refresh is tied to `latestId` actually CHANGING rather than to every poll, so a quiet
-  // conversation costs nothing, and it cannot loop: refetching the workspace changes `unreadCount`, never
-  // `latestId`. The first id seen is only recorded -- the workspace that rendered this component is already current.
+  // Any delivery of a newer message makes the workspace's unread badge stale -- and that badge is what gates
+  // automatic read marking, so leaving it behind would deliver the message while suppressing the read receipt for
+  // it.
+  //
+  // The FIRST delivery is included, and deliberately so. The parent workspace summary is fetched before this
+  // component's own first message request completes, so the counterpart can send a message in between: the message
+  // is then displayed while the summary that was already in hand still says zero unread. Treating the first
+  // delivery as "the workspace is already current" trusted a summary that may have been observed before the
+  // boundary it is supposed to describe, and later quiet polls returning that same id would never correct it --
+  // the message stayed visible and unread server-side until some unrelated refocus or mutation. No unread state is
+  // invented here to compensate; the authoritative summary is simply asked again.
+  //
+  // It is tied to `latestId` actually CHANGING, so a quiet conversation issues nothing, and it cannot loop:
+  // refetching the workspace changes `unreadCount`, never `latestId`, and the watermark is recorded before the
+  // request goes out.
   useEffect(() => {
     if (latestId === null || deliveredRef.current === latestId) return;
-    const firstLoad = deliveredRef.current === null;
     deliveredRef.current = latestId;
-    if (!firstLoad) cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
+    cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
   }, [latestId]);
 
   // Watches the end-of-thread sentinel, which takes TWO observations OF THAT SAME ELEMENT, and each of them has to

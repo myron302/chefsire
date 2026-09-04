@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CATERING_MESSAGE_POLL_MS } from "@shared/catering-booking-communication";
+import { CATERING_WORKSPACE_POLL_MS } from "@shared/catering-booking-operations";
 
 /**
  * Delivery of incoming booking messages while the tab stays open.
@@ -21,15 +21,18 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.join(here, "BookingCommunication.tsx"), "utf8");
 const socketSource = fs.readFileSync(path.join(here, "..", "..", "..", "..", "server", "realtime", "dmSocket.ts"), "utf8");
 const queryOptions = source.slice(source.indexOf("const query = useInfiniteQuery({"), source.indexOf("queryFn: async ({ pageParam })"));
+/** Source with comments removed. Every "must not contain" assertion runs on this, so the prose explaining a rule
+ *  can never satisfy -- or fail -- the check for that rule. */
+const stripComments = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
 const viewEffect = source.slice(source.indexOf("// Watches the end-of-thread sentinel"), source.indexOf("// The boundary advances only while BOTH observations hold"));
 const readEffect = source.slice(source.indexOf("// Marking read happens at most ONCE per boundary"), source.indexOf("// Restore the reading position"));
 
 test("1. the booking message query actively refreshes on a timer, not only on staleness", () => {
-  assert.equal(queryOptions.includes("refetchInterval: CATERING_MESSAGE_POLL_MS"), true);
+  assert.equal(queryOptions.includes("refetchInterval: CATERING_WORKSPACE_POLL_MS"), true);
   // A bounded, unhurried cadence -- and one shared constant rather than a number buried in the component.
-  assert.equal(CATERING_MESSAGE_POLL_MS, 15_000);
-  assert.equal(CATERING_MESSAGE_POLL_MS >= 10_000, true, "polling must not be high frequency");
-  assert.equal(CATERING_MESSAGE_POLL_MS <= 60_000, true, "polling must actually be timely");
+  assert.equal(CATERING_WORKSPACE_POLL_MS, 15_000);
+  assert.equal(CATERING_WORKSPACE_POLL_MS >= 10_000, true, "polling must not be high frequency");
+  assert.equal(CATERING_WORKSPACE_POLL_MS <= 60_000, true, "polling must actually be timely");
   // It agrees with the query's own staleness boundary rather than fighting it.
   assert.equal(queryOptions.includes("staleTime: 15_000"), true);
 });
@@ -47,9 +50,8 @@ test("5. polling exists BECAUSE the socket refuses booking threads, and that ref
   // bypasses would need re-proving -- so the guard is asserted here too, not only in the bypass suite.
   assert.equal((socketSource.match(/refuseBookingLinkedThread\(socket, threadId\)/g) ?? []).length, 4);
   assert.equal(socketSource.includes("if (!linked) return false;"), true);
-  // And this component opens no live channel of its own: it addresses the booking-scoped HTTP API only. Comments
-  // are stripped first, so the prose explaining WHY there is no socket cannot satisfy -- or fail -- this check.
-  const code = source.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
+  // And this component opens no live channel of its own: it addresses the booking-scoped HTTP API only.
+  const code = stripComments(source);
   for (const forbidden of ["socket", "io(", "WebSocket", "EventSource"]) {
     assert.equal(code.includes(forbidden), false, forbidden);
   }
@@ -63,7 +65,7 @@ test("3. polling does not advance the read marker: fetching is not evidence of r
   assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(readMark, viewedId, unreadCount)"), true);
   // Nothing in the query options, and nothing on the fetch path, records a viewed boundary or marks read.
   for (const forbidden of ["recordCateringViewedBoundary", "markRead", "setViewed"]) {
-    assert.equal(queryOptions.includes(forbidden), false, forbidden);
+    assert.equal(stripComments(queryOptions).includes(forbidden), false, forbidden);
   }
   // The boundary still comes only from the dual-sentinel conjunction, and only from there.
   assert.equal((source.match(/recordCateringViewedBoundary\(/g) ?? []).length, 1);
@@ -97,7 +99,7 @@ test("8. polling preserves loaded pagination and history", () => {
   assert.equal(source.includes("getNextPageParam: (lastPage) => nextCateringMessageCursor(lastPage)"), true);
   assert.equal(source.includes("combineCateringMessagePages(query.data?.pages ?? [])"), true);
   // No page cap: nothing discards older loaded pages to keep polling cheap.
-  assert.equal(queryOptions.includes("maxPages"), false, "loaded history must not be dropped by the refresh");
+  assert.equal(stripComments(queryOptions).includes("maxPages"), false, "loaded history must not be dropped by the refresh");
   // The scroll position is restored only after an explicit older-page fetch, which sets the marker. A poll never
   // sets it, so a delivered message cannot yank the reader to the bottom.
   assert.equal(source.includes("restoreRef.current = threadRef.current?.scrollHeight ?? null;"), true);
@@ -109,7 +111,7 @@ test("8. polling preserves loaded pagination and history", () => {
 test("6. polling does not clear drafts or disturb send state", () => {
   // The composer is component state; only the send state machine ever writes it, and only for the attempt that
   // resolved. Nothing on the fetch path touches it.
-  assert.equal(queryOptions.includes("setComposer"), false);
+  assert.equal(stripComments(queryOptions).includes("setComposer"), false);
   assert.equal(source.includes("completeCateringMessageSend(current, payload.clientRequestId)"), true);
   assert.equal(source.includes('text: ""'), false, "clearing belongs to completeCateringMessageSend alone");
   // Idempotent sends are unchanged: one token per composition, reused by the retry path.
@@ -117,28 +119,61 @@ test("6. polling does not clear drafts or disturb send state", () => {
   assert.equal(source.includes("retryCateringMessageSend(composer)"), true);
 });
 
-test("delivering a genuinely new message refreshes the unread badge, and only then", () => {
-  const delivery = source.slice(source.indexOf("// A poll that brings a genuinely new message"), source.indexOf("// Watches the end-of-thread sentinel"));
-  // Tied to the id CHANGING, so a quiet conversation issues nothing extra.
-  assert.equal(delivery.includes("if (latestId === null || deliveredRef.current === latestId) return;"), true);
-  // The first id seen is recorded but not acted on: the workspace that rendered this component is already current.
-  assert.equal(delivery.includes("const firstLoad = deliveredRef.current === null;"), true);
-  assert.equal(delivery.includes("if (!firstLoad) cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });"), true);
+/**
+ * The parent workspace summary is fetched before this component's own first message request completes, so the
+ * counterpart can send a message in between. Treating the FIRST delivery as "the workspace is already current"
+ * trusted a summary observed before the boundary it describes -- and because later quiet polls return that same
+ * id and never invalidate, the message stayed visible and unread server-side until an unrelated refocus.
+ */
+const delivery = source.slice(source.indexOf("// Any delivery of a newer message"), source.indexOf("// Watches the end-of-thread sentinel"));
+
+test("1. the FIRST delivery refreshes the workspace summary too, not only later ones", () => {
+  // The decisive assertion: no first-load exemption anywhere on this path.
+  assert.equal(stripComments(delivery).includes("firstLoad"), false, "the first delivery must not be exempted");
+  assert.equal(delivery.includes("cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });"), true);
+  // Unconditional once the id has changed -- the guard above it is only the has-it-changed check.
+  assert.equal(delivery.indexOf("if (latestId === null || deliveredRef.current === latestId) return;") < delivery.indexOf("cache.invalidateQueries("), true);
+  // No unread state is invented client-side to compensate; the authoritative summary is simply asked again.
+  const deliveryCode = stripComments(delivery);
+  for (const forbidden of ["unreadCount", "setViewed", "markRead", "setReadMark"]) {
+    assert.equal(deliveryCode.includes(forbidden), false, forbidden);
+  }
+});
+
+test("2 & 3. it cannot loop, and a later new latestId still refreshes", () => {
+  // The watermark is recorded BEFORE the request goes out, and the workspace refetch changes `unreadCount`, never
+  // `latestId`, so the effect cannot re-enter for the same boundary.
+  assert.equal(delivery.indexOf("deliveredRef.current = latestId;") < delivery.indexOf("cache.invalidateQueries("), true);
+  assert.equal(delivery.includes("}, [latestId]);"), true);
+  // Keyed on latestId alone, so every subsequent change -- not just the first -- runs it again.
+  assert.equal(delivery.includes("if (latestId === null"), true);
+});
+
+test("4. repeated quiet polls with the same latestId do not re-invalidate", () => {
+  assert.equal(delivery.includes("deliveredRef.current === latestId) return;"), true);
   // Actor-scoped, exactly as every other cache touch in this component -- never a broad clear, never the
   // counterpart's keys.
   assert.equal(source.includes("cache.clear()"), false);
   assert.equal(source.includes("cache.invalidateQueries()"), false);
-  // It cannot loop: the workspace refetch changes `unreadCount`, never `latestId`.
-  assert.equal(delivery.includes("}, [latestId]);"), true);
-  // And the watermark resets with the conversation, so switching bookings cannot suppress the first refresh.
+  // And the watermark resets with the conversation, so switching bookings cannot suppress its first refresh.
   const hydrate = source.slice(source.indexOf("useEffect(() => { setComposer("), source.indexOf("const query = useInfiniteQuery"));
   assert.equal(hydrate.includes("deliveredRef.current = null;"), true);
+});
+
+test("6. once the refreshed summary reports unread, the ordinary explicit read path proceeds unchanged", () => {
+  // The refresh only makes `unreadCount` truthful. Eligibility still needs a boundary the actor was shown, and the
+  // request still goes to the explicit read endpoint.
+  assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(readMark, viewedId, unreadCount)"), true);
+  assert.equal(source.includes("const viewedId = cateringReadableBoundary(viewed, identity);"), true);
+  assert.equal(source.includes("`/api/catering/bookings/${bookingId}/messages/read`"), true);
+  // One attempt per boundary is preserved: the attempt is recorded before the request.
+  assert.equal(readEffect.indexOf("startCateringReadMark(current, viewedId!)") < readEffect.indexOf("markRead.mutate(viewedId!)"), true);
 });
 
 test("9. a terminal booking still reads and polls, but remains non-writable", () => {
   // Reading never closes, only sending does: the query, the poll and the read path are unconditional, and the
   // composer is what `editable` gates.
-  assert.equal(queryOptions.includes("enabled:"), false, "a historical conversation must still load and refresh");
+  assert.equal(stripComments(queryOptions).includes("enabled:"), false, "a historical conversation must still load and refresh");
   assert.equal(source.includes("{editable\n      ? <form className=\"space-y-2\" onSubmit={submit}>"), true);
   assert.equal(source.includes(": <p className=\"font-medium\">{CATERING_COMMUNICATION_READ_ONLY_BANNER}</p>}"), true);
   // The send control is additionally gated by the state machine, which takes `editable` too.

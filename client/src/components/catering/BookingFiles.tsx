@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, Trash2 } from "lucide-react";
 import { cateringBookingFilesKey, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
-import { cateringBookingWorkspaceKey } from "@shared/catering-booking-operations";
+import { CATERING_WORKSPACE_POLL_MS, cateringBookingWorkspaceKey } from "@shared/catering-booking-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,6 +33,18 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     initialPageParam: undefined as string | undefined,
     staleTime: 15_000,
     refetchOnWindowFocus: true,
+    // Files have no live channel at all, and a counterpart's upload or removal invalidates only THEIR actor-scoped
+    // cache -- never this one, which is the point of actor-scoped keys. So without a timer a customer with the
+    // workspace open sees neither a newly shared file nor one that was withdrawn, and `refetchOnWindowFocus` fires
+    // only on a focus transition a focused tab never has. Following a `#files` notification into this section
+    // merely changes the hash, so it would land on the same stale list.
+    //
+    // Same cadence as the conversation, from the one shared constant, so the two sections cannot drift apart.
+    // Polling asks the same authorized route with the same credentials: it re-reads what the server decides this
+    // actor may see, and can neither widen that nor imply any mutation.
+    refetchInterval: CATERING_WORKSPACE_POLL_MS,
+    // A hidden tab has no reader to serve; the focus transition covers the return.
+    refetchIntervalInBackground: false,
     queryFn: async ({ pageParam }): Promise<CateringBookingFilePageView> => {
       const search = pageParam ? `?cursor=${encodeURIComponent(pageParam)}` : "";
       const response = await fetch(`/api/catering/bookings/${bookingId}/files${search}`, { credentials: "include" });

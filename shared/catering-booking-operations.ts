@@ -37,6 +37,21 @@ export const cateringBookingTaskVersionSchema = z.string().datetime();
 export const CATERING_TASK_VERSION_CONFLICT_CODE = "task_version_conflict";
 export const CATERING_TASK_VERSION_CONFLICT_MESSAGE = "This task changed since you started editing it. Reload the latest task before saving.";
 /** A booking that went cancelled or completed between the request's status check and the locked transaction. */
+/**
+ * How often an OPEN booking workspace re-reads its own live sections, in milliseconds.
+ *
+ * Booking-linked threads are deliberately excluded from the generic DM socket -- that exclusion is what stops the
+ * socket transport from bypassing booking participation, lifecycle and idempotency rules -- and booking files never
+ * had a live channel at all. So neither section has a delivery mechanism other than asking again.
+ * `refetchOnWindowFocus` only fires on a focus TRANSITION, and two participants sitting in their workspaces with
+ * tabs focused never have one: each would sit on stale messages and a stale shared-file list indefinitely.
+ *
+ * Fifteen seconds is deliberately unhurried, and matches both queries' `staleTime` so a poll and the staleness
+ * boundary agree rather than fight. It lives here, on the workspace contract both sections belong to, so the two
+ * cadences cannot drift apart into two different policies.
+ */
+export const CATERING_WORKSPACE_POLL_MS = 15_000;
+
 export const CATERING_WORKSPACE_READ_ONLY_CODE = "workspace_read_only";
 /** A task that no longer exists in the authoritative locked collection, usually because another tab deleted it. */
 export const CATERING_TASK_NOT_FOUND_CODE = "catering_task_not_found";
