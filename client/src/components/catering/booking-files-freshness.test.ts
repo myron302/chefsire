@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CATERING_WORKSPACE_POLL_MS } from "@shared/catering-booking-operations";
+import { CATERING_WORKSPACE_POLL_MS, cateringWorkspacePollInterval } from "@shared/catering-booking-operations";
 
 /**
  * Freshness of the booking file list while the workspace stays open.
@@ -26,7 +26,8 @@ const queryOptions = source.slice(source.indexOf("const query = useInfiniteQuery
 const stripComments = (text: string) => text.replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((line) => !line.trim().startsWith("//")).join("\n");
 
 test("the file list actively refreshes on a timer while the tab stays open", () => {
-  assert.equal(queryOptions.includes("refetchInterval: CATERING_WORKSPACE_POLL_MS"), true);
+  assert.equal(queryOptions.includes("refetchInterval: cateringWorkspacePollInterval(editable)"), true);
+  assert.equal(cateringWorkspacePollInterval(true), CATERING_WORKSPACE_POLL_MS);
   assert.equal(queryOptions.includes("refetchOnWindowFocus: true"), true);
   // A hidden tab has no reader to serve, so background polling stays off; the focus transition covers the return.
   assert.equal(queryOptions.includes("refetchIntervalInBackground: false"), true);
@@ -37,8 +38,8 @@ test("both live workspace sections share ONE cadence rather than duplicating the
   // The constant lives on the workspace contract both sections belong to, and both import it from there, so the
   // two cadences cannot drift into two different policies.
   for (const [label, text] of [["files", source], ["communication", comms]] as const) {
-    assert.equal(text.includes('CATERING_WORKSPACE_POLL_MS, cateringBookingWorkspaceKey } from "@shared/catering-booking-operations"'), true, label);
-    assert.equal(text.includes("refetchInterval: CATERING_WORKSPACE_POLL_MS"), true, label);
+    assert.equal(text.includes('cateringBookingWorkspaceKey, cateringWorkspacePollInterval } from "@shared/catering-booking-operations"'), true, label);
+    assert.equal(text.includes("refetchInterval: cateringWorkspacePollInterval(editable)"), true, label);
     // No second literal cadence anywhere.
     assert.equal(/refetchInterval:\s*\d/.test(text), false, label);
   }
@@ -103,9 +104,19 @@ test("a refresh does not disturb the upload draft or its idempotency token", () 
   assert.equal((source.match(/crypto\.randomUUID\(\)/g) ?? []).length, 3);
 });
 
-test("a terminal booking still lists and refreshes its files, and stays non-writable", () => {
-  // Reading never closes, only writing does: the query and its timer are unconditional.
+test("a terminal booking still lists its files, stays non-writable, and stops polling", () => {
+  // A cancelled or completed booking accepts no upload and no removal, so its file list is settled and polling it
+  // forever would be pure traffic. Only the recurring poll stops.
+  assert.equal(cateringWorkspacePollInterval(false), false);
+  assert.equal(cateringWorkspacePollInterval(true), 15_000);
+  // Reading never closes, only writing does: the query itself is never disabled and still refetches on focus.
   assert.equal(stripComments(queryOptions).includes("enabled:"), false);
+  assert.equal(queryOptions.includes("refetchOnWindowFocus: true"), true);
+  // Closure comes from the parent's authoritative flag, not re-inferred from a status here.
+  const code = stripComments(source);
+  for (const inferred of ["cancelled", "completed", "booking.status", "CATERING_BOOKING_STATUSES"]) {
+    assert.equal(code.includes(inferred), false, inferred);
+  }
   assert.equal(source.includes("CATERING_FILES_READ_ONLY_BANNER"), true);
   assert.equal(source.includes("mayUploadCateringFile(draft, editable, upload.isPending)"), true);
   // And the server refuses the write regardless of what the client renders.

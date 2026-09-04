@@ -52,6 +52,22 @@ export const CATERING_TASK_VERSION_CONFLICT_MESSAGE = "This task changed since y
  */
 export const CATERING_WORKSPACE_POLL_MS = 15_000;
 
+/**
+ * The polling cadence for one workspace section, or `false` when it must not poll at all.
+ *
+ * A cancelled or completed booking is immutable: no message can be sent into it, no file uploaded or removed. Its
+ * message list and file list are therefore settled, and re-asking every fifteen seconds forever would be pure
+ * traffic for an answer that cannot change. `editable` is the parent workspace's own authoritative flag -- the same
+ * one that renders the read-only banner and gates every mutation control -- so closure is never inferred a second
+ * time here from a status string.
+ *
+ * Only the recurring poll stops. The query itself is untouched: a historical workspace still loads its messages and
+ * files, still paginates, and still refetches on window focus, because reading never closes -- only writing does.
+ */
+export function cateringWorkspacePollInterval(editable: boolean): number | false {
+  return editable ? CATERING_WORKSPACE_POLL_MS : false;
+}
+
 export const CATERING_WORKSPACE_READ_ONLY_CODE = "workspace_read_only";
 /** A task that no longer exists in the authoritative locked collection, usually because another tab deleted it. */
 export const CATERING_TASK_NOT_FOUND_CODE = "catering_task_not_found";

@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { CATERING_WORKSPACE_POLL_MS } from "@shared/catering-booking-operations";
+import { CATERING_WORKSPACE_POLL_MS, cateringWorkspacePollInterval } from "@shared/catering-booking-operations";
 
 /**
  * Delivery of incoming booking messages while the tab stays open.
@@ -28,7 +28,8 @@ const viewEffect = source.slice(source.indexOf("// Watches the end-of-thread sen
 const readEffect = source.slice(source.indexOf("// Marking read happens at most ONCE per boundary"), source.indexOf("// Restore the reading position"));
 
 test("1. the booking message query actively refreshes on a timer, not only on staleness", () => {
-  assert.equal(queryOptions.includes("refetchInterval: CATERING_WORKSPACE_POLL_MS"), true);
+  assert.equal(queryOptions.includes("refetchInterval: cateringWorkspacePollInterval(editable)"), true);
+  assert.equal(cateringWorkspacePollInterval(true), CATERING_WORKSPACE_POLL_MS);
   // A bounded, unhurried cadence -- and one shared constant rather than a number buried in the component.
   assert.equal(CATERING_WORKSPACE_POLL_MS, 15_000);
   assert.equal(CATERING_WORKSPACE_POLL_MS >= 10_000, true, "polling must not be high frequency");
@@ -180,4 +181,49 @@ test("9. a terminal booking still reads and polls, but remains non-writable", ()
   assert.equal(source.includes("disabled={!maySendCateringMessage(composer, editable)}"), true);
   // A booking that closed while the composer was open refetches the workspace, so the banner replaces the form.
   assert.equal(source.includes("if (isCateringCommunicationReadOnly(error)) {"), true);
+});
+
+
+/**
+ * A cancelled or completed booking is immutable: no message can be sent into it, no file uploaded or removed. Its
+ * lists are settled, so re-asking every fifteen seconds forever is pure traffic for an answer that cannot change.
+ */
+test("an active booking polls at the configured cadence; a terminal one does not poll at all", () => {
+  assert.equal(cateringWorkspacePollInterval(true), 15_000);
+  // Both terminal states reach this through the same flag, which is why one predicate covers cancelled and
+  // completed alike rather than matching on status strings.
+  assert.equal(cateringWorkspacePollInterval(false), false);
+});
+
+test("closure is taken from the parent workspace's authoritative flag, never re-inferred", () => {
+  // `editable` is the same prop that renders the read-only banner and gates every mutation control.
+  assert.equal(source.includes("editable, unreadCount }: { bookingId: string; userId: string; role: \"provider\" | \"customer\"; editable: boolean; unreadCount: number }"), true);
+  // No second opinion about BOOKING closure anywhere in the component. (`pending?.status` is the send attempt's
+  // own state, not the booking's, so closure-specific tokens are what this checks.)
+  const code = stripComments(source);
+  for (const inferred of ["cancelled", "completed", "booking.status", "mayMutateCateringFiles", "CATERING_BOOKING_STATUSES"]) {
+    assert.equal(code.includes(inferred), false, inferred);
+  }
+  // The polling policy is handed the flag directly, with nothing derived in between.
+  assert.equal(code.includes("cateringWorkspacePollInterval(editable)"), true);
+});
+
+test("only the recurring poll stops: a terminal conversation still loads, paginates and refetches on focus", () => {
+  const code = stripComments(queryOptions);
+  // The query is never disabled -- reading never closes, only writing does.
+  assert.equal(code.includes("enabled:"), false);
+  assert.equal(queryOptions.includes("refetchOnWindowFocus: true"), true);
+  assert.equal(queryOptions.includes("staleTime: 15_000"), true);
+  // Pagination, the actor-scoped key and the read-boundary logic are all untouched by the polling condition.
+  assert.equal(source.includes("getNextPageParam: (lastPage) => nextCateringMessageCursor(lastPage)"), true);
+  assert.equal(source.includes("queryKey: messagesKey"), true);
+  assert.equal(source.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages)"), true);
+});
+
+test("no mutation capability is reintroduced for a terminal booking", () => {
+  // The composer is replaced by the banner, and the send control is additionally gated by the state machine.
+  assert.equal(source.includes("CATERING_COMMUNICATION_READ_ONLY_BANNER"), true);
+  assert.equal(source.includes("disabled={!maySendCateringMessage(composer, editable)}"), true);
+  // Marking a historical conversation read is still allowed -- reading is not a mutation of the booking.
+  assert.equal(source.includes("`/api/catering/bookings/${bookingId}/messages/read`"), true);
 });

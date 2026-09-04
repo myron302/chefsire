@@ -105,3 +105,80 @@ test("the landing is accessible and needs no mouse", () => {
   // its own tabindex is left alone.
   assert.equal(landingEffect.includes(`if (!element.hasAttribute("tabindex"))`), true);
 });
+
+
+/**
+ * The landing record must describe the CURRENT navigation state, not merely the last section landed on.
+ *
+ * Returning early on a cleared hash left the old value stranded, so Back or Forward to that very same fragment
+ * found it already "landed" and did nothing at all -- browser history navigation silently stopped working for the
+ * section the user had most recently visited.
+ */
+test("1. a cleared or unrecognised fragment resets the landing record", () => {
+  let landing = recordCateringSectionLanding(EMPTY_CATERING_SECTION_LANDING, "files");
+  assert.equal(landing.landedOn, "files");
+  // Same-document navigation clears the hash: the record follows it rather than keeping "files".
+  landing = recordCateringSectionLanding(landing, cateringWorkspaceSectionFromHash(""));
+  assert.equal(landing.landedOn, null);
+  // An unrecognised fragment resolves to null too, and resets in exactly the same way.
+  landing = recordCateringSectionLanding(recordCateringSectionLanding(landing, "communication"), cateringWorkspaceSectionFromHash("#nonsense"));
+  assert.equal(landing.landedOn, null);
+});
+
+test("2 & 3. #files -> no hash -> #files lands again, and the same for #communication", () => {
+  for (const section of ["files", "communication"]) {
+    let landing = EMPTY_CATERING_SECTION_LANDING;
+    assert.equal(shouldLandOnCateringSection(landing, section), true);
+    landing = recordCateringSectionLanding(landing, section);
+    // Hash cleared.
+    assert.equal(shouldLandOnCateringSection(landing, null), false);
+    landing = recordCateringSectionLanding(landing, null);
+    // Back to the same fragment: it lands again, which it did not before this fix.
+    assert.equal(shouldLandOnCateringSection(landing, section), true, section);
+  }
+});
+
+test("4. Back and Forward across sections and an empty hash keep working", () => {
+  // #files -> #communication -> (no hash) -> back to #communication -> back to #files.
+  let landing = EMPTY_CATERING_SECTION_LANDING;
+  for (const step of ["files", "communication", null, "communication", "files"]) {
+    if (step !== null) assert.equal(shouldLandOnCateringSection(landing, step), true, String(step));
+    landing = recordCateringSectionLanding(landing, step);
+  }
+  assert.equal(landing.landedOn, "files");
+});
+
+test("5. an unchanged fragment still does not land twice, so rerenders never re-scroll", () => {
+  let landing = recordCateringSectionLanding(EMPTY_CATERING_SECTION_LANDING, "files");
+  for (let i = 0; i < 5; i += 1) {
+    assert.equal(shouldLandOnCateringSection(landing, "files"), false);
+    // Recording an unchanged fragment returns the SAME object, so the reset path cannot churn state either.
+    assert.equal(recordCateringSectionLanding(landing, "files"), landing);
+    landing = recordCateringSectionLanding(landing, "files");
+  }
+});
+
+test("6. an unknown hash neither crashes nor poisons a later valid navigation", () => {
+  let landing = recordCateringSectionLanding(EMPTY_CATERING_SECTION_LANDING, "communication");
+  for (const junk of ["#nonsense", "#Files", "#files/../secret", "#", ""]) {
+    assert.equal(cateringWorkspaceSectionFromHash(junk), null, junk);
+    landing = recordCateringSectionLanding(landing, cateringWorkspaceSectionFromHash(junk));
+  }
+  // A real fragment afterwards still lands.
+  assert.equal(shouldLandOnCateringSection(landing, "files"), true);
+  assert.equal(shouldLandOnCateringSection(landing, "communication"), true);
+});
+
+test("7. the reset happens before the early return, and cold-load handling is unchanged", () => {
+  // The record is written on the not-landing path too -- that is the whole fix.
+  const guard = landingEffect.slice(landingEffect.indexOf("if (!shouldLandOnCateringSection"), landingEffect.indexOf("const element ="));
+  assert.equal(guard.includes("landingRef.current = recordCateringSectionLanding(landingRef.current, section);"), true);
+  assert.equal(guard.indexOf("recordCateringSectionLanding") < guard.indexOf("return;"), true, "the record must be updated before returning");
+  // Cold async load and the hashchange listener are both still there.
+  assert.equal(landingEffect.includes("if (!workspace || typeof window === \"undefined\") return;"), true);
+  assert.equal(landingEffect.includes("}, [Boolean(workspace)]);"), true);
+  assert.equal(landingEffect.includes(`window.addEventListener("hashchange", land);`), true);
+  // And a known section that simply is not rendered yet still leaves the record alone, so it can land later.
+  assert.equal(landingEffect.includes("if (!element) return;"), true);
+  assert.equal(landingEffect.indexOf("if (!element) return;") < landingEffect.indexOf("element.scrollIntoView"), true);
+});

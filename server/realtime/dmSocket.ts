@@ -121,7 +121,27 @@ export function attachDmRealtime(httpServer: HttpServer) {
     // async error boundary because this listener has no try/catch of its own, and an unhandled rejection here would
     // exit the process.
     onAsyncSocketEvent<{ threadId: string; typing: boolean }>(socket, "typing", "typing failed", async ({ threadId, typing }) => {
+      // Membership FIRST, exactly as join/send/read do it. Classifying before authorizing made this handler a
+      // disclosure oracle: an authenticated non-participant who guessed a thread id got the distinctive
+      // catering_booking_thread refusal for a booking thread and silence for an ordinary one, so the difference in
+      // response told them which threads belong to catering bookings. Authorizing first collapses both cases to the
+      // same uniform "forbidden", and it also stops a non-participant broadcasting a typing indicator into a room
+      // they were never in.
+      const member = await db
+        .select()
+        .from(dmParticipants)
+        .where(and(eq(dmParticipants.threadId, threadId), eq(dmParticipants.userId, userId)))
+        .limit(1);
+
+      if (member.length === 0) {
+        socket.emit("error", { error: "forbidden" });
+        return;
+      }
+
+      // Only a proven participant ever learns that this thread belongs to a booking, and they are told so they can
+      // open the booking workspace instead.
       if (await refuseBookingLinkedThread(socket, threadId)) return;
+
       socket.to(threadId).emit("typing", { threadId, userId, typing });
     });
 

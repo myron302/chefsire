@@ -48,7 +48,15 @@ export default function CateringBookingWorkspace({ params }: { params: { booking
     if (!workspace || typeof window === "undefined") return;
     const land = () => {
       const section = cateringWorkspaceSectionFromHash(window.location.hash);
-      if (!shouldLandOnCateringSection(landingRef.current, section)) return;
+      if (!shouldLandOnCateringSection(landingRef.current, section)) {
+        // Record the CURRENT navigation state even when there is nothing to land on. Clearing the hash, or moving
+        // to a fragment this workspace does not recognise, leaves `section` null -- and returning without recording
+        // used to strand the old value, so Back or Forward to that very same fragment found it already "landed" and
+        // did nothing. Recording is a no-op when the fragment has not changed, so this cannot make a rerender land
+        // twice; it only stops a stale record from suppressing a genuine navigation.
+        landingRef.current = recordCateringSectionLanding(landingRef.current, section);
+        return;
+      }
       const element = document.getElementById(section!);
       // An unknown fragment resolves to null above and never reaches here; a known one whose section is not rendered
       // for this actor simply does nothing, rather than throwing.

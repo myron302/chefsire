@@ -2,7 +2,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, Trash2 } from "lucide-react";
 import { cateringBookingFilesKey, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
-import { CATERING_WORKSPACE_POLL_MS, cateringBookingWorkspaceKey } from "@shared/catering-booking-operations";
+import { cateringBookingWorkspaceKey, cateringWorkspacePollInterval } from "@shared/catering-booking-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,7 +42,9 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     // Same cadence as the conversation, from the one shared constant, so the two sections cannot drift apart.
     // Polling asks the same authorized route with the same credentials: it re-reads what the server decides this
     // actor may see, and can neither widen that nor imply any mutation.
-    refetchInterval: CATERING_WORKSPACE_POLL_MS,
+    // A cancelled or completed booking is immutable, so its file list is settled and polling it forever would be
+    // pure traffic. The recurring poll alone stops: the query still loads, paginates and refetches on focus.
+    refetchInterval: cateringWorkspacePollInterval(editable),
     // A hidden tab has no reader to serve; the focus transition covers the return.
     refetchIntervalInBackground: false,
     queryFn: async ({ pageParam }): Promise<CateringBookingFilePageView> => {

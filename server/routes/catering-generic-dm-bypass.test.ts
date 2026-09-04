@@ -165,7 +165,10 @@ test("a socket join cannot put a caller inside a booking thread room", () => {
 
 test("each socket guard runs after its own membership check, so a stranger learns nothing", () => {
   const membership = `if (member.length === 0) {`;
-  for (const event of ["join", "send", "read"]) {
+  // `typing` is in this list now. It used to classify before authorizing, which handed an outsider a
+  // booking-specific refusal for a booking thread and silence for an ordinary one -- an oracle for exactly the
+  // classification the uniform refusal exists to hide.
+  for (const event of ["join", "send", "read", "typing"]) {
     const handler = socketHandlers().find((entry) => entry.event === event)!;
     const membershipAt = handler.body.indexOf(membership);
     assert.notEqual(membershipAt, -1, event);

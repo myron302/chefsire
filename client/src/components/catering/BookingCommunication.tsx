@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { cateringBookingMessagesKey, type CateringBookingMessagePageView } from "@shared/catering-booking-communication";
-import { CATERING_WORKSPACE_POLL_MS, cateringBookingWorkspaceKey } from "@shared/catering-booking-operations";
+import { cateringBookingWorkspaceKey, cateringWorkspacePollInterval } from "@shared/catering-booking-operations";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -48,7 +48,9 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     // Polling refetches every page already loaded, deriving each page's cursor from the freshly returned page
     // before it, so loaded history is refreshed in place rather than discarded and the keyset ordering is the
     // server's throughout. Nothing here marks anything read: this is delivery, and reading is proved separately.
-    refetchInterval: CATERING_WORKSPACE_POLL_MS,
+    // A cancelled or completed booking is immutable, so its conversation is settled and polling it forever would be
+    // pure traffic. The recurring poll alone stops: the query still loads, paginates and refetches on focus.
+    refetchInterval: cateringWorkspacePollInterval(editable),
     // Stated rather than inherited. A hidden tab has no reader to serve, so it polls nothing; the query refreshes
     // on the focus transition instead, which is what `refetchOnWindowFocus` above is for.
     refetchIntervalInBackground: false,
