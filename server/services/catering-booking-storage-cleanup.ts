@@ -1,4 +1,5 @@
-import { and, asc, eq, inArray, isNull, isNotNull, lt, sql } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, asc, eq, inArray, isNull, isNotNull, lt, lte, or, sql } from "drizzle-orm";
 import { cateringBookingFiles, cateringBookingStorageOrphans } from "@shared/schema";
 import { db } from "../db";
 import { removePrivateObject, type PrivateStorageProvider } from "../lib/private-storage";
@@ -29,6 +30,15 @@ export const CATERING_CLEANUP_BATCH_MAXIMUM = 200;
  * rather than an unbounded retry loop hammering storage forever.
  */
 export const CATERING_CLEANUP_MAX_ATTEMPTS = 10;
+/**
+ * How long a claim stays valid, in seconds.
+ *
+ * It has to comfortably exceed one cleanup execution -- a single object delete, local or R2, well under a second in
+ * the ordinary case and tens of seconds at its worst -- so a working worker is never overtaken mid-delete. And it
+ * has to be short relative to the hourly schedule, so a worker that dies mid-delete has its row back in the queue by
+ * the next run rather than sitting untouchable. Five minutes sits comfortably between those.
+ */
+export const CATERING_CLEANUP_LEASE_SECONDS = 300;
 
 export function boundCateringCleanupBatch(requested?: number): number {
   if (!Number.isFinite(requested)) return CATERING_CLEANUP_BATCH_DEFAULT;
@@ -54,75 +64,108 @@ export function combineCateringCleanupOutcomes(...outcomes: CateringCleanupOutco
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error)).slice(0, 500);
 
 /**
- * Claiming, and why it is a transaction rather than a plain select.
+ * Claiming, and why a transaction-local row lock is not enough.
  *
- * The scheduled job runs on every app replica. Two replicas selecting the same pending row both attempted it and
- * both incremented `cleanup_attempts`, so one scheduled opportunity consumed as many attempts as there were
- * replicas -- and a row could exhaust its ceiling of ten without ever having had ten independent chances.
+ * The scheduled job runs on every app replica. `FOR UPDATE SKIP LOCKED` makes the SELECT exclusive, but only for as
+ * long as the transaction is open -- and that transaction has to COMMIT before storage I/O starts, because holding a
+ * database transaction open across a slow R2 delete is its own production problem. The instant it commits the row
+ * again satisfies the pending predicate, so a second replica claims it while the first is still deleting: both do
+ * the work, both consume a retry, and during an outage a handful of replicas can burn the whole ceiling in one
+ * scheduled run. The lock disappears exactly when it is needed most.
  *
- * A claim fixes that by making the selection exclusive and the attempt accounting part of the same atomic step:
+ * So the authority after commit is a DURABLE lease rather than the lock:
  *
- *  1. inside one short transaction, select the candidates `FOR UPDATE SKIP LOCKED`, so a row another worker is
- *     already claiming is skipped rather than waited for or duplicated;
- *  2. consume the attempt for exactly those rows, in the same transaction;
- *  3. COMMIT -- releasing every lock -- and only then talk to storage.
+ *  1. inside one short transaction, select rows that are pending, under the attempt ceiling, and NOT currently
+ *     leased, `FOR UPDATE SKIP LOCKED` so two workers racing the claim itself cannot pick the same row;
+ *  2. stamp them with this worker's unpredictable claim token and an expiry `CATERING_CLEANUP_LEASE_SECONDS` ahead,
+ *     using the DATABASE clock so every replica agrees on what "expired" means;
+ *  3. COMMIT, releasing every lock, and only then talk to storage.
  *
- * The attempt counter is itself the claim token, which is what makes crash recovery automatic: a worker that dies
- * mid-delete has consumed one attempt and holds no lock, so the row is simply picked up by the next run with one
- * fewer attempt remaining. There is no claim column to go stale and no reaper to write. And because the lock is
- * released before any storage call, a slow R2 delete never holds a row lock -- which is the failure mode option A
- * would have introduced.
+ * The lease outlives the transaction, so a concurrent replica sees the row as claimed and skips it. Finalization is
+ * conditioned on the token, so only the worker that holds the row can complete or fail it.
  *
- * The consequence is that `cleanup_attempts` now counts attempts MADE rather than attempts that failed. That is the
- * more truthful reading of the column and the one the ceiling was always meant to bound; a successful attempt also
- * sets `object_deleted_at`/`resolved_at`, so the row leaves the queue regardless.
+ * ATTEMPT ACCOUNTING. An attempt is one claimed execution that actually reached a conclusion, so it is charged at
+ * FINALIZATION, on the failure path, under a matching token -- exactly once per claim, and never by a replica that
+ * did no work. An execution that never concludes is charged too, but later and by whoever picks the row up: taking
+ * over a row whose lease EXPIRED while still holding a token means the previous execution was abandoned, so that
+ * reclaim charges the abandoned attempt as it re-leases. A fresh, never-claimed row is charged nothing at claim
+ * time. The result is that a crashing worker cannot retry forever and a healthy worker is never double-charged.
  */
-async function claimTombstones(limit: number): Promise<{ id: string; storageProvider: string; storageKey: string }[]> {
+
+/** A row that is unclaimed, or whose lease has lapsed. The comparison uses the database clock, never the app's. */
+const leaseIsAvailable = (until: typeof cateringBookingFiles.cleanupClaimedUntil | typeof cateringBookingStorageOrphans.cleanupClaimedUntil) =>
+  or(isNull(until), lte(until, sql`now()`));
+/** The expiry stamped on a fresh claim, likewise from the database clock. */
+const leaseExpiry = sql`now() + (${CATERING_CLEANUP_LEASE_SECONDS} * interval '1 second')`;
+
+export type CateringCleanupClaim = { id: string; storageProvider: string; storageKey: string; claimToken: string };
+export type CateringOrphanClaim = CateringCleanupClaim & { fileId: string | null };
+
+async function claimTombstones(limit: number): Promise<CateringCleanupClaim[]> {
+  const claimToken = randomUUID();
   return db.transaction(async (tx: typeof db) => {
-    const rows: { id: string; storageProvider: string; storageKey: string }[] = await tx
-      .select({ id: cateringBookingFiles.id, storageProvider: cateringBookingFiles.storageProvider, storageKey: cateringBookingFiles.storageKey })
+    const rows: { id: string; storageProvider: string; storageKey: string; previousToken: string | null }[] = await tx
+      .select({ id: cateringBookingFiles.id, storageProvider: cateringBookingFiles.storageProvider, storageKey: cateringBookingFiles.storageKey, previousToken: cateringBookingFiles.cleanupClaimToken })
       .from(cateringBookingFiles)
       .where(and(
         isNotNull(cateringBookingFiles.deletedAt),
         isNull(cateringBookingFiles.objectDeletedAt),
         lt(cateringBookingFiles.cleanupAttempts, CATERING_CLEANUP_MAX_ATTEMPTS),
+        leaseIsAvailable(cateringBookingFiles.cleanupClaimedUntil),
       ))
       .orderBy(asc(cateringBookingFiles.deletedAt), asc(cateringBookingFiles.id))
       .limit(limit)
       .for("update", { skipLocked: true });
-    if (rows.length === 0) return rows;
-    // One attempt per claimed row, consumed while the claim is still held, so no other worker can consume it too.
+    if (rows.length === 0) return [];
+    const ids = rows.map((row) => row.id);
     await tx.update(cateringBookingFiles)
-      .set({ cleanupAttempts: sql`${cateringBookingFiles.cleanupAttempts} + 1` })
-      .where(inArray(cateringBookingFiles.id, rows.map((row) => row.id)));
-    return rows;
+      .set({ cleanupClaimToken: claimToken, cleanupClaimedUntil: leaseExpiry })
+      .where(inArray(cateringBookingFiles.id, ids));
+    // A row still carrying a token whose lease lapsed is one whose previous execution never concluded. Charging it
+    // here is what stops a worker that dies mid-delete from retrying forever; a never-claimed row is charged nothing.
+    const abandoned = rows.filter((row) => row.previousToken !== null).map((row) => row.id);
+    if (abandoned.length > 0) {
+      await tx.update(cateringBookingFiles)
+        .set({ cleanupAttempts: sql`${cateringBookingFiles.cleanupAttempts} + 1` })
+        .where(inArray(cateringBookingFiles.id, abandoned));
+    }
+    return rows.map((row) => ({ id: row.id, storageProvider: row.storageProvider, storageKey: row.storageKey, claimToken }));
   });
 }
 
-async function claimOrphans(limit: number): Promise<{ id: string; storageProvider: string; storageKey: string; fileId: string | null }[]> {
+async function claimOrphans(limit: number): Promise<CateringOrphanClaim[]> {
+  const claimToken = randomUUID();
   return db.transaction(async (tx: typeof db) => {
-    const rows: { id: string; storageProvider: string; storageKey: string; fileId: string | null }[] = await tx
-      .select({ id: cateringBookingStorageOrphans.id, storageProvider: cateringBookingStorageOrphans.storageProvider, storageKey: cateringBookingStorageOrphans.storageKey, fileId: cateringBookingStorageOrphans.fileId })
+    const rows: { id: string; storageProvider: string; storageKey: string; fileId: string | null; previousToken: string | null }[] = await tx
+      .select({ id: cateringBookingStorageOrphans.id, storageProvider: cateringBookingStorageOrphans.storageProvider, storageKey: cateringBookingStorageOrphans.storageKey, fileId: cateringBookingStorageOrphans.fileId, previousToken: cateringBookingStorageOrphans.cleanupClaimToken })
       .from(cateringBookingStorageOrphans)
       .where(and(
         isNull(cateringBookingStorageOrphans.resolvedAt),
         lt(cateringBookingStorageOrphans.cleanupAttempts, CATERING_CLEANUP_MAX_ATTEMPTS),
+        leaseIsAvailable(cateringBookingStorageOrphans.cleanupClaimedUntil),
       ))
       .orderBy(asc(cateringBookingStorageOrphans.createdAt), asc(cateringBookingStorageOrphans.id))
       .limit(limit)
       .for("update", { skipLocked: true });
-    if (rows.length === 0) return rows;
+    if (rows.length === 0) return [];
+    const ids = rows.map((row) => row.id);
     await tx.update(cateringBookingStorageOrphans)
-      .set({ cleanupAttempts: sql`${cateringBookingStorageOrphans.cleanupAttempts} + 1` })
-      .where(inArray(cateringBookingStorageOrphans.id, rows.map((row) => row.id)));
-    return rows;
+      .set({ cleanupClaimToken: claimToken, cleanupClaimedUntil: leaseExpiry })
+      .where(inArray(cateringBookingStorageOrphans.id, ids));
+    const abandoned = rows.filter((row) => row.previousToken !== null).map((row) => row.id);
+    if (abandoned.length > 0) {
+      await tx.update(cateringBookingStorageOrphans)
+        .set({ cleanupAttempts: sql`${cateringBookingStorageOrphans.cleanupAttempts} + 1` })
+        .where(inArray(cateringBookingStorageOrphans.id, abandoned));
+    }
+    return rows.map((row) => ({ id: row.id, storageProvider: row.storageProvider, storageKey: row.storageKey, fileId: row.fileId, claimToken }));
   });
 }
 
 /**
  * Whether a committed `catering_booking_files` row owns this object.
  *
- * A `uncertain_commit` ledger row exists precisely because it was not known whether the metadata committed, so the
+ * An `uncertain_commit` ledger row exists precisely because it was not known whether the metadata committed, so the
  * bytes must not be deleted until that is settled. `storage_key` is UNIQUE on the files table, so it identifies at
  * most one row exactly; the file id is checked too when the ledger carries one. An owned object is left entirely
  * alone here -- if that file is later deleted it becomes a tombstone and the tombstone queue removes the bytes then.
@@ -143,9 +186,10 @@ async function objectHasOwner(candidate: { storageProvider: string; storageKey: 
  *
  * `removePrivateObject` is idempotent -- a local unlink treats ENOENT as success and an R2 delete of a missing key
  * succeeds -- so an object a previous run already removed completes normally rather than being reported as a
- * failure. The completion write is conditional on the row still being an un-cleaned tombstone, so it cannot
- * double-count or resurrect anything, and nothing on this path ever clears `deleted_at`: a file stays deleted to
- * every actor regardless of what storage does.
+ * failure. Every write below is conditioned on the claim token as well as the row id, so a worker whose lease has
+ * since been taken over by another finalizes nothing: it cannot mark success, cannot charge an attempt, and cannot
+ * clear the newer claim. Nothing on this path ever clears `deleted_at`: a file stays deleted to every actor
+ * regardless of what storage does.
  */
 export async function reconcileCateringFileTombstones(limit = CATERING_CLEANUP_BATCH_DEFAULT): Promise<CateringCleanupOutcome> {
   const candidates = await claimTombstones(boundCateringCleanupBatch(limit));
@@ -154,14 +198,19 @@ export async function reconcileCateringFileTombstones(limit = CATERING_CLEANUP_B
     try {
       await removePrivateObject(candidate.storageProvider as PrivateStorageProvider, candidate.storageKey);
       await db.update(cateringBookingFiles)
-        .set({ objectDeletedAt: new Date(), cleanupError: null })
-        .where(and(eq(cateringBookingFiles.id, candidate.id), isNotNull(cateringBookingFiles.deletedAt), isNull(cateringBookingFiles.objectDeletedAt)));
+        .set({ objectDeletedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null })
+        .where(and(
+          eq(cateringBookingFiles.id, candidate.id),
+          eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken),
+          isNotNull(cateringBookingFiles.deletedAt),
+          isNull(cateringBookingFiles.objectDeletedAt),
+        ));
       removed += 1;
     } catch (error) {
-      // The attempt was already consumed under the claim, so only the diagnosis is written here.
+      // One attempt for this claimed execution, charged once, and the lease released so a later run can retry.
       await db.update(cateringBookingFiles)
-        .set({ cleanupError: errorMessage(error) })
-        .where(eq(cateringBookingFiles.id, candidate.id))
+        .set({ cleanupAttempts: sql`${cateringBookingFiles.cleanupAttempts} + 1`, cleanupError: errorMessage(error), cleanupClaimToken: null, cleanupClaimedUntil: null })
+        .where(and(eq(cateringBookingFiles.id, candidate.id), eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken)))
         .catch(() => undefined);
       failed += 1;
     }
@@ -175,31 +224,35 @@ export async function reconcileCateringFileTombstones(limit = CATERING_CLEANUP_B
  * An `uncertain_commit` entry is recorded when an upload's transaction rejected and the commit state could not be
  * verified. Deleting its object unconditionally here would reintroduce exactly the bug the ledger exists to avoid,
  * so ownership is checked first and an owned object is retained, its ledger entry resolved without touching
- * storage. Resolution is recorded; the row itself is never deleted.
+ * storage. Resolution is recorded; the row itself is never deleted. Every write is token-conditioned, exactly as
+ * the tombstone queue's are.
  */
 export async function reconcileCateringStorageOrphans(limit = CATERING_CLEANUP_BATCH_DEFAULT): Promise<CateringCleanupOutcome> {
   const candidates = await claimOrphans(boundCateringCleanupBatch(limit));
   let removed = 0; let failed = 0; let retained = 0;
+  const resolve = (candidate: CateringOrphanClaim) => db.update(cateringBookingStorageOrphans)
+    .set({ resolvedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null })
+    .where(and(
+      eq(cateringBookingStorageOrphans.id, candidate.id),
+      eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken),
+      isNull(cateringBookingStorageOrphans.resolvedAt),
+    ));
   for (const candidate of candidates) {
     try {
       if (await objectHasOwner(candidate)) {
         // A committed file row owns these bytes. Nothing is deleted, and the entry stops being pending.
-        await db.update(cateringBookingStorageOrphans)
-          .set({ resolvedAt: new Date(), cleanupError: null })
-          .where(and(eq(cateringBookingStorageOrphans.id, candidate.id), isNull(cateringBookingStorageOrphans.resolvedAt)));
+        await resolve(candidate);
         retained += 1;
         continue;
       }
       await removePrivateObject(candidate.storageProvider as PrivateStorageProvider, candidate.storageKey);
-      await db.update(cateringBookingStorageOrphans)
-        .set({ resolvedAt: new Date(), cleanupError: null })
-        .where(and(eq(cateringBookingStorageOrphans.id, candidate.id), isNull(cateringBookingStorageOrphans.resolvedAt)));
+      await resolve(candidate);
       removed += 1;
     } catch (error) {
       // Includes a failed ownership lookup: an unanswerable question leaves the object alone and retries later.
       await db.update(cateringBookingStorageOrphans)
-        .set({ cleanupError: errorMessage(error) })
-        .where(eq(cateringBookingStorageOrphans.id, candidate.id))
+        .set({ cleanupAttempts: sql`${cateringBookingStorageOrphans.cleanupAttempts} + 1`, cleanupError: errorMessage(error), cleanupClaimToken: null, cleanupClaimedUntil: null })
+        .where(and(eq(cateringBookingStorageOrphans.id, candidate.id), eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken)))
         .catch(() => undefined);
       failed += 1;
     }

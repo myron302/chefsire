@@ -47,8 +47,9 @@ test("a later retry removes the object and the completion is persisted", async (
   await storage.removePrivateObject("local", key);
   assert.equal(await storage.statPrivateObject("local", key), null);
   // Success writes objectDeletedAt and clears the recorded error.
-  assert.equal(service.includes("set({ objectDeletedAt: new Date(), cleanupError: null })"), true);
-  assert.equal(service.includes("set({ resolvedAt: new Date(), cleanupError: null })"), true);
+  // Success writes the completion timestamp, clears the recorded error, and releases the claim.
+  assert.equal(service.includes("set({ objectDeletedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null })"), true);
+  assert.equal(service.includes("set({ resolvedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null })"), true);
 });
 
 test("repeated retries are harmless and an already-cleaned object is not an error", async () => {
@@ -75,10 +76,20 @@ test("cleanup never touches an unrelated object", async () => {
 
 test("a completion write cannot double-count or resurrect a row under concurrency", () => {
   // The completion is conditional on the row still being an un-cleaned tombstone / unresolved orphan.
-  assert.equal(service.includes("eq(cateringBookingFiles.id, candidate.id), isNotNull(cateringBookingFiles.deletedAt), isNull(cateringBookingFiles.objectDeletedAt)"), true);
-  assert.equal(service.includes("eq(cateringBookingStorageOrphans.id, candidate.id), isNull(cateringBookingStorageOrphans.resolvedAt)"), true);
+  // The completion now also requires the claim token, so only the worker holding the row can write it.
+  for (const condition of [
+    "eq(cateringBookingFiles.id, candidate.id)",
+    "eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken)",
+    "isNotNull(cateringBookingFiles.deletedAt)",
+    "isNull(cateringBookingFiles.objectDeletedAt)",
+    "eq(cateringBookingStorageOrphans.id, candidate.id)",
+    "eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken)",
+    "isNull(cateringBookingStorageOrphans.resolvedAt)",
+  ]) {
+    assert.equal(service.includes(condition), true, condition);
+  }
   // Attempt counters are incremented in SQL, so concurrent runs cannot lose each other's increments.
-  // The increment is still SQL-side, but it now happens under the claim rather than on the failure path, so two
+  // The increment is still SQL-side, and it is charged for one claimed execution under a matching token, so two
   // workers cannot consume the same row's attempt for one scheduled opportunity.
   assert.equal(service.includes("sql`${cateringBookingFiles.cleanupAttempts} + 1`"), true);
   assert.equal(service.includes("sql`${cateringBookingStorageOrphans.cleanupAttempts} + 1`"), true);

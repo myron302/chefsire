@@ -86,6 +86,15 @@ CREATE INDEX IF NOT EXISTS catering_booking_storage_orphans_pending_idx ON cater
 -- all rather than deleting bytes a committed file may own. Deliberately not a foreign key: an orphan is precisely
 -- an object whose metadata row may not exist. Additive and idempotent, so re-running this migration is safe.
 ALTER TABLE catering_booking_storage_orphans ADD COLUMN IF NOT EXISTS file_id varchar;
+
+-- Durable cleanup lease for both cleanup queues. FOR UPDATE SKIP LOCKED holds only for the claim transaction, which
+-- must commit before storage I/O begins, so without a lease the row is immediately re-eligible while a worker is
+-- still deleting it and every replica can claim and process it at once. The token is required to finalize; the
+-- expiry is what makes an abandoned claim recover itself. Additive, nullable and idempotent.
+ALTER TABLE catering_booking_files ADD COLUMN IF NOT EXISTS cleanup_claim_token varchar;
+ALTER TABLE catering_booking_files ADD COLUMN IF NOT EXISTS cleanup_claimed_until timestamptz;
+ALTER TABLE catering_booking_storage_orphans ADD COLUMN IF NOT EXISTS cleanup_claim_token varchar;
+ALTER TABLE catering_booking_storage_orphans ADD COLUMN IF NOT EXISTS cleanup_claimed_until timestamptz;
 -- No new index is needed for the owner lookup: catering_booking_files.storage_key is already UNIQUE, so a storage
 -- key identifies at most one file row exactly.
 

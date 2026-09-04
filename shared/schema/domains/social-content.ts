@@ -473,6 +473,12 @@ export const cateringBookingFiles = pgTable("catering_booking_files", {
   objectDeletedAt: timestamp("object_deleted_at", { withTimezone: true }),
   cleanupAttempts: integer("cleanup_attempts").default(0).notNull(),
   cleanupError: text("cleanup_error"),
+  // Durable cleanup lease. `FOR UPDATE SKIP LOCKED` holds only for the claim transaction, which must commit before
+  // storage I/O begins, so the row would otherwise be immediately re-eligible while a worker is still deleting it.
+  // The token identifies the worker holding the row and is required to finalize; the expiry is what lets an
+  // abandoned claim recover itself with no reaper and no manual intervention. Both are null when unclaimed.
+  cleanupClaimToken: varchar("cleanup_claim_token"),
+  cleanupClaimedUntil: timestamp("cleanup_claimed_until", { withTimezone: true }),
   /** Upload retry token, unique per (booking, uploader) when present, so a retried upload adds no second copy. */
   clientRequestId: uuid("client_request_id"),
 }, (t) => ({
@@ -507,6 +513,12 @@ export const cateringBookingStorageOrphans = pgTable("catering_booking_storage_o
   reason: varchar("reason", { length: 40 }).notNull(),
   cleanupAttempts: integer("cleanup_attempts").default(1).notNull(),
   cleanupError: text("cleanup_error"),
+  // Durable cleanup lease. `FOR UPDATE SKIP LOCKED` holds only for the claim transaction, which must commit before
+  // storage I/O begins, so the row would otherwise be immediately re-eligible while a worker is still deleting it.
+  // The token identifies the worker holding the row and is required to finalize; the expiry is what lets an
+  // abandoned claim recover itself with no reaper and no manual intervention. Both are null when unclaimed.
+  cleanupClaimToken: varchar("cleanup_claim_token"),
+  cleanupClaimedUntil: timestamp("cleanup_claimed_until", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   resolvedAt: timestamp("resolved_at", { withTimezone: true }),
 }, (t) => ({

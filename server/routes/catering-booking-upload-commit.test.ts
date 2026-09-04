@@ -154,6 +154,10 @@ test("the ledger carries the file id, and the column exists additively", () => {
   assert.equal(migration.includes("ALTER TABLE catering_booking_storage_orphans ADD COLUMN IF NOT EXISTS file_id varchar;"), true);
   // Deliberately not a foreign key: an orphan is an object whose metadata row may not exist.
   assert.equal(migration.includes("file_id varchar REFERENCES"), false);
-  // catering_booking_files itself is unchanged.
-  assert.equal(migration.includes("ALTER TABLE catering_booking_files"), false);
+  // catering_booking_files is never REDEFINED. It does gain the additive cleanup-lease columns, but every change to
+  // it is an idempotent ADD COLUMN -- nothing is dropped, retyped or re-created.
+  for (const change of migration.split("\n").filter((line) => line.startsWith("ALTER TABLE catering_booking_files"))) {
+    assert.equal(change.includes("ADD COLUMN IF NOT EXISTS"), true, change);
+  }
+  assert.equal(/ALTER TABLE catering_booking_files[^\n]*(DROP|ALTER COLUMN|RENAME)/.test(migration), false);
 });
