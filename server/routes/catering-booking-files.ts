@@ -15,6 +15,7 @@ import { lockActiveCateringBooking, ownedCateringBooking } from "../services/cat
 import { cateringCounterpart, cateringFilePageFrom, cateringPageQueryLimit, boundedCount } from "../services/catering-booking-communication-policy";
 import { CATERING_FILE_DOWNLOAD_HEADERS, cateringFileActivity, cateringFileContentDisposition, cateringFileStorageKey, cateringFileVisibleTo, resolveCateringFileSlot, resolveCateringUpload, shouldNotifyCateringFileUpload } from "../services/catering-booking-file-policy";
 import { validateCateringFileContent } from "../services/catering-booking-file-content";
+import { CATERING_CLEANUP_MAX_ATTEMPTS, cateringCleanupChargesAttempt, settleCateringFinalization, type CateringCleanupConclusion } from "../services/catering-booking-storage-cleanup";
 import { privateStorageProvider, readPrivateObject, removePrivateObject, writePrivateObject, type PrivateStorageProvider } from "../lib/private-storage";
 
 const r = Router();
@@ -470,14 +471,40 @@ r.delete("/bookings/:id/files/:fileId", requireAuth, async (req, res, next) => {
   // The metadata tombstone is what makes the file gone. Storage cleanup happens afterwards and its outcome is
   // recorded, but a cleanup failure NEVER restores visibility: the file stays deleted and inaccessible to everyone,
   // and the row keeps enough state for the removal to be retried.
-  try {
-    await removePrivateObject(result.file.storageProvider as PrivateStorageProvider, result.file.storageKey);
-    await db.update(cateringBookingFiles).set({ objectDeletedAt: new Date(), cleanupError: null }).where(eq(cateringBookingFiles.id, result.file.id));
-  } catch (cleanupError) {
-    await db.update(cateringBookingFiles)
-      .set({ cleanupAttempts: sql`${cateringBookingFiles.cleanupAttempts} + 1`, cleanupError: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) })
-      .where(eq(cateringBookingFiles.id, result.file.id))
-      .catch(() => undefined);
+  //
+  // The two steps below are kept apart because they are not the same kind of failure. Deleting the object either
+  // happened or it did not, and if it did not the bytes are still there and the cleanup queue owes another attempt.
+  // Writing down THAT it happened is bookkeeping about an operation already complete: once the object is gone,
+  // failing to record it changes nothing in the world. Charging the retry ceiling for that would spend attempts
+  // meant for a broken storage backend on a database hiccup, and could exhaust a row whose bytes are already gone
+  // into a cleanup record no pass will ever finish.
+  //
+  // One recorder for both, so which conclusion charges the ceiling is stated once, by the cleanup service that owns
+  // the ceiling. Both writes are guarded on `object_deleted_at` still being null, so neither can overwrite a
+  // concurrent cleanup pass that already finished this row, and both are best effort: the delete has committed.
+  const recordCleanup = (conclusion: CateringCleanupConclusion, error: unknown) => db.update(cateringBookingFiles)
+    .set({
+      ...(cateringCleanupChargesAttempt(conclusion) ? { cleanupAttempts: sql`LEAST(${cateringBookingFiles.cleanupAttempts} + 1, ${CATERING_CLEANUP_MAX_ATTEMPTS})` } : {}),
+      cleanupError: error instanceof Error ? error.message : String(error),
+    })
+    .where(and(eq(cateringBookingFiles.id, result.file.id), isNull(cateringBookingFiles.objectDeletedAt)))
+    .catch(() => undefined);
+
+  const storage = await settleCateringFinalization(() => removePrivateObject(result.file.storageProvider as PrivateStorageProvider, result.file.storageKey));
+  if (!storage.ok) {
+    // The object is still there. This IS a storage attempt and it failed, so it is charged: `object_deleted_at`
+    // stays null and the tombstone queue retries it.
+    await recordCleanup("storage_failed", storage.error);
+    return res.status(204).end();
+  }
+  // The bytes are gone. Marking them gone is best effort from here: a failure leaves `object_deleted_at` null, which
+  // is exactly the signal the cleanup queue selects on, so the row is discovered naturally and the delete it retries
+  // finds nothing and succeeds. Nothing about it is charged as a storage attempt, and nothing about it is reported
+  // to the participant, whose deletion is complete and cannot be repeated or undone by retrying.
+  const finalized = await settleCateringFinalization(() => db.update(cateringBookingFiles).set({ objectDeletedAt: new Date(), cleanupError: null }).where(eq(cateringBookingFiles.id, result.file.id)));
+  if (!finalized.ok) {
+    console.error("catering booking file cleanup marker could not be recorded", { bookingId: id, fileId: result.file.id, error: finalized.error });
+    await recordCleanup("unfinalized", finalized.error);
   }
   res.status(204).end();
 } catch (error) { invalid(error, res, next); } });

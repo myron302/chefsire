@@ -125,8 +125,13 @@ test("outcomes from both queues combine into one truthful total", () => {
 });
 
 test("reconciliation is server-internal and can never be steered by a client", () => {
-  // No route imports it, and it takes no caller-supplied key, provider or booking -- only a batch size.
-  assert.equal(filesRoute.includes("catering-booking-storage-cleanup"), false);
+  // No route runs a reconciliation pass. The delete route imports this module only for the shared statement of
+  // which cleanup conclusion charges the retry ceiling, which is a rule rather than an entry point.
+  for (const reconciler of ["reconcileCateringFileTombstones", "reconcileCateringStorageOrphans", "reconcileCateringStorageCleanup"]) {
+    assert.equal(filesRoute.includes(reconciler), false, reconciler);
+  }
+  assert.equal(filesRoute.includes("claimTombstones"), false);
+  assert.equal(filesRoute.includes("claimOrphans"), false);
   assert.equal(service.includes("req."), false);
   assert.equal(service.includes("requireAuth"), false);
   assert.equal(/export async function reconcileCateringStorageCleanup\(limit = /.test(service), true);

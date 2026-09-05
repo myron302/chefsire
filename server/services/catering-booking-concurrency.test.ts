@@ -225,11 +225,16 @@ test("an object stored with no owning metadata row is compensated, and an unreco
 test("a storage cleanup that fails after the tombstone never restores the file", () => {
   const deleteTx = filesRoute.slice(filesRoute.indexOf("r.delete("));
   // The failure path only records cleanup state; it never clears deletedAt or deletedBy.
-  const cleanupFailure = deleteTx.slice(deleteTx.indexOf("} catch (cleanupError) {"));
+  const cleanupFailure = deleteTx.slice(deleteTx.indexOf("const recordCleanup = ("));
   assert.equal(cleanupFailure.includes("cleanupAttempts"), true);
   assert.equal(cleanupFailure.includes("cleanupError:"), true);
   assert.equal(cleanupFailure.includes("deletedAt: null"), false);
   assert.equal(cleanupFailure.includes("deletedBy: null"), false);
+  // A failed object delete is charged as the storage attempt it is, and leaves object_deleted_at unset so the
+  // tombstone queue finds the row.
+  assert.equal(cleanupFailure.includes(`await recordCleanup("storage_failed", storage.error);`), true);
+  assert.equal(cleanupFailure.includes("objectDeletedAt: new Date()"), true);
+  assert.equal(cleanupFailure.indexOf("objectDeletedAt: new Date()") > cleanupFailure.indexOf(`recordCleanup("storage_failed"`), true, "the marker is only written after the object delete succeeded");
   // The database itself refuses a row that claims its object was cleaned up before the metadata was tombstoned.
   assert.equal(migration.includes("object_deleted_at IS NULL OR deleted_at IS NOT NULL"), true);
 });

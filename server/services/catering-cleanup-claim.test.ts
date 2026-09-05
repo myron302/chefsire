@@ -296,11 +296,15 @@ test("every finalization is conditioned on the claim token, in BOTH queues", () 
     assert.equal(conditions >= 2, true, `${queue} must token-condition both success and failure`);
     // Finalization releases the lease either way, so a later run can retry rather than waiting it out.
     assert.equal(body.includes("cleanupClaimToken: null, cleanupClaimedUntil: null"), true, queue);
-    // The attempt is charged on the failure path only.
-    const failure = body.slice(body.indexOf("} catch (error) {"));
-    assert.equal(failure.includes("cleanupAttempts"), true, queue);
-    const success = body.slice(0, body.indexOf("} catch (error) {"));
-    assert.equal(success.includes("cleanupAttempts"), false, `${queue} must not charge an attempt for a success`);
+    // An attempt is charged through exactly one place, and that place asks the shared rule which conclusion
+    // deserves it. A success never charges, and neither does a finalization failure: only a storage failure does.
+    assert.equal(body.includes("cateringCleanupChargesAttempt(conclusion) ? { cleanupAttempts: chargeAttempt("), true, queue);
+    assert.equal((body.match(/cleanupAttempts: chargeAttempt\(/g) ?? []).length, 1, `${queue} must charge attempts from one place only`);
+    assert.equal(body.includes(`await settle(candidate, "storage_failed", error);`), true, queue);
+    assert.equal(body.includes(`await settle(candidate, "unfinalized", finalized.error);`), true, queue);
+    // The success write itself carries no attempt charge.
+    const success = body.slice(body.indexOf("settleCateringFinalization("));
+    assert.equal(success.slice(0, success.indexOf("if (finalized.ok)")).includes("cleanupAttempts"), false, `${queue} must not charge an attempt for a success`);
   }
 });
 
@@ -308,7 +312,8 @@ test("an object a committed file row owns is retained rather than deleted", () =
   // The uncertain-commit ledger entry exists because ownership was unknown. Deleting its object unconditionally
   // would reintroduce exactly the bug the ledger exists to avoid.
   const orphans = service.slice(service.indexOf("export async function reconcileCateringStorageOrphans"));
-  assert.equal(orphans.includes("if (await objectHasOwner(candidate)) {"), true);
+  assert.equal(orphans.includes("owned = await objectHasOwner(candidate);"), true);
+  assert.equal(orphans.includes("if (!owned) await removePrivateObject("), true);
   assert.equal(orphans.indexOf("objectHasOwner(candidate)") < orphans.indexOf("removePrivateObject"), true, "ownership must be settled before deleting");
   assert.equal(orphans.includes("retained += 1;"), true);
   // The owner lookup is on the identity that names the bytes, plus the file id when the ledger carries one.

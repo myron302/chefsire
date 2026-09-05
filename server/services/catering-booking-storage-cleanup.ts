@@ -112,6 +112,46 @@ const leaseIsAvailable = (until: typeof cateringBookingFiles.cleanupClaimedUntil
 const chargeAttempt = (column: typeof cateringBookingFiles.cleanupAttempts | typeof cateringBookingStorageOrphans.cleanupAttempts) =>
   sql`LEAST(${column} + 1, ${CATERING_CLEANUP_MAX_ATTEMPTS})`;
 
+/**
+ * The two halves of one cleanup, and why they are not the same failure.
+ *
+ * Removing the object is the irreversible half: it either happened or it did not, and if it did not the bytes are
+ * still there and another attempt is warranted. Recording that it happened -- `object_deleted_at`, clearing
+ * `cleanup_error`, resolving an orphan row -- is bookkeeping ABOUT an operation that has already completed. Once the
+ * object is gone, a failure to write that down changes nothing about the world: the bytes do not come back, the
+ * file does not become visible again, and no further storage work is needed for this row beyond a delete that will
+ * now find nothing.
+ *
+ * Conflating the two costs real correctness in two places. A caller learns "the delete failed" for a delete that
+ * succeeded. And the retry ceiling -- which exists to stop a broken STORAGE backend from being hammered forever --
+ * is spent on database failures, so a row whose bytes are already gone can exhaust its attempts and become a
+ * permanently stuck cleanup record that no pass will ever finish.
+ *
+ * So a conclusion is one of three things, and only the storage failure charges the ceiling.
+ */
+export type CateringCleanupConclusion = "removed" | "storage_failed" | "unfinalized";
+export function cateringCleanupChargesAttempt(conclusion: CateringCleanupConclusion): boolean {
+  return conclusion === "storage_failed";
+}
+
+/**
+ * Runs the bookkeeping half and reports rather than throws.
+ *
+ * The caller has, by construction, already completed the irreversible half when this is reached, so there is
+ * nothing left for an exception to abort: the only decision remaining is how to record the outcome. Returning the
+ * error instead of propagating it is what keeps a finalization failure from being mistaken for a storage one by
+ * some enclosing `catch` that cannot tell them apart.
+ */
+export type CateringFinalization = { ok: true } | { ok: false; error: unknown };
+export async function settleCateringFinalization(finalize: () => Promise<unknown>): Promise<CateringFinalization> {
+  try {
+    await finalize();
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error };
+  }
+}
+
 /** The expiry stamped on a fresh claim, likewise from the database clock. */
 const leaseExpiry = sql`now() + (${CATERING_CLEANUP_LEASE_SECONDS} * interval '1 second')`;
 
@@ -233,26 +273,41 @@ async function objectHasOwner(candidate: { storageProvider: string; storageKey: 
 export async function reconcileCateringFileTombstones(limit = CATERING_CLEANUP_BATCH_DEFAULT): Promise<CateringCleanupOutcome> {
   const candidates = await claimTombstones(boundCateringCleanupBatch(limit));
   let removed = 0; let failed = 0;
+  const settle = (candidate: CateringCleanupClaim, conclusion: CateringCleanupConclusion, error: unknown) => db.update(cateringBookingFiles)
+    // Only a storage failure charges the ceiling. A finalization failure releases the lease and records why, so the
+    // next pass re-claims the row cleanly -- it is not an abandoned execution and must not be charged as one.
+    .set({
+      ...(cateringCleanupChargesAttempt(conclusion) ? { cleanupAttempts: chargeAttempt(cateringBookingFiles.cleanupAttempts) } : {}),
+      cleanupError: errorMessage(error),
+      cleanupClaimToken: null,
+      cleanupClaimedUntil: null,
+    })
+    .where(and(eq(cateringBookingFiles.id, candidate.id), eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken)))
+    .catch(() => undefined);
   for (const candidate of candidates) {
     try {
       await removePrivateObject(candidate.storageProvider as PrivateStorageProvider, candidate.storageKey);
-      await db.update(cateringBookingFiles)
-        .set({ objectDeletedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null })
-        .where(and(
-          eq(cateringBookingFiles.id, candidate.id),
-          eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken),
-          isNotNull(cateringBookingFiles.deletedAt),
-          isNull(cateringBookingFiles.objectDeletedAt),
-        ));
-      removed += 1;
     } catch (error) {
-      // One attempt for this claimed execution, charged once, and the lease released so a later run can retry.
-      await db.update(cateringBookingFiles)
-        .set({ cleanupAttempts: chargeAttempt(cateringBookingFiles.cleanupAttempts), cleanupError: errorMessage(error), cleanupClaimToken: null, cleanupClaimedUntil: null })
-        .where(and(eq(cateringBookingFiles.id, candidate.id), eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken)))
-        .catch(() => undefined);
+      // The bytes are still there. One attempt for this claimed execution, charged once, and the lease released so
+      // a later run can retry.
+      await settle(candidate, "storage_failed", error);
       failed += 1;
+      continue;
     }
+    // The object is gone from here on, so nothing below may charge a storage attempt for failing to say so.
+    const finalized = await settleCateringFinalization(() => db.update(cateringBookingFiles)
+      .set({ objectDeletedAt: new Date(), cleanupError: null, cleanupClaimToken: null, cleanupClaimedUntil: null })
+      .where(and(
+        eq(cateringBookingFiles.id, candidate.id),
+        eq(cateringBookingFiles.cleanupClaimToken, candidate.claimToken),
+        isNotNull(cateringBookingFiles.deletedAt),
+        isNull(cateringBookingFiles.objectDeletedAt),
+      )));
+    if (finalized.ok) { removed += 1; continue; }
+    // `object_deleted_at` is still null, so the row stays in the queue and the next pass finds it naturally. The
+    // delete it retries finds nothing and succeeds, which is what makes this safe to repeat.
+    await settle(candidate, "unfinalized", finalized.error);
+    failed += 1;
   }
   return { scanned: candidates.length, removed, failed, retained: 0 };
 }
@@ -276,25 +331,35 @@ export async function reconcileCateringStorageOrphans(limit = CATERING_CLEANUP_B
       eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken),
       isNull(cateringBookingStorageOrphans.resolvedAt),
     ));
+  const settle = (candidate: CateringOrphanClaim, conclusion: CateringCleanupConclusion, error: unknown) => db.update(cateringBookingStorageOrphans)
+    .set({
+      ...(cateringCleanupChargesAttempt(conclusion) ? { cleanupAttempts: chargeAttempt(cateringBookingStorageOrphans.cleanupAttempts) } : {}),
+      cleanupError: errorMessage(error),
+      cleanupClaimToken: null,
+      cleanupClaimedUntil: null,
+    })
+    .where(and(eq(cateringBookingStorageOrphans.id, candidate.id), eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken)))
+    .catch(() => undefined);
   for (const candidate of candidates) {
+    let owned: boolean;
     try {
-      if (await objectHasOwner(candidate)) {
-        // A committed file row owns these bytes. Nothing is deleted, and the entry stops being pending.
-        await resolve(candidate);
-        retained += 1;
-        continue;
-      }
-      await removePrivateObject(candidate.storageProvider as PrivateStorageProvider, candidate.storageKey);
-      await resolve(candidate);
-      removed += 1;
+      owned = await objectHasOwner(candidate);
+      // A committed file row owns these bytes, so nothing is deleted; otherwise the object goes now.
+      if (!owned) await removePrivateObject(candidate.storageProvider as PrivateStorageProvider, candidate.storageKey);
     } catch (error) {
       // Includes a failed ownership lookup: an unanswerable question leaves the object alone and retries later.
-      await db.update(cateringBookingStorageOrphans)
-        .set({ cleanupAttempts: chargeAttempt(cateringBookingStorageOrphans.cleanupAttempts), cleanupError: errorMessage(error), cleanupClaimToken: null, cleanupClaimedUntil: null })
-        .where(and(eq(cateringBookingStorageOrphans.id, candidate.id), eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken)))
-        .catch(() => undefined);
+      await settle(candidate, "storage_failed", error);
       failed += 1;
+      continue;
     }
+    // Storage is settled either way from here -- deleted, or deliberately left with its owner -- so failing to
+    // record that is bookkeeping and must not spend a storage attempt.
+    const finalized = await settleCateringFinalization(() => resolve(candidate));
+    if (finalized.ok) { if (owned) retained += 1; else removed += 1; continue; }
+    // `resolved_at` is still null, so the entry stays pending and the next pass repeats a delete that now finds
+    // nothing, or an ownership check that answers the same way.
+    await settle(candidate, "unfinalized", finalized.error);
+    failed += 1;
   }
   return { scanned: candidates.length, removed, failed, retained };
 }
