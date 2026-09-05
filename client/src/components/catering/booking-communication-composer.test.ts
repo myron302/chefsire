@@ -116,10 +116,10 @@ test("a sentinel at the end of the thread is what advances the viewed boundary",
   assert.equal(viewEffect.includes("new IntersectionObserver"), true);
   assert.equal(viewEffect.includes("recordCateringViewedBoundary(current, latestId)"), true);
   // Re-created as the thread changes so it never observes a detached node, and both are disconnected on cleanup.
-  assert.equal(viewEffect.includes("}, [latestId, pageKey, unreadStartId]);"), true);
+  assert.equal(viewEffect.includes("}, [latestId, pageKey, unreadStartId, messages.length]);"), true);
   assert.equal(viewEffect.includes("threadRootObserver.disconnect();"), true);
   assert.equal(viewEffect.includes("viewportObserver.disconnect();"), true);
-  assert.equal(viewEffect.includes("for (const observer of unreadStartObservers) observer.disconnect();"), true);
+  assert.equal(viewEffect.includes("coverageObserver.disconnect();"), true);
   // Environments without IntersectionObserver simply record nothing, which leaves messages unread rather than
   // falsely marking them read.
   assert.equal(viewEffect.includes(`typeof IntersectionObserver === "undefined"`), true);
@@ -138,17 +138,17 @@ test("a sentinel at the end of the thread is what advances the viewed boundary",
  * itself, and only their roots differ.
  */
 test("both observers watch the SENTINEL, differing only in their root", () => {
-  // Four now: the bottom sentinel and the unread-start sentinel, each against both roots.
-  assert.equal((viewEffect.match(/new IntersectionObserver/g) ?? []).length, 4);
+  // Three: the bottom sentinel against both roots, plus one observer for the messages themselves.
+  assert.equal((viewEffect.match(/new IntersectionObserver/g) ?? []).length, 3);
   // Same element, twice. The container is never a stand-in for browser-viewport visibility of the boundary.
   assert.equal((viewEffect.match(/\.observe\(sentinel\)/g) ?? []).length, 2);
   assert.equal(viewEffect.includes("threadRootObserver.observe(sentinel)"), true);
   assert.equal(viewEffect.includes("viewportObserver.observe(sentinel)"), true);
   assert.equal(viewEffect.includes(".observe(thread)"), false, "the container must not be what the viewport observer watches");
-  // The unread-start sentinel is watched the same way, so traversal is proved by the same two coordinate systems.
-  assert.equal(viewEffect.includes("observer.observe(unreadStartNode!)"), true);
-  assert.equal(viewEffect.includes("recordCateringUnreadStartInThread(current, generation,"), true);
-  assert.equal(viewEffect.includes("recordCateringUnreadStartInViewport(current, generation,"), true);
+  // Each rendered message is observed against the DOCUMENT root, which is clipped by every scrollable ancestor --
+  // so a message reported there was visible through the thread container as well as on screen.
+  assert.equal(viewEffect.includes("messageNodes.current.forEach((node) => coverageObserver.observe(node));"), true);
+  assert.equal(viewEffect.includes("recordCateringMessageCoverage(current, generation, seen)"), true);
   // Two coordinate systems: the thread's scroll root, and the document viewport.
   assert.equal(viewEffect.includes("{ root: thread, threshold: 0.01 }"), true);
   assert.equal(viewEffect.includes("{ root: null, threshold: 0.01 }"), true);
@@ -156,7 +156,7 @@ test("both observers watch the SENTINEL, differing only in their root", () => {
 
 test("neither observation alone advances the read boundary", () => {
   // The boundary moves through the conjunction and nothing else: no observer callback records it directly.
-  assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart)"), true);
+  assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart, messages)"), true);
   const threadCallback = viewEffect.slice(viewEffect.indexOf("const threadRootObserver"), viewEffect.indexOf("const viewportObserver"));
   assert.equal(threadCallback.includes("recordCateringViewedBoundary"), false, "thread-root visibility alone must not advance the boundary");
   const viewportCallback = viewEffect.slice(viewEffect.indexOf("const viewportObserver"), viewEffect.indexOf("threadRootObserver.observe"));
@@ -168,7 +168,7 @@ test("neither observation alone advances the read boundary", () => {
 
 test("the boundary advances from the conjunction, and refuses when it does not hold", () => {
   const conjunction = source.slice(source.indexOf("// The boundary advances only while BOTH observations hold"), source.indexOf("// Marking read happens at most ONCE per boundary"));
-  assert.equal(conjunction.includes("if (!mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart)) return;"), true);
+  assert.equal(conjunction.includes("if (!mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart, messages)) return;"), true);
   assert.equal(conjunction.includes("recordCateringViewedBoundary(current, latestId)"), true);
   // Re-evaluated when either half changes, when newer messages arrive, or when pagination is exhausted, so a
   // reader sitting at the bottom of a fully loaded visible thread still tracks them.
@@ -214,7 +214,7 @@ test("each observation is stamped with the boundary it was collected for", () =>
   assert.equal(viewEffect.includes("recordCateringViewportVisibility(current, generation, entries.some((entry) => entry.isIntersecting))"), true);
   // And the conjunction is asked about a named boundary rather than in the abstract, which is what makes a change
   // of latestId invalidate prior evidence in the same render instead of waiting for a callback to report false.
-  assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart)"), true);
+  assert.equal(viewEffect.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart, messages)"), true);
   assert.equal(/cateringThreadEndIsOnScreen\(visibility\)/.test(source), false, "the boundary-free form must be gone");
   // And the rendered page set is part of the stamp, so a prepend cannot reuse evidence about the shorter thread.
   assert.equal(source.includes("const pageKey = cateringMessagePageKey(query.data?.pages, hasOlderPages);"), true);
@@ -224,13 +224,13 @@ test("a boundary change re-creates both observers, which is what supplies fresh 
   // `latestId` is a dependency, so new observers are constructed for the new boundary; `observe()` always delivers
   // an initial observation, so a reader still at the bottom gets a fresh positive and one pushed below the fold
   // gets a negative. Neither inherits the old boundary's answer.
-  assert.equal(viewEffect.includes("}, [latestId, pageKey, unreadStartId]);"), true);
+  assert.equal(viewEffect.includes("}, [latestId, pageKey, unreadStartId, messages.length]);"), true);
   assert.equal(viewEffect.includes("threadRootObserver.observe(sentinel)"), true);
   assert.equal(viewEffect.includes("viewportObserver.observe(sentinel)"), true);
   // Old observers are torn down, so neither they nor a record they queued survive into the new boundary.
   assert.equal(viewEffect.includes("threadRootObserver.disconnect();"), true);
   assert.equal(viewEffect.includes("viewportObserver.disconnect();"), true);
-  assert.equal(viewEffect.includes("for (const observer of unreadStartObservers) observer.disconnect();"), true);
+  assert.equal(viewEffect.includes("coverageObserver.disconnect();"), true);
 });
 
 test("the component never marks a boundary read from anything but this evidence", () => {
@@ -254,7 +254,7 @@ test("the viewed boundary is gated on pagination being exhausted", () => {
   // The pagination cursor's own answer, not a heuristic, and it is the query's `hasNextPage`.
   assert.equal(source.includes("const hasOlderPages = Boolean(query.hasNextPage);"), true);
   const conjunction = source.slice(source.indexOf("// The boundary advances only while BOTH observations hold"), source.indexOf("// Marking read happens at most ONCE per boundary"));
-  assert.equal(conjunction.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart)"), true);
+  assert.equal(conjunction.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart, messages)"), true);
   // Re-evaluated when the cursor is exhausted -- but the page set is part of the stamp, so exhausting it invalidates
   // the evidence gathered before the prepend rather than unlocking the boundary with it.
   assert.equal(conjunction.includes("hasOlderPages, pageKey, unreadStartId, unreadStart.kind]);"), true);
@@ -278,15 +278,14 @@ test("nothing is auto-fetched to satisfy the pagination gate: paging stays manua
  * re-created observers report a perfectly fresh positive for the new page set -- while the backlog has not been
  * looked at. The component therefore renders a second sentinel at the first unread message and requires it.
  */
-test("the unread-start sentinel is rendered at the first unread message and is presentational", () => {
-  assert.equal(source.includes("{item.id === unreadStartId && <div ref={unreadStartRef}"), true);
-  const sentinel = source.slice(source.indexOf("{item.id === unreadStartId && <div ref={unreadStartRef}"));
-  const tag = sentinel.slice(0, sentinel.indexOf("/>"));
-  assert.equal(tag.includes(`aria-hidden="true"`), true);
-  assert.equal(tag.includes("tabIndex"), false);
-  assert.equal(tag.includes("role="), false);
-  // It is inside the list, not appended after it like the bottom sentinel.
-  assert.equal(source.indexOf("{item.id === unreadStartId") < source.indexOf("</ol>"), true);
+test("each rendered message is observable, and the registry is bounded to what is rendered", () => {
+  // The message element itself is the observation target -- no extra nodes, so no accessibility surface is added.
+  assert.equal(source.includes("data-message-id={item.id}"), true);
+  assert.equal(source.includes("if (node) messageNodes.current.set(item.id, node); else messageNodes.current.delete(item.id);"), true);
+  // Registered on mount and dropped on unmount, so only loaded pages are ever observed and no detached node is
+  // retained; the observer itself is disconnected with the others.
+  assert.equal(viewEffect.includes("coverageObserver.disconnect();"), true);
+  assert.equal(source.includes("const messageNodes = useRef(new Map<string, HTMLElement>());"), true);
 });
 
 test("the required boundary is derived from authoritative data, not invented", () => {
@@ -302,7 +301,7 @@ test("the required boundary is derived from authoritative data, not invented", (
 
 test("the gate takes the traversal requirement, and pagination facts alone never satisfy it", () => {
   const conjunction = source.slice(source.indexOf("// The boundary advances only while BOTH observations hold"), source.indexOf("// Marking read happens at most ONCE per boundary"));
-  assert.equal(conjunction.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart)"), true);
+  assert.equal(conjunction.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart, messages)"), true);
   // Nothing in the read path reads a scroll measurement: restoration is layout, not evidence.
   assert.equal(conjunction.includes("scrollTop"), false);
   assert.equal(conjunction.includes("scrollHeight"), false);

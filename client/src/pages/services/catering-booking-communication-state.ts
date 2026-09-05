@@ -253,52 +253,45 @@ export function cateringViewGeneration(latestId: string | null, pageKey: string,
 /**
  * Whether the participant has actually seen what they need to see, FOR ONE GENERATION.
  *
- * Two sentinels, each observed against two roots. The bottom sentinel answers "is the newest message on screen",
- * in the thread's own scroll viewport and in the browser viewport -- neither alone is enough, because a short
- * thread satisfies the first permanently wherever the card sits, and the card's top edge can enter the browser
- * viewport while the sentinel is still below the fold. The unread-start sentinel answers the same question about
- * the oldest message that must be traversed.
+ * THE BOTTOM. One sentinel after the last message, observed against two roots. The thread's own scroll container
+ * answers "is the end of the list inside the thread's viewport" -- true permanently for any thread short enough not
+ * to scroll, wherever the card sits -- and the document viewport answers whether it is actually on screen. This
+ * evidence is LIVE: it has to hold right now.
  *
- * The bottom evidence is LIVE: it must hold right now. The traversal evidence LATCHES once both of its roots have
- * reported together, because traversal is a thing that happened -- a reader scrolls up to the start of the backlog
- * and then back down through it, and requiring both sentinels to be visible simultaneously would describe a
- * scroll position no thread taller than the viewport can ever be in.
+ * THE RANGE. Seeing where the unread range begins and seeing where it ends does not mean the middle was read. A
+ * reader can scroll until the first unread message appears, then drag the scrollbar thumb straight to the bottom:
+ * both endpoints are genuinely observed, every message between them never entered the viewport, and marking the
+ * newest one read sweeps all of them. So coverage is tracked message by message and collapsed into a CONTIGUOUS
+ * FRONTIER: the run of messages, starting at the authoritative unread start, that have each actually been on
+ * screen. A gap stops the frontier dead, however much lies beyond it.
  *
- * The latch is bounded by the generation. A different required boundary discards everything, including the latch:
- * that is what stops a prepend which reveals an older unread range from inheriting a traversal proved for a
- * shorter one. A change of newest message or page set keeps the latch -- the same message was still genuinely
- * seen -- but resets every live observation, so the bottom must be re-observed against the new rendering.
+ * Coverage accumulates by stable message id, so it survives a poll that replaces page objects, and it survives a
+ * prepend -- loading a page makes messages available, never viewed. It is discarded only when the required range
+ * itself changes, which is the one event that makes what was covered no longer the question being asked.
  */
 export type CateringThreadVisibility = {
   observedId: string | null; pageKey: string | null; unreadStartKey: string | null;
   sentinelInThread: boolean; sentinelInViewport: boolean;
-  unreadStartInThread: boolean; unreadStartInViewport: boolean; unreadStartSeen: boolean;
+  coveredKey: string | null; covered: ReadonlySet<string>;
 };
 export const EMPTY_CATERING_THREAD_VISIBILITY: CateringThreadVisibility = {
   observedId: null, pageKey: null, unreadStartKey: null,
   sentinelInThread: false, sentinelInViewport: false,
-  unreadStartInThread: false, unreadStartInViewport: false, unreadStartSeen: false,
+  coveredKey: null, covered: new Set<string>(),
 };
 
 function rebaseCateringVisibility(state: CateringThreadVisibility, generation: CateringViewGeneration): CateringThreadVisibility {
-  // A different required range is a different question entirely: nothing carries over, the latch included.
+  // A different required range is a different question: the coverage collected for the old one says nothing about
+  // this one, so it goes with everything else.
   if (state.unreadStartKey !== generation.unreadStartKey) {
-    return { ...EMPTY_CATERING_THREAD_VISIBILITY, observedId: generation.latestId, pageKey: generation.pageKey, unreadStartKey: generation.unreadStartKey };
+    return { ...EMPTY_CATERING_THREAD_VISIBILITY, observedId: generation.latestId, pageKey: generation.pageKey, unreadStartKey: generation.unreadStartKey, coveredKey: generation.unreadStartKey };
   }
-  // A new message or a new rendering: every live observation is stale, but a traversal already proved for this same
-  // required boundary stands -- the reader did see that message.
+  // A new message or a new rendering: the bottom must be re-observed, but coverage is keyed by message id and those
+  // messages were genuinely seen, so it stands.
   if (state.observedId !== generation.latestId || state.pageKey !== generation.pageKey) {
-    return {
-      ...state, observedId: generation.latestId, pageKey: generation.pageKey,
-      sentinelInThread: false, sentinelInViewport: false, unreadStartInThread: false, unreadStartInViewport: false,
-    };
+    return { ...state, observedId: generation.latestId, pageKey: generation.pageKey, sentinelInThread: false, sentinelInViewport: false };
   }
   return state;
-}
-/** Latches the traversal proof the moment both of the unread-start sentinel's roots agree. */
-function latchCateringTraversal(state: CateringThreadVisibility): CateringThreadVisibility {
-  if (state.unreadStartSeen || !state.unreadStartInThread || !state.unreadStartInViewport) return state;
-  return { ...state, unreadStartSeen: true };
 }
 
 /** The bottom sentinel inside the thread's own scroll container (`root: threadRef.current`). */
@@ -311,15 +304,43 @@ export function recordCateringViewportVisibility(state: CateringThreadVisibility
   const base = rebaseCateringVisibility(state, generation);
   return base.sentinelInViewport === visible ? base : { ...base, sentinelInViewport: visible };
 }
-/** The unread-start sentinel, in the thread's own scroll container. */
-export function recordCateringUnreadStartInThread(state: CateringThreadVisibility, generation: CateringViewGeneration, visible: boolean): CateringThreadVisibility {
+/**
+ * Records that these messages were on screen. Only additions matter -- a message scrolling back out was still seen
+ * -- so this accumulates and never subtracts, and an observation that adds nothing returns the SAME object so a
+ * repeating callback cannot churn React state.
+ *
+ * Order is irrelevant here on purpose. Callbacks arrive asynchronously and can arrive out of order; what makes the
+ * result deterministic is that the frontier below is computed from the MESSAGE ordering, not from the order the
+ * observations happened to land in.
+ */
+export function recordCateringMessageCoverage(state: CateringThreadVisibility, generation: CateringViewGeneration, ids: readonly string[]): CateringThreadVisibility {
   const base = rebaseCateringVisibility(state, generation);
-  return latchCateringTraversal(base.unreadStartInThread === visible ? base : { ...base, unreadStartInThread: visible });
+  const added = ids.filter((id) => !base.covered.has(id));
+  if (added.length === 0) return base;
+  const covered = new Set(base.covered);
+  for (const id of added) covered.add(id);
+  return { ...base, covered, coveredKey: generation.unreadStartKey };
 }
-/** The same unread-start sentinel in the browser viewport. */
-export function recordCateringUnreadStartInViewport(state: CateringThreadVisibility, generation: CateringViewGeneration, visible: boolean): CateringThreadVisibility {
-  const base = rebaseCateringVisibility(state, generation);
-  return latchCateringTraversal(base.unreadStartInViewport === visible ? base : { ...base, unreadStartInViewport: visible });
+
+/**
+ * The furthest message reachable from the unread start through an UNBROKEN run of covered messages, or null when
+ * the start itself has not been seen.
+ *
+ * Every rendered message counts, not only incoming ones: the reader's own messages sit between them in the
+ * chronology, and requiring the whole run is both simpler and impossible to skip past. Walking the loaded list in
+ * order is what makes a scrollbar jump visible as what it is -- the messages in the middle are simply absent from
+ * the set, so the walk stops at the first of them no matter how much beyond it was observed.
+ */
+export function cateringCoverageFrontier(messages: readonly { id: string }[], unreadStartId: string | null, covered: ReadonlySet<string>): string | null {
+  if (unreadStartId === null) return null;
+  const from = messages.findIndex((message) => message.id === unreadStartId);
+  if (from === -1 || !covered.has(unreadStartId)) return null;
+  let frontier = unreadStartId;
+  for (let index = from + 1; index < messages.length; index += 1) {
+    if (!covered.has(messages[index].id)) break;
+    frontier = messages[index].id;
+  }
+  return frontier;
 }
 
 /** The newest message is on screen, in both coordinate systems, right now, for this generation. */
@@ -328,30 +349,46 @@ export function cateringThreadEndIsOnScreen(state: CateringThreadVisibility, gen
   if (state.observedId !== generation.latestId || state.pageKey !== generation.pageKey || state.unreadStartKey !== generation.unreadStartKey) return false;
   return state.sentinelInThread && state.sentinelInViewport;
 }
-/** The unread range was actually traversed: nothing to traverse, or its first message was genuinely seen. */
-export function cateringUnreadRangeWasTraversed(state: CateringThreadVisibility, generation: CateringViewGeneration, start: CateringUnreadStart): boolean {
+/**
+ * The unread range was actually traversed: nothing to traverse, or an unbroken run of seen messages reaching from
+ * its authoritative start all the way to the message about to be marked read.
+ */
+export function cateringUnreadRangeWasTraversed(
+  state: CateringThreadVisibility,
+  generation: CateringViewGeneration,
+  start: CateringUnreadStart,
+  messages: readonly { id: string }[],
+): boolean {
   if (start.kind === "none") return true;
   // A range whose extent is unknown can never be shown to have been traversed.
   if (start.kind === "unresolved") return false;
-  if (state.unreadStartKey !== generation.unreadStartKey) return false;
-  return state.unreadStartSeen;
+  if (state.coveredKey !== generation.unreadStartKey) return false;
+  if (generation.latestId === null) return false;
+  // The frontier has to reach the very message the marker would advance to; one short is one unseen message.
+  return cateringCoverageFrontier(messages, start.id, state.covered) === generation.latestId;
 }
 
 /**
  * The whole rule. The newest message may be recorded as viewed only when every one of these holds:
  *
  *  - no older page can still be fetched, so no unread message is hiding behind pagination;
- *  - the unread range that IS loaded was actually traversed, not merely loaded;
+ *  - the unread range was traversed contiguously, message by message, up to that newest message;
  *  - the newest message is on screen now, in the thread viewport and the browser viewport alike;
- *  - all of that evidence belongs to one generation -- the same newest message, rendering and required range.
+ *  - all of that evidence belongs to one generation.
  *
- * Defaulting every part to false or null is what makes an environment with no IntersectionObserver, a section never
- * scrolled to, a prepend that has not been re-observed, or an unread range that cannot be identified leave messages
- * UNREAD rather than falsely read.
+ * Defaulting every part to empty is what makes an environment with no IntersectionObserver, a section never
+ * scrolled to, a prepend that has not been re-observed, a scrollbar jump over the middle of the backlog, or an
+ * unread range that cannot be identified leave messages UNREAD rather than falsely read.
  */
-export function mayRecordCateringViewedBoundary(state: CateringThreadVisibility, generation: CateringViewGeneration, hasOlderPages: boolean, start: CateringUnreadStart): boolean {
+export function mayRecordCateringViewedBoundary(
+  state: CateringThreadVisibility,
+  generation: CateringViewGeneration,
+  hasOlderPages: boolean,
+  start: CateringUnreadStart,
+  messages: readonly { id: string }[],
+): boolean {
   if (hasOlderPages) return false;
-  if (!cateringUnreadRangeWasTraversed(state, generation, start)) return false;
+  if (!cateringUnreadRangeWasTraversed(state, generation, start, messages)) return false;
   return cateringThreadEndIsOnScreen(state, generation);
 }
 

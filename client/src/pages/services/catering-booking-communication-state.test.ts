@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { CATERING_MESSAGE_MAX_LENGTH } from "@shared/catering-booking-communication";
 import { CATERING_WORKSPACE_READ_ONLY_CODE } from "@shared/catering-booking-operations";
-import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, cateringReadableBoundary, completeCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend , EMPTY_CATERING_THREAD_VISIBILITY, cateringMessagePageKey, cateringThreadEndIsOnScreen, cateringUnreadRangeWasTraversed, cateringUnreadStart, cateringUnreadStartId, cateringViewGeneration, mayRecordCateringViewedBoundary, recordCateringSentinelVisibility, recordCateringUnreadStartInThread, recordCateringUnreadStartInViewport, recordCateringViewportVisibility } from "./catering-booking-communication-state";
+import { CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, cateringReadableBoundary, completeCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, failCateringReadMark, hydrateCateringReadMark, mayRetryCateringReadMark, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringReadMark, cateringMessageIsSendable, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, nextCateringMessageCursor, retryCateringMessageSend, shouldMarkCateringConversationRead, startCateringMessageSend , EMPTY_CATERING_THREAD_VISIBILITY, cateringMessagePageKey, cateringThreadEndIsOnScreen, cateringCoverageFrontier, cateringUnreadRangeWasTraversed, cateringUnreadStart, cateringUnreadStartId, cateringViewGeneration, mayRecordCateringViewedBoundary, recordCateringMessageCoverage, recordCateringSentinelVisibility, recordCateringViewportVisibility } from "./catering-booking-communication-state";
 
 const TOKEN = "11111111-1111-4111-8111-111111111111";
 const OTHER_TOKEN = "22222222-2222-4222-8222-222222222222";
@@ -291,27 +291,30 @@ const B = "message-b";
 /**
  * Visibility, traversal and the read boundary.
  *
- * Seeing the bottom of the thread proves nothing about what is above it. After the final older page is prepended,
- * scroll restoration deliberately keeps the reader near the newest messages, so the bottom sentinel is immediately
- * visible again and the re-created observers report a perfectly fresh positive for the new page set -- while the
- * backlog that was just loaded has not been looked at. The read marker is chronological, so advancing it there
- * sweeps every one of those messages read.
+ * Seeing where the unread range begins and seeing where it ends does not mean the middle was read. A reader can
+ * scroll until the first unread message appears, then drag the scrollbar thumb straight to the bottom: both
+ * endpoints are genuinely observed, every message between them never entered the viewport, and marking the newest
+ * one read sweeps all of them. Coverage is therefore tracked message by message and collapsed into a contiguous
+ * frontier from the authoritative unread start.
  */
 const mine = (id: string) => ({ id, mine: true });
 const theirs = (id: string) => ({ id, mine: false });
 const NONE = cateringUnreadStart([], 0);
-/** A generation, and the four observations that can be made within one. */
 const gen = (latestId: string | null, pageKey: string, start = NONE) => cateringViewGeneration(latestId, pageKey, start);
+/** The bottom sentinel seen in both roots -- live evidence that the end of the thread is on screen now. */
 const seeBottom = (state = EMPTY_CATERING_THREAD_VISIBILITY, g = gen(A, "1:3:end")) =>
   recordCateringViewportVisibility(recordCateringSentinelVisibility(state, g, true), g, true);
-const seeUnreadStart = (state: typeof EMPTY_CATERING_THREAD_VISIBILITY, g: ReturnType<typeof gen>) =>
-  recordCateringUnreadStartInViewport(recordCateringUnreadStartInThread(state, g, true), g, true);
+/** Messages actually observed in the viewport, in whatever order the callbacks happen to arrive. */
+const see = (state: typeof EMPTY_CATERING_THREAD_VISIBILITY, g: ReturnType<typeof gen>, ...ids: string[]) =>
+  recordCateringMessageCoverage(state, g, ids);
+const ids = (loaded: readonly { id: string }[]) => loaded.map((message) => message.id);
+/** A genuine uninterrupted traversal from `fromId` to the end of the loaded list. */
+const traverse = (state: typeof EMPTY_CATERING_THREAD_VISIBILITY, g: ReturnType<typeof gen>, loaded: readonly { id: string }[], fromId: string) =>
+  see(state, g, ...ids(loaded).slice(ids(loaded).indexOf(fromId)));
 
 test("nothing is on screen until both bottom halves have been positively observed", () => {
   const g = gen(A, "1:3:end");
   assert.equal(cateringThreadEndIsOnScreen(EMPTY_CATERING_THREAD_VISIBILITY, g), false);
-  // The sentinel intersecting its own container while the card is below the fold is the case the second root exists
-  // for; the mirror case is the card on screen with the reader scrolled up inside a long thread.
   assert.equal(cateringThreadEndIsOnScreen(recordCateringSentinelVisibility(EMPTY_CATERING_THREAD_VISIBILITY, g, true), g), false);
   assert.equal(cateringThreadEndIsOnScreen(recordCateringViewportVisibility(EMPTY_CATERING_THREAD_VISIBILITY, g, true), g), false);
   assert.equal(cateringThreadEndIsOnScreen(seeBottom(), g), true);
@@ -323,7 +326,6 @@ test("either bottom half going away withdraws the observation, and the halves do
   assert.equal(cateringThreadEndIsOnScreen(recordCateringViewportVisibility(both, g, false), g), false);
   assert.equal(cateringThreadEndIsOnScreen(recordCateringSentinelVisibility(both, g, false), g), false);
   assert.equal(recordCateringSentinelVisibility(both, g, false).sentinelInViewport, true);
-  // An unchanged observation returns the same object, so a repeating callback cannot churn React state.
   assert.equal(recordCateringSentinelVisibility(both, g, true), both);
   assert.equal(recordCateringViewportVisibility(both, g, true), both);
 });
@@ -332,7 +334,6 @@ test("evidence collected for one newest message can never authorize another", ()
   const held = seeBottom();
   assert.equal(cateringThreadEndIsOnScreen(held, gen(A, "1:3:end")), true);
   assert.equal(cateringThreadEndIsOnScreen(held, gen(B, "1:3:end")), false);
-  // One fresh half for B discards the stale other half rather than merging with it.
   const oneFresh = recordCateringSentinelVisibility(held, gen(B, "1:3:end"), true);
   assert.equal(oneFresh.sentinelInViewport, false);
   assert.equal(cateringThreadEndIsOnScreen(seeBottom(oneFresh, gen(B, "1:3:end")), gen(B, "1:3:end")), true);
@@ -348,134 +349,175 @@ test("the page key changes on a prepend, on a new message, and on the pagination
   assert.equal(cateringMessagePageKey([], false), "0:0:end");
 });
 
-/**
- * The unread range is derived from the server's own count plus the `mine` flags, in the same deterministic order
- * the marker uses -- no new API field.
- */
-test("6. the required boundary is the first UNREAD message, not the top of the page", () => {
-  // Five loaded, the oldest two already read; the unread range begins partway down.
-  const loaded = [theirs("m1"), mine("m2"), theirs("m3"), theirs("m4"), mine("m5"), theirs("m6")];
-  // Two incoming messages unread: m4 and m6.
-  assert.deepEqual(cateringUnreadStart(loaded, 2), { kind: "message", id: "m4" });
-  assert.equal(cateringUnreadStartId(cateringUnreadStart(loaded, 2)), "m4");
-  // Nothing unread needs no traversal at all.
+test("the required boundary is the endpoint's own, resolved only once that message is loaded", () => {
+  const loaded = [theirs("m1"), mine("m2"), theirs("m3"), theirs("m4")];
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m3"), { kind: "message", id: "m3" });
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m0"), { kind: "unresolved" });
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, null), { kind: "none" });
+  // Fallback for a page cached before the field existed: the previous derivation, unchanged.
+  assert.deepEqual(cateringUnreadStart(loaded, 2), { kind: "message", id: "m3" });
   assert.deepEqual(cateringUnreadStart(loaded, 0), { kind: "none" });
-  // Four incoming messages are loaded, so a count of four is exactly identifiable -- the range starts at the first.
-  assert.deepEqual(cateringUnreadStart(loaded, 4), { kind: "message", id: "m1" });
-  // A range reaching PAST what is loaded, or a capped count whose true size is unknown, cannot be identified.
-  assert.deepEqual(cateringUnreadStart(loaded, 5), { kind: "unresolved" });
-  assert.deepEqual(cateringUnreadStart(loaded, 1, true), { kind: "unresolved" });
-  assert.equal(cateringUnreadStartId(cateringUnreadStart(loaded, 5)), null);
+  assert.deepEqual(cateringUnreadStart(loaded, 9), { kind: "unresolved" });
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true), { kind: "unresolved" });
 });
 
-test("1, 2 & 3. a prepend that reveals an older unread range is not traversed by the bottom sentinel", () => {
-  // Before the prepend the range reached past what was loaded, so nothing was markable anyway.
-  const before = cateringUnreadStart([theirs("m9"), theirs("m10")], 5);
-  assert.deepEqual(before, { kind: "unresolved" });
-  const shortGen = gen(A, "1:2:more", before);
-  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, shortGen), shortGen, true, before), false);
-  // The final older page lands: pagination is exhausted, the range resolves, the page key changes -- and scroll
-  // restoration leaves the reader at the bottom, so fresh observers immediately report the bottom visible.
-  const loaded = [theirs("m6"), theirs("m7"), theirs("m8"), theirs("m9"), theirs("m10")];
-  const after = cateringUnreadStart(loaded, 5);
-  assert.deepEqual(after, { kind: "message", id: "m6" });
-  const longGen = gen(A, "2:5:end", after);
-  const bottomOnly = seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, longGen);
-  assert.equal(cateringThreadEndIsOnScreen(bottomOnly, longGen), true, "the bottom really is visible");
-  // The decisive assertion: it still marks nothing, because the backlog was never looked at.
-  assert.equal(mayRecordCateringViewedBoundary(bottomOnly, longGen, false, after), false);
-  assert.equal(cateringUnreadRangeWasTraversed(bottomOnly, longGen, after), false);
+/** The frontier: an unbroken run from the unread start, computed from message order, never from callback order. */
+test("1 & 2. the endpoint jump -- start seen, bottom seen, middle skipped -- marks nothing", () => {
+  const loaded = [theirs("m1"), theirs("m2"), theirs("m3"), theirs("m4"), theirs("m5")];
+  const start = cateringUnreadStart(loaded, 99, true, "m1");
+  const g = gen("m5", "1:5:end", start);
+  // The reader sees the first unread message, then drags the scrollbar straight to the bottom.
+  const jumped = seeBottom(see(EMPTY_CATERING_THREAD_VISIBILITY, g, "m1", "m5"), g);
+  assert.equal(cateringThreadEndIsOnScreen(jumped, g), true, "the bottom really is on screen");
+  assert.equal(cateringCoverageFrontier(loaded, "m1", jumped.covered), "m1", "the run stops at the first gap");
+  assert.equal(mayRecordCateringViewedBoundary(jumped, g, false, start, loaded), false);
 });
 
-test("4 & 13-14. traversing the range, then returning to the bottom, is what allows advancement", () => {
-  const loaded = [theirs("m6"), theirs("m7"), theirs("m8")];
-  const start = cateringUnreadStart(loaded, 3);
-  const g = gen(A, "2:3:end", start);
-  // The reader scrolls up until the first unread message is genuinely on screen in both roots.
-  let state = seeUnreadStart(EMPTY_CATERING_THREAD_VISIBILITY, g);
-  assert.equal(cateringUnreadRangeWasTraversed(state, g, start), true);
-  // Scrolling back down takes it off screen again -- the traversal still happened, so it latches.
-  state = recordCateringUnreadStartInThread(recordCateringUnreadStartInViewport(state, g, false), g, false);
-  assert.equal(cateringUnreadRangeWasTraversed(state, g, start), true, "traversal is a thing that happened");
-  // But the bottom must be on screen NOW as well.
-  assert.equal(mayRecordCateringViewedBoundary(state, g, false, start), false);
-  state = seeBottom(state, g);
-  assert.equal(mayRecordCateringViewedBoundary(state, g, false, start), true);
+test("3. a continuous traversal reaches the newest message and is allowed exactly then", () => {
+  const loaded = [theirs("m1"), theirs("m2"), theirs("m3"), theirs("m4")];
+  const start = cateringUnreadStart(loaded, 99, true, "m1");
+  const g = gen("m4", "1:4:end", start);
+  let state = EMPTY_CATERING_THREAD_VISIBILITY;
+  for (const id of ["m1", "m2", "m3"]) {
+    state = see(state, g, id);
+    assert.equal(mayRecordCateringViewedBoundary(seeBottom(state, g), g, false, start, loaded), false, id);
+  }
+  state = seeBottom(see(state, g, "m4"), g);
+  assert.equal(cateringCoverageFrontier(loaded, "m1", state.covered), "m4");
+  assert.equal(mayRecordCateringViewedBoundary(state, g, false, start, loaded), true);
 });
 
-test("one root alone never proves traversal, and loading pages never does", () => {
-  const loaded = [theirs("m1"), theirs("m2")];
-  const start = cateringUnreadStart(loaded, 2);
-  const g = gen(A, "1:2:end", start);
-  const inThreadOnly = recordCateringUnreadStartInThread(EMPTY_CATERING_THREAD_VISIBILITY, g, true);
-  assert.equal(cateringUnreadRangeWasTraversed(inThreadOnly, g, start), false);
-  const inViewportOnly = recordCateringUnreadStartInViewport(EMPTY_CATERING_THREAD_VISIBILITY, g, true);
-  assert.equal(cateringUnreadRangeWasTraversed(inViewportOnly, g, start), false);
-  // And an unresolved range can never be proved traversed however much is observed.
-  const unresolved = cateringUnreadStart(loaded, 9);
-  const ug = gen(A, "1:2:end", unresolved);
-  assert.equal(cateringUnreadRangeWasTraversed(seeUnreadStart(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, ug), ug), ug, unresolved), false);
-});
-
-test("5. an unread range entirely inside the first page still marks read normally", () => {
-  const loaded = [theirs("m1"), mine("m2"), theirs("m3")];
-  const start = cateringUnreadStart(loaded, 1);
-  assert.deepEqual(start, { kind: "message", id: "m3" });
+test("4. out-of-order callbacks are ordered by the MESSAGE list, not by arrival", () => {
+  const loaded = [theirs("m1"), theirs("m2"), theirs("m3")];
+  const start = cateringUnreadStart(loaded, 99, true, "m1");
   const g = gen("m3", "1:3:end", start);
-  const state = seeBottom(seeUnreadStart(EMPTY_CATERING_THREAD_VISIBILITY, g), g);
-  assert.equal(mayRecordCateringViewedBoundary(state, g, false, start), true);
-  // With nothing unread at all the bottom alone still decides, exactly as before.
-  const noneGen = gen("m3", "1:3:end", NONE);
-  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, noneGen), noneGen, false, NONE), true);
+  // m3 arrives before m2. The frontier cannot pass the gap at m2 however late or early anything landed.
+  let state = see(EMPTY_CATERING_THREAD_VISIBILITY, g, "m1");
+  state = see(state, g, "m3");
+  assert.equal(cateringCoverageFrontier(loaded, "m1", state.covered), "m1");
+  // The missing observation lands; the run joins up and advances deterministically.
+  state = see(state, g, "m2");
+  assert.equal(cateringCoverageFrontier(loaded, "m1", state.covered), "m3");
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(state, g), g, false, start, loaded), true);
 });
 
-test("7 & 9. a new message arriving mid-traversal cannot be swept by the old bottom evidence", () => {
+test("5, 6 & 7. one or many unseen middle messages block, and filling the gap later releases", () => {
+  const loaded = [theirs("m1"), theirs("m2"), theirs("m3"), theirs("m4"), theirs("m5")];
+  const start = cateringUnreadStart(loaded, 99, true, "m1");
+  const g = gen("m5", "1:5:end", start);
+  // Everything except m3.
+  let state = see(EMPTY_CATERING_THREAD_VISIBILITY, g, "m1", "m2", "m4", "m5");
+  assert.equal(cateringCoverageFrontier(loaded, "m1", state.covered), "m2");
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(state, g), g, false, start, loaded), false);
+  // Two gaps behave the same way.
+  let sparse = see(EMPTY_CATERING_THREAD_VISIBILITY, g, "m1", "m4", "m5");
+  assert.equal(cateringCoverageFrontier(loaded, "m1", sparse.covered), "m1");
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(sparse, g), g, false, start, loaded), false);
+  // Scrolling back to fill the gap joins the runs.
+  state = see(state, g, "m3");
+  assert.equal(cateringCoverageFrontier(loaded, "m1", state.covered), "m5");
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(state, g), g, false, start, loaded), true);
+});
+
+test("8, 9 & 10. a prepend makes messages available, never viewed, and coverage crosses pages only by viewing", () => {
+  // The newest page is fully traversed; then older history is prepended and the range widens.
+  const newest = [theirs("m4"), theirs("m5")];
+  const firstStart = cateringUnreadStart(newest, 99, true, "m4");
+  const g1 = gen("m5", "1:2:more", firstStart);
+  const traversedNewest = seeBottom(traverse(EMPTY_CATERING_THREAD_VISIBILITY, g1, newest, "m4"), g1);
+  // Still blocked: an older page can be fetched.
+  assert.equal(mayRecordCateringViewedBoundary(traversedNewest, g1, true, firstStart, newest), false);
+  // The older page lands. Scroll restoration keeps the reader at the bottom, so the bottom is immediately visible.
+  const full = [theirs("m1"), theirs("m2"), theirs("m3"), ...newest];
+  const start = cateringUnreadStart(full, 99, true, "m1");
+  const g2 = gen("m5", "2:5:end", start);
+  const afterPrepend = seeBottom(traversedNewest, g2);
+  assert.equal(cateringThreadEndIsOnScreen(afterPrepend, g2), true);
+  // Loading is not viewing: the required range changed, so the earlier coverage does not answer this question.
+  assert.equal(mayRecordCateringViewedBoundary(afterPrepend, g2, false, start, full), false);
+  // Reading the newly loaded history, then returning to the bottom, is what allows it.
+  const traversedAll = seeBottom(traverse(afterPrepend, g2, full, "m1"), g2);
+  assert.equal(mayRecordCateringViewedBoundary(traversedAll, g2, false, start, full), true);
+});
+
+test("11. a capped backlog is resolvable and, once genuinely traversed, readable", () => {
+  const loaded = [theirs("m001"), theirs("m002"), theirs("m003")];
+  const start = cateringUnreadStart(loaded, 99, true, "m001");
+  assert.deepEqual(start, { kind: "message", id: "m001" });
+  const g = gen("m003", "3:3:end", start);
+  // Endpoints only: still nothing.
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(see(EMPTY_CATERING_THREAD_VISIBILITY, g, "m001", "m003"), g), g, false, start, loaded), false);
+  // Full traversal: allowed.
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(traverse(EMPTY_CATERING_THREAD_VISIBILITY, g, loaded, "m001"), g), g, false, start, loaded), true);
+});
+
+test("12. a new incoming message keeps existing coverage but extends what must be covered", () => {
   const loaded = [theirs("m1"), theirs("m2")];
-  const start = cateringUnreadStart(loaded, 2);
+  const start = cateringUnreadStart(loaded, 99, true, "m1");
   const before = gen("m2", "1:2:end", start);
-  const traversed = seeBottom(seeUnreadStart(EMPTY_CATERING_THREAD_VISIBILITY, before), before);
-  assert.equal(mayRecordCateringViewedBoundary(traversed, before, false, start), true);
-  // A newer message arrives. The required boundary is unchanged, so the traversal stands -- but the newest boundary
-  // is different and its evidence must be collected again.
+  const covered = seeBottom(traverse(EMPTY_CATERING_THREAD_VISIBILITY, before, loaded, "m1"), before);
+  assert.equal(mayRecordCateringViewedBoundary(covered, before, false, start, loaded), true);
+  // m3 arrives. The server marker has not moved, so the required range is unchanged and the coverage stands -- but
+  // the frontier no longer reaches the newest message.
+  const grown = [...loaded, theirs("m3")];
   const after = gen("m3", "1:3:end", start);
-  assert.equal(cateringUnreadRangeWasTraversed(traversed, after, start), true, "the same message was still seen");
-  assert.equal(mayRecordCateringViewedBoundary(traversed, after, false, start), false, "the new message needs its own evidence");
-  assert.equal(mayRecordCateringViewedBoundary(seeBottom(traversed, after), after, false, start), true);
+  const restated = seeBottom(covered, after);
+  assert.equal(cateringCoverageFrontier(grown, "m1", restated.covered), "m2", "old coverage survives");
+  assert.equal(mayRecordCateringViewedBoundary(restated, after, false, start, grown), false);
+  assert.equal(mayRecordCateringViewedBoundary(see(restated, after, "m3"), after, false, start, grown), true);
 });
 
-test("8. a page set change revalidates the bottom, and a changed required range resets everything", () => {
-  const loaded = [theirs("m1"), theirs("m2")];
-  const start = cateringUnreadStart(loaded, 2);
-  const before = gen("m2", "1:2:end", start);
-  const traversed = seeBottom(seeUnreadStart(EMPTY_CATERING_THREAD_VISIBILITY, before), before);
-  // Same newest message and same required range, different rendering: the bottom must be re-observed.
-  const prepended = gen("m2", "2:5:end", start);
-  assert.equal(mayRecordCateringViewedBoundary(traversed, prepended, false, start), false);
-  assert.equal(cateringUnreadRangeWasTraversed(traversed, prepended, start), true);
-  // A different required range discards the traversal too.
-  const older = cateringUnreadStart([theirs("m0"), theirs("m1"), theirs("m2")], 3);
-  const widened = gen("m2", "2:5:end", older);
-  assert.equal(cateringUnreadRangeWasTraversed(traversed, widened, older), false, "a wider range was never traversed");
-  assert.equal(mayRecordCateringViewedBoundary(seeBottom(traversed, widened), widened, false, older), false);
+test("13. the reader's own messages are part of the chronology and cannot be skipped past", () => {
+  const loaded = [theirs("m1"), mine("m2"), theirs("m3")];
+  const start = cateringUnreadStart(loaded, 99, true, "m1");
+  const g = gen("m3", "1:3:end", start);
+  // Skipping over the own message leaves a gap exactly as skipping an incoming one would.
+  const skipped = seeBottom(see(EMPTY_CATERING_THREAD_VISIBILITY, g, "m1", "m3"), g);
+  assert.equal(cateringCoverageFrontier(loaded, "m1", skipped.covered), "m1");
+  assert.equal(mayRecordCateringViewedBoundary(skipped, g, false, start, loaded), false);
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(traverse(EMPTY_CATERING_THREAD_VISIBILITY, g, loaded, "m1"), g), g, false, start, loaded), true);
 });
 
-test("an unfetched older page still blocks everything, however much has been observed", () => {
+test("14 & 15. a tall message needs only to intersect, and a poll with the same ids neither resets nor invents", () => {
   const loaded = [theirs("m1"), theirs("m2")];
-  const start = cateringUnreadStart(loaded, 2);
+  const start = cateringUnreadStart(loaded, 99, true, "m1");
+  const g = gen("m2", "1:2:end", start);
+  // One intersecting observation per message is enough -- nothing requires an element to be wholly visible, which a
+  // message taller than the viewport never can be.
+  const covered = seeBottom(see(EMPTY_CATERING_THREAD_VISIBILITY, g, "m1", "m2"), g);
+  assert.equal(mayRecordCateringViewedBoundary(covered, g, false, start, loaded), true);
+  // A poll returns the same ids in new objects: coverage is keyed by id, so it neither resets nor grows.
+  const repolled = see(covered, g, "m1", "m2");
+  assert.equal(repolled, covered, "an observation that adds nothing returns the same object");
+  assert.equal(cateringCoverageFrontier([theirs("m1"), theirs("m2")], "m1", repolled.covered), "m2");
+});
+
+test("an unfetched older page blocks everything, and no observations at all mark nothing", () => {
+  const loaded = [theirs("m1"), theirs("m2")];
+  const start = cateringUnreadStart(loaded, 99, true, "m1");
   const g = gen("m2", "1:2:more", start);
-  const fully = seeBottom(seeUnreadStart(EMPTY_CATERING_THREAD_VISIBILITY, g), g);
-  assert.equal(mayRecordCateringViewedBoundary(fully, g, true, start), false);
-});
-
-test("with no observations at all -- no IntersectionObserver -- nothing is ever viewable", () => {
-  const g = gen(A, "1:2:end", NONE);
-  assert.equal(mayRecordCateringViewedBoundary(EMPTY_CATERING_THREAD_VISIBILITY, g, false, NONE), false);
-  // And an unloaded conversation is never viewable regardless of the cursor.
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(traverse(EMPTY_CATERING_THREAD_VISIBILITY, g, loaded, "m1"), g), g, true, start, loaded), false);
+  // No IntersectionObserver at all: nothing is covered and nothing is on screen.
+  const none = gen(A, "1:2:end", NONE);
+  assert.equal(mayRecordCateringViewedBoundary(EMPTY_CATERING_THREAD_VISIBILITY, none, false, NONE, loaded), false);
+  // Nothing unread still needs the bottom, and an unloaded conversation is never viewable.
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, none), none, false, NONE, loaded), true);
   const empty = gen(null, "0:0:end", NONE);
-  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, empty), empty, false, NONE), false);
+  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, empty), empty, false, NONE, []), false);
 });
 
-test("10, 11 & 12. read-attempt bounding, manual retry and send-side behaviour are unchanged", () => {
+test("an unresolved range is never traversable, and a frontier needs its start seen", () => {
+  const loaded = [theirs("m1"), theirs("m2")];
+  const unresolved = cateringUnreadStart(loaded, 99, true, "m0");
+  const g = gen("m2", "1:2:end", unresolved);
+  assert.equal(cateringUnreadRangeWasTraversed(see(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, g), g, "m1", "m2"), g, unresolved, loaded), false);
+  // A frontier from a start that was never observed, or that is not loaded, is null rather than optimistic.
+  assert.equal(cateringCoverageFrontier(loaded, "m1", new Set(["m2"])), null);
+  assert.equal(cateringCoverageFrontier(loaded, "m9", new Set(["m9"])), null);
+  assert.equal(cateringCoverageFrontier(loaded, null, new Set(["m1"])), null);
+});
+
+test("16, 17 & 18. bounded attempts, manual retry, and no send-side read", () => {
   const identity = "actor:booking";
   let mark = hydrateCateringReadMark(EMPTY_CATERING_READ_MARK, identity);
   assert.equal(shouldAutoMarkCateringConversationRead(mark, A, 3), true);
@@ -483,7 +525,8 @@ test("10, 11 & 12. read-attempt bounding, manual retry and send-side behaviour a
   assert.equal(shouldAutoMarkCateringConversationRead(mark, A, 3), false, "one attempt per candidate");
   mark = failCateringReadMark(mark, A);
   assert.equal(shouldAutoMarkCateringConversationRead(mark, A, 3), false, "a failure must not re-fire the effect");
-  // The manual control clears the recorded attempt, which buys exactly one more.
+  // The manual control clears the recorded attempt, which buys exactly one more for the SAME boundary -- the reader
+  // never has to re-read the thread because an HTTP request failed.
   assert.equal(mayRetryCateringReadMark(mark, A, 3), true);
   mark = retryCateringReadMark(mark);
   assert.equal(shouldAutoMarkCateringConversationRead(mark, A, 3), true);
@@ -494,93 +537,13 @@ test("10, 11 & 12. read-attempt bounding, manual retry and send-side behaviour a
   assert.equal(recordCateringViewedBoundary(viewed, A), viewed, "recording the same boundary twice is a no-op");
 });
 
-
-/**
- * A capped count is a LOWER BOUND, not a total. Refusing to resolve on it was safe but permanent: a participant
- * with more than the ceiling's worth of backlog could load every page, read every message, and still never satisfy
- * the traversal requirement -- the range could not be located, so no read request was ever sent and the workspace
- * stayed at "99+" forever. The endpoint now answers the question directly with `unreadStartId`, which is derived
- * from that actor's persisted marker and is never capped.
- */
-const backlog = (ids: string[]) => ids.map((id) => theirs(id));
-
-test("cap 1 & 2. a capped count resolves from the authoritative boundary instead of dead-ending", () => {
-  const loaded = backlog(["m001", "m002", "m003"]);
-  // The count says 99 and admits it is capped; the boundary says exactly where the range starts.
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m001"), { kind: "message", id: "m001" });
-  // Without the authoritative field the old conservative answer is still what happens -- and only then.
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true), { kind: "unresolved" });
-});
-
-test("cap 3 & 11. a boundary that is known but not yet loaded still blocks, across as many pages as it takes", () => {
-  // Only the newest page is loaded; the start of the backlog is far above it.
-  let loaded = backlog(["m120", "m121", "m122"]);
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m001"), { kind: "unresolved" });
-  const g1 = gen("m122", "1:3:more", cateringUnreadStart(loaded, 99, true, "m001"));
-  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, g1), g1, true, cateringUnreadStart(loaded, 99, true, "m001")), false);
-  // Paging back still does not resolve it until the message itself is present.
-  loaded = [...backlog(["m060", "m061"]), ...loaded];
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m001"), { kind: "unresolved" });
-  // The page carrying it lands.
-  loaded = [...backlog(["m001", "m002"]), ...loaded];
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m001"), { kind: "message", id: "m001" });
-});
-
-test("cap 4 & 5. loading every page is not traversal; actually viewing the range is", () => {
-  const loaded = backlog(["m001", "m002", "m003"]);
-  const start = cateringUnreadStart(loaded, 99, true, "m001");
-  const g = gen("m003", "3:3:end", start);
-  // Everything is loaded and the reader is at the bottom -- still nothing, because the backlog was not looked at.
-  const bottomOnly = seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, g);
-  assert.equal(mayRecordCateringViewedBoundary(bottomOnly, g, false, start), false);
-  // Traversing the start of the range and returning to the bottom is what allows the request.
-  const traversed = seeBottom(seeUnreadStart(bottomOnly, g), g);
-  assert.equal(mayRecordCateringViewedBoundary(traversed, g, false, start), true);
-});
-
-test("cap 6. once the server marker moves, the boundary is null and nothing more is required", () => {
-  // After a successful explicit read the next response reports no unread range at all -- server truth, not a local
-  // guess -- and the ordinary bottom-only rule applies again.
-  const loaded = backlog(["m001", "m002"]);
-  assert.deepEqual(cateringUnreadStart(loaded, 0, false, null), { kind: "none" });
-  const g = gen("m002", "1:2:end", cateringUnreadStart(loaded, 0, false, null));
-  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, g), g, false, cateringUnreadStart(loaded, 0, false, null)), true);
-  // A null boundary wins even against a stale non-zero count from the parent summary.
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true, null), { kind: "none" });
-});
-
-test("cap 7, 8 & 9. the exact boundary is used, whatever precedes it and whoever sent it", () => {
-  // Already-read messages and the actor's own messages both sit before the boundary; neither becomes the start.
-  const loaded = [theirs("m1"), mine("m2"), theirs("m3"), mine("m4"), theirs("m5")];
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m3"), { kind: "message", id: "m3" });
-  assert.equal(cateringUnreadStartId(cateringUnreadStart(loaded, 99, true, "m3")), "m3");
-  // The server never nominates one of the actor's own messages, and the client never invents one either: it only
-  // ever echoes the id it was given.
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m5"), { kind: "message", id: "m5" });
-  // Traversal is required for that exact message, not for the top of the loaded set.
-  const start = cateringUnreadStart(loaded, 99, true, "m3");
-  const g = gen("m5", "1:5:end", start);
-  assert.equal(mayRecordCateringViewedBoundary(seeBottom(EMPTY_CATERING_THREAD_VISIBILITY, g), g, false, start), false);
-  assert.equal(mayRecordCateringViewedBoundary(seeBottom(seeUnreadStart(EMPTY_CATERING_THREAD_VISIBILITY, g), g), g, false, start), true);
-});
-
-test("cap 10. a new incoming message during traversal still needs its own newest evidence", () => {
-  const loaded = backlog(["m1", "m2"]);
+test("a mark-read failure preserves coverage, so the retry does not require re-reading", () => {
+  const loaded = [theirs("m1"), theirs("m2")];
   const start = cateringUnreadStart(loaded, 99, true, "m1");
-  const before = gen("m2", "1:2:end", start);
-  const traversed = seeBottom(seeUnreadStart(EMPTY_CATERING_THREAD_VISIBILITY, before), before);
-  assert.equal(mayRecordCateringViewedBoundary(traversed, before, false, start), true);
-  // The server marker has not moved, so the boundary is unchanged and the traversal stands -- but the newest
-  // message is different and must be observed again.
-  const after = gen("m3", "1:3:end", start);
-  assert.equal(cateringUnreadRangeWasTraversed(traversed, after, start), true);
-  assert.equal(mayRecordCateringViewedBoundary(traversed, after, false, start), false);
-  assert.equal(mayRecordCateringViewedBoundary(seeBottom(traversed, after), after, false, start), true);
-});
-
-test("cap 12. the uncapped fallback is unchanged when the field is absent", () => {
-  const loaded = [theirs("m1"), mine("m2"), theirs("m3"), theirs("m4")];
-  assert.deepEqual(cateringUnreadStart(loaded, 2), { kind: "message", id: "m3" });
-  assert.deepEqual(cateringUnreadStart(loaded, 0), { kind: "none" });
-  assert.deepEqual(cateringUnreadStart(loaded, 9), { kind: "unresolved" });
+  const g = gen("m2", "1:2:end", start);
+  const covered = seeBottom(traverse(EMPTY_CATERING_THREAD_VISIBILITY, g, loaded, "m1"), g);
+  assert.equal(mayRecordCateringViewedBoundary(covered, g, false, start, loaded), true);
+  // The request fails. Coverage is component state and nothing in the mark path touches it, so the same boundary is
+  // still eligible for the one retry the control allows.
+  assert.equal(mayRecordCateringViewedBoundary(covered, g, false, start, loaded), true);
 });

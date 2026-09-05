@@ -71,7 +71,7 @@ test("3. polling does not advance the read marker: fetching is not evidence of r
   }
   // The boundary still comes only from the dual-sentinel conjunction, and only from there.
   assert.equal((source.match(/recordCateringViewedBoundary\(/g) ?? []).length, 1);
-  assert.equal(source.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart)"), true);
+  assert.equal(source.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart, messages)"), true);
 });
 
 test("3. a polled-in message below the fold stays unread, because its boundary has no evidence yet", () => {
@@ -82,7 +82,7 @@ test("3. a polled-in message below the fold stays unread, because its boundary h
   assert.equal(viewEffect.includes("recordCateringViewportVisibility(current, generation, entries.some((entry) => entry.isIntersecting))"), true);
   // Both observers are re-created when `latestId` changes, so the new boundary is judged by a fresh observation --
   // positive for a reader still at the sentinel, negative for one the new message pushed below the fold.
-  assert.equal(viewEffect.includes("}, [latestId, pageKey, unreadStartId]);"), true);
+  assert.equal(viewEffect.includes("}, [latestId, pageKey, unreadStartId, messages.length]);"), true);
   assert.equal(viewEffect.includes("threadRootObserver.observe(sentinel)"), true);
   assert.equal(viewEffect.includes("viewportObserver.observe(sentinel)"), true);
 });
@@ -221,7 +221,7 @@ test("only the recurring poll stops: a terminal conversation still loads, pagina
   // Pagination, the actor-scoped key and the read-boundary logic are all untouched by the polling condition.
   assert.equal(source.includes("getNextPageParam: (lastPage) => nextCateringMessageCursor(lastPage)"), true);
   assert.equal(source.includes("queryKey: messagesKey"), true);
-  assert.equal(source.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart)"), true);
+  assert.equal(source.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart, messages)"), true);
 });
 
 test("no mutation capability is reintroduced for a terminal booking", () => {

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringMessagePageKey, cateringReadableBoundary, cateringThreadEndIsOnScreen, cateringUnreadStart, cateringUnreadStartId, cateringViewGeneration, mayRecordCateringViewedBoundary, recordCateringSentinelVisibility, recordCateringUnreadStartInThread, recordCateringUnreadStartInViewport, recordCateringViewportVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringComposerState, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
+import { CATERING_COMMUNICATION_EMPTY, CATERING_COMMUNICATION_READ_ONLY_BANNER, EMPTY_CATERING_COMPOSER, combineCateringMessagePages, completeCateringMessageSend, discardCateringMessageSend, editCateringComposer, failCateringMessageSend, formatCateringMessageTimestamp, hydrateCateringComposer, isCateringCommunicationReadOnly, latestCateringMessageId, maySendCateringMessage, mayRetryCateringReadMark, nextCateringMessageCursor, retryCateringMessageSend, retryCateringReadMark, shouldAutoMarkCateringConversationRead, startCateringMessageSend, startCateringReadMark, completeCateringReadMark, failCateringReadMark, hydrateCateringReadMark, hydrateCateringViewed, recordCateringViewedBoundary, cateringMessagePageKey, cateringReadableBoundary, cateringThreadEndIsOnScreen, cateringUnreadStart, cateringUnreadStartId, cateringViewGeneration, mayRecordCateringViewedBoundary, recordCateringMessageCoverage, recordCateringSentinelVisibility, recordCateringViewportVisibility, EMPTY_CATERING_READ_MARK, EMPTY_CATERING_VIEWED, EMPTY_CATERING_THREAD_VISIBILITY, type CateringComposerState, type CateringReadMarkState, type CateringThreadVisibility, type CateringViewedState } from "@/pages/services/catering-booking-communication-state";
 
 type SendPayload = { text: string; clientRequestId: string };
 /**
@@ -25,9 +25,9 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   // Marks the end of the thread. When it is on screen the newest loaded message is genuinely displayed, which is
   // the only thing that may advance the read boundary -- fetching a page is not reading it.
   const sentinelRef = useRef<HTMLDivElement | null>(null);
-  // Marks the FIRST message of the unread range. Seeing the end of the thread says nothing about the backlog above
-  // it, so this is what proves the participant actually went there.
-  const unreadStartRef = useRef<HTMLDivElement | null>(null);
+  // Every rendered message element, by id. Seeing where the unread range starts and where it ends says nothing
+  // about the middle, so each message is observed individually and coverage is collapsed into a contiguous run.
+  const messageNodes = useRef(new Map<string, HTMLElement>());
   // The scroll container's height before an older page loads, so restoring position after it lands is arithmetic
   // rather than a guess: prepending older messages must not move what the participant is currently reading.
   const threadRef = useRef<HTMLDivElement | null>(null);
@@ -204,25 +204,24 @@ export default function BookingCommunication({ bookingId, userId, role, editable
     }, { root: null, threshold: 0.01 });
     threadRootObserver.observe(sentinel);
     viewportObserver.observe(sentinel);
-    // The unread-start sentinel is watched the same way, against the same two roots. It is absent when nothing is
-    // unread or when the range cannot be identified -- in the second case nothing may be marked read at all, so
-    // having no element to observe is the correct outcome rather than a gap.
-    const unreadStartNode = unreadStartRef.current;
-    const unreadStartObservers = unreadStartNode ? [
-      new IntersectionObserver((entries) => {
-        setVisibility((current) => recordCateringUnreadStartInThread(current, generation, entries.some((entry) => entry.isIntersecting)));
-      }, { root: thread, threshold: 0.01 }),
-      new IntersectionObserver((entries) => {
-        setVisibility((current) => recordCateringUnreadStartInViewport(current, generation, entries.some((entry) => entry.isIntersecting)));
-      }, { root: null, threshold: 0.01 }),
-    ] : [];
-    for (const observer of unreadStartObservers) observer.observe(unreadStartNode!);
+    // One observer for the messages themselves, rooted on the DOCUMENT. Intersection against a null root is clipped
+    // by every scrollable ancestor, so a message reported here was visible through the thread container as well as
+    // on screen -- both conditions at once, without a second observer per message. The threshold matches the
+    // sentinels' 0.01: a message taller than the viewport can never be fully visible, so requiring more would make
+    // a long message impossible to traverse rather than merely hard.
+    const coverageObserver = new IntersectionObserver((entries) => {
+      const seen = entries.filter((entry) => entry.isIntersecting).map((entry) => (entry.target as HTMLElement).dataset.messageId).filter((id): id is string => Boolean(id));
+      if (seen.length > 0) setVisibility((current) => recordCateringMessageCoverage(current, generation, seen));
+    }, { root: null, threshold: 0.01 });
+    // Only what is rendered is observed, so the observer count is bounded by the loaded pages rather than by the
+    // conversation's whole history, and everything is disconnected together below.
+    messageNodes.current.forEach((node) => coverageObserver.observe(node));
     return () => {
       threadRootObserver.disconnect();
       viewportObserver.disconnect();
-      for (const observer of unreadStartObservers) observer.disconnect();
+      coverageObserver.disconnect();
     };
-  }, [latestId, pageKey, unreadStartId]);
+  }, [latestId, pageKey, unreadStartId, messages.length]);
 
   // The boundary advances only while BOTH observations hold, both were collected for this exact `latestId`, AND
   // there is no older page still unfetched. Asking the visibility question about a named boundary rather than in
@@ -231,7 +230,7 @@ export default function BookingCommunication({ bookingId, userId, role, editable
   // marker is chronological, so recording the newest loaded id while older pages are unfetched would sweep unread
   // messages nobody has rendered behind the boundary. Nothing is auto-fetched to satisfy it.
   useEffect(() => {
-    if (!mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart)) return;
+    if (!mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart, messages)) return;
     setViewed((current) => recordCateringViewedBoundary(current, latestId));
   }, [visibility, latestId, hasOlderPages, pageKey, unreadStartId, unreadStart.kind]);
 
@@ -288,10 +287,11 @@ export default function BookingCommunication({ bookingId, userId, role, editable
       {messages.length === 0
         ? <p className="text-muted-foreground">{CATERING_COMMUNICATION_EMPTY}</p>
         : <div ref={threadRef} className="max-h-96 overflow-y-auto overflow-x-hidden">
-            <ol className="space-y-3">{messages.map((item) => <li key={item.id} className="min-w-0 rounded-lg border p-3">
-              {/* Presentational only: it marks where the unread range begins so the observers can tell whether the
-                  participant actually went there. Never focusable and never announced. */}
-              {item.id === unreadStartId && <div ref={unreadStartRef} aria-hidden="true" className="h-px w-full" />}
+            <ol className="space-y-3">{messages.map((item) => <li key={item.id} data-message-id={item.id} ref={(node) => {
+              // The element each message is observed through. Registered as it mounts and dropped as it unmounts,
+              // so nothing outside the rendered pages is ever observed and no detached node is retained.
+              if (node) messageNodes.current.set(item.id, node); else messageNodes.current.delete(item.id);
+            }} className="min-w-0 rounded-lg border p-3">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <p className="break-words font-medium">{item.mine ? "You" : item.senderName || (item.senderRole === "provider" ? "Your caterer" : "Your customer")}</p>
                 <time className="text-sm text-muted-foreground" dateTime={item.createdAt}>{formatCateringMessageTimestamp(item.createdAt)}</time>
