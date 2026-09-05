@@ -170,13 +170,14 @@ export function cateringReadableBoundary(state: CateringViewedState, identity: s
  *
  * `latestId` alone does not identify what is on screen. Loading older messages prepends them without changing the
  * newest one, so evidence gathered before the prepend stayed stamped with the same boundary and remained valid for
- * a thread that now renders entirely different content. That mattered because exhausting pagination is itself a
- * gate: with `hasOlderPages` true the boundary is blocked, and the moment it flipped to false the conjunction
- * re-ran against visibility booleans collected for the SHORTER thread -- while scroll restoration deliberately kept
- * the reader where they were, so the newly prepended messages had never been on screen at all. The whole backlog
- * was swept read on the strength of an observation about a different rendering.
+ * a thread that now renders entirely different content -- while scroll restoration deliberately kept the reader
+ * where they were, so the newly prepended messages had never been on screen at all. The bottom-of-thread
+ * observations are LIVE evidence about one rendering, and a prepend makes them evidence about a rendering that no
+ * longer exists.
  *
- * Including `hasOlderPages` in the key is what makes that transition invalidate evidence rather than unlock it.
+ * Including `hasOlderPages` in the key is what makes exhausting pagination a change of rendering like any other: it
+ * forces the sentinel to be observed again rather than letting a stale positive carry over. Per-message coverage is
+ * keyed separately, by message id, because those messages genuinely were seen.
  */
 export function cateringMessagePageKey(pages: readonly { messages: readonly unknown[] }[] | undefined, hasOlderPages: boolean): string {
   const suffix = hasOlderPages ? "more" : "end";
@@ -204,8 +205,17 @@ export function cateringMessagePageKey(pages: readonly { messages: readonly unkn
  *  - `message`: this exact message must be seen before the boundary may advance past it.
  *  - `unresolved`: the range reaches past what is loaded (or the count is capped, so its true size is unknown).
  *    An unidentifiable range can never be proved traversed, so nothing may be marked.
+ *
+ * `authoritative` records WHERE the answer came from, because the two sources support different conclusions. The
+ * endpoint derives its answer from this actor's persisted marker, so a `message` it names really is the EARLIEST
+ * unread message and every older page holds only history this actor has already read. The fallback derives its
+ * answer from a bounded unread count and the loaded `mine` flags, which cannot say anything about pages nobody has
+ * fetched. Only the first supports ignoring older pages; see `cateringUnreadIntervalIsLoaded`.
  */
-export type CateringUnreadStart = { kind: "none" } | { kind: "unresolved" } | { kind: "message"; id: string };
+export type CateringUnreadStart =
+  | { kind: "none"; authoritative: boolean }
+  | { kind: "unresolved"; authoritative: boolean }
+  | { kind: "message"; id: string; authoritative: boolean };
 
 export function cateringUnreadStart(
   messages: readonly { id: string; mine: boolean }[],
@@ -217,20 +227,20 @@ export function cateringUnreadStart(
   // is never capped, so it resolves a backlog of any size -- which is what stops a count past the ceiling from
   // leaving the range permanently unidentifiable and the participant permanently stuck at "99+".
   if (authoritativeStartId !== undefined) {
-    if (authoritativeStartId === null) return { kind: "none" };
+    if (authoritativeStartId === null) return { kind: "none", authoritative: true };
     // Known, but not yet fetched: identified is not the same as loaded, and an unloaded message cannot be seen.
     return messages.some((message) => message.id === authoritativeStartId)
-      ? { kind: "message", id: authoritativeStartId }
-      : { kind: "unresolved" };
+      ? { kind: "message", id: authoritativeStartId, authoritative: true }
+      : { kind: "unresolved", authoritative: true };
   }
   // Fallback for a page cached before the field existed. It is the previous derivation exactly, including refusing
   // a capped count -- conservative, and self-healing the moment a current response arrives.
-  if (!Number.isFinite(unreadCount) || unreadCount <= 0) return { kind: "none" };
-  if (capped) return { kind: "unresolved" };
+  if (!Number.isFinite(unreadCount) || unreadCount <= 0) return { kind: "none", authoritative: false };
+  if (capped) return { kind: "unresolved", authoritative: false };
   const incoming = messages.filter((message) => !message.mine);
   // Fewer incoming messages loaded than are unread means the range starts in a page nobody has fetched.
-  if (incoming.length < unreadCount) return { kind: "unresolved" };
-  return { kind: "message", id: incoming[incoming.length - unreadCount].id };
+  if (incoming.length < unreadCount) return { kind: "unresolved", authoritative: false };
+  return { kind: "message", id: incoming[incoming.length - unreadCount].id, authoritative: false };
 }
 /** The stamp form, so a change of required boundary is a change of identity like any other. */
 export function cateringUnreadStartKey(start: CateringUnreadStart): string {
@@ -369,10 +379,40 @@ export function cateringUnreadRangeWasTraversed(
 }
 
 /**
+ * Whether everything that must be traversed is actually loaded.
+ *
+ * This used to be `!hasOlderPages` -- ANY older page blocked the boundary -- and that is far too strong once the
+ * endpoint names the unread start. Consider a five-hundred message conversation read through message 499 when
+ * message 500 arrives. The server answers `unreadStartId: m500`, the first page loads m471..m500, and older pages
+ * exist, so the flat gate refused: the participant had to hand-load hundreds of messages they had already read
+ * before the one new message could be marked read. The messages behind that pagination are, by construction,
+ * OLDER than the unread start -- which is to say already read -- so their existence proves nothing and blocks
+ * nothing.
+ *
+ * What the gate was actually protecting against is an unread message hiding in an unfetched page, and that is
+ * exactly what the three answers below already distinguish:
+ *
+ *  - `unresolved`: the start could not be identified, so an unread message may well be in a page nobody fetched.
+ *    Blocked, and no amount of pagination state changes that -- only actually loading it can.
+ *  - `message`, from the endpoint: the earliest unread message is named AND loaded. Everything older is read.
+ *  - `none`, from the endpoint: nothing is unread at all, so there is nothing for a page to hide.
+ *
+ * The fallback derivation is the exception and keeps the old conservative gate. It reads a bounded count and the
+ * loaded `mine` flags -- a page cached before the endpoint carried the field -- and a count that is stale-low
+ * cannot see unread messages sitting in pages nobody has fetched. Provenance, not pagination state, is what
+ * decides: `authoritative` is a fact about where the answer came from, never inferred from what is loaded.
+ */
+export function cateringUnreadIntervalIsLoaded(start: CateringUnreadStart, hasOlderPages: boolean): boolean {
+  if (start.kind === "unresolved") return false;
+  if (start.authoritative) return true;
+  return !hasOlderPages;
+}
+
+/**
  * The whole rule. The newest message may be recorded as viewed only when every one of these holds:
  *
- *  - no older page can still be fetched, so no unread message is hiding behind pagination;
- *  - the unread range was traversed contiguously, message by message, up to that newest message;
+ *  - the authoritative unread interval is entirely loaded, so no unread message is hiding behind pagination;
+ *  - that interval was traversed contiguously, message by message, up to the newest message;
  *  - the newest message is on screen now, in the thread viewport and the browser viewport alike;
  *  - all of that evidence belongs to one generation.
  *
@@ -387,7 +427,7 @@ export function mayRecordCateringViewedBoundary(
   start: CateringUnreadStart,
   messages: readonly { id: string }[],
 ): boolean {
-  if (hasOlderPages) return false;
+  if (!cateringUnreadIntervalIsLoaded(start, hasOlderPages)) return false;
   if (!cateringUnreadRangeWasTraversed(state, generation, start, messages)) return false;
   return cateringThreadEndIsOnScreen(state, generation);
 }

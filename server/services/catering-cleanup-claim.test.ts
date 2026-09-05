@@ -313,8 +313,12 @@ test("an object a committed file row owns is retained rather than deleted", () =
   // would reintroduce exactly the bug the ledger exists to avoid.
   const orphans = service.slice(service.indexOf("export async function reconcileCateringStorageOrphans"));
   assert.equal(orphans.includes("owned = await objectHasOwner(candidate);"), true);
-  assert.equal(orphans.includes("if (!owned) await removePrivateObject("), true);
+  assert.equal(orphans.includes("if (!owned) {"), true);
   assert.equal(orphans.indexOf("objectHasOwner(candidate)") < orphans.indexOf("removePrivateObject"), true, "ownership must be settled before deleting");
+  // The lookup is its own phase: a failed ownership question never reaches storage and never charges an attempt.
+  assert.equal(orphans.includes(`await settle(candidate, "ownership_failed", error);`), true);
+  const lookup = orphans.slice(orphans.indexOf("let owned: boolean;"), orphans.indexOf("if (!owned) {"));
+  assert.equal(lookup.includes("removePrivateObject"), false, "no object may be deleted while ownership is unknown");
   assert.equal(orphans.includes("retained += 1;"), true);
   // The owner lookup is on the identity that names the bytes, plus the file id when the ledger carries one.
   const owner = service.slice(service.indexOf("async function objectHasOwner"), service.indexOf("/**\n * Retries the object deletion"));

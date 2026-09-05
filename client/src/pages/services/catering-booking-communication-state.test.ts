@@ -351,14 +351,16 @@ test("the page key changes on a prepend, on a new message, and on the pagination
 
 test("the required boundary is the endpoint's own, resolved only once that message is loaded", () => {
   const loaded = [theirs("m1"), mine("m2"), theirs("m3"), theirs("m4")];
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m3"), { kind: "message", id: "m3" });
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m0"), { kind: "unresolved" });
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true, null), { kind: "none" });
-  // Fallback for a page cached before the field existed: the previous derivation, unchanged.
-  assert.deepEqual(cateringUnreadStart(loaded, 2), { kind: "message", id: "m3" });
-  assert.deepEqual(cateringUnreadStart(loaded, 0), { kind: "none" });
-  assert.deepEqual(cateringUnreadStart(loaded, 9), { kind: "unresolved" });
-  assert.deepEqual(cateringUnreadStart(loaded, 99, true), { kind: "unresolved" });
+  // Every answer records where it came from, because only the endpoint's own answer can say that everything older
+  // than the start is already read.
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m3"), { kind: "message", id: "m3", authoritative: true });
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, "m0"), { kind: "unresolved", authoritative: true });
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true, null), { kind: "none", authoritative: true });
+  // Fallback for a page cached before the field existed: the previous derivation, unchanged, and marked as such.
+  assert.deepEqual(cateringUnreadStart(loaded, 2), { kind: "message", id: "m3", authoritative: false });
+  assert.deepEqual(cateringUnreadStart(loaded, 0), { kind: "none", authoritative: false });
+  assert.deepEqual(cateringUnreadStart(loaded, 9), { kind: "unresolved", authoritative: false });
+  assert.deepEqual(cateringUnreadStart(loaded, 99, true), { kind: "unresolved", authoritative: false });
 });
 
 /** The frontier: an unbroken run from the unread start, computed from message order, never from callback order. */
@@ -422,11 +424,15 @@ test("5, 6 & 7. one or many unseen middle messages block, and filling the gap la
 test("8, 9 & 10. a prepend makes messages available, never viewed, and coverage crosses pages only by viewing", () => {
   // The newest page is fully traversed; then older history is prepended and the range widens.
   const newest = [theirs("m4"), theirs("m5")];
-  const firstStart = cateringUnreadStart(newest, 99, true, "m4");
+  // The endpoint names m1 as this actor's earliest unread message, and m1 is not loaded yet.
+  const firstStart = cateringUnreadStart(newest, 99, true, "m1");
+  assert.deepEqual(firstStart, { kind: "unresolved", authoritative: true });
   const g1 = gen("m5", "1:2:more", firstStart);
   const traversedNewest = seeBottom(traverse(EMPTY_CATERING_THREAD_VISIBILITY, g1, newest, "m4"), g1);
-  // Still blocked: an older page can be fetched.
+  // Blocked, and not because a page can be fetched: the unread range STARTS in a page nobody has fetched, so no
+  // amount of coverage of what is loaded can show it was traversed.
   assert.equal(mayRecordCateringViewedBoundary(traversedNewest, g1, true, firstStart, newest), false);
+  assert.equal(mayRecordCateringViewedBoundary(traversedNewest, g1, false, firstStart, newest), false);
   // The older page lands. Scroll restoration keeps the reader at the bottom, so the bottom is immediately visible.
   const full = [theirs("m1"), theirs("m2"), theirs("m3"), ...newest];
   const start = cateringUnreadStart(full, 99, true, "m1");
@@ -443,7 +449,7 @@ test("8, 9 & 10. a prepend makes messages available, never viewed, and coverage 
 test("11. a capped backlog is resolvable and, once genuinely traversed, readable", () => {
   const loaded = [theirs("m001"), theirs("m002"), theirs("m003")];
   const start = cateringUnreadStart(loaded, 99, true, "m001");
-  assert.deepEqual(start, { kind: "message", id: "m001" });
+  assert.deepEqual(start, { kind: "message", id: "m001", authoritative: true });
   const g = gen("m003", "3:3:end", start);
   // Endpoints only: still nothing.
   assert.equal(mayRecordCateringViewedBoundary(seeBottom(see(EMPTY_CATERING_THREAD_VISIBILITY, g, "m001", "m003"), g), g, false, start, loaded), false);
@@ -492,11 +498,21 @@ test("14 & 15. a tall message needs only to intersect, and a poll with the same 
   assert.equal(cateringCoverageFrontier([theirs("m1"), theirs("m2")], "m1", repolled.covered), "m2");
 });
 
-test("an unfetched older page blocks everything, and no observations at all mark nothing", () => {
+test("an unidentified unread range blocks everything, and no observations at all mark nothing", () => {
   const loaded = [theirs("m1"), theirs("m2")];
-  const start = cateringUnreadStart(loaded, 99, true, "m1");
+  // The endpoint names a start that is not loaded, so the range cannot be identified at all.
+  const start = cateringUnreadStart(loaded, 99, true, "m0");
+  assert.deepEqual(start, { kind: "unresolved", authoritative: true });
   const g = gen("m2", "1:2:more", start);
   assert.equal(mayRecordCateringViewedBoundary(seeBottom(traverse(EMPTY_CATERING_THREAD_VISIBILITY, g, loaded, "m1"), g), g, true, start, loaded), false);
+  // The fallback derivation cannot see into unfetched pages, so it keeps the old conservative gate: any older page
+  // blocks it, and only exhausting pagination releases it.
+  const fallback = cateringUnreadStart(loaded, 2);
+  assert.deepEqual(fallback, { kind: "message", id: "m1", authoritative: false });
+  const gf = gen("m2", "1:2:more", fallback);
+  const traversedFallback = seeBottom(traverse(EMPTY_CATERING_THREAD_VISIBILITY, gf, loaded, "m1"), gf);
+  assert.equal(mayRecordCateringViewedBoundary(traversedFallback, gf, true, fallback, loaded), false);
+  assert.equal(mayRecordCateringViewedBoundary(traversedFallback, gf, false, fallback, loaded), true);
   // No IntersectionObserver at all: nothing is covered and nothing is on screen.
   const none = gen(A, "1:2:end", NONE);
   assert.equal(mayRecordCateringViewedBoundary(EMPTY_CATERING_THREAD_VISIBILITY, none, false, NONE, loaded), false);

@@ -127,9 +127,16 @@ const chargeAttempt = (column: typeof cateringBookingFiles.cleanupAttempts | typ
  * is spent on database failures, so a row whose bytes are already gone can exhaust its attempts and become a
  * permanently stuck cleanup record that no pass will ever finish.
  *
- * So a conclusion is one of three things, and only the storage failure charges the ceiling.
+ * The orphan queue adds a third failure that is not a storage attempt either. Before it may delete anything it has
+ * to establish that no committed file row owns the object, and that is a database SELECT. When the SELECT fails
+ * nothing is deleted -- deliberately, because deleting an object whose ownership is unknown is precisely the bug
+ * the uncertain-commit ledger exists to prevent -- so no storage attempt was made and none may be charged. Charging
+ * it meant a transiently unavailable database could burn all ten attempts on a row `removePrivateObject` was never
+ * called for, stranding the object permanently.
+ *
+ * So a conclusion is one of these, and only the storage failure charges the ceiling.
  */
-export type CateringCleanupConclusion = "removed" | "storage_failed" | "unfinalized";
+export type CateringCleanupConclusion = "removed" | "storage_failed" | "ownership_failed" | "unfinalized";
 export function cateringCleanupChargesAttempt(conclusion: CateringCleanupConclusion): boolean {
   return conclusion === "storage_failed";
 }
@@ -341,16 +348,28 @@ export async function reconcileCateringStorageOrphans(limit = CATERING_CLEANUP_B
     .where(and(eq(cateringBookingStorageOrphans.id, candidate.id), eq(cateringBookingStorageOrphans.cleanupClaimToken, candidate.claimToken)))
     .catch(() => undefined);
   for (const candidate of candidates) {
+    // Ownership first, in its own phase. An unanswerable question leaves the object exactly where it is: deleting
+    // bytes whose owner is unknown is the bug this ledger exists to prevent. Nothing was deleted and nothing was
+    // attempted, so nothing is charged -- otherwise a database that is briefly unavailable could exhaust the
+    // ceiling on a row storage was never asked about, stranding the object for good.
     let owned: boolean;
     try {
       owned = await objectHasOwner(candidate);
-      // A committed file row owns these bytes, so nothing is deleted; otherwise the object goes now.
-      if (!owned) await removePrivateObject(candidate.storageProvider as PrivateStorageProvider, candidate.storageKey);
     } catch (error) {
-      // Includes a failed ownership lookup: an unanswerable question leaves the object alone and retries later.
-      await settle(candidate, "storage_failed", error);
+      await settle(candidate, "ownership_failed", error);
       failed += 1;
       continue;
+    }
+    // A committed file row owns these bytes, so nothing is deleted; otherwise the object goes now, and only THAT
+    // failing is a storage attempt.
+    if (!owned) {
+      try {
+        await removePrivateObject(candidate.storageProvider as PrivateStorageProvider, candidate.storageKey);
+      } catch (error) {
+        await settle(candidate, "storage_failed", error);
+        failed += 1;
+        continue;
+      }
     }
     // Storage is settled either way from here -- deleted, or deliberately left with its owner -- so failing to
     // record that is bookkeeping and must not spend a storage attempt.
