@@ -90,7 +90,7 @@ test("6. the events the refresh exists to surface are the ones the server writes
   assert.equal(route.includes("cateringFileActivity(fields.visibility, \"uploaded\")"), true);
   assert.equal(route.includes("cateringFileActivity(row.visibility as CateringFileVisibility, \"removed\")"), true);
   // And the client refetches authoritative activity rather than inventing any.
-  assert.equal(boundaryEffect.includes("cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });"), true);
+  assert.equal(boundaryEffect.includes("for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });"), true);
   assert.equal(/setActivity|activity\s*=/.test(boundaryEffect), false, "activity must never be fabricated locally");
 });
 
@@ -133,8 +133,8 @@ test("9 & 10. terminal transition still stops polling, and a boundary change wit
   // one once per genuine change. Neither re-runs the other, so a final poll that carries both cannot loop.
   assert.equal(source.includes("cateringWorkspacePollInterval(effectiveCateringEditable(editable, observedCateringEditable(polled.state.data?.pages)))"), true);
   assert.equal(source.includes("if (observedEditable !== false || terminalSeenRef.current) return;"), true);
-  assert.equal(boundaryEffect.includes("if (fileBoundary === null || boundaryRef.current === fileBoundary) return;"), true);
-  assert.equal(boundaryEffect.includes("}, [fileBoundary]);"), true);
+  assert.equal(boundaryEffect.includes("const observed = observeCateringFileBoundary(ledgerRef.current, identity, fileBoundary);"), true);
+  assert.equal(boundaryEffect.includes("}, [fileBoundary, identity]);"), true);
   // A last poll delivering a change is still announced exactly once even though polling then stops.
   const s = section();
   s.poll([pageOf("f1")]);
@@ -155,18 +155,21 @@ test("11. this actor's own upload or removal is not announced twice", () => {
   s.poll([pageOf("f3", "f2", "f1")]);
   assert.equal(workspaceRefreshes(s), 1);
   // The existing mutation invalidations are unchanged.
-  assert.equal(source.includes("cache.invalidateQueries({ queryKey: filesKey });"), true);
-  assert.equal(source.includes("onSettled: () => invalidate(),"), true);
-  assert.equal(source.includes("ownMutationRef.current = true;"), true);
+  assert.equal(source.includes("for (const queryKey of cateringOriginFileInvalidations(attemptOrigin)) cache.invalidateQueries({ queryKey });"), true);
+  assert.equal(source.includes("invalidateOrigin(attempt.origin); },"), true);
+  assert.equal(source.includes("ledgerRef.current = armCateringOwnFileMutation(ledgerRef.current, attempt.origin);"), true);
 });
 
 test("12. the cache key is actor-scoped, and the bookkeeping resets with the booking", () => {
-  assert.equal(boundaryEffect.includes("cateringBookingWorkspaceKey(userId, bookingId)"), true);
+  assert.equal(boundaryEffect.includes("cateringOriginWorkspaceInvalidations(origin)"), true);
   assert.equal(source.includes("cache.clear()"), false);
   assert.equal(source.includes("cache.invalidateQueries()"), false);
-  // Refs, so recording renders nothing, and both reset when the booking or role changes.
-  assert.equal(source.includes("const boundaryRef = useRef<string | null>(null);"), true);
-  assert.equal(source.includes("boundaryRef.current = null; ownMutationRef.current = false; }, [identity, role]);"), true);
+  // One ref, so recording renders nothing. It is NOT reset when the booking changes, because both halves of it
+  // are keyed by booking: each booking keeps its own baseline and its own arming, and a completion for one can
+  // never consume the other's. The draft and the file input, which are what is on screen, still reset.
+  assert.equal(source.includes("const ledgerRef = useRef<CateringFileLedger>(EMPTY_CATERING_FILE_LEDGER);"), true);
+  assert.equal(source.includes(`setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; }, [identity, role]);`), true);
+  assert.equal(source.includes("ledgerRef.current = EMPTY_CATERING_FILE_LEDGER"), false, "the per-booking ledger must not be wiped on navigation");
   // An empty conversation of files still records a baseline rather than being treated as a change.
   assert.equal(cateringFileBoundary([pageOf()]), "");
   assert.equal(cateringFileBoundary(undefined), null);
@@ -217,20 +220,20 @@ test("5, 6 & 7. delete succeeds -> suppressed once; delete fails -> the next cha
 
 test("8. the component arms suppression on success only, never from onError or onSettled", () => {
   // `invalidate()` no longer arms anything: it is called from failure paths too.
-  const invalidateFn = source.slice(source.indexOf("const invalidate = () => {"), source.indexOf("const upload = useMutation"));
-  assert.equal(invalidateFn.includes("ownMutationRef.current = true;"), false, "the shared invalidate must not arm suppression");
+  const invalidateFn = source.slice(source.indexOf("const invalidateOrigin = ("), source.indexOf("const upload = useMutation"));
+  assert.equal(invalidateFn.includes("armCateringOwnFileMutation"), false, "the shared invalidate must not arm suppression");
   // Upload arms only in onSuccess, and only when the server actually created a file.
   const upload = source.slice(source.indexOf("const upload = useMutation"), source.indexOf("const remove = useMutation"));
-  assert.equal(upload.includes("if (!(_body as { duplicate?: boolean } | undefined)?.duplicate) ownMutationRef.current = true;"), true);
+  assert.equal(upload.includes("if (!(_body as { duplicate?: boolean } | undefined)?.duplicate) ledgerRef.current = armCateringOwnFileMutation(ledgerRef.current, attempt.origin);"), true);
   const uploadError = upload.slice(upload.indexOf("onError:"));
-  assert.equal(uploadError.includes("ownMutationRef"), false, "an upload error must not arm suppression");
+  assert.equal(uploadError.includes("armCateringOwnFileMutation"), false, "an upload error must not arm suppression");
   // Delete arms in onSuccess; onSettled only refetches.
   const remove = source.slice(source.indexOf("const remove = useMutation"));
-  assert.equal(remove.includes("onSuccess: () => { ownMutationRef.current = true; },"), true);
-  const settled = remove.slice(remove.indexOf("onSettled:"), remove.indexOf("onSettled:") + 60);
-  assert.equal(settled.includes("ownMutationRef"), false, "onSettled runs after failure too and must not arm");
-  // Exactly two arming sites, both on success.
-  assert.equal((source.match(/ownMutationRef\.current = true/g) ?? []).length, 2);
+  assert.equal(remove.includes("onSuccess: (_body, attempt) => { ledgerRef.current = armCateringOwnFileMutation(ledgerRef.current, attempt.origin);"), true);
+  const settled = remove.slice(remove.indexOf("onSettled:"));
+  assert.equal(settled.includes("armCateringOwnFileMutation"), false, "onSettled runs after failure too and must not arm");
+  // Exactly two arming sites, both on success, and each names the attempt's own booking.
+  assert.equal((source.match(/armCateringOwnFileMutation\(ledgerRef\.current, attempt\.origin\)/g) ?? []).length, 2);
 });
 
 test("an idempotent retry that created nothing does not arm suppression either", () => {

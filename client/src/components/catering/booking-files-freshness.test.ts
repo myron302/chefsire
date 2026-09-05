@@ -39,7 +39,7 @@ test("both live workspace sections share ONE cadence rather than duplicating the
   // The constant lives on the workspace contract both sections belong to, and both import it from there, so the
   // two cadences cannot drift into two different policies.
   for (const [label, text] of [["files", source], ["communication", comms]] as const) {
-    assert.equal(text.includes('cateringBookingWorkspaceKey, cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations"'), true, label);
+    assert.equal(text.includes('cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations"'), true, label);
     assert.equal(text.includes("cateringWorkspacePollInterval(effectiveCateringEditable(editable, observedCateringEditable(polled.state.data?.pages)))"), true, label);
     // No second literal cadence anywhere.
     assert.equal(/refetchInterval:\s*\d/.test(text), false, label);
@@ -54,7 +54,7 @@ test("polling implies no mutation and marks nothing", () => {
   // The query is a plain credentialed GET against the booking-scoped list route.
   assert.equal(source.includes("`/api/catering/bookings/${bookingId}/files${search}`, { credentials: \"include\" }"), true);
   // Mutations remain exactly the two explicit ones, each driven by a control.
-  assert.equal((source.match(/useMutation\(/g) ?? []).length, 2);
+  assert.equal((stripComments(source).match(/useMutation\(/g) ?? []).length, 2);
 });
 
 test("polling cannot widen what the server discloses: the route decides per actor", () => {
@@ -119,7 +119,7 @@ test("a terminal booking still lists its files, stays non-writable, and stops po
     assert.equal(code.includes(inferred), false, inferred);
   }
   assert.equal(source.includes("CATERING_FILES_READ_ONLY_BANNER"), true);
-  assert.equal(source.includes("mayUploadCateringFile(draft, canMutate, upload.isPending)"), true);
+  assert.equal(source.includes("mayUploadCateringFile(draft, canMutate, uploading)"), true);
   // And the server refuses the write regardless of what the client renders.
   assert.equal(route.includes("mayMutateCateringFiles(booking.status as never)"), true);
 });

@@ -94,17 +94,17 @@ test("the parent prop is used only until the endpoint has answered, and nothing 
 test("3, 5 & 9-10. the composer goes read-only at once, history stays, drafts survive, no send can start", () => {
   // The form is replaced by the read-only banner, so the history above it stays rendered.
   assert.equal(comms.includes("{canSend\n      ? <form className=\"space-y-2\" onSubmit={submit}>"), true);
-  assert.equal(comms.includes(": <p className=\"font-medium\">{CATERING_COMMUNICATION_READ_ONLY_BANNER}</p>}"), true);
-  assert.equal(comms.includes("disabled={!maySendCateringMessage(composer, canSend)}"), true);
+  assert.equal(comms.includes(': <div className="space-y-3">\n          <p className="font-medium">{CATERING_COMMUNICATION_READ_ONLY_BANNER}</p>'), true);
+  assert.equal(comms.includes("disabled={!maySendCateringMessage(ownComposer, canSend)}"), true);
   // Both mutation entry points are guarded, so nothing can be initiated even if a control were reachable.
-  assert.equal(comms.includes("if (!maySendCateringMessage(composer, canSend)) return;"), true);
+  assert.equal(comms.includes("if (!maySendCateringMessage(ownComposer, canSend)) return;"), true);
   assert.equal(comms.includes("if (!canSend) return;"), true);
   // The draft is component state and nothing on this path clears it: it is preserved for the participant to copy.
   const terminal = comms.slice(comms.indexOf("// The first time this section's own endpoint reports"), comms.indexOf("// Watches the end-of-thread sentinel"));
   assert.equal(terminal.includes("setComposer"), false, "going terminal must not destroy the draft");
   assert.equal(terminal.includes("discardCateringMessageSend"), false);
   // Reading a historical conversation is still allowed -- the read route is not gated on editability.
-  assert.equal(comms.includes("`/api/catering/bookings/${bookingId}/messages/read`"), true);
+  assert.equal(comms.includes("`/api/catering/bookings/${attempt.origin.bookingId}/messages/read`"), true);
 });
 
 test("4 & 11-12. polling stops on that response, while load, focus refetch and pagination are untouched", () => {
@@ -129,7 +129,7 @@ test("6 & 7. the workspace is refreshed once on the first terminal observation, 
     assert.equal(effect.includes("if (observedEditable !== false || terminalSeenRef.current) return;"), true, label);
     assert.equal(effect.indexOf("terminalSeenRef.current = true;") < effect.indexOf("cache.invalidateQueries("), true, label);
     // Actor-scoped, so no other user's cache is touched.
-    assert.equal(effect.includes("cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });"), true, label);
+    assert.equal(effect.includes("for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });"), true, label);
     assert.equal(source.includes("cache.clear()"), false, label);
     // It cannot loop: the workspace refetch changes the parent prop, never this endpoint's answer.
     assert.equal(terminal.includes("}, [observedEditable]);"), true, label);
@@ -144,8 +144,8 @@ test("13. the files section had the same stale-parent bug and now reads the same
   assert.equal(files.includes("const canMutate = effectiveCateringEditable(editable, observedEditable);"), true);
   // Every editable-driven surface obeys it: the upload form, the upload control, and each row's delete control.
   assert.equal(files.includes("{canMutate\n"), true);
-  assert.equal(files.includes("disabled={!mayUploadCateringFile(draft, canMutate, upload.isPending)}"), true);
-  assert.equal(files.includes("if (!mayUploadCateringFile(draft, canMutate, upload.isPending)"), true);
+  assert.equal(files.includes("disabled={!mayUploadCateringFile(draft, canMutate, uploading)}"), true);
+  assert.equal(files.includes("if (!mayUploadCateringFile(draft, canMutate, uploading)"), true);
   assert.equal(files.includes("editable={canMutate}"), true);
   // The bare prop no longer drives any decision in either component.
   for (const [label, source] of [["communication", comms], ["files", files]] as const) {

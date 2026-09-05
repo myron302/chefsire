@@ -2,12 +2,21 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, Trash2 } from "lucide-react";
 import { cateringBookingFilesKey, cateringFileBoundary, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
-import { cateringBookingWorkspaceKey, cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
+import { cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, emptyCateringFileDraft, markCateringFileAttempted, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, type CateringFileAttempt, type CateringFileDraft } from "@/pages/services/catering-booking-files-state";
+import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, armCateringOwnFileMutation, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringOriginFileInvalidations, cateringOriginWorkspaceInvalidations, enterCateringMutation, exitCateringMutation, observeCateringFileBoundary, visibleCateringMutationOutcome, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome } from "@/pages/services/catering-booking-mutation-origin";
+import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, emptyCateringFileDraft, markCateringFileAttempted, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, type CateringFileDraft } from "@/pages/services/catering-booking-files-state";
+
+/**
+ * An upload or a delete, immutable once started, carrying the booking it belongs to. This section stays mounted
+ * across a route change, so a completion handler that read the booking from render scope would describe whichever
+ * booking is on screen when the request lands rather than the one that issued it.
+ */
+type UploadAttempt = { origin: CateringMutationOrigin; file: File; visibility: CateringFileVisibility; requestId: string };
+type RemoveAttempt = { origin: CateringMutationOrigin; fileId: string };
 
 /**
  * The booking Files section, inside the Phase 2H workspace. A customer's rendering carries no provider-private
@@ -21,18 +30,33 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Whether this section has already told the workspace that the booking went terminal.
   const terminalSeenRef = useRef(false);
-  // The newest-page fingerprint this component has already accounted for, so a poll that found a real change can be
-  // told from a quiet one, and a change this actor caused itself can be absorbed rather than announced twice.
-  const boundaryRef = useRef<string | null>(null);
-  const ownMutationRef = useRef(false);
+  // The newest-page fingerprint accounted for and the own-mutation arming, BOTH keyed by booking. A poll that found
+  // a real change can then be told from a quiet one per booking, and a change this actor caused on one booking can
+  // never be absorbed as "mine" on another.
+  const ledgerRef = useRef<CateringFileLedger>(EMPTY_CATERING_FILE_LEDGER);
   // Mirrors the live draft so a mutation callback, which fires long after its render, resolves against what the
   // participant currently has selected rather than the draft captured when the upload started.
   const draftRef = useRef(draft);
   useEffect(() => { draftRef.current = draft; }, [draft]);
+  // The booking currently on screen, readable from a callback that closed over an older render. Visible local state
+  // -- the draft, the file input -- may only be touched when the completion belongs to this booking.
+  const identityRef = useRef(identity);
+  useEffect(() => { identityRef.current = identity; }, [identity]);
+  // Upload and delete requests in flight, per booking: `useMutation().isPending` is a property of the hook, so an
+  // upload started on one booking would otherwise disable the controls and announce progress on another.
+  // Kept apart, as the hook flags were: an upload in flight disables the upload control, a delete in flight
+  // disables the delete controls, and neither has ever disabled the other.
+  const [uploadInFlight, setUploadInFlight] = useState<CateringInFlight>(EMPTY_CATERING_IN_FLIGHT);
+  const [removeInFlight, setRemoveInFlight] = useState<CateringInFlight>(EMPTY_CATERING_IN_FLIGHT);
+  const [uploadOutcome, setUploadOutcome] = useState<CateringMutationOutcome | null>(null);
+  const [removeOutcome, setRemoveOutcome] = useState<CateringMutationOutcome | null>(null);
   const filesKey = cateringBookingFilesKey(userId, bookingId);
+  const origin = cateringMutationOrigin(userId, bookingId);
   const choices = cateringVisibilityChoices(role);
 
-  useEffect(() => { setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; boundaryRef.current = null; ownMutationRef.current = false; }, [identity, role]);
+  // The draft and the file input belong to the booking on screen, so they reset with it. The ledger deliberately
+  // does NOT: it is keyed by booking, so each booking keeps its own baseline and its own arming across navigation.
+  useEffect(() => { setDraft(emptyCateringFileDraft(role)); if (inputRef.current) inputRef.current.value = ""; terminalSeenRef.current = false; }, [identity, role]);
 
   const query = useInfiniteQuery({
     queryKey: filesKey,
@@ -73,26 +97,32 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // persisted booking status on every poll, so it is what the upload and delete controls obey.
   const observedEditable = observedCateringEditable(query.data?.pages);
   const canMutate = effectiveCateringEditable(editable, observedEditable);
+  // Busy, and the outcomes to announce, as they apply to the booking on screen -- never to one left behind.
+  const uploading = cateringMutationIsPending(uploadInFlight, identity);
+  const removing = cateringMutationIsPending(removeInFlight, identity);
+  const uploadResult = visibleCateringMutationOutcome(uploadOutcome, identity);
+  const removeResult = visibleCateringMutationOutcome(removeOutcome, identity);
 
-  // Both mutations invalidate only this actor's own booking file and workspace caches. Another participant's
+  // Both mutations invalidate only this actor's own booking file and workspace caches, and always the ORIGINATING
+  // booking's -- never whichever booking happens to be rendered when the request lands. Another participant's
   // actor-scoped keys are deliberately untouched: this client has no legitimate way to refresh them.
-  const invalidate = () => {
-    cache.invalidateQueries({ queryKey: filesKey });
-    cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
+  const invalidateOrigin = (attemptOrigin: CateringMutationOrigin) => {
+    for (const queryKey of cateringOriginFileInvalidations(attemptOrigin)) cache.invalidateQueries({ queryKey });
   };
 
   const upload = useMutation({
-    mutationFn: async ({ file, visibility, requestId }: { file: File; visibility: CateringFileVisibility; requestId: string } & CateringFileAttempt) => {
+    mutationFn: async (attempt: UploadAttempt) => {
       const form = new FormData();
-      form.append("file", file);
-      form.append("visibility", visibility);
+      form.append("file", attempt.file);
+      form.append("visibility", attempt.visibility);
       // The same token for every attempt at this selection, so a retry resolves to the file already stored.
-      form.append("clientRequestId", requestId);
-      const response = await fetch(`/api/catering/bookings/${bookingId}/files`, { method: "POST", credentials: "include", body: form });
+      form.append("clientRequestId", attempt.requestId);
+      const response = await fetch(`/api/catering/bookings/${attempt.origin.bookingId}/files`, { method: "POST", credentials: "include", body: form });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw Object.assign(new Error(body.message || "Your file could not be uploaded"), { code: typeof body.code === "string" ? body.code : undefined });
       return body;
     },
+    onMutate: (attempt) => { setUploadInFlight((current) => enterCateringMutation(current, attempt.origin)); },
     // The draft is cleared only when it still corresponds to the attempt that just completed. The controls stay
     // usable during an upload, so a participant may already have chosen a replacement file or a different visibility
     // -- clearing unconditionally would delete that newer selection, and the DOM input would lose it too. A draft
@@ -100,36 +130,46 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     // that token is now spent: reusing it would make the next Upload resolve to the file already stored and report
     // success for a file that was never created.
     onSuccess: (_body, attempt) => {
+      // The draft is VISIBLE state, so it is only touched when the completed upload belongs to the booking still on
+      // screen: a completion that lands after a route change must not clear or re-token another booking's draft.
       // Resolved against the current draft outside the state updater, so neither the DOM reset nor minting a token
       // is a side effect inside a function React may invoke twice.
-      const resolved = completeCateringFileUpload(draftRef.current, attempt, role, () => crypto.randomUUID());
-      if (resolved.cleared && inputRef.current) inputRef.current.value = "";
-      setDraft(resolved.next);
-      // Armed only for an upload that actually created a file. A retry answered from the idempotency ledger
-      // (`duplicate`) added nothing, so the next boundary change is not this request's doing and must not be
-      // absorbed. Arming on anything less than a real creation is how a FAILED mutation used to leave the flag set
-      // for a counterpart's change to consume.
-      if (!(_body as { duplicate?: boolean } | undefined)?.duplicate) ownMutationRef.current = true;
-      invalidate();
+      if (attempt.origin.identity === identityRef.current) {
+        const resolved = completeCateringFileUpload(draftRef.current, attempt, role, () => crypto.randomUUID());
+        if (resolved.cleared && inputRef.current) inputRef.current.value = "";
+        setDraft(resolved.next);
+      }
+      // Armed only for an upload that actually created a file, and armed for the ORIGINATING booking alone. A retry
+      // answered from the idempotency ledger (`duplicate`) added nothing, so the next boundary change is not this
+      // request's doing and must not be absorbed. Arming on anything less than a real creation is how a FAILED
+      // mutation used to leave the flag set for a counterpart's change to consume; arming a single booking-agnostic
+      // flag is how one booking's upload used to swallow another booking's counterpart change.
+      if (!(_body as { duplicate?: boolean } | undefined)?.duplicate) ledgerRef.current = armCateringOwnFileMutation(ledgerRef.current, attempt.origin);
+      setUploadOutcome(cateringMutationOutcome(attempt.origin, "succeeded"));
+      invalidateOrigin(attempt.origin);
     },
     // A failed upload leaves the draft entirely alone, so a newer selection survives a failure just as it does a
-    // success, and the participant can correct and upload again.
-    onError: () => invalidate(),
+    // success, and the participant can correct and upload again. It arms nothing: no boundary changed.
+    onError: (error: Error, attempt) => { setUploadOutcome(cateringMutationOutcome(attempt.origin, "failed", error.message)); invalidateOrigin(attempt.origin); },
+    onSettled: (_body, _error, attempt) => { setUploadInFlight((current) => exitCateringMutation(current, attempt.origin)); },
   });
 
   const remove = useMutation({
-    mutationFn: async (fileId: string) => {
-      const response = await fetch(`/api/catering/bookings/${bookingId}/files/${fileId}`, { method: "DELETE", credentials: "include" });
+    mutationFn: async (attempt: RemoveAttempt) => {
+      const response = await fetch(`/api/catering/bookings/${attempt.origin.bookingId}/files/${attempt.fileId}`, { method: "DELETE", credentials: "include" });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
         throw Object.assign(new Error(body.message || "This file could not be removed"), { code: typeof body.code === "string" ? body.code : undefined });
       }
       return true;
     },
-    // Success alone arms the suppression; `onSettled` runs after a failure too, and a failed delete changes no
-    // boundary, so arming there would leave the flag waiting to swallow a counterpart's next change.
-    onSuccess: () => { ownMutationRef.current = true; },
-    onSettled: () => invalidate(),
+    onMutate: (attempt) => { setRemoveInFlight((current) => enterCateringMutation(current, attempt.origin)); },
+    // Success alone arms the suppression, and only for the booking the delete actually happened on; `onSettled` runs
+    // after a failure too, and a failed delete changes no boundary, so arming there would leave an arming waiting to
+    // swallow a counterpart's next change.
+    onSuccess: (_body, attempt) => { ledgerRef.current = armCateringOwnFileMutation(ledgerRef.current, attempt.origin); setRemoveOutcome(cateringMutationOutcome(attempt.origin, "succeeded")); },
+    onError: (error: Error, attempt) => setRemoveOutcome(cateringMutationOutcome(attempt.origin, "failed", error.message)),
+    onSettled: (_body, _error, attempt) => { setRemoveInFlight((current) => exitCateringMutation(current, attempt.origin)); invalidateOrigin(attempt.origin); },
   });
 
   // A poll that finds the newest page genuinely different has discovered a counterpart's shared upload or removal.
@@ -142,14 +182,11 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // nothing at all, and a change this actor caused itself is absorbed because `invalidate()` already refreshed the
   // workspace for it. It cannot loop: the workspace refetch changes the parent's data, never this page's ids.
   useEffect(() => {
-    if (fileBoundary === null || boundaryRef.current === fileBoundary) return;
-    const baseline = boundaryRef.current === null;
-    const own = ownMutationRef.current;
-    boundaryRef.current = fileBoundary;
-    ownMutationRef.current = false;
-    if (baseline || own) return;
-    cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
-  }, [fileBoundary]);
+    const observed = observeCateringFileBoundary(ledgerRef.current, identity, fileBoundary);
+    ledgerRef.current = observed.next;
+    if (!observed.refreshActivity) return;
+    for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });
+  }, [fileBoundary, identity]);
 
   // The first time this section's own endpoint reports the booking terminal, the parent workspace summary is stale
   // -- it was fetched once and does not poll. Refreshing it lets the whole workspace converge on the same answer
@@ -159,17 +196,18 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   useEffect(() => {
     if (observedEditable !== false || terminalSeenRef.current) return;
     terminalSeenRef.current = true;
-    cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });
+    for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });
   }, [observedEditable]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!mayUploadCateringFile(draft, canMutate, upload.isPending) || !draft.file || !draft.visibility || !draft.requestId) return;
+    if (!mayUploadCateringFile(draft, canMutate, uploading) || !draft.file || !draft.visibility || !draft.requestId) return;
     // The token is now possibly spent: the outcome of this request is not knowable from here, and an ambiguous
     // failure is exactly a request that may already have been accepted. Recording that is what makes a later
     // change of visibility mint a new token instead of retrying a changed intent under the old one.
     setDraft(markCateringFileAttempted);
-    upload.mutate({ file: draft.file, visibility: draft.visibility, requestId: draft.requestId });
+    setUploadOutcome(null);
+    upload.mutate({ origin, file: draft.file, visibility: draft.visibility, requestId: draft.requestId });
   };
 
   return <Card id="files"><CardHeader><CardTitle>Files</CardTitle><CardDescription>{role === "provider" ? "Booking documents. Files you mark provider-only are never shown to the customer." : "Documents shared between you and your caterer."}</CardDescription></CardHeader><CardContent className="space-y-4">
@@ -177,10 +215,10 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     {query.isError && !query.isLoading && <div className="space-y-2" role="alert"><p>Files could not be loaded.</p><Button variant="outline" className="min-h-11" onClick={() => query.refetch()}>Retry loading files</Button></div>}
     {!query.isLoading && !query.isError && (files.length === 0
       ? <p className="text-muted-foreground">{CATERING_FILES_EMPTY}</p>
-      : <ul className="space-y-2">{files.map((file) => <FileRow key={file.id} file={file} bookingId={bookingId} role={role} editable={canMutate} pending={remove.isPending} onRemove={() => { if (window.confirm(`Remove “${file.filename}”?`)) remove.mutate(file.id); }} />)}</ul>)}
+      : <ul className="space-y-2">{files.map((file) => <FileRow key={file.id} file={file} bookingId={bookingId} role={role} editable={canMutate} pending={removing} onRemove={() => { if (window.confirm(`Remove “${file.filename}”?`)) { setRemoveOutcome(null); remove.mutate({ origin, fileId: file.id }); } }} />)}</ul>)}
     {query.hasNextPage && <Button variant="outline" className="min-h-11 w-full sm:w-auto" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>{query.isFetchingNextPage ? "Loading more files…" : "Load more files"}</Button>}
     {query.isFetchNextPageError && <div className="space-y-2" role="alert"><p>More files could not be loaded.</p><Button variant="outline" className="min-h-11" disabled={query.isFetchingNextPage} onClick={() => query.fetchNextPage()}>Retry loading more files</Button></div>}
-    {remove.isError && <p role="alert" className="text-destructive">{remove.error.message}</p>}
+    {removeResult?.status === "failed" && <p role="alert" className="text-destructive">{removeResult.message}</p>}
 
     {canMutate
       ? <form className="space-y-3 border-t pt-4" onSubmit={submit}>
@@ -199,9 +237,9 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
             </label>)}
           </fieldset>}
           {draft.error && <p role="alert" className="text-destructive">{draft.error}</p>}
-          <Button type="submit" className="min-h-11" disabled={!mayUploadCateringFile(draft, canMutate, upload.isPending)}>Upload file</Button>
-          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{upload.isPending ? "Uploading your file…" : upload.isSuccess ? "File uploaded." : ""}</p>
-          {upload.isError && <p role="alert" className="text-destructive">{upload.error.message}</p>}
+          <Button type="submit" className="min-h-11" disabled={!mayUploadCateringFile(draft, canMutate, uploading)}>Upload file</Button>
+          <p role="status" aria-live="polite" className="text-sm text-muted-foreground">{uploading ? "Uploading your file…" : uploadResult?.status === "succeeded" ? "File uploaded." : ""}</p>
+          {uploadResult?.status === "failed" && <p role="alert" className="text-destructive">{uploadResult.message}</p>}
         </form>
       : <p className="font-medium">{CATERING_FILES_READ_ONLY_BANNER}</p>}
   </CardContent></Card>;

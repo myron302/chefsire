@@ -64,7 +64,7 @@ test("5. polling exists BECAUSE the socket refuses booking threads, and that ref
 test("3. polling does not advance the read marker: fetching is not evidence of reading", () => {
   // The read request is issued from one place, gated on a boundary the participant was SHOWN.
   assert.equal((source.match(/markRead\.mutate\(/g) ?? []).length, 1);
-  assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(readMark, viewedId, unreadCount)"), true);
+  assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(ownReadMark, viewedId, unreadCount)"), true);
   // Nothing in the query options, and nothing on the fetch path, records a viewed boundary or marks read.
   for (const forbidden of ["recordCateringViewedBoundary", "markRead", "setViewed"]) {
     assert.equal(stripComments(queryOptions).includes(forbidden), false, forbidden);
@@ -90,8 +90,8 @@ test("3. a polled-in message below the fold stays unread, because its boundary h
 test("7. repeated polls cause no duplicate automatic read requests", () => {
   // A poll returning the same newest message records the same boundary, and recording an unchanged boundary is a
   // no-op, so the mark effect never re-fires for it. Beyond that the attempt itself is recorded before the request.
-  assert.equal(readEffect.indexOf("startCateringReadMark(current, viewedId!)") < readEffect.indexOf("markRead.mutate(viewedId!)"), true);
-  assert.equal(readEffect.includes("if (markRead.isPending) return;"), true);
+  assert.equal(readEffect.indexOf("startCateringReadMark(hydrateCateringReadMark(current, identity), viewedId!)") < readEffect.indexOf("markRead.mutate({ origin, lastReadMessageId: viewedId! })"), true);
+  assert.equal(readEffect.includes("if (readPending) return;"), true);
   // The effect gates on the recorded attempt, not merely on unread state, so an unchanged boundary is refused.
   assert.equal(readEffect.includes("shouldMarkCateringConversationRead("), false);
 });
@@ -114,11 +114,11 @@ test("6. polling does not clear drafts or disturb send state", () => {
   // The composer is component state; only the send state machine ever writes it, and only for the attempt that
   // resolved. Nothing on the fetch path touches it.
   assert.equal(stripComments(queryOptions).includes("setComposer"), false);
-  assert.equal(source.includes("completeCateringMessageSend(current, payload.clientRequestId)"), true);
+  assert.equal(source.includes("completeCateringMessageSend(state, attempt.clientRequestId)"), true);
   assert.equal(source.includes('text: ""'), false, "clearing belongs to completeCateringMessageSend alone");
   // Idempotent sends are unchanged: one token per composition, reused by the retry path.
-  assert.equal(source.includes("startCateringMessageSend(composer, crypto.randomUUID())"), true);
-  assert.equal(source.includes("retryCateringMessageSend(composer)"), true);
+  assert.equal(source.includes("startCateringMessageSend(ownComposer, crypto.randomUUID())"), true);
+  assert.equal(source.includes("retryCateringMessageSend(ownComposer)"), true);
 });
 
 /**
@@ -132,7 +132,7 @@ const delivery = source.slice(source.indexOf("// Any delivery of a newer message
 test("1. the FIRST delivery refreshes the workspace summary too, not only later ones", () => {
   // The decisive assertion: no first-load exemption anywhere on this path.
   assert.equal(stripComments(delivery).includes("firstLoad"), false, "the first delivery must not be exempted");
-  assert.equal(delivery.includes("cache.invalidateQueries({ queryKey: cateringBookingWorkspaceKey(userId, bookingId) });"), true);
+  assert.equal(delivery.includes("for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });"), true);
   // Unconditional once the id has changed -- the guard above it is only the has-it-changed check.
   assert.equal(delivery.indexOf("if (latestId === null || deliveredRef.current === latestId) return;") < delivery.indexOf("cache.invalidateQueries("), true);
   // No unread state is invented client-side to compensate; the authoritative summary is simply asked again.
@@ -165,11 +165,11 @@ test("4. repeated quiet polls with the same latestId do not re-invalidate", () =
 test("6. once the refreshed summary reports unread, the ordinary explicit read path proceeds unchanged", () => {
   // The refresh only makes `unreadCount` truthful. Eligibility still needs a boundary the actor was shown, and the
   // request still goes to the explicit read endpoint.
-  assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(readMark, viewedId, unreadCount)"), true);
+  assert.equal(readEffect.includes("shouldAutoMarkCateringConversationRead(ownReadMark, viewedId, unreadCount)"), true);
   assert.equal(source.includes("const viewedId = cateringReadableBoundary(viewed, identity);"), true);
-  assert.equal(source.includes("`/api/catering/bookings/${bookingId}/messages/read`"), true);
+  assert.equal(source.includes("`/api/catering/bookings/${attempt.origin.bookingId}/messages/read`"), true);
   // One attempt per boundary is preserved: the attempt is recorded before the request.
-  assert.equal(readEffect.indexOf("startCateringReadMark(current, viewedId!)") < readEffect.indexOf("markRead.mutate(viewedId!)"), true);
+  assert.equal(readEffect.indexOf("startCateringReadMark(hydrateCateringReadMark(current, identity), viewedId!)") < readEffect.indexOf("markRead.mutate({ origin, lastReadMessageId: viewedId! })"), true);
 });
 
 test("9. a terminal booking still reads, but remains non-writable", () => {
@@ -177,9 +177,9 @@ test("9. a terminal booking still reads, but remains non-writable", () => {
   // what the effective editable state gates.
   assert.equal(stripComments(queryOptions).includes("enabled:"), false, "a historical conversation must still load");
   assert.equal(source.includes("{canSend\n      ? <form className=\"space-y-2\" onSubmit={submit}>"), true);
-  assert.equal(source.includes(": <p className=\"font-medium\">{CATERING_COMMUNICATION_READ_ONLY_BANNER}</p>}"), true);
+  assert.equal(source.includes(': <div className="space-y-3">\n          <p className="font-medium">{CATERING_COMMUNICATION_READ_ONLY_BANNER}</p>'), true);
   // The send control is additionally gated by the state machine, which takes the same effective value.
-  assert.equal(source.includes("disabled={!maySendCateringMessage(composer, canSend)}"), true);
+  assert.equal(source.includes("disabled={!maySendCateringMessage(ownComposer, canSend)}"), true);
   // A booking that closed while the composer was open refetches the workspace, so the banner replaces the form.
   assert.equal(source.includes("if (isCateringCommunicationReadOnly(error)) {"), true);
 });
@@ -227,7 +227,7 @@ test("only the recurring poll stops: a terminal conversation still loads, pagina
 test("no mutation capability is reintroduced for a terminal booking", () => {
   // The composer is replaced by the banner, and the send control is additionally gated by the state machine.
   assert.equal(source.includes("CATERING_COMMUNICATION_READ_ONLY_BANNER"), true);
-  assert.equal(source.includes("disabled={!maySendCateringMessage(composer, canSend)}"), true);
+  assert.equal(source.includes("disabled={!maySendCateringMessage(ownComposer, canSend)}"), true);
   // Marking a historical conversation read is still allowed -- reading is not a mutation of the booking.
-  assert.equal(source.includes("`/api/catering/bookings/${bookingId}/messages/read`"), true);
+  assert.equal(source.includes("`/api/catering/bookings/${attempt.origin.bookingId}/messages/read`"), true);
 });

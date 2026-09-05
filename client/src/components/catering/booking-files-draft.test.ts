@@ -41,17 +41,17 @@ test("the completion is resolved outside the state updater, so a double-invoked 
 test("a failed upload leaves the draft entirely alone", () => {
   const onError = uploadMutation.slice(uploadMutation.indexOf("onError:"));
   assert.equal(onError.includes("setDraft"), false, "a failure must not touch the live draft");
-  assert.equal(onError.includes("invalidate()"), true);
+  assert.equal(onError.includes("invalidateOrigin(attempt.origin)"), true);
 });
 
 test("the submitted attempt carries the identity the completion is matched on", () => {
   // requestId plus visibility: a replacement file mints a new token, and a visibility change differs on its own.
-  assert.equal(uploadMutation.includes("CateringFileAttempt"), true);
-  assert.equal(source.includes("upload.mutate({ file: draft.file, visibility: draft.visibility, requestId: draft.requestId })"), true);
+  assert.equal(uploadMutation.includes("attempt: UploadAttempt"), true);
+  assert.equal(source.includes("upload.mutate({ origin, file: draft.file, visibility: draft.visibility, requestId: draft.requestId })"), true);
 });
 
 test("idempotency is unchanged: one token per selection, sent with every attempt at it", () => {
-  assert.equal(uploadMutation.includes(`form.append("clientRequestId", requestId)`), true);
+  assert.equal(uploadMutation.includes(`form.append("clientRequestId", attempt.requestId)`), true);
   assert.equal(source.includes("selectCateringFile(current, chosen, chosen ? crypto.randomUUID() : null)"), true);
 });
 
@@ -64,12 +64,12 @@ test("upload and pending controls remain accessible", () => {
   assert.equal(form.includes("Uploading your file…"), true);
   const uploadButton = form.slice(form.indexOf("<Button type=\"submit\""), form.indexOf("Upload file"));
   assert.equal(uploadButton.includes("min-h-11"), true);
-  assert.equal(uploadButton.includes("disabled={!mayUploadCateringFile(draft, canMutate, upload.isPending)}"), true);
+  assert.equal(uploadButton.includes("disabled={!mayUploadCateringFile(draft, canMutate, uploading)}"), true);
 });
 
 test("no duplicate upload can be caused by the draft/attempt split", () => {
   // The submit guard still refuses while a request is pending, so the split introduces no second request.
-  assert.equal(source.includes("if (!mayUploadCateringFile(draft, canMutate, upload.isPending) || !draft.file || !draft.visibility || !draft.requestId) return;"), true);
+  assert.equal(source.includes("if (!mayUploadCateringFile(draft, canMutate, uploading) || !draft.file || !draft.visibility || !draft.requestId) return;"), true);
 });
 
 test("a preserved draft is handed a fresh idempotency token by the component", () => {
@@ -91,7 +91,7 @@ test("a failed upload still leaves the draft and its token untouched, so Try aga
   const onError = uploadMutation.slice(uploadMutation.indexOf("onError:"));
   assert.equal(onError.includes("setDraft"), false, "a failure must not rewrite the draft");
   assert.equal(onError.includes("randomUUID"), false, "a failure must not mint a new token");
-  assert.equal(onError.includes("invalidate()"), true);
+  assert.equal(onError.includes("invalidateOrigin(attempt.origin)"), true);
 });
 
 test("the component records the attempt on submit, so a later intent change mints a new token", () => {
