@@ -13,6 +13,8 @@ server/.env
 !.env.example
 !server/.env.example
 /uploads
+# Private booking documents. Never public, and never committed.
+/private-storage
 /tmp
 server/generated/drink-index.json
 

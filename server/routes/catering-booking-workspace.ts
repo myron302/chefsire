@@ -8,6 +8,10 @@ import { db } from "../db";
 import { requireAuth } from "../middleware";
 import { serializeCateringBooking } from "../serializers/catering-booking";
 import { serializeBookingActivity, serializeBookingDetails, serializeBookingTask } from "../serializers/catering-booking-workspace";
+import { lockActiveCateringBooking, ownedCateringBooking } from "../services/catering-booking-access";
+import { findBookingConversation } from "../services/catering-booking-conversation";
+import { unreadMessageCount } from "./catering-booking-communication";
+import { activeFileCount } from "./catering-booking-files";
 import { CATERING_DETAILS_SAVE_REFUSALS, CATERING_TASK_CREATE_MESSAGES, CATERING_TASK_NOT_FOUND_REFUSAL, CATERING_TASK_REORDER_REFUSALS, CATERING_WORKSPACE_READ_ONLY_REFUSAL, cateringWorkspaceGuard, resolveCateringDetailsSave, resolveCateringTaskCreate, resolveCateringTaskDelete, resolveCateringTaskPatch, resolveCateringTaskReorder } from "../services/catering-booking-workspace-policy";
 
 const r = Router();
@@ -15,15 +19,9 @@ const taskIdSchema = z.string().uuid();
 type DetailsSaveResult = { kind: "read_only" } | { kind: "invalid_time_range" } | { kind: "updated"; details: CateringBookingDetails };
 /** The reorder's four outcomes, named here so a refusal is narrowed to its own message rather than indexed loosely. */
 type TaskReorderResult = { kind: "read_only" } | { kind: "membership" } | { kind: "conflict" } | { kind: "reordered"; tasks: CateringBookingTask[] };
-async function ownedBooking(id: string, userId: string) {
-  const [booking] = await db.select().from(cateringBookings).where(and(eq(cateringBookings.id, id), or(eq(cateringBookings.providerId, userId), eq(cateringBookings.customerId, userId)))).limit(1);
-  return booking;
-}
-async function lockActiveBooking(tx: typeof db, id: string) {
-  await tx.execute(sql`SELECT id FROM catering_bookings WHERE id = ${id} FOR UPDATE`);
-  const [booking] = await tx.select({ status: cateringBookings.status }).from(cateringBookings).where(eq(cateringBookings.id, id)).limit(1);
-  return booking?.status === "pending_confirmation" || booking?.status === "confirmed";
-}
+/** Shared with the Phase 2I communication and file routes so all three derive participants and liveness identically. */
+const ownedBooking = ownedCateringBooking;
+const lockActiveBooking = lockActiveCateringBooking;
 async function lockTaskCollection(tx: typeof db, id: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`catering-tasks:${id}`}))`);
 }
@@ -58,7 +56,14 @@ r.get("/bookings/:id/workspace", requireAuth, async (req, res, next) => { try {
     db.select({ value: count() }).from(cateringBookingActivity).where(activityWhere),
   ]);
   const total = Number(totals[0]?.value ?? 0);
-  res.json({ role, editable: booking.status === "pending_confirmation" || booking.status === "confirmed", booking: serializeCateringBooking(booking), details: serializeBookingDetails(detailsRows[0], role), tasks: taskRows.map(serializeBookingTask), activity: activityRows.map(serializeBookingActivity), activityPagination: { ...page, total, totalPages: Math.ceil(total / page.limit) } });
+  // Phase 2I summaries only. Neither collection is inlined -- messages and files keep their own paginated APIs -- and
+  // both counts are bounded. The file count uses the actor's own visibility filter, so a customer's summary can never
+  // include or hint at a provider-private file, and a booking nobody has messaged on yet reads zero without a thread
+  // being created by the act of viewing the workspace.
+  const threadId = await findBookingConversation(id);
+  const [unread, files] = await Promise.all([threadId ? unreadMessageCount(threadId, userId) : Promise.resolve({ count: 0, capped: false }), activeFileCount(id, role)]);
+  const summary = { unreadMessageCount: unread.count, unreadMessageCountCapped: unread.capped, activeFileCount: files.count, activeFileCountCapped: files.capped };
+  res.json({ role, editable: booking.status === "pending_confirmation" || booking.status === "confirmed", booking: serializeCateringBooking(booking), details: serializeBookingDetails(detailsRows[0], role), tasks: taskRows.map(serializeBookingTask), activity: activityRows.map(serializeBookingActivity), activityPagination: { ...page, total, totalPages: Math.ceil(total / page.limit) }, summary });
 } catch (error) { invalid(error, res, next); } });
 
 r.put("/bookings/:id/details", requireAuth, async (req, res, next) => { try {

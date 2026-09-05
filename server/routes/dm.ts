@@ -9,8 +9,31 @@ import {
   dmParticipants,
   dmMessages,
 } from "../../shared/schema.dm.ts";
+import { CATERING_BOOKING_THREAD_CODE, CATERING_BOOKING_THREAD_MESSAGE } from "../../shared/catering-booking-communication";
+import { bookingLinkedThread, bookingLinkedThreadIds } from "../services/catering-booking-conversation";
 
 const r = Router();
+
+/**
+ * A DM thread that belongs to a catering booking is owned by the booking API and is closed to every generic DM
+ * route -- read and write alike.
+ *
+ * The booking endpoints derive the participants from `catering_bookings.provider_id` and `catering_bookings.customer_id`
+ * and refuse a send once the booking is cancelled or completed. A generic route knows none of that: it authorizes on
+ * `dm_participants` membership alone, so reaching a booking thread through it would send after cancellation, mutate
+ * a booking conversation's read state or membership, and treat a client-supplied thread id as booking authority.
+ * Refusing the whole generic surface for these threads is a single rule with no gap to reason about, and it costs
+ * nothing: the workspace already uses the booking APIs. Ordinary DMs are untouched.
+ *
+ * Every caller runs this AFTER its own membership check, so a stranger guessing thread ids still gets the same
+ * uniform 403 for a booking thread as for any other thread they are not in, and learns nothing from the refusal.
+ */
+async function refuseBookingLinkedThread(threadId: string, res: Parameters<Parameters<typeof r.get>[1]>[1]): Promise<boolean> {
+  const linked = await bookingLinkedThread(threadId);
+  if (!linked) return false;
+  res.status(409).json({ ok: false, error: CATERING_BOOKING_THREAD_CODE, code: CATERING_BOOKING_THREAD_CODE, message: CATERING_BOOKING_THREAD_MESSAGE });
+  return true;
+}
 
 /**
  * GET /api/dm/threads
@@ -25,7 +48,11 @@ r.get("/threads", requireAuth, async (req, res) => {
     .from(dmParticipants)
     .where(eq(dmParticipants.userId, userId));
 
-  const threadIds = parts.map((p) => p.threadId);
+  // Booking conversations are not generic DMs: they never appear in the generic thread list, so a booking thread id
+  // can never be picked up here and used as navigation state or as authority anywhere else.
+  const participantThreadIds: string[] = parts.map((p: { threadId: string }) => p.threadId);
+  const linkedIds = await bookingLinkedThreadIds(participantThreadIds);
+  const threadIds = participantThreadIds.filter((id: string) => !linkedIds.has(id));
   if (threadIds.length === 0) return res.json({ ok: true, threads: [] });
 
   const threads = await db
@@ -127,6 +154,8 @@ r.get("/threads/:id", requireAuth, async (req, res) => {
     .limit(1);
   if (member.length === 0) return res.status(403).json({ ok: false, error: "forbidden" });
 
+  if (await refuseBookingLinkedThread(id, res)) return;
+
   // Get thread
   const [thread] = await db
     .select()
@@ -184,6 +213,8 @@ r.get("/threads/:id/messages", requireAuth, async (req, res) => {
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
     .limit(1);
   if (member.length === 0) return res.status(403).json({ ok: false, error: "forbidden" });
+
+  if (await refuseBookingLinkedThread(id, res)) return;
 
   const whereExpr = before
     ? and(eq(dmMessages.threadId, id), lt(dmMessages.createdAt, before))
@@ -257,7 +288,12 @@ r.post("/threads", requireAuth, async (req, res) => {
       .where(eq(dmParticipants.userId, other));
 
     const mySet = new Set(mine.map((p) => p.threadId));
-    const shared = theirs.map((p) => p.threadId).find((id) => mySet.has(id));
+    const candidates: string[] = theirs.map((p: { threadId: string }) => p.threadId).filter((id: string) => mySet.has(id));
+    // A booking conversation is never adopted as the pair's generic 1:1 thread. Without this the reuse below would
+    // hand a booking thread id back to a generic caller, and the same two people's ordinary DMs would land inside a
+    // booking's history. The pair keeps a generic thread and one distinct conversation per booking.
+    const linked = await bookingLinkedThreadIds(candidates);
+    const shared = candidates.find((id: string) => !linked.has(id));
     if (shared) return res.json({ ok: true, threadId: shared, reused: true });
   }
 
@@ -303,6 +339,8 @@ r.post("/threads/:id/messages", requireAuth, async (req, res) => {
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
     .limit(1);
   if (member.length === 0) return res.status(403).json({ ok: false, error: "forbidden" });
+
+  if (await refuseBookingLinkedThread(id, res)) return;
 
   const [msg] = await db
     .insert(dmMessages)
@@ -371,6 +409,8 @@ r.post("/threads/:id/read", requireAuth, async (req, res) => {
     .where(and(eq(dmParticipants.threadId, id), eq(dmParticipants.userId, userId)))
     .limit(1);
   if (member.length === 0) return res.status(403).json({ ok: false, error: "forbidden" });
+
+  if (await refuseBookingLinkedThread(id, res)) return;
 
   await db
     .update(dmParticipants)
