@@ -186,92 +186,156 @@ export function cateringMessagePageKey(pages: readonly { messages: readonly unkn
 }
 
 /**
- * Whether the end-of-thread sentinel is genuinely on the participant's screen, FOR A NAMED MESSAGE BOUNDARY.
+ * The oldest loaded message the participant must actually have seen before the newest one may be marked read.
  *
- * Two observations are needed, of the SAME element, against two different coordinate systems. The message list is
- * its own scroll container, so an observer rooted on it answers only "is the sentinel inside the container's own
- * viewport" -- true for any thread short enough not to scroll, no matter where the container itself is. And the
- * Communication section sits below several other workspace sections, so on a phone a short thread can satisfy that
- * intra-container test while the whole card is still far below the fold.
+ * Seeing the bottom of the thread proves nothing about what is above it. After the final older page is prepended,
+ * scroll restoration deliberately keeps the reader where they were -- near the newest messages -- so the bottom
+ * sentinel is immediately visible again and the re-created observers report a perfectly fresh positive for the new
+ * page set. Nothing about that sequence involves the reader looking at the backlog that was just loaded, yet the
+ * read marker is chronological: advancing it to the newest message sweeps every one of those messages read.
  *
- * The second observation must therefore be of the SENTINEL against the document viewport, not of the container.
- * Observing the container was not enough: a reader scrolled to the bottom of a tall thread whose top edge has just
- * come into view intersects the document viewport on the container while the sentinel itself is still physically
- * below the fold -- both halves true, nothing actually seen. Only the sentinel's own position answers the question
- * that matters, so both observers watch it and the roots are what differ.
+ * The boundary is derived from data the server already returns rather than a new field. `unreadCount` is the
+ * authoritative number of INCOMING messages after the actor's stored marker, and the loaded messages carry `mine`
+ * in the same deterministic order the marker uses -- so the oldest unread message is simply the Nth-from-last
+ * incoming message. Three answers, and the difference between the last two is the point:
  *
- * Both halves being true is still not enough on its own, because IntersectionObserver reports asynchronously and a
- * boolean carries no record of WHAT it saw. Message A is visible, both observers report true, a refetch appends
- * message B and pushes the sentinel below the fold -- and in the window before the observers report false, the
- * evidence collected for A reads as evidence for B. B would be recorded viewed, and the explicit read mutation
- * would mark a message nobody had seen.
- *
- * So the evidence is stamped with WHAT it was collected for: `observedId`, the `latestId` current when the
- * observation arrived, and `pageKey`, the rendered message set it was looking at. An observation for a different
- * boundary OR a different page set discards whatever was held and starts from nothing. Whether the sentinel is on
- * screen is then a question that can only be asked about a specific rendering, never in the abstract -- which is
- * what makes a new message, or a prepended page, invalidate prior evidence immediately and synchronously, with no
- * dependence on a later observer callback arriving to say false.
+ *  - `none`: nothing is unread, so there is no range to traverse and the bottom alone decides.
+ *  - `message`: this exact message must be seen before the boundary may advance past it.
+ *  - `unresolved`: the range reaches past what is loaded (or the count is capped, so its true size is unknown).
+ *    An unidentifiable range can never be proved traversed, so nothing may be marked.
  */
-export type CateringThreadVisibility = { observedId: string | null; pageKey: string | null; sentinelInThread: boolean; sentinelInViewport: boolean };
-export const EMPTY_CATERING_THREAD_VISIBILITY: CateringThreadVisibility = { observedId: null, pageKey: null, sentinelInThread: false, sentinelInViewport: false };
+export type CateringUnreadStart = { kind: "none" } | { kind: "unresolved" } | { kind: "message"; id: string };
+
+export function cateringUnreadStart(messages: readonly { id: string; mine: boolean }[], unreadCount: number, capped = false): CateringUnreadStart {
+  if (!Number.isFinite(unreadCount) || unreadCount <= 0) return { kind: "none" };
+  // A capped count is a floor, not a total: the range may begin further back than anything loaded can show.
+  if (capped) return { kind: "unresolved" };
+  const incoming = messages.filter((message) => !message.mine);
+  // Fewer incoming messages loaded than are unread means the range starts in a page nobody has fetched.
+  if (incoming.length < unreadCount) return { kind: "unresolved" };
+  return { kind: "message", id: incoming[incoming.length - unreadCount].id };
+}
+/** The stamp form, so a change of required boundary is a change of identity like any other. */
+export function cateringUnreadStartKey(start: CateringUnreadStart): string {
+  return start.kind === "message" ? `message:${start.id}` : start.kind;
+}
+/** The id to hang the traversal sentinel on, or null when there is no specific message to require. */
+export function cateringUnreadStartId(start: CateringUnreadStart): string | null {
+  return start.kind === "message" ? start.id : null;
+}
 
 /**
- * Moves the evidence onto `latestId`, discarding anything collected for a different boundary. Evidence already
- * stamped with this boundary is returned untouched -- and as the SAME object, so a repeating observer callback
- * cannot churn React state.
+ * What a visibility observation is ABOUT: the newest message, the rendered page set, and the unread range that must
+ * be traversed. Evidence is only ever evidence for one of these.
  */
-function rebaseCateringVisibility(state: CateringThreadVisibility, latestId: string | null, pageKey: string): CateringThreadVisibility {
-  if (state.observedId === latestId && state.pageKey === pageKey) return state;
-  return { observedId: latestId, pageKey, sentinelInThread: false, sentinelInViewport: false };
+export type CateringViewGeneration = { latestId: string | null; pageKey: string; unreadStartKey: string };
+export function cateringViewGeneration(latestId: string | null, pageKey: string, start: CateringUnreadStart): CateringViewGeneration {
+  return { latestId, pageKey, unreadStartKey: cateringUnreadStartKey(start) };
 }
-/** The sentinel's visibility inside the thread's own scroll container (`root: threadRef.current`). */
-export function recordCateringSentinelVisibility(state: CateringThreadVisibility, latestId: string | null, pageKey: string, visible: boolean): CateringThreadVisibility {
-  const base = rebaseCateringVisibility(state, latestId, pageKey);
+
+/**
+ * Whether the participant has actually seen what they need to see, FOR ONE GENERATION.
+ *
+ * Two sentinels, each observed against two roots. The bottom sentinel answers "is the newest message on screen",
+ * in the thread's own scroll viewport and in the browser viewport -- neither alone is enough, because a short
+ * thread satisfies the first permanently wherever the card sits, and the card's top edge can enter the browser
+ * viewport while the sentinel is still below the fold. The unread-start sentinel answers the same question about
+ * the oldest message that must be traversed.
+ *
+ * The bottom evidence is LIVE: it must hold right now. The traversal evidence LATCHES once both of its roots have
+ * reported together, because traversal is a thing that happened -- a reader scrolls up to the start of the backlog
+ * and then back down through it, and requiring both sentinels to be visible simultaneously would describe a
+ * scroll position no thread taller than the viewport can ever be in.
+ *
+ * The latch is bounded by the generation. A different required boundary discards everything, including the latch:
+ * that is what stops a prepend which reveals an older unread range from inheriting a traversal proved for a
+ * shorter one. A change of newest message or page set keeps the latch -- the same message was still genuinely
+ * seen -- but resets every live observation, so the bottom must be re-observed against the new rendering.
+ */
+export type CateringThreadVisibility = {
+  observedId: string | null; pageKey: string | null; unreadStartKey: string | null;
+  sentinelInThread: boolean; sentinelInViewport: boolean;
+  unreadStartInThread: boolean; unreadStartInViewport: boolean; unreadStartSeen: boolean;
+};
+export const EMPTY_CATERING_THREAD_VISIBILITY: CateringThreadVisibility = {
+  observedId: null, pageKey: null, unreadStartKey: null,
+  sentinelInThread: false, sentinelInViewport: false,
+  unreadStartInThread: false, unreadStartInViewport: false, unreadStartSeen: false,
+};
+
+function rebaseCateringVisibility(state: CateringThreadVisibility, generation: CateringViewGeneration): CateringThreadVisibility {
+  // A different required range is a different question entirely: nothing carries over, the latch included.
+  if (state.unreadStartKey !== generation.unreadStartKey) {
+    return { ...EMPTY_CATERING_THREAD_VISIBILITY, observedId: generation.latestId, pageKey: generation.pageKey, unreadStartKey: generation.unreadStartKey };
+  }
+  // A new message or a new rendering: every live observation is stale, but a traversal already proved for this same
+  // required boundary stands -- the reader did see that message.
+  if (state.observedId !== generation.latestId || state.pageKey !== generation.pageKey) {
+    return {
+      ...state, observedId: generation.latestId, pageKey: generation.pageKey,
+      sentinelInThread: false, sentinelInViewport: false, unreadStartInThread: false, unreadStartInViewport: false,
+    };
+  }
+  return state;
+}
+/** Latches the traversal proof the moment both of the unread-start sentinel's roots agree. */
+function latchCateringTraversal(state: CateringThreadVisibility): CateringThreadVisibility {
+  if (state.unreadStartSeen || !state.unreadStartInThread || !state.unreadStartInViewport) return state;
+  return { ...state, unreadStartSeen: true };
+}
+
+/** The bottom sentinel inside the thread's own scroll container (`root: threadRef.current`). */
+export function recordCateringSentinelVisibility(state: CateringThreadVisibility, generation: CateringViewGeneration, visible: boolean): CateringThreadVisibility {
+  const base = rebaseCateringVisibility(state, generation);
   return base.sentinelInThread === visible ? base : { ...base, sentinelInThread: visible };
 }
-/** The SAME sentinel's visibility in the browser/document viewport (`root: null`) -- never the container's. */
-export function recordCateringViewportVisibility(state: CateringThreadVisibility, latestId: string | null, pageKey: string, visible: boolean): CateringThreadVisibility {
-  const base = rebaseCateringVisibility(state, latestId, pageKey);
+/** The SAME bottom sentinel in the browser/document viewport (`root: null`) -- never the container's. */
+export function recordCateringViewportVisibility(state: CateringThreadVisibility, generation: CateringViewGeneration, visible: boolean): CateringThreadVisibility {
+  const base = rebaseCateringVisibility(state, generation);
   return base.sentinelInViewport === visible ? base : { ...base, sentinelInViewport: visible };
 }
-/**
- * The whole conjunction, and the only thing permitted to advance the viewed boundary: the sentinel seen in the
- * thread viewport AND in the document viewport, both observations collected for THIS boundary. A null `latestId`
- * (nothing loaded) can never be viewed, so an unloaded message can never be marked read.
- *
- * Defaulting every part to false or null is what makes an environment with no IntersectionObserver, a section never
- * scrolled to, or a boundary whose evidence has not yet been re-collected leave messages UNREAD rather than falsely
- * read: an unproven observation is not an observation.
- */
-export function cateringThreadEndIsOnScreen(state: CateringThreadVisibility, latestId: string | null, pageKey: string): boolean {
-  if (latestId === null || state.observedId !== latestId) return false;
-  // Evidence about a different rendering of this thread is not evidence about this one.
-  if (state.pageKey !== pageKey) return false;
+/** The unread-start sentinel, in the thread's own scroll container. */
+export function recordCateringUnreadStartInThread(state: CateringThreadVisibility, generation: CateringViewGeneration, visible: boolean): CateringThreadVisibility {
+  const base = rebaseCateringVisibility(state, generation);
+  return latchCateringTraversal(base.unreadStartInThread === visible ? base : { ...base, unreadStartInThread: visible });
+}
+/** The same unread-start sentinel in the browser viewport. */
+export function recordCateringUnreadStartInViewport(state: CateringThreadVisibility, generation: CateringViewGeneration, visible: boolean): CateringThreadVisibility {
+  const base = rebaseCateringVisibility(state, generation);
+  return latchCateringTraversal(base.unreadStartInViewport === visible ? base : { ...base, unreadStartInViewport: visible });
+}
+
+/** The newest message is on screen, in both coordinate systems, right now, for this generation. */
+export function cateringThreadEndIsOnScreen(state: CateringThreadVisibility, generation: CateringViewGeneration): boolean {
+  if (generation.latestId === null) return false;
+  if (state.observedId !== generation.latestId || state.pageKey !== generation.pageKey || state.unreadStartKey !== generation.unreadStartKey) return false;
   return state.sentinelInThread && state.sentinelInViewport;
+}
+/** The unread range was actually traversed: nothing to traverse, or its first message was genuinely seen. */
+export function cateringUnreadRangeWasTraversed(state: CateringThreadVisibility, generation: CateringViewGeneration, start: CateringUnreadStart): boolean {
+  if (start.kind === "none") return true;
+  // A range whose extent is unknown can never be shown to have been traversed.
+  if (start.kind === "unresolved") return false;
+  if (state.unreadStartKey !== generation.unreadStartKey) return false;
+  return state.unreadStartSeen;
 }
 
 /**
- * Whether the newest LOADED message may be recorded as viewed.
+ * The whole rule. The newest message may be recorded as viewed only when every one of these holds:
  *
- * Dual-sentinel visibility proves the newest loaded boundary is on screen. It says nothing about what is behind it.
- * Messages arrive newest-first and older pages are fetched on demand, so a conversation whose unread backlog is
- * larger than the first page presents this exact shape: the newest messages are loaded and visible, and older
- * unread ones are still sitting in pages nobody has asked for.
+ *  - no older page can still be fetched, so no unread message is hiding behind pagination;
+ *  - the unread range that IS loaded was actually traversed, not merely loaded;
+ *  - the newest message is on screen now, in the thread viewport and the browser viewport alike;
+ *  - all of that evidence belongs to one generation -- the same newest message, rendering and required range.
  *
- * The read marker is CHRONOLOGICAL -- the server sweeps everything at or before the boundary message's
- * `(created_at, id)` pair. So recording the newest loaded id in that state marks the unloaded older messages read
- * too, and they vanish from the unread count without ever having been rendered, let alone seen.
- *
- * `hasOlderPages` is therefore a third condition alongside the two visibility observations, and it is the
- * pagination cursor's own answer rather than a heuristic: while the query can still fetch an older page, no
- * boundary is eligible. Nothing is auto-fetched to satisfy it -- pagination stays manual, and the backlog simply
- * stays unread, which is the truthful outcome. Once the participant has loaded back through the history and the
- * cursor is exhausted, fresh dual visibility for the newest boundary makes it eligible in the ordinary way.
+ * Defaulting every part to false or null is what makes an environment with no IntersectionObserver, a section never
+ * scrolled to, a prepend that has not been re-observed, or an unread range that cannot be identified leave messages
+ * UNREAD rather than falsely read.
  */
-export function mayRecordCateringViewedBoundary(state: CateringThreadVisibility, latestId: string | null, hasOlderPages: boolean, pageKey: string): boolean {
+export function mayRecordCateringViewedBoundary(state: CateringThreadVisibility, generation: CateringViewGeneration, hasOlderPages: boolean, start: CateringUnreadStart): boolean {
   if (hasOlderPages) return false;
-  return cateringThreadEndIsOnScreen(state, latestId, pageKey);
+  if (!cateringUnreadRangeWasTraversed(state, generation, start)) return false;
+  return cateringThreadEndIsOnScreen(state, generation);
 }
 
 /**

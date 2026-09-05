@@ -71,18 +71,18 @@ test("3. polling does not advance the read marker: fetching is not evidence of r
   }
   // The boundary still comes only from the dual-sentinel conjunction, and only from there.
   assert.equal((source.match(/recordCateringViewedBoundary\(/g) ?? []).length, 1);
-  assert.equal(source.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages, pageKey)"), true);
+  assert.equal(source.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart)"), true);
 });
 
 test("3. a polled-in message below the fold stays unread, because its boundary has no evidence yet", () => {
   // A poll that delivers a newer message changes `latestId`, which invalidates the evidence held for the previous
   // boundary in the same render -- the observation is stamped with the id it was collected for.
-  assert.equal(source.includes("cateringThreadEndIsOnScreen(state, latestId, pageKey)") === false, true, "the check lives in the state module");
-  assert.equal(viewEffect.includes("recordCateringSentinelVisibility(current, latestId, pageKey, entries.some((entry) => entry.isIntersecting))"), true);
-  assert.equal(viewEffect.includes("recordCateringViewportVisibility(current, latestId, pageKey, entries.some((entry) => entry.isIntersecting))"), true);
+  assert.equal(source.includes("cateringThreadEndIsOnScreen(state, generation)") === false, true, "the check lives in the state module");
+  assert.equal(viewEffect.includes("recordCateringSentinelVisibility(current, generation, entries.some((entry) => entry.isIntersecting))"), true);
+  assert.equal(viewEffect.includes("recordCateringViewportVisibility(current, generation, entries.some((entry) => entry.isIntersecting))"), true);
   // Both observers are re-created when `latestId` changes, so the new boundary is judged by a fresh observation --
   // positive for a reader still at the sentinel, negative for one the new message pushed below the fold.
-  assert.equal(viewEffect.includes("}, [latestId, pageKey]);"), true);
+  assert.equal(viewEffect.includes("}, [latestId, pageKey, unreadStartId]);"), true);
   assert.equal(viewEffect.includes("threadRootObserver.observe(sentinel)"), true);
   assert.equal(viewEffect.includes("viewportObserver.observe(sentinel)"), true);
 });
@@ -198,7 +198,7 @@ test("an active booking polls at the configured cadence; a terminal one does not
 
 test("closure is taken from the parent workspace's authoritative flag, never re-inferred", () => {
   // `editable` is the same prop that renders the read-only banner and gates every mutation control.
-  assert.equal(source.includes("editable, unreadCount }: { bookingId: string; userId: string; role: \"provider\" | \"customer\"; editable: boolean; unreadCount: number }"), true);
+  assert.equal(source.includes("editable, unreadCount, unreadCountCapped = false }: { bookingId: string; userId: string; role: \"provider\" | \"customer\"; editable: boolean; unreadCount: number; unreadCountCapped?: boolean }"), true);
   // And it is only ever the FALLBACK: the endpoint's own answer wins when it has one.
   assert.equal(source.includes("const canSend = effectiveCateringEditable(editable, observedEditable);"), true);
   // No second opinion about BOOKING closure anywhere in the component. (`pending?.status` is the send attempt's
@@ -221,7 +221,7 @@ test("only the recurring poll stops: a terminal conversation still loads, pagina
   // Pagination, the actor-scoped key and the read-boundary logic are all untouched by the polling condition.
   assert.equal(source.includes("getNextPageParam: (lastPage) => nextCateringMessageCursor(lastPage)"), true);
   assert.equal(source.includes("queryKey: messagesKey"), true);
-  assert.equal(source.includes("mayRecordCateringViewedBoundary(visibility, latestId, hasOlderPages, pageKey)"), true);
+  assert.equal(source.includes("mayRecordCateringViewedBoundary(visibility, generation, hasOlderPages, unreadStart)"), true);
 });
 
 test("no mutation capability is reintroduced for a terminal booking", () => {
