@@ -3,7 +3,8 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { cateringFileBoundary } from "@shared/catering-booking-files";
+import { cateringFileBoundary, cateringFileSnapshot } from "@shared/catering-booking-files";
+import { EMPTY_CATERING_FILE_LEDGER, cateringMutationOrigin, expectCateringFileAddition, expectCateringFileRemoval, observeCateringFileSnapshot, type CateringFileLedger } from "@/pages/services/catering-booking-mutation-origin";
 import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES } from "@shared/catering-booking-activity-events";
 
 /**
@@ -14,9 +15,10 @@ import { CATERING_BOOKING_ACTIVITY_EVENT_TYPES } from "@shared/catering-booking-
  * `shared_file_removed` activity row that the Activity panel beside it kept not showing, until a focus change or an
  * unrelated mutation happened to intervene.
  *
- * The fix compares a fingerprint of the newest page across polls. There is no React Query or DOM harness in this
- * suite, so the fingerprint is exercised behaviourally and the effect that consumes it asserted structurally, with
- * a small model of the ref-held bookkeeping standing in for the component's own.
+ * The fix compares the newest page across polls and subtracts the EXACT deltas this actor's own successful
+ * mutations are expected to produce, so a counterpart's change landing in the same response as a local one is still
+ * announced. There is no React Query or DOM harness in this suite, so the ledger is exercised behaviourally through
+ * the very helpers the component calls, and the effect that consumes it is asserted structurally.
  */
 const here = path.dirname(fileURLToPath(import.meta.url));
 const source = fs.readFileSync(path.join(here, "BookingFiles.tsx"), "utf8");
@@ -25,27 +27,25 @@ const boundaryEffect = source.slice(source.indexOf("// A poll that finds the new
 
 const pageOf = (...ids: string[]) => ({ files: ids.map((id) => ({ id })), nextCursor: null, editable: true });
 
-/** The component's bookkeeping: a recorded fingerprint plus the "this actor just mutated" absorber. */
-function section() {
-  let recorded: string | null = null;
-  let ownMutation = false;
+const ORIGIN = cateringMutationOrigin("user-1", "booking-a");
+/** The component's bookkeeping: the per-booking snapshot ledger plus its pending expected local deltas. */
+function section(origin = ORIGIN) {
+  let ledger: CateringFileLedger = EMPTY_CATERING_FILE_LEDGER;
   const invalidations: string[] = [];
   return {
     invalidations,
-    /** A local mutation that SUCCEEDED: it refreshes the workspace itself and arms the absorber. */
-    localSuccess() { ownMutation = true; invalidations.push("local-mutation"); },
-    /** A local mutation that FAILED: it may still refetch, but it changed no boundary, so it arms nothing. */
+    get ledger() { return ledger; },
+    /** A local upload that SUCCEEDED: it refreshes the workspace itself and expects exactly this id to appear. */
+    localUpload(fileId: string) { ledger = expectCateringFileAddition(ledger, origin, fileId); invalidations.push("local-mutation"); },
+    /** A local delete that SUCCEEDED: it expects exactly this id to disappear. */
+    localDelete(fileId: string) { ledger = expectCateringFileRemoval(ledger, origin, fileId); invalidations.push("local-mutation"); },
+    /** A local mutation that FAILED: it may still refetch, but it changed nothing, so it expects nothing. */
     localFailure() { invalidations.push("local-mutation"); },
     /** Mirrors the boundary effect, for one settled response. */
     poll(pages: ReturnType<typeof pageOf>[] | undefined) {
-      const boundary = cateringFileBoundary(pages);
-      if (boundary === null || recorded === boundary) return;
-      const baseline = recorded === null;
-      const own = ownMutation;
-      recorded = boundary;
-      ownMutation = false;
-      if (baseline || own) return;
-      invalidations.push("workspace");
+      const observed = observeCateringFileSnapshot(ledger, origin.identity, cateringFileSnapshot(pages));
+      ledger = observed.next;
+      if (observed.refreshActivity) invalidations.push("workspace");
     },
   };
 }
@@ -108,7 +108,7 @@ test("7. a provider-private change is not observable to a customer through the b
   assert.equal(route.includes("visibilityFilter(role)"), true);
   assert.equal(route.includes('eq(cateringBookingFiles.visibility, "shared")'), true);
   const helper = fs.readFileSync(path.join(here, "..", "..", "..", "..", "shared", "catering-booking-files.ts"), "utf8");
-  const fn = helper.slice(helper.indexOf("export function cateringFileBoundary"));
+  const fn = helper.slice(helper.indexOf("export function cateringFileSnapshot"));
   assert.equal(fn.slice(0, fn.indexOf("\n}")).includes("files.map((file) => file.id)"), true);
   for (const leak of ["storageKey", "visibility", "byteSize", "uploadedBy"]) {
     assert.equal(fn.slice(0, fn.indexOf("\n}")).includes(leak), false, leak);
@@ -133,7 +133,7 @@ test("9 & 10. terminal transition still stops polling, and a boundary change wit
   // one once per genuine change. Neither re-runs the other, so a final poll that carries both cannot loop.
   assert.equal(source.includes("cateringWorkspacePollInterval(effectiveCateringEditable(editable, observedCateringEditable(polled.state.data?.pages)))"), true);
   assert.equal(source.includes("if (observedEditable !== false || terminalSeenRef.current) return;"), true);
-  assert.equal(boundaryEffect.includes("const observed = observeCateringFileBoundary(ledgerRef.current, identity, fileBoundary);"), true);
+  assert.equal(boundaryEffect.includes("const observed = observeCateringFileSnapshot(ledgerRef.current, identity, fileSnapshot);"), true);
   assert.equal(boundaryEffect.includes("}, [fileBoundary, identity]);"), true);
   // A last poll delivering a change is still announced exactly once even though polling then stops.
   const s = section();
@@ -147,17 +147,17 @@ test("11. this actor's own upload or removal is not announced twice", () => {
   const s = section();
   s.poll([pageOf("f1")]);
   // The local mutation refreshes the workspace itself, then its refetch changes the boundary.
-  s.localSuccess();
+  s.localUpload("f2");
   s.poll([pageOf("f2", "f1")]);
   assert.equal(workspaceRefreshes(s), 0, "the local mutation's own refresh is not duplicated");
   assert.deepEqual(s.invalidations, ["local-mutation"]);
-  // The absorber is spent, so a counterpart's next change is announced normally.
+  // The expectation is consumed, so a counterpart's next change is announced normally.
   s.poll([pageOf("f3", "f2", "f1")]);
   assert.equal(workspaceRefreshes(s), 1);
   // The existing mutation invalidations are unchanged.
   assert.equal(source.includes("for (const queryKey of cateringOriginFileInvalidations(attemptOrigin)) cache.invalidateQueries({ queryKey });"), true);
   assert.equal(source.includes("invalidateOrigin(attempt.origin); },"), true);
-  assert.equal(source.includes("ledgerRef.current = armCateringOwnFileMutation(ledgerRef.current, attempt.origin);"), true);
+  assert.equal(source.includes("ledgerRef.current = expectCateringFileAddition(ledgerRef.current, attempt.origin, uploaded.id);"), true);
 });
 
 test("12. the cache key is actor-scoped, and the bookkeeping resets with the booking", () => {
@@ -206,7 +206,7 @@ test("4. a failed upload followed by quiet polls leaves no suppression state beh
 test("5, 6 & 7. delete succeeds -> suppressed once; delete fails -> the next change still announced", () => {
   const succeeded = section();
   succeeded.poll([pageOf("f2", "f1")]);
-  succeeded.localSuccess();
+  succeeded.localDelete("f2");
   succeeded.poll([pageOf("f1")]);
   assert.equal(workspaceRefreshes(succeeded), 0, "a successful local delete refreshes the workspace itself");
   const failed = section();
@@ -219,31 +219,33 @@ test("5, 6 & 7. delete succeeds -> suppressed once; delete fails -> the next cha
 });
 
 test("8. the component arms suppression on success only, never from onError or onSettled", () => {
-  // `invalidate()` no longer arms anything: it is called from failure paths too.
+  // `invalidateOrigin` no longer arms anything: it is called from failure paths too.
   const invalidateFn = source.slice(source.indexOf("const invalidateOrigin = ("), source.indexOf("const upload = useMutation"));
-  assert.equal(invalidateFn.includes("armCateringOwnFileMutation"), false, "the shared invalidate must not arm suppression");
-  // Upload arms only in onSuccess, and only when the server actually created a file.
+  assert.equal(/expectCateringFile(Addition|Removal)/.test(invalidateFn), false, "the shared invalidate must not arm suppression");
+  // Upload arms only in onSuccess, and only for the id the server itself answered with.
   const upload = source.slice(source.indexOf("const upload = useMutation"), source.indexOf("const remove = useMutation"));
-  assert.equal(upload.includes("if (!(_body as { duplicate?: boolean } | undefined)?.duplicate) ledgerRef.current = armCateringOwnFileMutation(ledgerRef.current, attempt.origin);"), true);
+  assert.equal(upload.includes(`if (typeof uploaded?.id === "string") ledgerRef.current = expectCateringFileAddition(ledgerRef.current, attempt.origin, uploaded.id);`), true);
   const uploadError = upload.slice(upload.indexOf("onError:"));
-  assert.equal(uploadError.includes("armCateringOwnFileMutation"), false, "an upload error must not arm suppression");
-  // Delete arms in onSuccess; onSettled only refetches.
+  assert.equal(/expectCateringFile(Addition|Removal)/.test(uploadError), false, "an upload error must not arm anything");
+  // Delete arms in onSuccess, by the id the request named; onSettled only refetches.
   const remove = source.slice(source.indexOf("const remove = useMutation"));
-  assert.equal(remove.includes("onSuccess: (_body, attempt) => { ledgerRef.current = armCateringOwnFileMutation(ledgerRef.current, attempt.origin);"), true);
+  assert.equal(remove.includes("onSuccess: (_body, attempt) => { ledgerRef.current = expectCateringFileRemoval(ledgerRef.current, attempt.origin, attempt.fileId);"), true);
   const settled = remove.slice(remove.indexOf("onSettled:"));
-  assert.equal(settled.includes("armCateringOwnFileMutation"), false, "onSettled runs after failure too and must not arm");
-  // Exactly two arming sites, both on success, and each names the attempt's own booking.
-  assert.equal((source.match(/armCateringOwnFileMutation\(ledgerRef\.current, attempt\.origin\)/g) ?? []).length, 2);
+  assert.equal(/expectCateringFile(Addition|Removal)/.test(settled), false, "onSettled runs after failure too and must not arm");
+  // Exactly two arming sites, both on success, and each names its own booking and its own file.
+  assert.equal((source.match(/expectCateringFileAddition\(ledgerRef\.current, attempt\.origin, uploaded\.id\)/g) ?? []).length, 1);
+  assert.equal((source.match(/expectCateringFileRemoval\(ledgerRef\.current, attempt\.origin, attempt\.fileId\)/g) ?? []).length, 1);
 });
 
-test("an idempotent retry that created nothing does not arm suppression either", () => {
-  // A duplicate response means the file already existed, so the next boundary change is not this request's doing.
+test("an idempotent retry that created nothing expects nothing either", () => {
+  // A duplicate response hands back a file the newest page already carries, so no delta is coming and arming would
+  // leave an expectation sitting there to absorb a counterpart's change instead.
   const s = section();
   s.poll([pageOf("f1")]);
-  // Modelled as a failure-shaped arming decision: nothing armed.
-  s.localFailure();
+  s.localUpload("f1");
+  assert.equal(s.ledger.pending.size, 0, "an id already on the page arms nothing");
   s.poll([pageOf("f2", "f1")]);
   assert.equal(workspaceRefreshes(s), 1);
-  // And the component reads the server's own answer rather than assuming creation.
-  assert.equal(source.includes("duplicate?: boolean"), true);
+  // The decision is made from the authoritative id the server answered with, not from a flag.
+  assert.equal(source.includes("const uploaded = (_body as { file?: { id?: unknown } } | undefined)?.file;"), true);
 });

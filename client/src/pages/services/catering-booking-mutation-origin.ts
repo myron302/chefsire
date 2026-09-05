@@ -134,45 +134,144 @@ export function cateringUnsentMessage(unsent: CateringUnsentMessages, identity: 
 }
 
 /**
- * Per-booking file boundary baselines and own-mutation suppression, in one immutable ledger.
+ * Per-booking file snapshots and the exact deltas this actor's own successful mutations are expected to produce.
  *
- * A single `ownMutationRef` boolean is booking-ambiguous once the component can change bookings while mounted: an
- * upload that succeeds on A arms it, and the next boundary change observed on B -- a counterpart's shared upload --
- * is absorbed as "mine", so B's Activity panel is never refreshed and the two halves of B's workspace disagree.
+ * Activity refresh exists because a counterpart's shared upload or removal writes an activity row that the parent
+ * workspace -- which does not poll -- will otherwise never see. The actor's OWN mutations already refresh that
+ * workspace, so announcing them again is noise, and one boolean per booking used to be enough to absorb them.
  *
- * Both halves are therefore keyed by identity. A baseline is per booking too, so returning to a booking does not
- * re-announce its whole list as a change, and an arming survives navigation away and back exactly as the booking's
- * own state does.
+ * It is not. A boolean says only "some local mutation happened before the next changed page", so it swallows the
+ * WHOLE transition. Upload f3 locally; before the refetch returns, the counterpart shares f4; the next authoritative
+ * page is [f4, f3, f1, f2]. The list renders f4 correctly and the boolean is spent absorbing a change that was half
+ * somebody else's -- and since no further page change is coming, Activity stays stale indefinitely. The same holds
+ * for a local removal that coalesces with a counterpart's upload or removal.
+ *
+ * So the ledger records what each successful local mutation should DO -- add this id, remove that id -- and matches
+ * it against the actual delta. Only a delta with nothing left over after that subtraction is purely local. Pending
+ * expectations are consumed only when they are actually observed, so an authoritative response that carries one of
+ * two pending uploads leaves the other armed for the response that does carry it.
+ *
+ * Everything here is keyed by booking, so a completion for one booking can neither explain nor suppress another's,
+ * and everything is read from the ids the server already serialized to THIS actor -- a customer's pages carry no
+ * provider-private file, so no such id, count, or timing is available to this logic at all.
  */
-export type CateringFileLedger = { boundaries: ReadonlyMap<string, string>; armed: ReadonlySet<string> };
-export const EMPTY_CATERING_FILE_LEDGER: CateringFileLedger = { boundaries: new Map(), armed: new Set() };
+export type CateringFilePending = { additions: ReadonlySet<string>; removals: ReadonlySet<string> };
+export type CateringFileLedger = {
+  /** The newest authoritative page's ids, newest first, as last observed for each booking. */
+  snapshots: ReadonlyMap<string, readonly string[]>;
+  pending: ReadonlyMap<string, CateringFilePending>;
+};
+export const EMPTY_CATERING_FILE_LEDGER: CateringFileLedger = { snapshots: new Map(), pending: new Map() };
+const NO_PENDING: CateringFilePending = { additions: new Set(), removals: new Set() };
 
-/** Arms suppression for ONE booking. Only a mutation that actually changed that booking's list may call this. */
-export function armCateringOwnFileMutation(ledger: CateringFileLedger, origin: CateringMutationOrigin): CateringFileLedger {
-  if (ledger.armed.has(origin.identity)) return ledger;
-  const armed = new Set(ledger.armed);
-  armed.add(origin.identity);
-  return { boundaries: ledger.boundaries, armed };
+export function cateringFilePending(ledger: CateringFileLedger, identity: string): CateringFilePending {
+  return ledger.pending.get(identity) ?? NO_PENDING;
+}
+function withPending(ledger: CateringFileLedger, identity: string, pending: CateringFilePending): CateringFileLedger {
+  const next = new Map(ledger.pending);
+  if (pending.additions.size === 0 && pending.removals.size === 0) next.delete(identity); else next.set(identity, pending);
+  return { snapshots: ledger.snapshots, pending: next };
+}
+const withId = (set: ReadonlySet<string>, id: string) => { const next = new Set(set); next.add(id); return next; };
+const withoutIds = (set: ReadonlySet<string>, ids: readonly string[]) => {
+  if (ids.every((id) => !set.has(id))) return set;
+  const next = new Set(set);
+  for (const id of ids) next.delete(id);
+  return next;
+};
+const keepIds = (set: ReadonlySet<string>, keep: (id: string) => boolean) => {
+  const next = new Set<string>();
+  set.forEach((id) => { if (keep(id)) next.add(id); });
+  return next.size === set.size ? set : next;
+};
+
+/**
+ * Arms the addition one successful upload is expected to produce, by the AUTHORITATIVE id the server answered with.
+ *
+ * An id the newest page already carries is not armed: an idempotent retry answered from the upload ledger created
+ * nothing, so no delta is coming, and an expectation that never matches would sit waiting to absorb a counterpart's
+ * change instead. When the id is genuinely absent the expectation is real whether or not the response called it a
+ * duplicate -- a first attempt that timed out after succeeding still created this actor's own file.
+ */
+export function expectCateringFileAddition(ledger: CateringFileLedger, origin: CateringMutationOrigin, fileId: string): CateringFileLedger {
+  if (ledger.snapshots.get(origin.identity)?.includes(fileId)) return ledger;
+  const pending = cateringFilePending(ledger, origin.identity);
+  if (pending.additions.has(fileId)) return ledger;
+  return withPending(ledger, origin.identity, { additions: withId(pending.additions, fileId), removals: pending.removals });
+}
+/** Arms the removal one successful delete is expected to produce, by the id the request named. */
+export function expectCateringFileRemoval(ledger: CateringFileLedger, origin: CateringMutationOrigin, fileId: string): CateringFileLedger {
+  const pending = cateringFilePending(ledger, origin.identity);
+  if (pending.removals.has(fileId)) return ledger;
+  return withPending(ledger, origin.identity, { additions: pending.additions, removals: withId(pending.removals, fileId) });
 }
 
 /**
- * Records the newest-page fingerprint observed for one booking and answers whether that change was a counterpart's.
+ * What changed between two newest-page snapshots, ignoring the page edge.
  *
- * A first observation is a baseline and announces nothing; an unchanged fingerprint does nothing at all; a change
- * this actor caused consumes that booking's arming exactly once. Only a change that is neither is a counterpart's
- * shared upload or removal, which is what the parent workspace's Activity panel has to be refreshed for.
+ * The page holds the newest N files this actor may see, so its far end moves on its own: deleting a file inside it
+ * pulls one up from older history, and an upload pushes the oldest one off. Neither is anybody's activity -- it is
+ * the same collection seen through a window that shifted. The two snapshots jointly describe the conversation only
+ * down to their oldest COMMON file, so a change at or before that anchor is real and anything past it is the edge.
+ *
+ * That discount applies ONLY when the page length is unchanged, because a shift cannot change it: page 0 holds
+ * `min(total, limit)` files, so while it is full an insertion pushes one off and a deletion pulls one up, and while
+ * it is not full there is nothing older to pull up and nothing to push off. A length that moved therefore means the
+ * page is short and every difference in it is real -- which is what keeps deleting the oldest file of a short list,
+ * positionally indistinguishable from an edge shift, from being discounted as one.
+ *
+ * With no common file at all there is likewise no edge to discount and every difference counts. Both fallbacks lean
+ * the conservative way: they can ask for a refresh that was not needed, never miss one that was.
  */
-export function observeCateringFileBoundary(ledger: CateringFileLedger, identity: string, boundary: string | null): { next: CateringFileLedger; refreshActivity: boolean } {
-  if (boundary === null || ledger.boundaries.get(identity) === boundary) return { next: ledger, refreshActivity: false };
-  const baseline = !ledger.boundaries.has(identity);
-  const own = ledger.armed.has(identity);
-  const boundaries = new Map(ledger.boundaries);
-  boundaries.set(identity, boundary);
-  let armed = ledger.armed;
-  if (own) {
-    const remaining = new Set(ledger.armed);
-    remaining.delete(identity);
-    armed = remaining;
+export function cateringFileDelta(previous: readonly string[], next: readonly string[]): { added: readonly string[]; removed: readonly string[] } {
+  const previousIds = new Set(previous);
+  const nextIds = new Set(next);
+  const anchor = (list: readonly string[], other: ReadonlySet<string>) => {
+    for (let index = list.length - 1; index >= 0; index -= 1) if (other.has(list[index])) return index;
+    return list.length;
+  };
+  const shifted = previous.length === next.length;
+  const nextAnchor = shifted ? anchor(next, previousIds) : next.length;
+  const previousAnchor = shifted ? anchor(previous, nextIds) : previous.length;
+  return {
+    added: next.filter((id, index) => index <= nextAnchor && !previousIds.has(id)),
+    removed: previous.filter((id, index) => index <= previousAnchor && !nextIds.has(id)),
+  };
+}
+
+const sameIds = (left: readonly string[], right: readonly string[]) => left.length === right.length && left.every((id, index) => id === right[index]);
+
+/**
+ * Records one authoritative snapshot and answers whether it contains anything this actor did not do.
+ *
+ * A first snapshot for a booking is a baseline: files that already existed are not activity. It still reconciles
+ * pending expectations against it, because a mutation can complete while the participant is looking at another
+ * booking -- an upload already visible in the baseline is explained and consumed, one still absent stays armed for
+ * the response that carries it, and the mirror image holds for removals.
+ *
+ * Otherwise the delta is computed and the pending expectations are subtracted from it. Only expectations actually
+ * observed are consumed, so a partial or out-of-order response cannot discard one that has not landed yet.
+ */
+export function observeCateringFileSnapshot(ledger: CateringFileLedger, identity: string, snapshot: readonly string[] | null): { next: CateringFileLedger; refreshActivity: boolean } {
+  if (snapshot === null) return { next: ledger, refreshActivity: false };
+  const previous = ledger.snapshots.get(identity);
+  if (previous !== undefined && sameIds(previous, snapshot)) return { next: ledger, refreshActivity: false };
+  const pending = cateringFilePending(ledger, identity);
+  const snapshots = new Map(ledger.snapshots);
+  snapshots.set(identity, snapshot);
+  if (previous === undefined) {
+    const present = new Set(snapshot);
+    const settled: CateringFilePending = {
+      additions: keepIds(pending.additions, (id) => !present.has(id)),
+      removals: keepIds(pending.removals, (id) => present.has(id)),
+    };
+    return { next: withPending({ snapshots, pending: ledger.pending }, identity, settled), refreshActivity: false };
   }
-  return { next: { boundaries, armed }, refreshActivity: !baseline && !own };
+  const delta = cateringFileDelta(previous, snapshot);
+  const unexplained = delta.added.some((id) => !pending.additions.has(id)) || delta.removed.some((id) => !pending.removals.has(id));
+  const settled: CateringFilePending = {
+    additions: withoutIds(pending.additions, delta.added),
+    removals: withoutIds(pending.removals, delta.removed),
+  };
+  return { next: withPending({ snapshots, pending: ledger.pending }, identity, settled), refreshActivity: unexplained };
 }

@@ -199,9 +199,13 @@ export type CateringBookingFilePageView = { files: CateringBookingFileView[]; ne
  * history on every poll, which is a worse trade for a bounded collection whose newest page is what Activity is
  * describing.
  */
-export function cateringFileBoundary(pages: readonly { files: readonly { id: string }[] }[] | undefined): string | null {
+export function cateringFileSnapshot(pages: readonly { files: readonly { id: string }[] }[] | undefined): readonly string[] | null {
   if (!pages || pages.length === 0) return null;
-  return pages[0].files.map((file) => file.id).join(",");
+  return pages[0].files.map((file) => file.id);
+}
+export function cateringFileBoundary(pages: readonly { files: readonly { id: string }[] }[] | undefined): string | null {
+  const snapshot = cateringFileSnapshot(pages);
+  return snapshot === null ? null : snapshot.join(",");
 }
 
 export function formatCateringFileSize(byteSize: number): string {

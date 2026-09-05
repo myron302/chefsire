@@ -3,7 +3,7 @@ import test from "node:test";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_UNSENT_MESSAGES, applyForCateringOrigin, armCateringOwnFileMutation, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringOriginFileInvalidations, cateringOriginIsCurrent, cateringOriginMessageInvalidations, cateringOriginWorkspaceInvalidations, cateringUnsentMessage, clearCateringUnsentMessage, enterCateringMutation, exitCateringMutation, observeCateringFileBoundary, recordCateringUnsentMessage, visibleCateringMutationOutcome, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome, type CateringUnsentMessages } from "@/pages/services/catering-booking-mutation-origin";
+import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, EMPTY_CATERING_UNSENT_MESSAGES, applyForCateringOrigin, expectCateringFileAddition, expectCateringFileRemoval, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringOriginFileInvalidations, cateringOriginIsCurrent, cateringOriginMessageInvalidations, cateringOriginWorkspaceInvalidations, cateringUnsentMessage, clearCateringUnsentMessage, enterCateringMutation, exitCateringMutation, observeCateringFileSnapshot, recordCateringUnsentMessage, visibleCateringMutationOutcome, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome, type CateringUnsentMessages } from "@/pages/services/catering-booking-mutation-origin";
 import { EMPTY_CATERING_COMPOSER, EMPTY_CATERING_READ_MARK, completeCateringMessageSend, completeCateringReadMark, editCateringComposer, failCateringMessageSend, failCateringReadMark, hydrateCateringComposer, hydrateCateringReadMark, maySendCateringMessage, startCateringMessageSend, startCateringReadMark, type CateringComposerState, type CateringReadMarkState } from "@/pages/services/catering-booking-communication-state";
 import { completeCateringFileUpload, emptyCateringFileDraft, markCateringFileAttempted, selectCateringFile, type CateringFileDraft, type CateringSelectedFile } from "@/pages/services/catering-booking-files-state";
 
@@ -276,14 +276,15 @@ function submitUpload(state: Files, origin: CateringMutationOrigin): { state: Fi
   const attempt: UploadAttempt = { origin, requestId: state.draft.requestId!, visibility: state.draft.visibility! };
   return { state: { ...state, draft: markCateringFileAttempted(state.draft), uploadOutcome: null, inFlight: enterCateringMutation(state.inFlight, origin) }, attempt };
 }
-function uploadSucceeded(state: Files, attempt: UploadAttempt, duplicate = false): Files {
+function uploadSucceeded(state: Files, attempt: UploadAttempt, fileId: string): Files {
   let draft = state.draft;
   // Visible local state only when the completion belongs to the booking still on screen.
   if (cateringOriginIsCurrent(attempt.origin, state.identity)) draft = completeCateringFileUpload(draft, attempt, ROLE, () => "minted").next;
   return {
     ...state,
     draft,
-    ledger: duplicate ? state.ledger : armCateringOwnFileMutation(state.ledger, attempt.origin),
+    // The exact addition the server's own answer says to expect, on the ORIGINATING booking.
+    ledger: expectCateringFileAddition(state.ledger, attempt.origin, fileId),
     inFlight: exitCateringMutation(state.inFlight, attempt.origin),
     uploadOutcome: cateringMutationOutcome(attempt.origin, "succeeded"),
     invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(attempt.origin).map(key)],
@@ -292,15 +293,15 @@ function uploadSucceeded(state: Files, attempt: UploadAttempt, duplicate = false
 function uploadFailed(state: Files, attempt: UploadAttempt, message: string): Files {
   return { ...state, inFlight: exitCateringMutation(state.inFlight, attempt.origin), uploadOutcome: cateringMutationOutcome(attempt.origin, "failed", message), invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(attempt.origin).map(key)] };
 }
-function removeSucceeded(state: Files, origin: CateringMutationOrigin): Files {
-  return { ...state, ledger: armCateringOwnFileMutation(state.ledger, origin), removeOutcome: cateringMutationOutcome(origin, "succeeded"), invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(origin).map(key)] };
+function removeSucceeded(state: Files, origin: CateringMutationOrigin, fileId: string): Files {
+  return { ...state, ledger: expectCateringFileRemoval(state.ledger, origin, fileId), removeOutcome: cateringMutationOutcome(origin, "succeeded"), invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(origin).map(key)] };
 }
 function removeFailed(state: Files, origin: CateringMutationOrigin, message: string): Files {
   return { ...state, removeOutcome: cateringMutationOutcome(origin, "failed", message), invalidated: [...state.invalidated, ...cateringOriginFileInvalidations(origin).map(key)] };
 }
-/** One poll landing: the newest-page fingerprint for the booking on screen. */
-function observeBoundary(state: Files, origin: CateringMutationOrigin, boundary: string | null): { state: Files; refreshed: boolean } {
-  const observed = observeCateringFileBoundary(state.ledger, origin.identity, boundary);
+/** One poll landing: the newest authoritative page, newest first, for the booking on screen. */
+function observeBoundary(state: Files, origin: CateringMutationOrigin, snapshot: readonly string[] | null): { state: Files; refreshed: boolean } {
+  const observed = observeCateringFileSnapshot(state.ledger, origin.identity, snapshot);
   const refreshed = observed.refreshActivity;
   return { state: { ...state, ledger: observed.next, invalidated: refreshed ? [...state.invalidated, ...cateringOriginWorkspaceInvalidations(origin).map(key)] : state.invalidated }, refreshed };
 }
@@ -310,20 +311,20 @@ test("10. an upload that lands after navigating away refreshes its own booking's
   state = chooseFile(state, "menu.pdf", "up-1");
   const started = submitUpload(state, A);
   state = navigateFiles(started.state, B);
-  state = uploadSucceeded(state, started.attempt);
+  state = uploadSucceeded(state, started.attempt, "a2");
   assert.deepEqual(touched(state).sort(), cateringOriginFileInvalidations(A).map(key).sort());
   assert.equal(mentions(state, B), false, "B must not be invalidated by A's upload");
   assert.equal(visibleCateringMutationOutcome(state.uploadOutcome, B.identity), null, "B must not announce A's upload");
 });
 
-test("11. a successful upload arms suppression for its own booking alone", () => {
+test("11. a successful upload expects its exact addition, on its own booking alone", () => {
   let state = openFiles(A);
   state = chooseFile(state, "menu.pdf", "up-2");
   const started = submitUpload(state, A);
   state = navigateFiles(started.state, B);
-  state = uploadSucceeded(state, started.attempt);
-  assert.deepEqual([...state.ledger.armed], [A.identity]);
-  assert.equal(state.ledger.armed.has(B.identity), false);
+  state = uploadSucceeded(state, started.attempt, "a2");
+  assert.deepEqual([...(state.ledger.pending.get(A.identity)?.additions ?? [])], ["a2"]);
+  assert.equal(state.ledger.pending.has(B.identity), false);
 });
 
 test("12. the next counterpart change on the other booking is still announced", () => {
@@ -331,27 +332,28 @@ test("12. the next counterpart change on the other booking is still announced", 
   state = chooseFile(state, "menu.pdf", "up-3");
   const started = submitUpload(state, A);
   state = navigateFiles(started.state, B);
-  state = uploadSucceeded(state, started.attempt);
+  state = uploadSucceeded(state, started.attempt, "a2");
   // B's first poll is a baseline: a booking's existing list is not a change.
-  const baseline = observeBoundary(state, B, "b1");
+  const baseline = observeBoundary(state, B, ["b1"]);
   assert.equal(baseline.refreshed, false);
   state = baseline.state;
-  // The counterpart shares a file on B. A's arming is A's, so nothing absorbs this and Activity is refreshed.
-  const counterpart = observeBoundary(state, B, "b2|b1");
+  // The counterpart shares a file on B. A's expectation is A's, so nothing absorbs this and Activity is refreshed.
+  const counterpart = observeBoundary(state, B, ["b2", "b1"]);
   assert.equal(counterpart.refreshed, true, "A's upload must not swallow B's counterpart change");
   state = counterpart.state;
   assert.equal(state.invalidated.includes(key(cateringOriginWorkspaceInvalidations(B)[0])), true);
-  // A's arming is still intact, waiting for A's own boundary rather than having been spent on B.
-  assert.deepEqual([...state.ledger.armed], [A.identity]);
+  // A's expectation is still intact, waiting for A's own page rather than having been spent on B.
+  assert.deepEqual([...(state.ledger.pending.get(A.identity)?.additions ?? [])], ["a2"]);
 });
 
 test("13. a delete that lands after navigating away invalidates and suppresses on its own booking only", () => {
   let state = openFiles(A);
   state = navigateFiles(state, B);
-  state = removeSucceeded(state, A);
+  state = removeSucceeded(state, A, "a1");
   assert.deepEqual(touched(state).sort(), cateringOriginFileInvalidations(A).map(key).sort());
   assert.equal(mentions(state, B), false);
-  assert.deepEqual([...state.ledger.armed], [A.identity]);
+  assert.deepEqual([...(state.ledger.pending.get(A.identity)?.removals ?? [])], ["a1"]);
+  assert.equal(state.ledger.pending.has(B.identity), false);
   assert.equal(visibleCateringMutationOutcome(state.removeOutcome, B.identity), null);
 });
 
@@ -362,22 +364,24 @@ test("14. a failed upload or delete arms suppression on no booking at all", () =
   state = navigateFiles(started.state, B);
   state = uploadFailed(state, started.attempt, "Your file could not be uploaded");
   state = removeFailed(state, A, "This file could not be removed");
-  assert.deepEqual([...state.ledger.armed], [], "a failure changed no boundary, so it may absorb nothing");
+  assert.equal(state.ledger.pending.size, 0, "a failure changed nothing, so it expects nothing");
   // And a later counterpart change on either booking is therefore announced normally.
-  let observed = observeBoundary(state, B, "b1");
+  let observed = observeBoundary(state, B, ["b1"]);
   state = observed.state;
-  observed = observeBoundary(state, B, "b2|b1");
+  observed = observeBoundary(state, B, ["b2", "b1"]);
   assert.equal(observed.refreshed, true);
 });
 
-test("15. an idempotent duplicate retry still arms nothing, on its own booking or any other", () => {
+test("15. an idempotent duplicate retry expects nothing when the page already carries the file", () => {
   let state = openFiles(A);
+  // A's page already shows a1, which is what the duplicate response hands back.
+  state = observeBoundary(state, A, ["a1"]).state;
   state = chooseFile(state, "menu.pdf", "up-5");
   const started = submitUpload(state, A);
   state = navigateFiles(started.state, B);
-  // The server answered from the idempotency ledger: this request created nothing, so no boundary is its doing.
-  state = uploadSucceeded(state, started.attempt, true);
-  assert.deepEqual([...state.ledger.armed], []);
+  // The server answered from the idempotency ledger: this request created nothing, so no delta is its doing.
+  state = uploadSucceeded(state, started.attempt, "a1");
+  assert.equal(state.ledger.pending.size, 0);
   // The caches of the originating booking are still refreshed -- the file exists there, whoever's request made it.
   assert.deepEqual(touched(state).sort(), cateringOriginFileInvalidations(A).map(key).sort());
 });
@@ -389,7 +393,7 @@ test("16. an upload completing after navigation leaves the other booking's draft
   state = navigateFiles(started.state, B);
   state = chooseFile(state, "invoice.pdf", "up-7");
   const before = state.draft;
-  state = uploadSucceeded(state, started.attempt);
+  state = uploadSucceeded(state, started.attempt, "a2");
   assert.equal(state.draft, before, "A's completion must not clear or re-token B's draft");
   assert.equal(state.draft.file?.name, "invoice.pdf");
   assert.equal(state.draft.requestId, "up-7");
@@ -407,16 +411,17 @@ test("17. a delete error stays on the booking it happened on", () => {
 test("18. returning to a booking still refreshes its Activity for a change made while away", () => {
   let state = openFiles(A);
   // A's own upload lands, arms A, and A's refreshed page consumes that arming without announcing anything.
+  state = observeBoundary(state, A, ["a1"]).state;
   state = chooseFile(state, "menu.pdf", "up-8");
   const started = submitUpload(state, A);
-  state = uploadSucceeded(state, started.attempt);
-  let observed = observeBoundary(state, A, "a2|a1");
+  state = uploadSucceeded(state, started.attempt, "a2");
+  let observed = observeBoundary(state, A, ["a2", "a1"]);
   assert.equal(observed.refreshed, false, "this actor's own upload is not announced twice");
   state = observed.state;
   // Away to B and back. The counterpart shared a file on A in the meantime.
   state = navigateFiles(state, B);
   state = navigateFiles(state, A);
-  observed = observeBoundary(state, A, "a3|a2|a1");
+  observed = observeBoundary(state, A, ["a3", "a2", "a1"]);
   assert.equal(observed.refreshed, true, "a counterpart change on the returned-to booking must refresh Activity");
   assert.equal(observed.state.invalidated.includes(key(cateringOriginWorkspaceInvalidations(A)[0])), true);
 });
@@ -512,27 +517,28 @@ test("23. a preserved unsent message is per booking, and blank text preserves no
 
 test("24. the file ledger announces a change once, per booking, and never on a baseline or a repeat", () => {
   let ledger = EMPTY_CATERING_FILE_LEDGER;
-  // A null fingerprint is "nothing loaded yet", not a change.
-  let step = observeCateringFileBoundary(ledger, A.identity, null);
+  // Nothing loaded yet is not a change.
+  let step = observeCateringFileSnapshot(ledger, A.identity, null);
   assert.equal(step.refreshActivity, false);
   assert.equal(step.next, ledger);
   // First real observation is the baseline; repeating it does nothing.
-  step = observeCateringFileBoundary(ledger, A.identity, "a1");
+  step = observeCateringFileSnapshot(ledger, A.identity, ["a1"]);
   assert.equal(step.refreshActivity, false);
   ledger = step.next;
-  step = observeCateringFileBoundary(ledger, A.identity, "a1");
+  step = observeCateringFileSnapshot(ledger, A.identity, ["a1"]);
   assert.equal(step.refreshActivity, false);
-  assert.equal(step.next, ledger, "an unchanged fingerprint allocates nothing");
-  // A counterpart's change is announced; the same booking's own armed change is absorbed exactly once.
-  step = observeCateringFileBoundary(ledger, A.identity, "a2|a1");
+  assert.equal(step.next, ledger, "an unchanged page allocates nothing");
+  // A counterpart's change is announced; this actor's own expected change is absorbed exactly once.
+  step = observeCateringFileSnapshot(ledger, A.identity, ["a2", "a1"]);
   assert.equal(step.refreshActivity, true);
-  ledger = armCateringOwnFileMutation(step.next, A);
-  assert.equal(armCateringOwnFileMutation(ledger, A), ledger, "arming twice is arming once");
-  step = observeCateringFileBoundary(ledger, A.identity, "a3|a2|a1");
+  ledger = expectCateringFileAddition(step.next, A, "a3");
+  assert.equal(expectCateringFileAddition(ledger, A, "a3"), ledger, "expecting the same addition twice is once");
+  step = observeCateringFileSnapshot(ledger, A.identity, ["a3", "a2", "a1"]);
   assert.equal(step.refreshActivity, false, "this actor's own change is absorbed");
   ledger = step.next;
-  step = observeCateringFileBoundary(ledger, A.identity, "a4|a3|a2|a1");
-  assert.equal(step.refreshActivity, true, "the arming is spent, so the next change is announced");
+  assert.equal(ledger.pending.size, 0, "and the expectation is consumed");
+  step = observeCateringFileSnapshot(ledger, A.identity, ["a4", "a3", "a2", "a1"]);
+  assert.equal(step.refreshActivity, true, "the expectation is spent, so the next change is announced");
   // Every booking keeps its own baseline: B's first observation is still a baseline after all of A's history.
-  assert.equal(observeCateringFileBoundary(step.next, B.identity, "b1").refreshActivity, false);
+  assert.equal(observeCateringFileSnapshot(step.next, B.identity, ["b1"]).refreshActivity, false);
 });

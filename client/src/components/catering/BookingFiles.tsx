@@ -1,13 +1,13 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Download, Trash2 } from "lucide-react";
-import { cateringBookingFilesKey, cateringFileBoundary, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
+import { cateringBookingFilesKey, cateringFileBoundary, cateringFileSnapshot, type CateringBookingFilePageView, type CateringBookingFileView, type CateringFileVisibility } from "@shared/catering-booking-files";
 import { cateringWorkspacePollInterval, effectiveCateringEditable, observedCateringEditable } from "@shared/catering-booking-operations";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, armCateringOwnFileMutation, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringOriginFileInvalidations, cateringOriginWorkspaceInvalidations, enterCateringMutation, exitCateringMutation, observeCateringFileBoundary, visibleCateringMutationOutcome, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome } from "@/pages/services/catering-booking-mutation-origin";
+import { EMPTY_CATERING_FILE_LEDGER, EMPTY_CATERING_IN_FLIGHT, cateringMutationIsPending, cateringMutationOrigin, cateringMutationOutcome, cateringOriginFileInvalidations, cateringOriginWorkspaceInvalidations, enterCateringMutation, exitCateringMutation, expectCateringFileAddition, expectCateringFileRemoval, observeCateringFileSnapshot, visibleCateringMutationOutcome, type CateringFileLedger, type CateringInFlight, type CateringMutationOrigin, type CateringMutationOutcome } from "@/pages/services/catering-booking-mutation-origin";
 import { CATERING_FILES_EMPTY, CATERING_FILES_READ_ONLY_BANNER, CATERING_FILE_ACCEPT, cateringFileDownloadPath, cateringFileSummary, cateringFileVisibilityBadge, cateringVisibilityChoices, chooseCateringVisibility, combineCateringFilePages, completeCateringFileUpload, emptyCateringFileDraft, markCateringFileAttempted, mayUploadCateringFile, nextCateringFileCursor, selectCateringFile, type CateringFileDraft } from "@/pages/services/catering-booking-files-state";
 
 /**
@@ -30,9 +30,10 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   const inputRef = useRef<HTMLInputElement | null>(null);
   // Whether this section has already told the workspace that the booking went terminal.
   const terminalSeenRef = useRef(false);
-  // The newest-page fingerprint accounted for and the own-mutation arming, BOTH keyed by booking. A poll that found
-  // a real change can then be told from a quiet one per booking, and a change this actor caused on one booking can
-  // never be absorbed as "mine" on another.
+  // The newest-page snapshot accounted for and the exact deltas this actor's own mutations are expected to produce,
+  // BOTH keyed by booking. A poll that found a real change can then be told from a quiet one per booking, a change
+  // this actor caused on one booking can never be absorbed as "mine" on another, and a counterpart change that
+  // lands in the same response as a local one is still announced because it is not one of the expected deltas.
   const ledgerRef = useRef<CateringFileLedger>(EMPTY_CATERING_FILE_LEDGER);
   // Mirrors the live draft so a mutation callback, which fires long after its render, resolves against what the
   // participant currently has selected rather than the draft captured when the upload started.
@@ -93,6 +94,9 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // The fingerprint of the newest page this actor may see. Only ids already serialized to them are read, so a
   // provider-private change is invisible here for a customer exactly as it is everywhere else.
   const fileBoundary = cateringFileBoundary(query.data?.pages);
+  // The same reading as an ordered id list, which is what a delta can actually be computed from. The joined form
+  // above stays the effect's dependency: it changes exactly when this does, and it is a primitive.
+  const fileSnapshot = cateringFileSnapshot(query.data?.pages);
   // The same authoritative reading the conversation uses: the files endpoint re-derives `editable` from the
   // persisted booking status on every poll, so it is what the upload and delete controls obey.
   const observedEditable = observedCateringEditable(query.data?.pages);
@@ -144,7 +148,11 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
       // request's doing and must not be absorbed. Arming on anything less than a real creation is how a FAILED
       // mutation used to leave the flag set for a counterpart's change to consume; arming a single booking-agnostic
       // flag is how one booking's upload used to swallow another booking's counterpart change.
-      if (!(_body as { duplicate?: boolean } | undefined)?.duplicate) ledgerRef.current = armCateringOwnFileMutation(ledgerRef.current, attempt.origin);
+      // Armed as the EXACT addition it is, by the authoritative id the server answered with, so a counterpart's
+      // upload landing in the same response is still an unexplained change and still refreshes Activity. An id the
+      // newest page already carries arms nothing, which is what an idempotent retry resolves to.
+      const uploaded = (_body as { file?: { id?: unknown } } | undefined)?.file;
+      if (typeof uploaded?.id === "string") ledgerRef.current = expectCateringFileAddition(ledgerRef.current, attempt.origin, uploaded.id);
       setUploadOutcome(cateringMutationOutcome(attempt.origin, "succeeded"));
       invalidateOrigin(attempt.origin);
     },
@@ -167,7 +175,7 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
     // Success alone arms the suppression, and only for the booking the delete actually happened on; `onSettled` runs
     // after a failure too, and a failed delete changes no boundary, so arming there would leave an arming waiting to
     // swallow a counterpart's next change.
-    onSuccess: (_body, attempt) => { ledgerRef.current = armCateringOwnFileMutation(ledgerRef.current, attempt.origin); setRemoveOutcome(cateringMutationOutcome(attempt.origin, "succeeded")); },
+    onSuccess: (_body, attempt) => { ledgerRef.current = expectCateringFileRemoval(ledgerRef.current, attempt.origin, attempt.fileId); setRemoveOutcome(cateringMutationOutcome(attempt.origin, "succeeded")); },
     onError: (error: Error, attempt) => setRemoveOutcome(cateringMutationOutcome(attempt.origin, "failed", error.message)),
     onSettled: (_body, _error, attempt) => { setRemoveInFlight((current) => exitCateringMutation(current, attempt.origin)); invalidateOrigin(attempt.origin); },
   });
@@ -178,11 +186,14 @@ export default function BookingFiles({ bookingId, userId, role, editable }: { bo
   // the same booking differently until a focus change intervenes. Nothing is fabricated locally: the workspace
   // refetches its own authoritative activity.
   //
-  // It fires only on a CHANGE. The first successful load just records a baseline, an unchanged fingerprint does
-  // nothing at all, and a change this actor caused itself is absorbed because `invalidate()` already refreshed the
-  // workspace for it. It cannot loop: the workspace refetch changes the parent's data, never this page's ids.
+  // It fires only on a change this actor did not make. The first successful load records a baseline, an unchanged
+  // page does nothing at all, and a change explained EXACTLY by this actor's own successful mutations is absorbed
+  // because `invalidateOrigin` already refreshed the workspace for it -- but only the part of the change those
+  // mutations account for. Anything left over after that subtraction is somebody else's and is announced, which is
+  // what keeps a counterpart's upload from vanishing into the same response as a local one. It cannot loop: the
+  // workspace refetch changes the parent's data, never this page's ids.
   useEffect(() => {
-    const observed = observeCateringFileBoundary(ledgerRef.current, identity, fileBoundary);
+    const observed = observeCateringFileSnapshot(ledgerRef.current, identity, fileSnapshot);
     ledgerRef.current = observed.next;
     if (!observed.refreshActivity) return;
     for (const queryKey of cateringOriginWorkspaceInvalidations(origin)) cache.invalidateQueries({ queryKey });
